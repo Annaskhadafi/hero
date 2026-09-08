@@ -7,7 +7,6 @@ import {
   rejectPtwStepByToken,
   revertPtwStepByToken,
 } from '@/app/dashboard/hse/izin-kerja-ptw/actions'
-import { getUserSignatureAction } from '@/app/actions/user-signature'
 import { EQUIPMENT_CHECKLIST_PER_TYPE, getActivePermitTypeKeys, isItemChecked, getPermitSubTypes, cleanPtwDescription, extractCheckedEquipment } from '@/lib/ptw-helpers'
 import { PtwChecklistTable } from '@/components/ptw-checklist-table'
 import { Button } from '@/components/ui/button'
@@ -16,6 +15,7 @@ import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -27,6 +27,10 @@ import {
   XCircle,
   PenTool,
   RotateCcw,
+  RotateCw,
+  RefreshCw,
+  ZoomIn,
+  ZoomOut,
   FileSpreadsheet,
   Printer,
   Eye,
@@ -78,18 +82,6 @@ function exportToCsv(filename: string, headers: string[], rows: (string | number
   URL.revokeObjectURL(link.href)
 }
 
-const APD_ITEMS = [
-  'Safety Helmet',
-  'Safety Shoes',
-  'Safety Glasses / Goggles',
-  'Ear Plug / Ear Muff',
-  'Full Body Harness',
-  'Sarung Tangan (Leather/Cotton/Rubber)',
-  'Masker Respirator / Dust Mask',
-  'Face Shield',
-  'Rompi Reflektif (High-Vis Vest)',
-]
-
 export function PtwPublicApproval({
   token,
   approval,
@@ -106,53 +98,24 @@ export function PtwPublicApproval({
   const [rejected, setRejected] = useState(approval?.status === 'rejected')
   const [reverted, setReverted] = useState(false)
   const [approvalHistory, setApprovalHistory] = useState(data?.approvals || [])
-  const initialSig = approval?.signatureDataUrl || data?.registeredSignature || ''
+  const initialSig = approval?.signatureDataUrl || ''
   const [previewSignatureDataUrl, setPreviewSignatureDataUrl] = useState(initialSig)
   const [previewSignedAt, setPreviewSignedAt] = useState<string | Date | null>(
     approval?.signedAt || null
   )
-  const [isManualDraw, setIsManualDraw] = useState(!initialSig)
   const [isPending, startTransition] = useTransition()
   const [isDownloading, setIsDownloading] = useState(false)
   const [activeView, setActiveView] = useState<'form' | 'preview'>('form')
 
+  // States
+  const [isAttachmentModalOpen, setIsAttachmentModalOpen] = useState(false)
+  const [zoomImage, setZoomImage] = useState<{ url: string; title: string } | null>(null)
+  const [imageScale, setImageScale] = useState<number>(1)
+  const [imageRotation, setImageRotation] = useState<number>(0)
+  const [origin, setOrigin] = useState('')
   useEffect(() => {
-    async function loadSignature() {
-      if (!previewSignatureDataUrl) {
-        try {
-          const res = await getUserSignatureAction()
-          if (res.success && res.signatureDataUrl) {
-            setPreviewSignatureDataUrl(res.signatureDataUrl)
-            setIsManualDraw(false)
-          }
-        } catch (e) {
-          console.error('Error loading signature in public approval:', e)
-        }
-      }
-    }
-    loadSignature()
+    if (typeof window !== 'undefined') setOrigin(window.location.origin)
   }, [])
-
-  // Multi-select for APD
-  const [selectedApd, setSelectedApd] = useState<string[]>(
-    data?.safetyEquipments?.length ? data.safetyEquipments : APD_ITEMS.slice(0, 4)
-  )
-
-  const isAllApdSelected = selectedApd.length === APD_ITEMS.length
-
-  const toggleSelectAllApd = () => {
-    if (isAllApdSelected) {
-      setSelectedApd([])
-    } else {
-      setSelectedApd([...APD_ITEMS])
-    }
-  }
-
-  const toggleApdItem = (item: string) => {
-    setSelectedApd((prev) =>
-      prev.includes(item) ? prev.filter((x) => x !== item) : [...prev, item]
-    )
-  }
 
   function getSignatureDataUrl() {
     const signature = signatureRef.current
@@ -174,9 +137,9 @@ export function PtwPublicApproval({
   function handleSubmit() {
     setError('')
     const drawn = getSignatureDataUrl()
-    const signatureDataUrl = drawn || previewSignatureDataUrl || data?.registeredSignature || ''
+    const signatureDataUrl = drawn || previewSignatureDataUrl || ''
     if (!signatureDataUrl) {
-      setError('Tanda tangan digital wajib diisi.')
+      setError('Tanda tangan manual wajib digoreskan pada area kanvas di bawah.')
       return
     }
     const signedAt = new Date()
@@ -316,9 +279,32 @@ export function PtwPublicApproval({
 
   return (
     <main className="min-h-screen bg-slate-100 p-3 sm:p-5 md:p-8">
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+        @page { size: A4 landscape; margin: 5mm; }
+        @media print {
+          html, body { margin: 0 !important; padding: 0 !important; background: white !important; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          .no-print, header, nav { display: none !important; }
+          main { padding: 0 !important; background: white !important; min-height: auto !important; }
+          .pdf-wrapper {
+            width: 297mm !important;
+            max-width: 297mm !important;
+            min-height: 210mm !important;
+            margin: 0 auto !important;
+            padding: 5mm !important;
+            border: 2px solid #0f172a !important;
+            box-shadow: none !important;
+            box-sizing: border-box !important;
+          }
+        }
+      `,
+        }}
+      />
       <div className="mx-auto max-w-[1600px] space-y-4 sm:space-y-6">
         {/* ── Top Header & Action Bar ── */}
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs">
+        <div className="no-print rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <div className="flex items-center gap-2 mb-1.5">
@@ -424,7 +410,7 @@ export function PtwPublicApproval({
           {/* ── Left Column: Form, Multi-select APD, Sign & Actions ── */}
           <div
             className={cn(
-              'lg:col-span-5 space-y-4',
+              'no-print lg:col-span-5 space-y-4',
               activeView === 'form' ? 'block' : 'hidden lg:block'
             )}
           >
@@ -460,69 +446,6 @@ export function PtwPublicApproval({
                 </div>
               </div>
             ) : null}
-
-            {/* Multi-Select APD / Safety Equipment Card */}
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <HardHat className="size-4 text-teal-600" />
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                    Kelengkapan APD & Keselamatan ({selectedApd.length}/{APD_ITEMS.length})
-                  </h3>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={toggleSelectAllApd}
-                  className="h-7 text-xs font-semibold text-teal-700 hover:text-teal-800 hover:bg-teal-50 px-2"
-                >
-                  {isAllApdSelected ? (
-                    <span className="flex items-center gap-1">
-                      <CheckSquare className="size-3.5" /> Batal Semua
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1">
-                      <Square className="size-3.5" /> Pilih Semua
-                    </span>
-                  )}
-                </Button>
-              </div>
-
-              <div className="max-h-56 overflow-y-auto space-y-1 divide-y divide-slate-100">
-                {APD_ITEMS.map((apd) => {
-                  const isSelected = selectedApd.includes(apd)
-                  return (
-                    <div
-                      key={apd}
-                      onClick={() => toggleApdItem(apd)}
-                      className={cn(
-                        'flex items-center justify-between p-2 rounded-xl cursor-pointer transition text-xs',
-                        isSelected ? 'bg-teal-50/60 font-semibold' : 'hover:bg-slate-50'
-                      )}
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        {isSelected ? (
-                          <CheckSquare className="size-4 text-teal-600 shrink-0" />
-                        ) : (
-                          <Square className="size-4 text-slate-300 shrink-0" />
-                        )}
-                        <span className="text-xs text-slate-800 truncate">{apd}</span>
-                      </div>
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          'text-[10px]',
-                          isSelected ? 'bg-teal-100/60 text-teal-800 border-teal-300' : 'text-slate-400'
-                        )}
-                      >
-                        {isSelected ? 'Terverifikasi' : 'Opsional'}
-                      </Badge>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
 
             {/* Attachment Documents Card */}
             {data?.attachments && Array.isArray(data.attachments) && data.attachments.length > 0 && (
@@ -591,78 +514,49 @@ export function PtwPublicApproval({
                   <PenTool className="size-4 text-teal-600" /> Tanda Tangan & Persetujuan
                 </h3>
 
-                {/* Digital Signature */}
-                {previewSignatureDataUrl && !isManualDraw ? (
-                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3.5 shadow-inner">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-14 w-24 items-center justify-center rounded-lg border border-slate-200/80 bg-white p-1.5 shadow-xs">
-                        <img
-                          src={previewSignatureDataUrl}
-                          alt="Tanda Tangan Terdaftar"
-                          className="max-h-11 max-w-full object-contain"
-                        />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">
-                          Tanda Tangan Digital Terdaftar
-                        </p>
-                        <p className="text-[11px] font-medium text-emerald-600 flex items-center gap-1 mt-0.5">
-                          <CheckCircle2 className="size-3.5" /> Siap ditempelkan ke dokumen PTW
-                        </p>
-                      </div>
+                {/* Manual Digital Signature Canvas for External Vendor / Public */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <label className="text-xs font-bold text-slate-800 block">
+                        Goreskan Tanda Tangan Manual
+                      </label>
+                      <span className="text-[11px] text-slate-500">
+                        Tanda tangani langsung di kotak kanvas menggunakan jari, mouse, atau stylus:
+                      </span>
                     </div>
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => setIsManualDraw(true)}
-                      className="h-8 rounded-lg border-slate-300 text-xs font-semibold text-slate-700 hover:bg-white shrink-0"
+                      className="h-7 text-xs text-slate-600 hover:text-slate-900 border-slate-200"
+                      onClick={() => {
+                        signatureRef.current?.clear()
+                        setPreviewSignatureDataUrl('')
+                      }}
                     >
-                      <PenTool className="size-3 mr-1 text-slate-500" /> Gambar TTD
+                      <RotateCcw className="size-3.5 mr-1 text-slate-400" />
+                      Hapus / Ulangi
                     </Button>
                   </div>
-                ) : (
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-xs font-semibold text-slate-700">
-                        Gambar Tanda Tangan
-                      </label>
-                      <div className="flex items-center gap-2">
-                        {previewSignatureDataUrl ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 text-[11px] text-teal-700 hover:text-teal-800 p-0"
-                            onClick={() => setIsManualDraw(false)}
-                          >
-                            Pakai TTD Terdaftar
-                          </Button>
-                        ) : null}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 text-[11px] text-slate-500 hover:text-slate-800 p-0"
-                          onClick={() => {
-                            signatureRef.current?.clear()
-                            setPreviewSignatureDataUrl('')
-                          }}
-                        >
-                          Bersihkan TTD
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="rounded-xl border border-slate-300 bg-white p-1 shadow-inner">
-                      <SignatureCanvas
-                        ref={signatureRef}
-                        onEnd={updateSignaturePreview}
-                        canvasProps={{ className: 'h-36 w-full rounded-lg bg-white touch-none' }}
-                        backgroundColor="rgba(255,255,255,0)"
-                      />
-                    </div>
+                  <div className="rounded-xl border-2 border-dashed border-slate-300 bg-white p-1 shadow-inner focus-within:border-teal-500 transition-colors">
+                    <SignatureCanvas
+                      ref={signatureRef}
+                      onEnd={updateSignaturePreview}
+                      canvasProps={{ className: 'h-40 w-full rounded-lg bg-white touch-none cursor-crosshair' }}
+                      backgroundColor="rgba(255,255,255,0)"
+                    />
                   </div>
-                )}
+                  {!previewSignatureDataUrl ? (
+                    <p className="text-[10.5px] text-amber-600 mt-1.5 font-semibold flex items-center gap-1">
+                      ⚠️ Tanda tangan manual wajib digoreskan pada kotak di atas sebelum dapat disetujui.
+                    </p>
+                  ) : (
+                    <p className="text-[10.5px] text-emerald-600 mt-1.5 font-semibold flex items-center gap-1">
+                      ✓ Tanda tangan tergores & preview terpasang pada lembar dokumen.
+                    </p>
+                  )}
+                </div>
 
                 {/* Remarks Field */}
                 <div>
@@ -706,9 +600,10 @@ export function PtwPublicApproval({
 
                   <Button
                     type="button"
-                    className="rounded-xl bg-[#003461] hover:bg-[#002647] text-white font-bold text-xs h-9 px-5 shadow-xs"
+                    className="rounded-xl bg-[#003461] hover:bg-[#002647] text-white font-bold text-xs h-9 px-5 shadow-xs disabled:opacity-40 disabled:cursor-not-allowed"
                     onClick={handleSubmit}
-                    disabled={isPending}
+                    disabled={isPending || !previewSignatureDataUrl}
+                    title={!previewSignatureDataUrl ? 'Goreskan tanda tangan terlebih dahulu untuk menyetujui' : 'Setujui & Tanda Tangani PTW'}
                   >
                     <CheckCircle2 className="mr-1.5 size-4" />
                     {isPending ? 'Menyimpan...' : 'Setujui & Tanda Tangani'}
@@ -721,13 +616,13 @@ export function PtwPublicApproval({
           {/* ── Right Column: Official 18-Field Landscape PTW Preview ── */}
           <div
             className={cn(
-              'lg:col-span-7 rounded-2xl bg-slate-200/70 p-3 sm:p-5 shadow-inner overflow-x-auto print:p-0 print:bg-white',
+              'lg:col-span-7 rounded-2xl bg-slate-200/70 p-3 sm:p-5 shadow-inner overflow-x-auto print:p-0 print:bg-white print:border-none print:shadow-none print:overflow-visible print:col-span-12 print:w-full print:block',
               activeView === 'preview' ? 'block' : 'hidden lg:block'
             )}
           >
             <div
               id="ptw-pdf-page-1"
-              className="pdf-wrapper relative mx-auto w-[866px] min-h-[612px] shrink-0 bg-white shadow-sm border-2 border-slate-900 text-slate-900 font-sans text-[8.5pt] p-5 flex flex-col justify-between"
+              className="pdf-wrapper relative mx-auto w-[1122px] min-h-[793px] shrink-0 bg-white shadow-sm border-2 border-slate-900 text-slate-900 font-sans text-[8.5pt] p-6 flex flex-col justify-between"
             >
               {/* ── HEADER TABLE ── */}
               <div className="grid grid-cols-[180px_1fr] border-b-2 border-slate-900">
@@ -789,8 +684,8 @@ export function PtwPublicApproval({
               <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-slate-50/80">
                 <span className="font-bold block text-[7.5pt] text-slate-900">ALAT PELINDUNG DIRI (APD) WAJIB :</span>
                 <div className="flex flex-wrap gap-1.5 mt-1 font-semibold text-slate-800">
-                  {selectedApd && selectedApd.length > 0 ? (
-                    selectedApd.map((apd) => (
+                  {((Array.isArray(data?.ppe) && data.ppe.length > 0) || (Array.isArray(data?.safetyEquipments) && data.safetyEquipments.length > 0)) ? (
+                    (data.ppe || data.safetyEquipments).map((apd: string) => (
                       <span key={apd} className="inline-block bg-white border border-slate-400 rounded px-2 py-0.5 text-[7.5pt] shadow-2xs">
                         ☑ {apd}
                       </span>
@@ -825,7 +720,7 @@ export function PtwPublicApproval({
                           CATATAN PEMBERI KERJA
                         </span>
                         <div className="text-[7pt] text-slate-700 leading-snug break-words">
-                          {rem || <span className="text-slate-400 italic text-[6.5pt]">Area kerja aman & barikade terpasang.</span>}
+                          {rem || null}
                         </div>
                       </div>
                     </div>
@@ -834,17 +729,42 @@ export function PtwPublicApproval({
 
                 {/* 2. Catatan Pelaksana Kerja */}
                 {(() => {
-                  const s = approvalHistoryForDisplay.find((x: any) => x.stepOrder === 2 || x.approverRole === 'applicant' || x.approverRole === 'pelaksana')
-                  const isCur = approval?.stepOrder === 2
-                  const rem = (isCur && remarks) || s?.remarks
+                  const pelaksanaSteps = approvalHistoryForDisplay.filter(
+                    (x: any) =>
+                      x.approverRole === 'applicant' ||
+                      x.approverRole === 'pelaksana' ||
+                      x.approverRole === 'pelaksana_kerja' ||
+                      (x.stepOrder > 1 &&
+                        x.stepOrder < approvalHistoryForDisplay.length &&
+                        !['field_pic', 'pemberi_kerja', 'safety_officer', 'safety_dept', 'authorized'].includes(
+                          x.approverRole
+                        ))
+                  )
+                  const remarksList = pelaksanaSteps
+                    .map((p: any) => {
+                      const isCur = approval?.id === p.id || approval?.stepOrder === p.stepOrder
+                      const rem = (isCur && remarks) || p.remarks
+                      return rem ? { name: p.approverName, text: rem } : null
+                    })
+                    .filter(Boolean) as { name: string; text: string }[]
+
                   return (
                     <div className="col-span-3 p-2 flex flex-col justify-between border-slate-900">
                       <div>
                         <span className="font-bold text-[7.5pt] text-slate-900 block uppercase tracking-wide border-b border-slate-300 pb-0.5 mb-1">
                           CATATAN PELAKSANA KERJA
                         </span>
-                        <div className="text-[7pt] text-slate-700 leading-snug break-words">
-                          {rem || <span className="text-slate-400 italic text-[6.5pt]">Wajib ikuti SOP K3 lokasi kerja.</span>}
+                        <div className="text-[7pt] text-slate-700 leading-snug break-words space-y-1">
+                          {remarksList.length > 0 ? (
+                            remarksList.map((r, idx) => (
+                              <div key={idx}>
+                                {remarksList.length > 1 && (
+                                  <span className="font-bold text-slate-900 block">{r.name}:</span>
+                                )}
+                                <span>{r.text}</span>
+                              </div>
+                            ))
+                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -853,8 +773,13 @@ export function PtwPublicApproval({
 
                 {/* 3. Catatan Safety Dept */}
                 {(() => {
-                  const s = approvalHistoryForDisplay.find((x: any) => x.stepOrder === 3 || x.approverRole === 'authorized' || x.approverRole === 'safety_dept')
-                  const isCur = approval?.stepOrder === 3
+                  const s = approvalHistoryForDisplay.find(
+                    (x: any) =>
+                      x.approverRole === 'authorized' ||
+                      x.approverRole === 'safety_dept' ||
+                      (x.stepOrder === approvalHistoryForDisplay.length && approvalHistoryForDisplay.length > 2)
+                  )
+                  const isCur = approval?.id === s?.id || approval?.stepOrder === s?.stepOrder
                   const rem = (isCur && remarks) || s?.remarks
                   return (
                     <div className="col-span-3 p-2 flex flex-col justify-between border-slate-900">
@@ -863,7 +788,7 @@ export function PtwPublicApproval({
                           CATATAN SAFETY DEPT
                         </span>
                         <div className="text-[7pt] text-slate-700 leading-snug break-words">
-                          {rem || <span className="text-slate-400 italic text-[6.5pt]">Peralatan & APAR standby di lokasi.</span>}
+                          {rem || null}
                         </div>
                       </div>
                     </div>
@@ -872,27 +797,36 @@ export function PtwPublicApproval({
 
                 {/* 4. QR Code */}
                 {(() => {
-                  const qrBaseUrl = typeof window !== 'undefined' && window.location?.origin
-                    ? window.location.origin
-                    : 'https://hero.chitraparatama.com'
+                  const qrBaseUrl = origin || 'https://hero.chitraparatama.com'
                   const qrTargetUrl = `${qrBaseUrl}/review/ptw/${encodeURIComponent(data?.permitNumber || token)}`
                   return (
-                    <a
-                      href={qrTargetUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white hover:bg-blue-50/50 cursor-pointer transition-colors no-underline text-slate-900"
-                      title="Klik / Scan untuk membuka lampiran PTW"
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        setIsAttachmentModalOpen(true)
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setIsAttachmentModalOpen(true)
+                        }
+                      }}
+                      className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white hover:bg-blue-50/70 cursor-pointer transition-colors no-underline text-slate-900 group"
+                      title="Klik untuk membuka pop up lampiran dokumen pendukung PTW / Scan QR"
+                      suppressHydrationWarning
                     >
                       <img
                         src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrTargetUrl)}`}
                         alt="QR Code Lampiran PTW"
-                        className="size-12 object-contain border border-slate-900 p-0.5 bg-white rounded shadow-2xs hover:scale-105 transition-transform"
+                        className="size-12 object-contain border border-slate-900 p-0.5 bg-white rounded shadow-2xs group-hover:scale-105 transition-transform"
+                        suppressHydrationWarning
                       />
-                      <span className="text-[6pt] font-bold text-slate-900 mt-0.5 uppercase text-center underline underline-offset-1">
+                      <span className="text-[6pt] font-bold text-slate-900 mt-0.5 uppercase text-center underline underline-offset-1 group-hover:text-blue-700" suppressHydrationWarning>
                         Klik / Scan QR
                       </span>
-                    </a>
+                    </div>
                   )
                 })()}
               </div>
@@ -930,14 +864,29 @@ export function PtwPublicApproval({
               <div className="grid grid-cols-3 divide-x-2 divide-slate-900 border-b-2 border-slate-900 text-[8pt]">
                 {/* 1. Pemberi Kerja */}
                 {(() => {
-                  const s = approvalHistoryForDisplay.find((x: any) => x.stepOrder === 1 || x.approverRole === 'field_pic' || x.approverRole === 'pemberi_kerja' || x.approverRole === 'safety_officer')
-                  const isCur = approval?.stepOrder === 1
-                  const sigUrl = (isCur && previewSignatureDataUrl) || s?.signatureDataUrl || (isCur ? data?.registeredSignature : null)
+                  const s = approvalHistoryForDisplay.find(
+                    (x: any) =>
+                      x.stepOrder === 1 ||
+                      x.approverRole === 'field_pic' ||
+                      x.approverRole === 'pemberi_kerja' ||
+                      x.approverRole === 'safety_officer'
+                  )
+                  const isCur = approval?.stepOrder === 1 || approval?.id === s?.id
+                  const sigUrl =
+                    (isCur && previewSignatureDataUrl) ||
+                    s?.signatureDataUrl ||
+                    (isCur ? data?.registeredSignature : null)
                   return (
                     <div className="p-1.5 text-center flex flex-col justify-between">
-                      <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PEMBERI KERJA</div>
+                      <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">
+                        PEMBERI KERJA
+                      </div>
                       <div className="h-14 flex items-center justify-center my-1">
-                        {sigUrl ? <img src={sigUrl} alt="TTD" className="max-h-12 object-contain" /> : <span className="text-[7pt] text-slate-400 italic">Ditandatangani Digital</span>}
+                        {sigUrl ? (
+                          <img src={sigUrl} alt="TTD" className="max-h-12 object-contain" />
+                        ) : (
+                          <span className="text-[7pt] text-slate-400 italic">Ditandatangani Digital</span>
+                        )}
                       </div>
                       <div className="border-t border-slate-900 pt-1 font-bold">
                         {s?.approverName || data?.fieldPicName || 'NAMA & TANDA TANGAN'}
@@ -948,17 +897,102 @@ export function PtwPublicApproval({
 
                 {/* 2. Pelaksana Kerja */}
                 {(() => {
-                  const s = approvalHistoryForDisplay.find((x: any) => x.stepOrder === 2 || x.approverRole === 'applicant' || x.approverRole === 'pelaksana')
-                  const isCur = approval?.stepOrder === 2
-                  const sigUrl = (isCur && previewSignatureDataUrl) || s?.signatureDataUrl || (isCur ? data?.registeredSignature : null)
+                  const pelaksanaSteps = approvalHistoryForDisplay.filter(
+                    (x: any) =>
+                      x.approverRole === 'applicant' ||
+                      x.approverRole === 'pelaksana' ||
+                      x.approverRole === 'pelaksana_kerja' ||
+                      (x.stepOrder > 1 &&
+                        x.stepOrder < approvalHistoryForDisplay.length &&
+                        !['field_pic', 'pemberi_kerja', 'safety_officer', 'safety_dept', 'authorized'].includes(
+                          x.approverRole
+                        ))
+                  )
+                  const applicantNames = (data?.applicantName || '')
+                    .split(/[,;\n]+/)
+                    .map((s: string) => s.trim())
+                    .filter(Boolean)
+
                   return (
                     <div className="p-1.5 text-center flex flex-col justify-between">
-                      <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PELAKSANA KERJA</div>
-                      <div className="h-14 flex items-center justify-center my-1">
-                        {sigUrl ? <img src={sigUrl} alt="TTD" className="max-h-12 object-contain" /> : <span className="text-[7pt] text-slate-400 italic">Ditandatangani Digital</span>}
+                      <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">
+                        PELAKSANA KERJA
                       </div>
-                      <div className="border-t border-slate-900 pt-1 font-bold">
-                        {s?.approverName || data?.applicantName || 'NAMA & TANDA TANGAN'}
+                      <div className="min-h-14 flex flex-wrap items-center justify-center gap-2 my-1">
+                        {pelaksanaSteps.length > 0 ? (
+                          pelaksanaSteps.map((pStep: any, pIdx: number) => {
+                            const isCur =
+                              approval?.id === pStep.id || approval?.stepOrder === pStep.stepOrder
+                            const pSig =
+                              (isCur && previewSignatureDataUrl) ||
+                              pStep.signatureDataUrl ||
+                              (isCur ? data?.registeredSignature : null)
+                            return (
+                              <div
+                                key={pStep.id || pIdx}
+                                className="flex flex-col items-center justify-center text-center"
+                              >
+                                {pStep.status === 'rejected' ? (
+                                  <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak</span>
+                                ) : pStep.status === 'reverted' ? (
+                                  <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan</span>
+                                ) : pSig ? (
+                                  <img
+                                    src={pSig}
+                                    alt={`TTD ${pStep.approverName}`}
+                                    className="max-h-10 object-contain"
+                                  />
+                                ) : pStep.status === 'approved' ? (
+                                  <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui</span>
+                                ) : (
+                                  <span className="text-[6.5pt] text-slate-400 italic">Ditandatangani Digital</span>
+                                )}
+                                <span className="text-[6.5pt] text-slate-600 font-semibold mt-0.5">
+                                  {pStep.approverName}
+                                </span>
+                              </div>
+                            )
+                          })
+                        ) : applicantNames.length > 0 ? (
+                          applicantNames.map((name: string, idx: number) => {
+                            const isCur = approval?.stepOrder === 2
+                            const pSig =
+                              (isCur && previewSignatureDataUrl) ||
+                              (isCur ? data?.registeredSignature : null)
+                            return (
+                              <div
+                                key={idx}
+                                className="flex flex-col items-center justify-center text-center"
+                              >
+                                {pSig ? (
+                                  <img
+                                    src={pSig}
+                                    alt={`TTD ${name}`}
+                                    className="max-h-10 object-contain"
+                                  />
+                                ) : (
+                                  <span className="text-[6.5pt] text-slate-400 italic">Ditandatangani Digital</span>
+                                )}
+                                <span className="text-[6.5pt] text-slate-600 font-semibold mt-0.5">
+                                  {name}
+                                </span>
+                              </div>
+                            )
+                          })
+                        ) : (
+                          <span className="text-[7pt] text-slate-400 italic">Ditandatangani Digital</span>
+                        )}
+                      </div>
+                      <div
+                        className="border-t border-slate-900 pt-1 font-bold text-[7.5pt] truncate"
+                        title={
+                          pelaksanaSteps.map((p: any) => p.approverName).join(', ') ||
+                          data?.applicantName
+                        }
+                      >
+                        {pelaksanaSteps.map((p: any) => p.approverName).join(', ') ||
+                          data?.applicantName ||
+                          'NAMA & TANDA TANGAN'}
                       </div>
                     </div>
                   )
@@ -966,14 +1000,28 @@ export function PtwPublicApproval({
 
                 {/* 3. Safety Dept */}
                 {(() => {
-                  const s = approvalHistoryForDisplay.find((x: any) => x.stepOrder === 3 || x.approverRole === 'authorized' || x.approverRole === 'safety_dept')
-                  const isCur = approval?.stepOrder === 3
-                  const sigUrl = (isCur && previewSignatureDataUrl) || s?.signatureDataUrl || (isCur ? data?.registeredSignature : null)
+                  const s = approvalHistoryForDisplay.find(
+                    (x: any) =>
+                      x.approverRole === 'authorized' ||
+                      x.approverRole === 'safety_dept' ||
+                      (x.stepOrder === approvalHistoryForDisplay.length && approvalHistoryForDisplay.length > 2)
+                  )
+                  const isCur = approval?.id === s?.id || approval?.stepOrder === s?.stepOrder
+                  const sigUrl =
+                    (isCur && previewSignatureDataUrl) ||
+                    s?.signatureDataUrl ||
+                    (isCur ? data?.registeredSignature : null)
                   return (
                     <div className="p-1.5 text-center flex flex-col justify-between">
-                      <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">VERIFIKASI (SAFETY DEPT)</div>
+                      <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">
+                        VERIFIKASI (SAFETY DEPT)
+                      </div>
                       <div className="h-14 flex items-center justify-center my-1">
-                        {sigUrl ? <img src={sigUrl} alt="TTD" className="max-h-12 object-contain" /> : <span className="text-[7pt] text-slate-400 italic">Ditandatangani Digital</span>}
+                        {sigUrl ? (
+                          <img src={sigUrl} alt="TTD" className="max-h-12 object-contain" />
+                        ) : (
+                          <span className="text-[7pt] text-slate-400 italic">Ditandatangani Digital</span>
+                        )}
                       </div>
                       <div className="border-t border-slate-900 pt-1 font-bold">
                         {s?.approverName || data?.authorizedByName || 'NAMA & TANDA TANGAN'}
@@ -1072,6 +1120,261 @@ export function PtwPublicApproval({
               {confirmDialog?.actionType === 'reject' ? 'Ya, Tolak' : 'Ya, Kembalikan'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Floating Dialog Lampiran Dokumen Pendukung PTW ── */}
+      <Dialog open={isAttachmentModalOpen} onOpenChange={setIsAttachmentModalOpen}>
+        <DialogContent className="max-w-2xl bg-white max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <FileText className="size-5 text-teal-600" />
+              Lampiran Dokumen Pendukung PTW
+            </DialogTitle>
+            <div className="text-xs text-slate-500">
+              No. Izin Kerja: <span className="font-semibold text-slate-700">{data?.permitNumber || token}</span> • {data?.projectName || data?.description || 'Izin Kerja Aman'}
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Attachment list */}
+            {data?.attachments && Array.isArray(data.attachments) && data.attachments.length > 0 ? (
+              <div className="space-y-3">
+                <div className="text-xs font-semibold text-slate-700">
+                  File Terlampir ({data.attachments.length})
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {data.attachments.map((att: any, idx: number) => {
+                    let name = 'Dokumen Lampiran'
+                    let url = ''
+                    if (typeof att === 'object' && att !== null) {
+                      name = att.name || name
+                      url = att.url || ''
+                    } else if (typeof att === 'string') {
+                      if (att.includes('||')) {
+                        const [n, ...rest] = att.split('||')
+                        name = n
+                        url = rest.join('||')
+                      } else {
+                        try {
+                          const p = JSON.parse(att)
+                          name = p.name || name
+                          url = p.url || ''
+                        } catch {
+                          name = att.split('/').pop() || att
+                          url = att.startsWith('http') || att.startsWith('data:') ? att : ''
+                        }
+                      }
+                    }
+                    const isImg = url && (url.startsWith('data:image') || /\.(jpg|jpeg|png|webp|gif)$/i.test(name || url))
+                    return (
+                      <div
+                        key={idx}
+                        className="flex flex-col justify-between p-3 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-50 transition-colors gap-2"
+                      >
+                        <div className="flex items-start gap-2.5 min-w-0">
+                          <div className="p-2 rounded-lg bg-white border border-slate-200 shrink-0">
+                            <FileText className="size-5 text-teal-600" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-bold text-slate-800 truncate" title={name}>
+                              {name}
+                            </p>
+                            <p className="text-[10px] text-slate-500">Lampiran Dokumen #{idx + 1}</p>
+                          </div>
+                        </div>
+
+                        {isImg && url ? (
+                          <div
+                            className="group relative rounded-lg overflow-hidden border border-slate-200 bg-white max-h-48 flex items-center justify-center p-1 cursor-pointer"
+                            onClick={() => {
+                              setZoomImage({ url, title: name })
+                              setImageScale(1)
+                              setImageRotation(0)
+                            }}
+                            title="Klik untuk melihat & memperbesar gambar"
+                          >
+                            <img
+                              src={url}
+                              alt={name}
+                              className="max-h-44 w-full object-contain rounded transition-transform duration-200 group-hover:scale-105"
+                            />
+                            <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 text-white text-xs font-semibold backdrop-blur-[1px] rounded-lg">
+                              <ZoomIn className="size-4" />
+                              <span>Klik untuk Zoom</span>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-200/60">
+                          {isImg && url && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setZoomImage({ url, title: name })
+                                setImageScale(1)
+                                setImageRotation(0)
+                              }}
+                              className="inline-flex items-center gap-1 text-xs font-bold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200"
+                            >
+                              <ZoomIn className="size-3.5" /> Zoom
+                            </Button>
+                          )}
+                          {url ? (
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noreferrer"
+                              download={name}
+                              className="inline-flex items-center gap-1 text-xs font-bold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-3 py-1.5 rounded-lg border border-teal-200 transition-colors"
+                            >
+                              <Download className="size-3.5" /> Unduh / Buka
+                            </a>
+                          ) : (
+                            <span className="text-xs text-slate-400 italic">File tersimpan</span>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center bg-slate-50/50 space-y-2">
+                <FileText className="size-8 text-slate-400 mx-auto" />
+                <p className="text-xs font-semibold text-slate-700">Belum ada lampiran dokumen pendukung</p>
+                <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
+                  Dokumen pendukung seperti JSA, Sertifikat Keahlian, atau Foto Area kerja belum diunggah untuk PTW ini.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsAttachmentModalOpen(false)}
+            >
+              Tutup
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Lightbox / Zoom Image Preview Modal */}
+      <Dialog
+        open={Boolean(zoomImage)}
+        onOpenChange={(v) => {
+          if (!v) {
+            setZoomImage(null)
+            setImageScale(1)
+            setImageRotation(0)
+          }
+        }}
+      >
+        <DialogContent className="max-w-4xl sm:max-w-5xl bg-slate-950/95 border-slate-800 p-4 text-white rounded-2xl shadow-2xl">
+          <DialogHeader className="flex flex-row items-center justify-between pb-3 border-b border-slate-800 text-left">
+            <div className="min-w-0 flex-1 pr-4">
+              <DialogTitle className="text-sm font-bold text-white truncate">
+                {zoomImage?.title || 'Preview Lampiran Dokumen'}
+              </DialogTitle>
+              <DialogDescription className="text-xs text-slate-400">
+                Gunakan tombol di atas, scroll mouse, atau double-click untuk zoom in/out
+              </DialogDescription>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setImageScale((s) => Math.max(0.5, Number((s - 0.25).toFixed(2))))}
+                className="h-8 px-2.5 bg-slate-900 border-slate-700 text-slate-200 hover:bg-slate-800 text-xs gap-1"
+                title="Zoom Out"
+              >
+                <ZoomOut className="size-3.5" />
+              </Button>
+              <span className="text-xs font-mono text-slate-300 w-12 text-center select-none">
+                {Math.round(imageScale * 100)}%
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setImageScale((s) => Math.min(4, Number((s + 0.25).toFixed(2))))}
+                className="h-8 px-2.5 bg-slate-900 border-slate-700 text-slate-200 hover:bg-slate-800 text-xs gap-1"
+                title="Zoom In"
+              >
+                <ZoomIn className="size-3.5" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setImageRotation((r) => (r + 90) % 360)}
+                className="h-8 px-2.5 bg-slate-900 border-slate-700 text-slate-200 hover:bg-slate-800 text-xs gap-1"
+                title="Putar / Rotate"
+              >
+                <RotateCw className="size-3.5" />
+              </Button>
+              {(imageScale !== 1 || imageRotation !== 0) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setImageScale(1)
+                    setImageRotation(0)
+                  }}
+                  className="h-8 px-2.5 bg-slate-900 border-slate-700 text-slate-200 hover:bg-slate-800 text-xs gap-1"
+                  title="Reset Zoom & Rotasi"
+                >
+                  <RefreshCw className="size-3.5" /> Reset
+                </Button>
+              )}
+              {zoomImage?.url && (
+                <a
+                  href={zoomImage.url}
+                  download={zoomImage.title}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center justify-center h-8 px-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-md text-xs font-semibold gap-1 transition"
+                  title="Unduh Gambar Asli"
+                >
+                  <Download className="size-3.5" />
+                </a>
+              )}
+            </div>
+          </DialogHeader>
+          <div
+            className="flex items-center justify-center p-2 min-h-[50vh] max-h-[72vh] overflow-auto bg-slate-900/90 rounded-xl border border-slate-800/80 cursor-grab active:cursor-grabbing select-none"
+            onWheel={(e) => {
+              e.preventDefault()
+              if (e.deltaY < 0) {
+                setImageScale((s) => Math.min(4, Number((s + 0.15).toFixed(2))))
+              } else {
+                setImageScale((s) => Math.max(0.5, Number((s - 0.15).toFixed(2))))
+              }
+            }}
+            onDoubleClick={() => setImageScale((s) => (s === 1 ? 2 : 1))}
+          >
+            {zoomImage?.url && (
+              <img
+                src={zoomImage.url}
+                alt={zoomImage.title}
+                style={{
+                  transform: `scale(${imageScale}) rotate(${imageRotation}deg)`,
+                  transition: 'transform 0.15s ease-out',
+                }}
+                className="max-h-[68vh] w-auto max-w-full rounded object-contain"
+                draggable={false}
+              />
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </main>

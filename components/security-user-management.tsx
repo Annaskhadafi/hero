@@ -344,6 +344,21 @@ export function SecurityUserManagement({
     importUpdateUsersAction,
     INITIAL_IMPORT_STATE
   )
+  const [isImportSummaryOpen, setIsImportSummaryOpen] = useState(false)
+
+  useEffect(() => {
+    if (importUpdateActionState.status === 'success') {
+      setIsImportSummaryOpen(true)
+      router.refresh()
+    }
+  }, [
+    importUpdateActionState.status,
+    importUpdateActionState.message,
+    importUpdateActionState.importedCount,
+    importUpdateActionState.updatedCount,
+    importUpdateActionState.skippedCount,
+    router,
+  ])
 
   const parsedImport = useMemo(() => parseCsvToRecords(rawCsv), [rawCsv])
   const parsedImportUpdate = useMemo(() => parseCsvToRecords(importUpdateRawCsv), [importUpdateRawCsv])
@@ -1404,6 +1419,52 @@ export function SecurityUserManagement({
                     <AlertDescription className="text-xs">{importUpdateActionState.message}</AlertDescription>
                   </Alert>
                 ) : null}
+
+                <Dialog open={isImportSummaryOpen} onOpenChange={setIsImportSummaryOpen}>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Import Berhasil</DialogTitle>
+                      <DialogDescription>
+                        {importMode === 'new'
+                          ? 'Data baru sudah berhasil ditambahkan ke User Management.'
+                          : 'Data karyawan sudah berhasil diperbarui sesuai kolom yang dicentang.'}
+                      </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="rounded-xl bg-emerald-50 p-3 text-center">
+                        <p className="text-2xl font-bold text-emerald-700">
+                          {importUpdateActionState.importedCount ?? 0}
+                        </p>
+                        <p className="text-[11px] text-emerald-700">Data Baru</p>
+                      </div>
+                      <div className="rounded-xl bg-blue-50 p-3 text-center">
+                        <p className="text-2xl font-bold text-blue-700">
+                          {importUpdateActionState.updatedCount ?? 0}
+                        </p>
+                        <p className="text-[11px] text-blue-700">Diperbarui</p>
+                      </div>
+                      <div className="rounded-xl bg-amber-50 p-3 text-center">
+                        <p className="text-2xl font-bold text-amber-700">
+                          {importUpdateActionState.skippedCount ?? 0}
+                        </p>
+                        <p className="text-[11px] text-amber-700">Dilewati</p>
+                      </div>
+                    </div>
+
+                    <p className="text-muted-foreground text-xs">{importUpdateActionState.message}</p>
+
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        onClick={() => setIsImportSummaryOpen(false)}
+                        className="h-9 rounded-xl px-4 text-xs"
+                      >
+                        Lihat Daftar Terbaru
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
 
                 {/* Form submit */}
                 <form action={importUpdateFormAction}>

@@ -2,8 +2,9 @@ import { getPublicAppUrl } from '@/lib/auth-config'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import { sendWorkflowEmail } from '@/lib/workflow-email'
 import { db } from '@/db'
-import { hcContractReviewSettings } from '@/db/schema/hero'
-import { eq } from 'drizzle-orm'
+import { hcContractReviewSettings, employees } from '@/db/schema/hero'
+import { user } from '@/db/schema/auth'
+import { eq, sql } from 'drizzle-orm'
 
 export type StepNotificationParams = {
   sessionId?: number
@@ -664,15 +665,45 @@ export async function sendPtwStepApprovalEmail(params: {
   const recipients = getTargetRecipients(params.approverEmail)
   const baseUrl = getPublicAppUrl()
   const docIdentifier = params.permitNumber || (params.permitId ? String(params.permitId) : '')
+
+  // Determine if approver is an internal CP employee / has a Hero account
+  let isInternalHeroUser = false
+  if (params.approverEmail) {
+    const normalizedEmail = params.approverEmail.trim().toLowerCase()
+    const [empUser] = await db
+      .select({ id: employees.id })
+      .from(employees)
+      .where(sql`lower(${employees.email}) = ${normalizedEmail}`)
+      .limit(1)
+      .catch(() => [])
+
+    if (empUser) {
+      isInternalHeroUser = true
+    } else {
+      const [appUser] = await db
+        .select({ id: user.id })
+        .from(user)
+        .where(sql`lower(${user.email}) = ${normalizedEmail}`)
+        .limit(1)
+        .catch(() => [])
+      if (appUser) {
+        isInternalHeroUser = true
+      }
+    }
+  }
+
   const publicLink = params.approvalToken ? `${baseUrl}/review/ptw/${params.approvalToken}` : ''
   const dashboardLink = `${baseUrl}/dashboard/approval?openDoc=${encodeURIComponent(docIdentifier)}`
-  const approvalLink = publicLink || dashboardLink
+  const approvalLink = isInternalHeroUser ? dashboardLink : (publicLink || dashboardLink)
+  const notificationUrl = isInternalHeroUser
+    ? `/dashboard/approval?openDoc=${encodeURIComponent(docIdentifier)}`
+    : (publicLink || `/dashboard/approval?openDoc=${encodeURIComponent(docIdentifier)}`)
 
   await publishInAppApprovalNotification({
     recipientEmail: params.approverEmail,
     title: `Approval: PTW ${params.permitNumber || 'Izin Kerja'}`,
     body: `Dokumen izin kerja ${params.permitNumber || ''} (${params.projectName}) menunggu persetujuan Anda (${params.approvalStep}).`,
-    url: publicLink || `/dashboard/approval?openDoc=${encodeURIComponent(docIdentifier)}`,
+    url: notificationUrl,
     eventType: 'ptw_approval_needed',
   })
 

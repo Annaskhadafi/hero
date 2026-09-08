@@ -522,4 +522,3 @@ GitHub issues (`gh` CLI). See `docs/agents/issue-tracker.md`.
 ### Domain docs
 
 Single-context repo. See `docs/agents/domain.md`.
-

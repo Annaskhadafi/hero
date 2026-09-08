@@ -397,7 +397,7 @@ function PtwLandscapePdfSheet({
               CATATAN PEMBERI KERJA
             </span>
             <div className="text-[7pt] text-slate-700 leading-snug break-words">
-              {remark2 || <span className="text-slate-400 italic text-[6.5pt]">Area kerja aman & barikade terpasang.</span>}
+              {remark2 || null}
             </div>
           </div>
         </div>
@@ -409,7 +409,7 @@ function PtwLandscapePdfSheet({
               CATATAN PELAKSANA PEKERJAAN
             </span>
             <div className="text-[7pt] text-slate-700 leading-snug break-words">
-              {remark1 || <span className="text-slate-400 italic text-[6.5pt]">Wajib ikuti SOP K3 lokasi kerja.</span>}
+              {remark1 || null}
             </div>
           </div>
         </div>
@@ -421,7 +421,7 @@ function PtwLandscapePdfSheet({
               CATATAN SAFETY DEPT
             </span>
             <div className="text-[7pt] text-slate-700 leading-snug break-words">
-              {remark3 || <span className="text-slate-400 italic text-[6.5pt]">Peralatan & APAR standby di lokasi.</span>}
+              {remark3 || null}
             </div>
           </div>
         </div>

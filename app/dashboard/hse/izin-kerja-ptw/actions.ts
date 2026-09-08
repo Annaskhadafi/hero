@@ -321,13 +321,18 @@ export async function advancePtwApprovalFlow(permitId: number) {
           approvalToken: targetStep.approvalToken,
         })
 
+        const docId = permit?.permitNumber || String(permitId)
+        const bellUrl = targetStep.approverEmployeeId
+          ? `/dashboard/approval?openDoc=${encodeURIComponent(docId)}`
+          : `/review/ptw/${targetStep.approvalToken}`
+
         await notifyWorkflowBellRecipients({
           recipientEmails: [targetStep.approverEmail],
           eventType: 'hse_ptw_approval_needed',
           category: 'approval_requests',
           title: `Approval PTW - ${targetStep.stepLabel}`,
           body: `Izin Kerja PTW #${permit?.permitNumber || ''} memerlukan approval/tanda tangan Anda pada tahap ${targetStep.stepLabel}.`,
-          url: `/review/ptw/${targetStep.approvalToken}`,
+          url: bellUrl,
           tagPrefix: 'hse-ptw-approval',
           metadata: { permitId, stepOrder: targetStep.stepOrder, token: targetStep.approvalToken },
         }).catch((err) => console.error('Error notifying approver bell in advancePtwApprovalFlow:', err))
@@ -1592,6 +1597,10 @@ export async function approvePtwStepByToken(
   payload: { signatureDataUrl: string; remarks?: string }
 ) {
   try {
+    if (!payload?.signatureDataUrl || !payload.signatureDataUrl.trim()) {
+      throw new Error('Tanda tangan wajib diisi sebelum menyetujui dokumen PTW.')
+    }
+
     const approval = await resolveApprovalFromTokenOrPermit(token)
 
     if (!approval) throw new Error('Approval token tidak valid.')

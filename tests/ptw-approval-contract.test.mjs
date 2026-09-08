@@ -13,7 +13,9 @@ test('PTW Approval Files and Endpoints Contract Verification Suite', () => {
   const ptwActionsFile = path.join(root, 'app/dashboard/hse/izin-kerja-ptw/actions.ts')
   const ptwE2ESpec = path.join(root, 'tests/e2e/ptw-approval.spec.ts')
   const ptwCrudTest = path.join(root, 'tests/ptw-approval-crud.test.ts')
-  const ciWorkflow = path.join(root, '.github/workflows/test.yml')
+  const ciWorkflow = fs.existsSync(path.join(root, '.github/workflows/ci.yml'))
+    ? path.join(root, '.github/workflows/ci.yml')
+    : path.join(root, '.github/workflows/test.yml')
 
   // Verify file existence
   assert.ok(fs.existsSync(ptwListingPageRoute), 'PTW listing page.tsx must exist')

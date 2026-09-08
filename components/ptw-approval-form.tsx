@@ -17,10 +17,13 @@ import {
   Printer,
   RefreshCw,
   RotateCcw,
+  RotateCw,
   Save,
   UploadCloud,
   X,
   XCircle,
+  ZoomIn,
+  ZoomOut,
   Building2,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -100,6 +103,10 @@ type PtwApprovalData = {
   description: string
   controlSteps: string
   ppe: string[]
+  subTypes?: Record<string, string[]> | string[]
+  additionalNotes?: string
+  checkedEquipment?: string[]
+  registeredSignature?: string | null
   gasTestRequired: boolean
   isolationRequired: boolean
   attachments?: string[] | any[]
@@ -224,6 +231,7 @@ export function PtwApprovalForm({
   const [previewSignedAt, setPreviewSignedAt] = useState<Date | null>(null)
   const [registeredSignature, setRegisteredSignature] = useState<string | null>((data as any)?.registeredSignature || null)
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState<boolean>(false)
+  const [isAttachmentModalOpen, setIsAttachmentModalOpen] = useState<boolean>(false)
   const [origin, setOrigin] = useState<string>('')
 
   useEffect(() => {
@@ -232,10 +240,11 @@ export function PtwApprovalForm({
 
   // Fetch logged in user's saved digital signature from profile
   useEffect(() => {
+    let isMounted = true
     async function loadSignature() {
       try {
         const res = await getUserSignatureAction()
-        if (res.success && res.hasSignature && res.signatureDataUrl) {
+        if (isMounted && res?.success && res?.hasSignature && res?.signatureDataUrl) {
           setRegisteredSignature(res.signatureDataUrl)
         }
       } catch (err) {
@@ -243,6 +252,9 @@ export function PtwApprovalForm({
       }
     }
     loadSignature()
+    return () => {
+      isMounted = false
+    }
   }, [])
 
   const [activeStepId, setActiveStepId] = useState<number>(() => {
@@ -283,6 +295,9 @@ export function PtwApprovalForm({
     if (Array.isArray(raw)) return raw
     return []
   })
+  const [zoomImage, setZoomImage] = useState<{ url: string; title: string } | null>(null)
+  const [imageScale, setImageScale] = useState<number>(1)
+  const [imageRotation, setImageRotation] = useState<number>(0)
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -1179,7 +1194,7 @@ export function PtwApprovalForm({
                   </div>
                 </div>
 
-                {/* Row 4: APD wajib */}
+                {/* Field APD wajib */}
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold text-slate-700">APD wajib</Label>
                   <div className="flex flex-wrap items-center gap-1.5 p-2 rounded-lg border border-slate-200 bg-slate-50/70 min-h-10">
@@ -1690,9 +1705,7 @@ export function PtwApprovalForm({
                       CATATAN PEMBERI KERJA
                     </span>
                     <div className="text-[7pt] text-slate-700 leading-snug break-words">
-                      {(step1?.id ? stepRemarks[step1.id] : undefined) || step1?.remarks || (
-                        <span className="text-slate-400 italic text-[6.5pt]">Area kerja aman & barikade terpasang.</span>
-                      )}
+                      {(step1?.id ? stepRemarks[step1.id] : undefined) || step1?.remarks || null}
                     </div>
                   </div>
                 </div>
@@ -1704,9 +1717,7 @@ export function PtwApprovalForm({
                       CATATAN PELAKSANA PEKERJAAN
                     </span>
                     <div className="text-[7pt] text-slate-700 leading-snug break-words">
-                      {(step2?.id ? stepRemarks[step2.id] : undefined) || step2?.remarks || (
-                        <span className="text-slate-400 italic text-[6.5pt]">Wajib ikuti SOP K3 lokasi kerja.</span>
-                      )}
+                      {(step2?.id ? stepRemarks[step2.id] : undefined) || step2?.remarks || null}
                     </div>
                   </div>
                 </div>
@@ -1718,36 +1729,43 @@ export function PtwApprovalForm({
                       CATATAN SAFETY DEPT
                     </span>
                     <div className="text-[7pt] text-slate-700 leading-snug break-words">
-                      {(step3?.id ? stepRemarks[step3.id] : undefined) || step3?.remarks || (
-                        <span className="text-slate-400 italic text-[6.5pt]">Peralatan & APAR standby di lokasi.</span>
-                      )}
+                      {(step3?.id ? stepRemarks[step3.id] : undefined) || step3?.remarks || null}
                     </div>
                   </div>
                 </div>
 
                 {/* 4. QR Code */}
                 {(() => {
-                  const qrBaseUrl = typeof window !== 'undefined' && window.location?.origin
-                    ? window.location.origin
-                    : origin || 'https://hero.chitraparatama.com'
+                  const qrBaseUrl = origin || 'https://hero.chitraparatama.com'
                   const qrTargetUrl = `${qrBaseUrl}/review/ptw/${encodeURIComponent(data.permitNumber)}`
                   return (
-                    <a
-                      href={qrTargetUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white hover:bg-blue-50/50 cursor-pointer transition-colors no-underline text-slate-900"
-                      title="Klik / Scan untuk membuka lampiran PTW"
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        setIsAttachmentModalOpen(true)
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setIsAttachmentModalOpen(true)
+                        }
+                      }}
+                      className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white hover:bg-blue-50/70 cursor-pointer transition-colors no-underline text-slate-900 group"
+                      title="Klik untuk membuka pop up lampiran dokumen pendukung PTW / Scan QR"
+                      suppressHydrationWarning
                     >
                       <img
                         src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrTargetUrl)}`}
                         alt="QR Code Lampiran PTW"
-                        className="size-12 object-contain border border-slate-900 p-0.5 bg-white rounded shadow-2xs hover:scale-105 transition-transform"
+                        className="size-12 object-contain border border-slate-900 p-0.5 bg-white rounded shadow-2xs group-hover:scale-105 transition-transform"
+                        suppressHydrationWarning
                       />
-                      <span className="text-[6pt] font-bold text-slate-900 mt-0.5 uppercase text-center underline underline-offset-1">
+                      <span className="text-[6pt] font-bold text-slate-900 mt-0.5 uppercase text-center underline underline-offset-1 group-hover:text-blue-700" suppressHydrationWarning>
                         Klik / Scan QR
                       </span>
-                    </a>
+                    </div>
                   )
                 })()}
               </div>
@@ -2035,6 +2053,268 @@ export function PtwApprovalForm({
               Tambahkan Pelaksana
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Floating Dialog Lampiran Dokumen Pendukung PTW ── */}
+      <Dialog open={isAttachmentModalOpen} onOpenChange={setIsAttachmentModalOpen}>
+        <DialogContent className="max-w-2xl bg-white max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <FileText className="size-5 text-teal-600" />
+              Lampiran Dokumen Pendukung PTW
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              No. Izin Kerja: <span className="font-semibold text-slate-700">{data.permitNumber}</span> • {data.projectName || data.description || 'Izin Kerja Aman'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Attachment list */}
+            {attachments.length > 0 ? (
+              <div className="space-y-3">
+                <div className="text-xs font-semibold text-slate-700 flex items-center justify-between">
+                  <span>File Terlampir ({attachments.length})</span>
+                  {data.permissions.canEdit && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setIsAttachmentModalOpen(false)
+                        fileInputRef.current?.click()
+                      }}
+                      className="h-7 text-xs gap-1"
+                    >
+                      <UploadCloud className="size-3.5" /> Unggah File Baru
+                    </Button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {attachments.map((att, idx) => {
+                    const parsed = parseAttachment(att)
+                    const isImg = parsed.url && (parsed.url.startsWith('data:image') || /\.(jpg|jpeg|png|webp|gif)$/i.test(parsed.name || parsed.url))
+                    return (
+                      <div
+                        key={idx}
+                        className="flex flex-col justify-between p-3 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-50 transition-colors gap-2"
+                      >
+                        <div className="flex items-start gap-2.5 min-w-0">
+                          <div className="p-2 rounded-lg bg-white border border-slate-200 shrink-0">
+                            <FileText className="size-5 text-teal-600" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-bold text-slate-800 truncate" title={parsed.name}>
+                              {parsed.name}
+                            </p>
+                            <p className="text-[10px] text-slate-500">Lampiran Dokumen #{idx + 1}</p>
+                          </div>
+                        </div>
+
+                        {isImg && parsed.url ? (
+                          <div
+                            className="group relative rounded-lg overflow-hidden border border-slate-200 bg-white max-h-48 flex items-center justify-center p-1 cursor-pointer"
+                            onClick={() => {
+                              setZoomImage({ url: parsed.url!, title: parsed.name })
+                              setImageScale(1)
+                              setImageRotation(0)
+                            }}
+                            title="Klik untuk melihat & memperbesar gambar"
+                          >
+                            <img
+                              src={parsed.url}
+                              alt={parsed.name}
+                              className="max-h-44 w-full object-contain rounded transition-transform duration-200 group-hover:scale-105"
+                            />
+                            <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 text-white text-xs font-semibold backdrop-blur-[1px] rounded-lg">
+                              <ZoomIn className="size-4" />
+                              <span>Klik untuk Zoom</span>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-200/60">
+                          {isImg && parsed.url && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setZoomImage({ url: parsed.url!, title: parsed.name })
+                                setImageScale(1)
+                                setImageRotation(0)
+                              }}
+                              className="inline-flex items-center gap-1 text-xs font-bold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200"
+                            >
+                              <ZoomIn className="size-3.5" /> Zoom
+                            </Button>
+                          )}
+                          {parsed.url ? (
+                            <a
+                              href={parsed.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              download={parsed.name}
+                              className="inline-flex items-center gap-1 text-xs font-bold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-3 py-1.5 rounded-lg border border-teal-200 transition-colors"
+                            >
+                              <Download className="size-3.5" /> Unduh / Buka
+                            </a>
+                          ) : (
+                            <span className="text-xs text-slate-400 italic">File tersimpan</span>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center bg-slate-50/50 space-y-2">
+                <FileText className="size-8 text-slate-400 mx-auto" />
+                <p className="text-xs font-semibold text-slate-700">Belum ada lampiran dokumen pendukung</p>
+                <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
+                  Dokumen pendukung seperti JSA, Sertifikat Keahlian, atau Foto Area kerja belum diunggah untuk PTW ini.
+                </p>
+                {data.permissions.canEdit && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => {
+                      setIsAttachmentModalOpen(false)
+                      fileInputRef.current?.click()
+                    }}
+                    className="mt-2 text-xs bg-slate-900 hover:bg-slate-800 text-white gap-1"
+                  >
+                    <UploadCloud className="size-3.5" /> Unggah Lampiran Sekarang
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsAttachmentModalOpen(false)}
+            >
+              Tutup
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Lightbox / Zoom Image Preview Modal */}
+      <Dialog
+        open={Boolean(zoomImage)}
+        onOpenChange={(v) => {
+          if (!v) {
+            setZoomImage(null)
+            setImageScale(1)
+            setImageRotation(0)
+          }
+        }}
+      >
+        <DialogContent className="max-w-4xl sm:max-w-5xl bg-slate-950/95 border-slate-800 p-4 text-white rounded-2xl shadow-2xl">
+          <DialogHeader className="flex flex-row items-center justify-between pb-3 border-b border-slate-800 text-left">
+            <div className="min-w-0 flex-1 pr-4">
+              <DialogTitle className="text-sm font-bold text-white truncate">
+                {zoomImage?.title || 'Preview Lampiran Dokumen'}
+              </DialogTitle>
+              <DialogDescription className="text-xs text-slate-400">
+                Gunakan tombol di atas, scroll mouse, atau double-click untuk zoom in/out
+              </DialogDescription>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setImageScale((s) => Math.max(0.5, Number((s - 0.25).toFixed(2))))}
+                className="h-8 px-2.5 bg-slate-900 border-slate-700 text-slate-200 hover:bg-slate-800 text-xs gap-1"
+                title="Zoom Out"
+              >
+                <ZoomOut className="size-3.5" />
+              </Button>
+              <span className="text-xs font-mono text-slate-300 w-12 text-center select-none">
+                {Math.round(imageScale * 100)}%
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setImageScale((s) => Math.min(4, Number((s + 0.25).toFixed(2))))}
+                className="h-8 px-2.5 bg-slate-900 border-slate-700 text-slate-200 hover:bg-slate-800 text-xs gap-1"
+                title="Zoom In"
+              >
+                <ZoomIn className="size-3.5" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setImageRotation((r) => (r + 90) % 360)}
+                className="h-8 px-2.5 bg-slate-900 border-slate-700 text-slate-200 hover:bg-slate-800 text-xs gap-1"
+                title="Putar / Rotate"
+              >
+                <RotateCw className="size-3.5" />
+              </Button>
+              {(imageScale !== 1 || imageRotation !== 0) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setImageScale(1)
+                    setImageRotation(0)
+                  }}
+                  className="h-8 px-2.5 bg-slate-900 border-slate-700 text-slate-200 hover:bg-slate-800 text-xs gap-1"
+                  title="Reset Zoom & Rotasi"
+                >
+                  <RefreshCw className="size-3.5" /> Reset
+                </Button>
+              )}
+              {zoomImage?.url && (
+                <a
+                  href={zoomImage.url}
+                  download={zoomImage.title}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center justify-center h-8 px-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-md text-xs font-semibold gap-1 transition"
+                  title="Unduh Gambar Asli"
+                >
+                  <Download className="size-3.5" />
+                </a>
+              )}
+            </div>
+          </DialogHeader>
+          <div
+            className="flex items-center justify-center p-2 min-h-[50vh] max-h-[72vh] overflow-auto bg-slate-900/90 rounded-xl border border-slate-800/80 cursor-grab active:cursor-grabbing select-none"
+            onWheel={(e) => {
+              e.preventDefault()
+              if (e.deltaY < 0) {
+                setImageScale((s) => Math.min(4, Number((s + 0.15).toFixed(2))))
+              } else {
+                setImageScale((s) => Math.max(0.5, Number((s - 0.15).toFixed(2))))
+              }
+            }}
+            onDoubleClick={() => setImageScale((s) => (s === 1 ? 2 : 1))}
+          >
+            {zoomImage?.url && (
+              <img
+                src={zoomImage.url}
+                alt={zoomImage.title}
+                style={{
+                  transform: `scale(${imageScale}) rotate(${imageRotation}deg)`,
+                  transition: 'transform 0.15s ease-out',
+                }}
+                className="max-h-[68vh] w-auto max-w-full rounded object-contain"
+                draggable={false}
+              />
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </AdminPageShell>

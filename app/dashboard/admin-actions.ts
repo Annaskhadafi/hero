@@ -194,6 +194,7 @@ import {
   createNextLegacyApprovalStep,
 } from '@/lib/legacy-approval-engine'
 import {
+  autoMapHeaders,
   getMappedValue,
   parseCsvToRecords,
   type UserImportMapping,
@@ -7018,25 +7019,37 @@ const IMPORT_UPDATE_HEADERS = [
 ] as const
 
 function normalizeImportDate(value: string): string | null {
-  if (!value || value === '-' || value === '') return null
+  const normalized = value.trim()
+  if (!normalized || normalized === '-') return null
   // already YYYY-MM-DD
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
-  // DD/MM/YYYY or D/M/YYYY
-  const dmy = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
-  if (dmy) {
-    const [_, d, m, y] = dmy
-    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
-  }
-  // MM/DD/YYYY
-  const mdy = value.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/)
-  if (mdy) return value
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return normalized
   // Excel serial number
-  const serial = Number(value)
+  const serial = Number(normalized)
   if (!Number.isNaN(serial) && serial > 40000 && serial < 60000) {
     const date = new Date((serial - 25569) * 86400000)
     return date.toISOString().slice(0, 10)
   }
-  return null
+
+  // Excel text dates: M/D/YY, M/D/YYYY, and unambiguous D/M dates.
+  const parts = normalized.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2}|\d{4})$/)
+  if (!parts) return null
+
+  const first = Number(parts[1])
+  const second = Number(parts[2])
+  const year = parts[3].length === 2 ? 2000 + Number(parts[3]) : Number(parts[3])
+  const month = first > 12 ? second : first
+  const day = first > 12 ? first : second
+  const date = new Date(Date.UTC(year, month - 1, day))
+
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null
+  }
+
+  return date.toISOString().slice(0, 10)
 }
 
 export async function importUpdateUsersAction(
@@ -7075,6 +7088,30 @@ export async function importUpdateUsersAction(
     const headerIndex = new Map<string, number>()
     for (const [i, h] of headers.entries()) {
       headerIndex.set(h.trim().toLowerCase(), i)
+    }
+
+    // Reuse the import aliases so exported Indonesian headers (e.g. "Nama")
+    // resolve to the same fields as English headers (e.g. "Name").
+    const mappedHeaders = autoMapHeaders(headers)
+    const fieldKeyByLookup: Record<string, keyof UserImportMapping> = {
+      name: 'fullName',
+      department: 'department',
+      section: 'section',
+      'job title': 'jobTitle',
+      'level staff': 'levelName',
+      peran: 'accessRole',
+      'lokasi site': 'workLocation',
+      'tipe status': 'employeeStatusType',
+      gender: 'gender',
+      agama: 'religion',
+      pendidikan: 'education',
+      'marital status': 'maritalStatus',
+      poh: 'pointOfHire',
+      'join date': 'joinDate',
+      'contract start': 'contractDurationStart',
+      'contract end': 'contractDurationEnd',
+      'permanent date': 'permanentDate',
+      'tgl lahir': 'birthDate',
     }
 
     // Check mandatory SN column exists
@@ -7131,6 +7168,9 @@ export async function importUpdateUsersAction(
     // Pre-resolve header indices for all known columns
     const col = (name: string) => {
       const lower = name.toLowerCase()
+      const mappedHeader = mappedHeaders[fieldKeyByLookup[lower]]
+      if (mappedHeader) return headerIndex.get(mappedHeader.trim().toLowerCase())
+
       for (const [h, i] of headerIndex) {
         if (h === lower) return i
       }

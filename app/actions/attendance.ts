@@ -644,6 +644,7 @@ export async function submitAttendance(formData: FormData) {
       eventType,
       eventTime,
       shiftCode,
+      employeeId: employee.id,
     })
 
     const rawContext = getTrimmedFormValue(formData, 'attendanceContext')

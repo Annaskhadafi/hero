@@ -2,6 +2,7 @@ import {
   calculateAttendancePunctuality,
   calculateLateMinutesFromTimes,
   inferShiftCodeForEvent,
+  isOffScheduleCode,
   normalizeSiteAttendanceClockConfig,
   resolveConfiguredShiftClockIn,
 } from '@/lib/timesheet/attendance-punctuality'
@@ -78,5 +79,35 @@ describe('site attendance punctuality', () => {
     // On time (17:55 against 18:00) -> 0 minutes late
     expect(calculateLateMinutesFromTimes('17:55', scheduled)).toBe(0)
     expect(calculateLateMinutesFromTimes('05:55 PM', scheduled)).toBe(0)
+  })
+
+  it('correctly identifies off-schedule codes and suppresses late calculation', () => {
+    expect(isOffScheduleCode('OFF')).toBe(true)
+    expect(isOffScheduleCode('FB')).toBe(true)
+    expect(isOffScheduleCode('LIBUR')).toBe(true)
+    expect(isOffScheduleCode('CUTI')).toBe(true)
+    expect(isOffScheduleCode('SAKIT')).toBe(true)
+    expect(isOffScheduleCode('IZIN')).toBe(true)
+    expect(isOffScheduleCode('DS')).toBe(false)
+    expect(isOffScheduleCode('NS')).toBe(false)
+    expect(isOffScheduleCode('IN')).toBe(false)
+    expect(isOffScheduleCode('PAGI')).toBe(false)
+    expect(isOffScheduleCode('MALAM')).toBe(false)
+  })
+
+  it('resolves night shift aliases (NG, M, S2) and day shift aliases (PAGI, SIANG, S1)', () => {
+    const siteCfg = {
+      dayShiftClockIn: '08:00',
+      nightShiftClockIn: '18:00',
+      timezone: 'WITA' as const,
+    }
+    expect(resolveConfiguredShiftClockIn('NG', siteCfg)).toBe('18:00')
+    expect(resolveConfiguredShiftClockIn('M', siteCfg)).toBe('18:00')
+    expect(resolveConfiguredShiftClockIn('S2', siteCfg)).toBe('18:00')
+    expect(resolveConfiguredShiftClockIn('PAGI', siteCfg)).toBe('08:00')
+    expect(resolveConfiguredShiftClockIn('SIANG', siteCfg)).toBe('08:00')
+    expect(resolveConfiguredShiftClockIn('S1', siteCfg)).toBe('08:00')
+    expect(resolveConfiguredShiftClockIn('OFF', siteCfg)).toBeNull()
+    expect(resolveConfiguredShiftClockIn('FB', siteCfg)).toBeNull()
   })
 })
