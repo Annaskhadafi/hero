@@ -62,6 +62,18 @@ describe('user management CRUD source of truth', () => {
     expect(section).toContain("name: 'fullName'")
     expect(section).toContain("'lokasi site': 'workLocation'")
     expect(section).toContain('isColumnSelected(headers[')
+    expect(source).toContain("(\\d{2}|\\d{4})")
+    expect(source).toContain('Date.UTC(year, month - 1, day)')
+  })
+
+  it('shows an import result summary and refreshes the user list', () => {
+    const source = read('components/security-user-management.tsx')
+
+    expect(source).toContain('const [isImportSummaryOpen, setIsImportSummaryOpen] = useState(false)')
+    expect(source).toContain('<DialogTitle>Import Berhasil</DialogTitle>')
+    expect(source).toContain('importUpdateActionState.updatedCount ?? 0')
+    expect(source).toContain('Lihat Daftar Terbaru')
+    expect(source).toContain('router.refresh()')
   })
 
   it('row dialog uses tabs and no browser alert', () => {
