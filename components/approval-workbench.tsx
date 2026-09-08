@@ -2643,7 +2643,7 @@ export function InboxTab({
                             : 'grid-cols-5'
 
                         return (
-                          <div className="-mx-5 -my-9 text-slate-900 w-[866px] min-h-[612px] flex flex-col justify-between">
+                          <div className="-mx-5 -my-9 text-slate-900 w-[1122px] min-h-[793px] flex flex-col justify-between">
                             {/* ── HEADER TABLE ── */}
                             <div className="grid grid-cols-[180px_1fr] border-b-2 border-slate-900">
                               <div className="flex items-center justify-center p-2 border-r-2 border-slate-900 bg-white">
@@ -2749,7 +2749,7 @@ export function InboxTab({
                                     CATATAN PEMBERI KERJA
                                   </span>
                                   <div className="text-[7pt] text-slate-700 leading-snug break-words">
-                                    {remark2 || <span className="text-slate-400 italic text-[6.5pt]">Area kerja aman & barikade terpasang.</span>}
+                                    {remark2 || null}
                                   </div>
                                 </div>
                               </div>
@@ -2761,7 +2761,7 @@ export function InboxTab({
                                     CATATAN PELAKSANA PEKERJAAN
                                   </span>
                                   <div className="text-[7pt] text-slate-700 leading-snug break-words">
-                                    {remark1 || <span className="text-slate-400 italic text-[6.5pt]">Wajib ikuti SOP K3 lokasi kerja.</span>}
+                                    {remark1 || null}
                                   </div>
                                 </div>
                               </div>
@@ -2773,16 +2773,14 @@ export function InboxTab({
                                     CATATAN SAFETY DEPT
                                   </span>
                                   <div className="text-[7pt] text-slate-700 leading-snug break-words">
-                                    {remark3 || <span className="text-slate-400 italic text-[6.5pt]">Peralatan & APAR standby di lokasi.</span>}
+                                    {remark3 || null}
                                   </div>
                                 </div>
                               </div>
 
                               {/* 4. QR Code */}
                               {(() => {
-                                const qrBaseUrl = typeof window !== 'undefined' && window.location?.origin
-                                  ? window.location.origin
-                                  : 'https://hero.chitraparatama.com'
+                                const qrBaseUrl = 'https://hero.chitraparatama.com'
                                 const qrTargetUrl = `${qrBaseUrl}/review/ptw/${encodeURIComponent(doc.permitNumber)}`
                                 return (
                                   <a
@@ -2791,13 +2789,15 @@ export function InboxTab({
                                     rel="noopener noreferrer"
                                     className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white hover:bg-blue-50/50 cursor-pointer transition-colors no-underline text-slate-900"
                                     title="Klik / Scan untuk membuka lampiran PTW"
+                                    suppressHydrationWarning
                                   >
                                     <img
                                       src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrTargetUrl)}`}
                                       alt="QR Code Lampiran PTW"
                                       className="size-12 object-contain border border-slate-900 p-0.5 bg-white rounded shadow-2xs hover:scale-105 transition-transform"
+                                      suppressHydrationWarning
                                     />
-                                    <span className="text-[6pt] font-bold text-slate-900 mt-0.5 uppercase text-center underline underline-offset-1">
+                                    <span className="text-[6pt] font-bold text-slate-900 mt-0.5 uppercase text-center underline underline-offset-1" suppressHydrationWarning>
                                       Klik / Scan QR
                                     </span>
                                   </a>

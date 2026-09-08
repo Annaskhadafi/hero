@@ -169,6 +169,7 @@ function splitLines(text: string) {
 
 function PtwDocumentDialog({ record }: { record: PtwRecord }) {
   const [open, setOpen] = useState(false);
+  const [attachmentModalOpen, setAttachmentModalOpen] = useState(false);
   const [origin, setOrigin] = useState<string>("");
 
   React.useEffect(() => {
@@ -297,27 +298,36 @@ function PtwDocumentDialog({ record }: { record: PtwRecord }) {
                 </div>
               </div>
               {(() => {
-                const qrBaseUrl = typeof window !== 'undefined' && window.location?.origin
-                  ? window.location.origin
-                  : origin || 'https://hero.chitraparatama.com'
+                const qrBaseUrl = origin || 'https://hero.chitraparatama.com'
                 const qrTargetUrl = `${qrBaseUrl}/review/ptw/${encodeURIComponent(record.id)}`
                 return (
-                  <a
-                    href={qrTargetUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="col-span-3 flex flex-col items-center justify-center border-l border-slate-900 pl-2 cursor-pointer no-underline text-slate-900 hover:bg-slate-100 transition-colors"
-                    title="Klik / Scan untuk membuka lampiran PTW"
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      setAttachmentModalOpen(true)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        setAttachmentModalOpen(true)
+                      }
+                    }}
+                    className="col-span-3 flex flex-col items-center justify-center border-l border-slate-900 pl-2 cursor-pointer no-underline text-slate-900 hover:bg-slate-100 transition-colors group"
+                    title="Klik untuk membuka pop up lampiran dokumen pendukung PTW / Scan QR"
+                    suppressHydrationWarning
                   >
                     <img
                       src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrTargetUrl)}`}
                       alt="QR Code Lampiran PTW"
-                      className="size-14 object-contain border border-slate-900 p-0.5 bg-white rounded hover:scale-105 transition-transform"
+                      className="size-14 object-contain border border-slate-900 p-0.5 bg-white rounded group-hover:scale-105 transition-transform"
+                      suppressHydrationWarning
                     />
-                    <span className="text-[6pt] font-bold text-slate-900 mt-1 uppercase text-center underline underline-offset-1">
+                    <span className="text-[6pt] font-bold text-slate-900 mt-1 uppercase text-center underline underline-offset-1 group-hover:text-blue-700" suppressHydrationWarning>
                       Klik / Scan QR
                     </span>
-                  </a>
+                  </div>
                 )
               })()}
             </div>
@@ -396,6 +406,84 @@ function PtwDocumentDialog({ record }: { record: PtwRecord }) {
           </article>
         </div>
       </DialogContent>
+
+      {/* ── Floating Dialog Lampiran Dokumen Pendukung PTW ── */}
+      <Dialog open={attachmentModalOpen} onOpenChange={setAttachmentModalOpen}>
+        <DialogContent className="max-w-xl bg-white p-6 rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <FileText className="size-5 text-teal-600" />
+              Lampiran Dokumen Pendukung PTW
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              No. Izin Kerja: <span className="font-semibold text-slate-700">{record.id}</span> • {record.projectName || record.description || 'Izin Kerja Aman'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <FileText className="size-5 text-teal-600 shrink-0" />
+                <div>
+                  <p className="text-xs font-bold text-slate-800">{record.attachmentName || 'JSA_Tire_Repair_SOP.pdf'}</p>
+                  <p className="text-[10px] text-slate-400">Berkas Job Safety Analysis & Prosedur K3</p>
+                </div>
+              </div>
+              <a
+                href={origin ? `${origin}/review/ptw/${record.id}` : `/review/ptw/${record.id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xs font-bold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-3 py-1.5 rounded-lg border border-teal-200 transition-colors"
+              >
+                <Download className="size-3.5" /> Buka / Unduh
+              </a>
+            </div>
+
+            {/* QR Verification Link Box */}
+            {(() => {
+              const qrBaseUrl = origin || 'https://hero.chitraparatama.com'
+              const qrTargetUrl = `${qrBaseUrl}/review/ptw/${encodeURIComponent(record.id)}`
+              return (
+                <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 flex flex-col sm:flex-row items-center gap-3">
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrTargetUrl)}`}
+                    alt="QR Code PTW"
+                    className="size-16 object-contain border border-slate-300 p-0.5 bg-white rounded-lg shadow-2xs shrink-0"
+                    suppressHydrationWarning
+                  />
+                  <div className="text-center sm:text-left flex-1 min-w-0">
+                    <p className="text-xs font-bold text-slate-800">Scan QR Code Verifikasi Publik</p>
+                    <p className="text-[11px] text-slate-500 line-clamp-1 break-all mt-0.5" suppressHydrationWarning>
+                      {qrTargetUrl}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2 mt-2 justify-center sm:justify-start">
+                      <a
+                        href={qrTargetUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-700 hover:underline"
+                      >
+                        Buka Halaman Review ↗
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setAttachmentModalOpen(false)}
+            >
+              Tutup
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

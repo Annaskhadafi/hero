@@ -218,9 +218,7 @@ export function IzinKerjaPtwPrintPage() {
               </div>
             </div>
             {(() => {
-              const qrBaseUrl = typeof window !== 'undefined' && window.location?.origin
-                ? window.location.origin
-                : origin || 'https://hero.chitraparatama.com'
+              const qrBaseUrl = origin || 'https://hero.chitraparatama.com'
               const qrTargetUrl = `${qrBaseUrl}/review/ptw/${encodeURIComponent(record.id)}`
               return (
                 <a
@@ -229,13 +227,15 @@ export function IzinKerjaPtwPrintPage() {
                   rel="noopener noreferrer"
                   className="col-span-3 flex flex-col items-center justify-center border-l border-slate-900 pl-2 cursor-pointer no-underline text-slate-900 hover:bg-slate-100 transition-colors"
                   title="Klik / Scan untuk membuka lampiran PTW"
+                  suppressHydrationWarning
                 >
                   <img
                     src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrTargetUrl)}`}
                     alt="QR Code Lampiran PTW"
                     className="size-14 object-contain border border-slate-900 p-0.5 bg-white rounded hover:scale-105 transition-transform"
+                    suppressHydrationWarning
                   />
-                  <span className="text-[6pt] font-bold text-slate-900 mt-1 uppercase text-center underline underline-offset-1">
+                  <span className="text-[6pt] font-bold text-slate-900 mt-1 uppercase text-center underline underline-offset-1" suppressHydrationWarning>
                     Klik / Scan QR
                   </span>
                 </a>
@@ -290,14 +290,31 @@ export function IzinKerjaPtwPrintPage() {
             {/* 2. PELAKSANA PEKERJAAN */}
             <div className="p-1.5 text-center flex flex-col justify-between">
               <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PELAKSANA PEKERJAAN</div>
-              <div className="h-14 flex items-center justify-center my-1">
-                {record.signatures?.step2 ? (
-                  <img src={record.signatures.step2} alt="TTD" className="max-h-12 object-contain" />
-                ) : (
-                  <span className="text-[7pt] text-slate-400 italic">Ditandatangani Digital</span>
-                )}
+              <div className="min-h-14 flex flex-wrap items-center justify-center gap-2 my-1">
+                {(() => {
+                  const applicantNames = (record.applicant || '').split(/[,;\n]+/).map((s: string) => s.trim()).filter(Boolean)
+                  if (applicantNames.length > 1) {
+                    return applicantNames.map((name, idx) => (
+                      <div key={idx} className="flex flex-col items-center justify-center text-center">
+                        {record.signatures?.step2 ? (
+                          <img src={record.signatures.step2} alt={`TTD ${name}`} className="max-h-10 object-contain" />
+                        ) : (
+                          <span className="text-[6.5pt] text-slate-400 italic">Ditandatangani Digital</span>
+                        )}
+                        <span className="text-[6.5pt] text-slate-600 font-semibold mt-0.5">{name}</span>
+                      </div>
+                    ))
+                  }
+                  return record.signatures?.step2 ? (
+                    <img src={record.signatures.step2} alt="TTD" className="max-h-12 object-contain" />
+                  ) : (
+                    <span className="text-[7pt] text-slate-400 italic">Ditandatangani Digital</span>
+                  )
+                })()}
               </div>
-              <div className="border-t border-slate-900 pt-1 font-bold">{record.applicant || "NAMA & TANDA TANGAN"}</div>
+              <div className="border-t border-slate-900 pt-1 font-bold truncate" title={record.applicant || "NAMA & TANDA TANGAN"}>
+                {record.applicant || "NAMA & TANDA TANGAN"}
+              </div>
             </div>
 
             {/* 3. VERIFIKASI (SAFETY DEPT) */}
