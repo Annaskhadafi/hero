@@ -2,6 +2,7 @@ import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
   output: 'standalone',
+  productionBrowserSourceMaps: false,
   turbopack: {
     root: process.cwd(),
   },
@@ -20,6 +21,7 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '25mb',
     },
     cpus: 1,
+    workerThreads: false,
   },
   async headers() {
     return [

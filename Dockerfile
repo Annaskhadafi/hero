@@ -24,7 +24,7 @@ COPY . .
 ARG NEXT_PUBLIC_BETTER_AUTH_URL
 ENV NEXT_PUBLIC_BETTER_AUTH_URL=$NEXT_PUBLIC_BETTER_AUTH_URL
 # Prevent Out-Of-Memory errors during build on limited-RAM servers
-ENV NODE_OPTIONS="--max-old-space-size=4096"
+ENV NODE_OPTIONS="--max-old-space-size=2560"
 
 RUN npm run build
 
