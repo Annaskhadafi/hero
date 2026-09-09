@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef, useTransition } from 'react'
+import React, { useState, useRef, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useReactToPrint } from 'react-to-print'
 import {
@@ -15,7 +15,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { SignaturePad } from '@/components/signature-pad'
 import { FormWoDocumentView } from '@/components/form-wo-document-preview-dialog'
 import { reviewApprovalAction } from '@/app/dashboard/admin-actions'
-import { Printer, PenLine, CheckCircle2, AlertCircle, XCircle, Loader2, Download } from 'lucide-react'
+import { getUserSignatureAction, saveUserSignatureAction } from '@/app/actions/user-signature'
+import { Printer, PenLine, CheckCircle2, AlertCircle, XCircle, Loader2, Download, Save, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import type { getApprovalCenterData } from '@/lib/approval-workspace'
 
@@ -38,8 +39,27 @@ export function FormWoApprovalDialog({ item, group }: FormWoApprovalDialogProps)
   const [note, setNote] = useState('')
   const [signatureFile, setSignatureFile] = useState<File | null>(null)
   const [liveSignatureUrl, setLiveSignatureUrl] = useState<string | null>(null)
+  const [profileSig, setProfileSig] = useState<string | null>(null)
+  const [isUsingProfileSig, setIsUsingProfileSig] = useState(true)
+  const [isSavingProfileSig, setIsSavingProfileSig] = useState(false)
   const [isPending, startTransition] = useTransition()
   const printDocRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (open) {
+      getUserSignatureAction()
+        .then((res) => {
+          if (res.success && res.signatureDataUrl) {
+            setProfileSig(res.signatureDataUrl)
+            setIsUsingProfileSig(true)
+            setLiveSignatureUrl(res.signatureDataUrl)
+          } else {
+            setIsUsingProfileSig(false)
+          }
+        })
+        .catch(() => {})
+    }
+  }, [open])
 
   const rawWo =
     item.repairFormWo ||
@@ -93,6 +113,28 @@ export function FormWoApprovalDialog({ item, group }: FormWoApprovalDialogProps)
     pendingStep?.level ||
     1
 
+  const handleSaveToProfile = async () => {
+    if (!liveSignatureUrl) {
+      toast.error('Belum ada tanda tangan yang digambar.')
+      return
+    }
+    setIsSavingProfileSig(true)
+    try {
+      const res = await saveUserSignatureAction(liveSignatureUrl)
+      if (res.success) {
+        setProfileSig(liveSignatureUrl)
+        setIsUsingProfileSig(true)
+        toast.success('Tanda tangan berhasil disimpan ke profil HERO.')
+      } else {
+        toast.error(res.error || 'Gagal menyimpan tanda tangan ke profil.')
+      }
+    } catch {
+      toast.error('Gagal menyimpan tanda tangan ke profil.')
+    } finally {
+      setIsSavingProfileSig(false)
+    }
+  }
+
   const handleDecision = (decision: 'approved' | 'needs_correction' | 'rejected') => {
     startTransition(async () => {
       try {
@@ -103,8 +145,25 @@ export function FormWoApprovalDialog({ item, group }: FormWoApprovalDialogProps)
         formData.append('approvalId', String(resolvedApprovalId))
         formData.append('decision', decision)
         formData.append('note', note.trim())
-        if (signatureFile) {
-          formData.append('signatureFile', signatureFile)
+
+        if (decision === 'approved') {
+          const sigToUse = isUsingProfileSig && profileSig ? profileSig : liveSignatureUrl
+          if (sigToUse) {
+            try {
+              const res = await fetch(sigToUse)
+              const blob = await res.blob()
+              formData.append('signatureFile', blob, 'approver_signature.png')
+            } catch {
+              if (signatureFile) {
+                formData.append('signatureFile', signatureFile)
+              }
+            }
+          } else if (signatureFile) {
+            formData.append('signatureFile', signatureFile)
+          } else {
+            toast.error('Silakan bubuhkan atau pilih tanda tangan sebelum menyetujui.')
+            return
+          }
         }
 
         await reviewApprovalAction(formData)
@@ -176,11 +235,11 @@ export function FormWoApprovalDialog({ item, group }: FormWoApprovalDialogProps)
           Review
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[99vw] lg:max-w-[1550px] 2xl:max-w-[1680px] w-[99vw] h-[94vh] flex flex-col p-4 sm:p-5 gap-3 bg-slate-100 border border-slate-300 rounded-2xl shadow-2xl">
+      <DialogContent className="sm:max-w-[99vw] lg:max-w-[1550px] 2xl:max-w-[1680px] w-[99vw] h-[95vh] sm:h-[94vh] flex flex-col p-3 sm:p-5 gap-3 bg-slate-100 border border-slate-300 rounded-2xl shadow-2xl overflow-hidden">
         {/* Header Modal */}
-        <DialogHeader className="flex flex-row items-center justify-between border-b pb-3">
+        <DialogHeader className="flex flex-col sm:flex-row sm:items-center justify-between border-b pb-3 gap-2">
           <div>
-            <DialogTitle className="text-lg font-bold text-slate-900">
+            <DialogTitle className="text-base sm:text-lg font-bold text-slate-900">
               Review Dokumen Form Work Order — {item.title}
             </DialogTitle>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -198,10 +257,10 @@ export function FormWoApprovalDialog({ item, group }: FormWoApprovalDialogProps)
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="border-sky-300 bg-sky-50 font-semibold text-sky-800 hover:bg-sky-100 shadow-xs"
+                  className="border-sky-300 bg-sky-50 font-semibold text-sky-800 hover:bg-sky-100 shadow-xs text-xs"
                 >
-                  <Download className="mr-1.5 h-4 w-4 text-sky-600" />
-                  Download PDF Lanskap
+                  <Download className="mr-1.5 h-3.5 w-3.5 text-sky-600" />
+                  PDF Lanskap
                 </Button>
               </a>
             ) : null}
@@ -210,18 +269,18 @@ export function FormWoApprovalDialog({ item, group }: FormWoApprovalDialogProps)
               variant="outline"
               size="sm"
               onClick={() => handlePrint()}
-              className="border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50"
+              className="border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50 text-xs"
             >
-              <Printer className="mr-1.5 h-4 w-4" />
-              Cetak Lanskap
+              <Printer className="mr-1.5 h-3.5 w-3.5" />
+              Cetak
             </Button>
           </div>
         </DialogHeader>
 
         {/* 2-Column Split View: Left = Document WYSIWYG Preview, Right = Review Action Form */}
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_390px] gap-3.5 min-h-0 overflow-hidden">
+        <div className="flex-1 flex flex-col lg:grid lg:grid-cols-[1fr_390px] gap-3.5 min-h-0 overflow-y-auto lg:overflow-hidden">
           {/* Left Column: Official Document WYSIWYG View */}
-          <div className="overflow-y-auto overflow-x-hidden p-1.5 h-full rounded-xl flex justify-center items-start bg-slate-200/40">
+          <div className="overflow-y-auto overflow-x-auto p-1.5 min-h-[340px] lg:h-full rounded-xl flex justify-center items-start bg-slate-200/40">
             <FormWoDocumentView
               doc={doc}
               containerRef={printDocRef}
@@ -231,7 +290,7 @@ export function FormWoApprovalDialog({ item, group }: FormWoApprovalDialogProps)
           </div>
 
           {/* Right Column: Review Action Panel & Signature Canvas */}
-          <div className="flex flex-col gap-3.5 overflow-y-auto pr-1 h-full bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex flex-col gap-3.5 overflow-y-auto pr-1 h-auto lg:h-full bg-white p-4 rounded-xl border border-slate-200 shadow-sm shrink-0">
             {/* Quick Summary Card */}
             <div className="rounded-xl bg-slate-50 p-3 text-xs space-y-1.5 border border-slate-200">
               <p className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">
@@ -264,28 +323,81 @@ export function FormWoApprovalDialog({ item, group }: FormWoApprovalDialogProps)
             </div>
 
             {/* Area Tanda Tangan Digital */}
-            <div className="space-y-1.5 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+            <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 text-slate-800 font-bold text-xs">
                   <PenLine className="h-3.5 w-3.5 text-sky-600" />
                   <span>Tanda Tangan Digital Approver</span>
                 </div>
-                {signatureFile && (
-                  <span className="text-[11px] font-semibold text-emerald-600 flex items-center gap-1">
-                    <CheckCircle2 className="h-3 w-3" />
-                    Tersimpan
-                  </span>
+                {profileSig && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      if (isUsingProfileSig) {
+                        setIsUsingProfileSig(false)
+                        setLiveSignatureUrl(null)
+                        setSignatureFile(null)
+                      } else {
+                        setIsUsingProfileSig(true)
+                        setLiveSignatureUrl(profileSig)
+                      }
+                    }}
+                    className="h-6 text-[10px] font-semibold text-sky-700 hover:text-sky-800 hover:bg-sky-50 px-2"
+                  >
+                    {isUsingProfileSig ? 'Ubah / Gambar Manual' : 'Gunakan TTD Profil'}
+                  </Button>
                 )}
               </div>
-              <p className="text-[11px] text-slate-500">
-                Bubuhkan tanda tangan pada area bawah ini sebelum menyetujui.
-              </p>
-              <div className="bg-white rounded-lg overflow-hidden border border-slate-200 shadow-inner">
-                <SignaturePad
-                  onSignatureChange={setSignatureFile}
-                  onDataUrlChange={setLiveSignatureUrl}
-                />
-              </div>
+
+              {isUsingProfileSig && profileSig ? (
+                <div className="space-y-2">
+                  <div className="relative rounded-lg border-2 border-emerald-200 bg-emerald-50/30 p-2 flex flex-col items-center justify-center min-h-[100px]">
+                    <span className="absolute top-1.5 right-2 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-300">
+                      <CheckCircle2 className="h-3 w-3" />
+                      TTD Profil HERO Aktif
+                    </span>
+                    <img
+                      src={profileSig}
+                      alt="Tanda Tangan Profil"
+                      className="max-h-20 object-contain my-1"
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-500 text-center">
+                    Tanda tangan dari profil akun Anda akan otomatis dibubuhkan pada dokumen.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-[11px] text-slate-500">
+                    Bubuhkan tanda tangan pada area bawah ini sebelum menyetujui.
+                  </p>
+                  <div className="bg-white rounded-lg overflow-hidden border border-slate-200 shadow-inner">
+                    <SignaturePad
+                      onSignatureChange={setSignatureFile}
+                      onDataUrlChange={setLiveSignatureUrl}
+                    />
+                  </div>
+                  {liveSignatureUrl && !isUsingProfileSig && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleSaveToProfile}
+                      disabled={isSavingProfileSig}
+                      className="w-full text-xs font-semibold border-sky-200 text-sky-700 hover:bg-sky-50 h-7"
+                    >
+                      {isSavingProfileSig ? (
+                        <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                      ) : (
+                        <Save className="mr-1.5 h-3 w-3" />
+                      )}
+                      Simpan TTD Ini ke Profil HERO Saya
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Catatan Keputusan Input */}

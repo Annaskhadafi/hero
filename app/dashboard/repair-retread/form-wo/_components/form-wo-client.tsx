@@ -23,12 +23,15 @@ import {
   Plus,
   Printer,
   RefreshCw,
+  Save,
   Search,
   Tag,
   Trash2,
   Upload,
   Wrench,
   X,
+  Loader2,
+  PenLine,
 } from "lucide-react"
 import { toast } from "sonner"
 import { useSession } from "@/lib/auth-client"
@@ -41,6 +44,7 @@ import {
   updateFormWoStatus,
   saveWipPo,
 } from "@/app/actions/form-wo"
+import { getUserSignatureAction, saveUserSignatureAction } from "@/app/actions/user-signature"
 import {
   createMasterDataCai,
   deleteMasterDataCai,
@@ -773,6 +777,9 @@ function CreateOrEditWoDialog({
   const [tanggalPo, setTanggalPo] = useState("")
   const [signatureFile, setSignatureFile] = useState<File | null>(null)
   const [submitterSignatureUrl, setSubmitterSignatureUrl] = useState<string | null>(null)
+  const [profileSig, setProfileSig] = useState<string | null>(null)
+  const [isUsingProfileSig, setIsUsingProfileSig] = useState(true)
+  const [isSavingProfileSig, setIsSavingProfileSig] = useState(false)
 
   // Multi-item tables
   const [serviceItems, setServiceItems] = useState<ServiceItemRow[]>([
@@ -937,6 +944,49 @@ function CreateOrEditWoDialog({
     }
   }, [open, session?.user?.name])
 
+  useEffect(() => {
+    if (open) {
+      if (editItem) {
+        setSubmitterSignatureUrl(editItem.submitterSignatureUrl || null)
+        setIsUsingProfileSig(false)
+        return
+      }
+      getUserSignatureAction()
+        .then((res) => {
+          if (res.success && res.signatureDataUrl) {
+            setProfileSig(res.signatureDataUrl)
+            setIsUsingProfileSig(true)
+            setSubmitterSignatureUrl(res.signatureDataUrl)
+          } else {
+            setIsUsingProfileSig(false)
+          }
+        })
+        .catch(() => {})
+    }
+  }, [open, editItem])
+
+  const handleSaveToProfile = async () => {
+    if (!submitterSignatureUrl) {
+      toast.error("Belum ada tanda tangan yang digambar.")
+      return
+    }
+    setIsSavingProfileSig(true)
+    try {
+      const res = await saveUserSignatureAction(submitterSignatureUrl)
+      if (res.success) {
+        setProfileSig(submitterSignatureUrl)
+        setIsUsingProfileSig(true)
+        toast.success("Tanda tangan berhasil disimpan ke profil HERO.")
+      } else {
+        toast.error(res.error || "Gagal menyimpan tanda tangan ke profil.")
+      }
+    } catch {
+      toast.error("Gagal menyimpan tanda tangan ke profil.")
+    } finally {
+      setIsSavingProfileSig(false)
+    }
+  }
+
   // Calculation helpers
   const totalServiceAmount = useMemo(() => {
     return serviceItems.reduce((sum, item) => {
@@ -1067,6 +1117,24 @@ function CreateOrEditWoDialog({
           }
         } catch (err) {
           console.error("Signature upload error:", err)
+        }
+      } else if (isUsingProfileSig && profileSig && profileSig.startsWith("data:")) {
+        try {
+          const res = await fetch(profileSig)
+          const blob = await res.blob()
+          const file = new File([blob], "submitter_signature.png", { type: "image/png" })
+          const { uploadFile } = await import("@/app/actions/upload")
+          const fd = new FormData()
+          fd.append("file", file)
+          const uploadResult = await uploadFile(fd)
+          if (uploadResult && uploadResult.success) {
+            sigUrl = uploadResult.url
+          } else {
+            sigUrl = profileSig
+          }
+        } catch (err) {
+          console.error("Signature upload error:", err)
+          sigUrl = profileSig
         }
       }
 
@@ -1209,18 +1277,112 @@ function CreateOrEditWoDialog({
             </div>
 
             {/* Tanda Tangan Pemohon */}
-            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-2">
-              <Label className="text-xs font-semibold uppercase text-slate-500">
-                Tanda Tangan Digital Pemohon {submitterSignatureUrl && <span className="ml-2 text-emerald-600 normal-case">\u2713 Tersimpan</span>}
-              </Label>
-              <p className="text-[11px] text-slate-500">Bubuhkan tanda tangan sebagai pemohon/penanggung jawab pengajuan ini.</p>
-              <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-                <SignaturePad
-                  onSignatureChange={setSignatureFile}
-                  onDataUrlChange={setSubmitterSignatureUrl}
-                />
+            {editItem ? (
+              /* Saat Edit Data / Pengisian No WO oleh Team Billing: TTD Pemohon Sudah Tersimpan */
+              editItem.submitterSignatureUrl ? (
+                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="h-12 w-28 bg-white rounded-lg border border-slate-200 p-1 flex items-center justify-center shrink-0 shadow-2xs">
+                      <img
+                        src={editItem.submitterSignatureUrl}
+                        alt="TTD Pemohon"
+                        className="max-h-full max-w-full object-contain"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                        <span>Tanda Tangan Pemohon Tersimpan</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Dokumen ini telah ditandatangani oleh pemohon ({editItem.pemohon || "Pemohon"}). Team Billing tidak perlu menandatangani ulang saat menerbitkan Nomor WO.
+                      </p>
+                    </div>
+                  </div>
+                  <span className="self-start sm:self-center text-[10px] font-bold text-emerald-800 bg-emerald-100/80 px-2.5 py-1 rounded-full border border-emerald-300 shrink-0">
+                    ✓ Terverifikasi
+                  </span>
+                </div>
+              ) : null
+            ) : (
+              /* Saat Pembuatan Form WO Baru: Input Tanda Tangan Digital Pemohon */
+              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-bold uppercase text-slate-700 flex items-center gap-1.5">
+                    <PenLine className="h-3.5 w-3.5 text-indigo-600" />
+                    <span>Tanda Tangan Digital Pemohon</span>
+                  </Label>
+                  {profileSig && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        if (isUsingProfileSig) {
+                          setIsUsingProfileSig(false)
+                          setSubmitterSignatureUrl(null)
+                          setSignatureFile(null)
+                        } else {
+                          setIsUsingProfileSig(true)
+                          setSubmitterSignatureUrl(profileSig)
+                        }
+                      }}
+                      className="h-6 text-[10px] font-semibold text-indigo-700 hover:text-indigo-800 hover:bg-indigo-50 px-2"
+                    >
+                      {isUsingProfileSig ? "Ubah / Gambar Manual" : "Gunakan TTD Profil"}
+                    </Button>
+                  )}
+                </div>
+
+                {isUsingProfileSig && profileSig ? (
+                  <div className="space-y-2">
+                    <div className="relative rounded-lg border-2 border-emerald-200 bg-emerald-50/40 p-3 flex flex-col items-center justify-center min-h-[110px]">
+                      <span className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-300">
+                        <CheckCircle2 className="h-3 w-3" />
+                        TTD Profil HERO Aktif
+                      </span>
+                      <img
+                        src={profileSig}
+                        alt="Tanda Tangan Profil"
+                        className="max-h-20 object-contain my-1"
+                      />
+                    </div>
+                    <p className="text-[11px] text-slate-500 text-center">
+                      Tanda tangan dari profil akun Anda akan otomatis digunakan sebagai penanggung jawab pengajuan.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-[11px] text-slate-500">
+                      Bubuhkan tanda tangan sebagai pemohon/penanggung jawab pengajuan ini.
+                    </p>
+                    <div className="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-inner">
+                      <SignaturePad
+                        onSignatureChange={setSignatureFile}
+                        onDataUrlChange={setSubmitterSignatureUrl}
+                      />
+                    </div>
+                    {submitterSignatureUrl && !isUsingProfileSig && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleSaveToProfile}
+                        disabled={isSavingProfileSig}
+                        className="w-full text-xs font-semibold border-indigo-200 text-indigo-700 hover:bg-indigo-50 h-7"
+                      >
+                        {isSavingProfileSig ? (
+                          <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                        ) : (
+                          <Save className="mr-1.5 h-3 w-3" />
+                        )}
+                        Simpan TTD Ini ke Profil HERO Saya
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
-            </div>
+            )}
           </div>
 
           {/* Table Spreadsheet Section */}

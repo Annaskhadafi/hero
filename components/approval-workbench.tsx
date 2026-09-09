@@ -28,6 +28,7 @@ import {
   Trash2,
   Upload,
   User,
+  Wrench,
   X,
   XCircle,
   ZoomIn,
@@ -1546,6 +1547,8 @@ export function InboxTab({
                             ? 'bg-amber-50 text-amber-800 border-amber-200/80'
                             : item.category === 'PTW'
                             ? 'bg-rose-50 text-rose-800 border-rose-200/80'
+                            : item.category === 'FORM_WO'
+                            ? 'bg-teal-50 text-teal-800 border-teal-200/80'
                             : item.category === 'RFR'
                             ? 'bg-purple-50 text-purple-800 border-purple-200/80'
                             : item.category === 'CONTRACT_REVIEW'
@@ -1555,7 +1558,11 @@ export function InboxTab({
                             : 'bg-blue-50 text-blue-700 border-blue-200/60'
                         )}
                       >
-                        <FileText className="size-3" />
+                        {item.category === 'FORM_WO' ? (
+                          <Wrench className="size-3" />
+                        ) : (
+                          <FileText className="size-3" />
+                        )}
                         {item.categoryLabel}
                       </span>
                       <span className="text-[11px] font-bold text-slate-600 font-mono truncate">

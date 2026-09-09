@@ -1,6 +1,7 @@
 import { sendWorkflowEmail } from "@/lib/workflow-email"
 import { getFormWoNotificationConfigData } from "@/lib/hero-admin"
 import { generateFormWoPdf, type FormWoPdfData } from "@/lib/form-wo-pdf"
+import { getPublicAppUrl } from "@/lib/auth-config"
 
 // Testing safeguard email
 const TESTING_EMAIL_OVERRIDE = null
@@ -37,10 +38,11 @@ export async function sendFormWoApprovalRequestEmail(params: {
         ? cfg?.tier2ApproverEmails
         : cfg?.tier3ApproverEmails
 
+  const baseUrl = getPublicAppUrl()
   const finalApproverName = params.approverName || "Approver"
   const targetApprovalLink =
     params.approvalLink ||
-    "https://hero.chitraparatama.co.id/dashboard/approval"
+    `${baseUrl}/dashboard/approval`
 
   const recipients = Array.from(
     new Set(
@@ -213,6 +215,7 @@ export async function sendFormWoStatusRevertedEmail(params: {
     ? Array.from(new Set(params.ccEmails.filter(Boolean)))
     : undefined
 
+  const baseUrl = getPublicAppUrl()
   return sendWorkflowEmail({
     to: recipients,
     cc: validCcEmails,
@@ -223,7 +226,7 @@ export async function sendFormWoStatusRevertedEmail(params: {
       catatanRevisi: params.catatanRevisi ?? "-",
       revisiLink:
         params.revisiLink ??
-        "https://hero.chitraparatama.co.id/dashboard/repair-retread/form-wo",
+        `${baseUrl}/dashboard/repair-retread/form-wo`,
     },
     fallbackSubject: `[Form WO Perlu Revisi / Revert] Pengajuan WO ${params.noPengajuan} Perlu Diperbaiki`,
     fallbackHtml: `Halo ${params.pemohon},<br><br>Pengajuan Form WO Anda dengan nomor <b>${params.noPengajuan}</b> telah dikembalikan oleh approver untuk dilakukan <b>REVISI (Revert)</b>.<br><br><b>Catatan Revisi dari Approver:</b><br><i>${params.catatanRevisi ?? '-'}</i><br><br>Silakan buka sistem HERO pada menu <b>Form WO</b> untuk mengedit dan merevisi data form tanpa perlu mengajukan dari awal.<br><br>Terima kasih.`,
@@ -305,9 +308,10 @@ export async function sendFormWoReadyForWoNumberEmail(params: {
   totalAmount?: string
   inputWoLink?: string
 }) {
+  const baseUrl = getPublicAppUrl()
   const targetLink =
     params.inputWoLink ||
-    "https://hero.chitraparatama.co.id/dashboard/repair-retread/form-wo"
+    `${baseUrl}/dashboard/repair-retread/form-wo`
 
   const recipients = Array.from(
     new Set([params.billingEmail].filter(Boolean) as string[])
@@ -408,6 +412,7 @@ export async function sendFormWoCompletedWithPdfEmail(params: {
     : undefined
 
   const sendForRecipient = async (recipientEmail: string, roleName: string) => {
+    const baseUrl = getPublicAppUrl()
     return sendWorkflowEmail({
       to: recipientEmail,
       templateCode: 'form_wo_final_completed_pdf',
@@ -468,7 +473,7 @@ export async function sendFormWoCompletedWithPdfEmail(params: {
       📎 <b>Lampiran Dokumen:</b> File PDF Form WO lengkap beserta nomor PO, nomor WO, dan seluruh tanda tangan digital telah dilampirkan pada email ini.
     </div>
     <div style="text-align:center;margin:20px 0 10px 0;">
-      <a href="https://hero.chitraparatama.co.id/dashboard/repair-retread/form-wo" style="background-color:#0f766e;color:#ffffff;padding:12px 28px;text-decoration:none;border-radius:8px;font-weight:700;font-size:14px;display:inline-block;box-shadow:0 2px 4px rgba(15,118,110,0.25);">
+      <a href="${baseUrl}/dashboard/repair-retread/form-wo" style="background-color:#0f766e;color:#ffffff;padding:12px 28px;text-decoration:none;border-radius:8px;font-weight:700;font-size:14px;display:inline-block;box-shadow:0 2px 4px rgba(15,118,110,0.25);">
         Buka Dashboard Form WO &rarr;
       </a>
     </div>
