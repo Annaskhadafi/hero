@@ -2,6 +2,9 @@ import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
   output: 'standalone',
+  turbopack: {
+    root: process.cwd(),
+  },
   images: {
     remotePatterns: [
       {
@@ -11,14 +14,12 @@ const nextConfig: NextConfig = {
     ],
   },
   typescript: { ignoreBuildErrors: true },
-  eslint: { ignoreDuringBuilds: true },
   serverExternalPackages: ['face-api.js'],
   experimental: {
     serverActions: {
       bodySizeLimit: '25mb',
     },
     cpus: 1,
-    webpackBuildWorker: false,
   },
   async headers() {
     return [
