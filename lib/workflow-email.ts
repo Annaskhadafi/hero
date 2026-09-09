@@ -62,7 +62,12 @@ function stringifyTemplateValue(value: TemplateVariables[string], isHtml = false
 
 function renderTemplate(text: string, variables: TemplateVariables, isHtml = false) {
   return text.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (_match, token: string) => {
-    return stringifyTemplateValue(variables[token], isHtml)
+    const isHtmlSnippet =
+      isHtml &&
+      (token.toLowerCase().endsWith('html') ||
+        token.toLowerCase().endsWith('table') ||
+        token.toLowerCase().includes('tablecontent'))
+    return stringifyTemplateValue(variables[token], isHtml && !isHtmlSnippet)
   })
 }
 

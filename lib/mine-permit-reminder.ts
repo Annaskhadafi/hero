@@ -441,34 +441,40 @@ export async function sendSiteMinePermitExpiryReminder(
 
   // Build Table HTML
   const tableRowsHtml = expiringEmployees
-    .map((emp) => {
+    .map((emp, idx) => {
       const expDate = emp.expMinePermit || '-'
       const daysLeft = Math.ceil(
         (new Date(emp.expMinePermit!).getTime() - Date.now()) / (24 * 60 * 60 * 1000)
       )
       const isExpired = daysLeft < 0
       const daysText = isExpired ? `Expired (${Math.abs(daysLeft)} hari lalu)` : `${daysLeft} hari lagi`
-      const badgeColor = isExpired ? '#dc2626' : daysLeft <= 14 ? '#ea580c' : '#d97706'
+      const badgeBg = isExpired ? '#fee2e2' : daysLeft <= 14 ? '#ffedd5' : '#fef3c7'
+      const badgeColor = isExpired ? '#b91c1c' : daysLeft <= 14 ? '#c2410c' : '#b45309'
+      const rowBg = idx % 2 === 0 ? '#ffffff' : '#f8fafc'
 
-      return `<tr>
+      return `<tr style="background-color:${rowBg};">
+        <td style="padding:10px 12px;border:1px solid #e2e8f0;text-align:center;color:#64748b;font-size:12px;">${idx + 1}</td>
         <td style="padding:10px 12px;border:1px solid #e2e8f0;font-family:monospace;font-size:12px;font-weight:600;color:#0f172a;">${emp.employeeSn || '-'}</td>
-        <td style="padding:10px 12px;border:1px solid #e2e8f0;font-weight:600;color:#0f172a;">${emp.name}</td>
+        <td style="padding:10px 12px;border:1px solid #e2e8f0;font-weight:700;color:#0f172a;">${emp.name}</td>
         <td style="padding:10px 12px;border:1px solid #e2e8f0;color:#475569;font-size:12px;">${emp.jobTitle || emp.department || '-'}</td>
-        <td style="padding:10px 12px;border:1px solid #e2e8f0;color:#0f172a;font-size:12px;">${expDate}</td>
-        <td style="padding:10px 12px;border:1px solid #e2e8f0;font-weight:700;color:${badgeColor};font-size:12px;">${daysText}</td>
+        <td style="padding:10px 12px;border:1px solid #e2e8f0;color:#0f172a;font-size:12px;font-weight:600;">${expDate}</td>
+        <td style="padding:10px 12px;border:1px solid #e2e8f0;font-size:12px;">
+          <span style="display:inline-block;padding:3px 8px;border-radius:999px;background-color:${badgeBg};color:${badgeColor};font-weight:700;font-size:11px;">${daysText}</span>
+        </td>
       </tr>`
     })
     .join('')
 
   const tableContentHtml = `
-    <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:13px;background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="width:100%;border-collapse:collapse;margin:18px 0;font-size:13px;background-color:#ffffff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
       <thead>
-        <tr style="background:#fef3c7;color:#92400e;text-align:left;">
-          <th style="padding:10px 12px;border:1px solid #e2e8f0;font-size:12px;">NIK</th>
-          <th style="padding:10px 12px;border:1px solid #e2e8f0;font-size:12px;">Nama Karyawan</th>
-          <th style="padding:10px 12px;border:1px solid #e2e8f0;font-size:12px;">Jabatan</th>
-          <th style="padding:10px 12px;border:1px solid #e2e8f0;font-size:12px;">Exp. Date</th>
-          <th style="padding:10px 12px;border:1px solid #e2e8f0;font-size:12px;">Sisa Waktu</th>
+        <tr style="background-color:#fef3c7;color:#92400e;text-align:left;">
+          <th style="padding:10px 12px;border:1px solid #e2e8f0;font-size:12px;font-weight:700;width:36px;text-align:center;">No</th>
+          <th style="padding:10px 12px;border:1px solid #e2e8f0;font-size:12px;font-weight:700;width:90px;">NIK</th>
+          <th style="padding:10px 12px;border:1px solid #e2e8f0;font-size:12px;font-weight:700;">Nama Karyawan</th>
+          <th style="padding:10px 12px;border:1px solid #e2e8f0;font-size:12px;font-weight:700;">Jabatan / Dept</th>
+          <th style="padding:10px 12px;border:1px solid #e2e8f0;font-size:12px;font-weight:700;width:100px;">Tgl Expired</th>
+          <th style="padding:10px 12px;border:1px solid #e2e8f0;font-size:12px;font-weight:700;width:130px;">Sisa Waktu</th>
         </tr>
       </thead>
       <tbody>
@@ -476,6 +482,18 @@ export async function sendSiteMinePermitExpiryReminder(
       </tbody>
     </table>
   `
+
+  const tableContentText = expiringEmployees
+    .map((emp, idx) => {
+      const expDate = emp.expMinePermit || '-'
+      const daysLeft = Math.ceil(
+        (new Date(emp.expMinePermit!).getTime() - Date.now()) / (24 * 60 * 60 * 1000)
+      )
+      const isExpired = daysLeft < 0
+      const daysText = isExpired ? `Expired (${Math.abs(daysLeft)} hari lalu)` : `${daysLeft} hari lagi`
+      return `${idx + 1}. ${emp.name} (NIK: ${emp.employeeSn || '-'}) | Posisi: ${emp.jobTitle || emp.department || '-'} | Exp: ${expDate} (${daysText})`
+    })
+    .join('\n')
 
   const appUrl = getPublicAppUrl()
   const viewLink = `${appUrl}/dashboard/hc/employee`
@@ -512,12 +530,14 @@ export async function sendSiteMinePermitExpiryReminder(
         </div>
       </div>
     `,
-    fallbackText: `Peringatan Expiry Mine Permit — Site ${site.name}\n\nTotal ${expiringEmployees.length} karyawan Mine Permit-nya akan berakhir dalam ${config.reminderDays} hari ke depan.\n\nSilakan cek data selengkapnya di: ${viewLink}\n\nSistem HERO PT Chitra Paratama`,
+    fallbackText: `Peringatan Expiry Mine Permit — Site ${site.name}\n\nTotal ${expiringEmployees.length} karyawan Mine Permit-nya akan berakhir dalam ${config.reminderDays} hari ke depan:\n\n${tableContentText}\n\nSilakan cek data selengkapnya di: ${viewLink}\n\nSistem HERO PT Chitra Paratama`,
     variables: {
       siteName: site.name,
       totalExpiring: String(expiringEmployees.length),
       reminderDays: String(config.reminderDays),
       tableContentHtml,
+      tableContentText,
+      employeeListText: tableContentText,
       viewLink,
     },
   })

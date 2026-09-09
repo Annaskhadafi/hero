@@ -46,7 +46,9 @@ const RAW_EMAIL_TEMPLATE_PRESETS: EmailTemplatePreset[] = [
 </div>`,
     textContent: `Yth. Bapak/Ibu Manajemen & PIC Site {{siteName}},
 
-Berikut adalah daftar karyawan di Site {{siteName}} yang Mine Permit-nya akan segera berakhir dalam {{reminderDays}} hari ke depan (Total: {{totalExpiring}} orang).
+Berikut adalah daftar karyawan di Site {{siteName}} yang Mine Permit-nya akan segera berakhir dalam {{reminderDays}} hari ke depan (Total: {{totalExpiring}} orang):
+
+{{tableContentText}}
 
 Mohon segera melakukan tindak lanjut proses perpanjangan Mine Permit untuk memastikan kepatuhan keselamatan kerja di site.
 
@@ -59,6 +61,7 @@ Human Capital - PT Chitra Paratama`,
       'totalExpiring',
       'reminderDays',
       'tableContentHtml',
+      'tableContentText',
       'viewLink',
     ],
     sampleValues: {
@@ -3863,7 +3866,13 @@ function inferTemplateFeature(templateCode: string) {
 }
 function buildUnifiedEmailHtml(preset: EmailTemplatePreset) {
   const feature = inferTemplateFeature(preset.templateCode)
-  const body = formatEmailBody(preset.textContent || preset.description || preset.subject)
+  let body = formatEmailBody(preset.textContent || preset.description || preset.subject)
+  if (preset.textContent.includes('{{tableContentText}}') || preset.htmlContent?.includes('{{tableContentHtml}}')) {
+    body = body.replace(
+      /<p[^>]*>\s*(\{\{\s*tableContent(Text|Html)\s*\}\})\s*<\/p>/gi,
+      '{{tableContentHtml}}'
+    ).replace('{{tableContentText}}', '{{tableContentHtml}}')
+  }
   return `<div style="margin:0;padding:0;background:#e5e7eb;font-family:'Segoe UI',Arial,sans-serif;color:#0f172a">
 <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#e5e7eb;padding:28px 12px">
 <tr><td align="center">
