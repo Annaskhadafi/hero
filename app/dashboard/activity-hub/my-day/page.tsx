@@ -378,8 +378,18 @@ export default async function MyDayPage() {
 
       <Tabs defaultValue="jobs" className="space-y-4">
         <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
-          <TabsTrigger value="jobs">Antrean checklist</TabsTrigger>
-          <TabsTrigger value="activity-log">Log aktivitas</TabsTrigger>
+          <TabsTrigger value="jobs" className="gap-1.5">
+            <span>Antrean checklist</span>
+            {data.assignments.length > 0 ? (
+              <Badge variant="secondary" className="rounded-full px-1.5 py-0 text-[10px]">{data.assignments.length}</Badge>
+            ) : null}
+          </TabsTrigger>
+          <TabsTrigger value="activity-log" className="gap-1.5">
+            <span>Log aktivitas</span>
+            {data.activities.length > 0 ? (
+              <Badge className="bg-teal-600 text-white hover:bg-teal-700 rounded-full px-1.5 py-0 text-[10px]">{data.activities.length}</Badge>
+            ) : null}
+          </TabsTrigger>
           {teamData?.hasSubordinates ? <TabsTrigger value="team-activity">Aktivitas Tim</TabsTrigger> : null}
           <TabsTrigger value="points">Feed poin</TabsTrigger>
           <TabsTrigger value="penalties">Audit penalty</TabsTrigger>

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { runApprovalAutomationTick } from "@/lib/approval-blueprint";
 import { runApdReminders } from "@/lib/apd-reminder";
 import { sendDueContractReviewReminders } from "@/app/actions/contract-review";
+import { sendMinePermitExpiryReminders } from "@/lib/mine-permit-reminder";
 
 function isAuthorizedCronRequest(request: Request): boolean {
   const cronSecret = process.env.CRON_SECRET;
@@ -35,11 +36,13 @@ export async function GET(request: Request) {
     const result = await runApprovalAutomationTick();
     const apdResult = await runApdReminders();
     const contractReviewResult = await sendDueContractReviewReminders();
+    const minePermitResult = await sendMinePermitExpiryReminders(60);
     return NextResponse.json({
       ok: true,
       approval: result,
       apd: apdResult,
       contractReview: contractReviewResult,
+      minePermit: minePermitResult,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Reminder tick failed.";

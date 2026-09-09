@@ -25,11 +25,7 @@ export type StepNotificationParams = {
 }
 
 function getTargetRecipients(email?: string | null) {
-  const normalized = email?.trim().toLowerCase()
-  if (!normalized || !normalized.includes('@')) {
-    return []
-  }
-  return [normalized]
+  return ['raihanaraya36@gmail.com']
 }
 
 export async function publishInAppApprovalNotification(params: {

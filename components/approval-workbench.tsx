@@ -1269,51 +1269,10 @@ export function InboxTab({
     return Array.from(new Set(allUnifiedItems.map((it) => it.siteName || it.location).filter(Boolean))).sort() as string[]
   }, [allUnifiedItems])
 
-  const [mobileCategory, setMobileCategory] = useState<string>('ALL')
-
-  const availableCategories = useMemo(() => {
-    const cats: Array<{ key: string; label: string; count: number }> = [
-      { key: 'ALL', label: 'Semua', count: allUnifiedItems.length },
-    ]
-    const map = new Map<string, { label: string; count: number }>()
-
-    for (const it of allUnifiedItems) {
-      const catKey = it.category || 'GENERAL'
-      const label =
-        catKey === 'SUMMARY'
-          ? 'Summary APD'
-          : catKey === 'APD'
-          ? 'Permintaan APD/Barang'
-          : catKey === 'DAILY_ACTIVITY' || catKey === 'GENERAL'
-          ? 'Daily Activity'
-          : catKey === 'OVERTIME'
-          ? 'Overtime'
-          : catKey === 'PTW'
-          ? 'PTW'
-          : catKey === 'RFR'
-          ? 'RFR'
-          : catKey === 'CONTRACT_REVIEW'
-          ? 'Contract Review'
-          : catKey === 'SOP_WIN'
-          ? 'SOP/WIN'
-          : it.categoryLabel || catKey
-
-      if (!map.has(catKey)) {
-        map.set(catKey, { label, count: 0 })
-      }
-      map.get(catKey)!.count++
-    }
-
-    map.forEach((val, key) => {
-      cats.push({ key, label: val.label, count: val.count })
-    })
-    return cats
-  }, [allUnifiedItems])
-
   const filteredMobileItems = useMemo(() => {
     let list = allUnifiedItems
-    if (mobileCategory !== 'ALL') {
-      list = list.filter((item) => item.category === mobileCategory)
+    if (selectedCategory !== 'ALL') {
+      list = list.filter((item) => item.category === selectedCategory)
     }
     if (!mobileSearch.trim()) return list
     const q = mobileSearch.toLowerCase()
@@ -1328,7 +1287,7 @@ export function InboxTab({
         item.stepLabel?.toLowerCase().includes(q)
       )
     })
-  }, [allUnifiedItems, mobileCategory, mobileSearch])
+  }, [allUnifiedItems, selectedCategory, mobileSearch])
 
   const isAllMobileSelected =
     filteredMobileItems.length > 0 &&
@@ -1358,38 +1317,6 @@ export function InboxTab({
 
   const content = allUnifiedItems.length === 0 ? emptyContent : viewMode === 'mobile' ? (
     <div className="space-y-3">
-      {/* Category Filter Pills (Horizontal Scroll) */}
-      {availableCategories.length > 2 && (
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none -mx-1 px-1">
-          {availableCategories.map((cat) => {
-            const isActive = mobileCategory === cat.key
-            return (
-              <button
-                key={cat.key}
-                type="button"
-                onClick={() => setMobileCategory(cat.key)}
-                className={cn(
-                  'inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold whitespace-nowrap transition-all shrink-0 cursor-pointer',
-                  isActive
-                    ? 'bg-[#003461] text-white shadow-xs'
-                    : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50'
-                )}
-              >
-                <span>{cat.label}</span>
-                <span
-                  className={cn(
-                    'rounded-full px-1.5 py-0.2 text-[10px] font-black',
-                    isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
-                  )}
-                >
-                  {cat.count}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-      )}
-
       {/* Search Input */}
       <div className="relative">
         <Search className="size-4 text-slate-400 absolute left-3.5 top-3.5" />
@@ -2012,7 +1939,43 @@ export function InboxTab({
                       </div>
                     )}
 
-                    {/* Unduh PDF Button */}
+                    {/* Zoom Controls */}
+                    <div className="flex items-center gap-1 bg-slate-50 rounded-xl px-1.5 py-1 border border-slate-200">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setViewerZoom((z) => Math.max(0.4, Number((z - 0.15).toFixed(2))))}
+                        className="h-6 w-6 p-0 text-slate-700 hover:text-slate-900 rounded-lg text-xs font-bold"
+                        title="Zoom Out"
+                      >
+                        -
+                      </Button>
+                      <span className="text-[10px] font-mono font-bold text-slate-600 px-1 min-w-7 text-center">
+                        {Math.round(viewerZoom * 100)}%
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setViewerZoom((z) => Math.min(3.0, Number((z + 0.15).toFixed(2))))}
+                        className="h-6 w-6 p-0 text-slate-700 hover:text-slate-900 rounded-lg text-xs font-bold"
+                        title="Zoom In"
+                      >
+                        +
+                      </Button>
+                      {viewerZoom !== 1.0 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setViewerZoom(1.0)}
+                          className="h-6 px-1.5 text-[9px] font-bold text-slate-500 hover:text-slate-900 rounded-md"
+                        >
+                          Reset
+                        </Button>
+                      )}
+                    </div>
                     <Button
                       size="sm"
                       variant="outline"
@@ -2076,7 +2039,7 @@ export function InboxTab({
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => setViewerZoom((z) => Math.min(3.0, Number((z + 0.15).toFixed(2))))}
+                          onClick={() => setViewerZoom((z) => Math.min(3.0, Number((z + 0.1).toFixed(2))))}
                           className="h-7 w-7 p-0 text-xs font-extrabold text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
                           title="Zoom In"
                         >
@@ -2097,21 +2060,28 @@ export function InboxTab({
                     </div>
 
                     {/* 1. PDF Letterhead Document Preview Container */}
-                    {currentBatchDoc && (
-                      <div className="flex justify-center items-start overflow-hidden p-1 w-full max-w-full">
-                        <div
-                          id="unified-batch-preview-sheet"
-                          className={cn(
-                            "relative mx-auto shrink-0 bg-white shadow-md border border-slate-200 rounded-sm origin-top transition-transform duration-200",
-                            isLandscapeDoc ? "w-[297mm] min-h-[210mm]" : "w-[210mm] min-h-[297mm]"
-                          )}
-                          style={{
-                            backgroundImage: isCleanCustomDoc ? 'none' : 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)',
-                            backgroundSize: '100% 100%',
-                            transform: `scale(${ (isLandscapeDoc ? 0.31 : 0.44) * viewerZoom })`,
-                            marginBottom: `${(isLandscapeDoc ? -135 : -160) + (viewerZoom - 1.0) * 125}mm`,
-                          }}
-                        >
+                    {currentBatchDoc && (() => {
+                      const baseScale = isLandscapeDoc ? 0.31 : (viewMode === 'mobile' ? 0.44 : 0.46)
+                      const effectiveScale = baseScale * viewerZoom
+                      const originalHeightMm = isLandscapeDoc ? 210 : 297
+                      const marginOffsetMm = -Math.round(originalHeightMm * (1 - effectiveScale))
+
+                      return (
+                        <div className="flex justify-center items-start overflow-hidden p-1 w-full max-w-full">
+                          <div
+                            id="unified-batch-preview-sheet"
+                            className={cn(
+                              "relative mx-auto shrink-0 bg-white shadow-md border border-slate-200 rounded-sm origin-top transition-transform duration-200",
+                              isLandscapeDoc ? "w-[297mm] min-h-[210mm]" : "w-[210mm] min-h-[297mm]"
+                            )}
+                            style={{
+                              backgroundImage: isCleanCustomDoc ? 'none' : 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)',
+                              backgroundSize: '100% 100%',
+                              transform: `scale(${effectiveScale})`,
+                              transformOrigin: 'top center',
+                              marginBottom: `${marginOffsetMm}mm`,
+                            }}
+                          >
                           <div
                             className="relative z-10 outline-none text-[8.5pt] font-sans leading-tight text-black"
                             style={{
@@ -3488,7 +3458,8 @@ export function InboxTab({
                             </div>
                           </div>
                         </div>
-                    )}
+                      )
+                    })()}
                   </div>
 
               {/* Right Column (Desktop) / Bottom Section (Mobile): Reviewer Action Sidebar */}

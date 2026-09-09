@@ -271,3 +271,118 @@ export async function getDailyActivitySessionDocumentData(
     },
   }
 }
+
+export async function getPublicDailyActivityEvidenceData(sessionId: number) {
+  const [header] = await db
+    .select({
+      sessionId: dailyActivitySessions.id,
+      sessionCode: dailyActivitySessions.sessionCode,
+      workDate: dailyActivitySessions.workDate,
+      shiftCode: dailyActivitySessions.shiftCode,
+      status: dailyActivitySessions.status,
+      summaryRemark: dailyActivitySessions.summaryRemark,
+      submittedAt: dailyActivitySessions.submittedAt,
+      employeeId: employees.id,
+      employeeName: employees.name,
+      employeeSn: employees.employeeSn,
+      employeeDepartment: employees.department,
+      employeeSection: employees.section,
+      employeeJobTitle: employees.jobTitle,
+      siteId: sites.id,
+      siteName: sites.name,
+      customerName: sites.customerName,
+      contractNumber: sites.contractNumber,
+      splId: overtimeCommandLetters.id,
+      splNumber: overtimeCommandLetters.splNumber,
+      splTitle: overtimeCommandLetters.title,
+    })
+    .from(dailyActivitySessions)
+    .innerJoin(employees, eq(dailyActivitySessions.employeeId, employees.id))
+    .innerJoin(sites, eq(dailyActivitySessions.siteId, sites.id))
+    .leftJoin(
+      overtimeCommandLetters,
+      eq(dailyActivitySessions.overtimeCommandLetterId, overtimeCommandLetters.id)
+    )
+    .where(eq(dailyActivitySessions.id, sessionId))
+    .limit(1)
+
+  if (!header) {
+    return null
+  }
+
+  const [itemRows, approvalsRows] = await Promise.all([
+    db
+      .select({
+        id: dailyActivitySessionItems.id,
+        snapshotLabel: dailyActivitySessionItems.snapshotLabel,
+        snapshotGroupName: dailyActivitySessionItems.snapshotGroupName,
+        snapshotPayload: dailyActivitySessionItems.snapshotPayload,
+        unitNumber: dailyActivitySessionItems.unitNumber,
+        remark: dailyActivitySessionItems.remark,
+        startedAt: dailyActivitySessionItems.startedAt,
+        endedAt: dailyActivitySessionItems.endedAt,
+        checkedAt: dailyActivitySessionItems.checkedAt,
+        actualPoints: dailyActivitySessionItems.actualPoints,
+        isChecked: dailyActivitySessionItems.isChecked,
+        sortOrder: dailyActivitySessionItems.sortOrder,
+      })
+      .from(dailyActivitySessionItems)
+      .where(eq(dailyActivitySessionItems.sessionId, sessionId))
+      .orderBy(asc(dailyActivitySessionItems.sortOrder), asc(dailyActivitySessionItems.id)),
+    db
+      .select({
+        id: dailyActivityApprovals.id,
+        stepOrder: dailyActivityApprovals.stepOrder,
+        stepLabel: dailyActivityApprovals.stepLabel,
+        status: dailyActivityApprovals.status,
+        approverName: dailyActivityApprovals.approverName,
+        approverRole: dailyActivityApprovals.approverRole,
+        signedAt: dailyActivityApprovals.signedAt,
+      })
+      .from(dailyActivityApprovals)
+      .where(eq(dailyActivityApprovals.sessionId, sessionId))
+      .orderBy(asc(dailyActivityApprovals.stepOrder)),
+  ])
+
+  const processedItems = itemRows.map((item, index) => {
+    let parsedPayload: any = {}
+    try {
+      parsedPayload = JSON.parse(item.snapshotPayload || '{}')
+    } catch (e) {}
+
+    const photoUrl = parsedPayload?.photo?.url || parsedPayload?.photo?.dataUrl || null
+    const durationMinutes = minutesBetween(item.startedAt, item.endedAt)
+
+    return {
+      id: item.id,
+      itemIndex: index + 1,
+      snapshotLabel: item.snapshotLabel,
+      snapshotGroupName: item.snapshotGroupName,
+      unitNumber: item.unitNumber,
+      remark: item.remark,
+      actualPoints: item.actualPoints,
+      isChecked: item.isChecked,
+      startedAt: item.startedAt,
+      endedAt: item.endedAt,
+      checkedAt: item.checkedAt,
+      startLabel: item.startedAt
+        ? item.startedAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+        : '-',
+      endLabel: item.endedAt
+        ? item.endedAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+        : '-',
+      durationLabel: formatDurationLabel(durationMinutes),
+      photoUrl,
+    }
+  })
+
+  const evidenceItems = processedItems.filter((item) => Boolean(item.photoUrl))
+
+  return {
+    header,
+    allItems: processedItems,
+    evidenceItems,
+    approvals: approvalsRows,
+  }
+}
+

@@ -6339,6 +6339,25 @@ export async function createDailyActivitySessionAction(input: {
     const workflowSettings = await getDailyActivityWorkflowSettings()
     let primaryCreatedSessionId: number | null = null
 
+    if (!input.workDate || !String(input.workDate).trim()) {
+      return { success: false as const, error: 'Tanggal kerja wajib diisi.' }
+    }
+    if (!input.items || input.items.length === 0) {
+      return { success: false as const, error: 'Minimal 1 aktivitas wajib diisi.' }
+    }
+    for (let i = 0; i < input.items.length; i++) {
+      const it = input.items[i]
+      if (!it.unitNumber || !it.unitNumber.trim()) {
+        return { success: false as const, error: `Equipment / Unit No. pada item #${i + 1} (${it.label}) wajib diisi.` }
+      }
+      if (!it.remark || !it.remark.trim()) {
+        return { success: false as const, error: `Catatan item pada item #${i + 1} (${it.label}) wajib diisi.` }
+      }
+      if ((!it.photoUrl || !it.photoUrl.trim()) && (!it.photos || it.photos.length === 0)) {
+        return { success: false as const, error: `Photo evidence pada item #${i + 1} (${it.label}) wajib diunggah.` }
+      }
+    }
+
     for (const emp of allEmps) {
       // Fallback siteId if none is provided
       let siteId = input.siteId || emp.siteId
@@ -6713,8 +6732,11 @@ export async function createDailyActivitySessionAction(input: {
 
     try {
       safeRevalidatePath('/dashboard/activity-hub')
+      safeRevalidatePath('/dashboard/activity-hub/my-day')
       safeRevalidatePath('/dashboard/activity-hub/approval')
+      safeRevalidatePath('/dashboard/activity-hub/team-board')
       safeRevalidatePath('/dashboard/approval')
+      safeRevalidatePath('/mobile')
       safeRevalidatePath('/mobile/activity')
       safeRevalidatePath('/mobile/approval')
     } catch {}

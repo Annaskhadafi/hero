@@ -76,6 +76,8 @@ export default async function MobileActivityPage({
             sectionId: employees.sectionId,
             departmentId: employees.departmentId,
             siteId: employees.siteId,
+            signatureDataUrl: employees.signatureDataUrl,
+            signatureRegisteredAt: employees.signatureRegisteredAt,
           })
           .from(employees)
           .where(eq(employees.isActive, true))

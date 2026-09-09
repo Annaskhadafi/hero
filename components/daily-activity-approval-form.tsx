@@ -620,7 +620,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
         const currentSignedAt =
           step.signedAt ||
           (isApproved && isStep1 ? (data.submittedAt || data.workDate || new Date()) : null) ||
-          (isReverted ? (data.updatedAt || new Date()) : null) ||
+          (isReverted ? ((data as any).updatedAt || new Date()) : null) ||
           (isActivelySigning ? (previewSignedAt || new Date()) : null)
 
         return {
@@ -631,7 +631,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
           signedAt: currentSignedAt,
         }
       })
-  }, [data.approvals, data.status, data.submittedAt, data.workDate, data.updatedAt, activeStepId, previewSig, previewSignedAt, stepRemarks, signaturesByStepId, profileForm.employeeName, data.employee, selectedLeaderId, selectedSuperiorId, selectedManagerId, employeesProp])
+  }, [data.approvals, data.status, data.submittedAt, data.workDate, (data as any).updatedAt, activeStepId, previewSig, previewSignedAt, stepRemarks, signaturesByStepId, profileForm.employeeName, data.employee, selectedLeaderId, selectedSuperiorId, selectedManagerId, employeesProp])
 
   const employeeSig = approvalHistoryForDisplay.find((a) => a.approverRole === 'employee')
   const leaderSig = approvalHistoryForDisplay.find((a) => a.approverRole === 'leader' || a.approverRole === 'pjo_or_te_initial')

@@ -49,6 +49,15 @@ export function MobileSignatureSection({
   }
 
   useEffect(() => {
+    if (initialSignatureDataUrl && initialSignatureDataUrl !== signatureUrl) {
+      setSignatureUrl(initialSignatureDataUrl)
+      if (initialRegisteredAt) {
+        setRegisteredAt(initialRegisteredAt)
+      }
+    }
+  }, [initialSignatureDataUrl, initialRegisteredAt])
+
+  useEffect(() => {
     reloadSignature()
   }, [])
 

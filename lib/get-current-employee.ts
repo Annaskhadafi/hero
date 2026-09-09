@@ -1,4 +1,4 @@
-import { eq, or } from 'drizzle-orm'
+import { eq, or, sql } from 'drizzle-orm'
 import { db } from '@/db'
 import { employees } from '@/db/schema/hero'
 import { getServerSession } from '@/lib/auth-session'
@@ -16,6 +16,7 @@ export async function getCurrentEmployee() {
       const cleanEmail = session.user.email.trim().toLowerCase()
       conditions.push(eq(employees.email, session.user.email))
       conditions.push(eq(employees.email, cleanEmail))
+      conditions.push(sql`LOWER(TRIM(${employees.email})) = ${cleanEmail}`)
     }
     if (conditions.length > 0) {
       const [employee] = await db

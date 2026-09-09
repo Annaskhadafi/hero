@@ -2,6 +2,7 @@ import { readFile } from "fs/promises";
 import path from "path";
 import { NextResponse } from "next/server";
 import { PDFDocument, StandardFonts, rgb, type PDFPage, type PDFFont } from "pdf-lib";
+import QRCode from "qrcode";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivitySessionDocumentData } from "@/lib/daily-activity-documents";
 import { getS3ObjectReadUrl } from "@/lib/s3-storage";
@@ -39,6 +40,24 @@ export async function GET(
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const backgroundImage = await loadLetterheadImage(pdfDoc);
 
+  const requestUrl = new URL(_request.url);
+  const host = _request.headers.get("x-forwarded-host") || _request.headers.get("host") || requestUrl.host;
+  const proto = _request.headers.get("x-forwarded-proto") || requestUrl.protocol.replace(":", "") || "http";
+  const baseUrl = `${proto}://${host}`;
+  const evidenceUrl = `${baseUrl}/activity-evidence/${data.sessionId}`;
+
+  let qrImage: any = null;
+  try {
+    const qrBuffer = await QRCode.toBuffer(evidenceUrl, {
+      margin: 1,
+      width: 140,
+      errorCorrectionLevel: "M",
+    });
+    qrImage = await pdfDoc.embedPng(qrBuffer);
+  } catch (e) {
+    console.error("Failed to generate evidence QR code for PDF:", e);
+  }
+
   const rows =
     data.items.length > 0
       ? data.items
@@ -74,8 +93,8 @@ export async function GET(
       });
     }
 
-    drawDocumentHeader(page, data, boldFont, regularFont, pageIndex + 1, rowPages.length);
-    await drawWorkTable(page, pdfDoc, pageRows, boldFont, regularFont);
+    drawDocumentHeader(page, data, boldFont, regularFont, pageIndex + 1, rowPages.length, qrImage);
+    await drawWorkTable(page, pdfDoc, pageRows, boldFont, regularFont, qrImage);
 
     if (pageIndex === rowPages.length - 1) {
       await drawSignatureArea(page, pdfDoc, data, boldFont, regularFont);
@@ -118,6 +137,7 @@ function drawDocumentHeader(
   regularFont: PDFFont,
   pageNumber: number,
   totalPages: number,
+  qrImage?: any,
 ) {
   if (!data) {
     return;
@@ -140,19 +160,35 @@ function drawDocumentHeader(
     color: rgb(0.08, 0.16, 0.22),
   });
   page.drawText(`SN : ${data.sessionCode}`, {
-    x: 470,
-    y: 776,
-    size: 9,
+    x: 440,
+    y: 793,
+    size: 8.5,
     font: boldFont,
     color: rgb(0.22, 0.24, 0.27),
   });
   page.drawText(`Page ${pageNumber}/${totalPages}`, {
-    x: 500,
-    y: 760,
+    x: 440,
+    y: 780,
     size: 8,
     font: regularFont,
     color: rgb(0.37, 0.46, 0.52),
   });
+
+  if (qrImage) {
+    page.drawImage(qrImage, {
+      x: 508,
+      y: 752,
+      width: 48,
+      height: 48,
+    });
+    page.drawText("Scan Evidence", {
+      x: 505,
+      y: 743,
+      size: 6.5,
+      font: boldFont,
+      color: rgb(0.22, 0.24, 0.27),
+    });
+  }
 
   const leftFields = [
     { label: "Tanggal", value: data.workDate.toLocaleDateString("id-ID", { day: "2-digit", month: "2-digit", year: "numeric" }) },
@@ -190,14 +226,14 @@ function drawDocumentHeader(
   let rightY = 744;
   for (const field of rightFields) {
     page.drawText(`${field.label}:`, {
-      x: 320,
+      x: 300,
       y: rightY,
       size: 8.5,
       font: boldFont,
       color: rgb(0.18, 0.24, 0.29),
     });
-    page.drawText(field.value.slice(0, 36), {
-      x: 396,
+    page.drawText(field.value.slice(0, 32), {
+      x: 376,
       y: rightY,
       size: 8.5,
       font: regularFont,
@@ -240,6 +276,7 @@ async function drawWorkTable(
   }>,
   boldFont: PDFFont,
   regularFont: PDFFont,
+  qrImage?: any,
 ) {
   const startX = 36;
   const startY = 688;
@@ -252,8 +289,8 @@ async function drawWorkTable(
     { title: "Jam", width: 64, align: "center" as const },
     { title: "Durasi", width: 42, align: "center" as const },
     { title: "Poin", width: 32, align: "center" as const },
-    { title: "Foto", width: 48, align: "center" as const },
-    { title: "Uraian Pekerjaan / Unit / Remark", width: 245.28, align: "left" as const },
+    { title: "Evidence (QR)", width: 56, align: "center" as const },
+    { title: "Uraian Pekerjaan / Unit / Remark", width: 237.28, align: "left" as const },
   ];
 
   page.drawRectangle({
@@ -303,7 +340,7 @@ async function drawWorkTable(
       `${item.startLabel} -\n${item.endLabel}`,
       item.durationLabel,
       String(item.actualPoints || 0),
-      item.photoUrl ? "[Foto]" : "-",
+      "[QR]",
       item.workSummary || "-",
     ];
 
@@ -311,18 +348,17 @@ async function drawWorkTable(
     for (const [index, value] of values.entries()) {
       const col = columns[index];
       
-      if (index === 5 && item.photoUrl) {
-        const photoImg = await loadSignatureImage(pdfDoc, item.photoUrl);
-        if (photoImg) {
-          page.drawImage(photoImg, {
-            x: valueX + 4,
-            y: rowTopY - rowHeight + 4,
-            width: 40,
-            height: 36,
+      if (index === 5) {
+        if (qrImage) {
+          page.drawImage(qrImage, {
+            x: valueX + (col.width - 34) / 2,
+            y: rowTopY - rowHeight + (rowHeight - 34) / 2,
+            width: 34,
+            height: 34,
           });
         } else {
           page.drawText("-", {
-            x: valueX + 20,
+            x: valueX + 24,
             y: rowTopY - 24,
             size: 7.8,
             font: regularFont,
@@ -330,7 +366,7 @@ async function drawWorkTable(
           });
         }
       } else {
-        const lines = splitText(value, index === 6 ? 48 : 12);
+        const lines = splitText(value, index === 6 ? 44 : 12);
         let lineY = rowTopY - 14;
 
         for (const line of lines.slice(0, 3)) {
@@ -355,10 +391,10 @@ async function drawWorkTable(
     rowTopY -= rowHeight;
   }
 
-  page.drawText("Generated from HERO Daily Activity System.", {
+  page.drawText("* Scan QR code pada kolom Evidence (QR) untuk melihat seluruh foto bukti pekerjaan secara lengkap.", {
     x: 36,
     y: 58,
-    size: 8,
+    size: 7.5,
     font: regularFont,
     color: rgb(0.37, 0.46, 0.52),
   });

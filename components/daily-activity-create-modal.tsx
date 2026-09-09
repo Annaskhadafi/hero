@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/dialog'
 import { SearchableSelect } from '@/components/ui/searchable-select'
 import { createDailyActivitySessionAction } from '@/app/dashboard/activity-hub/actions'
+import { uploadFile } from '@/app/actions/upload'
 import { cn } from '@/lib/utils'
 
 export type ModalEmployee = {
@@ -98,6 +99,8 @@ export function DailyActivityCreateModal({
     new Set(['Group: Support Customer', 'Group: Running Tire Inspection & Pressure Check'])
   )
 
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState<Record<number | string, boolean>>({})
+
   const [createForm, setCreateForm] = useState<{
     employeeId: string
     employeeName: string
@@ -118,9 +121,20 @@ export function DailyActivityCreateModal({
     managerName: string
     sourceMode: 'self_input' | 'assigned' | 'custom'
     assignmentId?: string
+    assignedStartTime?: string
+    assignedEndTime?: string
+    assignedUnitNumber?: string
+    assignedMaterialUsed?: string
+    assignedNotes?: string
+    assignedPhotoUrl?: string | null
     customName?: string
     customDescription?: string
+    customStartTime?: string
+    customEndTime?: string
     customUnit?: string
+    customMaterialUsed?: string
+    customNotes?: string
+    customPhotoUrl?: string | null
     items: Array<{
       label: string
       unitNumber?: string
@@ -129,6 +143,8 @@ export function DailyActivityCreateModal({
       remark?: string
       startTime?: string
       endTime?: string
+      photoUrl?: string | null
+      photos?: string[]
     }>
   }>({
     employeeId: '',
@@ -149,6 +165,21 @@ export function DailyActivityCreateModal({
     managerEmployeeId: '',
     managerName: '',
     sourceMode: 'self_input',
+    assignmentId: '',
+    assignedStartTime: '08:00',
+    assignedEndTime: '17:00',
+    assignedUnitNumber: '',
+    assignedMaterialUsed: '',
+    assignedNotes: '',
+    assignedPhotoUrl: null,
+    customName: '',
+    customDescription: '',
+    customStartTime: '08:00',
+    customEndTime: '17:00',
+    customUnit: '',
+    customMaterialUsed: '',
+    customNotes: '',
+    customPhotoUrl: null,
     items: [],
   })
 
@@ -224,7 +255,9 @@ export function DailyActivityCreateModal({
             unitNumber: '',
             remark: '',
             startTime: '08:00',
-            endTime: '09:00',
+            endTime: '08:30',
+            photoUrl: null,
+            photos: [],
           },
         ],
       }
@@ -246,6 +279,71 @@ export function DailyActivityCreateModal({
       ...p,
       items: p.items.filter((_, i) => i !== idx),
     }))
+  }
+
+  const handlePhotoUpload = async (targetKey: number | string, file?: File) => {
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      toast.error('File harus berupa gambar (JPG, PNG, WebP)')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Ukuran foto maksimal 5MB')
+      return
+    }
+
+    setIsUploadingPhoto((prev) => ({ ...prev, [targetKey]: true }))
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('uploadTarget', 'daily_activity')
+      const res = await uploadFile(formData)
+      if (res.success && (res.readableUrl || res.url)) {
+        const finalUrl = res.readableUrl || res.url
+        if (typeof targetKey === 'number') {
+          updateItemRow(targetKey, 'photoUrl', finalUrl)
+          updateItemRow(targetKey, 'photos', [finalUrl])
+        } else if (targetKey === 'custom') {
+          setCreateForm((p) => ({ ...p, customPhotoUrl: finalUrl }))
+        } else if (targetKey === 'assigned') {
+          setCreateForm((p) => ({ ...p, assignedPhotoUrl: finalUrl }))
+        }
+        toast.success('Foto evidence berhasil diunggah')
+      } else {
+        // Fallback to local base64 reader
+        const reader = new FileReader()
+        reader.onload = () => {
+          const base64Url = reader.result as string
+          if (typeof targetKey === 'number') {
+            updateItemRow(targetKey, 'photoUrl', base64Url)
+            updateItemRow(targetKey, 'photos', [base64Url])
+          } else if (targetKey === 'custom') {
+            setCreateForm((p) => ({ ...p, customPhotoUrl: base64Url }))
+          } else if (targetKey === 'assigned') {
+            setCreateForm((p) => ({ ...p, assignedPhotoUrl: base64Url }))
+          }
+          toast.success('Foto evidence tersimpan')
+        }
+        reader.readAsDataURL(file)
+      }
+    } catch {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const base64Url = reader.result as string
+        if (typeof targetKey === 'number') {
+          updateItemRow(targetKey, 'photoUrl', base64Url)
+          updateItemRow(targetKey, 'photos', [base64Url])
+        } else if (targetKey === 'custom') {
+          setCreateForm((p) => ({ ...p, customPhotoUrl: base64Url }))
+        } else if (targetKey === 'assigned') {
+          setCreateForm((p) => ({ ...p, assignedPhotoUrl: base64Url }))
+        }
+        toast.success('Foto evidence tersimpan')
+      }
+      reader.readAsDataURL(file)
+    } finally {
+      setIsUploadingPhoto((prev) => ({ ...prev, [targetKey]: false }))
+    }
   }
 
 async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 500): Promise<T> {
@@ -272,15 +370,187 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
 }
 
   const handleCreateSession = async () => {
-    if (!createForm.employeeId) {
-      toast.error('Pilih karyawan terlebih dahulu')
+    // 1. Employee Profile Validations
+    if (!createForm.employeeId?.trim()) {
+      toast.error('Pilih Karyawan terlebih dahulu!')
       return
     }
-    const validItems = createForm.items.filter((it) => it.label.trim().length > 0)
-    if (validItems.length === 0) {
-      toast.error('Tambahkan minimal 1 item aktivitas')
+
+    if (!createForm.workDate?.trim()) {
+      toast.error('Tanggal Kerja (Work Date) wajib diisi!')
       return
     }
+
+    if (!createForm.shiftCode?.trim()) {
+      toast.error('Shift Kerja wajib dipilih!')
+      return
+    }
+
+    if (!createForm.siteId?.trim()) {
+      toast.error('Site / Lokasi wajib dipilih!')
+      return
+    }
+
+    if (!createForm.jobTitle?.trim()) {
+      toast.error('Job Title / Posisi wajib diisi!')
+      return
+    }
+
+    if (!createForm.department?.trim()) {
+      toast.error('Departemen & Seksi wajib diisi!')
+      return
+    }
+
+    if (!createForm.customerName?.trim()) {
+      toast.error('Customer / Partner wajib diisi!')
+      return
+    }
+
+    // 2. Signatories Validations
+    if (!createForm.leaderEmployeeId?.trim()) {
+      toast.error('Leader / Supervisor (Verifikasi tahap 1) wajib dipilih!')
+      return
+    }
+
+    if (!createForm.superiorEmployeeId?.trim()) {
+      toast.error('Section Head (Verifikasi tahap 2) wajib dipilih!')
+      return
+    }
+
+    // 3. Activity Items & Evidence Validation
+    let validItems: any[] = []
+
+    if (createForm.sourceMode === 'custom') {
+      if (!createForm.customName?.trim()) {
+        toast.error('Nama Custom Activity wajib diisi!')
+        return
+      }
+      if (!createForm.customPhotoUrl?.trim()) {
+        toast.error('Photo Evidence untuk Custom Activity wajib diunggah!')
+        return
+      }
+      if (!createForm.customDescription?.trim()) {
+        toast.error('Description / Penjelasan Custom Activity wajib diisi!')
+        return
+      }
+      if (!createForm.customStartTime?.trim()) {
+        toast.error('Start Time Custom Activity wajib diisi!')
+        return
+      }
+      if (!createForm.customEndTime?.trim()) {
+        toast.error('End Time Custom Activity wajib diisi!')
+        return
+      }
+      if (!createForm.customUnit?.trim()) {
+        toast.error('Equipment / Unit No. Custom Activity wajib diisi!')
+        return
+      }
+      if (!createForm.customMaterialUsed?.trim()) {
+        toast.error('Material Used Custom Activity wajib diisi!')
+        return
+      }
+      if (!createForm.customNotes?.trim()) {
+        toast.error('Notes / Hasil Kerja Custom Activity wajib diisi!')
+        return
+      }
+
+      validItems = [
+        {
+          label: createForm.customName.trim(),
+          unitNumber: createForm.customUnit.trim(),
+          remark: `${createForm.customDescription.trim()} - ${createForm.customNotes.trim()}`,
+          startedAt: `${createForm.workDate}T${createForm.customStartTime || '08:00'}:00`,
+          endedAt: `${createForm.workDate}T${createForm.customEndTime || '17:00'}:00`,
+          materialUsed: createForm.customMaterialUsed.trim(),
+          photoUrl: createForm.customPhotoUrl,
+          photos: [createForm.customPhotoUrl],
+          duration: '60m',
+          points: 10,
+        },
+      ]
+    } else if (createForm.sourceMode === 'assigned') {
+      if (!createForm.assignmentId?.trim()) {
+        toast.error('Assignment penugasan wajib dipilih!')
+        return
+      }
+      if (!createForm.assignedPhotoUrl?.trim()) {
+        toast.error('Photo Evidence untuk Assigned Activity wajib diunggah!')
+        return
+      }
+      if (!createForm.assignedStartTime?.trim()) {
+        toast.error('Start Time Assigned Activity wajib diisi!')
+        return
+      }
+      if (!createForm.assignedEndTime?.trim()) {
+        toast.error('End Time Assigned Activity wajib diisi!')
+        return
+      }
+      if (!createForm.assignedUnitNumber?.trim()) {
+        toast.error('Equipment / Unit No. Assigned Activity wajib diisi!')
+        return
+      }
+      if (!createForm.assignedMaterialUsed?.trim()) {
+        toast.error('Material Used Assigned Activity wajib diisi!')
+        return
+      }
+      if (!createForm.assignedNotes?.trim()) {
+        toast.error('Notes / Hasil Kerja Assigned Activity wajib diisi!')
+        return
+      }
+
+      validItems = [
+        {
+          label: `Assignment #${createForm.assignmentId}`,
+          unitNumber: createForm.assignedUnitNumber.trim(),
+          remark: createForm.assignedNotes.trim(),
+          startedAt: `${createForm.workDate}T${createForm.assignedStartTime || '08:00'}:00`,
+          endedAt: `${createForm.workDate}T${createForm.assignedEndTime || '17:00'}:00`,
+          materialUsed: createForm.assignedMaterialUsed.trim(),
+          photoUrl: createForm.assignedPhotoUrl,
+          photos: [createForm.assignedPhotoUrl],
+          duration: '60m',
+          points: 10,
+        },
+      ]
+    } else {
+      validItems = createForm.items.filter((it) => it.label && it.label.trim().length > 0)
+      if (validItems.length === 0) {
+        toast.error('Buka Kamus Aktivitas dan pilih minimal 1 item aktivitas!')
+        return
+      }
+
+      for (let idx = 0; idx < validItems.length; idx++) {
+        const item = validItems[idx]
+        const itemNumber = idx + 1
+        const itemLabel = item.label.split(' - ')[1] || item.label
+
+        if (!item.unitNumber?.trim()) {
+          toast.error(`Equipment / Unit No. pada item #${itemNumber} (${itemLabel}) wajib diisi!`)
+          return
+        }
+
+        if (!item.startTime?.trim()) {
+          toast.error(`Waktu Mulai pada item #${itemNumber} (${itemLabel}) wajib diisi!`)
+          return
+        }
+
+        if (!item.endTime?.trim()) {
+          toast.error(`Waktu Selesai pada item #${itemNumber} (${itemLabel}) wajib diisi!`)
+          return
+        }
+
+        if (!item.photoUrl?.trim() && (!item.photos || item.photos.length === 0)) {
+          toast.error(`Photo Evidence pada item #${itemNumber} (${itemLabel}) wajib diunggah!`)
+          return
+        }
+
+        if (!item.remark?.trim()) {
+          toast.error(`Catatan Item pada item #${itemNumber} (${itemLabel}) wajib diisi!`)
+          return
+        }
+      }
+    }
+
     setIsCreating(true)
     try {
       const res = await withActionRetry(() =>
@@ -296,7 +566,19 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
           managerEmployeeId: createForm.managerEmployeeId ? Number(createForm.managerEmployeeId) : undefined,
           managerName: createForm.managerName || undefined,
           teamMemberEmployeeIds: isTeamLog ? selectedTeamMemberIds : [],
-          items: validItems,
+          notes: createForm.customerName ? `Customer: ${createForm.customerName}` : undefined,
+          items: validItems.map((it) => ({
+            label: it.label,
+            unitNumber: it.unitNumber,
+            startedAt: it.startedAt || `${createForm.workDate}T${it.startTime || '08:00'}:00`,
+            endedAt: it.endedAt || `${createForm.workDate}T${it.endTime || '08:30'}:00`,
+            duration: it.duration || '60m',
+            points: it.points || 10,
+            remark: it.remark,
+            materialUsed: it.materialUsed,
+            photoUrl: it.photoUrl || (it.photos?.[0] ?? null),
+            photos: it.photos || (it.photoUrl ? [it.photoUrl] : []),
+          })),
         })
       )
       if (res.success && res.sessionId) {
@@ -320,6 +602,21 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
           managerEmployeeId: '',
           managerName: '',
           sourceMode: 'self_input',
+          assignmentId: '',
+          assignedStartTime: '08:00',
+          assignedEndTime: '17:00',
+          assignedUnitNumber: '',
+          assignedMaterialUsed: '',
+          assignedNotes: '',
+          assignedPhotoUrl: null,
+          customName: '',
+          customDescription: '',
+          customStartTime: '08:00',
+          customEndTime: '17:00',
+          customUnit: '',
+          customMaterialUsed: '',
+          customNotes: '',
+          customPhotoUrl: null,
           items: [],
         })
         setIsTeamLog(false)
@@ -351,7 +648,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
             <div className="flex items-center justify-between">
               <div>
                 <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <span className="p-1.5 rounded-lg bg-teal-100 text-teal-800 font-bold text-xs">F.HC.DAR</span>
+                  <span className="p-1.5 rounded-lg bg-teal-100 text-teal-800 font-bold text-xs">FJ.IC.DAR</span>
                   Tambah Dokumen Daily Activity Report
                 </DialogTitle>
                 <DialogDescription className="text-xs text-slate-500 mt-0.5">
@@ -478,11 +775,11 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Customer / Partner</Label>
+                  <Label className="text-xs font-semibold text-slate-700">Customer / Partner *</Label>
                   <Input
                     value={createForm.customerName}
                     onChange={(e) => setCreateForm((p) => ({ ...p, customerName: e.target.value }))}
-                    placeholder="Nama Customer (Opsional)"
+                    placeholder="Nama Customer / Partner"
                     className="bg-white border-slate-200 h-9 text-xs"
                   />
                 </div>
@@ -633,7 +930,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                     onChange={(e) => setCreateForm((p) => ({ ...p, assignmentId: e.target.value }))}
                     className="w-full h-9 rounded-md border border-slate-200 bg-white px-3 py-1 text-xs shadow-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="">Pilih assignment</option>
+                    <option value="">Pilih assignment...</option>
                     <option value="1">ASG-001 • Perbaikan Tire Unit HD-785 (Andana Gustafianto)</option>
                     <option value="2">ASG-002 • Mounting OTR Wheel Workshop Site Pekanbaru (Rizal Mahendra)</option>
                   </select>
@@ -641,61 +938,124 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                 </div>
 
                 <div className="rounded-lg border border-blue-100 bg-white p-3 space-y-2">
-                  <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                    <Camera className="size-3.5 text-slate-500" /> Photo Evidence
-                  </span>
-                  <div className="grid grid-cols-2 gap-2">
-                    <label className="cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50/70 hover:bg-blue-100/70 py-2 text-xs font-semibold text-blue-800 transition-colors">
-                      <Camera className="size-3.5 text-blue-700" /> Kamera
-                      <input type="file" accept="image/*" capture="environment" className="hidden" />
-                    </label>
-                    <label className="cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50/70 hover:bg-blue-100/70 py-2 text-xs font-semibold text-blue-800 transition-colors">
-                      <ImagePlus className="size-3.5 text-blue-700" /> Galeri
-                      <input type="file" accept="image/*" className="hidden" />
-                    </label>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                      <Camera className="size-3.5 text-slate-500" /> Photo Evidence <span className="text-red-500 font-bold">*</span>
+                    </span>
+                    {createForm.assignedPhotoUrl ? (
+                      <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-semibold">
+                        Foto Terunggah
+                      </Badge>
+                    ) : (
+                      <span className="text-[10px] text-rose-500 font-bold">Wajib diunggah</span>
+                    )}
+                  </div>
+
+                  {createForm.assignedPhotoUrl ? (
+                    <div className="relative inline-block border border-slate-200 rounded-lg p-1 bg-slate-50">
+                      <img
+                        src={createForm.assignedPhotoUrl}
+                        alt="Assigned Evidence"
+                        className="size-20 object-cover rounded-md border border-slate-300"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setCreateForm((p) => ({ ...p, assignedPhotoUrl: null }))}
+                        className="absolute -top-1.5 -right-1.5 bg-rose-600 text-white rounded-full p-1 shadow-sm hover:bg-rose-700 transition-colors"
+                        title="Hapus foto"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className={cn(
+                        "cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50/70 hover:bg-blue-100/70 py-2 text-xs font-semibold text-blue-800 transition-colors",
+                        isUploadingPhoto['assigned'] && "opacity-50 pointer-events-none"
+                      )}>
+                        <Camera className="size-3.5 text-blue-700" /> {isUploadingPhoto['assigned'] ? "Mengunggah..." : "Kamera"}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          disabled={isUploadingPhoto['assigned']}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (file) handlePhotoUpload('assigned', file)
+                            e.target.value = ''
+                          }}
+                          className="hidden"
+                        />
+                      </label>
+                      <label className={cn(
+                        "cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50/70 hover:bg-blue-100/70 py-2 text-xs font-semibold text-blue-800 transition-colors",
+                        isUploadingPhoto['assigned'] && "opacity-50 pointer-events-none"
+                      )}>
+                        <ImagePlus className="size-3.5 text-blue-700" /> {isUploadingPhoto['assigned'] ? "Mengunggah..." : "Galeri"}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          disabled={isUploadingPhoto['assigned']}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (file) handlePhotoUpload('assigned', file)
+                            e.target.value = ''
+                          }}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-700">Start Time *</Label>
+                    <Input
+                      type="time"
+                      value={createForm.assignedStartTime || '08:00'}
+                      onChange={(e) => setCreateForm((p) => ({ ...p, assignedStartTime: e.target.value }))}
+                      className="bg-white border-slate-200 h-9 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-700">End Time *</Label>
+                    <Input
+                      type="time"
+                      value={createForm.assignedEndTime || '17:00'}
+                      onChange={(e) => setCreateForm((p) => ({ ...p, assignedEndTime: e.target.value }))}
+                      className="bg-white border-slate-200 h-9 text-xs"
+                    />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">Start Time</Label>
-                    <Input
-                      type="time"
-                      defaultValue="08:00"
-                      className="bg-white border-slate-200 h-9 text-xs"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">End Time</Label>
-                    <Input
-                      type="time"
-                      defaultValue="17:00"
-                      className="bg-white border-slate-200 h-9 text-xs"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">Equipment / Unit No.</Label>
+                    <Label className="text-xs font-semibold text-slate-700">Equipment / Unit No. *</Label>
                     <Input
                       placeholder="Contoh: DT-451 / BAY-03"
+                      value={createForm.assignedUnitNumber || ''}
+                      onChange={(e) => setCreateForm((p) => ({ ...p, assignedUnitNumber: e.target.value }))}
                       className="bg-white border-slate-200 h-9 text-xs font-mono"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">Material Used</Label>
+                    <Label className="text-xs font-semibold text-slate-700">Material Used *</Label>
                     <Input
                       placeholder="Material / tools dipakai"
+                      value={createForm.assignedMaterialUsed || ''}
+                      onChange={(e) => setCreateForm((p) => ({ ...p, assignedMaterialUsed: e.target.value }))}
                       className="bg-white border-slate-200 h-9 text-xs"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Notes / Hasil Kerja</Label>
+                  <Label className="text-xs font-semibold text-slate-700">Notes / Hasil Kerja *</Label>
                   <Textarea
                     placeholder="Ringkas pekerjaan, hasil, kendala, bukti penting."
+                    value={createForm.assignedNotes || ''}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, assignedNotes: e.target.value }))}
                     className="bg-white border-slate-200 text-xs"
                     rows={3}
                   />
@@ -722,23 +1082,78 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                 </div>
 
                 <div className="rounded-lg border border-sky-100 bg-white p-3 space-y-2">
-                  <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                    <Camera className="size-3.5 text-slate-500" /> Photo Evidence
-                  </span>
-                  <div className="grid grid-cols-2 gap-2">
-                    <label className="cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50/70 hover:bg-sky-100/70 py-2 text-xs font-semibold text-sky-800 transition-colors">
-                      <Camera className="size-3.5 text-sky-700" /> Kamera
-                      <input type="file" accept="image/*" capture="environment" className="hidden" />
-                    </label>
-                    <label className="cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50/70 hover:bg-sky-100/70 py-2 text-xs font-semibold text-sky-800 transition-colors">
-                      <ImagePlus className="size-3.5 text-sky-700" /> Galeri
-                      <input type="file" accept="image/*" className="hidden" />
-                    </label>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                      <Camera className="size-3.5 text-slate-500" /> Photo Evidence <span className="text-red-500 font-bold">*</span>
+                    </span>
+                    {createForm.customPhotoUrl ? (
+                      <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-semibold">
+                        Foto Terunggah
+                      </Badge>
+                    ) : (
+                      <span className="text-[10px] text-rose-500 font-bold">Wajib diunggah</span>
+                    )}
                   </div>
+
+                  {createForm.customPhotoUrl ? (
+                    <div className="relative inline-block border border-slate-200 rounded-lg p-1 bg-slate-50">
+                      <img
+                        src={createForm.customPhotoUrl}
+                        alt="Custom Evidence"
+                        className="size-20 object-cover rounded-md border border-slate-300"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setCreateForm((p) => ({ ...p, customPhotoUrl: null }))}
+                        className="absolute -top-1.5 -right-1.5 bg-rose-600 text-white rounded-full p-1 shadow-sm hover:bg-rose-700 transition-colors"
+                        title="Hapus foto"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className={cn(
+                        "cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50/70 hover:bg-sky-100/70 py-2 text-xs font-semibold text-sky-800 transition-colors",
+                        isUploadingPhoto['custom'] && "opacity-50 pointer-events-none"
+                      )}>
+                        <Camera className="size-3.5 text-sky-700" /> {isUploadingPhoto['custom'] ? "Mengunggah..." : "Kamera"}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          disabled={isUploadingPhoto['custom']}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (file) handlePhotoUpload('custom', file)
+                            e.target.value = ''
+                          }}
+                          className="hidden"
+                        />
+                      </label>
+                      <label className={cn(
+                        "cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50/70 hover:bg-sky-100/70 py-2 text-xs font-semibold text-sky-800 transition-colors",
+                        isUploadingPhoto['custom'] && "opacity-50 pointer-events-none"
+                      )}>
+                        <ImagePlus className="size-3.5 text-sky-700" /> {isUploadingPhoto['custom'] ? "Mengunggah..." : "Galeri"}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          disabled={isUploadingPhoto['custom']}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (file) handlePhotoUpload('custom', file)
+                            e.target.value = ''
+                          }}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Description</Label>
+                  <Label className="text-xs font-semibold text-slate-700">Description *</Label>
                   <Textarea
                     placeholder="Jelaskan aktivitas custom."
                     value={createForm.customDescription || ''}
@@ -750,18 +1165,20 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">Start Time</Label>
+                    <Label className="text-xs font-semibold text-slate-700">Start Time *</Label>
                     <Input
                       type="time"
-                      defaultValue="08:00"
+                      value={createForm.customStartTime || '08:00'}
+                      onChange={(e) => setCreateForm((p) => ({ ...p, customStartTime: e.target.value }))}
                       className="bg-white border-slate-200 h-9 text-xs"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">End Time</Label>
+                    <Label className="text-xs font-semibold text-slate-700">End Time *</Label>
                     <Input
                       type="time"
-                      defaultValue="17:00"
+                      value={createForm.customEndTime || '17:00'}
+                      onChange={(e) => setCreateForm((p) => ({ ...p, customEndTime: e.target.value }))}
                       className="bg-white border-slate-200 h-9 text-xs"
                     />
                   </div>
@@ -769,7 +1186,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">Equipment / Unit No.</Label>
+                    <Label className="text-xs font-semibold text-slate-700">Equipment / Unit No. *</Label>
                     <Input
                       placeholder="Contoh: DT-451 / BAY-03"
                       value={createForm.customUnit || ''}
@@ -778,18 +1195,22 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">Material Used</Label>
+                    <Label className="text-xs font-semibold text-slate-700">Material Used *</Label>
                     <Input
                       placeholder="Material / tools dipakai"
+                      value={createForm.customMaterialUsed || ''}
+                      onChange={(e) => setCreateForm((p) => ({ ...p, customMaterialUsed: e.target.value }))}
                       className="bg-white border-slate-200 h-9 text-xs"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Notes / Hasil Kerja</Label>
+                  <Label className="text-xs font-semibold text-slate-700">Notes / Hasil Kerja *</Label>
                   <Textarea
                     placeholder="Ringkas pekerjaan, hasil, kendala, bukti penting."
+                    value={createForm.customNotes || ''}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, customNotes: e.target.value }))}
                     className="bg-white border-slate-200 text-xs"
                     rows={3}
                   />
@@ -855,7 +1276,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
                               <div className="space-y-1">
-                                <Label className="text-xs font-semibold text-slate-700">Equipment / Unit No.</Label>
+                                <Label className="text-xs font-semibold text-slate-700">Equipment / Unit No. <span className="text-red-500 font-bold">*</span></Label>
                                 <Input
                                   placeholder="Unit / equipment number"
                                   value={item.unitNumber || ''}
@@ -865,7 +1286,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                               </div>
                               <div className="grid grid-cols-2 gap-1.5">
                                 <div className="space-y-1">
-                                  <Label className="text-xs font-semibold text-slate-700">Mulai</Label>
+                                  <Label className="text-xs font-semibold text-slate-700">Mulai <span className="text-red-500 font-bold">*</span></Label>
                                   <Input
                                     type="time"
                                     value={(item as any).startTime || '08:00'}
@@ -874,7 +1295,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                                   />
                                 </div>
                                 <div className="space-y-1">
-                                  <Label className="text-xs font-semibold text-slate-700">Selesai</Label>
+                                  <Label className="text-xs font-semibold text-slate-700">Selesai <span className="text-red-500 font-bold">*</span></Label>
                                   <Input
                                     type="time"
                                     value={(item as any).endTime || '08:30'}
@@ -885,24 +1306,84 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                               </div>
                             </div>
 
-                            <div className="rounded-lg border border-slate-200 bg-white p-2 space-y-1">
-                              <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                                <Camera className="size-3.5 text-slate-500" /> Photo Evidence
-                              </span>
-                              <div className="flex items-center gap-2">
-                                <label className="cursor-pointer inline-flex items-center gap-1 rounded bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 transition-colors">
-                                  <Camera className="size-3.5 text-slate-600" /> Kamera
-                                  <input type="file" accept="image/*" capture="environment" className="hidden" />
-                                </label>
-                                <label className="cursor-pointer inline-flex items-center gap-1 rounded bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 transition-colors">
-                                  <ImagePlus className="size-3.5 text-slate-600" /> Galeri
-                                  <input type="file" accept="image/*" className="hidden" />
-                                </label>
+                            <div className="rounded-lg border border-slate-200 bg-white p-2.5 space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                                  <Camera className="size-3.5 text-slate-500" /> Photo Evidence <span className="text-red-500 font-bold">*</span>
+                                </span>
+                                {item.photoUrl ? (
+                                  <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-semibold">
+                                    Foto Terunggah
+                                  </Badge>
+                                ) : (
+                                  <span className="text-[10px] text-rose-500 font-bold">Wajib diunggah</span>
+                                )}
                               </div>
+
+                              {item.photoUrl ? (
+                                <div className="relative inline-block border border-slate-200 rounded-lg p-1 bg-slate-50">
+                                  <img
+                                    src={item.photoUrl}
+                                    alt={`Evidence #${idx + 1}`}
+                                    className="size-20 object-cover rounded-md border border-slate-300"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      updateItemRow(idx, 'photoUrl', '')
+                                      updateItemRow(idx, 'photos', [])
+                                    }}
+                                    className="absolute -top-1.5 -right-1.5 bg-rose-600 text-white rounded-full p-1 shadow-sm hover:bg-rose-700 transition-colors"
+                                    title="Hapus foto"
+                                  >
+                                    <X className="size-3" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <label className={cn(
+                                    "cursor-pointer inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors",
+                                    isUploadingPhoto[idx] && "opacity-50 pointer-events-none"
+                                  )}>
+                                    <Camera className="size-3.5 text-slate-600" />
+                                    {isUploadingPhoto[idx] ? "Mengunggah..." : "Kamera"}
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      capture="environment"
+                                      disabled={isUploadingPhoto[idx]}
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0]
+                                        if (file) handlePhotoUpload(idx, file)
+                                        e.target.value = ''
+                                      }}
+                                      className="hidden"
+                                    />
+                                  </label>
+                                  <label className={cn(
+                                    "cursor-pointer inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors",
+                                    isUploadingPhoto[idx] && "opacity-50 pointer-events-none"
+                                  )}>
+                                    <ImagePlus className="size-3.5 text-slate-600" />
+                                    {isUploadingPhoto[idx] ? "Mengunggah..." : "Galeri"}
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      disabled={isUploadingPhoto[idx]}
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0]
+                                        if (file) handlePhotoUpload(idx, file)
+                                        e.target.value = ''
+                                      }}
+                                      className="hidden"
+                                    />
+                                  </label>
+                                </div>
+                              )}
                             </div>
 
                             <div className="space-y-1">
-                              <Label className="text-xs font-semibold text-slate-700">Catatan Item</Label>
+                              <Label className="text-xs font-semibold text-slate-700">Catatan Item <span className="text-red-500 font-bold">*</span></Label>
                               <Input
                                 placeholder="Hasil kerja, temuan, atau catatan singkat."
                                 value={item.remark || ''}
@@ -930,7 +1411,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Leader / Supervisor</Label>
+                  <Label className="text-xs font-semibold text-slate-700">Leader / Supervisor *</Label>
                   <SearchableSelect
                     label="Leader"
                     placeholder="PILIH LEADER..."
@@ -950,7 +1431,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Section Head</Label>
+                  <Label className="text-xs font-semibold text-slate-700">Section Head *</Label>
                   <SearchableSelect
                     label="Section Head"
                     placeholder="PILIH SECTION HEAD..."
