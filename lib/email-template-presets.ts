@@ -15,6 +15,61 @@ export type EmailTemplatePreset = {
 
 const RAW_EMAIL_TEMPLATE_PRESETS: EmailTemplatePreset[] = [
   {
+    name: 'Mine Permit Expiry Reminder',
+    templateCode: 'hc_employee_mine_permit_reminder',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'pic',
+    ccEmail: '',
+    subject: '[Reminder] Mine Permit Karyawan Segera Berakhir — Site {{siteName}} ({{totalExpiring}} Karyawan)',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:640px;margin:0 auto;background:#f8fafc;padding:20px">
+<div style="background:linear-gradient(135deg,#92400e,#b45309);padding:24px;border-radius:10px 10px 0 0">
+  <h1 style="color:#ffffff;font-size:20px;margin:0;font-weight:700">PT CHITRA PARATAMA</h1>
+  <p style="color:#fde68a;font-size:12px;margin:4px 0 0;text-transform:uppercase;letter-spacing:1px">Human Capital – Peringatan Expiry Mine Permit</p>
+</div>
+<div style="background:#ffffff;padding:28px 24px;border-radius:0 0 10px 10px;border:1px solid #e2e8f0;border-top:0">
+  <p style="color:#1e293b;font-size:14px;line-height:1.6;margin:0 0 16px">Yth. Bapak/Ibu Manajemen & PIC Site <strong>{{siteName}}</strong>,</p>
+  <p style="color:#334155;font-size:14px;line-height:1.6;margin:0 0 20px">
+    Berikut adalah daftar karyawan di Site <strong>{{siteName}}</strong> yang Mine Permit-nya akan segera berakhir dalam <strong>{{reminderDays}} hari</strong> ke depan (Total: <strong>{{totalExpiring}} orang</strong>):
+  </p>
+  {{tableContentHtml}}
+  <div style="text-align:center;margin:28px 0">
+    <a href="{{viewLink}}" style="background:#b45309;color:#ffffff;padding:12px 28px;text-decoration:none;font-size:14px;font-weight:600;border-radius:6px;display:inline-block">Lihat Data Karyawan di HERO</a>
+  </div>
+  <p style="color:#64748b;font-size:12px;margin:16px 0 0;line-height:1.5;">
+    Mohon segera melakukan tindak lanjut proses perpanjangan Mine Permit untuk memastikan kepatuhan keselamatan dan operasional kerja.
+  </p>
+  <p style="color:#94a3b8;font-size:11px;margin:24px 0 0;line-height:1.5;border-top:1px solid #f1f5f9;padding-top:16px">
+    Email ini dikirim secara otomatis oleh Sistem HERO Human Capital PT Chitra Paratama.
+  </p>
+</div>
+</div>`,
+    textContent: `Yth. Bapak/Ibu Manajemen & PIC Site {{siteName}},
+
+Berikut adalah daftar karyawan di Site {{siteName}} yang Mine Permit-nya akan segera berakhir dalam {{reminderDays}} hari ke depan (Total: {{totalExpiring}} orang).
+
+Mohon segera melakukan tindak lanjut proses perpanjangan Mine Permit untuk memastikan kepatuhan keselamatan kerja di site.
+
+Tautan: {{viewLink}}
+
+Human Capital - PT Chitra Paratama`,
+    description: 'Notifikasi berkala pengingat masa berlaku Mine Permit karyawan per Site.',
+    variables: [
+      'siteName',
+      'totalExpiring',
+      'reminderDays',
+      'tableContentHtml',
+      'viewLink',
+    ],
+    sampleValues: {
+      siteName: 'Tabang',
+      totalExpiring: '3',
+      reminderDays: '30',
+      tableContentHtml: '<table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:13px;"><tr style="background:#fef3c7;"><th style="padding:8px;border:1px solid #e2e8f0;text-align:left;">NIK</th><th style="padding:8px;border:1px solid #e2e8f0;text-align:left;">Nama</th><th style="padding:8px;border:1px solid #e2e8f0;text-align:left;">Posisi</th><th style="padding:8px;border:1px solid #e2e8f0;text-align:left;">Exp Date</th><th style="padding:8px;border:1px solid #e2e8f0;text-align:left;">Sisa Hari</th></tr><tr><td style="padding:8px;border:1px solid #e2e8f0;">CP001</td><td style="padding:8px;border:1px solid #e2e8f0;">Budi Santoso</td><td style="padding:8px;border:1px solid #e2e8f0;">Mechanic</td><td style="padding:8px;border:1px solid #e2e8f0;">2026-09-30</td><td style="padding:8px;border:1px solid #e2e8f0;color:#dc2626;font-weight:bold;">21 hari</td></tr></table>',
+      viewLink: 'https://hero.chitraparatama.co.id/dashboard/hc/employee',
+    },
+  },
+  {
     name: '5R Audit Approval Request',
     templateCode: 'five_r_approval_request',
     templateType: 'Notification',

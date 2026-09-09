@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { runApprovalAutomationTick } from "@/lib/approval-blueprint";
 import { runApdReminders } from "@/lib/apd-reminder";
 import { sendDueContractReviewReminders } from "@/app/actions/contract-review";
-import { sendMinePermitExpiryReminders } from "@/lib/mine-permit-reminder";
+import { runAllMinePermitReminders } from "@/lib/mine-permit-reminder";
 
 function isAuthorizedCronRequest(request: Request): boolean {
   const cronSecret = process.env.CRON_SECRET;
@@ -36,7 +36,7 @@ export async function GET(request: Request) {
     const result = await runApprovalAutomationTick();
     const apdResult = await runApdReminders();
     const contractReviewResult = await sendDueContractReviewReminders();
-    const minePermitResult = await sendMinePermitExpiryReminders(60);
+    const minePermitResult = await runAllMinePermitReminders();
     return NextResponse.json({
       ok: true,
       approval: result,
@@ -49,5 +49,3 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, message }, { status: 500 });
   }
 }
-
-

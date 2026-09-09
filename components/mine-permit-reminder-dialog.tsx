@@ -1,7 +1,18 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Clock, Send, Loader2, Settings2, ShieldAlert, CheckCircle2 } from "lucide-react";
+import {
+  Clock,
+  Send,
+  Loader2,
+  Settings2,
+  ShieldAlert,
+  CheckCircle2,
+  Building2,
+  Calendar,
+  Mail,
+  Users,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,161 +24,514 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { EmployeeMultiSelect, type EmployeeOption } from "@/components/employee-multi-select";
 import { toast } from "sonner";
-import { sendMinePermitExpiryReminders } from "@/lib/mine-permit-reminder";
+
+interface SiteOption {
+  id: number;
+  name: string;
+}
+
+interface SiteConfig {
+  id?: number;
+  siteId: number;
+  siteName?: string;
+  intervalDays: number;
+  reminderDays: number;
+  recipientEmails: string[];
+  ccEmails: string[];
+  additionalCcEmails: string;
+  isActive: boolean;
+  lastSentAt: string | null;
+}
 
 export function MinePermitReminderDialog() {
   const [open, setOpen] = useState(false);
-  const [config, setConfig] = useState({
-    additionalRecipients: "",
+  const [sites, setSites] = useState<SiteOption[]>([]);
+  const [employees, setEmployees] = useState<EmployeeOption[]>([]);
+  const [selectedSiteId, setSelectedSiteId] = useState<number | null>(null);
+
+  const [config, setConfig] = useState<SiteConfig>({
+    siteId: 0,
+    intervalDays: 1,
     reminderDays: 30,
+    recipientEmails: [],
+    ccEmails: [],
+    additionalCcEmails: "",
     isActive: true,
+    lastSentAt: null,
   });
+
   const [isLoading, setIsLoading] = useState(false);
+  const [isConfigLoading, setIsConfigLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
   useEffect(() => {
-    if (open) fetchConfig();
+    if (open) {
+      loadInitialData();
+    }
   }, [open]);
 
-  async function fetchConfig() {
+  async function loadInitialData() {
     setIsLoading(true);
     try {
-      const res = await fetch('/dashboard/api/mine-permit-reminder-config');
+      const res = await fetch("/dashboard/api/mine-permit-reminder-config");
       if (res.ok) {
         const data = await res.json();
-        setConfig({
-          additionalRecipients: data.additionalRecipients ?? "",
-          reminderDays: data.reminderDays ?? 30,
-          isActive: data.isActive ?? true,
-        });
+        setSites(data.sites || []);
+        setEmployees(data.employees || []);
+
+        if (data.sites && data.sites.length > 0) {
+          const firstSiteId = data.sites[0].id;
+          setSelectedSiteId(firstSiteId);
+          await loadSiteConfig(firstSiteId);
+        }
+      } else {
+        toast.error("Gagal memuat daftar site.");
       }
     } catch (e) {
       console.error(e);
+      toast.error("Terjadi kesalahan memuat data.");
     } finally {
       setIsLoading(false);
     }
   }
 
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault();
-    setIsSaving(true);
-
-    const fd = new FormData();
-    fd.set("additionalRecipients", config.additionalRecipients);
-    fd.set("reminderDays", String(config.reminderDays));
-    fd.set("isActive", String(config.isActive));
-
+  async function loadSiteConfig(siteId: number) {
+    setIsConfigLoading(true);
     try {
-      const res = await fetch('/dashboard/api/mine-permit-reminder-config', { method: 'POST', body: fd });
+      const res = await fetch(`/dashboard/api/mine-permit-reminder-config?siteId=${siteId}`);
       if (res.ok) {
-        toast.success("Pengaturan Mine Permit Reminder berhasil disimpan.");
-        setOpen(false);
-      } else {
-        toast.error("Gagal menyimpan pengaturan.");
+        const data = await res.json();
+        const c = data.config;
+        setConfig({
+          id: c.id,
+          siteId: c.siteId,
+          siteName: c.siteName,
+          intervalDays: c.intervalDays ?? 1,
+          reminderDays: c.reminderDays ?? 30,
+          recipientEmails: c.recipientEmails ?? [],
+          ccEmails: c.ccEmails ?? [],
+          additionalCcEmails: c.additionalCcEmails ?? "",
+          isActive: c.isActive ?? true,
+          lastSentAt: c.lastSentAt ?? null,
+        });
       }
     } catch (e) {
-      toast.error("Terjadi kesalahan.");
+      console.error("Failed loading site config:", e);
+    } finally {
+      setIsConfigLoading(false);
+    }
+  }
+
+  const handleSiteChange = (val: string) => {
+    const siteId = parseInt(val, 10);
+    if (!isNaN(siteId)) {
+      setSelectedSiteId(siteId);
+      loadSiteConfig(siteId);
+    }
+  };
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedSiteId) {
+      toast.error("Pilih Site terlebih dahulu.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const res = await fetch("/dashboard/api/mine-permit-reminder-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          siteId: selectedSiteId,
+          intervalDays: Number(config.intervalDays) || 1,
+          reminderDays: Number(config.reminderDays) || 30,
+          recipientEmails: config.recipientEmails,
+          ccEmails: config.ccEmails,
+          additionalCcEmails: config.additionalCcEmails,
+          isActive: config.isActive,
+        }),
+      });
+
+      if (res.ok) {
+        const currentSiteName = sites.find((s) => s.id === selectedSiteId)?.name;
+        toast.success(`Pengaturan Reminder Site ${currentSiteName || ""} berhasil disimpan.`);
+      } else {
+        toast.error("Gagal menyimpan pengaturan reminder.");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Terjadi kesalahan sistem saat menyimpan.");
     } finally {
       setIsSaving(false);
     }
   }
 
-  async function handleSendNow() {
+  async function handleTestSendNow() {
+    if (!selectedSiteId) return;
+    const currentSiteName = sites.find((s) => s.id === selectedSiteId)?.name;
+
     setIsSending(true);
     try {
-      const res = await sendMinePermitExpiryReminders(config.reminderDays);
-      if (res.errors > 0) {
-        toast.error(`Kirim selesai dengan ${res.errors} error. Sent: ${res.sent}, Skipped: ${res.skipped}`);
+      const res = await fetch("/dashboard/api/mine-permit-reminder-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          siteId: selectedSiteId,
+          action: "test",
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const r = data.testResult;
+        if (r?.sent) {
+          toast.success(
+            `Berhasil! ${r.count} karyawan terdeteksi. Email dikirim ke ${r.toCount} To & ${r.ccCount} CC.`
+          );
+          // Reload config to refresh lastSentAt
+          loadSiteConfig(selectedSiteId);
+        } else if (r?.skipped) {
+          toast.info(r.reason || "Pengiriman dilewati (tidak ada yang expired / setting nonaktif).");
+        } else {
+          toast.error(r?.reason || "Gagal mengirim notifikasi reminder.");
+        }
       } else {
-        toast.success(`Berhasil mengirim ${res.sent} reminder. Skipped: ${res.skipped}`);
+        toast.error("Gagal memicu pengiriman email.");
       }
-    } catch (e) {
-      toast.error("Gagal memicu pengiriman email.");
+    } catch (err) {
+      console.error(err);
+      toast.error("Terjadi kesalahan pengiriman email.");
     } finally {
       setIsSending(false);
     }
   }
 
+  const selectedSite = sites.find((s) => s.id === selectedSiteId);
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="border-dashed">
-          <Settings2 className="mr-2 size-4" />
+        <Button variant="outline" className="border-dashed gap-2 font-medium">
+          <Settings2 className="size-4 text-amber-600" />
           Setting Reminder
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-xl">
+
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <ShieldAlert className="size-5 text-amber-600" />
-            Setting Reminder Mine Permit
-          </DialogTitle>
-          <DialogDescription>
-            Konfigurasi pengiriman email otomatis untuk peringatan Mine Permit yang akan expired.
+          <div className="flex items-center gap-2 text-amber-700">
+            <ShieldAlert className="size-5" />
+            <DialogTitle className="text-lg font-bold">Setting Reminder Exp. Mine Permit</DialogTitle>
+          </div>
+          <DialogDescription className="text-xs text-muted-foreground">
+            Konfigurasi pengingat berkala kadaluarsa Mine Permit per Site, frekuensi interval kirim, batas hari, dan daftar penerima To/CC.
           </DialogDescription>
         </DialogHeader>
 
         {isLoading ? (
-          <div className="py-8 text-center text-sm text-muted-foreground">Memuat pengaturan...</div>
+          <div className="flex flex-col items-center justify-center py-12 text-sm text-muted-foreground gap-2">
+            <Loader2 className="size-6 animate-spin text-amber-600" />
+            <span>Memuat konfigurasi site...</span>
+          </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-6 pt-4">
-            
-            <div className="space-y-4 rounded-xl border border-border/50 bg-surface-container-lowest p-4">
-              <div className="space-y-1">
-                <Label className="text-sm font-semibold">PJO / Site</Label>
-                <div className="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground cursor-not-allowed">
-                  Semua
+          <form onSubmit={handleSubmit} className="space-y-5 pt-2">
+            {/* Site Selector Bar */}
+            <div className="rounded-xl border border-amber-200/70 bg-amber-50/50 p-4 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                    <Building2 className="size-3.5 text-amber-700" />
+                    Pilih Site yang Dikelola
+                  </Label>
+                  <p className="text-[11px] text-amber-700/80">
+                    Setiap site memiliki konfigurasi pengingat dan daftar PIC penerima tersendiri.
+                  </p>
                 </div>
-              </div>
-              
-              <div className="space-y-1">
-                <Label className="text-sm font-semibold">Penerima Utama (To)</Label>
-                <div className="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground cursor-not-allowed">
-                  Section Head sesuai dengan Master Data
+                <div className="w-full sm:w-64">
+                  <Select
+                    value={selectedSiteId ? String(selectedSiteId) : ""}
+                    onValueChange={handleSiteChange}
+                  >
+                    <SelectTrigger className="bg-white border-amber-300">
+                      <SelectValue placeholder="Pilih Site..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sites.map((site) => (
+                        <SelectItem key={site.id} value={String(site.id)}>
+                          {site.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <Label className="text-sm font-semibold">Email CC Tambahan (Opsional)</Label>
-                <Input
-                  value={config.additionalRecipients}
-                  onChange={(e) => setConfig({ ...config, additionalRecipients: e.target.value })}
-                  placeholder="admin.hc@hero.com"
-                />
-                <p className="text-muted-foreground text-xs mt-1">
-                  Dipisahkan dengan koma jika lebih dari satu.
-                </p>
-              </div>
+              {selectedSite && (
+                <div className="pt-2 border-t border-amber-200/60 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      id="is-active-switch"
+                      checked={config.isActive}
+                      onCheckedChange={(checked) => setConfig({ ...config, isActive: checked })}
+                    />
+                    <Label htmlFor="is-active-switch" className="text-xs font-semibold cursor-pointer">
+                      {config.isActive ? (
+                        <span className="text-emerald-700 flex items-center gap-1">
+                          <span className="size-1.5 rounded-full bg-emerald-600 inline-block" />
+                          Pengingat Aktif untuk Site Ini
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground flex items-center gap-1">
+                          <span className="size-1.5 rounded-full bg-slate-400 inline-block" />
+                          Pengingat Nonaktif
+                        </span>
+                      )}
+                    </Label>
+                  </div>
 
-              <div className="space-y-1 pt-2 border-t border-border/50">
-                <Label className="text-sm font-semibold">Batas Waktu Pengingat (Hari)</Label>
-                <Input
-                  type="number"
-                  value={config.reminderDays}
-                  onChange={(e) => setConfig({ ...config, reminderDays: parseInt(e.target.value) || 30 })}
-                  className="max-w-[120px]"
-                />
-              </div>
+                  {config.lastSentAt ? (
+                    <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                      <Clock className="size-3 text-amber-600" />
+                      Terakhir dikirim: {new Date(config.lastSentAt).toLocaleDateString("id-ID", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })}
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-muted-foreground italic">
+                      Belum pernah dikirim
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
-            <div className="flex items-center justify-between">
+            {isConfigLoading ? (
+              <div className="py-10 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
+                <Loader2 className="size-4 animate-spin text-amber-600" />
+                <span>Memuat data pengingat site...</span>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* 2-Column Schedule & Threshold Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Threshold / Batas Hari Expired */}
+                  <div className="rounded-xl border border-border/70 bg-card p-3.5 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                        <Calendar className="size-3.5 text-amber-600" />
+                        Batas H-Minus Expired
+                      </Label>
+                      <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">
+                        {config.reminderDays} hari
+                      </Badge>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Karyawan yang permit-nya habis dalam kurun hari ini akan dirangkum.
+                    </p>
+                    <div className="flex items-center gap-2 pt-1">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={365}
+                        value={config.reminderDays}
+                        onChange={(e) =>
+                          setConfig({ ...config, reminderDays: parseInt(e.target.value, 10) || 30 })
+                        }
+                        className="h-9 w-24 text-sm font-semibold"
+                      />
+                      <span className="text-xs text-muted-foreground">Hari sebelum expired</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 pt-1 flex-wrap">
+                      {[15, 30, 60, 90].map((days) => (
+                        <Button
+                          key={days}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setConfig({ ...config, reminderDays: days })}
+                          className={`h-6 text-[11px] px-2 rounded-full ${
+                            config.reminderDays === days
+                              ? "bg-amber-100 text-amber-800 border-amber-300 font-semibold"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          H-{days}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Frekuensi Pengiriman / Interval */}
+                  <div className="rounded-xl border border-border/70 bg-card p-3.5 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                        <Clock className="size-3.5 text-blue-600" />
+                        Frekuensi Pemberitahuan
+                      </Label>
+                      <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200">
+                        Tiap {config.intervalDays} hari
+                      </Badge>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Jeda waktu pengiriman notifikasi berikutnya jika masih ada yang expired.
+                    </p>
+                    <div className="flex items-center gap-2 pt-1">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={90}
+                        value={config.intervalDays}
+                        onChange={(e) =>
+                          setConfig({ ...config, intervalDays: parseInt(e.target.value, 10) || 1 })
+                        }
+                        className="h-9 w-24 text-sm font-semibold"
+                      />
+                      <span className="text-xs text-muted-foreground">Hari sekali</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 pt-1 flex-wrap">
+                      {[
+                        { label: "1 Hari (Harian)", val: 1 },
+                        { label: "3 Hari", val: 3 },
+                        { label: "7 Hari (Mingguan)", val: 7 },
+                        { label: "14 Hari", val: 14 },
+                      ].map((item) => (
+                        <Button
+                          key={item.val}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setConfig({ ...config, intervalDays: item.val })}
+                          className={`h-6 text-[11px] px-2 rounded-full ${
+                            config.intervalDays === item.val
+                              ? "bg-blue-100 text-blue-800 border-blue-300 font-semibold"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          {item.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Primary Recipients (To) - Multi Select */}
+                <div className="rounded-xl border border-border/70 bg-card p-3.5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                      <Users className="size-3.5 text-primary" />
+                      Penerima Utama Notifikasi (To)
+                    </Label>
+                    <span className="text-[11px] text-muted-foreground">
+                      {config.recipientEmails.length} PIC dipilih
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Pilih karyawan / PIC di site ini (atau manajemen) yang akan menerima email rekapitulasi utama & lonceng notifikasi.
+                  </p>
+                  <EmployeeMultiSelect
+                    label="Penerima Utama"
+                    selectedEmails={config.recipientEmails}
+                    onChange={(emails) => setConfig({ ...config, recipientEmails: emails })}
+                    employees={employees}
+                    placeholder="Cari & pilih karyawan penerima utama..."
+                  />
+                </div>
+
+                {/* CC Recipients - Multi Select & Manual Input */}
+                <div className="rounded-xl border border-border/70 bg-card p-3.5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                      <Mail className="size-3.5 text-primary" />
+                      Penerima Tembusan (CC)
+                    </Label>
+                    <span className="text-[11px] text-muted-foreground">
+                      {config.ccEmails.length} Karyawan di-CC
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Pilih karyawan yang ingin mendapatkan tembusan email berkala.
+                  </p>
+                  <EmployeeMultiSelect
+                    label="Penerima CC"
+                    selectedEmails={config.ccEmails}
+                    onChange={(emails) => setConfig({ ...config, ccEmails: emails })}
+                    employees={employees}
+                    placeholder="Cari & pilih karyawan CC..."
+                  />
+
+                  {/* Manual / External CC Emails */}
+                  <div className="pt-2 border-t border-border/60 space-y-1">
+                    <Label className="text-[11px] font-medium text-foreground">
+                      Email CC Eksternal / Manual Tambahan (Opsional)
+                    </Label>
+                    <Input
+                      placeholder="admin.site@vendor.com, hc.dept@chitraparatama.co.id"
+                      value={config.additionalCcEmails}
+                      onChange={(e) => setConfig({ ...config, additionalCcEmails: e.target.value })}
+                      className="h-9 text-xs"
+                    />
+                    <p className="text-[10px] text-muted-foreground">
+                      Gunakan tanda koma (,) untuk memisahkan beberapa alamat email.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Footer Buttons */}
+            <div className="pt-3 border-t flex flex-col sm:flex-row items-center justify-between gap-3">
               <Button
                 type="button"
                 variant="outline"
-                disabled={isSending}
-                onClick={handleSendNow}
-                className="rounded-xl border-amber-200 text-amber-700 hover:bg-amber-50"
+                disabled={isSending || isSaving || !selectedSiteId}
+                onClick={handleTestSendNow}
+                className="w-full sm:w-auto border-amber-300 text-amber-800 hover:bg-amber-50 text-xs font-semibold gap-1.5"
               >
-                {isSending ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Send className="mr-2 size-4" />}
-                Test Kirim Sekarang
+                {isSending ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Send className="size-3.5" />
+                )}
+                Test Kirim Sekarang (Site Ini)
               </Button>
-              <div className="flex gap-2">
-                <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Batal</Button>
-                <Button type="submit" disabled={isSaving}>
-                  {isSaving ? <Loader2 className="mr-2 size-4 animate-spin" /> : <CheckCircle2 className="mr-2 size-4" />}
-                  Simpan
+
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setOpen(false)}
+                  className="text-xs"
+                >
+                  Tutup
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={isSaving || isSending || !selectedSiteId}
+                  className="text-xs font-semibold gap-1.5 bg-amber-700 hover:bg-amber-800 text-white"
+                >
+                  {isSaving ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="size-3.5" />
+                  )}
+                  Simpan Pengaturan
                 </Button>
               </div>
             </div>
