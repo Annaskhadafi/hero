@@ -25,6 +25,7 @@ export interface SiteReminderConfigData {
   ccEmails?: string[]
   additionalCcEmails: string
   isActive: boolean
+  isConfigured?: boolean
   lastSentAt: Date | null
   updatedAt?: Date | null
 }
@@ -96,6 +97,7 @@ export async function getMinePermitSiteConfig(siteId: number): Promise<SiteRemin
       ccEmails: [],
       additionalCcEmails: '',
       isActive: true,
+      isConfigured: false,
       lastSentAt: null,
     }
   }
@@ -136,24 +138,48 @@ export async function getMinePermitSiteConfig(siteId: number): Promise<SiteRemin
     ccEmails,
     additionalCcEmails: config.additionalCcEmails ?? '',
     isActive: config.isActive ?? true,
+    isConfigured: true,
     lastSentAt: config.lastSentAt ? new Date(config.lastSentAt) : null,
     updatedAt: config.updatedAt ? new Date(config.updatedAt) : null,
   }
 }
 
 export async function getAllMinePermitSiteConfigs(): Promise<SiteReminderConfigData[]> {
-  const allSites = await db
-    .select({
-      id: sites.id,
-      name: sites.name,
-    })
-    .from(sites)
-    .where(eq(sites.isActive, true))
-    .orderBy(asc(sites.name))
+  const [allSites, configs] = await Promise.all([
+    db
+      .select({
+        id: sites.id,
+        name: sites.name,
+      })
+      .from(sites)
+      .where(eq(sites.isActive, true))
+      .orderBy(asc(sites.name)),
+    db.select().from(minePermitReminderConfig),
+  ])
 
-  const configs = await db
-    .select()
-    .from(minePermitReminderConfig)
+  // Collect all employee IDs for batch email lookup
+  const allEmployeeIds = new Set<number>()
+  for (const c of configs) {
+    try {
+      const rIds = JSON.parse(c.recipientEmployeeIds || '[]')
+      if (Array.isArray(rIds)) rIds.forEach((id) => allEmployeeIds.add(id))
+    } catch {}
+    try {
+      const cIds = JSON.parse(c.ccEmployeeIds || '[]')
+      if (Array.isArray(cIds)) cIds.forEach((id) => allEmployeeIds.add(id))
+    } catch {}
+  }
+
+  let emailMap = new Map<number, string>()
+  if (allEmployeeIds.size > 0) {
+    const emps = await db
+      .select({ id: employees.id, email: employees.email })
+      .from(employees)
+      .where(inArray(employees.id, Array.from(allEmployeeIds)))
+    for (const e of emps) {
+      if (e.email) emailMap.set(e.id, e.email)
+    }
+  }
 
   const configMap = new Map<number, typeof configs[0]>()
   for (const c of configs) {
@@ -175,6 +201,9 @@ export async function getAllMinePermitSiteConfigs(): Promise<SiteReminderConfigD
       } catch {}
     }
 
+    const recipientEmails = recipientIds.map((id) => emailMap.get(id)).filter(Boolean) as string[]
+    const ccEmails = ccIds.map((id) => emailMap.get(id)).filter(Boolean) as string[]
+
     return {
       id: c?.id,
       siteId: site.id,
@@ -182,9 +211,12 @@ export async function getAllMinePermitSiteConfigs(): Promise<SiteReminderConfigD
       intervalDays: c?.intervalDays ?? 1,
       reminderDays: c?.reminderDays ?? 30,
       recipientEmployeeIds: recipientIds,
+      recipientEmails,
       ccEmployeeIds: ccIds,
+      ccEmails,
       additionalCcEmails: c?.additionalCcEmails ?? '',
       isActive: c ? Boolean(c.isActive) : true,
+      isConfigured: Boolean(c?.id),
       lastSentAt: c?.lastSentAt ? new Date(c.lastSentAt) : null,
       updatedAt: c?.updatedAt ? new Date(c.updatedAt) : null,
     }
@@ -209,20 +241,24 @@ export async function saveMinePermitSiteConfig(input: {
   // If emails are passed, resolve them to employee IDs
   if (input.recipientEmails && input.recipientEmails.length > 0) {
     const cleanEmails = input.recipientEmails.map((e) => e.trim().toLowerCase()).filter(Boolean)
-    const emps = await db
-      .select({ id: employees.id, email: employees.email })
-      .from(employees)
-      .where(sql`lower(${employees.email}) IN ${cleanEmails}`)
-    recipientIds = emps.map((e) => e.id)
+    if (cleanEmails.length > 0) {
+      const emps = await db
+        .select({ id: employees.id, email: employees.email })
+        .from(employees)
+        .where(inArray(sql`lower(${employees.email})`, cleanEmails))
+      recipientIds = emps.map((e) => e.id)
+    }
   }
 
   if (input.ccEmails && input.ccEmails.length > 0) {
     const cleanCcEmails = input.ccEmails.map((e) => e.trim().toLowerCase()).filter(Boolean)
-    const emps = await db
-      .select({ id: employees.id, email: employees.email })
-      .from(employees)
-      .where(sql`lower(${employees.email}) IN ${cleanCcEmails}`)
-    ccIds = emps.map((e) => e.id)
+    if (cleanCcEmails.length > 0) {
+      const emps = await db
+        .select({ id: employees.id, email: employees.email })
+        .from(employees)
+        .where(inArray(sql`lower(${employees.email})`, cleanCcEmails))
+      ccIds = emps.map((e) => e.id)
+    }
   }
 
   const existing = await db

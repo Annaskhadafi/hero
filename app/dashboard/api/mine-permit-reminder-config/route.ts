@@ -13,17 +13,18 @@ export async function GET(req: Request) {
     const siteIdParam = url.searchParams.get('siteId')
     const options = await getMinePermitSiteOptions()
 
+    const allConfigs = await getAllMinePermitSiteConfigs()
+
     if (siteIdParam) {
       const siteId = parseInt(siteIdParam, 10)
       const config = await getMinePermitSiteConfig(siteId)
       return NextResponse.json({
         config,
+        configs: allConfigs,
         sites: options.sites,
         employees: options.employees,
       })
     }
-
-    const allConfigs = await getAllMinePermitSiteConfigs()
     return NextResponse.json({
       configs: allConfigs,
       sites: options.sites,
