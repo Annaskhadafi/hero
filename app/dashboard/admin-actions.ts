@@ -3305,6 +3305,8 @@ const manageSecurityUserSchema = z.object({
   birthPlaceDate: optionalFormString,
   domicile: optionalFormString,
   directManagerId: optionalFormString,
+  departmentId: optionalPositiveInt,
+  sectionId: optionalPositiveInt,
   section: optionalFormString,
   department: optionalFormString,
   jobTitle: optionalFormString,
@@ -5729,17 +5731,20 @@ async function resolveDefaultOrgNodeId(positionId: number | null) {
 }
 
 async function resolveHrEmployeeGovernanceIds(params: {
-  department: string
-  section: string
-  jobTitle: string
-  siteId: number | null
+  department?: string
+  section?: string
+  departmentId?: number | null
+  sectionId?: number | null
+  jobTitle?: string
+  siteId?: number | null
   statusName?: string
 }) {
   const [departments, sections, positions, orgNodes, statuses] = await Promise.all([
-    db.select({ id: masterDepartments.id, name: masterDepartments.name }).from(masterDepartments),
+    db.select({ id: masterDepartments.id, code: masterDepartments.code, name: masterDepartments.name }).from(masterDepartments),
     db
       .select({
         id: masterSections.id,
+        code: masterSections.code,
         name: masterSections.name,
         departmentId: masterSections.departmentId,
       })
@@ -5759,19 +5764,30 @@ async function resolveHrEmployeeGovernanceIds(params: {
   ])
 
   const department =
+    (params.departmentId ? departments.find((item) => item.id === params.departmentId) : null) ??
     departments.find(
-      (item) => normalizeLookupValue(item.name) === normalizeLookupValue(params.department)
-    ) ?? null
+      (item) =>
+        (params.department && normalizeLookupValue(item.name) === normalizeLookupValue(params.department)) ||
+        (params.department && normalizeLookupValue(item.code) === normalizeLookupValue(params.department))
+    ) ??
+    null
+
   const section =
+    (params.sectionId ? sections.find((item) => item.id === params.sectionId) : null) ??
     sections.find(
       (item) =>
-        normalizeLookupValue(item.name) === normalizeLookupValue(params.section) &&
+        (params.section &&
+          (normalizeLookupValue(item.name) === normalizeLookupValue(params.section) ||
+            normalizeLookupValue(item.code) === normalizeLookupValue(params.section))) &&
         (department?.id == null || item.departmentId === department.id)
-    ) ?? null
+    ) ??
+    null
+
   const position =
     positions.find(
-      (item) => normalizeLookupValue(item.name) === normalizeLookupValue(params.jobTitle)
+      (item) => params.jobTitle && normalizeLookupValue(item.name) === normalizeLookupValue(params.jobTitle)
     ) ?? null
+
   const orgNode =
     orgNodes.find(
       (item) =>
@@ -5779,6 +5795,7 @@ async function resolveHrEmployeeGovernanceIds(params: {
         (section?.id == null || item.sectionId === section.id) &&
         (department?.id == null || item.departmentId === department.id)
     ) ?? null
+
   const status =
     statuses.find(
       (item) => normalizeLookupValue(item.name) === normalizeLookupValue(params.statusName)
@@ -5792,6 +5809,10 @@ async function resolveHrEmployeeGovernanceIds(params: {
   return {
     departmentId: department?.id ?? null,
     sectionId: section?.id ?? null,
+    departmentName: department?.name ?? null,
+    departmentCode: department?.code ?? null,
+    sectionName: section?.name ?? null,
+    sectionCode: section?.code ?? null,
     positionId: position?.id ?? null,
     orgNodeId: orgNode?.id ?? null,
     demographicEmployeeStatusCode: status?.code ?? null,
@@ -7537,6 +7558,8 @@ export async function manageSecurityUserAction(
       birthPlaceDate: formData.get('birthPlaceDate'),
       domicile: formData.get('domicile'),
       directManagerId: formData.get('directManagerId'),
+      departmentId: formData.get('departmentId'),
+      sectionId: formData.get('sectionId'),
       section: formData.get('section'),
       department: formData.get('department'),
       jobTitle: formData.get('jobTitle'),
@@ -7696,13 +7719,17 @@ export async function manageSecurityUserAction(
       const hrGovernanceIds = await resolveHrEmployeeGovernanceIds({
         department,
         section,
+        departmentId: payload.departmentId,
+        sectionId: payload.sectionId,
         jobTitle,
         siteId: defaultSite.id,
         statusName: payload.employeeStatusType ?? normalizedStatus.status,
       })
+      const finalDepartmentName = hrGovernanceIds.departmentName || department
+      const finalSectionName = hrGovernanceIds.sectionName || section
       const legacyGovernanceIds = await resolveEmployeeGovernanceIds({
-        department,
-        section,
+        department: finalDepartmentName,
+        section: finalSectionName,
         jobTitle,
       })
       const orgNodeId = await resolveDefaultOrgNodeId(legacyGovernanceIds.positionId)
@@ -7765,8 +7792,8 @@ export async function manageSecurityUserAction(
             sectionId: hrGovernanceIds.sectionId,
             positionId: hrGovernanceIds.positionId,
             orgNodeId: hrGovernanceIds.orgNodeId,
-            section,
-            department,
+            section: finalSectionName,
+            department: finalDepartmentName,
             role: jobTitle,
             jobTitle,
             workLocation: defaultSite.name,
@@ -7799,8 +7826,8 @@ export async function manageSecurityUserAction(
             sectionId: hrGovernanceIds.sectionId,
             positionId: hrGovernanceIds.positionId,
             orgNodeId: hrGovernanceIds.orgNodeId,
-            section,
-            department,
+            section: finalSectionName,
+            department: finalDepartmentName,
             role: jobTitle,
             jobTitle,
             workLocation: defaultSite.name,
@@ -7954,13 +7981,17 @@ export async function manageSecurityUserAction(
       const hrGovernanceIds = await resolveHrEmployeeGovernanceIds({
         department,
         section,
+        departmentId: payload.departmentId,
+        sectionId: payload.sectionId,
         jobTitle,
         siteId: selectedSite?.id ?? employee.siteId,
         statusName: payload.employeeStatusType ?? normalizedStatus.status,
       })
+      const finalDepartmentName = hrGovernanceIds.departmentName || department
+      const finalSectionName = hrGovernanceIds.sectionName || section
       const legacyGovernanceIds = await resolveEmployeeGovernanceIds({
-        department,
-        section,
+        department: finalDepartmentName,
+        section: finalSectionName,
         jobTitle,
       })
       const legacyOrgNodeId = await resolveDefaultOrgNodeId(legacyGovernanceIds.positionId)
@@ -7987,8 +8018,8 @@ export async function manageSecurityUserAction(
           positionId: hrGovernanceIds.positionId,
           orgNodeId: hrGovernanceIds.orgNodeId,
           siteId: selectedSite?.id ?? employee.siteId,
-          section,
-          department,
+          section: finalSectionName,
+          department: finalDepartmentName,
           role: jobTitle,
           jobTitle,
           levelName,

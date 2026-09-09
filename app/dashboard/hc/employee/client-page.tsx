@@ -76,6 +76,7 @@ type Employee = {
 
 type FilterOption = {
   id: number;
+  code?: string | null;
   name: string;
   departmentId?: number | null;
 };
@@ -1202,7 +1203,7 @@ export function EmployeeClientPage({
                 <option value="">-- Pilih Departemen --</option>
                 {filterOptions.departments.map((d) => (
                   <option key={d.id} value={d.id}>
-                    {d.name}
+                    {d.code ? `[${d.code}] ` : ""}{d.name}
                   </option>
                 ))}
               </select>
@@ -1219,7 +1220,7 @@ export function EmployeeClientPage({
                 <option value="">-- Pilih Section --</option>
                 {filteredSections.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name}
+                    {s.code ? `[${s.code}] ` : ""}{s.name}
                   </option>
                 ))}
               </select>

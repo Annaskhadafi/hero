@@ -242,11 +242,12 @@ export function SecurityUserCreateDialog({
                 <SelectContent>
                   {departments.map((department) => (
                     <SelectItem key={department.id} value={`${department.id}`}>
-                      {department.name} ({department.code})
+                      {department.code ? `[${department.code}] ` : ''}{department.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              <input type="hidden" name="departmentId" value={selectedDepartmentId} />
               <input type="hidden" name="department" value={selectedDepartmentName} />
             </div>
 
@@ -269,11 +270,12 @@ export function SecurityUserCreateDialog({
                 <SelectContent>
                   {filteredSections.map((section) => (
                     <SelectItem key={section.id} value={`${section.id}`}>
-                      {section.name} ({section.code})
+                      {section.code ? `[${section.code}] ` : ''}{section.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              <input type="hidden" name="sectionId" value={selectedSectionId} />
               <input type="hidden" name="section" value={selectedSectionName} />
             </div>
 

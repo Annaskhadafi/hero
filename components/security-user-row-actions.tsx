@@ -170,17 +170,19 @@ export function SecurityUserRowActions({
     if (open) {
       // Prefer sectionId-based resolution
       const sec = user.sectionId ? sections.find((s) => s.id === user.sectionId) : null;
-      setSelectedDepartmentId(
-        sec?.departmentId?.toString() ??
-        departments.find((department) => department.name === user.department)?.id.toString() ?? ''
-      )
-      setSelectedSectionId(
-        sec?.id.toString() ??
-        sections.find((section) => section.name === user.section)?.id.toString() ?? ''
-      )
+      const deptFromSec = sec?.departmentId ? departments.find((d) => d.id === sec.departmentId) : null;
+      const deptFromUser = user.departmentId
+        ? departments.find((d) => d.id === user.departmentId)
+        : departments.find((d) => d.name.toLowerCase() === user.department?.toLowerCase() || d.code.toLowerCase() === user.department?.toLowerCase());
+
+      const finalDeptId = deptFromSec?.id?.toString() ?? deptFromUser?.id?.toString() ?? '';
+      setSelectedDepartmentId(finalDeptId);
+
+      const resolvedSec = sec ?? (user.section ? sections.find((s) => s.name.toLowerCase() === user.section?.toLowerCase() || s.code.toLowerCase() === user.section?.toLowerCase()) : null);
+      setSelectedSectionId(resolvedSec?.id?.toString() ?? '');
       setSelectedSiteId(user.siteId ? `${user.siteId}` : '')
     }
-  }, [departments, open, sections, user.department, user.section, user.sectionId, user.siteId])
+  }, [departments, open, sections, user.department, user.departmentId, user.section, user.sectionId, user.siteId])
 
   return (
     <>
@@ -382,11 +384,12 @@ export function SecurityUserRowActions({
                       <SelectContent className={compactSelectContentClass}>
                         {departments.map((department) => (
                           <SelectItem key={department.id} value={`${department.id}`}>
-                            {department.name} ({department.code})
+                            {department.code ? `[${department.code}] ` : ''}{department.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
+                    <input type="hidden" name="departmentId" value={selectedDepartmentId} />
                     <input type="hidden" name="department" value={selectedDepartmentName} />
                   </div>
 
@@ -405,11 +408,12 @@ export function SecurityUserRowActions({
                       <SelectContent className={compactSelectContentClass}>
                         {filteredSections.map((section) => (
                           <SelectItem key={section.id} value={`${section.id}`}>
-                            {section.name} ({section.code})
+                            {section.code ? `[${section.code}] ` : ''}{section.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
+                    <input type="hidden" name="sectionId" value={selectedSectionId} />
                     <input type="hidden" name="section" value={selectedSectionName} />
                   </div>
 

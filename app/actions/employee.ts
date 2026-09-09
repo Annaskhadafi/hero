@@ -118,8 +118,8 @@ export async function getEmployeesForContract(filters?: {
 
 export async function getEmployeeFilterOptions() {
   const [departments, sections, locations, positions, leaders] = await Promise.all([
-    db.select({ id: masterDepartments.id, name: masterDepartments.name }).from(masterDepartments).where(eq(masterDepartments.isActive, true)),
-    db.select({ id: masterSections.id, name: masterSections.name, departmentId: masterSections.departmentId }).from(masterSections).where(eq(masterSections.isActive, true)),
+    db.select({ id: masterDepartments.id, code: masterDepartments.code, name: masterDepartments.name }).from(masterDepartments).where(eq(masterDepartments.isActive, true)),
+    db.select({ id: masterSections.id, code: masterSections.code, name: masterSections.name, departmentId: masterSections.departmentId }).from(masterSections).where(eq(masterSections.isActive, true)),
     db.select({ id: sites.id, name: sites.name }).from(sites).where(eq(sites.isActive, true)),
     db.select({ id: masterJobTitles.id, name: masterJobTitles.name }).from(masterJobTitles).where(eq(masterJobTitles.isActive, true)),
     db.select({
@@ -176,6 +176,17 @@ export async function createEmployee(data: {
 
   const primaryManagerId = managerIds.length > 0 ? managerIds[0] : (data.directManagerId || null);
 
+  let departmentName = '';
+  let sectionName = '';
+  if (data.departmentId) {
+    const [dept] = await db.select({ name: masterDepartments.name }).from(masterDepartments).where(eq(masterDepartments.id, data.departmentId)).limit(1);
+    if (dept) departmentName = dept.name;
+  }
+  if (data.sectionId) {
+    const [sec] = await db.select({ name: masterSections.name }).from(masterSections).where(eq(masterSections.id, data.sectionId)).limit(1);
+    if (sec) sectionName = sec.name;
+  }
+
   const setData = {
     employeeSn: data.employeeId,
     name: data.fullName,
@@ -195,7 +206,8 @@ export async function createEmployee(data: {
     manpower: data.manpower || 'Lokal',
     isActive: true,
     role: 'Employee',
-    department: '',
+    department: departmentName,
+    section: sectionName,
   };
 
   const [created] = await db
@@ -284,8 +296,24 @@ export async function updateEmployee(id: number, data: {
     setData.directManagerIds = JSON.stringify(data.directManagerId ? [data.directManagerId] : []);
   }
 
-  if (data.departmentId !== undefined) setData.departmentId = data.departmentId;
-  if (data.sectionId !== undefined) setData.sectionId = data.sectionId;
+  if (data.departmentId !== undefined) {
+    setData.departmentId = data.departmentId;
+    if (data.departmentId) {
+      const [dept] = await db.select({ name: masterDepartments.name }).from(masterDepartments).where(eq(masterDepartments.id, data.departmentId)).limit(1);
+      if (dept) setData.department = dept.name;
+    } else {
+      setData.department = '';
+    }
+  }
+  if (data.sectionId !== undefined) {
+    setData.sectionId = data.sectionId;
+    if (data.sectionId) {
+      const [sec] = await db.select({ name: masterSections.name }).from(masterSections).where(eq(masterSections.id, data.sectionId)).limit(1);
+      if (sec) setData.section = sec.name;
+    } else {
+      setData.section = '';
+    }
+  }
   if (data.siteId !== undefined) setData.siteId = data.siteId;
   if (data.positionId !== undefined) setData.positionId = data.positionId;
   if (data.joinDate !== undefined) setData.joinDate = data.joinDate;

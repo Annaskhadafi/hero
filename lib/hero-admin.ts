@@ -167,23 +167,23 @@ export async function getSecurityUserReferenceData() {
   const [sections, departments, positions, sitesData] = await Promise.all([
     db
       .select({
-        id: hrSections.id,
-        code: hrSections.code,
-        name: hrSections.name,
-        departmentId: hrSections.departmentId,
+        id: masterSections.id,
+        code: masterSections.code,
+        name: masterSections.name,
+        departmentId: masterSections.departmentId,
       })
-      .from(hrSections)
-      .where(eq(hrSections.isActive, true))
-      .orderBy(asc(hrSections.name)),
+      .from(masterSections)
+      .where(eq(masterSections.isActive, true))
+      .orderBy(asc(masterSections.name)),
     db
       .select({
-        id: hrDepartments.id,
-        code: hrDepartments.code,
-        name: hrDepartments.name,
+        id: masterDepartments.id,
+        code: masterDepartments.code,
+        name: masterDepartments.name,
       })
-      .from(hrDepartments)
-      .where(eq(hrDepartments.isActive, true))
-      .orderBy(asc(hrDepartments.name)),
+      .from(masterDepartments)
+      .where(eq(masterDepartments.isActive, true))
+      .orderBy(asc(masterDepartments.name)),
     Promise.all([
       db
         .select({
