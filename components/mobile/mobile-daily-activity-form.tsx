@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
+  AlertCircle,
   Camera,
   Check,
   ChevronDown,
@@ -304,6 +305,7 @@ type RouteItemState = {
   photoFile?: File | null
   photoFiles?: File[]
   photoName?: string
+  previewUrls?: string[]
   restoredPhotoPayload?: QueuedFilePayload | null
 }
 
@@ -318,6 +320,7 @@ type SelfInputEntryState = {
   photoFile?: File | null
   photoFiles?: File[]
   photoName?: string
+  previewUrls?: string[]
   restoredPhotoPayload?: QueuedFilePayload | null
 }
 
@@ -609,9 +612,119 @@ export function MobileDailyActivityForm({
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [photoFiles, setPhotoFiles] = useState<File[]>([])
   const [photoName, setPhotoName] = useState('')
+  const [photoPreviewUrls, setPhotoPreviewUrls] = useState<string[]>([])
   const [restoredPhotoPayload, setRestoredPhotoPayload] = useState<QueuedFilePayload | null>(null)
   const [photoCaptureMode, setPhotoCaptureMode] = useState<'camera' | 'gallery'>('gallery')
   const [activePhotoTarget, setActivePhotoTarget] = useState<string | null>(null)
+  const activePhotoTargetRef = useRef<string | null>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
+  const galleryInputRef = useRef<HTMLInputElement>(null)
+
+  const handleTriggerCamera = (targetId: string) => {
+    activePhotoTargetRef.current = targetId
+    setActivePhotoTarget(targetId)
+    setPhotoCaptureMode('camera')
+    if (cameraInputRef.current) {
+      cameraInputRef.current.value = ''
+      cameraInputRef.current.click()
+    }
+  }
+
+  const handleTriggerGallery = (targetId: string) => {
+    activePhotoTargetRef.current = targetId
+    setActivePhotoTarget(targetId)
+    setPhotoCaptureMode('gallery')
+    if (galleryInputRef.current) {
+      galleryInputRef.current.value = ''
+      galleryInputRef.current.click()
+    }
+  }
+
+  const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? [])
+    if (files.length === 0) return
+
+    const targetId = activePhotoTargetRef.current || activePhotoTarget
+    if (!targetId) return
+
+    const file = files[0] ?? null
+    const names = files.map((item) => item.name).join(', ')
+    const previewUrls = files.map((f) => URL.createObjectURL(f))
+
+    if (targetId === 'single') {
+      setPhotoFile(file)
+      setPhotoFiles(files)
+      setPhotoName(names)
+      setPhotoPreviewUrls(previewUrls)
+      setRestoredPhotoPayload(null)
+    } else if (targetId.startsWith('route:')) {
+      const id = parseInt(targetId.split(':')[1], 10)
+      setRouteItemState((prev) => ({
+        ...prev,
+        [id]: {
+          ...prev[id],
+          photoFile: file,
+          photoFiles: files,
+          photoName: names,
+          previewUrls: previewUrls,
+          restoredPhotoPayload: null,
+        },
+      }))
+    } else if (targetId.startsWith('library:')) {
+      const id = targetId.split(':')[1]
+      setSelfInputEntries((prev) => ({
+        ...prev,
+        [id]: {
+          ...prev[id],
+          photoFile: file,
+          photoFiles: files,
+          photoName: names,
+          previewUrls: previewUrls,
+          restoredPhotoPayload: null,
+        },
+      }))
+    }
+
+    toast.success(`${files.length} foto evidence berhasil dilampirkan`)
+    event.target.value = ''
+  }
+
+  const handleRemovePhoto = (targetId: string) => {
+    if (targetId === 'single') {
+      setPhotoFile(null)
+      setPhotoFiles([])
+      setPhotoName('')
+      setPhotoPreviewUrls([])
+      setRestoredPhotoPayload(null)
+    } else if (targetId.startsWith('route:')) {
+      const id = parseInt(targetId.split(':')[1], 10)
+      setRouteItemState((prev) => ({
+        ...prev,
+        [id]: {
+          ...prev[id],
+          photoFile: null,
+          photoFiles: [],
+          photoName: '',
+          previewUrls: [],
+          restoredPhotoPayload: null,
+        },
+      }))
+    } else if (targetId.startsWith('library:')) {
+      const id = targetId.split(':')[1]
+      setSelfInputEntries((prev) => ({
+        ...prev,
+        [id]: {
+          ...prev[id],
+          photoFile: null,
+          photoFiles: [],
+          photoName: '',
+          previewUrls: [],
+          restoredPhotoPayload: null,
+        },
+      }))
+    }
+    toast.info('Foto evidence dihapus')
+  }
   const [geo, setGeo] = useState<GeoState>(initialGeo)
   const [submitState, setSubmitState] = useState<{
     kind: 'idle' | 'success' | 'error'
@@ -867,55 +980,92 @@ export function MobileDailyActivityForm({
   const renderPhotoWidget = (
     targetId: string,
     requiresPhoto: boolean,
-    currentPhotoName?: string
-  ) => (
-    <div className="mt-3 space-y-2 rounded-xl border border-[#e9f6fd] bg-[#f6fbff] p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="flex items-center gap-1.5 text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
-          <Camera className="size-3.5 text-[#003f78]" />
-          Photo Evidence
-        </p>
-        {requiresPhoto ? (
-          <Badge className="border-0 bg-[#fff1cf] px-1.5 py-0 text-[9px] font-black tracking-[0.14em] text-[#8a5a00] uppercase">
-            Wajib
-          </Badge>
+    currentPhotoName?: string,
+    previewUrls?: string[]
+  ) => {
+    const hasPhoto = Boolean(currentPhotoName || (previewUrls && previewUrls.length > 0))
+    return (
+      <div className="mt-3 space-y-2.5 rounded-xl border border-[#cbe4f6] bg-[#f6fbff] p-3 shadow-xs">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="flex items-center gap-1.5 text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+            <Camera className="size-3.5 text-[#003f78]" />
+            Photo Evidence
+          </p>
+          <div className="flex items-center gap-1.5">
+            {hasPhoto ? (
+              <Badge className="border-0 bg-[#dff4e8] px-2 py-0.5 text-[9px] font-black tracking-[0.1em] text-[#14532d] uppercase">
+                ✓ Terlampir
+              </Badge>
+            ) : null}
+            {requiresPhoto ? (
+              <Badge className="border-0 bg-[#fff1cf] px-1.5 py-0 text-[9px] font-black tracking-[0.14em] text-[#8a5a00] uppercase">
+                Wajib
+              </Badge>
+            ) : null}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10 rounded-xl border border-sky-200 bg-white hover:bg-[#e9f6fd] text-xs font-bold text-[#003f78] shadow-2xs active:scale-95 transition-all"
+            onClick={() => handleTriggerCamera(targetId)}
+          >
+            <Camera className="size-3.5 mr-1" />
+            Kamera
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10 rounded-xl border border-sky-200 bg-white hover:bg-[#e9f6fd] text-xs font-bold text-[#003f78] shadow-2xs active:scale-95 transition-all"
+            onClick={() => handleTriggerGallery(targetId)}
+          >
+            <ImagePlus className="size-3.5 mr-1" />
+            Galeri
+          </Button>
+        </div>
+        {previewUrls && previewUrls.length > 0 ? (
+          <div className="mt-2 space-y-2">
+            <div className="flex flex-wrap gap-2">
+              {previewUrls.map((url, idx) => (
+                <div key={idx} className="relative group overflow-hidden rounded-lg border border-slate-200 bg-black/5 shadow-2xs">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={url}
+                    alt={`Evidence preview ${idx + 1}`}
+                    className="h-16 w-16 object-cover rounded-lg"
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between text-[11px] font-semibold text-[#003f78]">
+              <span className="truncate max-w-[200px]">{currentPhotoName}</span>
+              <button
+                type="button"
+                onClick={() => handleRemovePhoto(targetId)}
+                className="text-red-500 hover:text-red-700 text-[10px] font-bold underline cursor-pointer"
+              >
+                Hapus Foto
+              </button>
+            </div>
+          </div>
+        ) : currentPhotoName ? (
+          <div className="flex items-center justify-between text-[11px] font-semibold text-[#003f78]">
+            <p className="truncate break-words">
+              ✓ {currentPhotoName}
+            </p>
+            <button
+              type="button"
+              onClick={() => handleRemovePhoto(targetId)}
+              className="text-red-500 hover:text-red-700 text-[10px] font-bold underline cursor-pointer shrink-0 ml-2"
+            >
+              Hapus
+            </button>
+          </div>
         ) : null}
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          className="h-10 rounded-xl border-0 bg-[#e9f6fd] text-xs text-[#003f78]"
-          onClick={() => {
-            setActivePhotoTarget(targetId)
-            setPhotoCaptureMode('camera')
-            document.getElementById('mobile-activity-photo')?.click()
-          }}
-        >
-          <Camera className="size-3.5" />
-          Kamera
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className="h-10 rounded-xl border-0 bg-[#e9f6fd] text-xs text-[#003f78]"
-          onClick={() => {
-            setActivePhotoTarget(targetId)
-            setPhotoCaptureMode('gallery')
-            document.getElementById('mobile-activity-photo')?.click()
-          }}
-        >
-          <ImagePlus className="size-3.5" />
-          Galeri
-        </Button>
-      </div>
-      {currentPhotoName ? (
-        <p className="truncate text-[11px] font-semibold break-words text-[#003f78]">
-          ✓ {currentPhotoName}
-        </p>
-      ) : null}
-    </div>
-  )
+    )
+  }
 
   const needsAnyPhoto = needsGlobalPhoto || assignmentNeedsPhoto || checkedChecklistNeedsPhoto
 
@@ -1355,7 +1505,12 @@ export function MobileDailyActivityForm({
         return 'Waktu selesai harus setelah waktu mulai.'
       }
 
-      if (selectedAssignment?.requiresPhoto && !photoFile && !restoredPhotoPayload) {
+      const hasAssignedPhoto =
+        photoFile ||
+        (photoFiles && photoFiles.length > 0) ||
+        restoredPhotoPayload ||
+        (photoPreviewUrls && photoPreviewUrls.length > 0)
+      if (selectedAssignment?.requiresPhoto && !hasAssignedPhoto) {
         return 'Foto wajib diupload karena assignment yang dipilih butuh image evidence.'
       }
       if (checklistContext) {
@@ -1363,11 +1518,15 @@ export function MobileDailyActivityForm({
         checklistContext.groups.forEach((group) =>
           group.items.forEach((item) => {
             const state = routeItemState[item.id]
+            const hasChecklistPhoto =
+              state?.photoFile ||
+              (state?.photoFiles && state.photoFiles.length > 0) ||
+              state?.restoredPhotoPayload ||
+              (state?.previewUrls && state.previewUrls.length > 0)
             if (
               state?.isChecked &&
               item.requiresPhoto &&
-              !state?.photoFile &&
-              !state?.restoredPhotoPayload
+              !hasChecklistPhoto
             )
               missingChecklistPhoto = true
           })
@@ -1392,16 +1551,26 @@ export function MobileDailyActivityForm({
         return 'Waktu selesai harus setelah waktu mulai.'
       }
 
+      const hasCustomPhoto =
+        photoFile ||
+        (photoFiles && photoFiles.length > 0) ||
+        restoredPhotoPayload ||
+        (photoPreviewUrls && photoPreviewUrls.length > 0)
+
       if (checklistContext) {
         let missingChecklistPhoto = false
         checklistContext.groups.forEach((group) =>
           group.items.forEach((item) => {
             const state = routeItemState[item.id]
+            const hasChecklistPhoto =
+              state?.photoFile ||
+              (state?.photoFiles && state.photoFiles.length > 0) ||
+              state?.restoredPhotoPayload ||
+              (state?.previewUrls && state.previewUrls.length > 0)
             if (
               state?.isChecked &&
               item.requiresPhoto &&
-              !state?.photoFile &&
-              !state?.restoredPhotoPayload
+              !hasChecklistPhoto
             )
               missingChecklistPhoto = true
           })
@@ -1420,7 +1589,12 @@ export function MobileDailyActivityForm({
     let missingLibraryPhoto = false
     selectedLibraries.forEach((lib) => {
       const entry = selfInputEntries[`${lib.id}`]
-      if (lib.requiresPhoto && !entry?.photoFile && !entry?.restoredPhotoPayload)
+      const hasPhoto =
+        entry?.photoFile ||
+        (entry?.photoFiles && entry.photoFiles.length > 0) ||
+        entry?.restoredPhotoPayload ||
+        (entry?.previewUrls && entry.previewUrls.length > 0)
+      if (lib.requiresPhoto && !hasPhoto)
         missingLibraryPhoto = true
     })
     if (missingLibraryPhoto)
@@ -1433,11 +1607,15 @@ export function MobileDailyActivityForm({
       checklistContext.groups.forEach((group) =>
         group.items.forEach((item) => {
           const state = routeItemState[item.id]
+          const hasChecklistPhoto =
+            state?.photoFile ||
+            (state?.photoFiles && state.photoFiles.length > 0) ||
+            state?.restoredPhotoPayload ||
+            (state?.previewUrls && state.previewUrls.length > 0)
           if (
             state?.isChecked &&
             item.requiresPhoto &&
-            !state?.photoFile &&
-            !state?.restoredPhotoPayload
+            !hasChecklistPhoto
           )
             missingChecklistPhoto = true
 
@@ -1613,6 +1791,9 @@ export function MobileDailyActivityForm({
     const validationError = validatePayload()
     if (validationError) {
       setSubmitState({ kind: 'error', message: validationError })
+      toast.error(validationError, {
+        duration: 5000,
+      })
       return
     }
 
@@ -1664,34 +1845,35 @@ export function MobileDailyActivityForm({
             photos: customEvidence.urls,
           },
         ]
-      }
-
-      if (checklistContext && routeSessionItems.length > 0) {
-        const checklistItems = await Promise.all(
-          routeSessionItems.map(async (item) => {
-            const state = routeItemState[item.routeItemId!]
-            const evidence = await prepareEvidence(
-              state?.photoFiles,
-              state?.photoFile,
-              state?.restoredPhotoPayload
-            )
-            return {
-              routeItemId: item.routeItemId,
-              overtimeCommandLetterItemId: item.overtimeCommandLetterItemId,
-              label: item.snapshotLabel || 'Checklist Item',
-              group: item.snapshotGroupName || 'Checklist',
-              unitNumber: item.unitNumber || '',
-              startedAt: item.startedAt ? `${item.startedAt}:00` : undefined,
-              endedAt: item.endedAt ? `${item.endedAt}:00` : undefined,
-              points: item.actualPoints || 5,
-              remark: item.remark || '',
-              materialUsed: item.materialUsed || '',
-              photoUrl: evidence.urls[0] || null,
-              photos: evidence.urls,
-            }
-          })
-        )
-        itemsToSubmit = [...itemsToSubmit, ...checklistItems]
+      } else if (checklistContext && routeSessionItems.length > 0) {
+        const checkedRouteItems = routeSessionItems.filter((item) => item.isChecked)
+        if (checkedRouteItems.length > 0) {
+          const checklistItems = await Promise.all(
+            checkedRouteItems.map(async (item) => {
+              const state = routeItemState[item.routeItemId!]
+              const evidence = await prepareEvidence(
+                state?.photoFiles,
+                state?.photoFile,
+                state?.restoredPhotoPayload
+              )
+              return {
+                routeItemId: item.routeItemId,
+                overtimeCommandLetterItemId: item.overtimeCommandLetterItemId,
+                label: item.snapshotLabel || 'Checklist Item',
+                group: item.snapshotGroupName || 'Checklist',
+                unitNumber: item.unitNumber || '',
+                startedAt: item.startedAt ? `${item.startedAt}:00` : undefined,
+                endedAt: item.endedAt ? `${item.endedAt}:00` : undefined,
+                points: item.actualPoints || 5,
+                remark: item.remark || '',
+                materialUsed: item.materialUsed || '',
+                photoUrl: evidence.urls[0] || null,
+                photos: evidence.urls,
+              }
+            })
+          )
+          itemsToSubmit = [...itemsToSubmit, ...checklistItems]
+        }
       }
 
       if (itemsToSubmit.length === 0) {
@@ -1781,6 +1963,9 @@ export function MobileDailyActivityForm({
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Submit activity gagal.'
       setSubmitState({ kind: 'error', message })
+      toast.error(message, {
+        duration: 5000,
+      })
     } finally {
       setIsSubmitting(false)
     }
@@ -2123,7 +2308,7 @@ export function MobileDailyActivityForm({
                     : 'Pilih assignment yang sedang dikerjakan.'}
                 </p>
                 {selectedAssignment
-                  ? renderPhotoWidget('single', !!selectedAssignment.requiresPhoto, photoName)
+                  ? renderPhotoWidget('single', !!selectedAssignment.requiresPhoto, photoName, photoPreviewUrls)
                   : null}
               </Label>
             ) : null}
@@ -2186,7 +2371,7 @@ export function MobileDailyActivityForm({
                     className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
                   />
                 </Label>
-                {renderPhotoWidget('single', false, photoName)}
+                {renderPhotoWidget('single', false, photoName, photoPreviewUrls)}
                 <Label className="block space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
@@ -2369,7 +2554,8 @@ export function MobileDailyActivityForm({
                         {renderPhotoWidget(
                           `library:${libraryId}`,
                           !!library.requiresPhoto,
-                          entry.photoName
+                          entry.photoName,
+                          entry.previewUrls
                         )}
                         <Label className="block space-y-2">
                           <div className="flex items-center justify-between">
@@ -2598,7 +2784,8 @@ export function MobileDailyActivityForm({
                               {renderPhotoWidget(
                                 `route:${item.id}`,
                                 !!item.requiresPhoto,
-                                itemState.photoName
+                                itemState.photoName,
+                                itemState.previewUrls
                               )}
                               {item.requiresRemark ? (
                                 <Label className="block space-y-2">
@@ -2787,6 +2974,25 @@ export function MobileDailyActivityForm({
           siteName={site?.name}
         />
 
+        {submitState.kind === 'error' ? (
+          <div className="rounded-2xl border-2 border-red-400 bg-red-50 p-4 text-xs shadow-lg flex items-start gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600 mt-0.5">
+              <AlertCircle className="size-4" />
+            </div>
+            <div className="flex-1 space-y-0.5">
+              <p className="font-extrabold text-red-900 text-xs">Perhatian: Formulir Belum Lengkap</p>
+              <p className="font-semibold text-red-700 text-xs leading-relaxed">{submitState.message}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSubmitState({ kind: 'idle', message: '' })}
+              className="text-red-400 hover:text-red-700 p-1 cursor-pointer"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+        ) : null}
+
         <div className="grid grid-cols-2 gap-3">
           <Button
             type="button"
@@ -2819,49 +3025,20 @@ export function MobileDailyActivityForm({
           </Button>
         </div>
         <input
-          id="mobile-activity-photo"
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={handlePhotoChange}
+        />
+        <input
+          ref={galleryInputRef}
           type="file"
           accept="image/*"
           multiple
-          capture={photoCaptureMode === 'camera' ? 'environment' : undefined}
           className="hidden"
-          onChange={(event) => {
-            const files = Array.from(event.target.files ?? [])
-            const file = files[0] ?? null
-            if (!file || !activePhotoTarget) return
-            const names = files.map((item) => item.name).join(', ')
-
-            if (activePhotoTarget === 'single') {
-              setPhotoFile(file)
-              setPhotoFiles(files)
-              setPhotoName(names)
-              setRestoredPhotoPayload(null)
-            } else if (activePhotoTarget.startsWith('route:')) {
-              const id = parseInt(activePhotoTarget.split(':')[1], 10)
-              setRouteItemState((prev) => ({
-                ...prev,
-                [id]: {
-                  ...prev[id],
-                  photoFile: file,
-                  photoFiles: files,
-                  photoName: names,
-                  restoredPhotoPayload: null,
-                },
-              }))
-            } else if (activePhotoTarget.startsWith('library:')) {
-              const id = activePhotoTarget.split(':')[1]
-              setSelfInputEntries((prev) => ({
-                ...prev,
-                [id]: {
-                  ...prev[id],
-                  photoFile: file,
-                  photoFiles: files,
-                  photoName: names,
-                  restoredPhotoPayload: null,
-                },
-              }))
-            }
-          }}
+          onChange={handlePhotoChange}
         />
 
         {/* ── Zoomable Formal PDF Preview Modal Dialog ── */}

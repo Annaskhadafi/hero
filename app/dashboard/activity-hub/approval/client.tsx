@@ -81,6 +81,7 @@ import {
   singleRevertDailyActivityAction,
   createDailyActivitySessionAction,
   deleteDailyActivitySessionAction,
+  deleteBatchDailyActivitySessionsAction,
   generateTestDailyActivityApproval,
   sendDueDailyActivityReminders,
   saveDailyActivityWorkflowSettings,
@@ -118,6 +119,7 @@ export type SessionApprovalRow = {
   approvals: Array<{
     stepOrder: number
     stepLabel: string
+    approverRole?: string | null
     status: string
     approverName: string | null
     signatureDataUrl?: string | null
@@ -204,7 +206,19 @@ export function ApprovalListingClient({
     departmentId?: number | null
   }>
   sites?: Array<{ id: number; name: string; code?: string | null; location?: string | null }>
-  activityPresets?: Array<{ id: number; code: string; name: string; basePoints?: number | null }>
+  activityPresets?: Array<{
+    id: number
+    code: string
+    name: string
+    basePoints?: number | null
+    category?: string | null
+    requiresPhoto?: boolean
+    requiresEquipmentNo?: boolean
+    requiresDuration?: boolean
+    requiresLocationGps?: boolean
+    requiresTireCount?: boolean
+    requiresMaterialUsed?: boolean
+  }>
   sectionHeadMap?: Record<string, number | null>
   deptHeadMap?: Record<string, number | null>
   initialSettings?: DailyActivityWorkflowSettings
@@ -225,6 +239,26 @@ export function ApprovalListingClient({
   const [selectedTeamMemberIds, setSelectedTeamMemberIds] = useState<number[]>([])
   const [teamMemberPickerOpen, setTeamMemberPickerOpen] = useState(false)
   const [teamMemberSearchQuery, setTeamMemberSearchQuery] = useState('')
+async function uploadActivityPhoto(file: File): Promise<string> {
+  if (!file.type.startsWith('image/')) throw new Error('Evidence harus berupa gambar.')
+
+  const formData = new FormData()
+  formData.append('file', file)
+  const uploadResponse = await fetch('/api/uploads/activity-presign', {
+    method: 'POST',
+    body: formData,
+  })
+  const result = (await uploadResponse.json()) as {
+    url?: string
+    error?: string
+  }
+  if (!uploadResponse.ok || !result.url) {
+    throw new Error(result.error || `Gagal upload evidence ${file.name}.`)
+  }
+
+  return result.url
+}
+
   const [createForm, setCreateForm] = useState({
     employeeId: '',
     employeeName: '',
@@ -248,7 +282,30 @@ export function ApprovalListingClient({
     customName: '',
     customDescription: '',
     customUnit: '',
-    items: [] as Array<{ label: string; unitNumber?: string; duration?: string; points?: number; remark?: string }>,
+    customPhotoUrl: '',
+    customPhotos: [] as string[],
+    customPhotoName: '',
+    customPreviewUrls: [] as string[],
+    customUploading: false,
+    assignedPhotoUrl: '',
+    assignedPhotos: [] as string[],
+    assignedPhotoName: '',
+    assignedPreviewUrls: [] as string[],
+    assignedUploading: false,
+    items: [] as Array<{
+      label: string
+      unitNumber?: string
+      duration?: string
+      startTime?: string
+      endTime?: string
+      points?: number
+      remark?: string
+      photoUrl?: string
+      photos?: string[]
+      photoName?: string
+      previewUrls?: string[]
+      uploading?: boolean
+    }>,
   })
 
   const [settingsForm, setSettingsForm] = useState<DailyActivityWorkflowSettings>(
@@ -314,8 +371,10 @@ export function ApprovalListingClient({
   const [isPickerModalOpen, setIsPickerModalOpen] = useState(false)
   const [pickerSearch, setPickerSearch] = useState('')
   const [expandedPickerGroups, setExpandedPickerGroups] = useState<Set<string>>(new Set())
+  const [createError, setCreateError] = useState<string | null>(null)
 
   const handleOpenCreateModal = () => {
+    setCreateError(null)
     const firstEmp = employees && employees.length > 0 ? employees[0] : null
     const matchedSite = firstEmp?.siteId ? sites.find((s) => s.id === firstEmp.siteId) : null
     setCreateForm({
@@ -342,6 +401,16 @@ export function ApprovalListingClient({
       customName: '',
       customDescription: '',
       customUnit: '',
+      customPhotoUrl: '',
+      customPhotos: [],
+      customPhotoName: '',
+      customPreviewUrls: [],
+      customUploading: false,
+      assignedPhotoUrl: '',
+      assignedPhotos: [],
+      assignedPhotoName: '',
+      assignedPreviewUrls: [],
+      assignedUploading: false,
     } as any)
     setPickerSearch('')
     setExpandedPickerGroups(new Set())
@@ -762,31 +831,299 @@ export function ApprovalListingClient({
     )
   }, [employees, createForm.siteId, teamMemberSearchQuery])
 
+  const normalizedPickerSearch = useMemo(() => {
+    return (pickerSearch || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+  }, [pickerSearch])
+
+  const standardRouteGroups = useMemo(
+    () => [
+      {
+        groupName: 'Group: Replace Tire',
+        subtitle: 'GRP-Replace Tire • General & OTR',
+        items: [
+          { code: 'SVC.STB-010', name: 'Replacement Tyre OTR HD-785', points: 20, badges: ['EQUIPMENT WAJIB', 'FOTO WAJIB'] },
+          { code: 'SVC.STB-007', name: 'Mounting Truck & Bus Tyre', points: 15, badges: ['EQUIPMENT WAJIB', 'WAKTU WAJIB'] },
+          { code: 'SVC.STB-008', name: 'Dismounting Truck Tyre', points: 15, badges: ['EQUIPMENT WAJIB'] },
+        ],
+      },
+      {
+        groupName: 'Group: Rotasi Tire EM & TB',
+        subtitle: 'GRP-Rotasi Tire • Earthmover & TB',
+        items: [
+          { code: 'SVC.STB-005', name: 'Rotasi Tire EM Position 1 & 2', points: 15, badges: ['EQUIPMENT WAJIB', 'WAKTU WAJIB'] },
+          { code: 'SVC.STB-006', name: 'Rotasi Tire EM Position 3 & 4', points: 15, badges: ['EQUIPMENT WAJIB'] },
+          { code: 'SVC.STB-009', name: 'Rotasi Tire Truck & Bus', points: 15, badges: ['EQUIPMENT WAJIB'] },
+        ],
+      },
+      {
+        groupName: 'Group: Running Tire Inspection & Pressure Check',
+        subtitle: 'GRP-Tire Inspection • ALL',
+        items: [
+          { code: 'SVC.STB-003', name: 'Inspection & Pressure Check', points: 10, badges: ['EQUIPMENT WAJIB', 'WAKTU WAJIB'] },
+          { code: 'SVC.STB-004', name: 'Running Tire Depth Measurement', points: 10, badges: ['FOTO WAJIB'] },
+        ],
+      },
+      {
+        groupName: 'Group: Support Customer & Safety',
+        subtitle: 'GRP-Support Customer • ALL',
+        items: [
+          { code: 'SVC.STB-001', name: 'Support Operator', points: 10, badges: ['FOTO WAJIB', '10 PTS'] },
+          { code: 'SVC.STB-002', name: 'Support Technical Liaison', points: 10, badges: ['EQUIPMENT WAJIB'] },
+          { code: 'HSE.P5M-001', name: 'P5M & Briefing Keselamatan', points: 5, badges: ['WAKTU WAJIB'] },
+          { code: 'HSE.P2H-001', name: 'P2H & Inspection Alat Kerja', points: 5, badges: ['EQUIPMENT WAJIB'] },
+        ],
+      },
+    ],
+    []
+  )
+
+  const groupedItemCodes = useMemo(() => {
+    const set = new Set<string>()
+    for (const g of standardRouteGroups) {
+      for (const i of g.items) {
+        set.add((i.code || '').toLowerCase())
+      }
+    }
+    return set
+  }, [standardRouteGroups])
+
+  const filteredRouteGroups = useMemo(() => {
+    return standardRouteGroups
+      .map((g) => {
+        const matchingItems = g.items.filter((item) => {
+          if (!normalizedPickerSearch) return true
+          const nCode = (item.code || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+          const nName = (item.name || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+          return nCode.includes(normalizedPickerSearch) || nName.includes(normalizedPickerSearch)
+        })
+        return { ...g, items: matchingItems }
+      })
+      .filter((g) => (normalizedPickerSearch ? g.items.length > 0 : true))
+  }, [standardRouteGroups, normalizedPickerSearch])
+
+  const standaloneLibraries = useMemo(() => {
+    const presets = activityPresets || []
+    return presets
+      .filter((p) => !groupedItemCodes.has((p.code || '').toLowerCase()))
+      .filter((p) => {
+        if (!normalizedPickerSearch) return true
+        const nCode = (p.code || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+        const nName = (p.name || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+        return nCode.includes(normalizedPickerSearch) || nName.includes(normalizedPickerSearch)
+      })
+      .sort((a, b) => (b.basePoints || 0) - (a.basePoints || 0))
+  }, [activityPresets, groupedItemCodes, normalizedPickerSearch])
+
+  const totalVisibleLibraryCount = useMemo(() => {
+    const groupCount = filteredRouteGroups.reduce((acc, g) => acc + g.items.length, 0)
+    return groupCount + standaloneLibraries.length
+  }, [filteredRouteGroups, standaloneLibraries])
+
+  const handleItemPhotoSelect = async (idx: number, files: FileList | File[] | null) => {
+    if (!files || files.length === 0) return
+    const fileArray = Array.from(files)
+    const previewUrls = fileArray.map((f) => URL.createObjectURL(f))
+    const names = fileArray.map((f) => f.name).join(', ')
+
+    updateItemRow(idx, 'previewUrls', previewUrls)
+    updateItemRow(idx, 'photoName', names)
+    updateItemRow(idx, 'uploading', true)
+
+    try {
+      toast.loading('Mengunggah foto evidence...', { id: `upload-${idx}` })
+      const urls = await Promise.all(fileArray.map(uploadActivityPhoto))
+      updateItemRow(idx, 'photos', urls)
+      updateItemRow(idx, 'photoUrl', urls[0] || '')
+      updateItemRow(idx, 'uploading', false)
+      toast.success('Foto evidence berhasil diunggah!', { id: `upload-${idx}` })
+    } catch (err: any) {
+      updateItemRow(idx, 'uploading', false)
+      toast.error(err?.message || 'Gagal mengunggah foto evidence', { id: `upload-${idx}` })
+    }
+  }
+
+  const handleItemPhotoRemove = (idx: number) => {
+    setCreateForm((p) => ({
+      ...p,
+      items: p.items.map((it, i) =>
+        i === idx
+          ? {
+              ...it,
+              photos: [],
+              photoUrl: '',
+              photoName: '',
+              previewUrls: [],
+              uploading: false,
+            }
+          : it
+      ),
+    }))
+  }
+
+  const handleCustomPhotoSelect = async (files: FileList | File[] | null) => {
+    if (!files || files.length === 0) return
+    const fileArray = Array.from(files)
+    const previewUrls = fileArray.map((f) => URL.createObjectURL(f))
+    const names = fileArray.map((f) => f.name).join(', ')
+
+    setCreateForm((p) => ({
+      ...p,
+      customPreviewUrls: previewUrls,
+      customPhotoName: names,
+      customUploading: true,
+    }))
+
+    try {
+      toast.loading('Mengunggah foto evidence...', { id: 'upload-custom' })
+      const urls = await Promise.all(fileArray.map(uploadActivityPhoto))
+      setCreateForm((p) => ({
+        ...p,
+        customPhotos: urls,
+        customPhotoUrl: urls[0] || '',
+        customUploading: false,
+      }))
+      toast.success('Foto evidence berhasil diunggah!', { id: 'upload-custom' })
+    } catch (err: any) {
+      setCreateForm((p) => ({
+        ...p,
+        customUploading: false,
+      }))
+      toast.error(err?.message || 'Gagal mengunggah foto evidence', { id: 'upload-custom' })
+    }
+  }
+
+  const handleCustomPhotoRemove = () => {
+    setCreateForm((p) => ({
+      ...p,
+      customPhotos: [],
+      customPhotoUrl: '',
+      customPhotoName: '',
+      customPreviewUrls: [],
+      customUploading: false,
+    }))
+  }
+
+  const handleAssignedPhotoSelect = async (files: FileList | File[] | null) => {
+    if (!files || files.length === 0) return
+    const fileArray = Array.from(files)
+    const previewUrls = fileArray.map((f) => URL.createObjectURL(f))
+    const names = fileArray.map((f) => f.name).join(', ')
+
+    setCreateForm((p) => ({
+      ...p,
+      assignedPreviewUrls: previewUrls,
+      assignedPhotoName: names,
+      assignedUploading: true,
+    }))
+
+    try {
+      toast.loading('Mengunggah foto evidence...', { id: 'upload-assigned' })
+      const urls = await Promise.all(fileArray.map(uploadActivityPhoto))
+      setCreateForm((p) => ({
+        ...p,
+        assignedPhotos: urls,
+        assignedPhotoUrl: urls[0] || '',
+        assignedUploading: false,
+      }))
+      toast.success('Foto evidence berhasil diunggah!', { id: 'upload-assigned' })
+    } catch (err: any) {
+      setCreateForm((p) => ({
+        ...p,
+        assignedUploading: false,
+      }))
+      toast.error(err?.message || 'Gagal mengunggah foto evidence', { id: 'upload-assigned' })
+    }
+  }
+
+  const handleAssignedPhotoRemove = () => {
+    setCreateForm((p) => ({
+      ...p,
+      assignedPhotos: [],
+      assignedPhotoUrl: '',
+      assignedPhotoName: '',
+      assignedPreviewUrls: [],
+      assignedUploading: false,
+    }))
+  }
+
   const handleCreateSession = async () => {
+    setCreateError(null)
     if (!createForm.employeeId) {
-      toast.error('Pilih karyawan terlebih dahulu')
+      const msg = 'Pilih karyawan terlebih dahulu di bagian atas formulir'
+      setCreateError(msg)
+      toast.error(msg, { duration: 5000 })
       return
     }
 
-    let validItems = createForm.items.filter((it) => it.label.trim().length > 0)
-    if (validItems.length === 0 && createForm.sourceMode === 'custom' && createForm.customName?.trim()) {
+    let validItems: Array<{
+      label: string
+      unitNumber?: string
+      remark?: string
+      duration?: string
+      points?: number
+      photoUrl?: string | null
+      photos?: string[]
+      startedAt?: string | Date
+      endedAt?: string | Date
+    }> = []
+
+    if (createForm.sourceMode === 'custom') {
+      if (!createForm.customName?.trim()) {
+        const msg = 'Isi nama Custom Activity terlebih dahulu'
+        setCreateError(msg)
+        toast.error(msg, { duration: 5000 })
+        return
+      }
       validItems = [
         {
           label: createForm.customName.trim(),
-          unitNumber: createForm.customUnit || '',
-          remark: createForm.customDescription || '',
+          unitNumber: createForm.customUnit?.trim() || '-',
+          remark: createForm.customDescription?.trim() || createForm.customName.trim(),
           duration: '60m',
           points: 10,
+          photoUrl: createForm.customPhotoUrl || null,
+          photos: createForm.customPhotos || (createForm.customPhotoUrl ? [createForm.customPhotoUrl] : []),
         },
       ]
+    } else if (createForm.sourceMode === 'assigned') {
+      if (!createForm.assignmentId) {
+        const msg = 'Pilih Assignment terlebih dahulu'
+        setCreateError(msg)
+        toast.error(msg, { duration: 5000 })
+        return
+      }
+      validItems = [
+        {
+          label: `Assignment #${createForm.assignmentId}`,
+          unitNumber: '-',
+          remark: 'Penugasan resmi',
+          duration: '60m',
+          points: 10,
+          photoUrl: createForm.assignedPhotoUrl || null,
+          photos: createForm.assignedPhotos || (createForm.assignedPhotoUrl ? [createForm.assignedPhotoUrl] : []),
+        },
+      ]
+    } else {
+      validItems = (createForm.items || [])
+        .filter((it) => it.label && it.label.trim().length > 0)
+        .map((it) => ({
+          label: it.label.trim(),
+          unitNumber: it.unitNumber?.trim() || '-',
+          remark: it.remark?.trim() || it.label.trim(),
+          duration: it.duration || '60m',
+          points: it.points || 5,
+          photoUrl: it.photoUrl || (it.photos && it.photos[0]) || null,
+          photos: it.photos || (it.photoUrl ? [it.photoUrl] : []),
+        }))
     }
 
     if (validItems.length === 0) {
-      if (createForm.sourceMode === 'custom') {
-        toast.error('Isi nama Custom Activity terlebih dahulu')
-      } else {
-        toast.error('Buka Kamus Aktivitas dan pilih minimal 1 item aktivitas')
-      }
+      const msg =
+        createForm.sourceMode === 'custom'
+          ? 'Isi nama Custom Activity terlebih dahulu'
+          : 'Buka Kamus Aktivitas dan pilih minimal 1 item aktivitas'
+      setCreateError(msg)
+      toast.error(msg, { duration: 5000 })
       return
     }
     setIsCreating(true)
@@ -840,13 +1177,14 @@ export function ApprovalListingClient({
             remark: item.remark || '-',
           })),
           approvals: [
-            { stepOrder: 1, stepLabel: 'Karyawan Sign', status: 'pending', approverName: createForm.employeeName || emp?.name || 'Karyawan', signedAt: null },
-            { stepOrder: 2, stepLabel: 'Leader / PJO', status: 'waiting', approverName: createForm.leaderName || 'Leader', signedAt: null },
-            { stepOrder: 3, stepLabel: 'Section Head', status: 'waiting', approverName: createForm.superiorName || 'Section Head', signedAt: null },
+            { stepOrder: 1, stepLabel: 'Karyawan Sign', approverRole: 'employee', status: 'pending', approverName: createForm.employeeName || emp?.name || 'Karyawan', signatureDataUrl: null, signedAt: null },
+            { stepOrder: 2, stepLabel: 'Leader / PJO', approverRole: 'leader', status: 'waiting', approverName: createForm.leaderName || 'Leader', signatureDataUrl: null, signedAt: null },
+            { stepOrder: 3, stepLabel: 'Section Head', approverRole: 'section_head', status: 'waiting', approverName: createForm.superiorName || 'Section Head', signatureDataUrl: null, signedAt: null },
           ],
         }
         setRows((prev) => [newRow, ...prev])
         toast.success('Sesi Daily Activity berhasil disimpan!')
+        setCreateError(null)
         setCreateForm({
           employeeId: '',
           employeeName: '',
@@ -870,6 +1208,16 @@ export function ApprovalListingClient({
           customName: '',
           customDescription: '',
           customUnit: '',
+          customPhotoUrl: '',
+          customPhotos: [],
+          customPhotoName: '',
+          customPreviewUrls: [],
+          customUploading: false,
+          assignedPhotoUrl: '',
+          assignedPhotos: [],
+          assignedPhotoName: '',
+          assignedPreviewUrls: [],
+          assignedUploading: false,
           items: [],
         })
         setIsTeamLog(false)
@@ -878,10 +1226,14 @@ export function ApprovalListingClient({
         setCreateOpen(false)
         router.refresh()
       } else {
-        toast.error(res.error || 'Gagal membuat sesi aktivitas')
+        const msg = res.error || 'Gagal membuat sesi aktivitas'
+        setCreateError(msg)
+        toast.error(msg, { duration: 5000 })
       }
-    } catch {
-      toast.error('Terjadi kesalahan saat membuat sesi aktivitas')
+    } catch (err: any) {
+      const msg = err?.message || 'Terjadi kesalahan saat membuat sesi aktivitas'
+      setCreateError(msg)
+      toast.error(msg, { duration: 5000 })
     } finally {
       setIsCreating(false)
     }
@@ -907,6 +1259,30 @@ export function ApprovalListingClient({
       toast.error(err.message || 'Terjadi kesalahan saat menghapus sesi.')
     } finally {
       setIsDeleting(false)
+    }
+  }
+
+  const [isBatchDeleteModalOpen, setIsBatchDeleteModalOpen] = useState(false)
+  const [isBatchDeleting, setIsBatchDeleting] = useState(false)
+
+  const handleBatchDelete = async () => {
+    if (selectedIds.length === 0) return
+    setIsBatchDeleting(true)
+    try {
+      const res = await deleteBatchDailyActivitySessionsAction(selectedIds)
+      if (res.success) {
+        toast.success(`${res.deletedCount ?? selectedIds.length} sesi Daily Activity berhasil dihapus`)
+        setRows((prev) => prev.filter((r) => !selectedIds.includes(r.sessionId)))
+        setSelectedIds([])
+        setIsBatchDeleteModalOpen(false)
+        router.refresh()
+      } else {
+        toast.error(res.error || 'Gagal menghapus sesi batch.')
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Terjadi kesalahan saat menghapus sesi batch.')
+    } finally {
+      setIsBatchDeleting(false)
     }
   }
 
@@ -1023,7 +1399,7 @@ export function ApprovalListingClient({
                   <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">${step.stepOrder}</td>
                   <td style="border: 1px solid black; padding: 3px 5px; text-align: left; font-weight: 500;">${step.stepLabel}</td>
                   <td style="border: 1px solid black; padding: 3px 5px; text-align: left;">${step.approverName || '—'}</td>
-                  <td style="border: 1px solid black; padding: 3px 5px; text-align: center; text-transform: capitalize; font-weight: bold;">${step.status}</td>
+                  <td style="border: 1px solid black; padding: 3px 5px; text-align: center; text-transform: capitalize; font-weight: bold;">${step.stepOrder === 1 && step.status === 'approved' ? 'Signed (Diajukan)' : step.status}</td>
                   <td style="border: 1px solid black; padding: 3px 5px; text-align: center; font-size: 7pt; font-family: monospace;">${formatTimestamp(step.signedAt)}</td>
                   <td style="border: 1px solid black; padding: 3px 5px; text-align: left; font-size: 7.5pt; font-style: italic;">${step.remarks || '—'}</td>
                 </tr>
@@ -1160,7 +1536,7 @@ export function ApprovalListingClient({
                 <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">${step.stepOrder}</td>
                 <td style="border: 1px solid black; padding: 3px 5px; text-align: left; font-weight: 500;">${step.stepLabel}</td>
                 <td style="border: 1px solid black; padding: 3px 5px; text-align: left;">${step.approverName || '—'}</td>
-                <td style="border: 1px solid black; padding: 3px 5px; text-align: center; text-transform: capitalize; font-weight: bold;">${step.status}</td>
+                <td style="border: 1px solid black; padding: 3px 5px; text-align: center; text-transform: capitalize; font-weight: bold;">${step.stepOrder === 1 && step.status === 'approved' ? 'Signed (Diajukan)' : step.status}</td>
                 <td style="border: 1px solid black; padding: 3px 5px; text-align: center; font-size: 7pt; font-family: monospace;">${formatTimestamp(step.signedAt)}</td>
                 <td style="border: 1px solid black; padding: 3px 5px; text-align: left; font-size: 7.5pt; font-style: italic;">${step.remarks || '—'}</td>
               </tr>
@@ -1375,6 +1751,15 @@ export function ApprovalListingClient({
               >
                 <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5 text-emerald-600" />
                 EXCEL
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setIsBatchDeleteModalOpen(true)}
+                className="h-8 rounded-lg border-red-200 bg-white px-3.5 text-xs font-bold text-red-600 uppercase shadow-sm hover:bg-red-50 hover:border-red-300"
+              >
+                <Trash2 className="mr-1.5 h-3.5 w-3.5 text-red-600" />
+                HAPUS
               </Button>
               <Button
                 size="sm"
@@ -1679,7 +2064,11 @@ export function ApprovalListingClient({
                                 <td>{step.stepOrder}</td>
                                 <td className="text-left">{step.stepLabel}</td>
                                 <td className="text-left">{step.approverName || '-'}</td>
-                                <td className="capitalize font-semibold">{step.status}</td>
+                                <td className="capitalize font-semibold">
+                                  {step.stepOrder === 1 && step.status === 'approved'
+                                    ? 'Signed (Diajukan)'
+                                    : step.status}
+                                </td>
                                 <td className="text-[7pt] font-mono">{formatTimestamp(step.signedAt)}</td>
                                 <td className="text-left italic text-slate-600 text-[7.5pt] break-words whitespace-normal leading-tight" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{liveRemark}</td>
                               </tr>
@@ -2065,7 +2454,11 @@ export function ApprovalListingClient({
                           <td>{step.stepOrder}</td>
                           <td className="text-left">{step.stepLabel}</td>
                           <td className="text-left">{step.approverName || '-'}</td>
-                          <td className="capitalize font-semibold">{step.status}</td>
+                          <td className="capitalize font-semibold">
+                            {step.stepOrder === 1 && step.status === 'approved'
+                              ? 'Signed (Diajukan)'
+                              : step.status}
+                          </td>
                           <td className="text-[7pt]">{step.signedAt ? new Date(step.signedAt).toLocaleDateString('id-ID') : '—'}</td>
                         </tr>
                       ))}
@@ -2716,20 +3109,82 @@ export function ApprovalListingClient({
                 </div>
 
                 {/* Photo Evidence Section */}
-                <div className="rounded-lg border border-blue-100 bg-white p-3 space-y-2">
-                  <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                    <Camera className="size-3.5 text-slate-500" /> Photo Evidence
-                  </span>
+                <div className="rounded-xl border border-blue-100 bg-white p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                      <Camera className="size-3.5 text-slate-500" /> Photo Evidence
+                    </span>
+                    {createForm.assignedPhotoUrl || (createForm.assignedPhotos && createForm.assignedPhotos.length > 0) ? (
+                      <Badge className="bg-emerald-100 text-emerald-800 border-0 text-[10px] font-bold">
+                        ✓ Terunggah
+                      </Badge>
+                    ) : createForm.assignedUploading ? (
+                      <Badge className="bg-amber-100 text-amber-800 border-0 text-[10px] font-bold animate-pulse">
+                        Mengunggah...
+                      </Badge>
+                    ) : null}
+                  </div>
                   <div className="grid grid-cols-2 gap-2">
                     <label className="cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50/70 hover:bg-blue-100/70 py-2 text-xs font-semibold text-blue-800 transition-colors">
                       <Camera className="size-3.5 text-blue-700" /> Kamera
-                      <input type="file" accept="image/*" capture="environment" className="hidden" />
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="hidden"
+                        onChange={(e) => {
+                          handleAssignedPhotoSelect(e.target.files)
+                          e.target.value = ''
+                        }}
+                      />
                     </label>
                     <label className="cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50/70 hover:bg-blue-100/70 py-2 text-xs font-semibold text-blue-800 transition-colors">
                       <ImagePlus className="size-3.5 text-blue-700" /> Galeri
-                      <input type="file" accept="image/*" className="hidden" />
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={(e) => {
+                          handleAssignedPhotoSelect(e.target.files)
+                          e.target.value = ''
+                        }}
+                      />
                     </label>
                   </div>
+                  {createForm.assignedPreviewUrls && createForm.assignedPreviewUrls.length > 0 ? (
+                    <div className="space-y-1.5 pt-1">
+                      <div className="flex flex-wrap gap-2">
+                        {createForm.assignedPreviewUrls.map((url, pIdx) => (
+                          <div key={pIdx} className="relative group size-14 rounded-lg overflow-hidden border border-slate-200 bg-black/5 shadow-2xs">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={url} alt={`Evidence ${pIdx + 1}`} className="size-full object-cover" />
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] font-medium text-slate-600">
+                        <span className="truncate max-w-[200px]">{createForm.assignedPhotoName}</span>
+                        <button
+                          type="button"
+                          onClick={handleAssignedPhotoRemove}
+                          className="text-red-500 hover:text-red-700 text-[10px] font-bold underline cursor-pointer"
+                        >
+                          Hapus Foto
+                        </button>
+                      </div>
+                    </div>
+                  ) : createForm.assignedPhotoUrl ? (
+                    <div className="flex items-center justify-between text-[11px] font-medium text-emerald-700 pt-1">
+                      <span>✓ Foto terlampir</span>
+                      <button
+                        type="button"
+                        onClick={handleAssignedPhotoRemove}
+                        className="text-red-500 hover:text-red-700 text-[10px] font-bold underline cursor-pointer"
+                      >
+                        Hapus
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -2798,20 +3253,82 @@ export function ApprovalListingClient({
                 </div>
 
                 {/* Photo Evidence Section */}
-                <div className="rounded-lg border border-sky-100 bg-white p-3 space-y-2">
-                  <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                    <Camera className="size-3.5 text-slate-500" /> Photo Evidence
-                  </span>
+                <div className="rounded-xl border border-sky-100 bg-white p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                      <Camera className="size-3.5 text-slate-500" /> Photo Evidence
+                    </span>
+                    {createForm.customPhotoUrl || (createForm.customPhotos && createForm.customPhotos.length > 0) ? (
+                      <Badge className="bg-emerald-100 text-emerald-800 border-0 text-[10px] font-bold">
+                        ✓ Terunggah
+                      </Badge>
+                    ) : createForm.customUploading ? (
+                      <Badge className="bg-amber-100 text-amber-800 border-0 text-[10px] font-bold animate-pulse">
+                        Mengunggah...
+                      </Badge>
+                    ) : null}
+                  </div>
                   <div className="grid grid-cols-2 gap-2">
                     <label className="cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50/70 hover:bg-sky-100/70 py-2 text-xs font-semibold text-sky-800 transition-colors">
                       <Camera className="size-3.5 text-sky-700" /> Kamera
-                      <input type="file" accept="image/*" capture="environment" className="hidden" />
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="hidden"
+                        onChange={(e) => {
+                          handleCustomPhotoSelect(e.target.files)
+                          e.target.value = ''
+                        }}
+                      />
                     </label>
                     <label className="cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50/70 hover:bg-sky-100/70 py-2 text-xs font-semibold text-sky-800 transition-colors">
                       <ImagePlus className="size-3.5 text-sky-700" /> Galeri
-                      <input type="file" accept="image/*" className="hidden" />
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={(e) => {
+                          handleCustomPhotoSelect(e.target.files)
+                          e.target.value = ''
+                        }}
+                      />
                     </label>
                   </div>
+                  {createForm.customPreviewUrls && createForm.customPreviewUrls.length > 0 ? (
+                    <div className="space-y-1.5 pt-1">
+                      <div className="flex flex-wrap gap-2">
+                        {createForm.customPreviewUrls.map((url, pIdx) => (
+                          <div key={pIdx} className="relative group size-14 rounded-lg overflow-hidden border border-slate-200 bg-black/5 shadow-2xs">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={url} alt={`Evidence ${pIdx + 1}`} className="size-full object-cover" />
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] font-medium text-slate-600">
+                        <span className="truncate max-w-[200px]">{createForm.customPhotoName}</span>
+                        <button
+                          type="button"
+                          onClick={handleCustomPhotoRemove}
+                          className="text-red-500 hover:text-red-700 text-[10px] font-bold underline cursor-pointer"
+                        >
+                          Hapus Foto
+                        </button>
+                      </div>
+                    </div>
+                  ) : createForm.customPhotoUrl ? (
+                    <div className="flex items-center justify-between text-[11px] font-medium text-emerald-700 pt-1">
+                      <span>✓ Foto terlampir</span>
+                      <button
+                        type="button"
+                        onClick={handleCustomPhotoRemove}
+                        className="text-red-500 hover:text-red-700 text-[10px] font-bold underline cursor-pointer"
+                      >
+                        Hapus
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="space-y-1.5">
@@ -2898,19 +3415,19 @@ export function ApprovalListingClient({
                   </div>
                 </div>
 
-                {/* MODAL DIALOG: PILIH KAMUS AKTIVITAS (CLEAN MINIMALIST PARITY) */}
+                {/* MODAL DIALOG: PILIH KAMUS AKTIVITAS (PARITY WITH MOBILE) */}
                 <Dialog open={isPickerModalOpen} onOpenChange={setIsPickerModalOpen}>
-                  <DialogContent className="max-w-2xl p-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+                  <DialogContent className="max-w-2xl p-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
                     {/* Header Dark Minimalist */}
-                    <div className="bg-slate-900 px-5 py-3.5 text-white flex items-center justify-between">
+                    <div className="bg-[#003f78] px-5 py-3.5 text-white flex items-center justify-between">
                       <div>
                         <DialogTitle className="text-base font-bold text-white">Pilih Kamus Aktivitas</DialogTitle>
-                        <p className="text-xs text-slate-300 mt-0.5">Pilih aktivitas berdasarkan route group & kategori pekerjaan</p>
+                        <p className="text-xs text-blue-100 mt-0.5">Pilih aktivitas berdasarkan route group &amp; aktivitas mandiri</p>
                       </div>
                       <button
                         type="button"
                         onClick={() => setIsPickerModalOpen(false)}
-                        className="text-slate-400 hover:text-white p-1 rounded-md transition-colors"
+                        className="text-blue-200 hover:text-white p-1 rounded-md transition-colors"
                       >
                         <X className="size-4" />
                       </button>
@@ -2918,84 +3435,39 @@ export function ApprovalListingClient({
 
                     <div className="p-4 space-y-3">
                       {/* Search Bar */}
-                      <div className="rounded-lg bg-slate-100 px-3.5 py-2 flex items-center gap-2 border border-slate-200">
-                        <Search className="size-4 text-slate-500" />
+                      <div className="rounded-xl bg-slate-50 px-3.5 py-2.5 flex items-center gap-2 border border-slate-200 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition">
+                        <Search className="size-4 text-slate-400" />
                         <input
                           type="text"
                           value={pickerSearch}
                           onChange={(e) => setPickerSearch(e.target.value)}
                           placeholder="Cari kode atau nama activity..."
-                          className="w-full bg-transparent text-xs font-medium text-slate-900 outline-none placeholder:text-slate-400"
+                          className="w-full bg-transparent text-xs font-semibold text-slate-800 outline-none placeholder:text-slate-400"
                         />
+                        {pickerSearch ? (
+                          <button
+                            type="button"
+                            onClick={() => setPickerSearch('')}
+                            className="text-slate-400 hover:text-slate-600"
+                          >
+                            <X className="size-3.5" />
+                          </button>
+                        ) : null}
                       </div>
 
                       {/* Status Count Bar */}
-                      <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 border border-slate-200">
-                        <span>27 library tampil</span>
-                        <span>{(createForm.items || []).filter(i => i?.label?.trim()).length} dipilih</span>
+                      <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3.5 py-2 text-xs font-bold text-slate-600 border border-slate-200/80">
+                        <span>{totalVisibleLibraryCount} library tampil</span>
+                        <span>{(createForm.items || []).filter((i) => i?.label?.trim()).length} dipilih</span>
                       </div>
 
-                      {/* Group Accordions List */}
-                      <div className="max-h-80 overflow-y-auto space-y-2 pr-1">
-                        {[
-                          {
-                            groupName: 'Group: Support Customer',
-                            subtitle: 'GRP-Support Customer • ALL',
-                            items: [
-                              { code: 'SVC.STB-001', name: 'Support Operator', points: 10, badges: ['FOTO WAJIB', '10 PTS'] },
-                              { code: 'SVC.STB-002', name: 'Support Technical Liaison', points: 10, badges: ['EQUIPMENT WAJIB'] },
-                            ]
-                          },
-                          {
-                            groupName: 'Group: Running Tire Inspection & Pressure Check',
-                            subtitle: 'GRP-Tire Inspection • ALL',
-                            items: [
-                              { code: 'SVC.STB-003', name: 'Inspection & Pressure Check', points: 10, badges: ['EQUIPMENT WAJIB', 'WAKTU WAJIB'] },
-                              { code: 'SVC.STB-004', name: 'Running Tire Depth Measurement', points: 10, badges: ['FOTO WAJIB'] },
-                            ]
-                          },
-                          {
-                            groupName: 'Group: Rotasi Tire EM',
-                            subtitle: 'GRP-Rotasi Tire EM • Earthmover',
-                            items: [
-                              { code: 'SVC.STB-005', name: 'Rotasi Tire EM Position 1 & 2', points: 15, badges: ['EQUIPMENT WAJIB', 'WAKTU WAJIB'] },
-                              { code: 'SVC.STB-006', name: 'Rotasi Tire EM Position 3 & 4', points: 15, badges: ['EQUIPMENT WAJIB'] },
-                            ]
-                          },
-                          {
-                            groupName: 'Group: Replace Tire TB',
-                            subtitle: 'GRP-Replace Tire TB • Truck & Bus',
-                            items: [
-                              { code: 'SVC.STB-007', name: 'Mounting Truck & Bus Tyre', points: 15, badges: ['EQUIPMENT WAJIB', 'WAKTU WAJIB'] },
-                              { code: 'SVC.STB-008', name: 'Dismounting Truck Tyre', points: 15, badges: ['EQUIPMENT WAJIB'] },
-                            ]
-                          },
-                          {
-                            groupName: 'Group: Rotasi Tire TB',
-                            subtitle: 'GRP-Rotasi Tire TB • Truck & Bus',
-                            items: [
-                              { code: 'SVC.STB-009', name: 'Rotasi Tire Truck & Bus', points: 15, badges: ['EQUIPMENT WAJIB'] },
-                            ]
-                          },
-                          {
-                            groupName: 'Group: Replace Tire',
-                            subtitle: 'GRP-Replace Tire • General',
-                            items: [
-                              { code: 'SVC.STB-010', name: 'Replacement Tyre OTR HD-785', points: 20, badges: ['EQUIPMENT WAJIB', 'FOTO WAJIB'] },
-                            ]
-                          },
-                          {
-                            groupName: 'Group: Rotasi Tire',
-                            subtitle: 'GRP-General Safety & Housekeeping',
-                            items: [
-                              { code: 'HSE.P5M-001', name: 'P5M & Briefing Keselamatan', points: 5, badges: ['WAKTU WAJIB'] },
-                              { code: 'HSE.P2H-001', name: 'P2H & Inspection Alat Kerja', points: 5, badges: ['EQUIPMENT WAJIB'] },
-                            ]
-                          },
-                        ].map((group, gIdx) => {
+                      {/* Scrollable Content */}
+                      <div className="max-h-[380px] overflow-y-auto space-y-3 pr-1">
+                        {/* 1. Route Groups Accordion */}
+                        {filteredRouteGroups.map((group, gIdx) => {
                           const isExpanded = expandedPickerGroups.has(group.groupName) || Boolean(pickerSearch)
                           return (
-                            <div key={gIdx} className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+                            <div key={gIdx} className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
                               <button
                                 type="button"
                                 onClick={() => {
@@ -3006,19 +3478,19 @@ export function ApprovalListingClient({
                                     return next
                                   })
                                 }}
-                                className="w-full flex items-center justify-between bg-slate-50 px-3.5 py-2.5 text-left font-bold text-slate-800 text-xs hover:bg-slate-100 transition-colors"
+                                className="w-full flex items-center justify-between bg-slate-50/80 hover:bg-slate-100/80 px-3.5 py-2.5 text-left font-bold text-slate-800 text-xs transition-colors"
                               >
                                 <div className="flex items-center gap-2">
                                   <ChevronRight className={`size-4 transition-transform text-slate-500 ${isExpanded ? 'rotate-90' : ''}`} />
                                   <span>{group.groupName}</span>
                                 </div>
-                                <span className="text-xs font-semibold text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">
+                                <span className="text-[11px] font-semibold text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">
                                   {group.items.length} Activity
                                 </span>
                               </button>
 
                               {isExpanded && (
-                                <div className="p-2 space-y-1.5 bg-white">
+                                <div className="p-2 space-y-1.5 bg-white border-t border-slate-100">
                                   {group.items.map((sub, sIdx) => {
                                     const isSelected = (createForm.items || []).some(
                                       (i) => i?.label?.includes(sub.code) || i?.label?.includes(sub.name)
@@ -3036,38 +3508,52 @@ export function ApprovalListingClient({
                                             addPresetActivity(`${sub.code} - ${sub.name}`, sub.points)
                                           }
                                         }}
-                                        className={`flex items-start justify-between rounded-lg p-2.5 cursor-pointer transition-all border ${
+                                        className={`flex items-center justify-between rounded-xl p-3 cursor-pointer transition border ${
                                           isSelected
-                                            ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
-                                            : 'bg-slate-50/50 text-slate-800 border-slate-200 hover:bg-slate-100/60'
+                                            ? 'bg-[#003f78] text-white border-[#003f78] shadow-sm'
+                                            : 'bg-white text-slate-800 border-slate-200/90 hover:bg-slate-50'
                                         }`}
                                       >
-                                        <div className="space-y-0.5">
-                                          <p className="text-xs font-bold font-mono">{sub.code}</p>
-                                          <p className="text-xs font-semibold">{sub.name}</p>
-                                          <p className={`text-xs ${isSelected ? 'text-slate-300' : 'text-slate-500'}`}>
-                                            {sub.points} pts • max 12 pts / hari
-                                          </p>
-                                          <div className="flex flex-wrap gap-1 mt-1">
-                                            {sub.badges.map((b, bIdx) => (
-                                              <span
-                                                key={bIdx}
-                                                className={`rounded px-1.5 py-0.5 text-[11px] font-bold tracking-wider uppercase ${
-                                                  isSelected
-                                                    ? 'bg-white/15 text-white'
-                                                    : 'bg-slate-200/80 text-slate-700'
-                                                }`}
-                                              >
-                                                {b}
+                                        <div className="min-w-0 flex-1 pr-2 space-y-0.5">
+                                          <div className="flex items-center gap-2">
+                                            <span className={`text-[11px] font-black tracking-wider uppercase ${isSelected ? 'text-white' : 'text-[#003f78]'}`}>
+                                              {sub.code}
+                                            </span>
+                                            {sub.points > 0 ? (
+                                              <span className={`rounded-md px-1.5 py-0.5 text-[9px] font-bold ${
+                                                isSelected ? 'bg-white/20 text-white' : 'bg-blue-50 text-[#003f78]'
+                                              }`}>
+                                                +{sub.points} pts
                                               </span>
-                                            ))}
+                                            ) : null}
                                           </div>
+                                          <p className={`text-xs font-semibold truncate ${isSelected ? 'text-blue-100' : 'text-slate-800'}`}>
+                                            {sub.name}
+                                          </p>
+                                          {sub.badges && sub.badges.length > 0 ? (
+                                            <div className="flex flex-wrap gap-1 pt-0.5">
+                                              {sub.badges.map((b, bIdx) => (
+                                                <span
+                                                  key={bIdx}
+                                                  className={`rounded-md px-1.5 py-0.5 text-[8.5px] font-bold uppercase tracking-wider ${
+                                                    isSelected ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-600'
+                                                  }`}
+                                                >
+                                                  {b}
+                                                </span>
+                                              ))}
+                                            </div>
+                                          ) : null}
                                         </div>
-                                        <div className={`size-5 flex items-center justify-center rounded text-xs font-bold ${
-                                          isSelected ? 'bg-white text-slate-900' : 'bg-slate-200 text-slate-600'
-                                        }`}>
-                                          {isSelected ? <Check className="size-3.5 stroke-[3]" /> : '+'}
-                                        </div>
+                                        <span
+                                          className={`size-6 shrink-0 flex items-center justify-center rounded-full transition ${
+                                            isSelected
+                                              ? 'bg-white text-[#003f78]'
+                                              : 'bg-white border border-slate-200 text-slate-400'
+                                          }`}
+                                        >
+                                          {isSelected ? <Check className="size-3.5 stroke-[3]" /> : <ListFilter className="size-3.5" />}
+                                        </span>
                                       </div>
                                     )
                                   })}
@@ -3076,15 +3562,108 @@ export function ApprovalListingClient({
                             </div>
                           )
                         })}
+
+                        {/* 2. Standalone / Aktivitas Mandiri Section */}
+                        {standaloneLibraries.length > 0 && (
+                          <div className="space-y-2 pt-1">
+                            <div className="flex items-center gap-1.5 px-1 py-1 text-xs font-bold text-[#486275] uppercase tracking-wider">
+                              <Sparkles className="size-3.5 text-amber-500" />
+                              <span>Aktivitas Mandiri / Kamus Lainnya ({standaloneLibraries.length})</span>
+                            </div>
+
+                            <div className="space-y-1.5">
+                              {standaloneLibraries.map((item) => {
+                                const isSelected = (createForm.items || []).some(
+                                  (i) => i?.label?.includes(item.code) || i?.label?.includes(item.name)
+                                )
+                                const requirementBadges = [
+                                  item.requiresEquipmentNo ? 'Equipment' : null,
+                                  item.requiresDuration ? 'Duration' : null,
+                                  item.requiresTireCount ? 'Tire' : null,
+                                  item.requiresLocationGps ? 'GPS' : null,
+                                  item.requiresPhoto ? 'Photo' : null,
+                                ].filter(Boolean)
+
+                                return (
+                                  <div
+                                    key={item.id}
+                                    onClick={() => {
+                                      if (isSelected) {
+                                        const idxToRemove = (createForm.items || []).findIndex(
+                                          (i) => i?.label?.includes(item.code) || i?.label?.includes(item.name)
+                                        )
+                                        if (idxToRemove >= 0) removeItemRow(idxToRemove)
+                                      } else {
+                                        addPresetActivity(`${item.code} - ${item.name}`, item.basePoints || 10)
+                                      }
+                                    }}
+                                    className={`flex items-center justify-between rounded-xl p-3 cursor-pointer transition border ${
+                                      isSelected
+                                        ? 'bg-[#003f78] text-white border-[#003f78] shadow-sm'
+                                        : 'bg-white text-slate-800 border-slate-200/90 hover:bg-slate-50'
+                                    }`}
+                                  >
+                                    <div className="min-w-0 flex-1 pr-2 space-y-0.5">
+                                      <div className="flex items-center gap-2">
+                                        <span className={`text-[11px] font-black tracking-wider uppercase ${isSelected ? 'text-white' : 'text-[#003f78]'}`}>
+                                          {item.code}
+                                        </span>
+                                        {(item.basePoints || 0) > 0 ? (
+                                          <span className={`rounded-md px-1.5 py-0.5 text-[9px] font-bold ${
+                                            isSelected ? 'bg-white/20 text-white' : 'bg-[#eaf4fb] text-[#003f78]'
+                                          }`}>
+                                            +{item.basePoints} pts
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                      <p className={`text-xs font-semibold truncate ${isSelected ? 'text-blue-100' : 'text-slate-800'}`}>
+                                        {item.name}
+                                      </p>
+                                      {requirementBadges.length > 0 ? (
+                                        <div className="flex flex-wrap gap-1 pt-0.5">
+                                          {requirementBadges.map((b, bIdx) => (
+                                            <span
+                                              key={bIdx}
+                                              className={`rounded-md px-1.5 py-0.5 text-[8.5px] font-bold uppercase tracking-wider ${
+                                                isSelected ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-600'
+                                              }`}
+                                            >
+                                              {b}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                    <span
+                                      className={`size-6 shrink-0 flex items-center justify-center rounded-full transition ${
+                                        isSelected
+                                          ? 'bg-white text-[#003f78]'
+                                          : 'bg-white border border-slate-200 text-slate-400'
+                                      }`}
+                                    >
+                                      {isSelected ? <Check className="size-3.5 stroke-[3]" /> : <ListFilter className="size-3.5" />}
+                                    </span>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {totalVisibleLibraryCount === 0 && (
+                          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 p-6 text-center text-xs font-semibold text-slate-500">
+                            Tidak ada kamus aktivitas yang cocok dengan pencarian &quot;{pickerSearch}&quot;.
+                          </div>
+                        )}
                       </div>
 
                       {/* Bottom Submit Button */}
                       <Button
                         type="button"
                         onClick={() => setIsPickerModalOpen(false)}
-                        className="h-10 w-full rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs mt-2"
+                        className="h-10 w-full rounded-xl bg-[#003f78] hover:bg-[#00315c] text-white font-bold text-xs shadow-xs mt-2"
                       >
-                        PAKAI {(createForm.items || []).filter(i => i?.label?.trim()).length} ACTIVITY
+                        PAKAI {(createForm.items || []).filter((i) => i?.label?.trim()).length} ACTIVITY
                       </Button>
                     </div>
                   </DialogContent>
@@ -3152,20 +3731,84 @@ export function ApprovalListingClient({
                             </div>
                           </div>
 
-                          <div className="rounded-lg border border-slate-200 bg-white p-2 space-y-1">
-                            <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                              <Camera className="size-3.5 text-slate-500" /> Photo Evidence
-                            </span>
+                          <div className="rounded-xl border border-sky-100 bg-sky-50/40 p-3 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                                <Camera className="size-3.5 text-sky-600" /> Photo Evidence
+                              </span>
+                              {item.photoUrl || (item.photos && item.photos.length > 0) ? (
+                                <Badge className="bg-emerald-100 text-emerald-800 border-0 text-[10px] font-bold">
+                                  ✓ Terunggah
+                                </Badge>
+                              ) : item.uploading ? (
+                                <Badge className="bg-amber-100 text-amber-800 border-0 text-[10px] font-bold animate-pulse">
+                                  Mengunggah...
+                                </Badge>
+                              ) : null}
+                            </div>
+
                             <div className="flex items-center gap-2">
-                              <label className="cursor-pointer inline-flex items-center gap-1 rounded bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 transition-colors">
-                                <Camera className="size-3.5 text-slate-600" /> Kamera
-                                <input type="file" accept="image/*" capture="environment" className="hidden" />
+                              <label className="cursor-pointer inline-flex items-center gap-1.5 rounded-lg bg-white hover:bg-sky-50 border border-sky-200 px-3 py-1.5 text-xs font-semibold text-sky-800 shadow-2xs transition-all active:scale-95">
+                                <Camera className="size-3.5 text-sky-600" /> Kamera
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  capture="environment"
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    handleItemPhotoSelect(idx, e.target.files)
+                                    e.target.value = ''
+                                  }}
+                                />
                               </label>
-                              <label className="cursor-pointer inline-flex items-center gap-1 rounded bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 transition-colors">
-                                <ImagePlus className="size-3.5 text-slate-600" /> Galeri
-                                <input type="file" accept="image/*" className="hidden" />
+                              <label className="cursor-pointer inline-flex items-center gap-1.5 rounded-lg bg-white hover:bg-sky-50 border border-sky-200 px-3 py-1.5 text-xs font-semibold text-sky-800 shadow-2xs transition-all active:scale-95">
+                                <ImagePlus className="size-3.5 text-sky-600" /> Galeri
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  multiple
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    handleItemPhotoSelect(idx, e.target.files)
+                                    e.target.value = ''
+                                  }}
+                                />
                               </label>
                             </div>
+
+                            {item.previewUrls && item.previewUrls.length > 0 ? (
+                              <div className="space-y-1.5 pt-1">
+                                <div className="flex flex-wrap gap-2">
+                                  {item.previewUrls.map((url, pIdx) => (
+                                    <div key={pIdx} className="relative group size-14 rounded-lg overflow-hidden border border-slate-200 bg-black/5 shadow-2xs">
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img src={url} alt={`Evidence ${pIdx + 1}`} className="size-full object-cover" />
+                                    </div>
+                                  ))}
+                                </div>
+                                <div className="flex items-center justify-between text-[11px] font-medium text-slate-600">
+                                  <span className="truncate max-w-[200px]">{item.photoName}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleItemPhotoRemove(idx)}
+                                    className="text-red-500 hover:text-red-700 text-[10px] font-bold underline cursor-pointer"
+                                  >
+                                    Hapus Foto
+                                  </button>
+                                </div>
+                              </div>
+                            ) : item.photoUrl ? (
+                              <div className="flex items-center justify-between text-[11px] font-medium text-emerald-700 pt-1">
+                                <span>✓ Foto terlampir</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleItemPhotoRemove(idx)}
+                                  className="text-red-500 hover:text-red-700 text-[10px] font-bold underline cursor-pointer"
+                                >
+                                  Hapus
+                                </button>
+                              </div>
+                            ) : null}
                           </div>
 
                           <div className="space-y-1">
@@ -3239,6 +3882,23 @@ export function ApprovalListingClient({
             </div>
           </div>
 
+          {createError ? (
+            <div className="mx-6 mb-3 rounded-xl border-2 border-red-400 bg-red-50 p-3.5 text-xs flex items-start gap-2.5 shadow-md animate-in fade-in duration-200">
+              <AlertCircle className="size-4 text-red-600 shrink-0 mt-0.5" />
+              <div className="flex-1 space-y-0.5">
+                <p className="font-extrabold text-red-900">Perhatian: Formulir Belum Lengkap</p>
+                <p className="font-semibold text-red-700 leading-relaxed">{createError}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCreateError(null)}
+                className="text-red-400 hover:text-red-700 p-0.5 cursor-pointer"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+          ) : null}
+
           <DialogFooter className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/70 flex items-center justify-between sm:justify-between">
             <Button variant="outline" onClick={() => setCreateOpen(false)}>
               Batal
@@ -3275,6 +3935,42 @@ export function ApprovalListingClient({
               className="h-8.5 rounded-lg bg-red-600 px-3.5 text-xs font-medium text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
             >
               {isDeleting ? 'Menghapus...' : 'Hapus Sesi'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Batch Delete Confirmation Modal */}
+      <Dialog open={isBatchDeleteModalOpen} onOpenChange={(open) => !open && !isBatchDeleting && setIsBatchDeleteModalOpen(false)}>
+        <DialogContent className="max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold text-slate-900 flex items-center gap-2">
+              <Trash2 className="size-5 text-red-600" />
+              Hapus {selectedIds.length} Sesi Terpilih?
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500 mt-1">
+              Tindakan ini akan menghapus permanen <b>{selectedIds.length} sesi Daily Activity</b> yang dipilih beserta seluruh item aktivitas dan histori approval terkait. Tindakan ini tidak dapat dibatalkan.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4 flex items-center justify-end gap-2 sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsBatchDeleteModalOpen(false)}
+              disabled={isBatchDeleting}
+              className="h-8.5 rounded-lg border-slate-200 bg-white px-3.5 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleBatchDelete}
+              disabled={isBatchDeleting}
+              className="h-8.5 rounded-lg bg-red-600 px-3.5 text-xs font-medium text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
+            >
+              {isBatchDeleting ? 'Menghapus...' : `Ya, Hapus (${selectedIds.length})`}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -3841,11 +3841,18 @@ export const sioReminderConfig = pgTable('hero_sio_reminder_config', {
 
 export const minePermitReminderConfig = pgTable('hero_mine_permit_reminder_config', {
   id: serial('id').primaryKey(),
+  siteId: integer('site_id').references(() => sites.id, { onDelete: 'cascade' }),
+  intervalDays: integer('interval_days').notNull().default(1),
+  reminderDays: integer('reminder_days').notNull().default(30),
+  recipientEmployeeIds: text('recipient_employee_ids').notNull().default('[]'),
+  ccEmployeeIds: text('cc_employee_ids').notNull().default('[]'),
+  additionalCcEmails: text('additional_cc_emails').notNull().default(''),
   additionalRecipients: text('additional_recipients').notNull().default(''),
   excludedManagerIds: text('excluded_manager_ids').notNull().default('[]'),
-  reminderDays: integer('reminder_days').notNull().default(30),
   isActive: boolean('is_active').notNull().default(true),
+  lastSentAt: timestamp('last_sent_at'),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  updatedBy: text('updated_by'),
 })
 
 export const broadcastCategories = pgTable('hero_broadcast_categories', {

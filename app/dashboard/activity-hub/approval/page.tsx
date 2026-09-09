@@ -139,6 +139,7 @@ export default async function DailyActivityApprovalListPage() {
                   sessionId: dailyActivityApprovals.sessionId,
                   stepOrder: dailyActivityApprovals.stepOrder,
                   stepLabel: dailyActivityApprovals.stepLabel,
+                  approverRole: dailyActivityApprovals.approverRole,
                   status: dailyActivityApprovals.status,
                   approverName: dailyActivityApprovals.approverName,
                   approverEmail: dailyActivityApprovals.approverEmail,
@@ -277,6 +278,7 @@ export default async function DailyActivityApprovalListPage() {
         list.push({
           stepOrder: Number(a.stepOrder) || 1,
           stepLabel: a.stepLabel || '',
+          approverRole: a.approverRole || '',
           status: a.status || 'waiting',
           approverName: a.approverName || '',
           signatureDataUrl: a.signatureDataUrl || null,
@@ -330,10 +332,17 @@ export default async function DailyActivityApprovalListPage() {
               code: activityLibraries.activityCode,
               name: activityLibraries.activityName,
               basePoints: activityLibraries.basePoints,
+              category: activityLibraries.category,
+              requiresPhoto: activityLibraries.requiresPhoto,
+              requiresEquipmentNo: activityLibraries.requiresEquipmentNo,
+              requiresDuration: activityLibraries.requiresDuration,
+              requiresLocationGps: activityLibraries.requiresLocationGps,
+              requiresTireCount: activityLibraries.requiresTireCount,
+              requiresMaterialUsed: activityLibraries.requiresMaterialUsed,
             })
             .from(activityLibraries)
             .where(eq(activityLibraries.isActive, true))
-            .limit(60),
+            .orderBy(asc(activityLibraries.activityCode)),
         [],
         'fetchLibraryList'
       ),
@@ -413,6 +422,13 @@ export default async function DailyActivityApprovalListPage() {
       code: l.code || '',
       name: l.name || '',
       basePoints: Number(l.basePoints) || 0,
+      category: l.category || 'General',
+      requiresPhoto: Boolean(l.requiresPhoto),
+      requiresEquipmentNo: Boolean(l.requiresEquipmentNo),
+      requiresDuration: Boolean(l.requiresDuration),
+      requiresLocationGps: Boolean(l.requiresLocationGps),
+      requiresTireCount: Boolean(l.requiresTireCount),
+      requiresMaterialUsed: Boolean(l.requiresMaterialUsed),
     }))
 
     const initialSettings = await getDailyActivityWorkflowSettings()
