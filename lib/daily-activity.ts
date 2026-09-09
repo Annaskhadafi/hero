@@ -1023,6 +1023,8 @@ async function getCurrentEmployeeByEmail(email?: string | null) {
           maritalStatus: employees.maritalStatus,
           religion: employees.religion,
           education: employees.education,
+          signatureDataUrl: employees.signatureDataUrl,
+          signatureRegisteredAt: employees.signatureRegisteredAt,
         })
         .from(employees)
         .where(eq(employees.authUserId, authUser.id))
@@ -1082,6 +1084,8 @@ async function getCurrentEmployeeByEmail(email?: string | null) {
         maritalStatus: employees.maritalStatus,
         religion: employees.religion,
         education: employees.education,
+        signatureDataUrl: employees.signatureDataUrl,
+        signatureRegisteredAt: employees.signatureRegisteredAt,
       })
       .from(employees)
       .where(sql`lower(${employees.email}) = ${normalizedEmail}`)
@@ -1141,6 +1145,8 @@ async function getCurrentEmployeeByEmail(email?: string | null) {
       maritalStatus: employees.maritalStatus,
       religion: employees.religion,
       education: employees.education,
+      signatureDataUrl: employees.signatureDataUrl,
+      signatureRegisteredAt: employees.signatureRegisteredAt,
     })
     .from(employees)
     .where(or(eq(employees.email, 'mochamad.khadafi@chitraparatama.co.id'), eq(employees.employeeSn, '71261')))

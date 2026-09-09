@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useActionState } from 'react'
-import { Download, FileSignature, ShieldCheck, Users } from 'lucide-react'
+import { Download, FileSignature, QrCode, ShieldCheck, Users } from 'lucide-react'
 import { updateDailyActivitySessionDocumentSignoffWithStateAction } from '@/app/dashboard/activity-hub/actions'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -127,7 +127,17 @@ export function DailyActivitySessionDocumentPanel({
                 sedangkan TTD customer disiapkan sebagai area tanda tangan manual di PDF.
               </CardDescription>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              <Button asChild variant="outline" className="rounded-full">
+                <Link
+                  prefetch={false}
+                  href={`/activity-evidence/${data.sessionId}`}
+                  target="_blank"
+                >
+                  <QrCode className="size-4" />
+                  Evidence (QR)
+                </Link>
+              </Button>
               <Button asChild variant="outline" className="rounded-full">
                 <Link
                   prefetch={false}

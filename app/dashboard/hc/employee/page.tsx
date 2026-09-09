@@ -26,6 +26,7 @@ export default async function EmployeePage() {
       : filterOptions.sections,
     locations: filterOptions.locations,
     positions: filterOptions.positions,
+    leaders: filterOptions.leaders || [],
   }
 
   const fullAccess = await getCurrentMenuPermission('hc_employee')

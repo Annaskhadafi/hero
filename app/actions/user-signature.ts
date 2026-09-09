@@ -2,29 +2,71 @@
 
 import { headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
-import { asc, eq, ilike } from 'drizzle-orm'
+import { asc, eq, ilike, sql } from 'drizzle-orm'
 import { db } from '@/db'
 import { employees } from '@/db/schema/hero'
 import { auth } from '@/lib/auth'
+import { getServerSession } from '@/lib/auth-session'
 import { getCurrentEmployee } from '@/lib/get-current-employee'
+
+async function resolveEmployeeForSignature() {
+  let emp = await getCurrentEmployee()
+  if (!emp) {
+    const session = (await getServerSession()) || (await auth.api.getSession({ headers: await headers() }).catch(() => null))
+    const targetEmail = session?.user?.email?.trim().toLowerCase()
+    if (targetEmail) {
+      const [emailEmp] = await db
+        .select()
+        .from(employees)
+        .where(sql`LOWER(TRIM(${employees.email})) = ${targetEmail}`)
+        .limit(1)
+      if (emailEmp) {
+        emp = emailEmp
+      }
+    }
+  }
+
+  // Fallback: match first active employee (consistent with profile page & daily activity)
+  if (!emp) {
+    const [firstEmp] = await db
+      .select()
+      .from(employees)
+      .where(eq(employees.isActive, true))
+      .orderBy(asc(employees.id))
+      .limit(1)
+    if (firstEmp) {
+      emp = firstEmp
+    }
+  }
+
+  return emp
+}
+
+function triggerSignatureRevalidations() {
+  const paths = [
+    '/dashboard/profile',
+    '/dashboard/approval',
+    '/dashboard/activity-hub/approval',
+    '/dashboard/activity-hub/my-day',
+    '/dashboard/overtime-requests',
+    '/dashboard/hse/izin-kerja-ptw',
+    '/dashboard/sop-win',
+    '/mobile/profile',
+    '/mobile/approval',
+    '/mobile/activity',
+    '/mobile/activity/input',
+    '/mobile/overtime',
+  ]
+  for (const path of paths) {
+    try {
+      revalidatePath(path)
+    } catch {}
+  }
+}
 
 export async function getUserSignatureAction() {
   try {
-    let emp = await getCurrentEmployee()
-    if (!emp) {
-      const session = await auth.api.getSession({ headers: await headers() }).catch(() => null)
-      const targetEmail = session?.user?.email?.trim().toLowerCase()
-      if (targetEmail) {
-        const [emailEmp] = await db
-          .select()
-          .from(employees)
-          .where(ilike(employees.email, targetEmail))
-          .limit(1)
-        if (emailEmp) {
-          emp = emailEmp
-        }
-      }
-    }
+    const emp = await resolveEmployeeForSignature()
 
     if (!emp) {
       return { success: false as const, error: 'Sesi tidak valid.' }
@@ -64,21 +106,7 @@ export async function saveUserSignatureAction(signatureDataUrl: string) {
       return { success: false as const, error: 'Format tanda tangan tidak valid.' }
     }
 
-    let emp = await getCurrentEmployee()
-    if (!emp) {
-      const session = await auth.api.getSession({ headers: await headers() }).catch(() => null)
-      const targetEmail = session?.user?.email?.trim().toLowerCase()
-      if (targetEmail) {
-        const [emailEmp] = await db
-          .select()
-          .from(employees)
-          .where(ilike(employees.email, targetEmail))
-          .limit(1)
-        if (emailEmp) {
-          emp = emailEmp
-        }
-      }
-    }
+    const emp = await resolveEmployeeForSignature()
 
     if (!emp) {
       return { success: false as const, error: 'Sesi login tidak ditemukan.' }
@@ -103,19 +131,16 @@ export async function saveUserSignatureAction(signatureDataUrl: string) {
           signatureDataUrl,
           signatureRegisteredAt: now,
         })
-        .where(ilike(employees.email, emp.email.trim()))
+        .where(sql`LOWER(TRIM(${employees.email})) = ${emp.email.trim().toLowerCase()}`)
     }
 
-    revalidatePath('/dashboard/profile')
-    revalidatePath('/dashboard/approval')
-    revalidatePath('/dashboard/activity-hub/approval')
-    revalidatePath('/dashboard/overtime-requests')
-    revalidatePath('/dashboard/hse/izin-kerja-ptw')
-    revalidatePath('/dashboard/sop-win')
-    revalidatePath('/mobile/profile')
-    revalidatePath('/mobile/approval')
+    triggerSignatureRevalidations()
 
-    return { success: true as const }
+    return {
+      success: true as const,
+      signatureDataUrl,
+      signatureRegisteredAt: now.toISOString(),
+    }
   } catch (error: any) {
     console.error('Error saving user signature:', error)
     return { success: false as const, error: error.message || 'Gagal menyimpan tanda tangan.' }
@@ -124,21 +149,7 @@ export async function saveUserSignatureAction(signatureDataUrl: string) {
 
 export async function deleteUserSignatureAction() {
   try {
-    let emp = await getCurrentEmployee()
-    if (!emp) {
-      const session = await auth.api.getSession({ headers: await headers() }).catch(() => null)
-      const targetEmail = session?.user?.email?.trim().toLowerCase()
-      if (targetEmail) {
-        const [emailEmp] = await db
-          .select()
-          .from(employees)
-          .where(ilike(employees.email, targetEmail))
-          .limit(1)
-        if (emailEmp) {
-          emp = emailEmp
-        }
-      }
-    }
+    const emp = await resolveEmployeeForSignature()
 
     if (!emp) {
       return { success: false as const, error: 'Sesi login tidak ditemukan.' }
@@ -159,17 +170,10 @@ export async function deleteUserSignatureAction() {
           signatureDataUrl: null,
           signatureRegisteredAt: null,
         })
-        .where(ilike(employees.email, emp.email.trim()))
+        .where(sql`LOWER(TRIM(${employees.email})) = ${emp.email.trim().toLowerCase()}`)
     }
 
-    revalidatePath('/dashboard/profile')
-    revalidatePath('/dashboard/approval')
-    revalidatePath('/dashboard/activity-hub/approval')
-    revalidatePath('/dashboard/overtime-requests')
-    revalidatePath('/dashboard/hse/izin-kerja-ptw')
-    revalidatePath('/dashboard/sop-win')
-    revalidatePath('/mobile/profile')
-    revalidatePath('/mobile/approval')
+    triggerSignatureRevalidations()
 
     return { success: true as const }
   } catch (error: any) {

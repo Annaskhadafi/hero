@@ -157,6 +157,8 @@ type MobileDailyActivityFormProps = {
     jobTitle?: string | null
     department?: string | null
     section?: string | null
+    signatureDataUrl?: string | null
+    signatureRegisteredAt?: string | null
   }
   hierarchy?: {
     requester: any
@@ -2764,7 +2766,10 @@ export function MobileDailyActivityForm({
         </section>
 
         {/* Tanda Tangan Digital Karyawan */}
-        <MobileSignatureSection />
+        <MobileSignatureSection
+          initialSignatureDataUrl={employee?.signatureDataUrl || (initialSessionData?.employee as any)?.signatureDataUrl || null}
+          initialRegisteredAt={employee?.signatureRegisteredAt || (initialSessionData?.employee as any)?.signatureRegisteredAt || null}
+        />
 
         <GpsLocationPreviewCard
           needsGps={needsGps}
@@ -2954,7 +2959,7 @@ export function MobileDailyActivityForm({
                     approverName: employee?.name || initialSessionData?.employee?.name || 'Karyawan',
                     status: 'approved',
                     signedAt: initialSessionData?.submittedAt || initialSessionData?.workDate || new Date(),
-                    signatureDataUrl: employee?.signatureDataUrl || (initialSessionData?.employee as any)?.signatureDataUrl || null,
+                    signatureDataUrl: (employee as any)?.signatureDataUrl || (initialSessionData?.employee as any)?.signatureDataUrl || null,
                     remarks: '',
                   },
                   {
@@ -2983,7 +2988,7 @@ export function MobileDailyActivityForm({
                 const previewLeaderSig = previewApprovalsList.find((a) => a.approverRole === 'leader')
                 const previewSectionHeadSig = previewApprovalsList.find((a) => a.approverRole === 'section_head')
 
-                const totalPts = previewItemsList.reduce((s, i) => s + i.points, 0)
+                const totalPts = previewItemsList.reduce((s: number, i: any) => s + (i.points || 0), 0)
                 const teamSummary = isTeamLog && selectedMemberIds.length > 0
                   ? teamMembers?.filter((m) => selectedMemberIds.includes(m.id)).map((m) => m.name).join(', ')
                   : ''
@@ -3052,7 +3057,7 @@ export function MobileDailyActivityForm({
                       </thead>
                       <tbody>
                         {previewItemsList.length > 0 ? (
-                          previewItemsList.map((item, idx) => (
+                          previewItemsList.map((item: any, idx: number) => (
                             <tr key={item.id || idx}>
                               <td className="text-center">{idx + 1}</td>
                               <td>{item.label}</td>

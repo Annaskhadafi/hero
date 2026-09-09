@@ -767,9 +767,26 @@ export function ApprovalListingClient({
       toast.error('Pilih karyawan terlebih dahulu')
       return
     }
-    const validItems = createForm.items.filter((it) => it.label.trim().length > 0)
+
+    let validItems = createForm.items.filter((it) => it.label.trim().length > 0)
+    if (validItems.length === 0 && createForm.sourceMode === 'custom' && createForm.customName?.trim()) {
+      validItems = [
+        {
+          label: createForm.customName.trim(),
+          unitNumber: createForm.customUnit || '',
+          remark: createForm.customDescription || '',
+          duration: '60m',
+          points: 10,
+        },
+      ]
+    }
+
     if (validItems.length === 0) {
-      toast.error('Tambahkan minimal 1 item aktivitas')
+      if (createForm.sourceMode === 'custom') {
+        toast.error('Isi nama Custom Activity terlebih dahulu')
+      } else {
+        toast.error('Buka Kamus Aktivitas dan pilih minimal 1 item aktivitas')
+      }
       return
     }
     setIsCreating(true)
@@ -2409,7 +2426,7 @@ export function ApprovalListingClient({
             <div className="flex items-center justify-between">
               <div>
                 <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <span className="p-1.5 rounded-lg bg-teal-100 text-teal-800 font-bold text-xs">F.HC.DAR</span>
+                  <span className="p-1.5 rounded-lg bg-teal-100 text-teal-800 font-bold text-xs">FJ.IC.DAR</span>
                   Tambah Dokumen Daily Activity Report
                 </DialogTitle>
                 <DialogDescription className="text-xs text-slate-500 mt-0.5">

@@ -122,8 +122,8 @@ export function MobileDailyActivityClient({
   const [approvalRemarks, setApprovalRemarks] = useState('')
   const [isActionRunning, setIsActionRunning] = useState(false)
   const [isSigModalOpen, setIsSigModalOpen] = useState(false)
-  const [userSignature, setUserSignature] = useState<string | null>(null)
-  const [previewZoom, setPreviewZoom] = useState(2.2)
+  const [userSignature, setUserSignature] = useState<string | null>(data?.employee?.signatureDataUrl || null)
+  const [previewZoom, setPreviewZoom] = useState(1.0)
   const pdfRef = useRef<HTMLDivElement | null>(null)
 
   const activeCount = data.summary.jobsAssigned || data.assignments.length || 0
@@ -350,22 +350,6 @@ export function MobileDailyActivityClient({
                 {pendingApprovalCount} MENUNGGU
               </Badge>
             </div>
-
-            <Link
-              href="/mobile/approval"
-              className="flex items-center justify-between rounded-xl border border-indigo-100 bg-indigo-50/70 p-3 text-indigo-900 hover:bg-indigo-100 transition-colors"
-            >
-              <div className="flex items-center gap-2.5">
-                <div className="grid size-8 place-items-center rounded-lg bg-indigo-600 text-white shadow-xs">
-                  <CheckCheck className="size-4" />
-                </div>
-                <div>
-                  <p className="text-xs font-bold">Buka Inbox Approval Mobile</p>
-                  <p className="text-[10.5px] text-indigo-700">Verifikasi dokumen DAR & SPL karyawan</p>
-                </div>
-              </div>
-              <ArrowRight className="size-4 text-indigo-600" />
-            </Link>
 
             {data.activities.length === 0 ? (
               <div className="p-6 text-center text-xs text-slate-500">

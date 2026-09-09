@@ -25,7 +25,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Users, UserCheck, AlertTriangle, Clock, CheckCircle2, TrendingUp, MoreHorizontal, Eye, Edit2, Trash2, Settings2 } from "lucide-react";
+import { Plus, Users, UserCheck, AlertTriangle, Clock, CheckCircle2, TrendingUp, MoreHorizontal, Eye, Edit2, Trash2, Settings2, X, Search, ChevronDown, Check } from "lucide-react";
 import {
   createEmployee,
   updateEmployee,
@@ -63,6 +63,9 @@ type Employee = {
   sectionName: string | null;
   siteName: string | null;
   location: string | null;
+  directManagerId?: number | null;
+  directManagerIds?: number[];
+  directManagerName?: string | null;
   departmentId: number | null;
   sectionId: number | null;
   workLocationId: number | null;
@@ -77,11 +80,21 @@ type FilterOption = {
   departmentId?: number | null;
 };
 
+type LeaderOption = {
+  id: number;
+  name: string;
+  employeeId?: string | null;
+  jobTitle?: string | null;
+  departmentId?: number | null;
+  siteId?: number | null;
+};
+
 type FilterOptions = {
   departments: FilterOption[];
   sections: FilterOption[];
   locations: FilterOption[];
   positions: FilterOption[];
+  leaders?: LeaderOption[];
 };
 
 type ContractStatus = {
@@ -94,6 +107,8 @@ type EmployeeFormData = {
   fullName: string;
   email: string;
   genderCode: string;
+  directManagerId: string;
+  directManagerIds: number[];
   departmentId: string;
   sectionId: string;
   siteId: string;
@@ -107,6 +122,210 @@ type EmployeeFormData = {
   lastMcuDate: string;
   manpower: string;
 };
+
+/* ─── PJO / Leader Multi-Select Component ───────────────────────────── */
+
+function PjoLeaderMultiSelect({
+  leaders = [],
+  selectedIds = [],
+  onChange,
+}: {
+  leaders?: LeaderOption[];
+  selectedIds: number[];
+  onChange: (ids: number[]) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return leaders;
+    const q = search.toLowerCase();
+    return leaders.filter(
+      (l) =>
+        l.name.toLowerCase().includes(q) ||
+        (l.employeeId && l.employeeId.toLowerCase().includes(q)) ||
+        (l.jobTitle && l.jobTitle.toLowerCase().includes(q))
+    );
+  }, [leaders, search]);
+
+  const toggleSelect = (id: number) => {
+    if (selectedIds.includes(id)) {
+      onChange(selectedIds.filter((item) => item !== id));
+    } else {
+      onChange([...selectedIds, id]);
+    }
+  };
+
+  const removeId = (id: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    onChange(selectedIds.filter((item) => item !== id));
+  };
+
+  return (
+    <div className="space-y-2">
+      {/* Selected Tags Display */}
+      {selectedIds.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 p-2 rounded-lg border border-border/70 bg-muted/30">
+          {selectedIds.map((id) => {
+            const leader = leaders.find((l) => l.id === id);
+            return (
+              <span
+                key={id}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white text-foreground border border-border text-xs font-medium shadow-xs"
+              >
+                <span>{leader?.name ?? `ID: ${id}`}</span>
+                <button
+                  type="button"
+                  onClick={(e) => removeId(id, e)}
+                  className="rounded-full p-0.5 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                  title="Hapus"
+                >
+                  <X className="size-3" />
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Searchable Input Bar */}
+      <div
+        onClick={() => setIsOpen(true)}
+        className="flex items-center gap-2 rounded-lg border border-border/70 bg-white px-3 py-2 shadow-none focus-within:ring-1 focus-within:ring-ring focus-within:border-ring cursor-text"
+      >
+        <Search className="size-4 text-muted-foreground shrink-0" />
+        <input
+          type="text"
+          placeholder={
+            selectedIds.length > 0
+              ? "Ketik untuk mencari & tambah PJO/Leader lain..."
+              : "Ketik nama untuk mencari & memilih PJO/Leader..."
+          }
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setIsOpen(true);
+          }}
+          onFocus={() => setIsOpen(true)}
+          className="w-full bg-transparent text-sm focus:outline-none placeholder:text-muted-foreground"
+        />
+        {search && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSearch("");
+            }}
+            className="rounded-full p-0.5 text-muted-foreground hover:text-foreground"
+          >
+            <X className="size-3.5" />
+          </button>
+        )}
+        {selectedIds.length > 0 && !search && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onChange([]);
+            }}
+            className="text-xs text-muted-foreground hover:text-destructive font-medium shrink-0 px-1"
+          >
+            Hapus Semua
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsOpen((prev) => !prev);
+          }}
+          className="text-muted-foreground hover:text-foreground shrink-0"
+        >
+          <ChevronDown
+            className={cn(
+              "size-4 transition-transform duration-200",
+              isOpen && "rotate-180"
+            )}
+          />
+        </button>
+      </div>
+
+      {/* Inline Searchable List Box (Normal flow - never gets clipped) */}
+      {isOpen && (
+        <div className="rounded-lg border border-border bg-popover p-1.5 shadow-sm text-popover-foreground animate-in fade-in-0 duration-150">
+          <div className="px-2 py-1.5 text-[11px] font-semibold text-muted-foreground border-b border-border/50 mb-1 flex items-center justify-between">
+            <span>Daftar PJO / Leader ({filtered.length} ditemukan)</span>
+            <div className="flex items-center gap-2">
+              {selectedIds.length > 0 && (
+                <span className="text-muted-foreground font-normal">
+                  {selectedIds.length} dipilih
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                className="text-[11px] text-muted-foreground hover:text-foreground underline cursor-pointer"
+              >
+                Tutup List
+              </button>
+            </div>
+          </div>
+          <div className="max-h-52 overflow-y-auto space-y-0.5 pr-1">
+            {filtered.length === 0 ? (
+              <div className="p-3 text-center text-xs text-muted-foreground">
+                Tidak ditemukan PJO / Leader &quot;{search}&quot;.
+              </div>
+            ) : (
+              filtered.map((leader) => {
+                const isSelected = selectedIds.includes(leader.id);
+                return (
+                  <div
+                    key={leader.id}
+                    onClick={() => toggleSelect(leader.id)}
+                    className={cn(
+                      "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs cursor-pointer select-none transition-colors",
+                      isSelected
+                        ? "bg-muted font-medium text-foreground"
+                        : "hover:bg-accent hover:text-accent-foreground"
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "flex size-4 shrink-0 items-center justify-center rounded border transition-colors",
+                        isSelected
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border/80 bg-white"
+                      )}
+                    >
+                      {isSelected && <Check className="size-3 stroke-[3]" />}
+                    </div>
+                    <div className="flex flex-col min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium text-foreground truncate">
+                          {leader.name}
+                        </span>
+                        {leader.employeeId && (
+                          <span className="text-[10px] text-muted-foreground">
+                            ({leader.employeeId})
+                          </span>
+                        )}
+                      </div>
+                      {leader.jobTitle && (
+                        <span className="text-[11px] text-muted-foreground truncate">
+                          {leader.jobTitle}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* ─── Helpers ───────────────────────────────────────────────────────── */
 
@@ -191,6 +410,8 @@ function emptyFormData(): EmployeeFormData {
     fullName: "",
     email: "",
     genderCode: "",
+    directManagerId: "",
+    directManagerIds: [],
     departmentId: "",
     sectionId: "",
     siteId: "",
@@ -207,11 +428,18 @@ function emptyFormData(): EmployeeFormData {
 }
 
 function employeeToFormData(emp: Employee): EmployeeFormData {
+  const leaderIds =
+    Array.isArray(emp.directManagerIds) && emp.directManagerIds.length > 0
+      ? emp.directManagerIds.filter((id) => typeof id === "number" && id > 0)
+      : [];
+
   return {
     employeeId: emp.employeeId,
     fullName: emp.fullName,
     email: emp.email ?? "",
     genderCode: emp.genderCode ?? "",
+    directManagerId: leaderIds[0]?.toString() ?? "",
+    directManagerIds: leaderIds,
     departmentId: emp.departmentId?.toString() ?? "",
     sectionId: emp.sectionId?.toString() ?? "",
     siteId: "",
@@ -429,11 +657,24 @@ export function EmployeeClientPage({
 
     setIsSubmitting(true);
     try {
+      const selectedLeaders = filterOptions.leaders?.filter((l) =>
+        formData.directManagerIds.includes(l.id)
+      ) || [];
+      const directManagerNames =
+        selectedLeaders.length > 0
+          ? selectedLeaders.map((l) => l.name).join(", ")
+          : null;
+
       const payload = {
         employeeId: formData.employeeId.trim(),
         fullName: formData.fullName.trim(),
         email: formData.email.trim() || undefined,
         genderCode: formData.genderCode || undefined,
+        directManagerId:
+          formData.directManagerIds.length > 0
+            ? formData.directManagerIds[0]
+            : null,
+        directManagerIds: formData.directManagerIds,
         departmentId: formData.departmentId ? Number(formData.departmentId) : undefined,
         sectionId: formData.sectionId ? Number(formData.sectionId) : undefined,
         siteId: formData.workLocationId ? Number(formData.workLocationId) : undefined,
@@ -459,6 +700,9 @@ export function EmployeeClientPage({
                   fullName: payload.fullName,
                   email: payload.email ?? null,
                   genderCode: payload.genderCode ?? null,
+                  directManagerId: payload.directManagerId ?? null,
+                  directManagerIds: formData.directManagerIds,
+                  directManagerName: directManagerNames,
                   departmentId: payload.departmentId ?? null,
                   sectionId: payload.sectionId ?? null,
                   workLocationId: payload.workLocationId ?? null,
@@ -493,6 +737,9 @@ export function EmployeeClientPage({
             genderCode: null,
             jobTitle: null,
             levelName: null,
+            directManagerId: payload.directManagerId ?? null,
+            directManagerIds: formData.directManagerIds,
+            directManagerName: directManagerNames,
             departmentName: filterOptions.departments.find(
               (d) => d.id === Number(formData.departmentId)
             )?.name ?? null,
@@ -1054,6 +1301,7 @@ export function EmployeeClientPage({
                 className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               />
             </div>
+            {/* Row 6: Contract End & Terakhir MCU */}
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-foreground">
                 Kontrak Selesai
@@ -1067,8 +1315,22 @@ export function EmployeeClientPage({
                 className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               />
             </div>
-            {/* Row 7: Exp Mine Permit */}
             <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">
+                Terakhir MCU
+              </label>
+              <input
+                type="date"
+                value={formData.lastMcuDate || ""}
+                onChange={(e) =>
+                  updateFormField("lastMcuDate", e.target.value)
+                }
+                className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+            </div>
+
+            {/* Row 7: Exp Mine Permit */}
+            <div className="space-y-1.5 md:col-span-2">
               <label className="text-sm font-medium text-foreground">
                 Exp Mine Permit
               </label>
@@ -1081,18 +1343,29 @@ export function EmployeeClientPage({
                 className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               />
             </div>
-            {/* Row 8: Terakhir MCU */}
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">
-                Terakhir MCU
-              </label>
-              <input
-                type="date"
-                value={formData.lastMcuDate || ""}
-                onChange={(e) =>
-                  updateFormField("lastMcuDate", e.target.value)
+
+            {/* Row 8: PJO / Leader (Atasan Langsung) — Multi-Person langsung di bawah Exp Mine Permit */}
+            <div className="space-y-1.5 md:col-span-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-foreground">
+                  PJO / Leader (Atasan Langsung)
+                </label>
+                {formData.directManagerIds.length > 0 && (
+                  <span className="text-xs text-muted-foreground font-normal">
+                    {formData.directManagerIds.length} dipilih
+                  </span>
+                )}
+              </div>
+              <PjoLeaderMultiSelect
+                leaders={filterOptions.leaders}
+                selectedIds={formData.directManagerIds}
+                onChange={(ids) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    directManagerIds: ids,
+                    directManagerId: ids[0]?.toString() || "",
+                  }))
                 }
-                className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               />
             </div>
           </EnterpriseFormGrid>
@@ -1140,6 +1413,14 @@ export function EmployeeClientPage({
               <DetailRow label="Level" value={viewingEmployee.levelName} />
               <DetailRow label="Lokasi Kerja" value={viewingEmployee.location} />
               <DetailRow label="Site" value={viewingEmployee.siteName} />
+              <DetailRow
+                label="PJO / Leader"
+                value={viewingEmployee.directManagerName || "-"}
+              />
+              <DetailRow
+                label="Exp Mine Permit"
+                value={formatDate(viewingEmployee.expMinePermit)}
+              />
               <DetailRow
                 label="Tanggal Masuk"
                 value={formatDate(viewingEmployee.joinDate)}

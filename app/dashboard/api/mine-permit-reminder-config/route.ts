@@ -9,7 +9,7 @@ export async function GET() {
     if (config) {
       return NextResponse.json(config)
     }
-    return NextResponse.json({ additionalRecipients: '', reminderDays: 30, isActive: true })
+    return NextResponse.json({ additionalRecipients: '', reminderDays: 60, isActive: true })
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch config' }, { status: 500 })
   }
@@ -19,7 +19,7 @@ export async function POST(req: Request) {
   try {
     const formData = await req.formData()
     const additionalRecipients = formData.get('additionalRecipients')?.toString() ?? ''
-    const reminderDays = parseInt(formData.get('reminderDays')?.toString() ?? '30', 10)
+    const reminderDays = parseInt(formData.get('reminderDays')?.toString() ?? '60', 10)
     const isActive = formData.get('isActive') === 'true'
 
     const [existing] = await db.select({ id: minePermitReminderConfig.id }).from(minePermitReminderConfig).limit(1)

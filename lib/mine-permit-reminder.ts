@@ -1,11 +1,11 @@
 'use server'
 
 import { and, gte, lte, eq, asc, or, inArray, sql } from 'drizzle-orm'
-import { revalidatePath } from 'next/cache'
 import { db } from '@/db'
 import { employees, minePermitReminderConfig } from '@/db/schema/hero'
 import { getEmailSmtpSettingsData } from '@/lib/hero-admin'
 import { sendEmailViaSmtp } from '@/lib/email-delivery'
+import { publishInAppApprovalNotification } from '@/lib/activity-overtime-workflow-email'
 
 export interface ReminderResult {
   sent: number
@@ -25,7 +25,7 @@ export async function getMinePermitReminderConfig() {
       id: 0,
       additionalRecipients: '',
       excludedManagerIds: '[]',
-      reminderDays: 30,
+      reminderDays: 60,
       isActive: true,
       updatedAt: new Date(),
     }
@@ -33,13 +33,15 @@ export async function getMinePermitReminderConfig() {
 }
 
 export async function sendMinePermitExpiryReminders(
-  daysBefore: number
+  daysBefore: number = 60
 ): Promise<ReminderResult> {
   const result: ReminderResult = { sent: 0, skipped: 0, errors: 0, details: [] }
 
   try {
+    const reminderConfig = await getMinePermitReminderConfig()
+    const effectiveDays = daysBefore || reminderConfig.reminderDays || 60
     const today = new Date()
-    const targetDate = new Date(today.getTime() + daysBefore * 24 * 60 * 60 * 1000)
+    const targetDate = new Date(today.getTime() + effectiveDays * 24 * 60 * 60 * 1000)
 
     const expiring = await db
       .select({
@@ -47,6 +49,7 @@ export async function sendMinePermitExpiryReminders(
         employeeName: employees.name,
         employeeEmail: employees.email,
         managerId: employees.directManagerId,
+        directManagerIds: employees.directManagerIds,
         expMinePermit: employees.expMinePermit,
       })
       .from(employees)
@@ -64,55 +67,102 @@ export async function sendMinePermitExpiryReminders(
     }
 
     const smtpSettings = await getEmailSmtpSettingsData()
-    if (!smtpSettings?.isActive) {
-      result.details.push('SMTP email belum dikonfigurasi atau tidak aktif.')
-      result.errors = expiring.length
-      return result
-    }
-
-    const reminderConfig = await getMinePermitReminderConfig()
     const excludedIds = new Set<number>(JSON.parse(reminderConfig.excludedManagerIds || '[]'))
 
-    const managerIds = [...new Set(expiring.map((e) => e.managerId).filter(Boolean))]
+    // Collect all manager IDs from all expiring employees
+    const allManagerIdsSet = new Set<number>()
+    for (const emp of expiring) {
+      if (emp.directManagerIds) {
+        try {
+          const parsed = JSON.parse(emp.directManagerIds)
+          if (Array.isArray(parsed)) {
+            for (const id of parsed) {
+              const num = Number(id)
+              if (!isNaN(num) && num > 0) allManagerIdsSet.add(num)
+            }
+          }
+        } catch {}
+      }
+      if (emp.managerId && typeof emp.managerId === 'number' && emp.managerId > 0) {
+        allManagerIdsSet.add(emp.managerId)
+      }
+    }
+
+    const managerIds = Array.from(allManagerIdsSet)
     const managers = managerIds.length > 0
       ? await db
           .select({ id: employees.id, name: employees.name, email: employees.email })
           .from(employees)
-          .where(and(eq(employees.isActive, true), ...managerIds.map((id) => eq(employees.id, id!))))
+          .where(and(eq(employees.isActive, true), inArray(employees.id, managerIds)))
       : []
 
     const managerMap = new Map(managers.map((m) => [m.id, m]))
 
     for (const emp of expiring) {
-      try {
-        const recipientEmail = emp.managerId
-          ? managerMap.get(emp.managerId)?.email
-          : null
+      const empManagerIds: number[] = []
+      if (emp.directManagerIds) {
+        try {
+          const parsed = JSON.parse(emp.directManagerIds)
+          if (Array.isArray(parsed)) {
+            for (const id of parsed) {
+              const num = Number(id)
+              if (!isNaN(num) && num > 0 && !empManagerIds.includes(num)) {
+                empManagerIds.push(num)
+              }
+            }
+          }
+        } catch {}
+      }
+      if (emp.managerId && !empManagerIds.includes(emp.managerId)) {
+        empManagerIds.push(emp.managerId)
+      }
 
-        if (emp.managerId && excludedIds.has(emp.managerId)) {
-          result.skipped++
-          result.details.push(`Skip: ${emp.employeeName} — Mine Permit (manager dikecualikan)`)
-          continue
-        }
+      if (empManagerIds.length === 0) {
+        result.skipped++
+        result.details.push(`Skip: ${emp.employeeName} — Mine Permit (tidak ada PJO/Leader)`)
+        continue
+      }
 
-        if (!recipientEmail) {
-          result.skipped++
-          result.details.push(`Skip: ${emp.employeeName} — Mine Permit (no manager email)`)
-          continue
-        }
+      for (const mId of empManagerIds) {
+        try {
+          if (excludedIds.has(mId)) {
+            result.skipped++
+            result.details.push(`Skip: ${emp.employeeName} — Mine Permit (PJO/Leader ID ${mId} dikecualikan)`)
+            continue
+          }
 
-        const daysLeft = Math.ceil(
-          (new Date(emp.expMinePermit!).getTime() - Date.now()) / (24 * 60 * 60 * 1000)
-        )
-        const managerName = managerMap.get(emp.managerId!)?.name || 'Bapak/Ibu'
+          const manager = managerMap.get(mId)
+          const recipientEmail = manager?.email
 
-        const subject = `[Reminder] Mine Permit akan expired — ${emp.employeeName}`
-        const text = `Yth. ${managerName},\n\nBerikut karyawan di bawah arahan Bapak/Ibu yang Mine Permit-nya akan segera berakhir:\n\nKaryawan: ${emp.employeeName}\nMasa Berlaku: ${emp.expMinePermit}\nSisa Hari: ${daysLeft} hari\n\nHarap segera mengambil tindakan perpanjangan.\n\nEmail ini dikirim otomatis oleh sistem HERO.`
-        const html = `
+          if (!recipientEmail) {
+            result.skipped++
+            result.details.push(`Skip: ${emp.employeeName} — Mine Permit (PJO/Leader ${manager?.name || mId} tidak ada email)`)
+            continue
+          }
+
+          const daysLeft = Math.ceil(
+            (new Date(emp.expMinePermit!).getTime() - Date.now()) / (24 * 60 * 60 * 1000)
+          )
+          const managerName = manager?.name || 'Bapak/Ibu'
+
+          // 1. In-app bell notification to PJO / Leader
+          await publishInAppApprovalNotification({
+            recipientEmail,
+            title: `[Reminder] Mine Permit ${emp.employeeName} akan berakhir`,
+            body: `Mine Permit ${emp.employeeName} berlaku s/d ${emp.expMinePermit} (${daysLeft} hari lagi). Harap segera lakukan perpanjangan.`,
+            url: `/dashboard/hc/employee`,
+            eventType: 'mine_permit_expiring',
+          })
+
+          // 2. Email notification via SMTP if active
+          if (smtpSettings?.isActive) {
+            const subject = `[Reminder] Mine Permit akan berakhir — ${emp.employeeName}`
+            const text = `Yth. ${managerName},\n\nBerikut karyawan di bawah arahan Bapak/Ibu yang Mine Permit-nya akan segera berakhir (2 bulan sebelum berakhir):\n\nKaryawan: ${emp.employeeName}\nMasa Berlaku: ${emp.expMinePermit}\nSisa Hari: ${daysLeft} hari\n\nHarap segera mengambil tindakan perpanjangan.\n\nEmail ini dikirim otomatis oleh sistem HERO.`
+            const html = `
 <div style="font-family: Inter, Arial, sans-serif; max-width: 600px; margin: 0 auto;">
   <h2 style="color: #92400e;">Peringatan Expiry Mine Permit</h2>
   <p>Yth. ${managerName},</p>
-  <p>Berikut adalah karyawan di bawah arahan Bapak/Ibu yang Mine Permit-nya akan segera berakhir:</p>
+  <p>Berikut adalah karyawan di bawah arahan Bapak/Ibu yang Mine Permit-nya akan segera berakhir (2 bulan sebelum berakhir):</p>
   <table style="width:100%; border-collapse:collapse; margin:16px 0;">
     <tr style="background:#fef3c7;">
       <th style="padding:8px; text-align:left; border:1px solid #e2e8f0;">Karyawan</th>
@@ -130,31 +180,33 @@ export async function sendMinePermitExpiryReminders(
   <p style="color:#94a3b8; font-size:11px;">Email ini dikirim otomatis oleh sistem HERO. Mohon tidak membalas email ini.</p>
 </div>`
 
-        await sendEmailViaSmtp(
-          {
-            host: smtpSettings.host,
-            port: smtpSettings.port,
-            encryption: smtpSettings.encryption as 'tls' | 'ssl' | 'none',
-            username: smtpSettings.username,
-            passwordSecret: smtpSettings.passwordSecret,
-            fromEmail: smtpSettings.fromEmail,
-            fromName: smtpSettings.fromName,
-            replyToEmail: smtpSettings.replyToEmail,
-            timeoutSeconds: smtpSettings.timeoutSeconds,
-          },
-          {
-            to: recipientEmail,
-            subject,
-            html,
-            text,
+            await sendEmailViaSmtp(
+              {
+                host: smtpSettings.host,
+                port: smtpSettings.port,
+                encryption: smtpSettings.encryption as 'tls' | 'ssl' | 'none',
+                username: smtpSettings.username,
+                passwordSecret: smtpSettings.passwordSecret,
+                fromEmail: smtpSettings.fromEmail,
+                fromName: smtpSettings.fromName,
+                replyToEmail: smtpSettings.replyToEmail,
+                timeoutSeconds: smtpSettings.timeoutSeconds,
+              },
+              {
+                to: recipientEmail,
+                subject,
+                html,
+                text,
+              }
+            )
           }
-        )
 
-        result.sent++
-        result.details.push(`Sent: ${emp.employeeName} → ${recipientEmail} (${daysLeft} hr)`)
-      } catch (err) {
-        result.errors++
-        result.details.push(`Error: ${emp.employeeName} — ${err instanceof Error ? err.message : 'unknown'}`)
+          result.sent++
+          result.details.push(`Sent: ${emp.employeeName} → ${managerName} (${recipientEmail}) [${daysLeft} hr]`)
+        } catch (err) {
+          result.errors++
+          result.details.push(`Error: ${emp.employeeName} (mgr ${mId}) — ${err instanceof Error ? err.message : 'unknown'}`)
+        }
       }
     }
 

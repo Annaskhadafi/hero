@@ -99,6 +99,7 @@ export const employees = pgTable('hero_employees', {
   birthPlaceDate: text('birth_place_date').notNull().default(''),
   domicile: text('domicile').notNull().default(''),
   directManagerId: integer('direct_manager_id'),
+  directManagerIds: text('direct_manager_ids').notNull().default('[]'),
   departmentId: integer('department_id'),
   sectionId: integer('section_id'),
   positionId: integer('position_id'),

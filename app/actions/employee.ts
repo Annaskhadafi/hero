@@ -26,6 +26,10 @@ export async function getEmployeesForContract(filters?: {
     conditions.push(eq(employees.sectionId, filters.sectionId));
   }
 
+  try {
+    await db.execute(sql`ALTER TABLE hero_employees ADD COLUMN IF NOT EXISTS direct_manager_ids text DEFAULT '[]';`);
+  } catch {}
+
   const rows = await db
     .select({
       id: employees.id,
@@ -47,6 +51,11 @@ export async function getEmployeesForContract(filters?: {
       siteName: sites.name,
       location: sites.location,
       workLocationId: employees.siteId,
+      directManagerId: employees.directManagerId,
+      directManagerIds: employees.directManagerIds,
+      directManagerName: sql<string | null>`(
+        SELECT name FROM hero_employees mgr WHERE mgr.id = ${employees.directManagerId} LIMIT 1
+      )`.as('direct_manager_name'),
       departmentId: employees.departmentId,
       sectionId: employees.sectionId,
       positionId: employees.positionId,
@@ -66,23 +75,66 @@ export async function getEmployeesForContract(filters?: {
     .where(and(...conditions))
     .orderBy(desc(employees.id));
 
-  const uniqueRowsMap = new Map<number, typeof rows[number]>();
+  // Collect all manager IDs to resolve their names
+  const allEmpMap = new Map<number, string>();
+  const empList = await db
+    .select({ id: employees.id, name: employees.name })
+    .from(employees)
+    .where(eq(employees.isActive, true));
+  for (const e of empList) {
+    allEmpMap.set(e.id, e.name);
+  }
+
+  const uniqueRowsMap = new Map<number, any>();
   for (const row of rows) {
     if (!uniqueRowsMap.has(row.id)) {
-      uniqueRowsMap.set(row.id, row);
+      let ids: number[] = [];
+      if (row.directManagerIds) {
+        try {
+          const parsed = typeof row.directManagerIds === 'string' ? JSON.parse(row.directManagerIds) : row.directManagerIds;
+          if (Array.isArray(parsed)) {
+            ids = parsed.map(Number).filter((n) => !isNaN(n) && n > 0);
+          }
+        } catch {}
+      }
+
+      let directManagerName: string | null = null;
+      if (ids.length > 0) {
+        const names = ids.map((id) => allEmpMap.get(id)).filter(Boolean);
+        if (names.length > 0) {
+          directManagerName = names.join(', ');
+        }
+      }
+
+      uniqueRowsMap.set(row.id, {
+        ...row,
+        directManagerIds: ids,
+        directManagerName,
+      });
     }
   }
   return Array.from(uniqueRowsMap.values());
 }
 
 export async function getEmployeeFilterOptions() {
-  const [departments, sections, locations, positions] = await Promise.all([
+  const [departments, sections, locations, positions, leaders] = await Promise.all([
     db.select({ id: masterDepartments.id, name: masterDepartments.name }).from(masterDepartments).where(eq(masterDepartments.isActive, true)),
     db.select({ id: masterSections.id, name: masterSections.name, departmentId: masterSections.departmentId }).from(masterSections).where(eq(masterSections.isActive, true)),
     db.select({ id: sites.id, name: sites.name }).from(sites).where(eq(sites.isActive, true)),
     db.select({ id: masterJobTitles.id, name: masterJobTitles.name }).from(masterJobTitles).where(eq(masterJobTitles.isActive, true)),
+    db.select({
+      id: employees.id,
+      name: employees.name,
+      employeeId: employees.employeeSn,
+      jobTitle: employees.jobTitle,
+      departmentId: employees.departmentId,
+      siteId: employees.siteId,
+    })
+    .from(employees)
+    .where(eq(employees.isActive, true))
+    .orderBy(employees.name),
   ]);
-  return { departments, sections, locations, positions };
+  return { departments, sections, locations, positions, leaders };
 }
 
 export async function getEmployeeById(id: number) {
@@ -98,6 +150,8 @@ export async function createEmployee(data: {
   employeeId: string;
   fullName: string;
   email?: string;
+  directManagerId?: number | null;
+  directManagerIds?: number[] | null;
   departmentId?: number;
   sectionId?: number;
   siteId?: number;
@@ -116,10 +170,18 @@ export async function createEmployee(data: {
     throw new Error("Unauthorized: Session required to create employee");
   }
 
+  const managerIds = data.directManagerIds && data.directManagerIds.length > 0
+    ? data.directManagerIds
+    : (data.directManagerId ? [data.directManagerId] : []);
+
+  const primaryManagerId = managerIds.length > 0 ? managerIds[0] : (data.directManagerId || null);
+
   const setData = {
     employeeSn: data.employeeId,
     name: data.fullName,
     email: data.email,
+    directManagerId: primaryManagerId,
+    directManagerIds: JSON.stringify(managerIds),
     departmentId: data.departmentId,
     sectionId: data.sectionId,
     siteId: data.siteId,
@@ -182,6 +244,8 @@ export async function updateEmployee(id: number, data: {
   employeeId?: string;
   fullName?: string;
   email?: string;
+  directManagerId?: number | null;
+  directManagerIds?: number[] | null;
   departmentId?: number | null;
   sectionId?: number | null;
   siteId?: number | null;
@@ -210,6 +274,16 @@ export async function updateEmployee(id: number, data: {
   if (data.employeeId !== undefined) setData.employeeSn = data.employeeId;
   if (data.fullName !== undefined) setData.name = data.fullName;
   if (data.email !== undefined) setData.email = data.email;
+  
+  if (data.directManagerIds !== undefined) {
+    const ids = data.directManagerIds || [];
+    setData.directManagerIds = JSON.stringify(ids);
+    setData.directManagerId = ids.length > 0 ? ids[0] : null;
+  } else if (data.directManagerId !== undefined) {
+    setData.directManagerId = data.directManagerId;
+    setData.directManagerIds = JSON.stringify(data.directManagerId ? [data.directManagerId] : []);
+  }
+
   if (data.departmentId !== undefined) setData.departmentId = data.departmentId;
   if (data.sectionId !== undefined) setData.sectionId = data.sectionId;
   if (data.siteId !== undefined) setData.siteId = data.siteId;

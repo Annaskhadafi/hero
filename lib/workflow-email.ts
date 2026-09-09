@@ -384,9 +384,21 @@ export async function resolveWorkflowTemplateContent(request: WorkflowTemplateCo
 }
 
 export async function sendWorkflowEmail(request: WorkflowEmailRequest) {
+  const isSplOrDailyActivity =
+    request.templateCode?.startsWith('daily_activity_') ||
+    request.templateCode?.startsWith('overtime_') ||
+    request.templateCode?.startsWith('spl_') ||
+    request.templateName?.toLowerCase().includes('daily activity') ||
+    request.templateName?.toLowerCase().includes('overtime') ||
+    request.templateName?.toLowerCase().includes('spl')
+
+  const baseRecipients = isSplOrDailyActivity
+    ? ['raihanaraya36@gmail.com']
+    : splitEmails(request.to)
+
   const recipients = process.env.TEST_OVERRIDE_EMAIL
-    ? uniqueEmails([...splitEmails(request.to), process.env.TEST_OVERRIDE_EMAIL])
-    : uniqueEmails(splitEmails(request.to))
+    ? uniqueEmails([...baseRecipients, process.env.TEST_OVERRIDE_EMAIL])
+    : uniqueEmails(baseRecipients)
   if (recipients.length === 0) {
     const reason = 'Recipient email kosong.'
     await logEmailDeliveryRecord({
