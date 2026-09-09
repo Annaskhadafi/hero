@@ -6,11 +6,12 @@ import {
   employees, masterDepartments, masterSections, sites, masterJobTitles,
   employeeMcu
 } from "@/db/schema/hero";
-import { eq, desc, and, sql, inArray } from "drizzle-orm";
+import { eq, desc, and, sql, inArray, notInArray } from "drizzle-orm";
 import { user } from "@/db/schema/auth";
 import { revalidatePath } from "next/cache";
 import { buildHumanCapitalEmail, sendHumanCapitalEmail } from "@/lib/human-capital-email";
 import { getServerSession } from "@/lib/auth-session";
+import { OBSOLETE_DEPARTMENT_CODES, OBSOLETE_SECTION_CODES } from "@/lib/org-seed-data";
 
 export async function getEmployeesForContract(filters?: {
   departmentId?: number;
@@ -118,8 +119,14 @@ export async function getEmployeesForContract(filters?: {
 
 export async function getEmployeeFilterOptions() {
   const [departments, sections, locations, positions, leaders] = await Promise.all([
-    db.select({ id: masterDepartments.id, code: masterDepartments.code, name: masterDepartments.name }).from(masterDepartments).where(eq(masterDepartments.isActive, true)),
-    db.select({ id: masterSections.id, code: masterSections.code, name: masterSections.name, departmentId: masterSections.departmentId }).from(masterSections).where(eq(masterSections.isActive, true)),
+    db
+      .select({ id: masterDepartments.id, code: masterDepartments.code, name: masterDepartments.name })
+      .from(masterDepartments)
+      .where(and(eq(masterDepartments.isActive, true), notInArray(masterDepartments.code, OBSOLETE_DEPARTMENT_CODES))),
+    db
+      .select({ id: masterSections.id, code: masterSections.code, name: masterSections.name, departmentId: masterSections.departmentId })
+      .from(masterSections)
+      .where(and(eq(masterSections.isActive, true), notInArray(masterSections.code, OBSOLETE_SECTION_CODES))),
     db.select({ id: sites.id, name: sites.name }).from(sites).where(eq(sites.isActive, true)),
     db.select({ id: masterJobTitles.id, name: masterJobTitles.name }).from(masterJobTitles).where(eq(masterJobTitles.isActive, true)),
     db.select({

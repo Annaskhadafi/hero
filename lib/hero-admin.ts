@@ -1,5 +1,5 @@
 import { cache } from 'react'
-import { and, asc, desc, eq, ilike, inArray, isNotNull, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, inArray, isNotNull, notInArray, or, sql } from 'drizzle-orm'
 import Fuse from 'fuse.js'
 import { db } from '@/db'
 import {
@@ -83,7 +83,11 @@ import {
 } from '@/lib/master-categories'
 import { ensureSchedulingTimesheetTables } from '@/lib/timesheet/scheduling-infrastructure'
 import { mergeActiveSchedulePlans, type ScheduleV2Row } from '@/lib/timesheet/schedule-v2'
-import { ensureDepartmentSectionSeedData } from '@/lib/org-seed-data'
+import {
+  ensureDepartmentSectionSeedData,
+  OBSOLETE_DEPARTMENT_CODES,
+  OBSOLETE_SECTION_CODES,
+} from '@/lib/org-seed-data'
 import { EMAIL_TEMPLATE_PRESETS } from '@/lib/email-template-presets'
 
 declare global {
@@ -164,6 +168,7 @@ export type SecurityUserRecord = {
 }
 
 export async function getSecurityUserReferenceData() {
+  await ensureDepartmentSectionSeedData()
   const [sections, departments, positions, sitesData] = await Promise.all([
     db
       .select({
@@ -173,7 +178,7 @@ export async function getSecurityUserReferenceData() {
         departmentId: masterSections.departmentId,
       })
       .from(masterSections)
-      .where(eq(masterSections.isActive, true))
+      .where(and(eq(masterSections.isActive, true), notInArray(masterSections.code, OBSOLETE_SECTION_CODES)))
       .orderBy(asc(masterSections.name)),
     db
       .select({
@@ -182,7 +187,7 @@ export async function getSecurityUserReferenceData() {
         name: masterDepartments.name,
       })
       .from(masterDepartments)
-      .where(eq(masterDepartments.isActive, true))
+      .where(and(eq(masterDepartments.isActive, true), notInArray(masterDepartments.code, OBSOLETE_DEPARTMENT_CODES)))
       .orderBy(asc(masterDepartments.name)),
     Promise.all([
       db

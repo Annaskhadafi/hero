@@ -1,4 +1,4 @@
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, notInArray, sql } from "drizzle-orm";
 import { aliasedTable } from "drizzle-orm/alias";
 import { db } from "@/db";
 import {
@@ -23,6 +23,7 @@ import {
   ensureMasterCategoryTables,
   type MasterCategoryOption,
 } from "@/lib/master-categories";
+import { OBSOLETE_DEPARTMENT_CODES, OBSOLETE_SECTION_CODES } from "@/lib/org-seed-data";
 
 const fallbackNodes = aliasedTable(orgChartNodes, "fallback_nodes");
 const fallbackStepNodes = aliasedTable(orgChartNodes, "fallback_step_nodes");
@@ -494,6 +495,7 @@ export async function getMasterDepartments(): Promise<MasterDepartment[]> {
       })
       .from(masterDepartments)
       .leftJoin(headEmployees, eq(masterDepartments.headEmployeeId, headEmployees.id))
+      .where(notInArray(masterDepartments.code, OBSOLETE_DEPARTMENT_CODES))
       .orderBy(asc(masterDepartments.code)),
     db
       .select({
@@ -540,6 +542,7 @@ export async function getMasterSections(): Promise<MasterSection[]> {
       .from(masterSections)
       .leftJoin(masterDepartments, eq(masterSections.departmentId, masterDepartments.id))
       .leftJoin(headEmployees, eq(masterSections.headEmployeeId, headEmployees.id))
+      .where(notInArray(masterSections.code, OBSOLETE_SECTION_CODES))
       .orderBy(asc(masterSections.code)),
     db
       .select({
@@ -674,7 +677,7 @@ export async function getDepartmentOptions(): Promise<Array<{ id: number; code: 
       name: masterDepartments.name,
     })
     .from(masterDepartments)
-    .where(eq(masterDepartments.isActive, true))
+    .where(and(eq(masterDepartments.isActive, true), notInArray(masterDepartments.code, OBSOLETE_DEPARTMENT_CODES)))
     .orderBy(asc(masterDepartments.name));
 }
 
