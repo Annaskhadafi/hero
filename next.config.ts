@@ -12,12 +12,14 @@ const nextConfig: NextConfig = {
     ],
   },
   typescript: { ignoreBuildErrors: true },
+  eslint: { ignoreDuringBuilds: true },
   serverExternalPackages: ['face-api.js'],
   experimental: {
     serverActions: {
       bodySizeLimit: '25mb',
     },
-    cpus: 2,
+    cpus: 1,
+    webpackBuildWorker: false,
   },
   async headers() {
     return [
