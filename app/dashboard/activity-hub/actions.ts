@@ -6283,6 +6283,36 @@ export async function deleteDailyActivitySessionAction(sessionId: number): Promi
   }
 }
 
+export async function deleteBatchDailyActivitySessionsAction(
+  sessionIds: number[]
+): Promise<{ success: boolean; deletedCount?: number; error?: string }> {
+  try {
+    const emp = await getCurrentEmployee()
+    if (!emp) {
+      throw new Error('Sesi login tidak ditemukan.')
+    }
+
+    const validIds = (sessionIds || []).filter((id) => Number.isFinite(id) && id > 0)
+    if (validIds.length === 0) {
+      return { success: true, deletedCount: 0 }
+    }
+
+    // Delete signoffs, approvals, items and the session records in batch
+    await db.delete(dailyActivitySessionSignoffs).where(inArray(dailyActivitySessionSignoffs.sessionId, validIds))
+    await db.delete(dailyActivityApprovals).where(inArray(dailyActivityApprovals.sessionId, validIds))
+    await db.delete(dailyActivitySessionItems).where(inArray(dailyActivitySessionItems.sessionId, validIds))
+    await db.delete(dailyActivitySessions).where(inArray(dailyActivitySessions.id, validIds))
+
+    safeRevalidatePath('/dashboard/activity-hub/approval')
+    safeRevalidatePath('/dashboard/activity-hub/my-day')
+    safeRevalidatePath('/dashboard/approval')
+    return { success: true, deletedCount: validIds.length }
+  } catch (error: any) {
+    console.error('Error batch deleting daily activity sessions:', error)
+    return { success: false, error: error.message || 'Gagal menghapus sesi batch.' }
+  }
+}
+
 export async function createDailyActivitySessionAction(input: {
   employeeId: number
   workDate: string
@@ -6315,14 +6345,18 @@ export async function createDailyActivitySessionAction(input: {
   }>
 }) {
   try {
-    let targetEmpId = input.employeeId
+    let targetEmpId = Number(input.employeeId)
     if (!targetEmpId) {
       const context = await getAuthenticatedEmployeeContext()
       targetEmpId = context.id
     }
 
     const teamMemberIds = Array.from(
-      new Set((input.teamMemberEmployeeIds || []).filter((id) => id && id !== targetEmpId))
+      new Set(
+        (input.teamMemberEmployeeIds || [])
+          .map((id) => Number(id))
+          .filter((id) => id && !isNaN(id) && id !== targetEmpId)
+      )
     )
     const allEmployeeIds = [targetEmpId, ...teamMemberIds]
 
@@ -6348,13 +6382,10 @@ export async function createDailyActivitySessionAction(input: {
     for (let i = 0; i < input.items.length; i++) {
       const it = input.items[i]
       if (!it.unitNumber || !it.unitNumber.trim()) {
-        return { success: false as const, error: `Equipment / Unit No. pada item #${i + 1} (${it.label}) wajib diisi.` }
+        it.unitNumber = '-'
       }
       if (!it.remark || !it.remark.trim()) {
-        return { success: false as const, error: `Catatan item pada item #${i + 1} (${it.label}) wajib diisi.` }
-      }
-      if ((!it.photoUrl || !it.photoUrl.trim()) && (!it.photos || it.photos.length === 0)) {
-        return { success: false as const, error: `Photo evidence pada item #${i + 1} (${it.label}) wajib diunggah.` }
+        it.remark = it.label || '-'
       }
     }
 
@@ -6638,10 +6669,9 @@ export async function createDailyActivitySessionAction(input: {
       const step3Token = randomUUID()
 
       // Generate sequential approval steps:
-      // Step 1: Karyawan Sign (auto-approved on submit by author)
-      // Step 2: Leader / PJO (active and pending in Leader's inbox)
-      // Step 3: Section Head (waiting for Step 2 completion)
-      const submitterSig = emp.signatureDataUrl || primaryEmp.signatureDataUrl || null
+      // Step 1: Karyawan Sign (pending without auto-signature)
+      // Step 2: Leader / PJO (waiting)
+      // Step 3: Section Head (waiting)
       const now = new Date()
 
       await db.insert(dailyActivityApprovals).values([
@@ -6653,9 +6683,9 @@ export async function createDailyActivitySessionAction(input: {
           approverEmployeeId: emp.id,
           approverName: emp.name,
           approverEmail: emp.email || '',
-          status: 'approved',
-          signatureDataUrl: submitterSig,
-          signedAt: now,
+          status: 'pending',
+          signatureDataUrl: null,
+          signedAt: null,
           approvalToken: step1Token,
           createdAt: now,
         },
@@ -6667,7 +6697,7 @@ export async function createDailyActivitySessionAction(input: {
           approverEmployeeId: leaderEmpId ?? null,
           approverName: leaderName,
           approverEmail: leaderEmail,
-          status: 'pending',
+          status: 'waiting',
           approvalToken: step2Token,
           createdAt: now,
         },
