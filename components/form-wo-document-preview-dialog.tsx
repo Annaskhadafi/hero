@@ -20,6 +20,8 @@ export interface ServiceItemRow {
   site?: string
   serialNo?: string
   refNo?: string
+  noPo?: string
+  tanggalPo?: string
   noWoCp?: string
   price?: string
 }
@@ -30,9 +32,12 @@ export interface RepairItemRow {
   noUnit?: string
   pos?: string
   size?: string
+  brand?: string
   site?: string
   customer?: string
   category?: string
+  noPo?: string
+  tanggalPo?: string
   price?: string
   noWoCp?: string
 }
@@ -63,6 +68,8 @@ export interface FormWoDocumentData {
   catatanPengajuan?: string | null
   totalAmount?: string | null
   items?: string | null
+  noPo?: string | null
+  tanggalPo?: string | null
   tireSn?: string | null
   storeLoc?: string | null
   brand?: string | null
@@ -125,14 +132,22 @@ export function extractCleanNote(rawNote: string | null | undefined): string {
   }
 
   // Jika catatan hanya template bawaan otomatis (bukan ketikan manual approver), jangan tampilkan
-  const lower = noteText.toLowerCase().replace(/[.\s]/g, '')
+  const lower = noteText.toLowerCase().replace(/[^a-z0-9]/g, '')
   if (
     !noteText ||
     lower === 'disetujui' ||
     lower === 'wodisetujui' ||
+    lower === 'formwodisetujui' ||
     lower === 'approved' ||
-    lower === '-' ||
-    lower === 'none'
+    lower === 'woapproved' ||
+    lower === 'formwoapproved' ||
+    lower === 'approve' ||
+    lower === 'ok' ||
+    lower === 'null' ||
+    lower === 'undefined' ||
+    lower === 'tidakadacatatan' ||
+    lower.includes('disetujui') ||
+    lower.includes('approved')
   ) {
     return ''
   }
@@ -204,6 +219,8 @@ export function FormWoDocumentView({
       site: doc.site || '',
       serialNo: doc.tireSn || '',
       refNo: doc.storeLoc || '',
+      noPo: doc.noPo || '',
+      tanggalPo: doc.tanggalPo || '',
       noWoCp: doc.noWoTerbit || '',
       price: doc.totalAmount || '',
     },
@@ -214,11 +231,14 @@ export function FormWoDocumentView({
       id: '1',
       description: doc.tireSn || doc.deskripsiPekerjaan || '',
       noUnit: doc.storeLoc || '',
+      brand: doc.brand || '',
       pos: doc.pattern || '',
       size: doc.size || '',
       site: doc.site || '',
       customer: doc.customer || '',
-      category: doc.brand || 'R1',
+      category: 'R1',
+      noPo: doc.noPo || '',
+      tanggalPo: doc.tanggalPo || '',
       price: doc.totalAmount || '',
       noWoCp: doc.noWoTerbit || '',
     },
@@ -236,6 +256,9 @@ export function FormWoDocumentView({
   const rawTotal = isService ? serviceTotal : repairTotal
   const displayTotal =
     rawTotal > 0 ? formatCurrency(rawTotal) : formatCurrency(doc.totalAmount)
+
+  const headerNoPo = doc.noPo || (isService ? serviceItemsList[0]?.noPo : repairItemsList[0]?.noPo)
+  const headerTglPo = doc.tanggalPo || (isService ? serviceItemsList[0]?.tanggalPo : repairItemsList[0]?.tanggalPo)
 
   const jenisMeta = JENIS_CONFIG[doc.jenisPengajuan || ''] || {
     label: doc.jenisPengajuan?.toUpperCase() || 'WORK ORDER',
@@ -455,7 +478,7 @@ export function FormWoDocumentView({
 
         {/* Structured Meta Info Box */}
         <div className="border border-slate-300 bg-white/95 rounded-lg p-3 text-xs shadow-xs">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <div>
               <span className="text-slate-500 font-medium block text-[11px]">Hari / Tanggal</span>
               <strong className="text-slate-900 text-xs">{displayDay}, {displayDate}</strong>
@@ -474,6 +497,12 @@ export function FormWoDocumentView({
               <span className="text-slate-500 font-medium block text-[11px]">Customer & Site</span>
               <strong className="text-slate-900 text-xs truncate block">
                 {doc.customer || '-'} {doc.site ? `• ${doc.site}` : ''}
+              </strong>
+            </div>
+            <div>
+              <span className="text-slate-500 font-medium block text-[11px]">Nomor & Tgl PO</span>
+              <strong className="text-slate-900 text-xs truncate block font-mono">
+                {headerNoPo ? `${headerNoPo}${headerTglPo ? ` (${headerTglPo})` : ''}` : '-'}
               </strong>
             </div>
           </div>
@@ -497,6 +526,7 @@ export function FormWoDocumentView({
                     <th className="py-2 px-2.5">SITE</th>
                     <th className="py-2 px-2.5">SERIAL NO</th>
                     <th className="py-2 px-2.5">REF NO</th>
+                    <th className="py-2 px-2.5">NO PO</th>
                     <th className="py-2 px-2.5">NO WO CP</th>
                     <th className="py-2 px-2.5 text-right">PRICE / AMOUNT</th>
                   </tr>
@@ -511,6 +541,7 @@ export function FormWoDocumentView({
                       <td className="py-1.5 px-2.5">{row.site || '-'}</td>
                       <td className="py-1.5 px-2.5 font-mono text-slate-600">{row.serialNo || '-'}</td>
                       <td className="py-1.5 px-2.5">{row.refNo || '-'}</td>
+                      <td className="py-1.5 px-2.5 font-mono">{row.noPo || doc.noPo || '-'}</td>
                       <td className="py-1.5 px-2.5 font-mono">{row.noWoCp || doc.noWoTerbit || doc.idWo || '-'}</td>
                       <td className="py-1.5 px-2.5 text-right font-medium">{formatCurrency(row.price)}</td>
                     </tr>
@@ -525,12 +556,14 @@ export function FormWoDocumentView({
                   <tr className="bg-slate-100/90 border-b border-slate-300 text-slate-700 font-semibold uppercase text-[10px]">
                     <th className="py-2 px-2.5 w-8 text-center">NO</th>
                     <th className="py-2 px-2.5">DESCRIPTION (TIRE SN)</th>
-                    <th className="py-2 px-2.5">NO UNIT</th>
+                    <th className="py-2 px-2.5">ID UNIT</th>
+                    <th className="py-2 px-2.5">BRAND</th>
                     <th className="py-2 px-2.5">POS</th>
                     <th className="py-2 px-2.5">SIZE</th>
                     <th className="py-2 px-2.5">SITE</th>
                     <th className="py-2 px-2.5">CUSTOMER</th>
                     <th className="py-2 px-2.5">CATEGORY</th>
+                    <th className="py-2 px-2.5">NO PO</th>
                     <th className="py-2 px-2.5">NO WO CP</th>
                     <th className="py-2 px-2.5 text-right">PRICE / AMOUNT</th>
                   </tr>
@@ -541,11 +574,13 @@ export function FormWoDocumentView({
                       <td className="py-1.5 px-2.5 text-center font-medium text-slate-500">{idx + 1}</td>
                       <td className="py-1.5 px-2.5 font-semibold text-slate-800">{row.description || '-'}</td>
                       <td className="py-1.5 px-2.5">{row.noUnit || '-'}</td>
+                      <td className="py-1.5 px-2.5">{row.brand || '-'}</td>
                       <td className="py-1.5 px-2.5">{row.pos || '-'}</td>
                       <td className="py-1.5 px-2.5">{row.size || '-'}</td>
                       <td className="py-1.5 px-2.5">{row.site || '-'}</td>
                       <td className="py-1.5 px-2.5">{row.customer || '-'}</td>
                       <td className="py-1.5 px-2.5 font-semibold">{row.category || '-'}</td>
+                      <td className="py-1.5 px-2.5 font-mono">{row.noPo || doc.noPo || '-'}</td>
                       <td className="py-1.5 px-2.5 font-mono">{row.noWoCp || doc.noWoTerbit || doc.idWo || '-'}</td>
                       <td className="py-1.5 px-2.5 text-right font-medium">{formatCurrency(row.price)}</td>
                     </tr>
@@ -599,41 +634,25 @@ export function FormWoDocumentView({
                 </td>
               ))}
             </tr>
-            <tr className="divide-x divide-slate-300 bg-slate-50/60">
-              {signatureColumns.map((col) => (
-                <td key={col.key} className="pt-1.5 px-1.5 pb-0.5 text-center">
-                  <p className="text-[11px] font-bold text-slate-900 truncate">
-                    ( {col.signerName} )
-                  </p>
-                </td>
-              ))}
-            </tr>
-            <tr className="divide-x divide-slate-300 bg-slate-50/60">
-              {signatureColumns.map((col) => (
-                <td key={col.key} className="px-1.5 py-0.5 text-center">
-                  <p className="text-[10px] text-slate-600 font-medium truncate">
-                    {col.jobTitle}
-                  </p>
-                </td>
-              ))}
-            </tr>
-            <tr className="divide-x divide-slate-300 bg-slate-50/60">
-              {signatureColumns.map((col) => (
-                <td key={col.key} className="px-1.5 py-0.5 text-center">
-                  <p className="text-[9px] text-slate-500 font-mono">
-                    {col.dateTime ? `${col.dateTime.date} • ${col.dateTime.time}` : '-'}
-                  </p>
-                </td>
-              ))}
-            </tr>
-            <tr className="divide-x divide-slate-300 bg-slate-50/60">
+            <tr className="divide-x divide-slate-300 bg-slate-50/70 border-t border-slate-300">
               {signatureColumns.map((col) => {
                 const cleanNote = extractCleanNote(col.note)
                 return (
-                  <td key={col.key} className="px-1.5 pt-0.5 pb-1.5 text-center align-top">
-                    <p className="text-[9px] text-slate-500 line-clamp-2 italic">
-                      {cleanNote ? `Catatan: ${cleanNote}` : '-'}
+                  <td key={col.key} className="py-2.5 px-2 text-center align-top space-y-1">
+                    <p className="text-[11px] font-bold text-slate-900 leading-snug truncate">
+                      ( {col.signerName} )
                     </p>
+                    <p className="text-[10px] text-slate-600 font-medium leading-snug truncate">
+                      {col.jobTitle}
+                    </p>
+                    <p className="text-[9px] text-slate-500 font-mono leading-snug">
+                      {col.dateTime ? `${col.dateTime.date} • ${col.dateTime.time}` : '-'}
+                    </p>
+                    {cleanNote ? (
+                      <p className="text-[9px] text-slate-500 italic leading-snug line-clamp-2">
+                        Catatan: {cleanNote}
+                      </p>
+                    ) : null}
                   </td>
                 )
               })}

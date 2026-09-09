@@ -734,7 +734,9 @@ export function InboxTab({
       })
     }
 
-    const sorted = list.sort((a, b) => {
+    const uncommittedList = processedBatchIds.size > 0 ? list.filter((it) => !processedBatchIds.has(it.id)) : list
+
+    const sorted = uncommittedList.sort((a, b) => {
       const timeA = a.submittedAt ? new Date(a.submittedAt).getTime() : 0
       const timeB = b.submittedAt ? new Date(b.submittedAt).getTime() : 0
       return timeB - timeA
@@ -745,7 +747,7 @@ export function InboxTab({
     }
 
     return sorted
-  }, [dailyActivityItems, overtimeItems, ptwItems, contractReviewItems, sopWinRequestItems, rfrItems, groups, filterCategory])
+  }, [dailyActivityItems, overtimeItems, ptwItems, contractReviewItems, sopWinRequestItems, rfrItems, groups, filterCategory, processedBatchIds])
 
   const searchParams = useSearchParams()
   const [autoOpenedDoc, setAutoOpenedDoc] = useState<string | null>(null)
@@ -972,6 +974,30 @@ export function InboxTab({
         if (!res.success) throw new Error(res.message || 'Gagal memproses approval 5R')
         toast.success(`Laporan 5R #${currentBatchDoc.documentNumber} berhasil diproses (${action}).`)
       } else if (
+        currentBatchDoc.category === 'FORM_WO' ||
+        Boolean((currentBatchDoc as any).rawFormWo) ||
+        Boolean(currentBatchDoc.rawGeneralGroup?.items?.some((i: any) => i.repairFormWo))
+      ) {
+        const formData = new FormData()
+        if (currentBatchDoc.rawGeneralGroup) {
+          for (const it of currentBatchDoc.rawGeneralGroup.items) {
+            if (it.approvalId) {
+              formData.append('approvalIds', String(it.approvalId))
+            }
+          }
+          formData.append('groupId', currentBatchDoc.rawGeneralGroup.id)
+        }
+        if (currentBatchDoc.approvalId) {
+          formData.append('approvalId', String(currentBatchDoc.approvalId))
+        }
+        formData.append('decision', action === 'approve' ? 'approved' : action === 'revert' ? 'needs_correction' : 'rejected')
+        formData.append('note', currentRemark || (action === 'revert' ? 'Form WO Dikembalikan untuk revisi' : action === 'rejected' ? 'Form WO Ditolak' : ''))
+        if (signatureDataUrl) {
+          formData.append('signatureUrl', signatureDataUrl)
+        }
+        await withActionRetry(() => approveApprovalGroupAction(formData))
+        toast.success(`Form WO #${currentBatchDoc.documentNumber} berhasil diproses (${action}).`)
+      } else if (
         (currentBatchDoc.category === 'GENERAL' ||
           currentBatchDoc.category === 'APD' ||
           currentBatchDoc.category === 'MATERIAL' ||
@@ -987,7 +1013,7 @@ export function InboxTab({
           }
         }
         formData.append('groupId', grp.id)
-        formData.append('decision', action === 'approve' ? 'approved' : action === 'revert' ? 'revision_requested' : 'rejected')
+        formData.append('decision', action === 'approve' ? 'approved' : action === 'revert' ? 'needs_correction' : 'rejected')
         formData.append('note', currentRemark || `Keputusan ${action}`)
         if (signatureDataUrl) {
           formData.append('signatureUrl', signatureDataUrl)
@@ -997,10 +1023,16 @@ export function InboxTab({
       }
 
       setProcessedBatchIds((prev) => new Set([...prev, docId]))
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        next.delete(docId)
+        return next
+      })
 
       // Auto advance to next item
       if (batchReviewIndex < selectedItems.length - 1) {
         setBatchReviewIndex((prev) => prev + 1)
+        router.refresh()
       } else {
         toast.success('Semua dokumen yang dipilih telah selesai diproses.')
         setIsBatchReviewOpen(false)
@@ -1038,6 +1070,12 @@ export function InboxTab({
       const overtimeItems = itemsToProcess.filter(it => it.category === 'OVERTIME' && it.rawOvertime)
       const ptwItems = itemsToProcess.filter(it => it.category === 'PTW' && it.rawPtw)
       const sopWinItems = itemsToProcess.filter(it => it.category === 'SOP_WIN_REQUEST' && it.rawSopWinRequest)
+      const formWoItems = itemsToProcess.filter(
+        (it) =>
+          it.category === 'FORM_WO' ||
+          Boolean((it as any).rawFormWo) ||
+          Boolean(it.rawGeneralGroup?.items?.some((i: any) => i.repairFormWo))
+      )
       const generalItems = itemsToProcess.filter(
         (it) =>
           (it.category === 'GENERAL' ||
@@ -1119,6 +1157,30 @@ export function InboxTab({
         else failCount++
       }
 
+      // Form WO Items
+      for (const item of formWoItems) {
+        const grp = item.rawGeneralGroup
+        const formData = new FormData()
+        if (grp) {
+          for (const it of grp.items) {
+            if (it.approvalId) {
+              formData.append('approvalIds', String(it.approvalId))
+            }
+          }
+          formData.append('groupId', grp.id)
+        }
+        if (item.approvalId) {
+          formData.append('approvalId', String(item.approvalId))
+        }
+        formData.append('decision', action === 'approve' ? 'approved' : action === 'revert' ? 'needs_correction' : 'rejected')
+        formData.append('note', reason || (action === 'revert' ? 'Form WO Dikembalikan untuk revisi' : action === 'rejected' ? 'Form WO Ditolak' : ''))
+        if (signatureDataUrl) {
+          formData.append('signatureUrl', signatureDataUrl)
+        }
+        await approveApprovalGroupAction(formData)
+        successCount++
+      }
+
       // General Items
       for (const item of generalItems) {
         const grp = item.rawGeneralGroup!
@@ -1129,7 +1191,7 @@ export function InboxTab({
           }
         }
         formData.append('groupId', grp.id)
-        formData.append('decision', action === 'approve' ? 'approved' : action === 'revert' ? 'revision_requested' : 'rejected')
+        formData.append('decision', action === 'approve' ? 'approved' : action === 'revert' ? 'needs_correction' : 'rejected')
         formData.append('note', reason || `${action === 'approve' ? 'Approve' : action === 'revert' ? 'Revert' : 'Reject'} All via Inbox`)
         if (signatureDataUrl) {
           formData.append('signatureUrl', signatureDataUrl)

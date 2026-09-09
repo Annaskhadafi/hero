@@ -93,6 +93,14 @@ export function FormWoApprovalDialog({ item, group }: FormWoApprovalDialogProps)
     items: rawWo?.items || null,
     noPo: rawWo?.noPo || null,
     tanggalPo: rawWo?.tanggalPo || null,
+    tireSn: rawWo?.tireSn || null,
+    storeLoc: rawWo?.storeLoc || null,
+    brand: rawWo?.brand || null,
+    pattern: rawWo?.pattern || null,
+    size: rawWo?.size || null,
+    jobType: rawWo?.jobType || null,
+    noWoTerbit: rawWo?.noWoTerbit || null,
+    statusPengajuan: rawWo?.statusPengajuan || item.status || 'pending',
     submitterSignatureUrl: rawWo?.submitterSignatureUrl || (item as any).signatureUrl || null,
     steps: rawWo?.steps || (item as any).rawFormWo?.steps || item.steps?.map((s) => ({
       level: s.level,
@@ -102,6 +110,7 @@ export function FormWoApprovalDialog({ item, group }: FormWoApprovalDialogProps)
       decision: s.status,
       reviewedAt: s.reviewedAt,
       signatureUrl: (s as any).signatureUrl || null,
+      decisionNote: (s as any).decisionNote || null,
     })) || [],
   }
 

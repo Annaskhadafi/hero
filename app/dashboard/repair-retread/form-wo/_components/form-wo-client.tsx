@@ -1549,6 +1549,12 @@ function CreateOrEditWoDialog({
                       <TableHead className="min-w-[140px]">Site</TableHead>
                       <TableHead className="min-w-[160px]">Tire Size</TableHead>
                       <TableHead className="min-w-[180px]">SN Tire</TableHead>
+                      {repairItems.some((r) => {
+                        const c = (r.customer || "").toLowerCase()
+                        return c.includes("cipta kridatama") || c.includes("ck")
+                      }) && (
+                        <TableHead className="min-w-[140px]">ID Unit</TableHead>
+                      )}
                       <TableHead className="min-w-[140px]">Brand</TableHead>
                       <TableHead className="min-w-[140px]">Cat. Injury</TableHead>
                       <TableHead className="min-w-[160px] text-right">Price</TableHead>
@@ -1600,6 +1606,21 @@ function CreateOrEditWoDialog({
                             className="h-9 text-xs border-slate-200 font-mono w-full"
                           />
                         </TableCell>
+
+                        {/* 4b. ID Unit (Khusus Customer Cipta Kridatama) */}
+                        {repairItems.some((r) => {
+                          const c = (r.customer || "").toLowerCase()
+                          return c.includes("cipta kridatama") || c.includes("ck")
+                        }) && (
+                          <TableCell>
+                            <Input
+                              value={item.noUnit || ""}
+                              onChange={(e) => updateRepairRow(idx, "noUnit", e.target.value)}
+                              placeholder="e.g. DT-01 / HD-785"
+                              className="h-9 text-xs border-slate-200 font-mono w-full"
+                            />
+                          </TableCell>
+                        )}
 
                         {/* 5. Brand */}
                         <TableCell>
@@ -1689,7 +1710,17 @@ function CreateOrEditWoDialog({
                     ))}
                     {/* Yellow Total Amount Footer */}
                     <TableRow className="bg-yellow-300/90 font-bold text-slate-900 border-t-2 border-slate-300">
-                      <TableCell colSpan={7} className="text-center py-2.5 uppercase tracking-wider text-xs">
+                      <TableCell
+                        colSpan={
+                          repairItems.some((r) => {
+                            const c = (r.customer || "").toLowerCase()
+                            return c.includes("cipta kridatama") || c.includes("ck")
+                          })
+                            ? 8
+                            : 7
+                        }
+                        className="text-center py-2.5 uppercase tracking-wider text-xs"
+                      >
                         Total Amount
                       </TableCell>
                       <TableCell className="text-right py-2.5 font-mono text-xs">
@@ -1892,6 +1923,12 @@ function ViewDetailDialog({
                     <th className="py-2.5 px-3 border-r border-slate-300">Site</th>
                     <th className="py-2.5 px-3 border-r border-slate-300">Tire Size</th>
                     <th className="py-2.5 px-3 border-r border-slate-300">SN Tire</th>
+                    {repairItemsList.some((r) => {
+                      const c = (r.customer || item.customer || "").toLowerCase()
+                      return c.includes("cipta kridatama") || c.includes("ck")
+                    }) && (
+                      <th className="py-2.5 px-3 border-r border-slate-300">ID Unit</th>
+                    )}
                     <th className="py-2.5 px-3 border-r border-slate-300">Brand</th>
                     <th className="py-2.5 px-3 border-r border-slate-300">Cat. Injury</th>
                     <th className="py-2.5 px-3 border-r border-slate-300 text-right">Price</th>
@@ -1909,6 +1946,14 @@ function ViewDetailDialog({
                       <td className="py-2 px-3 border-r border-slate-200">{row.site || item.site || "-"}</td>
                       <td className="py-2 px-3 border-r border-slate-200">{row.size || "-"}</td>
                       <td className="py-2 px-3 border-r border-slate-200 font-mono font-medium">{row.description || "-"}</td>
+                      {repairItemsList.some((r) => {
+                        const c = (r.customer || item.customer || "").toLowerCase()
+                        return c.includes("cipta kridatama") || c.includes("ck")
+                      }) && (
+                        <td className="py-2 px-3 border-r border-slate-200 font-mono font-medium">
+                          {row.noUnit || "-"}
+                        </td>
+                      )}
                       <td className="py-2 px-3 border-r border-slate-200">{row.brand || "-"}</td>
                       <td className="py-2 px-3 border-r border-slate-200">{row.category || "-"}</td>
                       <td className="py-2 px-3 border-r border-slate-200 text-right font-mono">
@@ -1923,7 +1968,17 @@ function ViewDetailDialog({
 
                   {/* Yellow Total Amount Footer */}
                   <tr className="bg-yellow-300 font-bold text-slate-900 border-t-2 border-slate-400">
-                    <td colSpan={7} className="py-2.5 px-4 text-center uppercase tracking-wider text-xs border-r border-slate-400">
+                    <td
+                      colSpan={
+                        repairItemsList.some((r) => {
+                          const c = (r.customer || item.customer || "").toLowerCase()
+                          return c.includes("cipta kridatama") || c.includes("ck")
+                        })
+                          ? 8
+                          : 7
+                      }
+                      className="py-2.5 px-4 text-center uppercase tracking-wider text-xs border-r border-slate-400"
+                    >
                       Total Amount
                     </td>
                     <td className="py-2.5 px-3 text-right font-mono text-xs border-r border-slate-400">
@@ -2628,6 +2683,8 @@ function DaftarPengajuanTab({
       items: JSON.stringify(parsed),
       totalAmount: newTotal > 0 ? String(newTotal) : item.totalAmount,
       noPo: field === "noPo" ? val : (firstSub?.noPo || item.noPo || undefined),
+      tanggalPo: field === "tanggalPo" ? val : (firstSub?.tanggalPo || item.tanggalPo || undefined),
+      brand: field === "brand" ? val : (firstSub?.brand || item.brand || undefined),
     })
 
     if (res.success) {
@@ -3004,7 +3061,9 @@ function DaftarPengajuanTab({
                                         ) : (
                                           <>
                                             <TableHead className="h-8 px-2">Description (Tire SN)</TableHead>
-                                            <TableHead className="h-8 px-2">Unit / Pos</TableHead>
+                                            <TableHead className="h-8 px-2">Unit</TableHead>
+                                            <TableHead className="h-8 px-2">Brand</TableHead>
+                                            <TableHead className="h-8 px-2">POS</TableHead>
                                             <TableHead className="h-8 px-2">Customer / Site</TableHead>
                                             <TableHead className="h-8 px-2">Size</TableHead>
                                             <TableHead className="h-8 px-2">Category</TableHead>
@@ -3119,6 +3178,32 @@ function DaftarPengajuanTab({
                                                     }
                                                   }}
                                                   className="h-7 text-xs border-slate-200 font-sans bg-white w-20"
+                                                />
+                                              </TableCell>
+                                              <TableCell className="px-2 font-sans text-slate-700">
+                                                <Input
+                                                  defaultValue={sub.brand || ""}
+                                                  placeholder="Brand"
+                                                  onBlur={(e) => {
+                                                    const val = e.target.value.trim()
+                                                    if (val !== (sub.brand || "")) {
+                                                      void handleInlineSubItemUpdate(item, subIdx, "brand", val)
+                                                    }
+                                                  }}
+                                                  className="h-7 text-xs border-slate-200 font-sans bg-white w-24"
+                                                />
+                                              </TableCell>
+                                              <TableCell className="px-2 font-sans text-slate-700">
+                                                <Input
+                                                  defaultValue={sub.pos || ""}
+                                                  placeholder="POS"
+                                                  onBlur={(e) => {
+                                                    const val = e.target.value.trim()
+                                                    if (val !== (sub.pos || "")) {
+                                                      void handleInlineSubItemUpdate(item, subIdx, "pos", val)
+                                                    }
+                                                  }}
+                                                  className="h-7 text-xs border-slate-200 font-sans text-center bg-white w-14"
                                                 />
                                               </TableCell>
                                               <TableCell className="px-2 font-sans text-slate-700">

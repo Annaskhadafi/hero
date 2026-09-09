@@ -182,6 +182,48 @@ export function ApprovalReviewDrawerForm({ item, group }: ApprovalReviewDrawerFo
 
   const wo = item.repairFormWo
 
+  const resolvedWoDoc = useMemo(() => {
+    if (!wo) return null
+    return {
+      ...wo,
+      id: wo.id,
+      noPengajuan: wo.noPengajuan || (item as any).documentNumber || item.requestNumber || item.title,
+      jenisPengajuan: wo.jenisPengajuan || (item.title?.toLowerCase().includes('service') ? 'service' : 'repair'),
+      hari: wo.hari || '-',
+      tanggal: wo.tanggal || null,
+      tanggalPengajuan: wo.tanggalPengajuan || (item as any).submittedAt || item.startTime,
+      pemohon: wo.pemohon || (item as any).employeeName || item.requesterName || (group as any)?.requesterName || '-',
+      pemohonJobTitle: wo.pemohonJobTitle || (item as any).requesterJobTitle || (group as any)?.requesterJobTitle || 'Pemohon',
+      customer: wo.customer || (item as any).customerName || item.requestKindLabel || '-',
+      site: wo.site || (item as any).siteName || (group as any)?.siteName || item.siteName || '-',
+      deskripsiPekerjaan: wo.deskripsiPekerjaan || 'Labour Service',
+      catatanPengajuan: wo.catatanPengajuan || null,
+      totalAmount: wo.totalAmount || (item as any).totalAmount || '0',
+      items: wo.items || null,
+      noPo: wo.noPo || null,
+      tanggalPo: wo.tanggalPo || null,
+      tireSn: wo.tireSn || null,
+      storeLoc: wo.storeLoc || null,
+      brand: wo.brand || null,
+      pattern: wo.pattern || null,
+      size: wo.size || null,
+      jobType: wo.jobType || null,
+      noWoTerbit: wo.noWoTerbit || null,
+      statusPengajuan: wo.statusPengajuan || item.status || 'pending',
+      submitterSignatureUrl: wo.submitterSignatureUrl || (item as any).signatureUrl || null,
+      steps: wo.steps || (item as any).rawFormWo?.steps || item.steps?.map((s) => ({
+        level: s.level,
+        approverName: s.approverName,
+        jobTitle: s.label,
+        status: s.status,
+        decision: s.status,
+        reviewedAt: s.reviewedAt,
+        signatureUrl: (s as any).signatureUrl || null,
+        decisionNote: (s as any).decisionNote || null,
+      })) || [],
+    }
+  }, [wo, item, group])
+
   const [pendingDecision, setPendingDecision] = useState<'approved' | 'needs_correction' | 'rejected' | null>(null)
 
   const handleSaveToProfile = async () => {
@@ -265,9 +307,9 @@ export function ApprovalReviewDrawerForm({ item, group }: ApprovalReviewDrawerFo
   return (
     <div className="space-y-4 rounded-2xl bg-white p-3.5 sm:p-4 shadow-sm border border-slate-200">
       {/* 1. BAGIAN ATAS: LEMBAR DOKUMEN RESMI LANGSUNG DITAMPILKAN SECARA MOBILE FRIENDLY */}
-      {isFormWo && wo ? (
+      {isFormWo && resolvedWoDoc ? (
         <ScaledFormWoDocument
-          doc={wo}
+          doc={resolvedWoDoc}
           liveSignatureUrl={liveSignatureUrl}
           currentLevel={item.level}
           onOpenFullscreen={() => setIsPreviewOpen(true)}
@@ -512,7 +554,7 @@ export function ApprovalReviewDrawerForm({ item, group }: ApprovalReviewDrawerFo
       <FormWoDocumentPreviewDialog
         open={isPreviewOpen}
         onOpenChange={setIsPreviewOpen}
-        doc={wo ?? null}
+        doc={resolvedWoDoc ?? null}
         liveSignatureUrl={liveSignatureUrl}
         currentLevel={item.level}
       />

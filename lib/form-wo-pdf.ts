@@ -61,7 +61,54 @@ function formatIndoDateTime(val?: string | Date | null): string {
     hour: '2-digit',
     minute: '2-digit',
   }).replace(':', '.')
-  return `${dateStr} ${timeStr} WITA`
+  return `${dateStr} • ${timeStr} WITA`
+}
+
+function extractCleanNote(rawNote: string | null | undefined): string {
+  if (!rawNote || !rawNote.trim()) return ''
+  const trimmed = rawNote.trim()
+  let noteText = trimmed
+  if (trimmed.startsWith('{') || trimmed.includes('"message"')) {
+    try {
+      const parsed = JSON.parse(trimmed)
+      if (parsed && typeof parsed.message === 'string') {
+        noteText = parsed.message.trim()
+      }
+    } catch {
+      const lines = trimmed.split('\n').map((l) => l.trim()).filter(Boolean)
+      for (let i = lines.length - 1; i >= 0; i--) {
+        try {
+          const p = JSON.parse(lines[i])
+          if (p && typeof p.message === 'string' && p.message) {
+            noteText = p.message.trim()
+            break
+          }
+        } catch {}
+      }
+    }
+  }
+
+  const lower = noteText.toLowerCase().replace(/[^a-z0-9]/g, '')
+  if (
+    !noteText ||
+    lower === 'disetujui' ||
+    lower === 'wodisetujui' ||
+    lower === 'formwodisetujui' ||
+    lower === 'approved' ||
+    lower === 'woapproved' ||
+    lower === 'formwoapproved' ||
+    lower === 'approve' ||
+    lower === 'ok' ||
+    lower === 'null' ||
+    lower === 'undefined' ||
+    lower === 'tidakadacatatan' ||
+    lower.includes('disetujui') ||
+    lower.includes('approved')
+  ) {
+    return ''
+  }
+
+  return noteText
 }
 
 function formatIndoDay(val?: string | Date | null): string {
@@ -274,7 +321,7 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
 
   curY -= (boxH + 10)
 
-  // Customer & Site Box Only (with vertical divider line to prevent collision)
+  // Customer, Site, & No. PO Box (with vertical divider lines)
   const metaBoxH = 26
   page.drawRectangle({
     x: boxX,
@@ -286,7 +333,21 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
     borderWidth: 1,
   })
 
-  const custColW = boxW * 0.6
+  // Parse items first to get header fallback if needed
+  let itemsList: any[] = []
+  if (Array.isArray(data.items)) {
+    itemsList = data.items
+  } else if (typeof data.items === 'string' && data.items.trim()) {
+    try {
+      itemsList = JSON.parse(data.items)
+    } catch {}
+  }
+
+  const custColW = boxW * 0.4
+  const siteColW = boxW * 0.3
+  const poColW = boxW * 0.3
+
+  // Col 1: Customer
   const custLabel = 'Customer: '
   const custLabelW = fontBold.widthOfTextAtSize(custLabel, 8)
   page.drawText(custLabel, { x: boxX + 10, y: curY - 17, size: 8, font: fontBold, color: rgb(0.25, 0.3, 0.38) })
@@ -309,14 +370,40 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
     color: rgb(0.85, 0.88, 0.92),
   })
 
+  // Col 2: Site
   const siteLabel = 'Site: '
   const siteLabelW = fontBold.widthOfTextAtSize(siteLabel, 8)
   page.drawText(siteLabel, { x: boxX + custColW + 10, y: curY - 17, size: 8, font: fontBold, color: rgb(0.25, 0.3, 0.38) })
 
   const rawSite = data.site || '-'
-  const fittedSite = fitText(rawSite, (boxW - custColW) - siteLabelW - 16, fontRegular, 8)
+  const fittedSite = fitText(rawSite, siteColW - siteLabelW - 16, fontRegular, 8)
   page.drawText(fittedSite, {
     x: boxX + custColW + 10 + siteLabelW,
+    y: curY - 17,
+    size: 8,
+    font: fontRegular,
+    color: rgb(0.1, 0.15, 0.25),
+  })
+
+  // Vertical dividing line between Site and No PO
+  page.drawLine({
+    start: { x: boxX + custColW + siteColW, y: curY },
+    end: { x: boxX + custColW + siteColW, y: curY - metaBoxH },
+    thickness: 1,
+    color: rgb(0.85, 0.88, 0.92),
+  })
+
+  // Col 3: No. PO
+  const poLabel = 'No. PO: '
+  const poLabelW = fontBold.widthOfTextAtSize(poLabel, 8)
+  page.drawText(poLabel, { x: boxX + custColW + siteColW + 10, y: curY - 17, size: 8, font: fontBold, color: rgb(0.25, 0.3, 0.38) })
+
+  const headerNoPo = data.noPo || (itemsList[0]?.noPo ?? '-')
+  const headerTglPo = data.tanggalPo || (itemsList[0]?.tanggalPo ?? '')
+  const poDisplay = headerNoPo !== '-' && headerTglPo ? `${headerNoPo} (${headerTglPo})` : headerNoPo
+  const fittedPo = fitText(poDisplay, poColW - poLabelW - 16, fontRegular, 8)
+  page.drawText(fittedPo, {
+    x: boxX + custColW + siteColW + 10 + poLabelW,
     y: curY - 17,
     size: 8,
     font: fontRegular,
@@ -334,16 +421,6 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
     color: rgb(0.3, 0.35, 0.4),
   })
   curY -= 12
-
-  // Parse items
-  let itemsList: any[] = []
-  if (Array.isArray(data.items)) {
-    itemsList = data.items
-  } else if (typeof data.items === 'string' && data.items.trim()) {
-    try {
-      itemsList = JSON.parse(data.items)
-    } catch {}
-  }
 
   // Table Headers
   const tableX = 36
@@ -363,31 +440,34 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
   const isService = data.jenisPengajuan === 'service'
 
   // Dynamic Column definitions for Landscape A4 (tableW = 769.89 pt)
-  // Service: NO, DESCRIPTION, JOB, CUSTOMER, SITE, SERIAL NO, REF NO, NO WO CP, PRICE / AMOUNT
-  // Repair: NO, DESCRIPTION (TIRE SN), NO UNIT, POS, SIZE, SITE, CUSTOMER, CATEGORY, NO WO CP, PRICE / AMOUNT
+  // Service: NO, DESCRIPTION, JOB, CUSTOMER, SITE, SERIAL NO, REF NO, NO PO, NO WO CP, PRICE / AMOUNT
+  // Repair: NO, DESCRIPTION (TIRE SN), ID UNIT, BRAND, POS, SIZE, SITE, CUSTOMER, CATEGORY, NO PO, NO WO CP, PRICE / AMOUNT
   const columns = isService
     ? [
-        { label: 'NO', w: 24, align: 'center' },
-        { label: 'DESCRIPTION', w: 115 },
-        { label: 'JOB', w: 65 },
-        { label: 'CUSTOMER', w: 105 },
-        { label: 'SITE', w: 75 },
-        { label: 'SERIAL NO', w: 80 },
-        { label: 'REF NO', w: 75 },
+        { label: 'NO', w: 22, align: 'center' },
+        { label: 'DESCRIPTION', w: 105 },
+        { label: 'JOB', w: 60 },
+        { label: 'CUSTOMER', w: 95 },
+        { label: 'SITE', w: 70 },
+        { label: 'SERIAL NO', w: 75 },
+        { label: 'REF NO', w: 65 },
+        { label: 'NO PO', w: 75 },
         { label: 'NO WO CP', w: 75 },
-        { label: 'PRICE / AMOUNT', w: 155.89, align: 'right' },
+        { label: 'PRICE / AMOUNT', w: 127.89, align: 'right' },
       ]
     : [
-        { label: 'NO', w: 22, align: 'center' },
-        { label: 'DESCRIPTION (TIRE SN)', w: 110 },
-        { label: 'NO UNIT', w: 55 },
-        { label: 'POS', w: 40, align: 'center' },
-        { label: 'SIZE', w: 65 },
-        { label: 'SITE', w: 75 },
-        { label: 'CUSTOMER', w: 110 },
-        { label: 'CATEGORY', w: 85 },
-        { label: 'NO WO CP', w: 85 },
-        { label: 'PRICE / AMOUNT', w: 122.89, align: 'right' },
+        { label: 'NO', w: 20, align: 'center' },
+        { label: 'DESCRIPTION (TIRE SN)', w: 90 },
+        { label: 'ID UNIT', w: 45 },
+        { label: 'BRAND', w: 55 },
+        { label: 'POS', w: 28, align: 'center' },
+        { label: 'SIZE', w: 52 },
+        { label: 'SITE', w: 60 },
+        { label: 'CUSTOMER', w: 85 },
+        { label: 'CATEGORY', w: 60 },
+        { label: 'NO PO', w: 75 },
+        { label: 'NO WO CP', w: 75 },
+        { label: 'PRICE / AMOUNT', w: 124.89, align: 'right' },
       ]
 
   let curColX = tableX
@@ -462,6 +542,7 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
           row.site || data.site || '-',
           row.serialNo || '-',
           row.refNo || '-',
+          row.noPo || data.noPo || '-',
           row.noWoCp || data.noWoTerbit || '-',
           priceNum > 0 ? formatCurrency(priceNum) : '-',
         ]
@@ -469,11 +550,13 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
           String(idx + 1),
           row.description || row.tireSn || '-',
           row.noUnit || '-',
+          row.brand || '-',
           row.pos || '-',
           row.size || '-',
           row.site || data.site || '-',
           row.customer || data.customer || '-',
           row.category || 'R1',
+          row.noPo || data.noPo || '-',
           row.noWoCp || data.noWoTerbit || '-',
           priceNum > 0 ? formatCurrency(priceNum) : '-',
         ]
@@ -799,11 +882,25 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
     const dateW = fontMono.widthOfTextAtSize(dateText, 6)
     page.drawText(dateText, {
       x: x + (sigBoxW - dateW) / 2,
-      y: curY - sigHeaderH - sigCanvasH - 34,
+      y: curY - sigHeaderH - sigCanvasH - 33,
       size: 6,
       font: fontMono,
       color: rgb(0.5, 0.55, 0.6),
     })
+
+    const cleanNote = extractCleanNote(col.note)
+    if (cleanNote) {
+      const noteText = `Catatan: ${cleanNote}`
+      const noteSize = noteText.length > 32 ? 4.5 : 5
+      const noteW = fontRegular.widthOfTextAtSize(noteText, noteSize)
+      page.drawText(noteText, {
+        x: x + (sigBoxW - noteW) / 2,
+        y: curY - sigHeaderH - sigCanvasH - 41,
+        size: noteSize,
+        font: fontRegular,
+        color: rgb(0.45, 0.5, 0.55),
+      })
+    }
   }
 
   // Bottom Footer / Timestamp
