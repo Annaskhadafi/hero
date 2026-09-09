@@ -81,7 +81,7 @@ export async function GET(
     return new NextResponse(new Uint8Array(pdfBuffer), {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `inline; filename="Form_WO_${safeNo}_Landscape.pdf"`,
+        'Content-Disposition': `attachment; filename="Form_WO_${safeNo}.pdf"`,
       },
     })
   } catch (err: any) {

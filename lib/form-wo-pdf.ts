@@ -38,24 +38,30 @@ function formatIndoDate(val?: string | Date | null): string {
   if (!val) return '-'
   const d = typeof val === 'string' ? new Date(val) : val
   if (isNaN(d.getTime())) return String(val)
-  const months = [
-    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
-  ]
-  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`
+  return d.toLocaleDateString('id-ID', {
+    timeZone: 'Asia/Makassar',
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  })
 }
 
 function formatIndoDateTime(val?: string | Date | null): string {
   if (!val) return '-'
   const d = typeof val === 'string' ? new Date(val) : val
   if (isNaN(d.getTime())) return String(val)
-  const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
-    'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'
-  ]
-  const hours = String(d.getHours()).padStart(2, '0')
-  const minutes = String(d.getMinutes()).padStart(2, '0')
-  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()} ${hours}:${minutes}`
+  const dateStr = d.toLocaleDateString('id-ID', {
+    timeZone: 'Asia/Makassar',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  })
+  const timeStr = d.toLocaleTimeString('id-ID', {
+    timeZone: 'Asia/Makassar',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).replace(':', '.')
+  return `${dateStr} ${timeStr} WITA`
 }
 
 function formatIndoDay(val?: string | Date | null): string {
@@ -801,7 +807,8 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
   }
 
   // Bottom Footer / Timestamp
-  page.drawText(`Dokumen resmi PT Chitra Paratama dicetak otomatis melalui HERO System pada ${new Date().toLocaleString('id-ID')}`, {
+  const printTimestamp = `${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Makassar' }).replace(':', '.')} WITA`
+  page.drawText(`Dokumen resmi PT Chitra Paratama dicetak otomatis melalui HERO System pada ${printTimestamp}`, {
     x: 36,
     y: 20,
     size: 6.5,

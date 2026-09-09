@@ -4620,32 +4620,6 @@ async function applyApprovalDecision(params: {
               .limit(1)
             creatorEmail = creatorEmp?.email
           }
-
-          // Ketika Step 4 (Team Billing) approve -> Kirim notifikasi email & lonceng ke pengaju/pemohon
-          if (currentLevel === 4 && creatorEmail) {
-            const { sendFormWoBillingApprovedEmail } = await import('@/lib/form-wo-email')
-            sendFormWoBillingApprovedEmail({
-              requesterEmail: creatorEmail,
-              pemohon: reqInfo.pemohon || 'Pemohon',
-              noPengajuan: reqInfo.noPengajuan,
-              customer: reqInfo.customer || '-',
-              site: reqInfo.site || '-',
-              jobType: reqInfo.jobType || '-',
-              totalAmount: reqInfo.totalAmount || '-',
-            }).catch(console.error)
-
-            const { notifyWorkflowBellRecipients } =
-              await import('@/lib/workflow-notification-center')
-            notifyWorkflowBellRecipients({
-              recipientEmails: [creatorEmail],
-              eventType: 'form_wo_billing_approved',
-              category: 'approval',
-              title: 'Form WO Disetujui Team Billing (Step 4)',
-              body: `Form WO (${reqInfo.noPengajuan}) telah disetujui oleh Team Billing dan diteruskan ke Inventory & Warehouse Management SPV (Step 5).`,
-              url: `/dashboard/repair-retread/form-wo`,
-              tagPrefix: 'form-wo',
-            }).catch(console.error)
-          }
         }
       }
 

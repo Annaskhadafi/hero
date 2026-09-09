@@ -16,7 +16,6 @@ test("email template preset registry covers Form WO approval and status template
   assert.match(source, /templateCode: 'form_wo_status_approved'/)
   assert.match(source, /templateCode: 'form_wo_status_rejected'/)
   assert.match(source, /templateCode: 'form_wo_status_reverted'/)
-  assert.match(source, /templateCode: 'form_wo_billing_approved'/)
   assert.match(source, /templateCode: 'form_wo_ready_for_wo_number'/)
   assert.match(source, /\['form_wo_', 'Repair & Retread'\]/)
 })

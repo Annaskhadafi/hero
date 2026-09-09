@@ -144,8 +144,7 @@ function formatIndoDay(dateVal: Date | string | null | undefined, fallback = '-'
   if (!dateVal) return fallback
   const d = typeof dateVal === 'string' ? new Date(dateVal) : dateVal
   if (isNaN(d.getTime())) return fallback
-  const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']
-  return days[d.getDay()] || fallback
+  return d.toLocaleDateString('id-ID', { weekday: 'long', timeZone: 'Asia/Makassar' }) || fallback
 }
 
 function formatIndoDate(dateVal: Date | string | null | undefined): string {
@@ -153,6 +152,7 @@ function formatIndoDate(dateVal: Date | string | null | undefined): string {
   const d = typeof dateVal === 'string' ? new Date(dateVal) : dateVal
   if (isNaN(d.getTime())) return String(dateVal)
   return d.toLocaleDateString('id-ID', {
+    timeZone: 'Asia/Makassar',
     day: '2-digit',
     month: 'long',
     year: 'numeric',
@@ -163,7 +163,7 @@ function formatIndoTime(dateVal: Date | string | null | undefined): string {
   if (!dateVal) return '-'
   const d = typeof dateVal === 'string' ? new Date(dateVal) : dateVal
   if (isNaN(d.getTime())) return '-'
-  return `${d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB`
+  return `${d.toLocaleTimeString('id-ID', { timeZone: 'Asia/Makassar', hour: '2-digit', minute: '2-digit' }).replace(':', '.')} WITA`
 }
 
 function formatIndoDateTime(dateVal: Date | string | null | undefined): { date: string; time: string } {
@@ -171,8 +171,8 @@ function formatIndoDateTime(dateVal: Date | string | null | undefined): { date: 
   const d = typeof dateVal === 'string' ? new Date(dateVal) : dateVal
   if (isNaN(d.getTime())) return { date: String(dateVal), time: '-' }
   return {
-    date: d.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }),
-    time: `${d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB`,
+    date: d.toLocaleDateString('id-ID', { timeZone: 'Asia/Makassar', day: '2-digit', month: 'long', year: 'numeric' }),
+    time: `${d.toLocaleTimeString('id-ID', { timeZone: 'Asia/Makassar', hour: '2-digit', minute: '2-digit' }).replace(':', '.')} WITA`,
   }
 }
 
@@ -725,17 +725,16 @@ export function FormWoDocumentPreviewDialog({
             {doc.id ? (
               <a
                 href={`/api/form-wo/${doc.id}/pdf`}
-                target="_blank"
-                rel="noopener noreferrer"
+                download={`Form_WO_${doc.id}.pdf`}
               >
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="border-sky-300 bg-sky-50 font-semibold text-sky-800 hover:bg-sky-100 shadow-xs"
+                  className="border-sky-300 bg-sky-50 font-semibold text-sky-800 hover:bg-sky-100 shadow-xs cursor-pointer"
                 >
                   <Download className="mr-1.5 h-4 w-4 text-sky-600" />
-                  Download PDF Lanskap
+                  Download PDF
                 </Button>
               </a>
             ) : null}

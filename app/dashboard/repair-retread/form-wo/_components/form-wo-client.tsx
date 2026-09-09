@@ -2846,6 +2846,21 @@ function DaftarPengajuanTab({
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
+                            <a
+                              href={`/api/form-wo/${item.id}/pdf`}
+                              download={`Form_WO_${item.id}.pdf`}
+                              title="Download PDF"
+                            >
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 rounded-lg p-0 text-slate-600 hover:text-emerald-600 cursor-pointer"
+                                title="Download PDF"
+                              >
+                                <Download className="h-4 w-4" />
+                              </Button>
+                            </a>
                             {canEdit && (
                               <Button
                                 type="button"
