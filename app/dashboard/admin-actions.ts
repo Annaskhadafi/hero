@@ -4322,11 +4322,15 @@ async function applyApprovalDecision(params: {
     throw new Error('Authenticated employee profile is required.')
   }
   const [actorEmployee] = await db
-    .select({ name: employees.name })
+    .select({ name: employees.name, signatureDataUrl: employees.signatureDataUrl })
     .from(employees)
     .where(eq(employees.id, actor.employeeId))
     .limit(1)
   const actorName = actorEmployee?.name ?? actor.roleName ?? 'Approver'
+  const resolvedSignatureUrl =
+    params.signatureUrl ||
+    (params.decision === 'approved' ? actorEmployee?.signatureDataUrl : undefined) ||
+    undefined
   const trimmedNote =
     params.note.trim() ||
     (params.decision === 'rejected'
@@ -4483,6 +4487,7 @@ async function applyApprovalDecision(params: {
         .set({
           status: decisionStatus,
           reviewedAt: now,
+          signatureUrl: resolvedSignatureUrl || params.signatureUrl || undefined,
           decisionNote: appendApprovalNoteEntry(approval.decisionNote, {
             kind: params.decision,
             actor: actorName,
@@ -5313,6 +5318,7 @@ async function applyApprovalDecision(params: {
       .set({
         status: params.decision,
         reviewedAt: now,
+        signatureUrl: resolvedSignatureUrl || undefined,
         decisionNote: appendApprovalNoteEntry(approval.decisionNote, {
           kind: params.decision,
           actor: actorName,
@@ -6566,8 +6572,9 @@ export async function reviewApprovalAction(formData: FormData) {
     note: fallbackNote,
   })
 
-  // Check if a signature file is provided
+  // Check if a signature file or signature data URL is provided
   const signatureFile = formData.get('signatureFile') as File | null
+  const rawSignatureDataUrl = (formData.get('signatureDataUrl') || formData.get('signatureUrl')) as string | null
   let signatureUrl: string | undefined
 
   if (signatureFile && signatureFile.size > 0) {
@@ -6576,12 +6583,17 @@ export async function reviewApprovalAction(formData: FormData) {
       const uploadFormData = new FormData()
       uploadFormData.append('file', signatureFile)
       const result = await uploadFile(uploadFormData)
-      if (result && result.success) {
+      if (result && result.success && result.url) {
         signatureUrl = result.url
       }
     } catch (err) {
       console.error('Signature upload error (non-fatal):', err)
     }
+  }
+
+  // Fallback to rawSignatureDataUrl if file upload was not performed or failed
+  if (!signatureUrl && rawSignatureDataUrl && typeof rawSignatureDataUrl === 'string' && rawSignatureDataUrl.trim().length > 0) {
+    signatureUrl = rawSignatureDataUrl.trim()
   }
 
   // Save signature to approvals BEFORE running approval decision

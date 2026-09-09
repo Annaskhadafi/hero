@@ -149,6 +149,7 @@ export function FormWoApprovalDialog({ item, group }: FormWoApprovalDialogProps)
         if (decision === 'approved') {
           const sigToUse = isUsingProfileSig && profileSig ? profileSig : liveSignatureUrl
           if (sigToUse) {
+            formData.append('signatureDataUrl', sigToUse)
             try {
               const res = await fetch(sigToUse)
               const blob = await res.blob()

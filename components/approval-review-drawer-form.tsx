@@ -11,6 +11,7 @@ import {
 } from '@/components/form-wo-document-preview-dialog'
 import { ApprovalRequestDetails } from '@/components/approval-request-details'
 import { reviewApprovalAction } from '@/app/dashboard/admin-actions'
+import { getUserSignatureAction, saveUserSignatureAction } from '@/app/actions/user-signature'
 import {
   FileText,
   PenLine,
@@ -21,6 +22,7 @@ import {
   ChevronDown,
   ChevronUp,
   Maximize2,
+  Save,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -145,9 +147,24 @@ export function ApprovalReviewDrawerForm({ item, group }: ApprovalReviewDrawerFo
   const [note, setNote] = useState('')
   const [signatureFile, setSignatureFile] = useState<File | null>(null)
   const [liveSignatureUrl, setLiveSignatureUrl] = useState<string | null>(null)
+  const [profileSig, setProfileSig] = useState<string | null>(null)
+  const [isUsingProfileSig, setIsUsingProfileSig] = useState(false)
+  const [isSavingProfileSig, setIsSavingProfileSig] = useState(false)
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
   const [isSignPadOpen, setIsSignPadOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
+
+  useEffect(() => {
+    getUserSignatureAction()
+      .then((res) => {
+        if (res.success && res.signatureDataUrl) {
+          setProfileSig(res.signatureDataUrl)
+          setIsUsingProfileSig(true)
+          setLiveSignatureUrl(res.signatureDataUrl)
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   const isFormWo = Boolean(
     item.repairFormWo ||
@@ -167,8 +184,32 @@ export function ApprovalReviewDrawerForm({ item, group }: ApprovalReviewDrawerFo
 
   const [pendingDecision, setPendingDecision] = useState<'approved' | 'needs_correction' | 'rejected' | null>(null)
 
+  const handleSaveToProfile = async () => {
+    if (!liveSignatureUrl) {
+      toast.error('Belum ada tanda tangan yang digambar.')
+      return
+    }
+    setIsSavingProfileSig(true)
+    try {
+      const res = await saveUserSignatureAction(liveSignatureUrl)
+      if (res.success) {
+        setProfileSig(liveSignatureUrl)
+        setIsUsingProfileSig(true)
+        toast.success('Tanda tangan berhasil disimpan ke profil HERO.')
+      } else {
+        toast.error(res.error || 'Gagal menyimpan tanda tangan ke profil.')
+      }
+    } catch {
+      toast.error('Gagal menyimpan tanda tangan ke profil.')
+    } finally {
+      setIsSavingProfileSig(false)
+    }
+  }
+
   const handleDecision = (decision: 'approved' | 'needs_correction' | 'rejected') => {
-    if (decision === 'approved' && !signatureFile && !liveSignatureUrl) {
+    const sigToUse = isUsingProfileSig && profileSig ? profileSig : liveSignatureUrl
+
+    if (decision === 'approved' && !signatureFile && !sigToUse) {
       toast.error('Mohon bubuhkan tanda tangan digital sebelum menyetujui.')
       setIsSignPadOpen(true)
       return
@@ -186,8 +227,22 @@ export function ApprovalReviewDrawerForm({ item, group }: ApprovalReviewDrawerFo
         formData.append('approvalId', String(item.approvalId))
         formData.append('decision', decision)
         formData.append('note', note.trim())
-        if (signatureFile) {
-          formData.append('signatureFile', signatureFile)
+
+        if (decision === 'approved') {
+          if (sigToUse) {
+            formData.append('signatureDataUrl', sigToUse)
+            try {
+              const res = await fetch(sigToUse)
+              const blob = await res.blob()
+              formData.append('signatureFile', blob, 'approver_signature.png')
+            } catch {
+              if (signatureFile) {
+                formData.append('signatureFile', signatureFile)
+              }
+            }
+          } else if (signatureFile) {
+            formData.append('signatureFile', signatureFile)
+          }
         }
 
         await reviewApprovalAction(formData)
@@ -229,38 +284,94 @@ export function ApprovalReviewDrawerForm({ item, group }: ApprovalReviewDrawerFo
             <span>Tanda Tangan Digital Pemeriksa</span>
           </div>
 
-          <Button
-            type="button"
-            variant={liveSignatureUrl ? 'outline' : 'default'}
-            size="sm"
-            onClick={() => setIsSignPadOpen(!isSignPadOpen)}
-            className={`w-full sm:w-auto h-8 rounded-lg px-3 text-xs font-bold transition-all justify-center ${
-              liveSignatureUrl
-                ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
-                : 'bg-sky-600 text-white hover:bg-sky-700'
-            }`}
-          >
-            {liveSignatureUrl ? (
-              <span className="flex items-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                <span>Ubah Tanda Tangan</span>
-              </span>
-            ) : (
-              <span className="flex items-center gap-1.5">
-                <PenLine className="h-3.5 w-3.5" />
-                <span>Tanda Tangani</span>
-              </span>
+          <div className="flex items-center gap-1.5">
+            {profileSig && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  if (isUsingProfileSig) {
+                    setIsUsingProfileSig(false)
+                    setLiveSignatureUrl(null)
+                    setSignatureFile(null)
+                    setIsSignPadOpen(true)
+                  } else {
+                    setIsUsingProfileSig(true)
+                    setLiveSignatureUrl(profileSig)
+                    setIsSignPadOpen(false)
+                  }
+                }}
+                className="h-7 text-[11px] font-semibold text-sky-700 hover:text-sky-800 hover:bg-sky-100 px-2"
+              >
+                {isUsingProfileSig ? 'Gambar Manual' : 'Gunakan TTD Profil'}
+              </Button>
             )}
-            {isSignPadOpen ? (
-              <ChevronUp className="ml-1 h-3.5 w-3.5" />
-            ) : (
-              <ChevronDown className="ml-1 h-3.5 w-3.5" />
-            )}
-          </Button>
+
+            <Button
+              type="button"
+              variant={liveSignatureUrl ? 'outline' : 'default'}
+              size="sm"
+              onClick={() => {
+                if (isUsingProfileSig) {
+                  setIsUsingProfileSig(false)
+                  setLiveSignatureUrl(null)
+                  setSignatureFile(null)
+                  setIsSignPadOpen(true)
+                } else {
+                  setIsSignPadOpen(!isSignPadOpen)
+                }
+              }}
+              className={`w-full sm:w-auto h-7 rounded-lg px-2.5 text-xs font-bold transition-all justify-center ${
+                liveSignatureUrl
+                  ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                  : 'bg-sky-600 text-white hover:bg-sky-700'
+              }`}
+            >
+              {liveSignatureUrl ? (
+                <span className="flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                  <span>{isUsingProfileSig ? 'Ubah TTD' : 'Ganti TTD'}</span>
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5">
+                  <PenLine className="h-3.5 w-3.5" />
+                  <span>Tanda Tangani</span>
+                </span>
+              )}
+              {isSignPadOpen ? (
+                <ChevronUp className="ml-1 h-3.5 w-3.5" />
+              ) : (
+                <ChevronDown className="ml-1 h-3.5 w-3.5" />
+              )}
+            </Button>
+          </div>
         </div>
 
-        {/* Preview Tanda Tangan yang sudah dibubuhkan */}
-        {liveSignatureUrl && !isSignPadOpen && (
+        {/* Mode Tanda Tangan Profil Aktif */}
+        {isUsingProfileSig && profileSig && !isSignPadOpen && (
+          <div className="flex items-center gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50/40 p-2 shadow-2xs">
+            <div className="h-10 w-24 bg-white rounded border border-emerald-200 flex items-center justify-center p-1 shrink-0">
+              <img
+                src={profileSig}
+                alt="Tanda Tangan Profil"
+                className="max-h-full max-w-full object-contain"
+              />
+            </div>
+            <div className="text-xs min-w-0">
+              <p className="font-bold text-emerald-800 truncate flex items-center gap-1">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                TTD Profil HERO Aktif
+              </p>
+              <p className="text-[10px] text-slate-500 leading-tight">
+                Tanda tangan akun Anda otomatis tertera di dokumen saat disetujui.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Preview Tanda Tangan Manual yang sudah digambar */}
+        {!isUsingProfileSig && liveSignatureUrl && !isSignPadOpen && (
           <div className="flex items-center gap-2.5 rounded-lg border border-emerald-200 bg-white p-2 shadow-2xs">
             <div className="h-10 w-24 bg-slate-50 rounded border border-slate-200 flex items-center justify-center p-1 shrink-0">
               <img
@@ -269,10 +380,10 @@ export function ApprovalReviewDrawerForm({ item, group }: ApprovalReviewDrawerFo
                 className="max-h-full max-w-full object-contain"
               />
             </div>
-            <div className="text-xs min-w-0">
+            <div className="text-xs min-w-0 flex-1">
               <p className="font-bold text-emerald-800 truncate flex items-center gap-1">
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                Tanda tangan siap
+                Tanda tangan manual siap
               </p>
               <p className="text-[10px] text-slate-500 leading-tight">
                 Otomatis tertera di dokumen saat disetujui.
@@ -290,16 +401,37 @@ export function ApprovalReviewDrawerForm({ item, group }: ApprovalReviewDrawerFo
             <div className="bg-white rounded-xl overflow-hidden border-2 border-dashed border-sky-300 shadow-inner">
               <SignaturePad
                 onSignatureChange={(file) => setSignatureFile(file)}
-                onDataUrlChange={(url) => setLiveSignatureUrl(url)}
+                onDataUrlChange={(url) => {
+                  setLiveSignatureUrl(url)
+                  setIsUsingProfileSig(false)
+                }}
               />
             </div>
-            <div className="flex justify-end pt-1">
+            <div className="flex items-center justify-between pt-1">
+              {liveSignatureUrl && !isUsingProfileSig ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSaveToProfile}
+                  disabled={isSavingProfileSig}
+                  className="h-7 text-xs rounded-md font-semibold border-sky-200 text-sky-700 hover:bg-sky-50"
+                >
+                  {isSavingProfileSig ? (
+                    <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                  ) : (
+                    <Save className="mr-1.5 h-3 w-3" />
+                  )}
+                  Simpan ke Profil
+                </Button>
+              ) : <div />}
+
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
                 onClick={() => setIsSignPadOpen(false)}
-                className="h-7 text-xs rounded-md font-semibold"
+                className="h-7 text-xs rounded-md font-semibold bg-sky-50 text-sky-700 hover:bg-sky-100 border-sky-300"
               >
                 Selesai & Simpan
               </Button>

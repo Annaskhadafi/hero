@@ -31,7 +31,7 @@ async function run() {
     site: 'Site Sangatta',
     jobType: 'Major Repair R1',
     totalAmount: 'Rp 17.200.000',
-    inputWoLink: 'https://hero.chitraparatama.co.id/dashboard/repair-retread/form-wo',
+    inputWoLink: 'https://hero.chitraparatama.com/dashboard/repair-retread/form-wo',
   })
 
   console.log('Ready for WO Number email result:', res2)

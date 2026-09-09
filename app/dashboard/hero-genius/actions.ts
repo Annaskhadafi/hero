@@ -200,7 +200,7 @@ ${learnedFactsText ? `[MEMORI PINTAR / ATURAN TERPELAJAR]:\n${learnedFactsText}\
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
       "HTTP-Referer":
-        process.env.NEXT_PUBLIC_BETTER_AUTH_URL || "https://hero.chitraparatama.co.id",
+        process.env.NEXT_PUBLIC_BETTER_AUTH_URL || "https://hero.chitraparatama.com",
       "X-Title": "HERO Genius RAG Assistant",
     },
     body: JSON.stringify({
