@@ -3,6 +3,9 @@ import { getServerSession } from '@/lib/auth-session'
 import { db } from '@/db'
 import {
   activityLibraries,
+  activityRouteGroups,
+  activityRouteItems,
+  activityRouteTemplates,
   dailyActivityApprovals,
   dailyActivitySessions,
   dailyActivitySessionItems,
@@ -15,8 +18,9 @@ import { asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { ApprovalListingClient, type SessionApprovalRow } from './client'
 import { getDailyActivityWorkflowSettings } from '@/app/dashboard/activity-hub/actions'
 import { DEFAULT_DAILY_ACTIVITY_SETTINGS } from '@/lib/workflow-settings-defaults'
+import type { RouteFolder } from '@/lib/daily-activity'
 
-async function withDbRetry<T>(fn: () => Promise<T>, retries = 4, delayMs = 450): Promise<T> {
+async function withDbRetry<T>(fn: () => Promise<T>, retries = 5, delayMs = 350): Promise<T> {
   let attempt = 0
   while (true) {
     try {
@@ -34,9 +38,12 @@ async function withDbRetry<T>(fn: () => Promise<T>, retries = 4, delayMs = 450):
         errStr.includes('too many clients') ||
         errStr.includes('sorry, too many clients') ||
         errStr.includes('connection reset') ||
-        errStr.includes('remaining connection slots are reserved')
+        errStr.includes('remaining connection slots are reserved') ||
+        errStr.includes('terminating connection') ||
+        errStr.includes('client has encountered a connection error')
       if (attempt <= retries && isNetworkError) {
-        await new Promise((res) => setTimeout(res, delayMs * attempt))
+        const jitter = Math.floor(Math.random() * 150)
+        await new Promise((res) => setTimeout(res, delayMs * attempt + jitter))
         continue
       }
       throw err
@@ -169,8 +176,9 @@ export default async function DailyActivityApprovalListPage() {
       if (isAdmin) return true
       if (isSiteAdmin && currentEmployee?.siteId) return s.siteId === currentEmployee.siteId
 
-      // Creator / Owner of this session
+      // Creator / Owner of this session or included as Team Member
       if (currentEmployee?.id && s.employeeId === currentEmployee.id) return true
+      if (currentEmployee?.name && (s.summaryRemark || '').toLowerCase().includes(currentEmployee.name.toLowerCase().trim())) return true
 
       // Assigned approver for any step of this session
       const sessionApps = approvalsBySessionMap.get(s.sessionId) || []
@@ -350,9 +358,109 @@ export default async function DailyActivityApprovalListPage() {
 
     // Batch 2: Structural lookup tables
     const [sectionList, departmentList] = await Promise.all([
-      safeQuery(() => db.select().from(masterSections), [], 'fetchMasterSections'),
-      safeQuery(() => db.select().from(masterDepartments), [], 'fetchMasterDepartments'),
+      safeQuery(
+        () =>
+          db
+            .select({
+              id: masterSections.id,
+              headEmployeeId: masterSections.headEmployeeId,
+            })
+            .from(masterSections),
+        [],
+        'fetchMasterSections'
+      ),
+      safeQuery(
+        () =>
+          db
+            .select({
+              id: masterDepartments.id,
+              headEmployeeId: masterDepartments.headEmployeeId,
+            })
+            .from(masterDepartments),
+        [],
+        'fetchMasterDepartments'
+      ),
     ])
+
+    // Batch 3: Route folders and activities
+    const [routeTemplateRows, routeGroupRows, routeItemRows] = await Promise.all([
+      safeQuery(
+        () =>
+          db
+            .select({
+              id: activityRouteTemplates.id,
+              routeCode: activityRouteTemplates.routeCode,
+              routeName: activityRouteTemplates.routeName,
+              siteId: activityRouteTemplates.siteId,
+              departmentId: activityRouteTemplates.departmentId,
+              sectionId: activityRouteTemplates.sectionId,
+              mobileEnabled: activityRouteTemplates.mobileEnabled,
+            })
+            .from(activityRouteTemplates)
+            .where(eq(activityRouteTemplates.isActive, true))
+            .orderBy(asc(activityRouteTemplates.routeName)),
+        [],
+        'fetchRouteTemplates'
+      ),
+      safeQuery(
+        () =>
+          db
+            .select({
+              id: activityRouteGroups.id,
+              routeTemplateId: activityRouteGroups.routeTemplateId,
+              groupKey: activityRouteGroups.groupKey,
+              groupName: activityRouteGroups.groupName,
+              sortOrder: activityRouteGroups.sortOrder,
+            })
+            .from(activityRouteGroups)
+            .orderBy(asc(activityRouteGroups.sortOrder), asc(activityRouteGroups.id)),
+        [],
+        'fetchRouteGroups'
+      ),
+      safeQuery(
+        () =>
+          db
+            .select({
+              id: activityRouteItems.id,
+              routeGroupId: activityRouteItems.routeGroupId,
+              libraryActivityId: activityRouteItems.libraryActivityId,
+              itemCode: activityRouteItems.itemCode,
+              itemLabel: activityRouteItems.itemLabel,
+              sortOrder: activityRouteItems.sortOrder,
+            })
+            .from(activityRouteItems)
+            .orderBy(asc(activityRouteItems.sortOrder), asc(activityRouteItems.id)),
+        [],
+        'fetchRouteItems'
+      ),
+    ])
+
+    const itemsByGroupId = new Map<number, any[]>()
+    for (const item of routeItemRows || []) {
+      const list = itemsByGroupId.get(item.routeGroupId) || []
+      list.push(item)
+      itemsByGroupId.set(item.routeGroupId, list)
+    }
+
+    const groupsByTemplateId = new Map<number, any[]>()
+    for (const group of routeGroupRows || []) {
+      const list = groupsByTemplateId.get(group.routeTemplateId) || []
+      list.push({
+        id: group.id,
+        groupName: group.groupName,
+        items: itemsByGroupId.get(group.id) || [],
+      })
+      groupsByTemplateId.set(group.routeTemplateId, list)
+    }
+
+    const availableRouteFolders: RouteFolder[] = (routeTemplateRows || [])
+      .map((t) => ({
+        id: t.id,
+        routeCode: t.routeCode,
+        routeName: t.routeName,
+        groups: groupsByTemplateId.get(t.id) || [],
+      }))
+      .filter((t) => t.groups.length > 0)
 
     const sectionHeadMap: Record<string, number | null> = {}
     for (const s of sectionList || []) {
@@ -439,6 +547,7 @@ export default async function DailyActivityApprovalListPage() {
         employees={sanitizedEmployees}
         sites={sanitizedSites}
         activityPresets={sanitizedPresets}
+        routeFolders={availableRouteFolders}
         sectionHeadMap={sectionHeadMap}
         deptHeadMap={deptHeadMap}
         initialSettings={initialSettings}
@@ -452,6 +561,7 @@ export default async function DailyActivityApprovalListPage() {
         employees={[]}
         sites={[]}
         activityPresets={[]}
+        routeFolders={[]}
         sectionHeadMap={{}}
         deptHeadMap={{}}
         initialSettings={DEFAULT_DAILY_ACTIVITY_SETTINGS}

@@ -1,8 +1,9 @@
 'use client'
 
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import QRCode from 'qrcode'
 import {
   AlertTriangle,
   ArrowRight,
@@ -37,6 +38,8 @@ import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AdminStatusBadge } from '@/components/admin-status-badge'
+import { DailyActivityEvidenceModal } from '@/components/daily-activity-evidence-modal'
+import { MissingSignatureDialog } from '@/components/missing-signature-dialog'
 import { MobileDailyActivityForm } from '@/components/mobile/mobile-daily-activity-form'
 import { MobileActivityLog } from '@/components/mobile/mobile-activity-log'
 import { MobileSignaturePadDialog } from '@/components/mobile/mobile-signature-pad-dialog'
@@ -122,6 +125,7 @@ export function MobileDailyActivityClient({
   const [approvalRemarks, setApprovalRemarks] = useState('')
   const [isActionRunning, setIsActionRunning] = useState(false)
   const [isSigModalOpen, setIsSigModalOpen] = useState(false)
+  const [isMissingSigDialogOpen, setIsMissingSigDialogOpen] = useState(false)
   const [userSignature, setUserSignature] = useState<string | null>(data?.employee?.signatureDataUrl || null)
   const [previewZoom, setPreviewZoom] = useState(1.0)
   const pdfRef = useRef<HTMLDivElement | null>(null)
@@ -160,6 +164,10 @@ export function MobileDailyActivityClient({
 
   const handleApprove = async () => {
     if (!selectedReviewDoc) return
+    if (!userSignature) {
+      setIsMissingSigDialogOpen(true)
+      return
+    }
     setIsActionRunning(true)
     try {
       const res = await singleApproveDailyActivityAction(
@@ -171,6 +179,8 @@ export function MobileDailyActivityClient({
         toast.success('Dokumen Daily Activity berhasil disetujui!')
         setIsReviewOpen(false)
         router.refresh()
+      } else if ((res as any).needsSignatureRegistration) {
+        setIsMissingSigDialogOpen(true)
       } else {
         toast.error((res as any).error || 'Gagal menyetujui dokumen')
       }
@@ -183,13 +193,10 @@ export function MobileDailyActivityClient({
 
   const handleRevert = async () => {
     if (!selectedReviewDoc) return
-    if (!approvalRemarks.trim()) {
-      toast.error('Wajib mencantumkan catatan revisi!')
-      return
-    }
+    const remarks = approvalRemarks.trim() || 'Dokumen dikembalikan untuk revisi.'
     setIsActionRunning(true)
     try {
-      const res = await singleRevertDailyActivityAction(selectedReviewDoc.sessionId, approvalRemarks)
+      const res = await singleRevertDailyActivityAction(selectedReviewDoc.sessionId, remarks)
       if (res.success) {
         toast.success('Permintaan revisi berhasil dikirim!')
         setIsReviewOpen(false)
@@ -206,13 +213,10 @@ export function MobileDailyActivityClient({
 
   const handleReject = async () => {
     if (!selectedReviewDoc) return
-    if (!approvalRemarks.trim()) {
-      toast.error('Wajib mencantumkan alasan penolakan!')
-      return
-    }
+    const remarks = approvalRemarks.trim() || 'Dokumen ditolak oleh reviewer.'
     setIsActionRunning(true)
     try {
-      const res = await singleRejectDailyActivityAction(selectedReviewDoc.sessionId, approvalRemarks)
+      const res = await singleRejectDailyActivityAction(selectedReviewDoc.sessionId, remarks)
       if (res.success) {
         toast.success('Dokumen Daily Activity telah ditolak.')
         setIsReviewOpen(false)
@@ -236,6 +240,19 @@ export function MobileDailyActivityClient({
       toast.error('Gagal mengunduh PDF.')
     }
   }
+
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    if (tabQuery === 'approval') return 'approval'
+    if (tabQuery === 'active') return 'active'
+    if (tabQuery === 'history') return 'history'
+    return 'apply'
+  })
+
+  useEffect(() => {
+    if (tabQuery) {
+      setActiveTab(tabQuery)
+    }
+  }, [tabQuery])
 
   return (
     <div className="space-y-4 pb-6">
@@ -261,15 +278,8 @@ export function MobileDailyActivityClient({
 
       {/* Sub-Navbar Tabs Bar persis SPL Mobile */}
       <Tabs
-        defaultValue={
-          tabQuery === 'approval'
-            ? 'approval'
-            : tabQuery === 'active'
-              ? 'active'
-              : tabQuery === 'history'
-                ? 'history'
-                : 'apply'
-        }
+        value={activeTab}
+        onValueChange={setActiveTab}
         className="w-full space-y-4"
       >
         <TabsList className="grid h-auto w-full grid-cols-4 gap-1 rounded-2xl bg-white p-1 shadow-[0_12px_30px_rgba(8,32,51,0.08)]">
@@ -322,6 +332,7 @@ export function MobileDailyActivityClient({
 
         <TabsContent value="apply">
           <MobileDailyActivityForm
+            key={editSessionData?.sessionId || editSessionData?.id || (editSessionData?.session ? (editSessionData.session.sessionId || editSessionData.session.id) : 'new-form')}
             employeeId={data.employee.id}
             employee={data.employee}
             hierarchy={hierarchy}
@@ -407,7 +418,14 @@ export function MobileDailyActivityClient({
 
                         <Button
                           type="button"
-                          onClick={() => handleOpenReview(act)}
+                          onClick={() => {
+                            if (isReverted) {
+                              const targetSessionId = act.sessionId || act.id;
+                              router.push(`/mobile/activity?edit=${targetSessionId}`);
+                            } else {
+                              handleOpenReview(act);
+                            }
+                          }}
                           className={cn(
                             'flex h-10 w-full items-center justify-center gap-1.5 rounded-xl text-xs font-bold text-white shadow-xs transition active:scale-98 cursor-pointer',
                             isRejected
@@ -749,7 +767,7 @@ export function MobileDailyActivityClient({
                       }}
                     >
                       <h1 className="text-center font-bold text-[11pt] text-black mb-0.5 uppercase">PT. CHITRA PARATAMA</h1>
-                      <h2 className="text-center font-bold text-[12pt] text-black mb-3 uppercase">DAILY ACTIVITY APPROVAL REPORT</h2>
+                      <h2 className="text-center font-bold text-[12pt] text-black mb-3 uppercase">{selectedReviewDoc.spl ? 'SURAT PERINTAH LEMBUR' : 'DAILY ACTIVITY APPROVAL REPORT'}</h2>
 
                       <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-2 [&_td]:py-1 text-[8.5pt]">
                         <tbody>
@@ -788,38 +806,39 @@ export function MobileDailyActivityClient({
                       {/* A. Daily Activity Items */}
                       {(() => {
                         const items = selectedReviewDoc.items || selectedReviewDoc.sessionItems || []
-                        const totalPoints = items.reduce((sum: number, it: any) => sum + (it.points ?? it.actualPoints ?? 0), 0)
                         return (
                           <>
                             <div className="font-bold mb-1 text-[8.5pt]">
-                              A. Daily Activity Items (Total: {items.length} item, {totalPoints} poin)
+                              A. Daily Activity Items (Total: {items.length} item)
                             </div>
                             <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8pt]">
                               <thead>
-                                <tr className="bg-white font-bold text-center">
-                                  <th className="w-[6%]">#</th>
-                                  <th className="text-left w-[40%]">Aktivitas</th>
+                                <tr className="bg-gray-100 font-bold text-center">
+                                  <th className="w-[5%]">#</th>
+                                  <th className="text-left w-[38%]">Aktivitas</th>
                                   <th className="w-[14%]">Unit</th>
                                   <th className="w-[12%]">Durasi</th>
                                   <th className="w-[10%]">Poin</th>
-                                  <th className="text-left w-[18%]">Remark</th>
+                                  <th className="text-left w-[21%]">Remark</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {items.length > 0 ? (
-                                  items.map((it: any, idx: number) => (
-                                    <tr key={it.id || idx}>
-                                      <td className="text-center">{idx + 1}</td>
-                                      <td>{it.label || it.snapshotLabel || 'Aktivitas'}</td>
-                                      <td className="text-center">{it.unitNumber || '-'}</td>
-                                      <td className="text-center">{it.duration || '-'}</td>
-                                      <td className="text-center font-bold">{it.points ?? it.actualPoints ?? 0}</td>
-                                      <td className="text-left text-[7.5pt]">{it.remark || '-'}</td>
-                                    </tr>
-                                  ))
+                                  items.map((it: any, idx: number) => {
+                                    return (
+                                      <tr key={it.id || idx}>
+                                        <td className="text-center align-middle">{idx + 1}</td>
+                                        <td className="align-middle">{it.label || it.snapshotLabel || 'Aktivitas'}</td>
+                                        <td className="text-center align-middle">{it.unitNumber || '-'}</td>
+                                        <td className="text-center align-middle">{it.duration || '-'}</td>
+                                        <td className="text-center font-bold align-middle">{it.points || it.actualPoints || 0}</td>
+                                        <td className="text-left text-[7.5pt] align-middle">{it.remark || it.remarks || '-'}</td>
+                                      </tr>
+                                    )
+                                  })
                                 ) : (
                                   <tr>
-                                    <td colSpan={6} className="text-center text-slate-400 py-2">Belum ada item aktivitas.</td>
+                                    <td colSpan={6} className="text-center text-slate-400 py-3">Belum ada item aktivitas.</td>
                                   </tr>
                                 )}
                               </tbody>
@@ -828,65 +847,74 @@ export function MobileDailyActivityClient({
                         )
                       })()}
 
-                      {/* B. Approval Steps */}
-                      <div className="font-bold mb-1 text-[8.5pt]">B. Approval Steps</div>
-                      <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8pt]" style={{ tableLayout: 'fixed' }}>
-                        <thead>
-                          <tr className="bg-white font-bold text-center">
-                            <th style={{ width: '6%' }}>#</th>
-                            <th className="text-left" style={{ width: '22%' }}>Tahap</th>
-                            <th className="text-left" style={{ width: '24%' }}>Approver</th>
-                            <th style={{ width: '14%' }}>Status</th>
-                            <th style={{ width: '18%' }}>Waktu</th>
-                            <th className="text-left" style={{ width: '16%' }}>Catatan</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(selectedReviewDoc.approvals || []).map((step: any) => {
-                            const isPending = step.status === 'pending'
-                            const liveRemark = isPending && approvalRemarks ? approvalRemarks : step.remarks || '—'
-                            const isStepSigned = step.status === 'approved' || step.status === 'signed' || step.status === 'completed'
-                            const isStepReverted = step.status === 'reverted'
-                            const timeLabel = step.signedAt
-                              ? formatTimestamp(step.signedAt)
-                              : isPending && approvalRemarks
-                              ? 'Live Preview'
-                              : '—'
-                            return (
-                              <tr key={step.stepOrder}>
-                                <td className="text-center">{step.stepOrder}</td>
-                                <td className="text-left font-medium">{step.stepLabel}</td>
-                                <td className="text-left font-medium">{step.approverName || '-'}</td>
-                                <td className={cn("text-center capitalize font-bold", isStepReverted ? "text-amber-700" : isStepSigned ? "text-emerald-700" : "")}>
-                                  {step.status}
-                                </td>
-                                <td className="text-center text-[7pt]">{timeLabel}</td>
-                                <td className="italic text-slate-600 text-[7.5pt] break-words whitespace-normal leading-tight">{liveRemark}</td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-
-                      {/* Signatories (3 Roles: Employee, Leader/PJO, Section Head) */}
+                      {/* B. Approval Steps Table & Signatories */}
                       {(() => {
                         const approvals = selectedReviewDoc.approvals || []
                         const step1 = approvals.find((s: any) => s.stepOrder === 1)
                         const step2 = approvals.find((s: any) => s.stepOrder === 2)
                         const step3 = approvals.find((s: any) => s.stepOrder === 3)
-                        const isSigned1 = step1?.status === 'approved' || step1?.status === 'signed' || step1?.status === 'completed' || Boolean(step1?.signatureDataUrl || step1?.signatureUrl)
+                        const isSigned1 = step1?.status === 'approved' || step1?.status === 'signed' || step1?.status === 'completed'
                         const isApproved2 = step2?.status === 'approved'
                         const isApproved3 = step3?.status === 'approved'
+                        const isReverted1 = step1?.status === 'reverted'
                         const isReverted2 = step2?.status === 'reverted'
                         const isReverted3 = step3?.status === 'reverted'
-                        const currentSig = step1?.signatureUrl || step1?.signatureDataUrl || selectedReviewDoc.employee?.signatureDataUrl || null
-                        const sig2 = step2?.signatureUrl || step2?.signatureDataUrl || null
-                        const sig3 = step3?.signatureUrl || step3?.signatureDataUrl || null
+                        const currentSig = isSigned1 ? (step1?.signatureUrl || step1?.signatureDataUrl || null) : null
+                        const sig2 = isApproved2 ? (step2?.signatureUrl || step2?.signatureDataUrl || null) : null
+                        const sig3 = isApproved3 ? (step3?.signatureUrl || step3?.signatureDataUrl || null) : null
 
                         return (
                           <>
-                            <div className="font-bold mb-3 text-[8.5pt]">Signatories</div>
-                            <div className="grid grid-cols-3 gap-x-6 gap-y-4 mb-4">
+                            {/* B. Approval Steps */}
+                            <div className="font-bold mb-1 text-[8.5pt]">
+                              B. Approval Steps
+                            </div>
+                            <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-center text-[8pt]" style={{ tableLayout: 'fixed' }}>
+                              <thead>
+                                <tr className="bg-gray-100 font-bold">
+                                  <th style={{ width: '6%' }}>#</th>
+                                  <th className="text-left" style={{ width: '22%' }}>Tahap</th>
+                                  <th className="text-left" style={{ width: '22%' }}>Approver</th>
+                                  <th style={{ width: '14%' }}>Status</th>
+                                  <th style={{ width: '16%' }}>Waktu</th>
+                                  <th className="text-left" style={{ width: '20%' }}>Catatan</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {approvals.length > 0 ? (
+                                  approvals.map((step: any) => {
+                                    const isCurrentActiveStep = step.status === 'pending'
+                                    const liveRemark = isCurrentActiveStep && approvalRemarks
+                                      ? approvalRemarks
+                                      : step.remarks || '—'
+                                    const isApproved = step.status === 'approved' || step.status === 'signed'
+                                    return (
+                                      <tr key={step.stepOrder || step.id}>
+                                        <td>{step.stepOrder}</td>
+                                        <td className="text-left">{step.stepLabel}</td>
+                                        <td className="text-left font-semibold">{step.approverName || '-'}</td>
+                                        <td className={cn("capitalize font-semibold", isApproved ? "text-emerald-700 font-bold" : "")}>
+                                          {step.stepOrder === 1 && isApproved
+                                            ? 'Approved'
+                                            : step.status}
+                                        </td>
+                                        <td className="text-[7pt] font-mono">{formatTimestamp(step.signedAt)}</td>
+                                        <td className="text-left italic text-slate-600 text-[7.5pt] break-words whitespace-normal leading-tight" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                                          {liveRemark}
+                                        </td>
+                                      </tr>
+                                    )
+                                  })
+                                ) : (
+                                  <tr>
+                                    <td colSpan={6} className="text-center text-slate-400 py-2">Belum ada riwayat persetujuan.</td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+
+                            <div className="font-bold mb-2 text-[8.5pt]">Signatories</div>
+                            <div className="grid grid-cols-3 gap-x-6 gap-y-4 mb-3">
                               {/* Karyawan */}
                               <div>
                                 <div className="text-[7pt] text-slate-500 mb-1">Employee Signature</div>
@@ -903,9 +931,9 @@ export function MobileDailyActivityClient({
                                   {selectedReviewDoc.employee?.name}
                                 </div>
                                 <div className="text-[7pt] text-slate-600 font-medium">{selectedReviewDoc.employee?.jobTitle || 'Serviceman'}</div>
-                                {step1?.signedAt && (
+                                {isSigned1 && step1?.signedAt && (
                                   <div className="text-[6.5pt] text-slate-500 mt-0.5">
-                                    {step1?.status === 'reverted' ? 'Waktu Revert: ' : 'Waktu TTD: '}
+                                    {isReverted1 ? 'Waktu Revert: ' : 'Waktu TTD: '}
                                     {formatTimestamp(step1.signedAt)}
                                   </div>
                                 )}
@@ -964,7 +992,10 @@ export function MobileDailyActivityClient({
                               </div>
                             </div>
 
-                            <div className="text-right text-[7pt] text-slate-400 mt-4">PT Chitra Paratama • HERO Platform</div>
+                            {/* Evidence QR in Bottom Right Corner */}
+                            <div className="absolute right-[20mm] bottom-[18mm]">
+                              <EvidenceQrBox sessionId={selectedReviewDoc?.sessionId || selectedReviewDoc?.id} />
+                            </div>
                           </>
                         )
                       })()}
@@ -1097,6 +1128,63 @@ export function MobileDailyActivityClient({
           toast.success('Tanda tangan digital telah dihapus.')
         }}
       />
+
+      {/* Floating Missing Signature Warning Dialog */}
+      <MissingSignatureDialog
+        isOpen={isMissingSigDialogOpen}
+        onClose={() => setIsMissingSigDialogOpen(false)}
+        onSignatureRegistered={(sigUrl) => {
+          setUserSignature(sigUrl)
+          setIsMissingSigDialogOpen(false)
+          toast.success('Tanda tangan digital berhasil didaftarkan! Silakan tekan tombol APPROVE.')
+        }}
+      />
     </div>
+  )
+}
+
+function EvidenceQrBox({ sessionId }: { sessionId?: number | string | null }) {
+  const [qrUrl, setQrUrl] = useState<string>('')
+  const [isEvidenceModalOpen, setIsEvidenceModalOpen] = useState(false)
+  const cleanSessionId = typeof sessionId === 'string' ? sessionId.replace(/^daily-activity-/, '') : sessionId
+
+  useEffect(() => {
+    if (!cleanSessionId) return
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    QRCode.toDataURL(`${origin}/activity-evidence/${cleanSessionId}`, { margin: 1, width: 140, errorCorrectionLevel: 'M' })
+      .then(setQrUrl)
+      .catch((e) => console.error('Failed to generate evidence QR in mobile client:', e))
+  }, [cleanSessionId])
+
+  return (
+    <>
+      <div
+        onClick={() => setIsEvidenceModalOpen(true)}
+        className="flex flex-col items-center justify-start text-center border-l border-slate-200 pl-2 cursor-pointer group select-none transition-transform hover:scale-105 active:scale-95"
+        title="Klik untuk membuka galeri foto bukti pekerjaan"
+      >
+        <div className="h-14 flex items-center justify-center">
+          {qrUrl ? (
+            <img src={qrUrl} alt="QR Evidence" className="h-12 w-12 object-contain rounded border border-slate-200 p-0.5 bg-white shadow-xs group-hover:border-indigo-500 group-hover:shadow-md transition-all" />
+          ) : (
+            <div className="h-12 w-12 rounded border border-dashed border-slate-300 flex items-center justify-center text-[6pt] text-slate-400">
+              QR Code
+            </div>
+          )}
+        </div>
+        <div className="font-bold text-[7.5pt] text-slate-800 mt-0.5 group-hover:text-indigo-600 transition-colors">
+          Scan / Klik Bukti Kerja
+        </div>
+        <div className="text-[6.5pt] text-slate-500 leading-tight">
+          Validasi Dokumen Digital
+        </div>
+      </div>
+
+      <DailyActivityEvidenceModal
+        isOpen={isEvidenceModalOpen}
+        onClose={() => setIsEvidenceModalOpen(false)}
+        sessionId={sessionId}
+      />
+    </>
   )
 }

@@ -9,7 +9,7 @@ import { getS3ObjectReadUrl } from "@/lib/s3-storage";
 
 const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
-const ROWS_PER_PAGE = 8;
+const ROWS_PER_PAGE = 6;
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -40,24 +40,6 @@ export async function GET(
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const backgroundImage = await loadLetterheadImage(pdfDoc);
 
-  const requestUrl = new URL(_request.url);
-  const host = _request.headers.get("x-forwarded-host") || _request.headers.get("host") || requestUrl.host;
-  const proto = _request.headers.get("x-forwarded-proto") || requestUrl.protocol.replace(":", "") || "http";
-  const baseUrl = `${proto}://${host}`;
-  const evidenceUrl = `${baseUrl}/activity-evidence/${data.sessionId}`;
-
-  let qrImage: any = null;
-  try {
-    const qrBuffer = await QRCode.toBuffer(evidenceUrl, {
-      margin: 1,
-      width: 140,
-      errorCorrectionLevel: "M",
-    });
-    qrImage = await pdfDoc.embedPng(qrBuffer);
-  } catch (e) {
-    console.error("Failed to generate evidence QR code for PDF:", e);
-  }
-
   const rows =
     data.items.length > 0
       ? data.items
@@ -75,6 +57,7 @@ export async function GET(
             durationLabel: "-",
             workSummary: "Belum ada item checklist yang dicentang.",
             actualPoints: 0,
+            photoUrl: null,
           },
         ];
 
@@ -93,8 +76,8 @@ export async function GET(
       });
     }
 
-    drawDocumentHeader(page, data, boldFont, regularFont, pageIndex + 1, rowPages.length, qrImage);
-    await drawWorkTable(page, pdfDoc, pageRows, boldFont, regularFont, qrImage);
+    const tableStartY = drawDocumentHeader(page, data, boldFont, regularFont, pageIndex + 1, rowPages.length);
+    await drawWorkTable(page, pdfDoc, pageRows, tableStartY, boldFont, regularFont);
 
     if (pageIndex === rowPages.length - 1) {
       await drawSignatureArea(page, pdfDoc, data, boldFont, regularFont);
@@ -137,127 +120,257 @@ function drawDocumentHeader(
   regularFont: PDFFont,
   pageNumber: number,
   totalPages: number,
-  qrImage?: any,
-) {
+): number {
   if (!data) {
-    return;
+    return 600;
   }
 
+  const startX = 36;
+  const boxWidth = 523.28;
+
+  // Title centered
   page.drawText("PT. CHITRA PARATAMA", {
-    x: 210,
-    y: 793,
-    size: 12,
+    x: (PAGE_WIDTH - boldFont.widthOfTextAtSize("PT. CHITRA PARATAMA", 11)) / 2,
+    y: 775,
+    size: 11,
     font: boldFont,
-    color: rgb(0.22, 0.24, 0.27),
+    color: rgb(0.1, 0.1, 0.1),
   });
-  const docTitle = data.spl ? "SURAT PERINTAH LEMBUR" : "DAILY ACTIVITY REPORT";
-  const titleX = data.spl ? 204 : 195;
+
+  const docTitle = data.spl ? "SURAT PERINTAH LEMBUR" : "DAILY ACTIVITY APPROVAL REPORT";
   page.drawText(docTitle, {
-    x: titleX,
-    y: 776,
-    size: 14,
+    x: (PAGE_WIDTH - boldFont.widthOfTextAtSize(docTitle, 13)) / 2,
+    y: 759,
+    size: 13,
     font: boldFont,
-    color: rgb(0.08, 0.16, 0.22),
+    color: rgb(0, 0, 0),
   });
-  page.drawText(`SN : ${data.sessionCode}`, {
-    x: 440,
-    y: 793,
-    size: 8.5,
-    font: boldFont,
-    color: rgb(0.22, 0.24, 0.27),
-  });
-  page.drawText(`Page ${pageNumber}/${totalPages}`, {
-    x: 440,
-    y: 780,
-    size: 8,
+
+  // Page indicator top right
+  page.drawText(`Halaman ${pageNumber}/${totalPages}`, {
+    x: 485,
+    y: 775,
+    size: 7.5,
     font: regularFont,
-    color: rgb(0.37, 0.46, 0.52),
+    color: rgb(0.4, 0.4, 0.4),
   });
 
-  if (qrImage) {
-    page.drawImage(qrImage, {
-      x: 508,
-      y: 752,
-      width: 48,
-      height: 48,
-    });
-    page.drawText("Scan Evidence", {
-      x: 505,
-      y: 743,
-      size: 6.5,
-      font: boldFont,
-      color: rgb(0.22, 0.24, 0.27),
-    });
-  }
+  // 2-Column Boxed Table (Details & Employee Profile)
+  let boxY = 744;
+  const rowH = 15;
+  const halfW = boxWidth / 2;
 
-  const leftFields = [
-    { label: "Tanggal", value: data.workDate.toLocaleDateString("id-ID", { day: "2-digit", month: "2-digit", year: "numeric" }) },
-    { label: "Hari / Shift", value: `${data.workDate.toLocaleDateString("id-ID", { weekday: "long" })} / ${data.shiftCode ? `Shift ${data.shiftCode}` : "Daily"}` },
-    { label: "Site / Lokasi", value: data.site.name || "-" },
-    { label: "Perusahaan", value: data.site.customerName || "PT Chitra Paratama" },
-  ];
+  // Section 1: Details Header
+  page.drawRectangle({
+    x: startX,
+    y: boxY - rowH,
+    width: boxWidth,
+    height: rowH,
+    color: rgb(0.95, 0.95, 0.95),
+    borderColor: rgb(0, 0, 0),
+    borderWidth: 0.6,
+  });
+  page.drawText("Details", {
+    x: startX + 6,
+    y: boxY - 11,
+    size: 8,
+    font: boldFont,
+    color: rgb(0, 0, 0),
+  });
+  boxY -= rowH;
 
-  const rightFields = [
-    { label: "Nama Karyawan", value: data.employee.name || "-" },
-    { label: "NRP / SN", value: data.employee.employeeSn || "-" },
-    { label: "Departemen", value: data.employee.department || "-" },
-    { label: "Jabatan", value: data.employee.jobTitle || "-" },
-  ];
+  // Row 1: Tanggal Kerja | Shift
+  drawBoxRow(
+    page,
+    startX,
+    boxY,
+    halfW,
+    rowH,
+    "Tanggal Kerja:",
+    data.workDate.toLocaleDateString("id-ID", { day: "2-digit", month: "2-digit", year: "numeric" }),
+    "Shift:",
+    data.shiftCode || "ALL",
+    boldFont,
+    regularFont,
+  );
+  boxY -= rowH;
 
-  let leftY = 744;
-  for (const field of leftFields) {
-    page.drawText(`${field.label}:`, {
-      x: 36,
-      y: leftY,
-      size: 8.5,
-      font: boldFont,
-      color: rgb(0.18, 0.24, 0.29),
-    });
-    page.drawText(field.value.slice(0, 36), {
-      x: 108,
-      y: leftY,
-      size: 8.5,
-      font: regularFont,
-      color: rgb(0.08, 0.12, 0.16),
-    });
-    leftY -= 12;
-  }
+  // Row 2: Kode Sesi | Status
+  drawBoxRow(
+    page,
+    startX,
+    boxY,
+    halfW,
+    rowH,
+    "Kode Sesi:",
+    data.sessionCode,
+    "Status:",
+    (data.status || "COMPLETED").toUpperCase(),
+    boldFont,
+    regularFont,
+  );
+  boxY -= rowH;
 
-  let rightY = 744;
-  for (const field of rightFields) {
-    page.drawText(`${field.label}:`, {
-      x: 300,
-      y: rightY,
-      size: 8.5,
-      font: boldFont,
-      color: rgb(0.18, 0.24, 0.29),
-    });
-    page.drawText(field.value.slice(0, 32), {
-      x: 376,
-      y: rightY,
-      size: 8.5,
-      font: regularFont,
-      color: rgb(0.08, 0.12, 0.16),
-    });
-    rightY -= 12;
-  }
+  // Section 2: Employee Profile Header
+  page.drawRectangle({
+    x: startX,
+    y: boxY - rowH,
+    width: boxWidth,
+    height: rowH,
+    color: rgb(0.95, 0.95, 0.95),
+    borderColor: rgb(0, 0, 0),
+    borderWidth: 0.6,
+  });
+  page.drawText("Employee Profile", {
+    x: startX + 6,
+    y: boxY - 11,
+    size: 8,
+    font: boldFont,
+    color: rgb(0, 0, 0),
+  });
+  boxY -= rowH;
 
+  // Row 3: Nama | SN
+  drawBoxRow(
+    page,
+    startX,
+    boxY,
+    halfW,
+    rowH,
+    "Nama:",
+    data.employee.name || "-",
+    "SN:",
+    data.employee.employeeSn || "-",
+    boldFont,
+    regularFont,
+  );
+  boxY -= rowH;
+
+  // Row 4: Job Title | Dept / Section
+  const deptSec = [data.employee.department, data.employee.section].filter(Boolean).join(" / ") || "-";
+  drawBoxRow(
+    page,
+    startX,
+    boxY,
+    halfW,
+    rowH,
+    "Job Title:",
+    data.employee.jobTitle || "Staff",
+    "Dept / Section:",
+    deptSec,
+    boldFont,
+    regularFont,
+  );
+  boxY -= rowH;
+
+  // Row 5: Site | Customer
+  drawBoxRow(
+    page,
+    startX,
+    boxY,
+    halfW,
+    rowH,
+    "Site:",
+    data.site.name || "-",
+    "Customer:",
+    data.site.customerName || "PT Chitra Paratama",
+    boldFont,
+    regularFont,
+  );
+  boxY -= rowH;
+
+  // Optional Row: Anggota Tim
   if (data.teamMembersSummary) {
+    page.drawRectangle({
+      x: startX,
+      y: boxY - rowH,
+      width: boxWidth,
+      height: rowH,
+      borderColor: rgb(0, 0, 0),
+      borderWidth: 0.6,
+    });
     page.drawText("Anggota Tim:", {
-      x: 36,
-      y: 695,
-      size: 8,
+      x: startX + 6,
+      y: boxY - 11,
+      size: 7.5,
       font: boldFont,
-      color: rgb(0.18, 0.24, 0.29),
+      color: rgb(0, 0, 0),
     });
     page.drawText(data.teamMembersSummary.slice(0, 95), {
-      x: 108,
-      y: 695,
-      size: 8,
+      x: startX + 70,
+      y: boxY - 11,
+      size: 7.5,
       font: regularFont,
-      color: rgb(0.08, 0.12, 0.16),
+      color: rgb(0, 0, 0),
     });
+    boxY -= rowH;
   }
+
+  return boxY - 12;
+}
+
+function drawBoxRow(
+  page: PDFPage,
+  x: number,
+  y: number,
+  halfW: number,
+  height: number,
+  label1: string,
+  val1: string,
+  label2: string,
+  val2: string,
+  boldFont: PDFFont,
+  regularFont: PDFFont,
+) {
+  // Left cell
+  page.drawRectangle({
+    x,
+    y: y - height,
+    width: halfW,
+    height,
+    borderColor: rgb(0, 0, 0),
+    borderWidth: 0.6,
+  });
+  page.drawText(label1, {
+    x: x + 6,
+    y: y - 11,
+    size: 7.5,
+    font: regularFont,
+    color: rgb(0.2, 0.2, 0.2),
+  });
+  const l1W = regularFont.widthOfTextAtSize(label1, 7.5);
+  page.drawText(val1.slice(0, 36), {
+    x: x + 8 + l1W,
+    y: y - 11,
+    size: 7.5,
+    font: boldFont,
+    color: rgb(0, 0, 0),
+  });
+
+  // Right cell
+  page.drawRectangle({
+    x: x + halfW,
+    y: y - height,
+    width: halfW,
+    height,
+    borderColor: rgb(0, 0, 0),
+    borderWidth: 0.6,
+  });
+  page.drawText(label2, {
+    x: x + halfW + 6,
+    y: y - 11,
+    size: 7.5,
+    font: regularFont,
+    color: rgb(0.2, 0.2, 0.2),
+  });
+  const l2W = regularFont.widthOfTextAtSize(label2, 7.5);
+  page.drawText(val2.slice(0, 36), {
+    x: x + halfW + 8 + l2W,
+    y: y - 11,
+    size: 7.5,
+    font: boldFont,
+    color: rgb(0, 0, 0),
+  });
 }
 
 async function drawWorkTable(
@@ -274,33 +387,43 @@ async function drawWorkTable(
     actualPoints: number;
     photoUrl?: string | null;
   }>,
+  startY: number,
   boldFont: PDFFont,
   regularFont: PDFFont,
-  qrImage?: any,
 ) {
   const startX = 36;
-  const startY = 688;
   const tableWidth = 523.28;
-  const headerHeight = 22;
+  const headerHeight = 18;
 
+  // Section title above table
+  page.drawText(`A. Daily Activity Items (${rows.length} item)`, {
+    x: startX,
+    y: startY + 2,
+    size: 8.5,
+    font: boldFont,
+    color: rgb(0, 0, 0),
+  });
+
+  const currentY = startY - 12;
+
+  // Columns: # (24), Aktivitas (195), Unit (64), Durasi (55), Poin (45), Remark (140.28)
   const columns = [
-    { title: "No", width: 24, align: "center" as const },
-    { title: "Hari / Tgl", width: 68, align: "center" as const },
-    { title: "Jam", width: 64, align: "center" as const },
-    { title: "Durasi", width: 42, align: "center" as const },
-    { title: "Poin", width: 32, align: "center" as const },
-    { title: "Evidence (QR)", width: 56, align: "center" as const },
-    { title: "Uraian Pekerjaan / Unit / Remark", width: 237.28, align: "left" as const },
+    { title: "#", width: 24, align: "center" as const },
+    { title: "Aktivitas", width: 195, align: "left" as const },
+    { title: "Unit", width: 64, align: "center" as const },
+    { title: "Durasi", width: 55, align: "center" as const },
+    { title: "Poin", width: 45, align: "center" as const },
+    { title: "Remark", width: 140.28, align: "left" as const },
   ];
 
   page.drawRectangle({
     x: startX,
-    y: startY - headerHeight,
+    y: currentY - headerHeight,
     width: tableWidth,
     height: headerHeight,
-    color: rgb(0.92, 0.94, 0.96),
-    borderColor: rgb(0.47, 0.53, 0.58),
-    borderWidth: 0.8,
+    color: rgb(0.95, 0.95, 0.95),
+    borderColor: rgb(0, 0, 0),
+    borderWidth: 0.6,
   });
 
   let colX = startX;
@@ -308,20 +431,20 @@ async function drawWorkTable(
     const textX =
       col.align === "center"
         ? colX + (col.width - boldFont.widthOfTextAtSize(col.title, 8)) / 2
-        : colX + 4;
+        : colX + 6;
 
     page.drawText(col.title, {
       x: textX,
-      y: startY - 14,
+      y: currentY - 12,
       size: 8,
       font: boldFont,
-      color: rgb(0.12, 0.18, 0.23),
+      color: rgb(0, 0, 0),
     });
     colX += col.width;
   }
 
-  let rowTopY = startY - headerHeight;
-  const rowHeight = 44;
+  let rowTopY = currentY - headerHeight;
+  const rowHeight = 26;
 
   for (const [rowIndex, item] of rows.entries()) {
     page.drawRectangle({
@@ -329,75 +452,89 @@ async function drawWorkTable(
       y: rowTopY - rowHeight,
       width: tableWidth,
       height: rowHeight,
-      borderColor: rgb(0.78, 0.82, 0.85),
+      borderColor: rgb(0, 0, 0),
       borderWidth: 0.5,
-      color: rowIndex % 2 === 0 ? rgb(1, 1, 1) : rgb(0.98, 0.99, 1),
+      color: rowIndex % 2 === 0 ? rgb(1, 1, 1) : rgb(0.99, 0.99, 0.99),
     });
 
-    const values = [
-      String(rowIndex + 1),
-      `${item.dayLabel}\n${item.dateLabel}`,
-      `${item.startLabel} -\n${item.endLabel}`,
-      item.durationLabel,
-      String(item.actualPoints || 0),
-      "[QR]",
-      item.workSummary || "-",
-    ];
+    let cellX = startX;
 
-    let valueX = startX;
-    for (const [index, value] of values.entries()) {
-      const col = columns[index];
-      
-      if (index === 5) {
-        if (qrImage) {
-          page.drawImage(qrImage, {
-            x: valueX + (col.width - 34) / 2,
-            y: rowTopY - rowHeight + (rowHeight - 34) / 2,
-            width: 34,
-            height: 34,
-          });
-        } else {
-          page.drawText("-", {
-            x: valueX + 24,
-            y: rowTopY - 24,
-            size: 7.8,
-            font: regularFont,
-            color: rgb(0.36, 0.44, 0.49),
-          });
-        }
-      } else {
-        const lines = splitText(value, index === 6 ? 44 : 12);
-        let lineY = rowTopY - 14;
+    // Col 0: #
+    const numText = String(rowIndex + 1);
+    page.drawText(numText, {
+      x: cellX + (columns[0].width - regularFont.widthOfTextAtSize(numText, 8)) / 2,
+      y: rowTopY - rowHeight / 2 - 3,
+      size: 8,
+      font: regularFont,
+      color: rgb(0, 0, 0),
+    });
+    cellX += columns[0].width;
 
-        for (const line of lines.slice(0, 3)) {
-          const textX =
-            col.align === "center"
-              ? valueX + (col.width - regularFont.widthOfTextAtSize(line, 7.8)) / 2
-              : valueX + 4;
+    // Col 1: Aktivitas
+    const activityLines = splitText(item.workSummary || "-", 34);
+    let actY = rowTopY - 11;
+    for (const line of activityLines.slice(0, 2)) {
+      page.drawText(line, {
+        x: cellX + 6,
+        y: actY,
+        size: 7.5,
+        font: regularFont,
+        color: rgb(0, 0, 0),
+      });
+      actY -= 9;
+    }
+    cellX += columns[1].width;
 
-          page.drawText(line, {
-            x: textX,
-            y: lineY,
-            size: index === 6 ? 7.6 : 7.8,
-            font: regularFont,
-            color: rgb(0.08, 0.12, 0.16),
-          });
-          lineY -= 9;
-        }
-      }
-      valueX += col.width;
+    // Col 2: Unit
+    const unitText = item.workSummary?.match(/Unit:\s*([^,\-]+)/i)?.[1]?.trim() || "-";
+    page.drawText(unitText, {
+      x: cellX + (columns[2].width - regularFont.widthOfTextAtSize(unitText, 7.5)) / 2,
+      y: rowTopY - rowHeight / 2 - 3,
+      size: 7.5,
+      font: regularFont,
+      color: rgb(0, 0, 0),
+    });
+    cellX += columns[2].width;
+
+    // Col 3: Durasi
+    const durText = item.durationLabel && item.durationLabel !== "-" ? item.durationLabel : `${item.startLabel} - ${item.endLabel}`;
+    page.drawText(durText, {
+      x: cellX + (columns[3].width - regularFont.widthOfTextAtSize(durText, 7.5)) / 2,
+      y: rowTopY - rowHeight / 2 - 3,
+      size: 7.5,
+      font: regularFont,
+      color: rgb(0, 0, 0),
+    });
+    cellX += columns[3].width;
+
+    // Col 4: Poin
+    const pointsText = String(item.actualPoints || 0);
+    page.drawText(pointsText, {
+      x: cellX + (columns[4].width - boldFont.widthOfTextAtSize(pointsText, 8)) / 2,
+      y: rowTopY - rowHeight / 2 - 3,
+      size: 8,
+      font: boldFont,
+      color: rgb(0, 0, 0),
+    });
+    cellX += columns[4].width;
+
+    // Col 5: Remark
+    const remarkText = item.workSummary?.match(/Remark:\s*([^,\-]+)/i)?.[1]?.trim() || "-";
+    const remarkLines = splitText(remarkText, 24);
+    let remY = rowTopY - 11;
+    for (const line of remarkLines.slice(0, 2)) {
+      page.drawText(line, {
+        x: cellX + 6,
+        y: remY,
+        size: 7,
+        font: regularFont,
+        color: rgb(0.3, 0.3, 0.3),
+      });
+      remY -= 9;
     }
 
     rowTopY -= rowHeight;
   }
-
-  page.drawText("* Scan QR code pada kolom Evidence (QR) untuk melihat seluruh foto bukti pekerjaan secara lengkap.", {
-    x: 36,
-    y: 58,
-    size: 7.5,
-    font: regularFont,
-    color: rgb(0.37, 0.46, 0.52),
-  });
 }
 
 async function drawSignatureArea(
@@ -418,113 +555,152 @@ async function drawSignatureArea(
 
   const blocks = [
     {
-      title: "1. Employee Signature",
+      title: "Employee Signature",
       signerName: employeeStep?.approverName || data.employee.name,
       signedAt: isEmployeeApproved ? (employeeStep?.signedAt ? new Date(employeeStep.signedAt) : data.signoff.employeeSignedAt) : null,
       signatureUrl: isEmployeeApproved ? (employeeStep?.signatureDataUrl || data.signoff.employeeSignatureUrl || "") : "",
       footer: data.employee.name,
-      note: data.employee.jobTitle || "Staff",
+      roleLabel: "Karyawan",
+      jobTitle: data.employee.jobTitle || "Staff",
       status: employeeStep?.status || (data.signoff.employeeSignedAt ? "approved" : "pending"),
     },
     {
-      title: "2. Leader / PJO Signature",
+      title: "Leader / PJO Signature",
       signerName: leaderStep?.approverName || "Leader Lapangan / PJO",
       signedAt: isLeaderApproved && leaderStep?.signedAt ? new Date(leaderStep.signedAt) : null,
       signatureUrl: isLeaderApproved ? (leaderStep?.signatureDataUrl || "") : "",
       footer: leaderStep?.approverName || "Leader Lapangan",
-      note: "Leader / PJO",
+      roleLabel: "Leader / PJO",
+      jobTitle: "Leader / PJO",
       status: leaderStep?.status || "pending",
     },
     {
-      title: "3. Section Head Signature",
+      title: "Section Head Signature",
       signerName: sectionHeadStep?.approverName || "Section Head",
       signedAt: isSectionHeadApproved && sectionHeadStep?.signedAt ? new Date(sectionHeadStep.signedAt) : null,
       signatureUrl: isSectionHeadApproved ? (sectionHeadStep?.signatureDataUrl || "") : "",
       footer: sectionHeadStep?.approverName || "Kepala Seksi",
-      note: "Section Head",
+      roleLabel: "Section Head",
+      jobTitle: "Section Head",
       status: sectionHeadStep?.status || "pending",
     },
   ];
 
-  const blockWidth = 160;
-  const blockHeight = 96;
+  const blockWidth = 145;
   const startX = 36;
-  const startY = 78;
+  const startY = 70;
 
   for (const [index, block] of blocks.entries()) {
-    const x = startX + index * 176;
-    page.drawRectangle({
-      x,
-      y: startY,
-      width: blockWidth,
-      height: blockHeight,
-      borderColor: rgb(0.47, 0.53, 0.58),
-      borderWidth: 0.8,
-      color: rgb(1, 1, 1),
-    });
+    const x = startX + index * 155;
 
+    // Header label
     page.drawText(block.title, {
-      x: x + 10,
-      y: startY + blockHeight - 16,
-      size: 9,
-      font: boldFont,
-      color: rgb(0.12, 0.18, 0.23),
-    });
-
-    if (block.signatureUrl) {
-      const image = await loadSignatureImage(pdfDoc, block.signatureUrl);
-      if (image) {
-        page.drawImage(image, {
-          x: x + 18,
-          y: startY + 28,
-          width: 92,
-          height: 34,
-        });
-      }
-    }
-
-    page.drawLine({
-      start: { x: x + 10, y: startY + 24 },
-      end: { x: x + blockWidth - 10, y: startY + 24 },
-      thickness: 0.7,
-      color: rgb(0.47, 0.53, 0.58),
-    });
-
-    page.drawText(block.footer, {
-      x: x + 10,
-      y: startY + 10,
-      size: 8.5,
-      font: boldFont,
-      color: rgb(0.12, 0.18, 0.23),
-    });
-
-    const metaLine = block.signedAt
-      ? `${block.signerName} • ${block.signedAt.toLocaleDateString("id-ID")}`
-      : `${block.signerName} • [${block.status.toUpperCase()}]`;
-    page.drawText(metaLine.slice(0, 34), {
-      x: x + 10,
-      y: startY + blockHeight - 29,
+      x,
+      y: startY + 88,
       size: 7.5,
       font: regularFont,
-      color: rgb(0.36, 0.44, 0.49),
+      color: rgb(0.4, 0.4, 0.4),
     });
 
-    const noteLines = splitText(block.note || "-", 28).slice(0, 2);
-    let noteY = startY + 36;
-    for (const line of noteLines) {
-      page.drawText(line, {
-        x: x + 10,
-        y: noteY,
-        size: 7,
-        font: regularFont,
-        color: rgb(0.36, 0.44, 0.49),
+    // Signature image or text
+    if (block.signatureUrl) {
+      const image = await loadPdfImage(pdfDoc, block.signatureUrl);
+      if (image) {
+        page.drawImage(image, {
+          x,
+          y: startY + 36,
+          width: 80,
+          height: 38,
+        });
+      }
+    } else if (block.status === 'approved') {
+      page.drawText(block.signerName, {
+        x,
+        y: startY + 45,
+        size: 9,
+        font: boldFont,
+        color: rgb(0.06, 0.45, 0.35),
       });
-      noteY -= 8;
     }
+
+    // Underline
+    page.drawLine({
+      start: { x, y: startY + 30 },
+      end: { x: x + blockWidth * 0.8, y: startY + 30 },
+      thickness: 0.6,
+      color: rgb(0.6, 0.6, 0.6),
+    });
+
+    // Name
+    page.drawText(block.footer, {
+      x,
+      y: startY + 18,
+      size: 8,
+      font: boldFont,
+      color: rgb(0, 0, 0),
+    });
+
+    // Role
+    page.drawText(block.jobTitle || block.roleLabel, {
+      x,
+      y: startY + 8,
+      size: 7,
+      font: regularFont,
+      color: rgb(0.3, 0.3, 0.3),
+    });
+
+    // Date
+    if (block.signedAt) {
+      const dateText = `Waktu TTD: ${block.signedAt.toLocaleDateString("id-ID")}`;
+      page.drawText(dateText, {
+        x,
+        y: startY - 1,
+        size: 6.5,
+        font: regularFont,
+        color: rgb(0.45, 0.45, 0.45),
+      });
+    }
+  }
+
+  // Evidence QR Code in bottom right
+  try {
+    const origin = process.env.NEXT_PUBLIC_APP_URL || 'https://hero.chitraparatama.co.id';
+    const qrDataUrl = await QRCode.toDataURL(`${origin}/activity-evidence/${data.sessionId}`, {
+      margin: 1,
+      width: 140,
+      errorCorrectionLevel: 'M',
+    });
+    const qrImage = await loadPdfImage(pdfDoc, qrDataUrl);
+    if (qrImage) {
+      const qrX = 502;
+      const qrY = startY + 28;
+      page.drawImage(qrImage, {
+        x: qrX,
+        y: qrY,
+        width: 48,
+        height: 48,
+      });
+      page.drawText("Scan Bukti Kerja", {
+        x: qrX - 5,
+        y: qrY - 8,
+        size: 6,
+        font: boldFont,
+        color: rgb(0.1, 0.1, 0.1),
+      });
+      page.drawText("Validasi Digital", {
+        x: qrX - 2,
+        y: qrY - 15,
+        size: 5.5,
+        font: regularFont,
+        color: rgb(0.4, 0.4, 0.4),
+      });
+    }
+  } catch (e) {
+    console.error('Failed to draw QR in PDF:', e);
   }
 }
 
-async function loadSignatureImage(pdfDoc: PDFDocument, imageUrl: string) {
+async function loadPdfImage(pdfDoc: PDFDocument, imageUrl: string) {
   try {
     if (!imageUrl) return null;
 
@@ -567,7 +743,7 @@ async function loadSignatureImage(pdfDoc: PDFDocument, imageUrl: string) {
       }
     }
   } catch (e) {
-    console.error('Error embedding signature in PDF:', e);
+    console.error('Error embedding image in PDF:', e);
     return null;
   }
 }
@@ -606,3 +782,4 @@ function chunk<T>(items: T[], size: number) {
 
   return pages;
 }
+

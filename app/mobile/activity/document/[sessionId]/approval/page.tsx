@@ -31,7 +31,7 @@ export default async function MobileDailyActivityApprovalPage({
         : decodedSessionId;
 
   const [data, employeesRaw, orgNodes] = await Promise.all([
-    getDailyActivityApprovalData(sessionIdVal as any),
+    getDailyActivityApprovalData(sessionIdVal as any, session.user.email),
     getEmployeesForContract(),
     getOrgChartData(),
   ]);

@@ -2,6 +2,9 @@ import { ApprovalWorkbench } from "@/components/approval-workbench";
 import { getServerSession } from "@/lib/auth-session";
 import { getApprovalCenterData } from "@/lib/approval-workspace";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 // Central Approval Inbox Page
 export default async function ApprovalPage() {
   const session = await getServerSession();

@@ -1,8 +1,11 @@
 'use client'
 
-import { useRef, useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
+import QRCode from 'qrcode'
 import SignatureCanvas from 'react-signature-canvas'
 import { approveDailyActivityStepByToken, rejectDailyActivityStepByToken, revertDailyActivityStepByToken } from '@/app/dashboard/activity-hub/actions'
+import { DailyActivityEvidenceModal } from '@/components/daily-activity-evidence-modal'
+import { MissingSignatureDialog } from '@/components/missing-signature-dialog'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
@@ -63,6 +66,8 @@ type PublicApprovalProps = {
     approvedAt: Date | string | null
     employeeId: number
     siteId: number
+    teamMembersSummary?: string | null
+    splNumber?: string | null
   }
   employee: {
     id: number
@@ -225,6 +230,19 @@ export function DailyActivityPublicApproval({
     return init
   })
 
+  const [evidenceQrDataUrl, setEvidenceQrDataUrl] = useState<string>('')
+  const [isEvidenceModalOpen, setIsEvidenceModalOpen] = useState(false)
+  const [isMissingSignatureDialogOpen, setIsMissingSignatureDialogOpen] = useState(false)
+
+  useEffect(() => {
+    if (!session?.id) return
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    const targetUrl = `${origin}/activity-evidence/${session.id}`
+    QRCode.toDataURL(targetUrl, { margin: 1, width: 140, errorCorrectionLevel: 'M' })
+      .then((url) => setEvidenceQrDataUrl(url))
+      .catch((err) => console.error('Failed to generate evidence QR code:', err))
+  }, [session?.id])
+
   function getSignatureDataUrl() {
     const signature = signatureRef.current
     if (!signature) return ''
@@ -249,7 +267,7 @@ export function DailyActivityPublicApproval({
     const drawn = getSignatureDataUrl()
     const signatureDataUrl = drawn || previewSignatureDataUrl || registeredSignature || ''
     if (!signatureDataUrl) {
-      setError('TTD digital wajib diisi.')
+      setIsMissingSignatureDialogOpen(true)
       return
     }
     const signedAt = new Date()
@@ -445,117 +463,243 @@ export function DailyActivityPublicApproval({
   const documentContent = (
     <div
       id="pdf-content"
+      className="relative z-10 text-[8.5pt] font-sans leading-tight text-black"
       style={{
-        padding: '38mm 20mm 35mm 20mm',
-        fontFamily: "'Manrope', 'Inter', Arial, sans-serif",
-        fontSize: '8pt',
-        lineHeight: 1.25,
-        color: 'black',
+        paddingTop: '38mm',
+        paddingBottom: '35mm',
+        paddingLeft: '20mm',
+        paddingRight: '20mm',
         minHeight: '297mm',
         boxSizing: 'border-box',
       }}
     >
-      <div className="text-center font-bold text-[12pt] mb-3">DAILY ACTIVITY REPORT</div>
-
-      {/* Header Info */}
-      <div className="grid grid-cols-2 gap-x-8 mb-3 text-[8pt]">
-        <div>
-          <div><strong>Nama:</strong> {employee.name}</div>
-          <div><strong>SN:</strong> {employee.sn}</div>
-          <div><strong>Jabatan:</strong> {employee.jobTitle}</div>
-          <div><strong>Dept / Section:</strong> {employee.department || '-'} / {employee.section || '-'}</div>
+      {/* Header Document with Scan Evidence QR */}
+      <div className="relative mb-3">
+        <div className="text-center">
+          <h1 className="font-bold text-[11pt] text-black mb-0.5 uppercase">PT. CHITRA PARATAMA</h1>
+          <h2 className="font-bold text-[12pt] text-black uppercase">{session.splNumber ? 'SURAT PERINTAH LEMBUR' : 'DAILY ACTIVITY APPROVAL REPORT'}</h2>
         </div>
-        <div>
-          <div><strong>Site:</strong> {site.name}</div>
-          <div><strong>Customer:</strong> {site.customerName || '-'}</div>
-          <div><strong>Tanggal:</strong> {formatDate(session.workDate)}</div>
-          <div><strong>Shift:</strong> {session.shiftCode}</div>
-          <div><strong>Kode Session:</strong> {session.sessionCode}</div>
+
+        <div
+          onClick={() => setIsEvidenceModalOpen(true)}
+          className="absolute right-0 top-0 flex flex-col items-center justify-center p-1 bg-white border border-slate-300 rounded shadow-xs cursor-pointer hover:border-indigo-500 hover:shadow-md transition-all group select-none"
+          title="Klik untuk membuka galeri foto bukti pekerjaan"
+        >
+          {evidenceQrDataUrl ? (
+            <img src={evidenceQrDataUrl} alt="Evidence QR" className="w-11 h-11 object-contain" />
+          ) : (
+            <div className="w-11 h-11 bg-slate-100 flex items-center justify-center text-[6pt] text-slate-400">
+              QR Code
+            </div>
+          )}
+          <span className="text-[6pt] font-bold text-slate-800 mt-0.5 group-hover:text-indigo-600 leading-tight">Scan Evidence</span>
+          <span className="text-[5pt] text-slate-500 leading-tight">Klik Bukti</span>
         </div>
       </div>
 
-      {/* Activities Table */}
-      <table className="w-full border-collapse mb-3 text-[8pt]">
-        <thead>
-          <tr className="bg-gray-100 font-bold">
-            <th className="border border-black p-1 text-center" style={{ width: '5%' }}>No</th>
-            <th className="border border-black p-1 text-left" style={{ width: '40%' }}>Aktivitas</th>
-            <th className="border border-black p-1 text-left" style={{ width: '15%' }}>Grup</th>
-            <th className="border border-black p-1 text-center" style={{ width: '10%' }}>Unit</th>
-            <th className="border border-black p-1 text-center" style={{ width: '10%' }}>Durasi</th>
-            <th className="border border-black p-1 text-center" style={{ width: '10%' }}>Poin</th>
-            <th className="border border-black p-1 text-left" style={{ width: '10%' }}>Catatan</th>
-          </tr>
-        </thead>
+      {/* Details & Profile Box */}
+      <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-2 [&_td]:py-1 text-[8.5pt]">
         <tbody>
-          {(sessionItems || []).map((item, idx) => (
-            <tr key={item.id}>
-              <td className="border border-black p-1 text-center">{idx + 1}</td>
-              <td className="border border-black p-1">{item.label}</td>
-              <td className="border border-black p-1">{item.group}</td>
-              <td className="border border-black p-1 text-center">{item.unitNumber || '-'}</td>
-              <td className="border border-black p-1 text-center">{item.duration}</td>
-              <td className="border border-black p-1 text-center">{item.points}</td>
-              <td className="border border-black p-1">{itemRemarks[item.id] || item.remark || '-'}</td>
-            </tr>
-          ))}
-          <tr className="font-bold bg-gray-50">
-            <td colSpan={5} className="border border-black p-1 text-right">Total Poin:</td>
-            <td className="border border-black p-1 text-center">{totals.totalPoints}</td>
-            <td className="border border-black p-1"></td>
+          <tr><td colSpan={2} className="font-bold bg-white text-black py-0.5">Details</td></tr>
+          <tr>
+            <td className="w-1/2">Tanggal Kerja: <strong>{formatDate(session.workDate)}</strong></td>
+            <td className="w-1/2">Shift: <strong>{session.shiftCode || 'ALL'}</strong></td>
           </tr>
+          <tr>
+            <td>Kode Sesi: <strong>{session.sessionCode}</strong></td>
+            <td>Status: <span className="capitalize font-bold text-black">{session.status || 'COMPLETED'}</span></td>
+          </tr>
+          <tr><td colSpan={2} className="font-bold bg-white text-black py-0.5">Employee Profile</td></tr>
+          <tr>
+            <td>Nama: <strong>{employee.name}</strong></td>
+            <td>SN: <strong>{employee.sn}</strong></td>
+          </tr>
+          <tr>
+            <td>Job Title: <strong>{employee.jobTitle || 'Staff'}</strong></td>
+            <td>Dept / Section: <strong>{[employee.department, employee.section].filter(Boolean).join(' / ') || '—'}</strong></td>
+          </tr>
+          <tr>
+            <td>Site: <strong>{site.name || '—'}</strong></td>
+            <td>Customer: <strong>{site.customerName || 'PT Chitra Paratama'}</strong></td>
+          </tr>
+          {session.teamMembersSummary ? (
+            <tr>
+              <td colSpan={2}>
+                Anggota Tim: <strong className="text-blue-900">{session.teamMembersSummary}</strong>
+              </td>
+            </tr>
+          ) : null}
         </tbody>
       </table>
 
-      {/* Signatures (3 Tier: Employee, Leader/PJO, Section Head) */}
-      <div className="grid grid-cols-3 gap-x-6 gap-y-4 text-[8pt] mt-4">
+      {/* Activities Table */}
+      <div className="font-bold mb-1 text-[8.5pt]">
+        A. Daily Activity Items (Total: {(sessionItems || []).length} item)
+      </div>
+      <table className="w-full border-collapse border border-black mb-4 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8pt]">
+        <thead>
+          <tr className="bg-gray-100 font-bold text-center">
+            <th className="w-[5%]">#</th>
+            <th className="text-left w-[38%]">Aktivitas</th>
+            <th className="w-[14%]">Unit</th>
+            <th className="w-[12%]">Durasi</th>
+            <th className="w-[10%]">Poin</th>
+            <th className="text-left w-[21%]">Remark</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(sessionItems || []).length > 0 ? (
+            (sessionItems || []).map((item, idx) => (
+              <tr key={item.id || idx}>
+                <td className="text-center align-middle">{idx + 1}</td>
+                <td className="align-middle">{item.label}</td>
+                <td className="text-center align-middle">{item.unitNumber || '-'}</td>
+                <td className="text-center align-middle">{item.duration}</td>
+                <td className="text-center font-bold align-middle">{item.points || 0}</td>
+                <td className="text-left text-[7.5pt] align-middle">{item.remark || '-'}</td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td colSpan={6} className="text-center text-gray-400 py-3">Belum ada item aktivitas.</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+
+      {/* B. Approval Steps */}
+      <div className="font-bold mb-1 text-[8.5pt]">
+        B. Approval Steps
+      </div>
+      <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-center text-[8pt]" style={{ tableLayout: 'fixed' }}>
+        <thead>
+          <tr className="bg-gray-100 font-bold">
+            <th style={{ width: '6%' }}>#</th>
+            <th className="text-left" style={{ width: '22%' }}>Tahap</th>
+            <th className="text-left" style={{ width: '22%' }}>Approver</th>
+            <th style={{ width: '14%' }}>Status</th>
+            <th style={{ width: '16%' }}>Waktu</th>
+            <th className="text-left" style={{ width: '20%' }}>Catatan</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(approvalHistoryForDisplay || []).length > 0 ? (
+            (approvalHistoryForDisplay || []).map((step: any) => {
+              const isCurrentStep = step.id === approval?.id
+              const liveRemark = isCurrentStep && remarks
+                ? remarks
+                : step.remarks || '—'
+              const isApproved = step.status === 'approved' || step.status === 'signed'
+              return (
+                <tr key={step.stepOrder || step.id}>
+                  <td>{step.stepOrder}</td>
+                  <td className="text-left">{step.stepLabel}</td>
+                  <td className="text-left font-semibold">{step.approverName || '-'}</td>
+                  <td className={cn("capitalize font-semibold", isApproved ? "text-emerald-700 font-bold" : "")}>
+                    {step.stepOrder === 1 && isApproved
+                      ? 'Approved'
+                      : step.status}
+                  </td>
+                  <td className="text-[7pt] font-mono">{formatDateTime(step.signedAt)}</td>
+                  <td className="text-left italic text-slate-600 text-[7.5pt] break-words whitespace-normal leading-tight" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                    {liveRemark}
+                  </td>
+                </tr>
+              )
+            })
+          ) : (
+            <tr>
+              <td colSpan={6} className="text-center text-slate-400 py-2">Belum ada riwayat persetujuan.</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+
+      {/* Signatories */}
+      <div className="font-bold mb-2 text-[8.5pt]">Signatories</div>
+      <div className="grid grid-cols-3 gap-x-6 gap-y-4 text-[8pt] mb-3">
         {/* Employee */}
         <div>
           <div className="text-[7pt] text-gray-500 mb-1">Employee Signature</div>
-          <div className="h-16 flex items-end">
-            {employeeSig?.signatureDataUrl && (
-              <img src={employeeSig.signatureDataUrl} alt="TTD" className="h-14 object-contain" />
+          <div className="h-14 flex items-end">
+            {employeeSig?.signatureDataUrl ? (
+              <img src={employeeSig.signatureDataUrl} alt="TTD" className="h-10 object-contain" />
+            ) : employeeSig?.status === 'approved' ? (
+              <span className="text-emerald-700 font-serif italic font-bold text-[9pt]">{employee.name}</span>
+            ) : (
+              <span className="text-slate-400 italic text-[7.5pt]"></span>
             )}
           </div>
-          <div className="mb-1 border-b" style={{ width: '75%', borderColor: '#9ca3af' }}>
+          <div className="mb-0.5 border-b border-slate-400 font-bold text-[8.5pt]" style={{ width: '80%' }}>
             {employeeSig?.approverName || employee.name}
           </div>
-          <div className="text-[7pt]">Karyawan</div>
+          <div className="text-[7pt] text-slate-600 font-medium">{employee.jobTitle || 'Staff'}</div>
           {renderApprovalMeta(employeeSig)}
         </div>
 
         {/* Leader / PJO */}
         <div>
           <div className="text-[7pt] text-gray-500 mb-1">Leader / PJO Signature</div>
-          <div className="h-16 flex items-end">
-            {leaderSig?.signatureDataUrl && (
-              <img src={leaderSig.signatureDataUrl} alt="TTD" className="h-14 object-contain" />
+          <div className="h-14 flex items-end">
+            {leaderSig?.signatureDataUrl ? (
+              <img src={leaderSig.signatureDataUrl} alt="TTD" className="h-10 object-contain" />
+            ) : leaderSig?.status === 'approved' ? (
+              <span className="text-emerald-700 font-serif italic font-bold text-[9pt]">{leaderSig.approverName || 'Leader / PJO'}</span>
+            ) : (
+              <span className="text-slate-400 italic text-[7.5pt]"></span>
             )}
           </div>
-          <div className="mb-1 border-b" style={{ width: '75%', borderColor: '#9ca3af' }}>
+          <div className="mb-0.5 border-b border-slate-400 font-bold text-[8.5pt]" style={{ width: '80%' }}>
             {leaderSig?.approverName || 'Leader Lapangan'}
           </div>
-          <div className="text-[7pt]">{leaderSig?.stepLabel || 'Leader / PJO'}</div>
+          <div className="text-[7pt] text-slate-600 font-medium">{leaderSig?.stepLabel || 'Leader / PJO'}</div>
           {renderApprovalMeta(leaderSig)}
         </div>
 
         {/* Section Head */}
         <div>
           <div className="text-[7pt] text-gray-500 mb-1">Section Head Signature</div>
-          <div className="h-16 flex items-end">
-            {sectionHeadSig?.signatureDataUrl && (
-              <img src={sectionHeadSig.signatureDataUrl} alt="TTD" className="h-14 object-contain" />
+          <div className="h-14 flex items-end">
+            {sectionHeadSig?.signatureDataUrl ? (
+              <img src={sectionHeadSig.signatureDataUrl} alt="TTD" className="h-10 object-contain" />
+            ) : sectionHeadSig?.status === 'approved' ? (
+              <span className="text-emerald-700 font-serif italic font-bold text-[9pt]">{sectionHeadSig.approverName || 'Section Head'}</span>
+            ) : (
+              <span className="text-slate-400 italic text-[7.5pt]"></span>
             )}
           </div>
-          <div className="mb-1 border-b" style={{ width: '75%', borderColor: '#9ca3af' }}>
+          <div className="mb-0.5 border-b border-slate-400 font-bold text-[8.5pt]" style={{ width: '80%' }}>
             {sectionHeadSig?.approverName || 'Section Head'}
           </div>
-          <div className="text-[7pt]">{sectionHeadSig?.stepLabel || 'Section Head'}</div>
+          <div className="text-[7pt] text-slate-600 font-medium">{sectionHeadSig?.stepLabel || 'Section Head'}</div>
           {renderApprovalMeta(sectionHeadSig)}
         </div>
       </div>
 
-      <div className="text-right text-[7pt] text-gray-400 mt-4">PT Chitra Paratama • HERO Platform</div>
+      {/* Evidence QR in Bottom Right Corner (Clickable to open floating modal) */}
+      <div className="absolute right-[20mm] bottom-[18mm]">
+        <div
+          onClick={() => setIsEvidenceModalOpen(true)}
+          className="flex flex-col items-center justify-start text-center border-l border-slate-200 pl-2 cursor-pointer group select-none transition-transform hover:scale-105 active:scale-95"
+          title="Klik untuk membuka galeri foto bukti pekerjaan"
+        >
+          <div className="h-14 flex items-center justify-center">
+            {evidenceQrDataUrl ? (
+              <img src={evidenceQrDataUrl} alt="QR Evidence" className="h-12 w-12 object-contain rounded border border-slate-200 p-0.5 bg-white shadow-xs group-hover:border-indigo-500 group-hover:shadow-md transition-all" />
+            ) : (
+              <div className="h-12 w-12 rounded border border-dashed border-slate-300 flex items-center justify-center text-[6pt] text-slate-400">
+                QR Code
+              </div>
+            )}
+          </div>
+          <div className="font-bold text-[7.5pt] text-slate-800 mt-0.5 group-hover:text-indigo-600 transition-colors">
+            Scan / Klik Bukti Kerja
+          </div>
+          <div className="text-[6.5pt] text-slate-500 leading-tight">
+            Validasi Dokumen Digital
+          </div>
+        </div>
+      </div>
     </div>
   )
 
@@ -694,14 +838,25 @@ export function DailyActivityPublicApproval({
                 </div>
               </div>
             ) : reverted ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800 text-xs flex items-center gap-3 shadow-xs">
-                <RotateCcw className="size-5 shrink-0 text-amber-600" />
-                <div>
-                  <p className="font-bold">Dikembalikan untuk Revisi</p>
-                  <p className="text-[11px] text-amber-700">
-                    Dokumen telah dikembalikan ke pemohon untuk revisi.
-                  </p>
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-center gap-3">
+                  <RotateCcw className="size-5 shrink-0 text-amber-600" />
+                  <div>
+                    <p className="font-bold">Dikembalikan untuk Revisi</p>
+                    <p className="text-[11px] text-amber-700">
+                      Dokumen telah dikembalikan ke pemohon untuk revisi.
+                    </p>
+                  </div>
                 </div>
+                <Button
+                  size="sm"
+                  asChild
+                  className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-xs shrink-0"
+                >
+                  <Link href={`/dashboard/activity-hub/document/${session?.id || ''}/approval`}>
+                    Buka Form Edit ↗
+                  </Link>
+                </Button>
               </div>
             ) : null}
 
@@ -1044,6 +1199,26 @@ export function DailyActivityPublicApproval({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Floating Evidence Modal */}
+      <DailyActivityEvidenceModal
+        isOpen={isEvidenceModalOpen}
+        onClose={() => setIsEvidenceModalOpen(false)}
+        sessionId={session?.id}
+      />
+
+      {/* Floating Missing Signature Warning Dialog */}
+      <MissingSignatureDialog
+        isOpen={isMissingSignatureDialogOpen}
+        onClose={() => setIsMissingSignatureDialogOpen(false)}
+        onSignatureRegistered={(sigUrl) => {
+          setRegisteredSignature(sigUrl)
+          setPreviewSignatureDataUrl(sigUrl)
+          setPreviewSignedAt(new Date())
+          setIsMissingSignatureDialogOpen(false)
+          toast.success('Tanda tangan digital berhasil didaftarkan! Silakan tekan tombol Setujui.')
+        }}
+      />
     </main>
   )
 }

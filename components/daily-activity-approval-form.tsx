@@ -3,6 +3,7 @@
 import { useState, useTransition, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import QRCode from 'qrcode'
 import SignatureCanvas from 'react-signature-canvas'
 import {
   ArrowLeft,
@@ -38,7 +39,10 @@ import {
   saveDailyActivityItemRemarksAction,
 } from '@/app/dashboard/activity-hub/actions'
 import { getUserSignatureAction } from '@/app/actions/user-signature'
+import { uploadFile } from '@/app/actions/upload'
 import { SignatureFloatingWidget } from '@/components/signature-floating-widget'
+import { MissingSignatureDialog } from '@/components/missing-signature-dialog'
+import { DailyActivityEvidenceModal } from '@/components/daily-activity-evidence-modal'
 import { AdminPageShell } from '@/components/admin-page-shell'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -222,6 +226,18 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
   const [previewSignedAt, setPreviewSignedAt] = useState<Date | null>(null)
   const [registeredSignature, setRegisteredSignature] = useState<string | null>(null)
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false)
+  const [isMissingSignatureDialogOpen, setIsMissingSignatureDialogOpen] = useState(false)
+  const [evidenceQrDataUrl, setEvidenceQrDataUrl] = useState<string>('')
+  const [isEvidenceModalOpen, setIsEvidenceModalOpen] = useState(false)
+
+  useEffect(() => {
+    if (!data?.sessionId) return
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    const targetUrl = `${origin}/activity-evidence/${data.sessionId}`
+    QRCode.toDataURL(targetUrl, { margin: 1, width: 140, errorCorrectionLevel: 'M' })
+      .then((url) => setEvidenceQrDataUrl(url))
+      .catch((err) => console.error('Failed to generate evidence QR code:', err))
+  }, [data?.sessionId])
 
   useEffect(() => {
     getUserSignatureAction().then((res) => {
@@ -293,12 +309,17 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
   }, [employeesProp, teamMemberSearchQuery])
 
   const currentTeamMembersSummary = useMemo(() => {
-    if (!isTeamLog || selectedTeamMemberIds.length === 0) return null
-    return employeesProp
-      .filter((e) => selectedTeamMemberIds.includes(e.id))
-      .map((e) => e.name)
-      .join(', ')
-  }, [isTeamLog, selectedTeamMemberIds, employeesProp])
+    if (isTeamLog && selectedTeamMemberIds.length > 0) {
+      const names = employeesProp
+        .filter((e) => selectedTeamMemberIds.includes(e.id))
+        .map((e) => e.name)
+        .join(', ')
+      if (names) return names
+    }
+    if (data.teamMembersSummary) return data.teamMembersSummary
+    if (initialTeamMatch) return initialTeamMatch[1].trim()
+    return null
+  }, [isTeamLog, selectedTeamMemberIds, employeesProp, data.teamMembersSummary, initialTeamMatch])
 
   const [itemsList, setItemsList] = useState<SessionItem[]>(data.sessionItems);
   const [sourceMode, setSourceMode] = useState<'self_input' | 'assigned' | 'custom'>('self_input');
@@ -357,10 +378,53 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
     setItemsList((prev) => prev.filter((_, i) => i !== index))
   }
 
+  const [uploadingItemIdx, setUploadingItemIdx] = useState<number | null>(null)
+
   const handleUpdateItem = (index: number, field: keyof SessionItem, value: any) => {
     setItemsList((prev) =>
       prev.map((it, i) => (i === index ? { ...it, [field]: value } : it))
     )
+  }
+
+  const handleItemPhotoUpload = async (index: number, file: File | null) => {
+    if (!file) return
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Ukuran foto maksimal 10MB')
+      return
+    }
+
+    setUploadingItemIdx(index)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('uploadTarget', 'daily_activity')
+      const res = await uploadFile(formData)
+      if (res.success && (res.readableUrl || res.url)) {
+        const finalUrl = res.readableUrl || res.url
+        handleUpdateItem(index, 'photoUrl', finalUrl)
+        toast.success('Foto bukti pekerjaan berhasil diunggah!')
+      } else {
+        // Fallback to local base64 reader
+        const reader = new FileReader()
+        reader.onload = () => {
+          const base64Url = reader.result as string
+          handleUpdateItem(index, 'photoUrl', base64Url)
+          toast.success('Foto bukti pekerjaan berhasil disimpan!')
+        }
+        reader.readAsDataURL(file)
+      }
+    } catch (err) {
+      console.error('Error uploading photo:', err)
+      const reader = new FileReader()
+      reader.onload = () => {
+        const base64Url = reader.result as string
+        handleUpdateItem(index, 'photoUrl', base64Url)
+        toast.success('Foto bukti pekerjaan berhasil disimpan!')
+      }
+      reader.readAsDataURL(file)
+    } finally {
+      setUploadingItemIdx(null)
+    }
   }
 
   const handleLeaderChange = (val: string) => {
@@ -453,13 +517,13 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
   }
 
   const handleApproveStep = (stepId: number) => {
-    startTransition(async () => {
-      const signatureDataUrl = signaturesByStepId[stepId] || getCanvasSignatureDataUrl() || previewSig
-      if (!signatureDataUrl) {
-        toast.error('Tanda tangan digital wajib diisi.')
-        return
-      }
+    const signatureDataUrl = signaturesByStepId[stepId] || getCanvasSignatureDataUrl() || previewSig || registeredSignature
+    if (!signatureDataUrl) {
+      setIsMissingSignatureDialogOpen(true)
+      return
+    }
 
+    startTransition(async () => {
       // Persist any form changes together with the signature approval
       const selectedLeader = employeesProp.find((e) => String(e.id) === selectedLeaderId)
       const selectedSuperior = employeesProp.find((e) => String(e.id) === selectedSuperiorId)
@@ -599,19 +663,13 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
     return merged
       .filter((step) => step.stepOrder <= 3 && step.approverRole !== 'manager')
       .map((step) => {
-        const isStep1 = step.stepOrder === 1
         const rawStatus = (step.status || '').toLowerCase()
-        const isDraft = (data.status || '').toLowerCase() === 'draft'
-        const effectiveStatus =
-          isStep1 && !isDraft && (rawStatus === 'pending' || rawStatus === 'submitted')
-            ? 'approved'
-            : step.status
-        const isApproved = ['approved', 'signed', 'completed'].includes(effectiveStatus.toLowerCase())
-        const isReverted = effectiveStatus.toLowerCase() === 'reverted' || effectiveStatus.toLowerCase() === 'needs_revision'
+        const isApproved = ['approved', 'signed', 'completed'].includes(rawStatus)
+        const isReverted = rawStatus === 'reverted' || rawStatus === 'needs_revision'
         const isActivelySigning = activeStepId === step.id && Boolean(previewSig)
 
         const currentSig = isApproved
-          ? (signaturesByStepId[step.id] || step.signatureDataUrl || (isStep1 ? (data.employee as any)?.signatureDataUrl : null))
+          ? (signaturesByStepId[step.id] || step.signatureDataUrl || null)
           : isActivelySigning
           ? previewSig
           : null
@@ -619,13 +677,12 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
         const currentRemark = stepRemarks[step.id] !== undefined ? stepRemarks[step.id] : step.remarks
         const currentSignedAt =
           step.signedAt ||
-          (isApproved && isStep1 ? (data.submittedAt || data.workDate || new Date()) : null) ||
           (isReverted ? ((data as any).updatedAt || new Date()) : null) ||
           (isActivelySigning ? (previewSignedAt || new Date()) : null)
 
         return {
           ...step,
-          status: effectiveStatus,
+          status: rawStatus,
           signatureDataUrl: currentSig,
           remarks: currentRemark || step.remarks,
           signedAt: currentSignedAt,
@@ -661,8 +718,29 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
         minHeight: '297mm',
       }}
     >
-      <h1 className="text-center font-bold text-[11pt] text-black mb-0.5 uppercase">PT. CHITRA PARATAMA</h1>
-      <h2 className="text-center font-bold text-[12pt] text-black mb-3 uppercase">DAILY ACTIVITY APPROVAL REPORT</h2>
+      {/* Header Document with Scan Evidence QR */}
+      <div className="relative mb-3">
+        <div className="text-center">
+          <h1 className="font-bold text-[11pt] text-black mb-0.5 uppercase">PT. CHITRA PARATAMA</h1>
+          <h2 className="font-bold text-[12pt] text-black uppercase">{data.spl ? 'SURAT PERINTAH LEMBUR' : 'DAILY ACTIVITY APPROVAL REPORT'}</h2>
+        </div>
+
+        <div
+          onClick={() => setIsEvidenceModalOpen(true)}
+          className="absolute right-0 top-0 flex flex-col items-center justify-center p-1 bg-white border border-slate-300 rounded shadow-xs cursor-pointer hover:border-indigo-500 hover:shadow-md transition-all group select-none"
+          title="Klik untuk membuka galeri foto bukti pekerjaan"
+        >
+          {evidenceQrDataUrl ? (
+            <img src={evidenceQrDataUrl} alt="Evidence QR" className="w-11 h-11 object-contain" />
+          ) : (
+            <div className="w-11 h-11 bg-slate-100 flex items-center justify-center text-[6pt] text-slate-400">
+              QR Code
+            </div>
+          )}
+          <span className="text-[6pt] font-bold text-slate-800 mt-0.5 group-hover:text-indigo-600 leading-tight">Scan Evidence</span>
+          <span className="text-[5pt] text-slate-500 leading-tight">Klik Bukti</span>
+        </div>
+      </div>
 
       <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-2 [&_td]:py-1 text-[8.5pt]">
         <tbody>
@@ -700,82 +778,87 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
 
       {/* A. Daily Activity Items */}
       <div className="font-bold mb-1 text-[8.5pt]">
-        A. Daily Activity Items (Total: {itemsList.length} item, {itemsList.reduce((s, i) => s + i.points, 0)} poin)
+        A. Daily Activity Items (Total: {itemsList.length} item, {itemsList.reduce((s, i) => s + (Number(i.points) || 0), 0)} poin)
       </div>
       <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8pt]">
         <thead>
-          <tr className="bg-white font-bold text-center">
-            <th className="w-[6%]">#</th>
-            <th className="text-left w-[40%]">Aktivitas</th>
+          <tr className="bg-gray-100 font-bold text-center">
+            <th className="w-[5%]">#</th>
+            <th className="text-left w-[38%]">Aktivitas</th>
             <th className="w-[14%]">Unit</th>
             <th className="w-[12%]">Durasi</th>
             <th className="w-[10%]">Poin</th>
-            <th className="text-left w-[18%]">Remark</th>
+            <th className="text-left w-[21%]">Remark</th>
           </tr>
         </thead>
         <tbody>
           {itemsList.length > 0 ? (
             itemsList.map((item, idx) => (
-              <tr key={item.id}>
-                <td className="text-center">{idx + 1}</td>
-                <td>{item.label}</td>
-                <td className="text-center">{item.unitNumber || '-'}</td>
-                <td className="text-center">{item.duration}</td>
-                <td className="text-center font-bold">{item.points}</td>
-                <td className="text-left text-[7.5pt]">{itemRemarks[item.id] || item.remark || '-'}</td>
+              <tr key={item.id || idx}>
+                <td className="text-center align-middle">{idx + 1}</td>
+                <td className="align-middle">{item.label}</td>
+                <td className="text-center align-middle">{item.unitNumber || '-'}</td>
+                <td className="text-center align-middle">{item.duration}</td>
+                <td className="text-center font-bold align-middle">{item.points || 0}</td>
+                <td className="text-left text-[7.5pt] align-middle">{itemRemarks[item.id] || item.remark || '-'}</td>
               </tr>
             ))
           ) : (
             <tr>
-              <td colSpan={6} className="text-center text-gray-400 py-2">Belum ada item aktivitas.</td>
+              <td colSpan={6} className="text-center text-gray-400 py-3">Belum ada item aktivitas.</td>
             </tr>
           )}
         </tbody>
       </table>
 
       {/* B. Approval Steps */}
-      <div className="font-bold mb-1 text-[8.5pt]">B. Approval Steps</div>
-      <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8pt]" style={{ tableLayout: 'fixed' }}>
+      <div className="font-bold mb-1 text-[8.5pt]">
+        B. Approval Steps
+      </div>
+      <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-center text-[8pt]" style={{ tableLayout: 'fixed' }}>
         <thead>
-          <tr className="bg-white font-bold text-center">
+          <tr className="bg-gray-100 font-bold">
             <th style={{ width: '6%' }}>#</th>
             <th className="text-left" style={{ width: '22%' }}>Tahap</th>
-            <th className="text-left" style={{ width: '24%' }}>Approver</th>
+            <th className="text-left" style={{ width: '22%' }}>Approver</th>
             <th style={{ width: '14%' }}>Status</th>
-            <th style={{ width: '18%' }}>Waktu</th>
-            <th className="text-left" style={{ width: '16%' }}>Catatan</th>
+            <th style={{ width: '16%' }}>Waktu</th>
+            <th className="text-left" style={{ width: '20%' }}>Catatan</th>
           </tr>
         </thead>
         <tbody>
-          {approvalHistoryForDisplay.map((step: any) => {
-            const isApproved = ['approved', 'signed', 'completed'].includes((step.status || '').toLowerCase())
-            const isReverted = (step.status || '').toLowerCase() === 'reverted' || (step.status || '').toLowerCase() === 'needs_revision'
-            const statusLabel = isApproved ? 'Approved' : isReverted ? 'Reverted' : step.status
-            return (
-              <tr key={step.id} className={isReverted ? "bg-amber-50/70" : undefined}>
-                <td className="text-center">{step.stepOrder}</td>
-                <td className="text-left font-medium">{step.stepLabel}</td>
-                <td className="text-left font-medium">{step.approverName || '-'}</td>
-                <td className={cn(
-                  "text-center capitalize font-bold",
-                  isApproved ? "text-emerald-700" :
-                  isReverted ? "text-amber-700" :
-                  step.status === 'rejected' ? "text-rose-700" :
-                  "text-slate-700"
-                )}>
-                  {statusLabel}
-                </td>
-                <td className="text-center text-[7pt]">{step.signedAt ? fmtDt(step.signedAt) : '—'}</td>
-                <td className="text-left text-[7.5pt] text-slate-600 italic break-words whitespace-normal leading-tight">{step.remarks || '—'}</td>
-              </tr>
-            )
-          })}
+          {data.approvals.length > 0 ? (
+            data.approvals.map((step) => {
+              const liveRemark = stepRemarks[step.id] || step.remarks || '—'
+              const isApproved = step.status === 'approved' || step.status === 'signed'
+              return (
+                <tr key={step.stepOrder || step.id}>
+                  <td>{step.stepOrder}</td>
+                  <td className="text-left">{step.stepLabel}</td>
+                  <td className="text-left font-semibold">{step.approverName || '-'}</td>
+                  <td className={cn("capitalize font-semibold", isApproved ? "text-emerald-700 font-bold" : "")}>
+                    {step.stepOrder === 1 && isApproved
+                      ? 'Approved'
+                      : step.status}
+                  </td>
+                  <td className="text-[7pt] font-mono">{fmtDt(step.signedAt)}</td>
+                  <td className="text-left italic text-slate-600 text-[7.5pt] break-words whitespace-normal leading-tight" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                    {liveRemark}
+                  </td>
+                </tr>
+              )
+            })
+          ) : (
+            <tr>
+              <td colSpan={6} className="text-center text-slate-400 py-2">Belum ada riwayat persetujuan.</td>
+            </tr>
+          )}
         </tbody>
       </table>
 
       {/* Signatories (3 Roles: Employee, Leader/PJO, Section Head) */}
-      <div className="font-bold mb-3 text-[8.5pt]">Signatories</div>
-      <div className="grid grid-cols-3 gap-x-6 gap-y-4 mb-4">
+      <div className="font-bold mb-2 text-[8.5pt]">Signatories</div>
+      <div className="grid grid-cols-3 gap-x-6 gap-y-4 mb-3">
         {/* Karyawan */}
         <div>
           <div className="text-[7pt] text-gray-500 mb-1">Employee Signature</div>
@@ -849,7 +932,30 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
         </div>
       </div>
 
-      <div className="text-right text-[7pt] text-gray-400 mt-4">PT Chitra Paratama • HERO Platform</div>
+      {/* Evidence QR in Bottom Right Corner (Clickable to open floating modal) */}
+      <div className="absolute right-[20mm] bottom-[18mm]">
+        <div
+          onClick={() => setIsEvidenceModalOpen(true)}
+          className="flex flex-col items-center justify-start text-center border-l border-slate-200 pl-2 cursor-pointer group select-none transition-transform hover:scale-105 active:scale-95"
+          title="Klik untuk membuka galeri foto bukti pekerjaan"
+        >
+          <div className="h-14 flex items-center justify-center">
+            {evidenceQrDataUrl ? (
+              <img src={evidenceQrDataUrl} alt="QR Evidence" className="h-12 w-12 object-contain rounded border border-slate-200 p-0.5 bg-white shadow-xs group-hover:border-indigo-500 group-hover:shadow-md transition-all" />
+            ) : (
+              <div className="h-12 w-12 rounded border border-dashed border-slate-300 flex items-center justify-center text-[6pt] text-slate-400">
+                QR Code
+              </div>
+            )}
+          </div>
+          <div className="font-bold text-[7.5pt] text-slate-800 mt-0.5 group-hover:text-indigo-600 transition-colors">
+            Scan / Klik Bukti Kerja
+          </div>
+          <div className="text-[6.5pt] text-slate-500 leading-tight">
+            Validasi Dokumen Digital
+          </div>
+        </div>
+      </div>
     </div>
   )
 
@@ -1551,32 +1657,109 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
                         </div>
                       </div>
 
-                      <div className="rounded-xl border border-slate-200 bg-white p-2.5 space-y-1.5">
-                        <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                          <Camera className="size-3.5 text-slate-500" /> Photo Evidence
-                        </span>
-                        <div className="flex items-center gap-2">
-                          {(item as any).photoUrl ? (
-                            <div className="flex items-center gap-2">
-                              <a href={(item as any).photoUrl} target="_blank" rel="noreferrer" className="inline-block">
-                                <img src={(item as any).photoUrl} alt="Evidence" className="size-10 object-cover rounded-lg border border-slate-200" />
-                              </a>
-                              <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">Ter-upload</span>
+                      {(() => {
+                        const itemPhotoUrl = (item as any).photoUrl || (Array.isArray((item as any).photos) ? (typeof (item as any).photos[0] === 'string' ? (item as any).photos[0] : (item as any).photos[0]?.url) : null) || (Array.isArray((item as any).photoUrls) ? (typeof (item as any).photoUrls[0] === 'string' ? (item as any).photoUrls[0] : (item as any).photoUrls[0]?.url) : null) || null
+                        return (
+                          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                                <Camera className="size-3.5 text-slate-500" /> Photo Evidence
+                              </span>
+                              {itemPhotoUrl && (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md shadow-2xs">
+                                  <CheckCircle2 className="size-3 text-emerald-600" /> Ter-upload
+                                </span>
+                              )}
                             </div>
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              <label className="cursor-pointer inline-flex items-center gap-1 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition-colors">
-                                <Camera className="size-3.5 text-slate-600" /> Kamera
-                                <input type="file" accept="image/*" capture="environment" className="hidden" />
-                              </label>
-                              <label className="cursor-pointer inline-flex items-center gap-1 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition-colors">
-                                <ImagePlus className="size-3.5 text-slate-600" /> Galeri
-                                <input type="file" accept="image/*" className="hidden" />
-                              </label>
+
+                            <div className="flex flex-wrap items-center gap-2">
+                              {itemPhotoUrl ? (
+                                <div className="flex items-center gap-3 w-full bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
+                                  <a href={itemPhotoUrl} target="_blank" rel="noreferrer" className="shrink-0 group relative overflow-hidden rounded-md border border-slate-200">
+                                    <img src={itemPhotoUrl} alt="Evidence" className="size-12 object-cover rounded-md group-hover:scale-105 transition-transform" />
+                                  </a>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-bold text-slate-800 truncate">Foto Bukti Terlampir</p>
+                                    <p className="text-[10px] text-slate-400 truncate">Klik gambar untuk melihat ukuran penuh</p>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <label className="cursor-pointer inline-flex items-center gap-1 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-700 transition-colors">
+                                      <RotateCcw className="size-3 text-slate-500" /> Ganti
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        className="hidden"
+                                        onChange={(e) => {
+                                          const file = e.target.files?.[0]
+                                          if (file) handleItemPhotoUpload(idx, file)
+                                          e.target.value = ''
+                                        }}
+                                      />
+                                    </label>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => {
+                                        handleUpdateItem(idx, 'photoUrl', null)
+                                        handleUpdateItem(idx, 'photos', [])
+                                      }}
+                                      className="h-7 px-2 text-[11px] text-rose-600 hover:bg-rose-50 hover:text-rose-700 rounded-lg cursor-pointer"
+                                    >
+                                      <Trash2 className="size-3 mr-0.5" /> Hapus
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <label className={cn(
+                                    "cursor-pointer inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-2xs transition-all",
+                                    uploadingItemIdx === idx
+                                      ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
+                                      : "bg-white hover:bg-slate-50 border-slate-200 text-slate-700 active:scale-95"
+                                  )}>
+                                    <Camera className="size-3.5 text-indigo-600" />
+                                    <span>{uploadingItemIdx === idx ? 'Mengunggah...' : 'Kamera'}</span>
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      capture="environment"
+                                      disabled={uploadingItemIdx === idx}
+                                      className="hidden"
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0]
+                                        if (file) handleItemPhotoUpload(idx, file)
+                                        e.target.value = ''
+                                      }}
+                                    />
+                                  </label>
+
+                                  <label className={cn(
+                                    "cursor-pointer inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-2xs transition-all",
+                                    uploadingItemIdx === idx
+                                      ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
+                                      : "bg-white hover:bg-slate-50 border-slate-200 text-slate-700 active:scale-95"
+                                  )}>
+                                    <ImagePlus className="size-3.5 text-sky-600" />
+                                    <span>{uploadingItemIdx === idx ? 'Mengunggah...' : 'Galeri'}</span>
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      disabled={uploadingItemIdx === idx}
+                                      className="hidden"
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0]
+                                        if (file) handleItemPhotoUpload(idx, file)
+                                        e.target.value = ''
+                                      }}
+                                    />
+                                  </label>
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
-                      </div>
+                          </div>
+                        )
+                      })()}
 
                       <div className="space-y-1">
                         <Label className="text-xs font-semibold text-slate-700">Catatan Item</Label>
@@ -1677,7 +1860,14 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Row 1: Leader */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Leader Name</Label>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold text-slate-700">Leader Name</Label>
+                    {initialLeader?.status === 'approved' ? (
+                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                        SUDAH DISETUJUI (TERKUNCI)
+                      </span>
+                    ) : null}
+                  </div>
                   <SearchableSelect
                     label="Leader"
                     placeholder="PILIH LEADER..."
@@ -1688,6 +1878,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
                       label: `${emp.name} - ${emp.rank || emp.position || 'Employee'}`,
                     }))}
                     widthClassName="w-full"
+                    disabled={initialLeader?.status === 'approved'}
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -1697,12 +1888,20 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
                     onChange={(e) => setLeaderTitle(e.target.value)}
                     placeholder="Leader Title"
                     className="h-10 bg-slate-50/60 border-slate-200 text-xs"
+                    disabled={initialLeader?.status === 'approved'}
                   />
                 </div>
 
                 {/* Row 2: Superior */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Superior Name</Label>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold text-slate-700">Superior Name</Label>
+                    {initialSuperior?.status === 'approved' ? (
+                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                        SUDAH DISETUJUI (TERKUNCI)
+                      </span>
+                    ) : null}
+                  </div>
                   <SearchableSelect
                     label="Superior"
                     placeholder="PILIH SUPERIOR..."
@@ -1713,6 +1912,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
                       label: `${emp.name} - ${emp.rank || emp.position || 'Employee'}`,
                     }))}
                     widthClassName="w-full"
+                    disabled={initialSuperior?.status === 'approved'}
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -1722,6 +1922,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
                     onChange={(e) => setSuperiorTitle(e.target.value)}
                     placeholder="Superior Title"
                     className="h-10 bg-slate-50/60 border-slate-200 text-xs"
+                    disabled={initialSuperior?.status === 'approved'}
                   />
                 </div>
               </div>
@@ -1994,6 +2195,102 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Floating Evidence Modal */}
+      <DailyActivityEvidenceModal
+        isOpen={isEvidenceModalOpen}
+        onClose={() => setIsEvidenceModalOpen(false)}
+        sessionId={data?.sessionId}
+        fallbackData={(() => {
+          if (!data) return null
+          const processedItems = (itemsList || []).map((item, index) => {
+            const photoUrl = (item as any).photoUrl || null
+            return {
+              id: item.id || index + 1,
+              itemIndex: index + 1,
+              snapshotLabel: item.label,
+              snapshotGroupName: item.group || null,
+              unitNumber: item.unitNumber || null,
+              remark: itemRemarks[item.id] || item.remark || null,
+              actualPoints: Number(item.points) || 0,
+              isChecked: true,
+              startedAt: (item as any).startedAt || null,
+              endedAt: (item as any).endedAt || null,
+              startLabel: '-',
+              endLabel: '-',
+              durationLabel: item.duration || '-',
+              photoUrl,
+            }
+          })
+          return {
+            header: {
+              sessionId: data.sessionId,
+              sessionCode: data.sessionCode,
+              workDate: data.workDate,
+              shiftCode: data.shiftCode,
+              status: data.status,
+              summaryRemark: data.summaryRemark,
+              submittedAt: data.submittedAt,
+              employeeId: data.employee.id,
+              employeeName: data.employee.name,
+              employeeSn: data.employee.sn,
+              employeeDepartment: data.employee.department,
+              employeeSection: data.employee.section,
+              employeeJobTitle: data.employee.jobTitle,
+              siteId: data.site.id,
+              siteName: data.site.name,
+              customerName: data.site.customerName,
+              contractNumber: null,
+              splId: null,
+              splNumber: null,
+              splTitle: null,
+            },
+            allItems: processedItems,
+            evidenceItems: processedItems.filter((i) => Boolean(i.photoUrl)),
+            approvals: data.approvals.map((a) => ({
+              id: a.id,
+              stepOrder: a.stepOrder,
+              stepLabel: a.stepLabel,
+              status: a.status,
+              approverName: a.approverName || '',
+              approverRole: a.approverRole || '',
+              signedAt: a.signedAt || null,
+            })),
+          }
+        })()}
+      />
+      {/* Missing Signature Floating Dialog */}
+      <MissingSignatureDialog
+        isOpen={isMissingSignatureDialogOpen}
+        onClose={() => setIsMissingSignatureDialogOpen(false)}
+        onSignatureRegistered={(sigUrl) => {
+          setRegisteredSignature(sigUrl)
+          setPreviewSig(sigUrl)
+          setPreviewSignedAt(new Date())
+          if (activeStepId) {
+            setSignaturesByStepId((prev) => ({ ...prev, [activeStepId]: sigUrl }))
+          }
+          toast.success('Tanda tangan digital berhasil didaftarkan! Silakan tekan tombol Setujui & TTD.')
+        }}
+      />
+
+      {/* Signature Floating Widget for Direct Register */}
+      {isRegisterModalOpen && (
+        <SignatureFloatingWidget
+          openModalDirectly
+          onCloseDirectModal={() => setIsRegisterModalOpen(false)}
+          onSignatureUpdated={(sigUrl) => {
+            setRegisteredSignature(sigUrl)
+            setPreviewSig(sigUrl)
+            setPreviewSignedAt(new Date())
+            if (activeStepId) {
+              setSignaturesByStepId((prev) => ({ ...prev, [activeStepId]: sigUrl }))
+            }
+            setIsRegisterModalOpen(false)
+            toast.success('Tanda tangan digital siap digunakan.')
+          }}
+        />
+      )}
     </div>
   </AdminPageShell>
 )

@@ -102,9 +102,9 @@ export default async function OvertimeRequestsPage() {
 
   const rawSplIds = rawSplRecords.map((r) => r.id)
 
-  const [rawApprovalsList, rawParticipantsList] = await Promise.all([
+  const rawApprovalsList =
     rawSplIds.length > 0
-      ? db
+      ? await db
           .select({
             overtimeCommandLetterId: overtimeApprovals.overtimeCommandLetterId,
             stepOrder: overtimeApprovals.stepOrder,
@@ -120,9 +120,11 @@ export default async function OvertimeRequestsPage() {
           .from(overtimeApprovals)
           .where(inArray(overtimeApprovals.overtimeCommandLetterId, rawSplIds))
           .orderBy(asc(overtimeApprovals.stepOrder))
-      : [],
+      : []
+
+  const rawParticipantsList =
     rawSplIds.length > 0
-      ? db
+      ? await db
           .select({
             overtimeCommandLetterId: overtimeCommandLetterParticipants.overtimeCommandLetterId,
             employeeId: overtimeCommandLetterParticipants.employeeId,
@@ -134,8 +136,7 @@ export default async function OvertimeRequestsPage() {
           .from(overtimeCommandLetterParticipants)
           .leftJoin(employees, eq(overtimeCommandLetterParticipants.employeeId, employees.id))
           .where(inArray(overtimeCommandLetterParticipants.overtimeCommandLetterId, rawSplIds))
-      : [],
-  ])
+      : []
 
   const approvalsBySplMap = new Map<number, (typeof rawApprovalsList)[number][]>()
   for (const a of rawApprovalsList) {
@@ -189,23 +190,11 @@ export default async function OvertimeRequestsPage() {
 
   const splIds = splRecords.map((r) => r.id)
   const approvalsList = rawApprovalsList.filter((a) => splIds.includes(a.overtimeCommandLetterId))
+  const participantsList = rawParticipantsList.filter((p) => splIds.includes(p.overtimeCommandLetterId))
 
-  const [participantsList, itemsList] = await Promise.all([
+  const itemsList =
     splIds.length > 0
-      ? db
-          .select({
-            overtimeCommandLetterId: overtimeCommandLetterParticipants.overtimeCommandLetterId,
-            employeeName: employees.name,
-            shiftCode: overtimeCommandLetterParticipants.shiftCode,
-            rosterType: overtimeCommandLetterParticipants.rosterType,
-            category: overtimeCommandLetterParticipants.category,
-          })
-          .from(overtimeCommandLetterParticipants)
-          .leftJoin(employees, eq(overtimeCommandLetterParticipants.employeeId, employees.id))
-          .where(inArray(overtimeCommandLetterParticipants.overtimeCommandLetterId, splIds))
-      : [],
-    splIds.length > 0
-      ? db
+      ? await db
           .select({
             overtimeCommandLetterId: overtimeCommandLetterItems.overtimeCommandLetterId,
             lineLabel: overtimeCommandLetterItems.lineLabel,
@@ -215,8 +204,7 @@ export default async function OvertimeRequestsPage() {
           })
           .from(overtimeCommandLetterItems)
           .where(inArray(overtimeCommandLetterItems.overtimeCommandLetterId, splIds))
-      : [],
-  ])
+      : []
 
   const approvalsMap = new Map<number, OvertimeListingRow['approvals']>()
   for (const a of approvalsList) {

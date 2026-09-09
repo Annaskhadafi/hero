@@ -17,6 +17,7 @@ import {
   FileSpreadsheet,
   FileText,
   ImagePlus,
+  Layers,
   ListFilter,
   PenTool,
   Plus,
@@ -35,10 +36,13 @@ import {
   XCircle,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import QRCode from 'qrcode'
 import { toast } from 'sonner'
 import { downloadElementAsPdf, downloadHtmlAsPdf, generateElementAsPdfBlob, generateHtmlAsPdfBlob, downloadFilesAsZip } from '@/lib/pdf-download'
 
 import { AdminPageShell } from '@/components/admin-page-shell'
+import { DailyActivityEvidenceModal } from '@/components/daily-activity-evidence-modal'
+import { MissingSignatureDialog } from '@/components/missing-signature-dialog'
 import { HcWorkspaceBanner, hcPrimaryActionClassName } from '@/components/hc/hc-workspace-banner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -91,6 +95,7 @@ import {
   type DailyActivityWorkflowSettings,
   DEFAULT_DAILY_ACTIVITY_SETTINGS,
 } from '@/lib/workflow-settings-defaults'
+import type { RouteFolder } from '@/lib/daily-activity'
 
 export type SessionApprovalRow = {
   sessionId: number
@@ -187,6 +192,7 @@ export function ApprovalListingClient({
   employees = [],
   sites = [],
   activityPresets = [],
+  routeFolders = [],
   sectionHeadMap = {},
   deptHeadMap = {},
   initialSettings,
@@ -219,6 +225,7 @@ export function ApprovalListingClient({
     requiresTireCount?: boolean
     requiresMaterialUsed?: boolean
   }>
+  routeFolders?: RouteFolder[]
   sectionHeadMap?: Record<string, number | null>
   deptHeadMap?: Record<string, number | null>
   initialSettings?: DailyActivityWorkflowSettings
@@ -362,6 +369,25 @@ async function uploadActivityPhoto(file: File): Promise<string> {
   }
 
   const [previewTarget, setPreviewTarget] = useState<SessionApprovalRow | null>(null)
+  const [previewTargetQrDataUrl, setPreviewTargetQrDataUrl] = useState<string | null>(null)
+  const [isEvidenceModalOpen, setIsEvidenceModalOpen] = useState(false)
+  const [evidenceModalSessionId, setEvidenceModalSessionId] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (!previewTarget?.sessionId) {
+      setPreviewTargetQrDataUrl(null)
+      return
+    }
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    QRCode.toDataURL(`${origin}/activity-evidence/${previewTarget.sessionId}`, {
+      margin: 1,
+      width: 140,
+      errorCorrectionLevel: 'M',
+    })
+      .then((url) => setPreviewTargetQrDataUrl(url))
+      .catch((err) => console.error('Failed to generate preview QR:', err))
+  }, [previewTarget?.sessionId])
+
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [isBatchApproving, setIsBatchApproving] = useState(false)
   const [isSignatureWarningOpen, setIsSignatureWarningOpen] = useState(false)
@@ -835,76 +861,56 @@ async function uploadActivityPhoto(file: File): Promise<string> {
     return (pickerSearch || '').toLowerCase().replace(/[^a-z0-9]/g, '')
   }, [pickerSearch])
 
-  const standardRouteGroups = useMemo(
-    () => [
-      {
-        groupName: 'Group: Replace Tire',
-        subtitle: 'GRP-Replace Tire • General & OTR',
-        items: [
-          { code: 'SVC.STB-010', name: 'Replacement Tyre OTR HD-785', points: 20, badges: ['EQUIPMENT WAJIB', 'FOTO WAJIB'] },
-          { code: 'SVC.STB-007', name: 'Mounting Truck & Bus Tyre', points: 15, badges: ['EQUIPMENT WAJIB', 'WAKTU WAJIB'] },
-          { code: 'SVC.STB-008', name: 'Dismounting Truck Tyre', points: 15, badges: ['EQUIPMENT WAJIB'] },
-        ],
-      },
-      {
-        groupName: 'Group: Rotasi Tire EM & TB',
-        subtitle: 'GRP-Rotasi Tire • Earthmover & TB',
-        items: [
-          { code: 'SVC.STB-005', name: 'Rotasi Tire EM Position 1 & 2', points: 15, badges: ['EQUIPMENT WAJIB', 'WAKTU WAJIB'] },
-          { code: 'SVC.STB-006', name: 'Rotasi Tire EM Position 3 & 4', points: 15, badges: ['EQUIPMENT WAJIB'] },
-          { code: 'SVC.STB-009', name: 'Rotasi Tire Truck & Bus', points: 15, badges: ['EQUIPMENT WAJIB'] },
-        ],
-      },
-      {
-        groupName: 'Group: Running Tire Inspection & Pressure Check',
-        subtitle: 'GRP-Tire Inspection • ALL',
-        items: [
-          { code: 'SVC.STB-003', name: 'Inspection & Pressure Check', points: 10, badges: ['EQUIPMENT WAJIB', 'WAKTU WAJIB'] },
-          { code: 'SVC.STB-004', name: 'Running Tire Depth Measurement', points: 10, badges: ['FOTO WAJIB'] },
-        ],
-      },
-      {
-        groupName: 'Group: Support Customer & Safety',
-        subtitle: 'GRP-Support Customer • ALL',
-        items: [
-          { code: 'SVC.STB-001', name: 'Support Operator', points: 10, badges: ['FOTO WAJIB', '10 PTS'] },
-          { code: 'SVC.STB-002', name: 'Support Technical Liaison', points: 10, badges: ['EQUIPMENT WAJIB'] },
-          { code: 'HSE.P5M-001', name: 'P5M & Briefing Keselamatan', points: 5, badges: ['WAKTU WAJIB'] },
-          { code: 'HSE.P2H-001', name: 'P2H & Inspection Alat Kerja', points: 5, badges: ['EQUIPMENT WAJIB'] },
-        ],
-      },
-    ],
-    []
-  )
+  const availableLibraryMap = useMemo(() => {
+    const map = new Map<string, (typeof activityPresets)[0]>()
+    for (const p of activityPresets || []) {
+      map.set(String(p.id), p)
+      if (p.code) map.set(p.code.toLowerCase(), p)
+    }
+    return map
+  }, [activityPresets])
 
-  const groupedItemCodes = useMemo(() => {
+  const groupedLibraryIdSet = useMemo(() => {
     const set = new Set<string>()
-    for (const g of standardRouteGroups) {
-      for (const i of g.items) {
-        set.add((i.code || '').toLowerCase())
+    for (const folder of routeFolders || []) {
+      for (const group of folder.groups || []) {
+        for (const item of group.items || []) {
+          if (item.libraryActivityId != null) {
+            set.add(String(item.libraryActivityId))
+          }
+        }
       }
     }
     return set
-  }, [standardRouteGroups])
+  }, [routeFolders])
 
-  const filteredRouteGroups = useMemo(() => {
-    return standardRouteGroups
-      .map((g) => {
-        const matchingItems = g.items.filter((item) => {
-          if (!normalizedPickerSearch) return true
-          const nCode = (item.code || '').toLowerCase().replace(/[^a-z0-9]/g, '')
-          const nName = (item.name || '').toLowerCase().replace(/[^a-z0-9]/g, '')
-          return nCode.includes(normalizedPickerSearch) || nName.includes(normalizedPickerSearch)
-        })
-        return { ...g, items: matchingItems }
+  const matchingRouteFolders = useMemo(() => {
+    return (routeFolders || [])
+      .map((route) => {
+        const matchingGroups = (route.groups || [])
+          .map((group) => {
+            const matchingItems = (group.items || [])
+              .map((i) => (i.libraryActivityId != null ? availableLibraryMap.get(String(i.libraryActivityId)) : null))
+              .filter((lib): lib is (typeof activityPresets)[0] => Boolean(lib))
+              .filter((lib) => {
+                if (!normalizedPickerSearch) return true
+                const nCode = (lib.code || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+                const nName = (lib.name || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+                return nCode.includes(normalizedPickerSearch) || nName.includes(normalizedPickerSearch)
+              })
+            return { ...group, matchingItems }
+          })
+          .filter((group) => (normalizedPickerSearch ? group.matchingItems.length > 0 : true))
+
+        return { ...route, matchingGroups }
       })
-      .filter((g) => (normalizedPickerSearch ? g.items.length > 0 : true))
-  }, [standardRouteGroups, normalizedPickerSearch])
+      .filter((route) => route.matchingGroups.length > 0)
+  }, [routeFolders, availableLibraryMap, normalizedPickerSearch])
 
   const standaloneLibraries = useMemo(() => {
     const presets = activityPresets || []
     return presets
-      .filter((p) => !groupedItemCodes.has((p.code || '').toLowerCase()))
+      .filter((p) => !groupedLibraryIdSet.has(String(p.id)))
       .filter((p) => {
         if (!normalizedPickerSearch) return true
         const nCode = (p.code || '').toLowerCase().replace(/[^a-z0-9]/g, '')
@@ -912,12 +918,51 @@ async function uploadActivityPhoto(file: File): Promise<string> {
         return nCode.includes(normalizedPickerSearch) || nName.includes(normalizedPickerSearch)
       })
       .sort((a, b) => (b.basePoints || 0) - (a.basePoints || 0))
-  }, [activityPresets, groupedItemCodes, normalizedPickerSearch])
+  }, [activityPresets, groupedLibraryIdSet, normalizedPickerSearch])
 
   const totalVisibleLibraryCount = useMemo(() => {
-    const groupCount = filteredRouteGroups.reduce((acc, g) => acc + g.items.length, 0)
+    const groupCount = matchingRouteFolders.reduce(
+      (sum, r) => sum + r.matchingGroups.reduce((gSum, g) => gSum + g.matchingItems.length, 0),
+      0
+    )
     return groupCount + standaloneLibraries.length
-  }, [filteredRouteGroups, standaloneLibraries])
+  }, [matchingRouteFolders, standaloneLibraries])
+
+  const toggleGroupItems = (items: typeof activityPresets) => {
+    const isAllSelected = items.every((sub) =>
+      (createForm.items || []).some(
+        (i) => i?.label?.includes(sub.code) || i?.label?.includes(sub.name)
+      )
+    )
+
+    if (isAllSelected) {
+      setCreateForm((p) => ({
+        ...p,
+        items: p.items.filter(
+          (i) => !items.some((sub) => i?.label?.includes(sub.code) || i?.label?.includes(sub.name))
+        ),
+      }))
+    } else {
+      const missing = items.filter(
+        (sub) => !(createForm.items || []).some(
+          (i) => i?.label?.includes(sub.code) || i?.label?.includes(sub.name)
+        )
+      )
+      setCreateForm((p) => ({
+        ...p,
+        items: [
+          ...p.items,
+          ...missing.map((sub) => ({
+            label: `${sub.code} - ${sub.name}`,
+            unitNumber: '',
+            duration: '60m',
+            points: sub.basePoints || 5,
+            remark: '',
+          })),
+        ],
+      }))
+    }
+  }
 
   const handleItemPhotoSelect = async (idx: number, files: FileList | File[] | null) => {
     if (!files || files.length === 0) return
@@ -1348,8 +1393,8 @@ async function uploadActivityPhoto(file: File): Promise<string> {
         await downloadElementAsPdf(targetEl, `DailyActivity_${row.sessionCode.replace(/[\/\\]/g, '_')}.pdf`)
       } else {
         const contentHtml = `
-          <h1 class="text-center font-bold" style="font-size: 11pt; margin-bottom: 2px;">DAILY ACTIVITY REPORT</h1>
-          <p class="text-center font-bold" style="font-size: 8pt; color: #475569; margin-bottom: 12px;">PT CHITRAPARATAMA • OPERATIONAL REVIEW</p>
+          <h1 class="text-center font-bold" style="font-size: 11pt; margin-bottom: 2px; text-transform: uppercase;">PT. CHITRA PARATAMA</h1>
+          <h2 class="text-center font-bold" style="font-size: 12pt; margin-bottom: 12px; text-transform: uppercase;">DAILY ACTIVITY APPROVAL REPORT</h2>
 
           <table style="width: 100%; border-collapse: collapse; margin-bottom: 0.5rem;">
             <tbody>
@@ -1962,7 +2007,7 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                   >
                     {/* Header Document */}
                     <h1 className="text-center font-bold text-[11pt] mb-1">PT. CHITRA PARATAMA</h1>
-                    <h2 className="text-center font-bold text-[12pt] mb-3">DAILY ACTIVITY APPROVAL REPORT</h2>
+                    <h2 className="text-center font-bold text-[12pt] mb-3 uppercase">FORM DAILY ACTIVITY</h2>
 
                     {/* Section 1: Details */}
                     <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8.5pt]">
@@ -2004,17 +2049,18 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                     </table>
 
                     {/* A. Daily Activity Items */}
-                    <div className="font-bold mb-1">
+                    <div className="font-bold mb-1 text-[8.5pt]">
                       A. Daily Activity Items (Total: {(currentBatchDoc.items || []).length} item, {(currentBatchDoc.items || []).reduce((s, i) => s + (Number(i?.points) || 0), 0) || currentBatchDoc.totalPoints} poin)
                     </div>
                     <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8pt]">
                       <thead>
                         <tr className="bg-slate-50 text-center font-bold">
-                          <th className="w-[8%]">#</th>
-                          <th className="text-left w-[36%]">Aktivitas</th>
-                          <th className="w-[14%]">Unit</th>
-                          <th className="w-[12%]">Durasi</th>
-                          <th className="w-[10%]">Poin</th>
+                          <th className="w-[5%]">#</th>
+                          <th className="text-left w-[33%]">Aktivitas</th>
+                          <th className="w-[12%]">Unit</th>
+                          <th className="w-[10%]">Durasi</th>
+                          <th className="w-[8%]">Poin</th>
+                          <th className="w-[12%]">Evidence (QR)</th>
                           <th className="text-left w-[20%]">Remark</th>
                         </tr>
                       </thead>
@@ -2022,17 +2068,29 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                         {currentBatchDoc.items && currentBatchDoc.items.length > 0 ? (
                           currentBatchDoc.items.map((item, idx) => (
                             <tr key={item.id || idx}>
-                              <td className="text-center">{idx + 1}</td>
-                              <td>{item.label}</td>
-                              <td className="text-center">{item.unitNumber || '-'}</td>
-                              <td className="text-center">{item.duration || '-'}</td>
-                              <td className="text-center font-semibold">{item.points}</td>
-                              <td>{item.remark || '-'}</td>
+                              <td className="text-center align-middle">{idx + 1}</td>
+                              <td className="align-middle">{item.label}</td>
+                              <td className="text-center align-middle">{item.unitNumber || '-'}</td>
+                              <td className="text-center align-middle">{item.duration || '-'}</td>
+                              <td className="text-center font-semibold align-middle">{item.points}</td>
+                              <td className="text-center align-middle">
+                                <div
+                                  onClick={() => {
+                                    setSelectedEvidenceSessionId(Number(currentBatchDoc.sessionId))
+                                    setIsEvidenceModalOpen(true)
+                                  }}
+                                  className="inline-flex flex-col items-center justify-center cursor-pointer hover:opacity-80 transition-opacity p-0.5"
+                                  title="Klik untuk melihat bukti foto aktivitas"
+                                >
+                                  <DailyActivityEvidenceQr sessionId={currentBatchDoc.sessionId} size={28} />
+                                </div>
+                              </td>
+                              <td className="text-left text-[7.5pt] align-middle">{item.remark || '-'}</td>
                             </tr>
                           ))
                         ) : (
                           <tr>
-                            <td colSpan={6} className="text-center text-gray-400 py-2">Belum ada item aktivitas.</td>
+                            <td colSpan={7} className="text-center text-gray-400 py-2">Belum ada item aktivitas.</td>
                           </tr>
                         )}
                       </tbody>
@@ -2358,9 +2416,32 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                     overflow: 'hidden',
                   }}
                 >
-                  {/* Header Document */}
-                  <h1 className="text-center font-bold text-[11pt] mb-1">PT. CHITRA PARATAMA</h1>
-                  <h2 className="text-center font-bold text-[12pt] mb-3">DAILY ACTIVITY APPROVAL REPORT</h2>
+                  {/* Header Document with Scan Evidence QR */}
+                  <div className="relative mb-3">
+                    <div className="text-center">
+                      <h1 className="font-bold text-[11pt] mb-0.5 uppercase">PT. CHITRA PARATAMA</h1>
+                      <h2 className="font-bold text-[12pt] uppercase">{((previewTarget as any).splId || (previewTarget as any).spl) ? 'SURAT PERINTAH LEMBUR' : 'FORM DAILY ACTIVITY'}</h2>
+                    </div>
+
+                    <div
+                      onClick={() => {
+                        setEvidenceModalSessionId(previewTarget.sessionId)
+                        setIsEvidenceModalOpen(true)
+                      }}
+                      className="absolute right-0 top-0 flex flex-col items-center justify-center p-1 bg-white border border-slate-300 rounded shadow-xs cursor-pointer hover:border-indigo-500 hover:shadow-md transition-all group select-none"
+                      title="Klik untuk membuka galeri foto bukti pekerjaan"
+                    >
+                      {previewTargetQrDataUrl ? (
+                        <img src={previewTargetQrDataUrl} alt="Evidence QR" className="w-11 h-11 object-contain" />
+                      ) : (
+                        <div className="w-11 h-11 bg-slate-100 flex items-center justify-center text-[6pt] text-slate-400">
+                          QR Code
+                        </div>
+                      )}
+                      <span className="text-[6pt] font-bold text-slate-800 mt-0.5 group-hover:text-indigo-600 leading-tight">Scan Evidence</span>
+                      <span className="text-[5pt] text-slate-500 leading-tight">Klik Bukti</span>
+                    </div>
+                  </div>
 
                   {/* Section 1: Details */}
                   <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8.5pt]">
@@ -2408,11 +2489,12 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                   <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8pt]">
                     <thead>
                       <tr className="bg-slate-50 text-center font-bold">
-                        <th className="w-[8%]">#</th>
-                        <th className="text-left w-[36%]">Aktivitas</th>
-                        <th className="w-[14%]">Unit</th>
-                        <th className="w-[12%]">Durasi</th>
-                        <th className="w-[10%]">Poin</th>
+                        <th className="w-[5%]">#</th>
+                        <th className="text-left w-[33%]">Aktivitas</th>
+                        <th className="w-[12%]">Unit</th>
+                        <th className="w-[10%]">Durasi</th>
+                        <th className="w-[8%]">Poin</th>
+                        <th className="w-[12%]">Evidence (QR)</th>
                         <th className="text-left w-[20%]">Remark</th>
                       </tr>
                     </thead>
@@ -2420,17 +2502,33 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                       {previewTarget.items && previewTarget.items.length > 0 ? (
                         previewTarget.items.map((item, idx) => (
                           <tr key={item.id || idx}>
-                            <td className="text-center">{idx + 1}</td>
-                            <td>{item.label}</td>
-                            <td className="text-center">{item.unitNumber || '-'}</td>
-                            <td className="text-center">{item.duration || '-'}</td>
-                            <td className="text-center font-semibold">{item.points}</td>
-                            <td>{item.remark || '-'}</td>
+                            <td className="text-center align-middle">{idx + 1}</td>
+                            <td className="align-middle">{item.label}</td>
+                            <td className="text-center align-middle">{item.unitNumber || '-'}</td>
+                            <td className="text-center align-middle">{item.duration || '-'}</td>
+                            <td className="text-center font-semibold align-middle">{item.points}</td>
+                            <td className="text-center align-middle">
+                              <div
+                                onClick={() => {
+                                  setEvidenceModalSessionId(previewTarget.sessionId)
+                                  setIsEvidenceModalOpen(true)
+                                }}
+                                className="inline-flex flex-col items-center justify-center cursor-pointer hover:opacity-80 transition-opacity p-0.5"
+                                title="Klik untuk melihat bukti foto aktivitas"
+                              >
+                                {previewTargetQrDataUrl ? (
+                                  <img src={previewTargetQrDataUrl} alt="QR" className="w-7 h-7 object-contain mx-auto" />
+                                ) : (
+                                  <span className="text-[7pt] text-blue-600 underline">Lihat QR</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="align-middle">{item.remark || '-'}</td>
                           </tr>
                         ))
                       ) : (
                         <tr>
-                          <td colSpan={6} className="text-center text-gray-400 py-2">Belum ada item aktivitas.</td>
+                          <td colSpan={7} className="text-center text-gray-400 py-2">Belum ada item aktivitas.</td>
                         </tr>
                       )}
                     </tbody>
@@ -3463,97 +3561,156 @@ async function uploadActivityPhoto(file: File): Promise<string> {
 
                       {/* Scrollable Content */}
                       <div className="max-h-[380px] overflow-y-auto space-y-3 pr-1">
-                        {/* 1. Route Groups Accordion */}
-                        {filteredRouteGroups.map((group, gIdx) => {
-                          const isExpanded = expandedPickerGroups.has(group.groupName) || Boolean(pickerSearch)
+                        {/* 1. Dynamic Route Groups & Folders Accordion */}
+                        {matchingRouteFolders.map((route) => {
+                          const isRouteExpanded = expandedPickerGroups.has(route.routeName) || Boolean(pickerSearch)
                           return (
-                            <div key={gIdx} className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
+                            <div key={route.id} className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
                               <button
                                 type="button"
                                 onClick={() => {
                                   setExpandedPickerGroups((prev) => {
                                     const next = new Set(prev)
-                                    if (next.has(group.groupName)) next.delete(group.groupName)
-                                    else next.add(group.groupName)
+                                    if (next.has(route.routeName)) next.delete(route.routeName)
+                                    else next.add(route.routeName)
                                     return next
                                   })
                                 }}
-                                className="w-full flex items-center justify-between bg-slate-50/80 hover:bg-slate-100/80 px-3.5 py-2.5 text-left font-bold text-slate-800 text-xs transition-colors"
+                                className="w-full flex items-center justify-between bg-slate-50/90 hover:bg-slate-100/90 px-3.5 py-2.5 text-left font-bold text-slate-800 text-xs transition-colors"
                               >
-                                <div className="flex items-center gap-2">
-                                  <ChevronRight className={`size-4 transition-transform text-slate-500 ${isExpanded ? 'rotate-90' : ''}`} />
-                                  <span>{group.groupName}</span>
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                  <Layers className="size-4 text-[#003f78] shrink-0" />
+                                  <span className="truncate">{route.routeName}</span>
                                 </div>
-                                <span className="text-[11px] font-semibold text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">
-                                  {group.items.length} Activity
-                                </span>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span className="text-[11px] font-semibold text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">
+                                    {route.matchingGroups.reduce((acc, g) => acc + g.matchingItems.length, 0)} Activity
+                                  </span>
+                                  <ChevronRight className={`size-4 transition-transform text-slate-500 ${isRouteExpanded ? 'rotate-90' : ''}`} />
+                                </div>
                               </button>
 
-                              {isExpanded && (
-                                <div className="p-2 space-y-1.5 bg-white border-t border-slate-100">
-                                  {group.items.map((sub, sIdx) => {
-                                    const isSelected = (createForm.items || []).some(
-                                      (i) => i?.label?.includes(sub.code) || i?.label?.includes(sub.name)
-                                    )
+                              {isRouteExpanded && (
+                                <div className="p-2 space-y-2.5 bg-slate-50/40 border-t border-slate-100">
+                                  {route.matchingGroups.map((group) => {
+                                    const isAllGroupSelected =
+                                      group.matchingItems.length > 0 &&
+                                      group.matchingItems.every((sub) =>
+                                        (createForm.items || []).some(
+                                          (i) => i?.label?.includes(sub.code) || i?.label?.includes(sub.name)
+                                        )
+                                      )
+                                    const selectedInGroupCount = group.matchingItems.filter((sub) =>
+                                      (createForm.items || []).some(
+                                        (i) => i?.label?.includes(sub.code) || i?.label?.includes(sub.name)
+                                      )
+                                    ).length
+
                                     return (
-                                      <div
-                                        key={sIdx}
-                                        onClick={() => {
-                                          if (isSelected) {
-                                            const idxToRemove = (createForm.items || []).findIndex(
+                                      <div key={group.id} className="space-y-1.5 rounded-xl border border-slate-200/80 bg-white p-2.5 shadow-2xs">
+                                        <div className="flex w-full items-center justify-between px-1 text-left text-xs font-bold text-slate-700">
+                                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                                            <span className="truncate">{group.groupName}</span>
+                                            {group.matchingItems.length > 0 && (
+                                              <span className="text-[10px] font-bold text-[#003f78] bg-[#eaf4fb] px-1.5 py-0.5 rounded-full shrink-0">
+                                                {selectedInGroupCount}/{group.matchingItems.length}
+                                              </span>
+                                            )}
+                                          </div>
+                                          {group.matchingItems.length > 0 && (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation()
+                                                toggleGroupItems(group.matchingItems)
+                                              }}
+                                              className={
+                                                isAllGroupSelected
+                                                  ? 'text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-lg bg-rose-100 text-rose-700 hover:bg-rose-200 active:scale-95 transition shrink-0'
+                                                  : 'text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-lg bg-[#003f78] text-white hover:bg-[#002f5a] active:scale-95 transition shadow-xs shrink-0'
+                                              }
+                                            >
+                                              {isAllGroupSelected ? 'Hapus Semua' : 'Pilih Group (Semua)'}
+                                            </button>
+                                          )}
+                                        </div>
+
+                                        <div className="space-y-1.5 pt-1">
+                                          {group.matchingItems.map((sub) => {
+                                            const isSelected = (createForm.items || []).some(
                                               (i) => i?.label?.includes(sub.code) || i?.label?.includes(sub.name)
                                             )
-                                            if (idxToRemove >= 0) removeItemRow(idxToRemove)
-                                          } else {
-                                            addPresetActivity(`${sub.code} - ${sub.name}`, sub.points)
-                                          }
-                                        }}
-                                        className={`flex items-center justify-between rounded-xl p-3 cursor-pointer transition border ${
-                                          isSelected
-                                            ? 'bg-[#003f78] text-white border-[#003f78] shadow-sm'
-                                            : 'bg-white text-slate-800 border-slate-200/90 hover:bg-slate-50'
-                                        }`}
-                                      >
-                                        <div className="min-w-0 flex-1 pr-2 space-y-0.5">
-                                          <div className="flex items-center gap-2">
-                                            <span className={`text-[11px] font-black tracking-wider uppercase ${isSelected ? 'text-white' : 'text-[#003f78]'}`}>
-                                              {sub.code}
-                                            </span>
-                                            {sub.points > 0 ? (
-                                              <span className={`rounded-md px-1.5 py-0.5 text-[9px] font-bold ${
-                                                isSelected ? 'bg-white/20 text-white' : 'bg-blue-50 text-[#003f78]'
-                                              }`}>
-                                                +{sub.points} pts
-                                              </span>
-                                            ) : null}
-                                          </div>
-                                          <p className={`text-xs font-semibold truncate ${isSelected ? 'text-blue-100' : 'text-slate-800'}`}>
-                                            {sub.name}
-                                          </p>
-                                          {sub.badges && sub.badges.length > 0 ? (
-                                            <div className="flex flex-wrap gap-1 pt-0.5">
-                                              {sub.badges.map((b, bIdx) => (
+                                            const requirementBadges = [
+                                              sub.requiresEquipmentNo ? 'Equipment' : null,
+                                              sub.requiresDuration ? 'Duration' : null,
+                                              sub.requiresTireCount ? 'Tire' : null,
+                                              sub.requiresLocationGps ? 'GPS' : null,
+                                              sub.requiresPhoto ? 'Photo' : null,
+                                            ].filter(Boolean)
+
+                                            return (
+                                              <div
+                                                key={sub.id}
+                                                onClick={() => {
+                                                  if (isSelected) {
+                                                    const idxToRemove = (createForm.items || []).findIndex(
+                                                      (i) => i?.label?.includes(sub.code) || i?.label?.includes(sub.name)
+                                                    )
+                                                    if (idxToRemove >= 0) removeItemRow(idxToRemove)
+                                                  } else {
+                                                    addPresetActivity(`${sub.code} - ${sub.name}`, sub.basePoints || 5)
+                                                  }
+                                                }}
+                                                className={`flex items-center justify-between rounded-xl p-3 cursor-pointer transition border ${
+                                                  isSelected
+                                                    ? 'bg-[#003f78] text-white border-[#003f78] shadow-sm'
+                                                    : 'bg-white text-slate-800 border-slate-200/90 hover:bg-slate-50'
+                                                }`}
+                                              >
+                                                <div className="min-w-0 flex-1 pr-2 space-y-0.5">
+                                                  <div className="flex items-center gap-2">
+                                                    <span className={`text-[11px] font-black tracking-wider uppercase ${isSelected ? 'text-white' : 'text-[#003f78]'}`}>
+                                                      {sub.code}
+                                                    </span>
+                                                    {(sub.basePoints || 0) > 0 ? (
+                                                      <span className={`rounded-md px-1.5 py-0.5 text-[9px] font-bold ${
+                                                        isSelected ? 'bg-white/20 text-white' : 'bg-blue-50 text-[#003f78]'
+                                                      }`}>
+                                                        +{sub.basePoints} pts
+                                                      </span>
+                                                    ) : null}
+                                                  </div>
+                                                  <p className={`text-xs font-semibold truncate ${isSelected ? 'text-blue-100' : 'text-slate-800'}`}>
+                                                    {sub.name}
+                                                  </p>
+                                                  {requirementBadges.length > 0 ? (
+                                                    <div className="flex flex-wrap gap-1 pt-0.5">
+                                                      {requirementBadges.map((badge, bIdx) => (
+                                                        <span
+                                                          key={bIdx}
+                                                          className={`rounded-md px-1.5 py-0.5 text-[8.5px] font-bold uppercase tracking-wider ${
+                                                            isSelected ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-600'
+                                                          }`}
+                                                        >
+                                                          {badge}
+                                                        </span>
+                                                      ))}
+                                                    </div>
+                                                  ) : null}
+                                                </div>
                                                 <span
-                                                  key={bIdx}
-                                                  className={`rounded-md px-1.5 py-0.5 text-[8.5px] font-bold uppercase tracking-wider ${
-                                                    isSelected ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-600'
+                                                  className={`size-6 shrink-0 flex items-center justify-center rounded-full transition ${
+                                                    isSelected
+                                                      ? 'bg-white text-[#003f78]'
+                                                      : 'bg-white border border-slate-200 text-slate-400'
                                                   }`}
                                                 >
-                                                  {b}
+                                                  {isSelected ? <Check className="size-3.5 stroke-[3]" /> : <ListFilter className="size-3.5" />}
                                                 </span>
-                                              ))}
-                                            </div>
-                                          ) : null}
+                                              </div>
+                                            )
+                                          })}
                                         </div>
-                                        <span
-                                          className={`size-6 shrink-0 flex items-center justify-center rounded-full transition ${
-                                            isSelected
-                                              ? 'bg-white text-[#003f78]'
-                                              : 'bg-white border border-slate-200 text-slate-400'
-                                          }`}
-                                        >
-                                          {isSelected ? <Check className="size-3.5 stroke-[3]" /> : <ListFilter className="size-3.5" />}
-                                        </span>
                                       </div>
                                     )
                                   })}
@@ -3977,43 +4134,15 @@ async function uploadActivityPhoto(file: File): Promise<string> {
       </Dialog>
 
       {/* 4. Missing Signature Warning Dialog */}
-      <Dialog open={isSignatureWarningOpen} onOpenChange={setIsSignatureWarningOpen}>
-        <DialogContent className="max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base font-bold text-slate-900">
-              <AlertCircle className="h-5 w-5 text-amber-500" />
-              Tanda Tangan Belum Didaftarkan
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3.5 my-2">
-            <p className="text-xs text-amber-900 font-medium">
-              Daftarkan?
-            </p>
-          </div>
-
-          <DialogFooter className="flex items-center justify-between sm:justify-between mt-3">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setIsSignatureWarningOpen(false)}
-              className="text-xs"
-            >
-              Nanti
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={handleProceedToRegisterSignature}
-              className="bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-700"
-            >
-              <PenTool className="mr-1.5 h-3.5 w-3.5" />
-              Ya, Daftarkan Sekarang
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <MissingSignatureDialog
+        isOpen={isSignatureWarningOpen}
+        onClose={() => setIsSignatureWarningOpen(false)}
+        onSignatureRegistered={(sigUrl) => {
+          setHasRegisteredSignature(true)
+          setIsSignatureWarningOpen(false)
+          toast.success('Tanda tangan digital berhasil didaftarkan! Silakan lanjutkan persetujuan dokumen.')
+        }}
+      />
 
       {/* 5. Approved Documents Summary Modal */}
       <Dialog open={isSummaryOpen} onOpenChange={setIsSummaryOpen}>
@@ -4085,6 +4214,57 @@ async function uploadActivityPhoto(file: File): Promise<string> {
         onSignatureUpdated={handleSignatureSaved}
         openModalDirectly={openDirectSignatureModal}
         onCloseDirectModal={() => setOpenDirectSignatureModal(false)}
+      />
+
+      {/* Evidence Viewer Modal */}
+      <DailyActivityEvidenceModal
+        isOpen={isEvidenceModalOpen}
+        onClose={() => setIsEvidenceModalOpen(false)}
+        sessionId={evidenceModalSessionId || previewTarget?.sessionId || null}
+        fallbackData={(() => {
+          if (!previewTarget) return null
+          const processedItems = (previewTarget.items || []).map((item, index) => {
+            const photoUrl = (item as any).photoUrl || null
+            return {
+              id: item.id || index + 1,
+              itemIndex: index + 1,
+              snapshotLabel: item.label,
+              snapshotGroupName: (item as any).group || null,
+              unitNumber: item.unitNumber || null,
+              remark: item.remark || null,
+              actualPoints: Number(item.points) || 0,
+              isChecked: true,
+              startedAt: (item as any).startedAt || null,
+              endedAt: (item as any).endedAt || null,
+              startLabel: '-',
+              endLabel: '-',
+              durationLabel: item.duration || '-',
+              photoUrl,
+            }
+          })
+          return {
+            header: {
+              sessionId: previewTarget.sessionId,
+              sessionCode: previewTarget.sessionCode,
+              workDate: previewTarget.workDate,
+              shiftCode: previewTarget.shiftCode,
+              status: previewTarget.sessionStatus,
+              summaryRemark: null,
+              submittedAt: null,
+              employeeId: 0,
+              employeeName: previewTarget.employeeName,
+              employeeSn: previewTarget.employeeSn,
+              employeeDepartment: previewTarget.department || null,
+              employeeSection: previewTarget.section || null,
+              employeeJobTitle: previewTarget.jobTitle || null,
+              siteId: 0,
+              siteName: previewTarget.siteName || null,
+              customerName: previewTarget.customerName || null,
+            },
+            items: processedItems,
+            teamMembers: [],
+          }
+        })()}
       />
     </AdminPageShell>
   )
