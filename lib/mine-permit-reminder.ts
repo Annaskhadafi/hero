@@ -43,6 +43,15 @@ export interface ReminderResult {
   details?: string[]
 }
 
+function escapeEmailHtml(value: string) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
 export async function getMinePermitSiteOptions() {
   const [siteRows, empRows] = await Promise.all([
     db
@@ -439,8 +448,11 @@ export async function sendSiteMinePermitExpiryReminder(
   // Deduplicate and remove any that are in To
   ccEmails = Array.from(new Set(ccEmails)).filter((e) => !toEmails.includes(e))
 
-  // Build Table HTML
-  const tableRowsHtml = expiringEmployees
+  // Keep the legacy template variable name so existing admin-customized templates
+  // receive the new, email-client-friendly employee list without a template migration.
+  const tableContentHtml = `
+    <ul style="margin:18px 0;padding:0;list-style:none;">
+  ${expiringEmployees
     .map((emp, idx) => {
       const expDate = emp.expMinePermit || '-'
       const daysLeft = Math.ceil(
@@ -448,39 +460,16 @@ export async function sendSiteMinePermitExpiryReminder(
       )
       const isExpired = daysLeft < 0
       const daysText = isExpired ? `Expired (${Math.abs(daysLeft)} hari lalu)` : `${daysLeft} hari lagi`
-      const badgeBg = isExpired ? '#fee2e2' : daysLeft <= 14 ? '#ffedd5' : '#fef3c7'
       const badgeColor = isExpired ? '#b91c1c' : daysLeft <= 14 ? '#c2410c' : '#b45309'
-      const rowBg = idx % 2 === 0 ? '#ffffff' : '#f8fafc'
 
-      return `<tr style="background-color:${rowBg};">
-        <td style="padding:10px 12px;border:1px solid #e2e8f0;text-align:center;color:#64748b;font-size:12px;">${idx + 1}</td>
-        <td style="padding:10px 12px;border:1px solid #e2e8f0;font-family:monospace;font-size:12px;font-weight:600;color:#0f172a;">${emp.employeeSn || '-'}</td>
-        <td style="padding:10px 12px;border:1px solid #e2e8f0;font-weight:700;color:#0f172a;">${emp.name}</td>
-        <td style="padding:10px 12px;border:1px solid #e2e8f0;color:#475569;font-size:12px;">${emp.jobTitle || emp.department || '-'}</td>
-        <td style="padding:10px 12px;border:1px solid #e2e8f0;color:#0f172a;font-size:12px;font-weight:600;">${expDate}</td>
-        <td style="padding:10px 12px;border:1px solid #e2e8f0;font-size:12px;">
-          <span style="display:inline-block;padding:3px 8px;border-radius:999px;background-color:${badgeBg};color:${badgeColor};font-weight:700;font-size:11px;">${daysText}</span>
-        </td>
-      </tr>`
+      return `<li style="margin:0 0 10px;padding:12px 14px;background:#f8fafc;border-left:4px solid ${badgeColor};border-radius:6px;color:#334155;font-size:13px;line-height:1.55;">
+        <strong style="display:block;color:#0f172a;font-size:14px;">${idx + 1}. ${escapeEmailHtml(emp.name)}</strong>
+        <span>NIK ${escapeEmailHtml(emp.employeeSn || '-')} · ${escapeEmailHtml(emp.jobTitle || emp.department || '-')} · Exp. ${escapeEmailHtml(expDate)}</span><br>
+        <span style="color:${badgeColor};font-weight:700;">${daysText}</span>
+      </li>`
     })
-    .join('')
-
-  const tableContentHtml = `
-    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="width:100%;border-collapse:collapse;margin:18px 0;font-size:13px;background-color:#ffffff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
-      <thead>
-        <tr style="background-color:#fef3c7;color:#92400e;text-align:left;">
-          <th style="padding:10px 12px;border:1px solid #e2e8f0;font-size:12px;font-weight:700;width:36px;text-align:center;">No</th>
-          <th style="padding:10px 12px;border:1px solid #e2e8f0;font-size:12px;font-weight:700;width:90px;">NIK</th>
-          <th style="padding:10px 12px;border:1px solid #e2e8f0;font-size:12px;font-weight:700;">Nama Karyawan</th>
-          <th style="padding:10px 12px;border:1px solid #e2e8f0;font-size:12px;font-weight:700;">Jabatan / Dept</th>
-          <th style="padding:10px 12px;border:1px solid #e2e8f0;font-size:12px;font-weight:700;width:100px;">Tgl Expired</th>
-          <th style="padding:10px 12px;border:1px solid #e2e8f0;font-size:12px;font-weight:700;width:130px;">Sisa Waktu</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${tableRowsHtml}
-      </tbody>
-    </table>
+    .join('\n')}
+    </ul>
   `
 
   const tableContentText = expiringEmployees
