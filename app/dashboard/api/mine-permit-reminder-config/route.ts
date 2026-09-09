@@ -53,14 +53,31 @@ export async function POST(req: Request) {
       const additionalCcEmails = formData.get('additionalCcEmails')?.toString() ?? formData.get('additionalRecipients')?.toString() ?? ''
       const action = formData.get('action')?.toString()
 
-      let recipientEmployeeIds: number[] = []
-      let ccEmployeeIds: number[] = []
-      try {
-        recipientEmployeeIds = JSON.parse(formData.get('recipientEmployeeIds')?.toString() || '[]')
-      } catch {}
-      try {
-        ccEmployeeIds = JSON.parse(formData.get('ccEmployeeIds')?.toString() || '[]')
-      } catch {}
+      let recipientEmployeeIds: number[] | undefined
+      let ccEmployeeIds: number[] | undefined
+      let recipientEmails: string[] | undefined
+      let ccEmails: string[] | undefined
+
+      if (formData.has('recipientEmployeeIds')) {
+        try {
+          recipientEmployeeIds = JSON.parse(formData.get('recipientEmployeeIds')?.toString() || '[]')
+        } catch {}
+      }
+      if (formData.has('ccEmployeeIds')) {
+        try {
+          ccEmployeeIds = JSON.parse(formData.get('ccEmployeeIds')?.toString() || '[]')
+        } catch {}
+      }
+      if (formData.has('recipientEmails')) {
+        try {
+          recipientEmails = JSON.parse(formData.get('recipientEmails')?.toString() || '[]')
+        } catch {}
+      }
+      if (formData.has('ccEmails')) {
+        try {
+          ccEmails = JSON.parse(formData.get('ccEmails')?.toString() || '[]')
+        } catch {}
+      }
 
       body = {
         action,
@@ -68,38 +85,52 @@ export async function POST(req: Request) {
         intervalDays,
         reminderDays,
         recipientEmployeeIds,
+        recipientEmails,
         ccEmployeeIds,
+        ccEmails,
         additionalCcEmails,
         isActive,
       }
     }
 
+    if (!body.siteId) {
+      return NextResponse.json({ error: 'siteId wajib diisi.' }, { status: 400 })
+    }
+
+    // Save configuration whenever setting fields are present
+    const hasConfigFields =
+      body.intervalDays !== undefined ||
+      body.reminderDays !== undefined ||
+      body.recipientEmails !== undefined ||
+      body.recipientEmployeeIds !== undefined ||
+      body.ccEmails !== undefined ||
+      body.ccEmployeeIds !== undefined ||
+      body.additionalCcEmails !== undefined ||
+      body.isActive !== undefined
+
+    if (hasConfigFields) {
+      await saveMinePermitSiteConfig({
+        siteId: body.siteId,
+        intervalDays: body.intervalDays ?? 1,
+        reminderDays: body.reminderDays ?? 30,
+        recipientEmployeeIds: body.recipientEmployeeIds,
+        recipientEmails: body.recipientEmails,
+        ccEmployeeIds: body.ccEmployeeIds,
+        ccEmails: body.ccEmails,
+        additionalCcEmails: body.additionalCcEmails ?? '',
+        isActive: body.isActive ?? true,
+      })
+    }
+
     // Handle manual test send action
     if (body.action === 'test' || body.action === 'sendNow') {
-      if (!body.siteId) {
-        return NextResponse.json({ error: 'siteId wajib ditentukan untuk test kirim.' }, { status: 400 })
-      }
       const testResult = await sendSiteMinePermitExpiryReminder(body.siteId, true)
       return NextResponse.json({ success: true, testResult })
     }
 
-    if (!body.siteId) {
-      return NextResponse.json({ error: 'siteId is required' }, { status: 400 })
-    }
-
-    await saveMinePermitSiteConfig({
-      siteId: body.siteId,
-      intervalDays: body.intervalDays ?? 1,
-      reminderDays: body.reminderDays ?? 30,
-      recipientEmployeeIds: body.recipientEmployeeIds ?? [],
-      ccEmployeeIds: body.ccEmployeeIds ?? [],
-      additionalCcEmails: body.additionalCcEmails ?? '',
-      isActive: body.isActive ?? true,
-    })
-
     return NextResponse.json({ success: true })
   } catch (error: any) {
     console.error('Error saving mine permit reminder config:', error)
-    return NextResponse.json({ error: error?.message || 'Failed to update config' }, { status: 500 })
+    return NextResponse.json({ error: error?.message || 'Gagal memproses konfigurasi.' }, { status: 500 })
   }
 }

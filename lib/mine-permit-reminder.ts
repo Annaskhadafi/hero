@@ -239,7 +239,7 @@ export async function saveMinePermitSiteConfig(input: {
   let ccIds = input.ccEmployeeIds || []
 
   // If emails are passed, resolve them to employee IDs
-  if (input.recipientEmails && input.recipientEmails.length > 0) {
+  if (input.recipientEmails !== undefined) {
     const cleanEmails = input.recipientEmails.map((e) => e.trim().toLowerCase()).filter(Boolean)
     if (cleanEmails.length > 0) {
       const emps = await db
@@ -247,10 +247,12 @@ export async function saveMinePermitSiteConfig(input: {
         .from(employees)
         .where(inArray(sql`lower(${employees.email})`, cleanEmails))
       recipientIds = emps.map((e) => e.id)
+    } else {
+      recipientIds = []
     }
   }
 
-  if (input.ccEmails && input.ccEmails.length > 0) {
+  if (input.ccEmails !== undefined) {
     const cleanCcEmails = input.ccEmails.map((e) => e.trim().toLowerCase()).filter(Boolean)
     if (cleanCcEmails.length > 0) {
       const emps = await db
@@ -258,6 +260,8 @@ export async function saveMinePermitSiteConfig(input: {
         .from(employees)
         .where(inArray(sql`lower(${employees.email})`, cleanCcEmails))
       ccIds = emps.map((e) => e.id)
+    } else {
+      ccIds = []
     }
   }
 
@@ -396,18 +400,6 @@ export async function sendSiteMinePermitExpiryReminder(
     toEmails = toUsers.map((u) => u.email!.trim().toLowerCase()).filter(Boolean)
   }
 
-  // Fallback To: site head employee if configured recipient list is empty
-  if (toEmails.length === 0 && site.headEmployeeId) {
-    const [head] = await db
-      .select({ email: employees.email })
-      .from(employees)
-      .where(and(eq(employees.id, site.headEmployeeId), eq(employees.isActive, true)))
-      .limit(1)
-    if (head?.email) {
-      toEmails.push(head.email.trim().toLowerCase())
-    }
-  }
-
   if (toEmails.length === 0) {
     return {
       sent: false,
@@ -417,7 +409,7 @@ export async function sendSiteMinePermitExpiryReminder(
       count: expiringEmployees.length,
       toCount: 0,
       ccCount: 0,
-      reason: `Tidak ada email penerima utama (To) yang valid atau terdaftar untuk Site ${site.name}.`,
+      reason: `Penerima utama (To) belum diatur untuk Site ${site.name}. Silakan pilih minimal 1 karyawan penerima di Setting Reminder.`,
     }
   }
 
@@ -437,7 +429,7 @@ export async function sendSiteMinePermitExpiryReminder(
     ccEmails.push(...ccUsers.map((u) => u.email!.trim().toLowerCase()).filter(Boolean))
   }
 
-  if (config.additionalCcEmails) {
+  if (config.additionalCcEmails && config.additionalCcEmails.trim()) {
     const manualCcs = config.additionalCcEmails
       .split(',')
       .map((e) => e.trim().toLowerCase())
@@ -491,7 +483,8 @@ export async function sendSiteMinePermitExpiryReminder(
   // Send Email via Centralized sendWorkflowEmail
   await sendWorkflowEmail({
     to: toEmails,
-    cc: ccEmails.length > 0 ? ccEmails : undefined,
+    cc: ccEmails.length > 0 ? ccEmails : [],
+    exactCc: true,
     templateCode: 'hc_employee_mine_permit_reminder',
     templateName: 'HC Mine Permit Expiry Reminder',
     fallbackSubject: `[Reminder] Mine Permit Karyawan Segera Berakhir — Site ${site.name} (${expiringEmployees.length} Karyawan)`,

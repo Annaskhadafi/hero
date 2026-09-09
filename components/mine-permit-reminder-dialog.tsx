@@ -287,6 +287,11 @@ export function MinePermitReminderDialog() {
     if (!selectedSiteId) return;
     const currentSiteName = sites.find((s) => s.id === selectedSiteId)?.name;
 
+    if (config.recipientEmails.length === 0) {
+      toast.error("Pilih minimal 1 Penerima Utama (To) sebelum melakukan test kirim.");
+      return;
+    }
+
     setIsSending(true);
     try {
       const res = await fetch("/dashboard/api/mine-permit-reminder-config", {
@@ -295,6 +300,12 @@ export function MinePermitReminderDialog() {
         body: JSON.stringify({
           siteId: selectedSiteId,
           action: "test",
+          intervalDays: Number(config.intervalDays) || 1,
+          reminderDays: Number(config.reminderDays) || 30,
+          recipientEmails: config.recipientEmails,
+          ccEmails: config.ccEmails,
+          additionalCcEmails: config.additionalCcEmails,
+          isActive: config.isActive,
         }),
       });
 
@@ -304,6 +315,23 @@ export function MinePermitReminderDialog() {
         if (r?.sent) {
           toast.success(
             `Berhasil! ${r.count} karyawan terdeteksi. Email dikirim ke ${r.toCount} To & ${r.ccCount} CC.`
+          );
+          setConfig((prev) => ({ ...prev, isConfigured: true }));
+          setAllConfigs((prev) =>
+            prev.map((item) =>
+              item.siteId === selectedSiteId
+                ? {
+                    ...item,
+                    isConfigured: true,
+                    intervalDays: Number(config.intervalDays) || 1,
+                    reminderDays: Number(config.reminderDays) || 30,
+                    recipientEmails: config.recipientEmails,
+                    ccEmails: config.ccEmails,
+                    additionalCcEmails: config.additionalCcEmails,
+                    isActive: config.isActive,
+                  }
+                : item
+            )
           );
           // Reload config to refresh lastSentAt
           loadSiteConfig(selectedSiteId);
