@@ -185,9 +185,29 @@ export async function getDailyActivitySessionDocumentData(
         parsedPayload = JSON.parse(item.snapshotPayload || '{}')
       } catch (e) {}
       
+      const cleanPhotoUrl = (u: any) => {
+        const str = typeof u === 'string' ? u : u?.url || u?.dataUrl || ''
+        if (!str || typeof str !== 'string') return null
+        const trimmed = str.trim()
+        if (trimmed.includes('is3.cloudhost.id') && (trimmed.includes('X-Amz-') || trimmed.includes('?'))) {
+          return trimmed.split('?')[0]
+        }
+        return trimmed
+      }
+
+      const rawPhotoUrl =
+        (typeof parsedPayload?.photoUrls?.[0] === 'string' ? parsedPayload.photoUrls[0] : parsedPayload?.photoUrls?.[0]?.url) ||
+        (typeof parsedPayload?.photos?.[0] === 'string' ? parsedPayload.photos[0] : parsedPayload?.photos?.[0]?.url || parsedPayload?.photos?.[0]?.dataUrl) ||
+        (typeof parsedPayload?.photo === 'string' ? parsedPayload.photo : parsedPayload?.photo?.url || parsedPayload?.photo?.dataUrl) ||
+        parsedPayload?.photoUrl ||
+        parsedPayload?.evidencePhotoUrl ||
+        null
+
+      const photoUrl = cleanPhotoUrl(rawPhotoUrl)
+
       return {
         ...item,
-        photoUrl: parsedPayload?.photo?.url || parsedPayload?.photo?.dataUrl || null,
+        photoUrl,
         durationMinutes,
         durationLabel: formatDurationLabel(durationMinutes),
         dayLabel: header.workDate.toLocaleDateString('id-ID', { weekday: 'long' }),
@@ -350,7 +370,13 @@ export async function getPublicDailyActivityEvidenceData(sessionId: number) {
       parsedPayload = JSON.parse(item.snapshotPayload || '{}')
     } catch (e) {}
 
-    const photoUrl = parsedPayload?.photo?.url || parsedPayload?.photo?.dataUrl || null
+    const photoUrl =
+      (typeof parsedPayload?.photoUrls?.[0] === 'string' ? parsedPayload.photoUrls[0] : parsedPayload?.photoUrls?.[0]?.url) ||
+      (typeof parsedPayload?.photos?.[0] === 'string' ? parsedPayload.photos[0] : parsedPayload?.photos?.[0]?.url || parsedPayload?.photos?.[0]?.dataUrl) ||
+      (typeof parsedPayload?.photo === 'string' ? parsedPayload.photo : parsedPayload?.photo?.url || parsedPayload?.photo?.dataUrl) ||
+      parsedPayload?.photoUrl ||
+      parsedPayload?.evidencePhotoUrl ||
+      null
     const durationMinutes = minutesBetween(item.startedAt, item.endedAt)
 
     return {

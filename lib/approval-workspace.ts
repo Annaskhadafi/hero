@@ -360,7 +360,9 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
     new Set(
       woApprovalsList
         .map((a) => a.approverEmployeeId)
-        .filter((id): id is number => id != null)
+        .concat(repairWoRows.map((r) => (r.createdBy ? Number(r.createdBy) : null)))
+        .concat(rawRows.map((r) => r.approverEmployeeId))
+        .filter((id): id is number => id != null && !isNaN(id) && Number.isInteger(id))
     )
   )
   const nodeIds = Array.from(
@@ -606,9 +608,11 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
             row.activityEmployeeId ??
             row.requesterEmployeeId ??
             (row.apdRequestId == null ? null : apdMap.get(row.apdRequestId)?.employeeId) ??
-            (row.fiveRReportId == null ? null : fiveRMap.get(row.fiveRReportId)?.auditorId)
+            (row.fiveRReportId == null ? null : fiveRMap.get(row.fiveRReportId)?.auditorId) ??
+            (row.repairFormWoId == null ? null : (repairWoMap.get(row.repairFormWoId)?.createdBy ? Number(repairWoMap.get(row.repairFormWoId)?.createdBy) : null)) ??
+            row.approverEmployeeId
         )
-        .filter((value): value is number => value != null)
+        .filter((value): value is number => value != null && !isNaN(value) && Number.isInteger(value))
     )
   )
   const siteIds = Array.from(
@@ -883,8 +887,8 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       title = spl.title
     } else if (row.repairFormWoId != null) {
       title = currentRepairWo
-        ? `WO ${currentRepairWo.jenisPengajuan || 'Unknown'} - ${currentRepairWo.noPengajuan || 'Draft'}`
-        : 'WO - Data Hilang'
+        ? `WO ${(currentRepairWo.jenisPengajuan || 'WO').toUpperCase()} - ${currentRepairWo.noPengajuan || currentRepairWo.idWo || 'Draft'}`
+        : (row.activityTitle || row.remarks || 'Work Order')
     } else if (titleFromSnapshot) {
       title = titleFromSnapshot
     } else if (row.apdSummaryId != null) {
@@ -902,6 +906,10 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       resolvedRemarks = `Audit 5R (${fiveR.auditPeriod}) - Skor: ${fiveR.totalScore}/100`
     } else if (spl?.requestNotes) {
       resolvedRemarks = spl.requestNotes
+    } else if (currentRepairWo?.deskripsiPekerjaan) {
+      resolvedRemarks = currentRepairWo.deskripsiPekerjaan
+    } else if (currentRepairWo?.keluhan) {
+      resolvedRemarks = currentRepairWo.keluhan
     } else if (row.remarks) {
       resolvedRemarks = row.remarks
     } else if (summaryFromSnapshot) {
@@ -913,10 +921,16 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       resolvedDescription = `Laporan 5R ${fiveR.picAreaName} (Periode ${fiveR.auditPeriod}) - Skor: ${fiveR.totalScore}`
     } else if (spl?.requestNotes) {
       resolvedDescription = spl.requestNotes
+    } else if (currentRepairWo?.deskripsiPekerjaan) {
+      resolvedDescription = currentRepairWo.deskripsiPekerjaan
+    } else if (currentRepairWo?.keluhan) {
+      resolvedDescription = currentRepairWo.keluhan
     } else if (summaryFromSnapshot) {
       resolvedDescription = summaryFromSnapshot
     } else if (row.remarks) {
       resolvedDescription = row.remarks
+    } else if (row.activityTitle) {
+      resolvedDescription = row.activityTitle
     }
 
     let resolvedRequesterName = 'Unknown Requester'
@@ -926,6 +940,8 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       resolvedRequesterName = currentRepairWo.pemohon
     } else if (requester?.name) {
       resolvedRequesterName = requester.name
+    } else if (row.approverName) {
+      resolvedRequesterName = row.approverName
     }
 
     const resolvedRequesterEmail = fiveR?.auditorEmail || requester?.email || ''
@@ -1765,6 +1781,7 @@ async function getDailyActivityInboxItems(
       workDate: dailyActivitySessions.workDate,
       shiftCode: dailyActivitySessions.shiftCode,
       sessionStatus: dailyActivitySessions.status,
+      summaryRemark: dailyActivitySessions.summaryRemark,
       requesterEmployeeId: dailyActivitySessions.employeeId,
       employeeName: employees.name,
       employeeEmail: employees.email,
@@ -1773,6 +1790,7 @@ async function getDailyActivityInboxItems(
       section: employees.section,
       jobTitle: employees.jobTitle,
       siteName: sites.name,
+      customerName: sites.customerName,
       updatedAt: dailyActivitySessions.updatedAt,
     })
     .from(dailyActivityApprovals)
@@ -1781,7 +1799,13 @@ async function getDailyActivityInboxItems(
       eq(dailyActivityApprovals.sessionId, dailyActivitySessions.id)
     )
     .leftJoin(employees, eq(dailyActivitySessions.employeeId, employees.id))
-    .leftJoin(sites, eq(employees.siteId, sites.id))
+    .leftJoin(
+      sites,
+      or(
+        eq(dailyActivitySessions.siteId, sites.id),
+        and(isNull(dailyActivitySessions.siteId), eq(employees.siteId, sites.id))
+      )
+    )
     .where(
       and(
         ne(dailyActivitySessions.status, 'approved'),
@@ -2034,6 +2058,12 @@ async function getDailyActivityInboxItems(
       section: row.section || '',
       jobTitle: row.jobTitle || 'Serviceman',
       siteName: row.siteName || 'Site Operasional',
+      customerName: row.customerName || 'Default Customer',
+      summaryRemark: row.summaryRemark,
+      teamMembersSummary: (() => {
+        const teamMatch = (row.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)
+        return teamMatch ? teamMatch[1].trim() : null
+      })(),
       shiftCode: row.shiftCode,
       sessionStatus: row.sessionStatus || 'submitted',
       workDate,
@@ -2043,7 +2073,9 @@ async function getDailyActivityInboxItems(
       submittedAt: row.updatedAt ?? row.createdAt,
       dueAt,
       dueState: getContractReviewDueState(dueAt, new Date()),
-      url: `/review/daily-activity/${row.approvalToken}`,
+      url: isReverted
+        ? `/dashboard/activity-hub/document/${row.sessionId}/approval`
+        : `/review/daily-activity/${row.approvalToken}`,
       actionLabel: isReverted ? 'Revisi Dokumen' : 'Buka TTD ↗',
       isReverted,
       status: isReverted ? 'reverted' : 'pending',
@@ -2319,7 +2351,9 @@ async function getOvertimeInboxItems(
       submittedAt: row.updatedAt ?? row.createdAt,
       dueAt,
       dueState: getContractReviewDueState(dueAt, new Date()),
-      url: `/review/overtime/${row.approvalToken}`,
+      url: isReverted
+        ? `/dashboard/overtime-requests/${row.splId}/approval`
+        : `/review/overtime/${row.approvalToken}`,
       actionLabel: isReverted ? 'Revisi Dokumen' : 'Buka TTD ↗',
       isReverted,
       status: isReverted ? 'reverted' : 'pending',

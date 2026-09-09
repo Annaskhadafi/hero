@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import * as XLSX from 'xlsx'
+import QRCode from 'qrcode'
 import {
   Check,
   CheckCheck,
@@ -35,6 +36,7 @@ import {
   ZoomOut,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { DailyActivityEvidenceModal } from '@/components/daily-activity-evidence-modal'
 import { SopWinAccessSettingsModal } from '@/components/sop-win/sop-win-access-settings-modal'
 import { getDepartmentSignatories, getDepartmentWorkflowSteps } from '@/components/sop-win/sop-win-approval-workspace'
 import { approveApprovalGroupAction, reviewApprovalAction } from '@/app/dashboard/admin-actions'
@@ -349,6 +351,7 @@ export function InboxTab({
 
   // Signature state
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null)
+  const [currentUserName, setCurrentUserName] = useState<string | null>(null)
   const [isMissingSignatureDialogOpen, setIsMissingSignatureDialogOpen] = useState(false)
   const [isAccessSettingsOpen, setIsAccessSettingsOpen] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -362,8 +365,13 @@ export function InboxTab({
     async function loadSig() {
       try {
         const res = await getUserSignatureAction()
-        if (res.success && res.signatureDataUrl) {
-          setSignatureDataUrl(res.signatureDataUrl)
+        if (res.success) {
+          if (res.signatureDataUrl) {
+            setSignatureDataUrl(res.signatureDataUrl)
+          }
+          if (res.employeeName) {
+            setCurrentUserName(res.employeeName)
+          }
         }
       } catch (e) {
         console.error(e)
@@ -496,6 +504,11 @@ export function InboxTab({
         department: (d as any).department,
         section: (d as any).section,
         siteName: d.siteName,
+        customerName: (d as any).customerName,
+        summaryRemark: (d as any).summaryRemark,
+        teamMembersSummary: (d as any).teamMembersSummary,
+        employeeSn: (d as any).employeeSn,
+        jobTitle: (d as any).jobTitle,
         workDate: (d as any).workDate || d.submittedAt,
         shiftCode: d.shiftCode,
         stepLabel: d.stepLabel,
@@ -597,9 +610,42 @@ export function InboxTab({
     }
 
     for (const g of groups) {
-      const formWoItem = g.items.find((i: any) => i.repairFormWo || i.activityType === 'Form WO' || (i as any).requestKindLabel === 'Form WO')
-      const isFormWo = Boolean(formWoItem?.repairFormWo)
-      const woData = formWoItem?.repairFormWo
+      const formWoItem = g.items.find(
+        (i: any) =>
+          i.repairFormWo ||
+          i.activityType === 'Form WO' ||
+          i.activityType === 'Work Order' ||
+          (i as any).requestKindLabel === 'Form WO' ||
+          (i as any).repairFormWoId != null ||
+          (i as any).title?.toLowerCase().includes('work order') ||
+          (i as any).title?.toLowerCase().includes('wo ')
+      )
+      const isFormWo = Boolean(
+        formWoItem &&
+          (formWoItem.repairFormWo ||
+            formWoItem.activityType === 'Work Order' ||
+            (formWoItem as any).repairFormWoId != null)
+      )
+      const woData =
+        formWoItem?.repairFormWo ||
+        (isFormWo && formWoItem
+          ? {
+              id: (formWoItem as any).repairFormWoId || formWoItem.activityId,
+              noPengajuan: formWoItem.requestNumber || formWoItem.title || `WO-${formWoItem.activityId}`,
+              jenisPengajuan: formWoItem.title?.toLowerCase().includes('service') ? 'service' : 'repair',
+              pemohon: formWoItem.requesterName || g.requesterName,
+              pemohonJobTitle: formWoItem.requesterJobTitle || 'Pemohon',
+              customer: formWoItem.unitNumber || g.siteName || 'Customer',
+              site: formWoItem.siteName || g.siteName,
+              deskripsiPekerjaan:
+                formWoItem.description && formWoItem.description !== '-'
+                  ? formWoItem.description
+                  : formWoItem.title || formWoItem.remarks || 'Work Order Request',
+              totalAmount: String((formWoItem as any).totalAmount || 0),
+              submitterSignatureUrl: formWoItem.signatureUrl || null,
+              steps: (formWoItem as any).steps || [],
+            }
+          : null)
 
       if (isFormWo && woData) {
         list.push({
@@ -622,17 +668,19 @@ export function InboxTab({
           customerName: woData.customer,
           totalAmount: woData.totalAmount,
           signatureUrl: woData.submitterSignatureUrl,
+          approverName: g.items[0]?.approverName || formWoItem?.approverName || null,
           rawFormWo: {
             ...woData,
-            steps: formWoItem?.steps?.map((s: any) => ({
-              level: s.level,
-              approverName: s.approverName,
-              jobTitle: s.label,
-              status: s.status,
-              decision: s.status,
-              reviewedAt: s.reviewedAt,
-              signatureUrl: s.signatureUrl || null,
-            })) || [],
+            steps:
+              formWoItem?.steps?.map((s: any) => ({
+                level: s.level,
+                approverName: s.approverName,
+                jobTitle: s.label || s.jobTitle,
+                status: s.status,
+                decision: s.status,
+                reviewedAt: s.reviewedAt,
+                signatureUrl: s.signatureUrl || null,
+              })) || (woData.steps || []),
           },
           rawGeneralGroup: g,
         })
@@ -709,6 +757,7 @@ export function InboxTab({
           activityType: isSummary ? 'Summary APD' : (apdItem?.activityType || (isApd ? (isMaterial ? 'Request Material' : isTools ? 'Request Tools' : 'Request APD') : 'Form Activity')),
           activityId: apdItem?.activityId || g.id,
           approvalId: apdItem?.approvalId || g.items[0]?.approvalId,
+          approverName: g.items[0]?.approverName || null,
           rawGeneralGroup: g,
         })
       }
@@ -1598,7 +1647,13 @@ export function InboxTab({
                     asChild
                     className="w-full h-11 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white rounded-xl shadow-xs flex items-center justify-center gap-2"
                   >
-                    <a href={item.url || '#'}>
+                    <a
+                      href={
+                        item.category === 'DAILY_ACTIVITY'
+                          ? `/mobile/activity?edit=${(item as any).sessionId || (item as any).rawDaily?.sessionId || item.id.replace('daily-activity-', '')}`
+                          : item.url || '#'
+                      }
+                    >
                       Revisi Dokumen ↗
                     </a>
                   </Button>
@@ -2158,8 +2213,9 @@ export function InboxTab({
                       {currentBatchDoc.category === 'DAILY_ACTIVITY' && currentBatchDoc.rawDaily && (
                         <div>
                           <div className="text-center mb-3">
-                            <h2 className="text-xs font-bold tracking-wider text-[#0d3b66] border-b-2 border-[#0d3b66] inline-block pb-0.5 uppercase">
-                              DAILY ACTIVITY APPROVAL REPORT
+                            <p className="font-bold text-[10pt] text-black mb-0.5 uppercase">PT. CHITRA PARATAMA</p>
+                            <h2 className="font-bold text-[11.5pt] text-black uppercase tracking-wider">
+                              {(currentBatchDoc as any).spl ? 'SURAT PERINTAH LEMBUR' : 'DAILY ACTIVITY APPROVAL REPORT'}
                             </h2>
                           </div>
 
@@ -2184,47 +2240,55 @@ export function InboxTab({
                                 <td>Dept / Section: <strong>{[currentBatchDoc.department, currentBatchDoc.section].filter(Boolean).join(' / ') || '—'}</strong></td>
                               </tr>
                               <tr>
-                                <td>Site: <strong>{currentBatchDoc.siteName || '—'}</strong></td>
-                                <td>Customer: <strong>{(currentBatchDoc.rawDaily as any).customerName || 'Default Customer'}</strong></td>
+                                <td>Site: <strong>{currentBatchDoc.siteName || (currentBatchDoc.rawDaily as any)?.siteName || '—'}</strong></td>
+                                <td>Customer: <strong>{(currentBatchDoc.rawDaily as any)?.customerName || (currentBatchDoc as any)?.customerName || (currentBatchDoc.rawDaily as any)?.site?.customerName || 'Default Customer'}</strong></td>
                               </tr>
+                              {((currentBatchDoc.rawDaily as any)?.teamMembersSummary || (currentBatchDoc as any)?.teamMembersSummary || ((currentBatchDoc.rawDaily as any)?.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1] || ((currentBatchDoc as any)?.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1]) ? (
+                                <tr>
+                                  <td colSpan={2}>
+                                    Anggota Tim: <strong className="text-blue-900">{(currentBatchDoc.rawDaily as any)?.teamMembersSummary || (currentBatchDoc as any)?.teamMembersSummary || ((currentBatchDoc.rawDaily as any)?.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1] || ((currentBatchDoc as any)?.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1]}</strong>
+                                  </td>
+                                </tr>
+                              ) : null}
                             </tbody>
                           </table>
 
                           {/* A. Daily Activity Items */}
                           {(() => {
                             const items = (currentBatchDoc.rawDaily as any)?.items || (currentBatchDoc.rawDaily as any)?.sessionItems || (currentBatchDoc as any)?.items || []
-                            const totalPoints = items.reduce((sum: number, it: any) => sum + (it.points ?? it.actualPoints ?? 0), 0)
                             return (
                               <>
                                 <div className="font-bold mb-1 text-[8.5pt]">
-                                  A. Daily Activity Items (Total: {items.length} item, {totalPoints} poin)
+                                  A. Daily Activity Items (Total: {items.length} item)
                                 </div>
                                 <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8pt]">
                                   <thead>
-                                    <tr className="bg-white font-bold text-center">
-                                      <th className="w-[6%]">#</th>
-                                      <th className="text-left w-[40%]">Aktivitas</th>
+                                    <tr className="bg-gray-100 font-bold text-center">
+                                      <th className="w-[5%]">#</th>
+                                      <th className="text-left w-[38%]">Aktivitas</th>
                                       <th className="w-[14%]">Unit</th>
                                       <th className="w-[12%]">Durasi</th>
                                       <th className="w-[10%]">Poin</th>
-                                      <th className="text-left w-[18%]">Remark</th>
+                                      <th className="text-left w-[21%]">Remark</th>
                                     </tr>
                                   </thead>
                                   <tbody>
                                     {items.length > 0 ? (
-                                      items.map((it: any, idx: number) => (
-                                        <tr key={it.id || idx}>
-                                          <td className="text-center">{idx + 1}</td>
-                                          <td>{it.label || it.snapshotLabel || 'Aktivitas'}</td>
-                                          <td className="text-center">{it.unitNumber || '-'}</td>
-                                          <td className="text-center">{it.duration || '-'}</td>
-                                          <td className="text-center font-bold">{it.points ?? it.actualPoints ?? 0}</td>
-                                          <td className="text-left text-[7.5pt]">{it.remark || '-'}</td>
-                                        </tr>
-                                      ))
+                                      items.map((it: any, idx: number) => {
+                                        return (
+                                          <tr key={it.id || idx}>
+                                            <td className="text-center align-middle">{idx + 1}</td>
+                                            <td className="align-middle">{it.label || it.snapshotLabel || 'Aktivitas'}</td>
+                                            <td className="text-center align-middle">{it.unitNumber || '-'}</td>
+                                            <td className="text-center align-middle">{it.duration || '-'}</td>
+                                            <td className="text-center font-bold align-middle">{it.points || it.actualPoints || 0}</td>
+                                            <td className="text-left text-[7.5pt] align-middle">{it.remark || it.remarks || '-'}</td>
+                                          </tr>
+                                        )
+                                      })
                                     ) : (
                                       <tr>
-                                        <td colSpan={6} className="text-center text-slate-400 py-2">Belum ada item aktivitas.</td>
+                                        <td colSpan={6} className="text-center text-slate-400 py-3">Belum ada item aktivitas.</td>
                                       </tr>
                                     )}
                                   </tbody>
@@ -2233,53 +2297,7 @@ export function InboxTab({
                             )
                           })()}
 
-                          {/* B. Approval Steps */}
-                          <div className="font-bold mb-1 text-[8.5pt]">B. Approval Steps</div>
-                          <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8pt]" style={{ tableLayout: 'fixed' }}>
-                            <thead>
-                              <tr className="bg-white font-bold text-center">
-                                <th style={{ width: '6%' }}>#</th>
-                                <th className="text-left" style={{ width: '22%' }}>Tahap</th>
-                                <th className="text-left" style={{ width: '24%' }}>Approver</th>
-                                <th style={{ width: '14%' }}>Status</th>
-                                <th style={{ width: '18%' }}>Waktu</th>
-                                <th className="text-left" style={{ width: '16%' }}>Catatan</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {((currentBatchDoc.rawDaily as any).approvals || []).map((step: any) => {
-                                const isPending = step.status === 'pending'
-                                const isReverted = step.status === 'reverted'
-                                const isApproved = step.status === 'approved' || step.status === 'signed' || step.status === 'completed'
-                                const liveRemark = isPending && approvalRemarks[currentBatchDoc.id] ? approvalRemarks[currentBatchDoc.id] : step.remarks || '—'
-                                const timeLabel = step.signedAt
-                                  ? formatTimestamp(step.signedAt)
-                                  : isPending && approvalRemarks[currentBatchDoc.id]
-                                  ? 'Live Preview'
-                                  : '—'
-                                return (
-                                  <tr key={step.stepOrder} className={isReverted ? "bg-amber-50/70" : undefined}>
-                                    <td className="text-center">{step.stepOrder}</td>
-                                    <td className="text-left font-medium">{step.stepLabel}</td>
-                                    <td className="text-left font-medium">{step.approverName || '-'}</td>
-                                    <td className={cn(
-                                      "text-center capitalize font-bold",
-                                      isApproved ? "text-emerald-700" :
-                                      isReverted ? "text-amber-700" :
-                                      step.status === 'rejected' ? "text-rose-700" :
-                                      "text-slate-700"
-                                    )}>
-                                      {isReverted ? 'Reverted' : step.status}
-                                    </td>
-                                    <td className="text-center text-[7pt]">{timeLabel}</td>
-                                    <td className="italic text-slate-600 text-[7.5pt] break-words whitespace-normal leading-tight">{liveRemark}</td>
-                                  </tr>
-                                )
-                              })}
-                            </tbody>
-                          </table>
-
-                          {/* Signatories (3 Roles: Employee, Leader/PJO, Section Head) */}
+                          {/* B. Approval Steps Table & Signatories */}
                           {(() => {
                             const approvals = (currentBatchDoc.rawDaily as any).approvals || []
                             const step1 = approvals.find((s: any) => s.stepOrder === 1)
@@ -2294,10 +2312,61 @@ export function InboxTab({
                             const sig2 = step2?.signatureDataUrl || step2?.signatureUrl || null
                             const sig3 = step3?.signatureDataUrl || step3?.signatureUrl || null
 
+                            const rawSessionId = (currentBatchDoc.rawDaily as any)?.sessionId || (currentBatchDoc.rawDaily as any)?.id || currentBatchDoc.id
+                            const sessionId = typeof rawSessionId === 'string' ? rawSessionId.replace(/^daily-activity-/, '') : rawSessionId
+
                             return (
                               <>
-                                <div className="font-bold mb-3 text-[8.5pt]">Signatories</div>
-                                <div className="grid grid-cols-3 gap-x-6 gap-y-4 mb-4">
+                                {/* B. Approval Steps */}
+                                <div className="font-bold mb-1 text-[8.5pt]">
+                                  B. Approval Steps
+                                </div>
+                                <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-center text-[8pt]" style={{ tableLayout: 'fixed' }}>
+                                  <thead>
+                                    <tr className="bg-gray-100 font-bold">
+                                      <th style={{ width: '6%' }}>#</th>
+                                      <th className="text-left" style={{ width: '22%' }}>Tahap</th>
+                                      <th className="text-left" style={{ width: '22%' }}>Approver</th>
+                                      <th style={{ width: '14%' }}>Status</th>
+                                      <th style={{ width: '16%' }}>Waktu</th>
+                                      <th className="text-left" style={{ width: '20%' }}>Catatan</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {approvals.length > 0 ? (
+                                      approvals.map((step: any) => {
+                                        const isCurrentStepActive = step.status === 'pending'
+                                        const liveRemark = isCurrentStepActive && approvalRemarks[currentBatchDoc.id]
+                                          ? approvalRemarks[currentBatchDoc.id]
+                                          : step.remarks || '—'
+                                        const isApproved = step.status === 'approved' || step.status === 'signed'
+                                        return (
+                                          <tr key={step.stepOrder || step.id}>
+                                            <td>{step.stepOrder}</td>
+                                            <td className="text-left">{step.stepLabel}</td>
+                                            <td className="text-left font-semibold">{step.approverName || '-'}</td>
+                                            <td className={cn("capitalize font-semibold", isApproved ? "text-emerald-700 font-bold" : "")}>
+                                              {step.stepOrder === 1 && isApproved
+                                                ? 'Approved'
+                                                : step.status}
+                                            </td>
+                                            <td className="text-[7pt] font-mono">{formatTimestamp(step.signedAt)}</td>
+                                            <td className="text-left italic text-slate-600 text-[7.5pt] break-words whitespace-normal leading-tight" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                                              {liveRemark}
+                                            </td>
+                                          </tr>
+                                        )
+                                      })
+                                    ) : (
+                                      <tr>
+                                        <td colSpan={6} className="text-center text-slate-400 py-2">Belum ada riwayat persetujuan.</td>
+                                      </tr>
+                                    )}
+                                  </tbody>
+                                </table>
+
+                                <div className="font-bold mb-2 text-[8.5pt]">Signatories</div>
+                                <div className="grid grid-cols-3 gap-x-6 gap-y-4 mb-3">
                                   {/* Karyawan */}
                                   <div>
                                     <div className="text-[7pt] text-slate-500 mb-1">Employee Signature</div>
@@ -2375,7 +2444,10 @@ export function InboxTab({
                                   </div>
                                 </div>
 
-                                <div className="text-right text-[7pt] text-slate-400 mt-4">PT Chitra Paratama • HERO Platform</div>
+                                {/* Evidence QR in Bottom Right Corner (Clickable to open floating modal) */}
+                                <div className="absolute right-[20mm] bottom-[18mm]">
+                                  <DailyActivityEvidenceQr sessionId={sessionId} />
+                                </div>
                               </>
                             )
                           })()}
@@ -3423,7 +3495,7 @@ export function InboxTab({
                         <div>
                           <div className="text-center mb-3">
                             <h2 className="text-xs font-bold tracking-wider text-[#0d3b66] border-b-2 border-[#0d3b66] inline-block pb-0.5 uppercase">
-                              FORM ACTIVITY APPROVAL REPORT
+                              FORM DAILY ACTIVITY
                             </h2>
                           </div>
 
@@ -3461,16 +3533,25 @@ export function InboxTab({
                               </tr>
                             </thead>
                             <tbody>
-                              {(currentBatchDoc.rawGeneralGroup.items || []).map((it: any, idx: number) => (
-                                <tr key={it.activityId || idx}>
-                                  <td className="text-center">{idx + 1}</td>
-                                  <td className="font-semibold">{it.activityType || 'Aktivitas'}</td>
-                                  <td className="text-center">{it.unitNumber || it.equipmentNo || '-'}</td>
-                                  <td className="text-left">{it.title || it.description || '-'}</td>
-                                  <td className="text-center text-[7.5pt]">{it.timeRange || '-'}</td>
-                                  <td className="text-center capitalize text-[7.5pt]">{it.dailyActivityStatus || 'Submitted'}</td>
-                                </tr>
-                              ))}
+                              {(currentBatchDoc.rawGeneralGroup.items || []).map((it: any, idx: number) => {
+                                const desc = it.description && it.description !== '-' ? it.description : (it.title || it.remarks || '-')
+                                const hasDifferentRemarks = it.remarks && it.remarks !== desc && it.remarks !== '-'
+                                return (
+                                  <tr key={it.activityId || idx}>
+                                    <td className="text-center">{idx + 1}</td>
+                                    <td className="font-semibold">{it.activityType || 'Aktivitas'}</td>
+                                    <td className="text-center">{it.unitNumber || it.equipmentNo || '-'}</td>
+                                    <td className="text-left">
+                                      <div className="font-medium">{desc}</div>
+                                      {hasDifferentRemarks && (
+                                        <div className="text-[7pt] text-slate-500 italic mt-0.5">{it.remarks}</div>
+                                      )}
+                                    </td>
+                                    <td className="text-center text-[7.5pt]">{it.timeRange || (it.startTime && it.endTime ? `${formatTime(it.startTime)} - ${formatTime(it.endTime)}` : '-')}</td>
+                                    <td className="text-center capitalize text-[7.5pt]">{it.dailyActivityStatus || it.activityStatus || 'Submitted'}</td>
+                                  </tr>
+                                )
+                              })}
                             </tbody>
                           </table>
 
@@ -3479,23 +3560,23 @@ export function InboxTab({
                           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
                             <div className="border border-black p-2 text-center text-[8pt] bg-white relative">
                               <p className="font-bold text-[7.5pt] text-slate-600 mb-6">Diajukan Oleh (Karyawan)</p>
-                              {((currentBatchDoc as any).submitterSignatureUrl || (currentBatchDoc.rawGeneralGroup as any)?.submitterSignatureUrl || (currentBatchDoc.rawGeneralGroup?.items?.[0] as any)?.signatureUrl) && (
+                              {((currentBatchDoc as any).signatureUrl || (currentBatchDoc as any).submitterSignatureUrl || (currentBatchDoc.rawGeneralGroup as any)?.submitterSignatureUrl || (currentBatchDoc.rawGeneralGroup?.items?.[0] as any)?.signatureUrl) && (
                                 <div className="absolute inset-x-0 top-6 flex justify-center pointer-events-none">
-                                  <img src={(currentBatchDoc as any).submitterSignatureUrl || (currentBatchDoc.rawGeneralGroup as any)?.submitterSignatureUrl || (currentBatchDoc.rawGeneralGroup?.items?.[0] as any)?.signatureUrl} alt="TTD" className="h-10 object-contain" />
+                                  <img src={(currentBatchDoc as any).signatureUrl || (currentBatchDoc as any).submitterSignatureUrl || (currentBatchDoc.rawGeneralGroup as any)?.submitterSignatureUrl || (currentBatchDoc.rawGeneralGroup?.items?.[0] as any)?.signatureUrl} alt="TTD" className="h-10 object-contain" />
                                 </div>
                               )}
-                              <p className="font-bold underline">{currentBatchDoc.employeeName}</p>
+                              <p className="font-bold underline">{currentBatchDoc.employeeName || 'Karyawan'}</p>
                               <p className="text-[7pt] text-slate-500">{formatDate(currentBatchDoc.submittedAt)}</p>
                             </div>
                             <div className="border border-black p-2 text-center text-[8pt] bg-white relative">
                               <p className="font-bold text-[7.5pt] text-slate-600 mb-6">Persetujuan / Atasan</p>
-                              {signatureDataUrl && (
+                              {(signatureDataUrl || (currentBatchDoc as any).approverSignatureUrl || (currentBatchDoc.rawGeneralGroup?.items?.[0] as any)?.approverSignatureUrl) && (
                                 <div className="absolute inset-x-0 top-6 flex justify-center pointer-events-none">
-                                  <img src={signatureDataUrl} alt="Live TTD" className="h-10 object-contain" />
+                                  <img src={signatureDataUrl || (currentBatchDoc as any).approverSignatureUrl || (currentBatchDoc.rawGeneralGroup?.items?.[0] as any)?.approverSignatureUrl} alt="Live TTD" className="h-10 object-contain" />
                                 </div>
                               )}
-                              <p className="font-bold underline">{currentBatchDoc.approverName || 'Approver'}</p>
-                              <p className="text-[7pt] text-indigo-700 font-semibold">{currentBatchDoc.stepLabel}</p>
+                              <p className="font-bold underline">{currentUserName || currentBatchDoc.approverName || 'Approver'}</p>
+                              <p className="text-[7pt] text-indigo-700 font-semibold">{currentBatchDoc.stepLabel || 'Persetujuan Atasan'}</p>
                             </div>
                           </div>
                         </div>
@@ -4117,5 +4198,51 @@ export function ApprovalWorkbench({
         </TabsContent>
       </Tabs>
     </AdminPageShell>
+  )
+}
+
+function DailyActivityEvidenceQr({ sessionId }: { sessionId?: number | string | null }) {
+  const [qrUrl, setQrUrl] = useState<string>('')
+  const [isEvidenceModalOpen, setIsEvidenceModalOpen] = useState(false)
+  const cleanSessionId = typeof sessionId === 'string' ? sessionId.replace(/^daily-activity-/, '') : sessionId
+
+  useEffect(() => {
+    if (!cleanSessionId) return
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    QRCode.toDataURL(`${origin}/activity-evidence/${cleanSessionId}`, { margin: 1, width: 140, errorCorrectionLevel: 'M' })
+      .then(setQrUrl)
+      .catch((e) => console.error('Failed to generate evidence QR in approval workbench:', e))
+  }, [cleanSessionId])
+
+  return (
+    <>
+      <div
+        onClick={() => setIsEvidenceModalOpen(true)}
+        className="flex flex-col items-center justify-start text-center border-l border-slate-200 pl-2 cursor-pointer group select-none transition-transform hover:scale-105 active:scale-95"
+        title="Klik untuk membuka galeri foto bukti pekerjaan"
+      >
+        <div className="h-14 flex items-center justify-center">
+          {qrUrl ? (
+            <img src={qrUrl} alt="QR Evidence" className="h-12 w-12 object-contain rounded border border-slate-200 p-0.5 bg-white shadow-xs group-hover:border-indigo-500 group-hover:shadow-md transition-all" />
+          ) : (
+            <div className="h-12 w-12 rounded border border-dashed border-slate-300 flex items-center justify-center text-[6pt] text-slate-400">
+              QR Code
+            </div>
+          )}
+        </div>
+        <div className="font-bold text-[7.5pt] text-slate-800 mt-0.5 group-hover:text-indigo-600 transition-colors">
+          Scan / Klik Bukti Kerja
+        </div>
+        <div className="text-[6.5pt] text-slate-500 leading-tight">
+          Validasi Dokumen Digital
+        </div>
+      </div>
+
+      <DailyActivityEvidenceModal
+        isOpen={isEvidenceModalOpen}
+        onClose={() => setIsEvidenceModalOpen(false)}
+        sessionId={sessionId}
+      />
+    </>
   )
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import QRCode from 'qrcode'
 import {
   AlertCircle,
   Camera,
@@ -33,6 +34,7 @@ import {
 } from '@/app/dashboard/activity-hub/actions'
 import { downloadElementAsPdf } from '@/lib/pdf-download'
 import { MobileSignatureSection } from '@/components/mobile/mobile-signature-section'
+import { DailyActivityEvidenceModal } from '@/components/daily-activity-evidence-modal'
 import { cn } from '@/lib/utils'
 
 import { Badge } from '@/components/ui/badge'
@@ -364,12 +366,21 @@ async function uploadActivityPhoto(file: File) {
 async function prepareEvidence(
   files: File[] | undefined,
   fallbackFile?: File | null,
-  restored?: QueuedFilePayload | null
+  restored?: QueuedFilePayload | null,
+  existingPreviewUrls?: string[]
 ) {
   const selectedFiles = files?.length ? files : fallbackFile ? [fallbackFile] : []
   if (selectedFiles.length > 0) {
     // ponytail: failed submissions may leave orphaned evidence; add cleanup when storage growth warrants it.
     return { payloads: [], urls: await Promise.all(selectedFiles.map(uploadActivityPhoto)) }
+  }
+  if (existingPreviewUrls && existingPreviewUrls.length > 0) {
+    const validExistingUrls = existingPreviewUrls.filter(
+      (url) => typeof url === 'string' && (url.startsWith('http') || url.startsWith('/'))
+    )
+    if (validExistingUrls.length > 0) {
+      return { payloads: [], urls: validExistingUrls }
+    }
   }
   return { payloads: restored ? [restored] : [], urls: [] }
 }
@@ -427,6 +438,29 @@ function alignDateTimeToReference(value: string, reference: string) {
   return time ? `${reference.slice(0, 10)}${time}` : reference
 }
 
+function formatSubmitDateTime(val: string | Date | null | undefined, baseDate: string): string | undefined {
+  if (!val) return undefined
+  if (val instanceof Date) {
+    return isNaN(val.getTime()) ? undefined : val.toISOString()
+  }
+  const trimmed = String(val).trim()
+  if (!trimmed) return undefined
+  if (trimmed.includes('T')) {
+    const d = new Date(trimmed)
+    if (!isNaN(d.getTime())) return d.toISOString()
+    const cleaned = trimmed.replace(/:00:00$/, ':00')
+    const d2 = new Date(cleaned)
+    if (!isNaN(d2.getTime())) return d2.toISOString()
+  }
+  if (/^\d{2}:\d{2}(:\d{2})?$/.test(trimmed)) {
+    const timePart = trimmed.length === 5 ? `${trimmed}:00` : trimmed
+    const d = new Date(`${baseDate}T${timePart}`)
+    if (!isNaN(d.getTime())) return d.toISOString()
+  }
+  const d = new Date(trimmed)
+  return !isNaN(d.getTime()) ? d.toISOString() : undefined
+}
+
 function getDurationMinutes(startTime: string, endTime: string) {
   const start = new Date(startTime)
   const end = new Date(endTime)
@@ -460,6 +494,52 @@ function normalizeSearch(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, ' ')
 }
 
+function cleanPhotoUrl(url: string): string {
+  if (!url || typeof url !== 'string') return ''
+  const trimmed = url.trim()
+  if (trimmed.includes('is3.cloudhost.id') && (trimmed.includes('X-Amz-') || trimmed.includes('?'))) {
+    return trimmed.split('?')[0]
+  }
+  return trimmed
+}
+
+function extractItemPhotos(item: any): string[] {
+  if (!item) return []
+  const urls: string[] = []
+  if (Array.isArray(item.photos)) {
+    item.photos.forEach((p: any) => {
+      const u = typeof p === 'string' ? p : p?.url || p?.dataUrl || ''
+      if (u && typeof u === 'string' && u.trim().length > 0) urls.push(cleanPhotoUrl(u))
+    })
+  }
+  if (Array.isArray(item.photoUrls)) {
+    item.photoUrls.forEach((p: any) => {
+      const u = typeof p === 'string' ? p : p?.url || p?.dataUrl || ''
+      if (u && typeof u === 'string' && u.trim().length > 0) urls.push(cleanPhotoUrl(u))
+    })
+  }
+  if (item.photoUrl && typeof item.photoUrl === 'string' && item.photoUrl.trim().length > 0) {
+    urls.push(cleanPhotoUrl(item.photoUrl))
+  }
+  if (item.photo) {
+    const u = typeof item.photo === 'string' ? item.photo : item.photo?.url || item.photo?.dataUrl || ''
+    if (u && typeof u === 'string' && u.trim().length > 0) urls.push(cleanPhotoUrl(u))
+  }
+  if (item.evidencePhotoUrl && typeof item.evidencePhotoUrl === 'string' && item.evidencePhotoUrl.trim().length > 0) {
+    urls.push(cleanPhotoUrl(item.evidencePhotoUrl))
+  }
+  if (item.snapshotPayload) {
+    try {
+      const parsed = typeof item.snapshotPayload === 'string' ? JSON.parse(item.snapshotPayload) : item.snapshotPayload
+      if (parsed) {
+        const sub = extractItemPhotos(parsed)
+        urls.push(...sub)
+      }
+    } catch {}
+  }
+  return Array.from(new Set(urls.filter((u) => typeof u === 'string' && u.trim().length > 0)))
+}
+
 export function MobileDailyActivityForm({
   employeeId,
   employee,
@@ -488,6 +568,18 @@ export function MobileDailyActivityForm({
     }
     return new Date().toISOString().slice(0, 10)
   })
+
+  const [evidenceQrDataUrl, setEvidenceQrDataUrl] = useState<string>('')
+  const [isEvidenceModalOpen, setIsEvidenceModalOpen] = useState(false)
+
+  useEffect(() => {
+    const targetSessionId = initialSessionData?.sessionId || initialSessionData?.id || revisionSessionId
+    if (!targetSessionId) return
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    QRCode.toDataURL(`${origin}/activity-evidence/${targetSessionId}`, { margin: 1, width: 140, errorCorrectionLevel: 'M' })
+      .then(setEvidenceQrDataUrl)
+      .catch((e) => console.error('Failed to generate evidence QR in mobile form:', e))
+  }, [initialSessionData?.sessionId, initialSessionData?.id, revisionSessionId])
   const [shiftCode, setShiftCode] = useState<string>(
     initialSessionData?.shiftCode || routeChecklist?.shiftCode || 'ALL'
   )
@@ -525,7 +617,9 @@ export function MobileDailyActivityForm({
               : toDateTimeLocalValue(item.endedAt)
             : defaultEndTime
 
-          entries[idStr] = {
+          const existingUrls = extractItemPhotos(item)
+
+          const entryData: SelfInputEntryState = {
             equipmentNo: item.unitNumber || '',
             startTime: startVal,
             endTime: endVal,
@@ -533,6 +627,16 @@ export function MobileDailyActivityForm({
             tireCount: 1,
             notes: item.remark || '',
             photoFiles: [],
+            photoName: existingUrls.length > 0 ? `${existingUrls.length} foto terlampir` : '',
+            previewUrls: existingUrls,
+          }
+
+          entries[idStr] = entryData
+          if (item.libraryActivityId) {
+            entries[String(item.libraryActivityId)] = entryData
+          }
+          if (item.id) {
+            entries[String(item.id)] = entryData
           }
         }
       }
@@ -542,6 +646,8 @@ export function MobileDailyActivityForm({
   })
 
   const initialCustomItem = initialSessionData?.sessionItems?.find((i: any) => !i.libraryActivityId)
+  const initialCustomUrls: string[] = initialCustomItem ? extractItemPhotos(initialCustomItem) : []
+
   const [customActivityName, setCustomActivityName] = useState(initialCustomItem?.label || '')
   const [customActivityDescription, setCustomActivityDescription] = useState('')
   const [equipmentNo, setEquipmentNo] = useState(initialCustomItem?.unitNumber || '')
@@ -572,47 +678,124 @@ export function MobileDailyActivityForm({
     return hierarchy?.superior?.id ? String(hierarchy.superior.id) : ''
   })
 
+  const initializedSessionIdRef = useRef<number | string | null>(null)
+  const currentSessionKey = initialSessionData?.sessionId || initialSessionData?.id || revisionSessionId || null
+
   useEffect(() => {
-    if (initialSessionData) {
-      const cust =
-        initialSessionData.customerName ||
-        initialSessionData.site?.customerName ||
-        (site?.customerName && site.customerName !== 'Default Customer' ? site.customerName : '')
-      if (cust) {
-        setCustomerName(cust)
-      }
-      if (initialSessionData.shiftCode) {
-        setShiftCode(initialSessionData.shiftCode)
-      }
-      if (initialSessionData.summaryRemark || initialSessionData.notes) {
-        setNotes(initialSessionData.summaryRemark || initialSessionData.notes)
-      }
-      if (initialSessionData.workDate) {
-        try {
-          const d = new Date(initialSessionData.workDate)
-          if (!isNaN(d.getTime())) {
-            setWorkDate(d.toISOString().slice(0, 10))
-          }
-        } catch {}
-      }
-      const leaderApp =
-        initialSessionData.approvals?.find((a: any) => a.approverRole === 'leader' || a.stepOrder === 2) ||
-        initialSessionData.approvals?.find((a: any) => a.stepOrder === 1)
-      if (leaderApp?.approverEmployeeId) {
-        setLeaderEmployeeId(String(leaderApp.approverEmployeeId))
-      }
-      const superiorApp =
-        initialSessionData.approvals?.find((a: any) => a.approverRole === 'section_head' || a.stepOrder === 3) ||
-        initialSessionData.approvals?.find((a: any) => a.stepOrder === 2)
-      if (superiorApp?.approverEmployeeId) {
-        setSuperiorEmployeeId(String(superiorApp.approverEmployeeId))
+    if (!initialSessionData) return
+
+    // Only synchronize from initialSessionData once per session to avoid overwriting user edits on re-render
+    if (initializedSessionIdRef.current === currentSessionKey) {
+      return
+    }
+    initializedSessionIdRef.current = currentSessionKey
+
+    const cust =
+      initialSessionData.customerName ||
+      initialSessionData.site?.customerName ||
+      (site?.customerName && site.customerName !== 'Default Customer' ? site.customerName : '')
+    if (cust) {
+      setCustomerName(cust)
+    }
+    if (initialSessionData.shiftCode) {
+      setShiftCode(initialSessionData.shiftCode)
+    }
+    if (initialSessionData.summaryRemark || initialSessionData.notes) {
+      setNotes(initialSessionData.summaryRemark || initialSessionData.notes)
+      const teamMatch = (initialSessionData.summaryRemark || initialSessionData.notes || '').match(/\[Team:\s*([^\]]+)\]/i)
+      if (teamMatch && teamMembers && teamMembers.length > 0) {
+        const memberNames = teamMatch[1].split(',').map((s: string) => s.trim().toLowerCase())
+        const matchedIds = teamMembers
+          .filter((m) => memberNames.includes(m.name.trim().toLowerCase()))
+          .map((m) => m.id)
+        if (matchedIds.length > 0) {
+          setIsTeamLog(true)
+          setSelectedMemberIds(matchedIds)
+        }
       }
     }
-  }, [initialSessionData, site?.customerName])
+    if (initialSessionData.workDate) {
+      try {
+        const d = new Date(initialSessionData.workDate)
+        if (!isNaN(d.getTime())) {
+          setWorkDate(d.toISOString().slice(0, 10))
+        }
+      } catch {}
+    }
+    const leaderApp =
+      initialSessionData.approvals?.find((a: any) => a.approverRole === 'leader' || a.stepOrder === 2) ||
+      initialSessionData.approvals?.find((a: any) => a.stepOrder === 1)
+    if (leaderApp?.approverEmployeeId) {
+      setLeaderEmployeeId(String(leaderApp.approverEmployeeId))
+    }
+    const superiorApp =
+      initialSessionData.approvals?.find((a: any) => a.approverRole === 'section_head' || a.stepOrder === 3) ||
+      initialSessionData.approvals?.find((a: any) => a.stepOrder === 2)
+    if (superiorApp?.approverEmployeeId) {
+      setSuperiorEmployeeId(String(superiorApp.approverEmployeeId))
+    }
+
+    // Sync sessionItems into selfInputEntries and selectedLibraryIds
+    if (initialSessionData.sessionItems && initialSessionData.sessionItems.length > 0) {
+      const ids: string[] = []
+      const entries: Record<string, SelfInputEntryState> = {}
+
+      for (const item of initialSessionData.sessionItems) {
+        const idStr = String(item.libraryActivityId || item.id || '')
+        if (idStr) {
+          ids.push(idStr)
+          const startVal = item.startedAt
+            ? typeof item.startedAt === 'string' && item.startedAt.includes(':') && !item.startedAt.includes('T')
+              ? item.startedAt.slice(0, 5)
+              : toDateTimeLocalValue(item.startedAt)
+            : defaultStartTime
+          const endVal = item.endedAt
+            ? typeof item.endedAt === 'string' && item.endedAt.includes(':') && !item.endedAt.includes('T')
+              ? item.endedAt.slice(0, 5)
+              : toDateTimeLocalValue(item.endedAt)
+            : defaultEndTime
+
+          const existingUrls = extractItemPhotos(item)
+
+          const entryData: SelfInputEntryState = {
+            equipmentNo: item.unitNumber || '',
+            startTime: startVal,
+            endTime: endVal,
+            materialUsed: item.materialUsed || '',
+            tireCount: 1,
+            notes: item.remark || '',
+            photoFiles: [],
+            photoName: existingUrls.length > 0 ? `${existingUrls.length} foto terlampir` : '',
+            previewUrls: existingUrls,
+          }
+
+          entries[idStr] = entryData
+          if (item.libraryActivityId) {
+            entries[String(item.libraryActivityId)] = entryData
+          }
+          if (item.id) {
+            entries[String(item.id)] = entryData
+          }
+        }
+      }
+
+      setSelectedLibraryIds(ids)
+      setSelfInputEntries(entries)
+
+      const customItem = initialSessionData.sessionItems.find((i: any) => !i.libraryActivityId)
+      if (customItem) {
+        const customUrls = extractItemPhotos(customItem)
+        if (customUrls.length > 0) {
+          setPhotoPreviewUrls(customUrls)
+          setPhotoName(`${customUrls.length} foto terlampir`)
+        }
+      }
+    }
+  }, [initialSessionData, currentSessionKey, site?.customerName, defaultStartTime, defaultEndTime])
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [photoFiles, setPhotoFiles] = useState<File[]>([])
-  const [photoName, setPhotoName] = useState('')
-  const [photoPreviewUrls, setPhotoPreviewUrls] = useState<string[]>([])
+  const [photoName, setPhotoName] = useState(initialCustomUrls.length > 0 ? `${initialCustomUrls.length} foto terlampir` : '')
+  const [photoPreviewUrls, setPhotoPreviewUrls] = useState<string[]>(initialCustomUrls)
   const [restoredPhotoPayload, setRestoredPhotoPayload] = useState<QueuedFilePayload | null>(null)
   const [photoCaptureMode, setPhotoCaptureMode] = useState<'camera' | 'gallery'>('gallery')
   const [activePhotoTarget, setActivePhotoTarget] = useState<string | null>(null)
@@ -754,8 +937,19 @@ export function MobileDailyActivityForm({
     }
   }
 
-  const [isTeamLog, setIsTeamLog] = useState(false)
-  const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>([])
+  const initialTeamMatch = (initialSessionData?.summaryRemark || initialSessionData?.notes || '').match(/\[Team:\s*([^\]]+)\]/i)
+  const initialMemberIds = (() => {
+    if (initialTeamMatch && teamMembers && teamMembers.length > 0) {
+      const memberNames = initialTeamMatch[1].split(',').map((s: string) => s.trim().toLowerCase())
+      return teamMembers
+        .filter((m) => memberNames.includes(m.name.trim().toLowerCase()))
+        .map((m) => m.id)
+    }
+    return []
+  })()
+
+  const [isTeamLog, setIsTeamLog] = useState(Boolean(initialTeamMatch && initialMemberIds.length > 0))
+  const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>(initialMemberIds)
   const [memberSearch, setMemberSearch] = useState('')
   const [memberPickerOpen, setMemberPickerOpen] = useState(false)
 
@@ -786,7 +980,7 @@ export function MobileDailyActivityForm({
             activityCode: code,
             activityName: name,
             basePoints: Number(item.points || item.actualPoints) || 5,
-            requiresPhoto: Boolean(item.photos?.length || item.photoUrl),
+            requiresPhoto: Boolean(item.photos?.length || item.photoUrl || extractItemPhotos(item).length > 0),
             requiresEquipmentNo: Boolean(item.unitNumber),
             requiresDuration: true,
             requiresMaterialUsed: Boolean(item.materialUsed),
@@ -983,7 +1177,28 @@ export function MobileDailyActivityForm({
     currentPhotoName?: string,
     previewUrls?: string[]
   ) => {
-    const hasPhoto = Boolean(currentPhotoName || (previewUrls && previewUrls.length > 0))
+    const rawId = targetId.replace(/^(library:|route:)/, '')
+    const matchingSessionItem = initialSessionData?.sessionItems?.find((it: any) => {
+      const itLibId = it.libraryActivityId ? String(it.libraryActivityId) : ''
+      const itId = it.id ? String(it.id) : ''
+      return (itLibId && itLibId === rawId) || (itId && itId === rawId)
+    })
+    const sessionPhotos = matchingSessionItem ? extractItemPhotos(matchingSessionItem) : []
+    const effectivePreviewUrls =
+      previewUrls && previewUrls.length > 0
+        ? previewUrls
+        : sessionPhotos.length > 0
+          ? sessionPhotos
+          : targetId === 'single' && photoPreviewUrls.length > 0
+            ? photoPreviewUrls
+            : []
+    const effectivePhotoName =
+      currentPhotoName ||
+      (effectivePreviewUrls.length > 0
+        ? `${effectivePreviewUrls.length} foto terlampir`
+        : '')
+    const hasPhoto = Boolean(effectivePhotoName || effectivePreviewUrls.length > 0)
+
     return (
       <div className="mt-3 space-y-2.5 rounded-xl border border-[#cbe4f6] bg-[#f6fbff] p-3 shadow-xs">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1008,7 +1223,7 @@ export function MobileDailyActivityForm({
           <Button
             type="button"
             variant="outline"
-            className="h-10 rounded-xl border border-sky-200 bg-white hover:bg-[#e9f6fd] text-xs font-bold text-[#003f78] shadow-2xs active:scale-95 transition-all"
+            className="h-10 rounded-xl border border-sky-200 bg-white hover:bg-[#e9f6fd] text-xs font-bold text-[#003f78] shadow-2xs active:scale-95 transition-all cursor-pointer"
             onClick={() => handleTriggerCamera(targetId)}
           >
             <Camera className="size-3.5 mr-1" />
@@ -1017,29 +1232,37 @@ export function MobileDailyActivityForm({
           <Button
             type="button"
             variant="outline"
-            className="h-10 rounded-xl border border-sky-200 bg-white hover:bg-[#e9f6fd] text-xs font-bold text-[#003f78] shadow-2xs active:scale-95 transition-all"
+            className="h-10 rounded-xl border border-sky-200 bg-white hover:bg-[#e9f6fd] text-xs font-bold text-[#003f78] shadow-2xs active:scale-95 transition-all cursor-pointer"
             onClick={() => handleTriggerGallery(targetId)}
           >
             <ImagePlus className="size-3.5 mr-1" />
             Galeri
           </Button>
         </div>
-        {previewUrls && previewUrls.length > 0 ? (
+        {effectivePreviewUrls && effectivePreviewUrls.length > 0 ? (
           <div className="mt-2 space-y-2">
             <div className="flex flex-wrap gap-2">
-              {previewUrls.map((url, idx) => (
-                <div key={idx} className="relative group overflow-hidden rounded-lg border border-slate-200 bg-black/5 shadow-2xs">
+              {effectivePreviewUrls.map((url, idx) => (
+                <a
+                  key={idx}
+                  href={url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="relative group block overflow-hidden rounded-lg border border-slate-200 bg-black/5 shadow-2xs cursor-pointer hover:opacity-90 transition-opacity"
+                  title="Klik untuk melihat foto penuh"
+                >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={url}
                     alt={`Evidence preview ${idx + 1}`}
-                    className="h-16 w-16 object-cover rounded-lg"
+                    className="h-16 w-16 object-cover rounded-lg border border-slate-200"
+                    loading="lazy"
                   />
-                </div>
+                </a>
               ))}
             </div>
             <div className="flex items-center justify-between text-[11px] font-semibold text-[#003f78]">
-              <span className="truncate max-w-[200px]">{currentPhotoName}</span>
+              <span className="truncate max-w-[200px]">{effectivePhotoName}</span>
               <button
                 type="button"
                 onClick={() => handleRemovePhoto(targetId)}
@@ -1049,10 +1272,10 @@ export function MobileDailyActivityForm({
               </button>
             </div>
           </div>
-        ) : currentPhotoName ? (
+        ) : effectivePhotoName ? (
           <div className="flex items-center justify-between text-[11px] font-semibold text-[#003f78]">
             <p className="truncate break-words">
-              ✓ {currentPhotoName}
+              ✓ {effectivePhotoName}
             </p>
             <button
               type="button"
@@ -1506,10 +1729,12 @@ export function MobileDailyActivityForm({
       }
 
       const hasAssignedPhoto =
-        photoFile ||
-        (photoFiles && photoFiles.length > 0) ||
-        restoredPhotoPayload ||
-        (photoPreviewUrls && photoPreviewUrls.length > 0)
+        Boolean(photoFile) ||
+        Boolean(photoFiles && photoFiles.length > 0) ||
+        Boolean(restoredPhotoPayload) ||
+        Boolean(photoPreviewUrls && photoPreviewUrls.length > 0) ||
+        Boolean(photoName) ||
+        initialCustomUrls.length > 0
       if (selectedAssignment?.requiresPhoto && !hasAssignedPhoto) {
         return 'Foto wajib diupload karena assignment yang dipilih butuh image evidence.'
       }
@@ -1519,10 +1744,11 @@ export function MobileDailyActivityForm({
           group.items.forEach((item) => {
             const state = routeItemState[item.id]
             const hasChecklistPhoto =
-              state?.photoFile ||
-              (state?.photoFiles && state.photoFiles.length > 0) ||
-              state?.restoredPhotoPayload ||
-              (state?.previewUrls && state.previewUrls.length > 0)
+              Boolean(state?.photoFile) ||
+              Boolean(state?.photoFiles && state.photoFiles.length > 0) ||
+              Boolean(state?.restoredPhotoPayload) ||
+              Boolean(state?.previewUrls && state.previewUrls.length > 0) ||
+              Boolean(state?.photoName)
             if (
               state?.isChecked &&
               item.requiresPhoto &&
@@ -1552,10 +1778,12 @@ export function MobileDailyActivityForm({
       }
 
       const hasCustomPhoto =
-        photoFile ||
-        (photoFiles && photoFiles.length > 0) ||
-        restoredPhotoPayload ||
-        (photoPreviewUrls && photoPreviewUrls.length > 0)
+        Boolean(photoFile) ||
+        Boolean(photoFiles && photoFiles.length > 0) ||
+        Boolean(restoredPhotoPayload) ||
+        Boolean(photoPreviewUrls && photoPreviewUrls.length > 0) ||
+        Boolean(photoName) ||
+        initialCustomUrls.length > 0
 
       if (checklistContext) {
         let missingChecklistPhoto = false
@@ -1588,12 +1816,20 @@ export function MobileDailyActivityForm({
 
     let missingLibraryPhoto = false
     selectedLibraries.forEach((lib) => {
-      const entry = selfInputEntries[`${lib.id}`]
-      const hasPhoto =
+      const libId = `${lib.id}`
+      const entry = selfInputEntries[libId] || selfInputEntries[String(lib.id)]
+      const matchingSessionItem = initialSessionData?.sessionItems?.find(
+        (it: any) => String(it.libraryActivityId) === libId || String(it.id) === libId
+      )
+      const sessionPhotos = matchingSessionItem ? extractItemPhotos(matchingSessionItem) : []
+      const hasPhoto = Boolean(
         entry?.photoFile ||
         (entry?.photoFiles && entry.photoFiles.length > 0) ||
         entry?.restoredPhotoPayload ||
-        (entry?.previewUrls && entry.previewUrls.length > 0)
+        (entry?.previewUrls && entry.previewUrls.length > 0) ||
+        entry?.photoName ||
+        sessionPhotos.length > 0
+      )
       if (lib.requiresPhoto && !hasPhoto)
         missingLibraryPhoto = true
     })
@@ -1726,7 +1962,8 @@ export function MobileDailyActivityForm({
       const checklistEvidence = await prepareEvidence(
         checkedState?.photoFiles,
         checkedState?.photoFile,
-        checkedState?.restoredPhotoPayload
+        checkedState?.restoredPhotoPayload,
+        checkedState?.previewUrls
       )
 
       return [
@@ -1751,10 +1988,20 @@ export function MobileDailyActivityForm({
         const entry =
           selfInputEntries[libraryId] ??
           buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
+        const matchingSessionItem = initialSessionData?.sessionItems?.find(
+          (it: any) => String(it.libraryActivityId) === libraryId || String(it.id) === libraryId
+        )
+        const sessionPhotos = matchingSessionItem ? extractItemPhotos(matchingSessionItem) : []
+        const effectiveUrls =
+          entry.previewUrls && entry.previewUrls.length > 0
+            ? entry.previewUrls
+            : sessionPhotos
+
         const entryEvidence = await prepareEvidence(
           entry.photoFiles,
           entry.photoFile,
-          entry.restoredPhotoPayload
+          entry.restoredPhotoPayload,
+          effectiveUrls
         )
 
         return {
@@ -1808,19 +2055,37 @@ export function MobileDailyActivityForm({
             const entry =
               selfInputEntries[libraryId] ??
               buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
+            const matchingSessionItem = initialSessionData?.sessionItems?.find(
+              (it: any) => String(it.libraryActivityId) === libraryId || String(it.id) === libraryId
+            )
+            const sessionPhotos = matchingSessionItem ? extractItemPhotos(matchingSessionItem) : []
+            const effectiveUrls =
+              entry.previewUrls && entry.previewUrls.length > 0
+                ? entry.previewUrls
+                : sessionPhotos
+
             const entryEvidence = await prepareEvidence(
               entry.photoFiles,
               entry.photoFile,
-              entry.restoredPhotoPayload
+              entry.restoredPhotoPayload,
+              effectiveUrls
             )
 
+            const validLibraryId =
+              matchingSessionItem?.libraryActivityId
+                ? Number(matchingSessionItem.libraryActivityId)
+                : availableLibrary.some((lib) => String(lib.id) === libraryId)
+                  ? Number(library.id)
+                  : null
+
             return {
+              id: matchingSessionItem?.id,
               label: `${library.activityCode} - ${library.activityName}`,
               group: library.activityCode || 'Technical',
-              libraryActivityId: library.id,
+              libraryActivityId: validLibraryId,
               unitNumber: entry.equipmentNo || '',
-              startedAt: entry.startTime ? `${entry.startTime}:00` : undefined,
-              endedAt: entry.endTime ? `${entry.endTime}:00` : undefined,
+              startedAt: formatSubmitDateTime(entry.startTime, workDate),
+              endedAt: formatSubmitDateTime(entry.endTime, workDate),
               points: library.basePoints || 5,
               remark: entry.notes || '',
               materialUsed: entry.materialUsed || '',
@@ -1830,14 +2095,22 @@ export function MobileDailyActivityForm({
           })
         )
       } else if (sourceMode === 'custom' && customActivityName) {
-        const customEvidence = await prepareEvidence(photoFiles, photoFile, restoredPhotoPayload)
+        const customEvidence = await prepareEvidence(
+          photoFiles,
+          photoFile,
+          restoredPhotoPayload,
+          photoPreviewUrls
+        )
+        const matchingCustomItem = initialSessionData?.sessionItems?.find((i: any) => !i.libraryActivityId)
         itemsToSubmit = [
           {
+            id: matchingCustomItem?.id,
             label: customActivityName.trim(),
             group: 'Custom',
+            libraryActivityId: null,
             unitNumber: equipmentNo.trim(),
-            startedAt: startTime ? `${startTime}:00` : undefined,
-            endedAt: endTime ? `${endTime}:00` : undefined,
+            startedAt: formatSubmitDateTime(startTime, workDate),
+            endedAt: formatSubmitDateTime(endTime, workDate),
             points: 5,
             remark: notes.trim(),
             materialUsed: materialUsed.trim(),
@@ -1854,7 +2127,8 @@ export function MobileDailyActivityForm({
               const evidence = await prepareEvidence(
                 state?.photoFiles,
                 state?.photoFile,
-                state?.restoredPhotoPayload
+                state?.restoredPhotoPayload,
+                state?.previewUrls
               )
               return {
                 routeItemId: item.routeItemId,
@@ -1862,8 +2136,8 @@ export function MobileDailyActivityForm({
                 label: item.snapshotLabel || 'Checklist Item',
                 group: item.snapshotGroupName || 'Checklist',
                 unitNumber: item.unitNumber || '',
-                startedAt: item.startedAt ? `${item.startedAt}:00` : undefined,
-                endedAt: item.endedAt ? `${item.endedAt}:00` : undefined,
+                startedAt: formatSubmitDateTime(item.startedAt, workDate),
+                endedAt: formatSubmitDateTime(item.endedAt, workDate),
                 points: item.actualPoints || 5,
                 remark: item.remark || '',
                 materialUsed: item.materialUsed || '',
@@ -1884,8 +2158,8 @@ export function MobileDailyActivityForm({
             group: it.group,
             libraryActivityId: it.libraryActivityId,
             unitNumber: it.unitNumber,
-            startedAt: it.startedAt ? `${it.startedAt}:00` : undefined,
-            endedAt: it.endedAt ? `${it.endedAt}:00` : undefined,
+            startedAt: formatSubmitDateTime(it.startedAt, workDate),
+            endedAt: formatSubmitDateTime(it.endedAt, workDate),
             points: it.points,
             remark: it.remark,
             materialUsed: it.materialUsed,
@@ -1908,6 +2182,8 @@ export function MobileDailyActivityForm({
           shiftCode,
           notes: notes.trim(),
           summaryRemark: notes.trim(),
+          customerName: customerName ? customerName.trim() : undefined,
+          teamMemberEmployeeIds: isTeamLog ? selectedMemberIds : [],
           items: itemsToSubmit,
           leaderEmployeeId: leaderEmployeeId ? Number(leaderEmployeeId) : undefined,
           leaderName: selectedLeader?.label?.split('—')[0]?.trim() || undefined,
@@ -1929,6 +2205,7 @@ export function MobileDailyActivityForm({
           workDate,
           shiftCode,
           siteId: site?.id,
+          customerName: customerName ? customerName.trim() : undefined,
           notes: notes.trim(),
           summaryRemark: notes.trim(),
           leaderEmployeeId: leaderEmployeeId ? Number(leaderEmployeeId) : undefined,
@@ -1955,11 +2232,9 @@ export function MobileDailyActivityForm({
       }
 
       window.setTimeout(() => {
-        router.push(
-          `/mobile/activity?submitted=1${checklistContext?.overtimeCommandLetterId ? '&spl=1' : ''}`
-        )
-        router.refresh()
-      }, 1200)
+        const targetUrl = `/mobile/activity?tab=approval&submitted=1${checklistContext?.overtimeCommandLetterId ? '&spl=1' : ''}`
+        window.location.href = targetUrl
+      }, 1000)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Submit activity gagal.'
       setSubmitState({ kind: 'error', message })
@@ -2922,9 +3197,16 @@ export function MobileDailyActivityForm({
           <div className="space-y-3 pt-1">
             {/* Leader / Supervisor (Tahap 1) */}
             <div className="space-y-1">
-              <label className="block text-xs font-semibold text-slate-700">
-                Leader / Supervisor (Tahap 1)
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Leader / Supervisor (Tahap 1)
+                </label>
+                {existingLeaderApproval?.status === 'approved' ? (
+                  <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                    SUDAH DISETUJUI (TERKUNCI)
+                  </span>
+                ) : null}
+              </div>
               <SearchableSelect
                 label="Leader / Supervisor"
                 value={leaderEmployeeId}
@@ -2932,14 +3214,22 @@ export function MobileDailyActivityForm({
                 options={leaderOptions}
                 placeholder="-- PILIH LEADER / SUPERVISOR --"
                 widthClassName="w-full"
+                disabled={existingLeaderApproval?.status === 'approved'}
               />
             </div>
 
             {/* Superior / Section Head (Tahap 2) */}
             <div className="space-y-1">
-              <label className="block text-xs font-semibold text-slate-700">
-                Superior / Section Head (Tahap 2)
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Superior / Section Head (Tahap 2)
+                </label>
+                {existingSuperiorApproval?.status === 'approved' ? (
+                  <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                    SUDAH DISETUJUI (TERKUNCI)
+                  </span>
+                ) : null}
+              </div>
               <SearchableSelect
                 label="Superior / Section Head"
                 value={superiorEmployeeId}
@@ -2947,6 +3237,7 @@ export function MobileDailyActivityForm({
                 options={superiorOptions}
                 placeholder="-- PILIH SUPERIOR / SECTION HEAD --"
                 widthClassName="w-full"
+                disabled={existingSuperiorApproval?.status === 'approved'}
               />
             </div>
           </div>
@@ -3099,6 +3390,7 @@ export function MobileDailyActivityForm({
                   ? selectedLibraries.map((lib, idx) => {
                       const entry = selfInputEntries[`${lib.id}`]
                       const durationStr = entry?.startTime && entry?.endTime ? `${entry.startTime} - ${entry.endTime}` : '-'
+                      const photoUrl = entry?.previewUrls?.[0] || null
                       return {
                         id: lib.id,
                         label: `${lib.activityCode} - ${lib.activityName}`,
@@ -3106,6 +3398,7 @@ export function MobileDailyActivityForm({
                         duration: durationStr,
                         points: lib.basePoints || 5,
                         remark: entry?.notes || '-',
+                        photoUrl,
                       }
                     })
                   : initialSessionData?.sessionItems && initialSessionData.sessionItems.length > 0
@@ -3116,6 +3409,7 @@ export function MobileDailyActivityForm({
                       duration: it.duration || (it.startedAt && it.endedAt ? `${it.startedAt} - ${it.endedAt}` : '-'),
                       points: it.points || it.actualPoints || 5,
                       remark: it.remark || '-',
+                      photoUrl: it.photoUrl || it.photo?.url || it.photo?.dataUrl || it.photos?.[0]?.url || it.photos?.[0]?.dataUrl || null,
                     }))
                   : []
 
@@ -3166,9 +3460,10 @@ export function MobileDailyActivityForm({
                 const previewSectionHeadSig = previewApprovalsList.find((a) => a.approverRole === 'section_head')
 
                 const totalPts = previewItemsList.reduce((s: number, i: any) => s + (i.points || 0), 0)
-                const teamSummary = isTeamLog && selectedMemberIds.length > 0
-                  ? teamMembers?.filter((m) => selectedMemberIds.includes(m.id)).map((m) => m.name).join(', ')
-                  : ''
+                const fallbackTeamMatch = (initialSessionData?.summaryRemark || initialSessionData?.notes || '').match(/\[Team:\s*([^\]]+)\]/i)
+                const teamSummary = (isTeamLog && selectedMemberIds.length > 0)
+                  ? teamMembers?.filter((m) => selectedMemberIds.includes(m.id)).map((m) => m.name).join(', ') || (fallbackTeamMatch ? fallbackTeamMatch[1].trim() : '')
+                  : (fallbackTeamMatch ? fallbackTeamMatch[1].trim() : '')
 
                 return (
                   <div
@@ -3178,10 +3473,10 @@ export function MobileDailyActivityForm({
                       transformOrigin: 'top center',
                       transition: 'transform 0.15s ease-out',
                     }}
-                    className="w-full max-w-[680px] bg-white text-black shadow-2xl p-6 sm:p-8 rounded-sm text-[8.5pt] font-sans leading-tight border border-slate-200"
+                    className="relative w-full max-w-[680px] bg-white text-black shadow-2xl p-6 sm:p-8 rounded-sm text-[8.5pt] font-sans leading-tight border border-slate-200 pb-28 min-h-[850px]"
                   >
                     <h1 className="text-center font-bold text-[11pt] text-black mb-0.5 uppercase">PT. CHITRA PARATAMA</h1>
-                    <h2 className="text-center font-bold text-[12pt] text-black mb-3 uppercase">DAILY ACTIVITY APPROVAL REPORT</h2>
+                    <h2 className="text-center font-bold text-[12pt] text-black mb-3 uppercase">{initialSessionData?.splId || initialSessionData?.splNumber ? 'SURAT PERINTAH LEMBUR' : 'DAILY ACTIVITY APPROVAL REPORT'}</h2>
 
                     <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-2 [&_td]:py-1 text-[8.5pt]">
                       <tbody>
@@ -3219,82 +3514,85 @@ export function MobileDailyActivityForm({
 
                     {/* A. Daily Activity Items */}
                     <div className="font-bold mb-1 text-[8.5pt]">
-                      A. Daily Activity Items (Total: {previewItemsList.length} item, {totalPts} poin)
+                      A. Daily Activity Items (Total: {previewItemsList.length} item)
                     </div>
                     <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8pt]">
                       <thead>
-                        <tr className="bg-white font-bold text-center">
-                          <th className="w-[6%]">#</th>
-                          <th className="text-left w-[40%]">Aktivitas</th>
+                        <tr className="bg-gray-100 font-bold text-center">
+                          <th className="w-[5%]">#</th>
+                          <th className="text-left w-[38%]">Aktivitas</th>
                           <th className="w-[14%]">Unit</th>
                           <th className="w-[12%]">Durasi</th>
                           <th className="w-[10%]">Poin</th>
-                          <th className="text-left w-[18%]">Remark</th>
+                          <th className="text-left w-[21%]">Remark</th>
                         </tr>
                       </thead>
                       <tbody>
                         {previewItemsList.length > 0 ? (
                           previewItemsList.map((item: any, idx: number) => (
                             <tr key={item.id || idx}>
-                              <td className="text-center">{idx + 1}</td>
-                              <td>{item.label}</td>
-                              <td className="text-center">{item.unitNumber || '-'}</td>
-                              <td className="text-center">{item.duration}</td>
-                              <td className="text-center font-bold">{item.points}</td>
-                              <td className="text-left text-[7.5pt]">{item.remark || '-'}</td>
+                              <td className="text-center align-middle">{idx + 1}</td>
+                              <td className="align-middle">{item.label}</td>
+                              <td className="text-center align-middle">{item.unitNumber || '-'}</td>
+                              <td className="text-center align-middle">{item.duration}</td>
+                              <td className="text-center font-bold align-middle">{item.points || 0}</td>
+                              <td className="text-left text-[7.5pt] align-middle">{item.remark || '-'}</td>
                             </tr>
                           ))
                         ) : (
                           <tr>
-                            <td colSpan={6} className="text-center text-gray-400 py-2">Belum ada item aktivitas.</td>
+                            <td colSpan={6} className="text-center text-gray-400 py-3">Belum ada item aktivitas.</td>
                           </tr>
                         )}
                       </tbody>
                     </table>
 
                     {/* B. Approval Steps */}
-                    <div className="font-bold mb-1 text-[8.5pt]">B. Approval Steps</div>
-                    <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8pt]" style={{ tableLayout: 'fixed' }}>
+                    <div className="font-bold mb-1 text-[8.5pt]">
+                      B. Approval Steps
+                    </div>
+                    <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-center text-[8pt]" style={{ tableLayout: 'fixed' }}>
                       <thead>
-                        <tr className="bg-white font-bold text-center">
+                        <tr className="bg-gray-100 font-bold">
                           <th style={{ width: '6%' }}>#</th>
                           <th className="text-left" style={{ width: '22%' }}>Tahap</th>
-                          <th className="text-left" style={{ width: '24%' }}>Approver</th>
+                          <th className="text-left" style={{ width: '22%' }}>Approver</th>
                           <th style={{ width: '14%' }}>Status</th>
-                          <th style={{ width: '18%' }}>Waktu</th>
-                          <th className="text-left" style={{ width: '16%' }}>Catatan</th>
+                          <th style={{ width: '16%' }}>Waktu</th>
+                          <th className="text-left" style={{ width: '20%' }}>Catatan</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {previewApprovalsList.map((step) => {
-                          const isApproved = ['approved', 'signed', 'completed'].includes((step.status || '').toLowerCase())
-                          const isReverted = (step.status || '').toLowerCase() === 'reverted' || (step.status || '').toLowerCase() === 'needs_revision'
-                          const statusLabel = isApproved ? 'Approved' : isReverted ? 'Reverted' : step.status
-                          return (
-                            <tr key={step.stepOrder} className={isReverted ? "bg-amber-50/70" : undefined}>
-                              <td className="text-center">{step.stepOrder}</td>
-                              <td className="text-left font-medium">{step.stepLabel}</td>
-                              <td className="text-left font-medium">{step.approverName || '-'}</td>
-                              <td className={cn(
-                                "text-center capitalize font-bold",
-                                isApproved ? "text-emerald-700" :
-                                isReverted ? "text-amber-700" :
-                                step.status === 'rejected' ? "text-rose-700" :
-                                "text-slate-700"
-                              )}>
-                                {statusLabel}
-                              </td>
-                              <td className="text-center text-[7pt]">{step.signedAt ? fmtDt(step.signedAt) : '—'}</td>
-                              <td className="text-left text-[7.5pt] text-slate-600 italic break-words whitespace-normal leading-tight">{step.remarks || '—'}</td>
-                            </tr>
-                          )
-                        })}
+                        {(initialSessionData?.approvals || []).length > 0 ? (
+                          (initialSessionData?.approvals || []).map((step: any) => {
+                            const isApproved = step.status === 'approved' || step.status === 'signed'
+                            return (
+                              <tr key={step.stepOrder || step.id}>
+                                <td>{step.stepOrder}</td>
+                                <td className="text-left">{step.stepLabel}</td>
+                                <td className="text-left font-semibold">{step.approverName || '-'}</td>
+                                <td className={cn("capitalize font-semibold", isApproved ? "text-emerald-700 font-bold" : "")}>
+                                  {step.stepOrder === 1 && isApproved
+                                    ? 'Approved'
+                                    : step.status}
+                                </td>
+                                <td className="text-[7pt] font-mono">{fmtDt(step.signedAt)}</td>
+                                <td className="text-left italic text-slate-600 text-[7.5pt] break-words whitespace-normal leading-tight" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                                  {step.remarks || '—'}
+                                </td>
+                              </tr>
+                            )
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan={6} className="text-center text-slate-400 py-2">Belum ada riwayat persetujuan.</td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
 
-                    {/* Signatories */}
-                    <div className="font-bold mb-3 text-[8.5pt]">Signatories</div>
-                    <div className="grid grid-cols-3 gap-x-6 gap-y-4 mb-4">
+                    <div className="font-bold mb-2 text-[8.5pt]">Signatories</div>
+                    <div className="grid grid-cols-3 gap-x-6 gap-y-4 mb-3">
                       {/* Karyawan */}
                       <div>
                         <div className="text-[7pt] text-gray-500 mb-1">Employee Signature</div>
@@ -3368,13 +3666,37 @@ export function MobileDailyActivityForm({
                       </div>
                     </div>
 
-                    <div className="text-right text-[7pt] text-gray-400 mt-4">PT Chitra Paratama • HERO Platform</div>
+                    {/* Evidence QR in Bottom Right Corner (Clickable to open floating modal) */}
+                    <div
+                      onClick={() => setIsEvidenceModalOpen(true)}
+                      className="absolute right-6 bottom-6 flex flex-col items-center text-center cursor-pointer group select-none transition-transform hover:scale-105 active:scale-95"
+                      title="Klik untuk membuka galeri foto bukti pekerjaan"
+                    >
+                      <div className="p-1 bg-white border border-slate-300 rounded shadow-2xs group-hover:border-indigo-500 group-hover:shadow-md transition-all">
+                        {evidenceQrDataUrl ? (
+                          <img src={evidenceQrDataUrl} alt="QR Evidence" className="h-14 w-14 object-contain" />
+                        ) : (
+                          <div className="h-14 w-14 flex items-center justify-center text-[6pt] text-slate-400 border border-dashed border-slate-200">
+                            QR Code
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-[6.5pt] font-bold text-slate-700 mt-0.5 group-hover:text-indigo-600 transition-colors">Scan / Klik Bukti Kerja</div>
+                      <div className="text-[6pt] text-gray-400 mt-0.5">PT Chitra Paratama • HERO Platform</div>
+                    </div>
                   </div>
                 )
               })()}
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Floating Evidence Modal */}
+        <DailyActivityEvidenceModal
+          isOpen={isEvidenceModalOpen}
+          onClose={() => setIsEvidenceModalOpen(false)}
+          sessionId={initialSessionData?.sessionId || initialSessionData?.id || revisionSessionId}
+        />
       </form>
     </>
   )

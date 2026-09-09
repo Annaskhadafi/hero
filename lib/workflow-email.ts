@@ -9,6 +9,7 @@ type TemplateVariables = Record<string, string | number | boolean | Date | null 
 type WorkflowEmailRequest = {
   to: string | string[]
   cc?: string | string[] | null
+  exactCc?: boolean
   actorEmail?: string | null
   templateCode?: string | null
   templateName?: string | null
@@ -25,7 +26,7 @@ type WorkflowBulkEmailRequest = Omit<WorkflowEmailRequest, 'to'> & {
 
 type WorkflowTemplateContentRequest = Pick<
   WorkflowEmailRequest,
-  'templateCode' | 'variables' | 'fallbackSubject' | 'fallbackHtml' | 'fallbackText' | 'cc'
+  'templateCode' | 'variables' | 'fallbackSubject' | 'fallbackHtml' | 'fallbackText' | 'cc' | 'exactCc'
 >
 
 function normalizeEmail(value: string | null | undefined) {
@@ -61,7 +62,12 @@ function stringifyTemplateValue(value: TemplateVariables[string], isHtml = false
 
 function renderTemplate(text: string, variables: TemplateVariables, isHtml = false) {
   return text.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (_match, token: string) => {
-    return stringifyTemplateValue(variables[token], isHtml)
+    const isHtmlSnippet =
+      isHtml &&
+      (token.toLowerCase().endsWith('html') ||
+        token.toLowerCase().endsWith('table') ||
+        token.toLowerCase().includes('tablecontent'))
+    return stringifyTemplateValue(variables[token], isHtml && !isHtmlSnippet)
   })
 }
 
@@ -369,7 +375,9 @@ export async function resolveWorkflowTemplateContent(request: WorkflowTemplateCo
     revertReason: rawVars.revertReason ?? rawVars.remarks ?? '',
     remarks: rawVars.remarks ?? rawVars.revertReason ?? '',
   }
-  const ccList = uniqueEmails([...splitEmails(template?.ccEmail), ...splitEmails(request.cc)])
+  const ccList = request.exactCc
+    ? uniqueEmails(splitEmails(request.cc))
+    : uniqueEmails([...splitEmails(template?.ccEmail), ...splitEmails(request.cc)])
   const subject = renderTemplate(template?.subject || request.fallbackSubject, variables)
   const html = renderTemplate(template?.htmlContent || request.fallbackHtml || '', variables, true)
   const text = renderTemplate(template?.textContent || request.fallbackText, variables)
@@ -439,7 +447,7 @@ export async function sendWorkflowEmail(request: WorkflowEmailRequest) {
   try {
     await sendEmailViaSmtp(settings, {
       to: recipients.join(", "),
-      cc: ccList,
+      cc: ccList.length > 0 ? ccList : undefined,
       subject,
       html: html || undefined,
       text,

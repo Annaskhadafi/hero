@@ -25,6 +25,7 @@ export interface SiteReminderConfigData {
   ccEmails?: string[]
   additionalCcEmails: string
   isActive: boolean
+  isConfigured?: boolean
   lastSentAt: Date | null
   updatedAt?: Date | null
 }
@@ -40,6 +41,15 @@ export interface ReminderResult {
   reason?: string
   errors?: number
   details?: string[]
+}
+
+function escapeEmailHtml(value: string) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
 }
 
 export async function getMinePermitSiteOptions() {
@@ -96,6 +106,7 @@ export async function getMinePermitSiteConfig(siteId: number): Promise<SiteRemin
       ccEmails: [],
       additionalCcEmails: '',
       isActive: true,
+      isConfigured: false,
       lastSentAt: null,
     }
   }
@@ -136,24 +147,48 @@ export async function getMinePermitSiteConfig(siteId: number): Promise<SiteRemin
     ccEmails,
     additionalCcEmails: config.additionalCcEmails ?? '',
     isActive: config.isActive ?? true,
+    isConfigured: true,
     lastSentAt: config.lastSentAt ? new Date(config.lastSentAt) : null,
     updatedAt: config.updatedAt ? new Date(config.updatedAt) : null,
   }
 }
 
 export async function getAllMinePermitSiteConfigs(): Promise<SiteReminderConfigData[]> {
-  const allSites = await db
-    .select({
-      id: sites.id,
-      name: sites.name,
-    })
-    .from(sites)
-    .where(eq(sites.isActive, true))
-    .orderBy(asc(sites.name))
+  const [allSites, configs] = await Promise.all([
+    db
+      .select({
+        id: sites.id,
+        name: sites.name,
+      })
+      .from(sites)
+      .where(eq(sites.isActive, true))
+      .orderBy(asc(sites.name)),
+    db.select().from(minePermitReminderConfig),
+  ])
 
-  const configs = await db
-    .select()
-    .from(minePermitReminderConfig)
+  // Collect all employee IDs for batch email lookup
+  const allEmployeeIds = new Set<number>()
+  for (const c of configs) {
+    try {
+      const rIds = JSON.parse(c.recipientEmployeeIds || '[]')
+      if (Array.isArray(rIds)) rIds.forEach((id) => allEmployeeIds.add(id))
+    } catch {}
+    try {
+      const cIds = JSON.parse(c.ccEmployeeIds || '[]')
+      if (Array.isArray(cIds)) cIds.forEach((id) => allEmployeeIds.add(id))
+    } catch {}
+  }
+
+  let emailMap = new Map<number, string>()
+  if (allEmployeeIds.size > 0) {
+    const emps = await db
+      .select({ id: employees.id, email: employees.email })
+      .from(employees)
+      .where(inArray(employees.id, Array.from(allEmployeeIds)))
+    for (const e of emps) {
+      if (e.email) emailMap.set(e.id, e.email)
+    }
+  }
 
   const configMap = new Map<number, typeof configs[0]>()
   for (const c of configs) {
@@ -175,6 +210,9 @@ export async function getAllMinePermitSiteConfigs(): Promise<SiteReminderConfigD
       } catch {}
     }
 
+    const recipientEmails = recipientIds.map((id) => emailMap.get(id)).filter(Boolean) as string[]
+    const ccEmails = ccIds.map((id) => emailMap.get(id)).filter(Boolean) as string[]
+
     return {
       id: c?.id,
       siteId: site.id,
@@ -182,9 +220,12 @@ export async function getAllMinePermitSiteConfigs(): Promise<SiteReminderConfigD
       intervalDays: c?.intervalDays ?? 1,
       reminderDays: c?.reminderDays ?? 30,
       recipientEmployeeIds: recipientIds,
+      recipientEmails,
       ccEmployeeIds: ccIds,
+      ccEmails,
       additionalCcEmails: c?.additionalCcEmails ?? '',
       isActive: c ? Boolean(c.isActive) : true,
+      isConfigured: Boolean(c?.id),
       lastSentAt: c?.lastSentAt ? new Date(c.lastSentAt) : null,
       updatedAt: c?.updatedAt ? new Date(c.updatedAt) : null,
     }
@@ -207,22 +248,30 @@ export async function saveMinePermitSiteConfig(input: {
   let ccIds = input.ccEmployeeIds || []
 
   // If emails are passed, resolve them to employee IDs
-  if (input.recipientEmails && input.recipientEmails.length > 0) {
+  if (input.recipientEmails !== undefined) {
     const cleanEmails = input.recipientEmails.map((e) => e.trim().toLowerCase()).filter(Boolean)
-    const emps = await db
-      .select({ id: employees.id, email: employees.email })
-      .from(employees)
-      .where(sql`lower(${employees.email}) IN ${cleanEmails}`)
-    recipientIds = emps.map((e) => e.id)
+    if (cleanEmails.length > 0) {
+      const emps = await db
+        .select({ id: employees.id, email: employees.email })
+        .from(employees)
+        .where(inArray(sql`lower(${employees.email})`, cleanEmails))
+      recipientIds = emps.map((e) => e.id)
+    } else {
+      recipientIds = []
+    }
   }
 
-  if (input.ccEmails && input.ccEmails.length > 0) {
+  if (input.ccEmails !== undefined) {
     const cleanCcEmails = input.ccEmails.map((e) => e.trim().toLowerCase()).filter(Boolean)
-    const emps = await db
-      .select({ id: employees.id, email: employees.email })
-      .from(employees)
-      .where(sql`lower(${employees.email}) IN ${cleanCcEmails}`)
-    ccIds = emps.map((e) => e.id)
+    if (cleanCcEmails.length > 0) {
+      const emps = await db
+        .select({ id: employees.id, email: employees.email })
+        .from(employees)
+        .where(inArray(sql`lower(${employees.email})`, cleanCcEmails))
+      ccIds = emps.map((e) => e.id)
+    } else {
+      ccIds = []
+    }
   }
 
   const existing = await db
@@ -360,18 +409,6 @@ export async function sendSiteMinePermitExpiryReminder(
     toEmails = toUsers.map((u) => u.email!.trim().toLowerCase()).filter(Boolean)
   }
 
-  // Fallback To: site head employee if configured recipient list is empty
-  if (toEmails.length === 0 && site.headEmployeeId) {
-    const [head] = await db
-      .select({ email: employees.email })
-      .from(employees)
-      .where(and(eq(employees.id, site.headEmployeeId), eq(employees.isActive, true)))
-      .limit(1)
-    if (head?.email) {
-      toEmails.push(head.email.trim().toLowerCase())
-    }
-  }
-
   if (toEmails.length === 0) {
     return {
       sent: false,
@@ -381,7 +418,7 @@ export async function sendSiteMinePermitExpiryReminder(
       count: expiringEmployees.length,
       toCount: 0,
       ccCount: 0,
-      reason: `Tidak ada email penerima utama (To) yang valid atau terdaftar untuk Site ${site.name}.`,
+      reason: `Penerima utama (To) belum diatur untuk Site ${site.name}. Silakan pilih minimal 1 karyawan penerima di Setting Reminder.`,
     }
   }
 
@@ -401,7 +438,7 @@ export async function sendSiteMinePermitExpiryReminder(
     ccEmails.push(...ccUsers.map((u) => u.email!.trim().toLowerCase()).filter(Boolean))
   }
 
-  if (config.additionalCcEmails) {
+  if (config.additionalCcEmails && config.additionalCcEmails.trim()) {
     const manualCcs = config.additionalCcEmails
       .split(',')
       .map((e) => e.trim().toLowerCase())
@@ -411,43 +448,41 @@ export async function sendSiteMinePermitExpiryReminder(
   // Deduplicate and remove any that are in To
   ccEmails = Array.from(new Set(ccEmails)).filter((e) => !toEmails.includes(e))
 
-  // Build Table HTML
-  const tableRowsHtml = expiringEmployees
-    .map((emp) => {
+  // Keep the legacy template variable name so existing admin-customized templates
+  // receive the new, email-client-friendly employee list without a template migration.
+  const tableContentHtml = `
+    <ul style="margin:18px 0;padding:0;list-style:none;">
+  ${expiringEmployees
+    .map((emp, idx) => {
       const expDate = emp.expMinePermit || '-'
       const daysLeft = Math.ceil(
         (new Date(emp.expMinePermit!).getTime() - Date.now()) / (24 * 60 * 60 * 1000)
       )
       const isExpired = daysLeft < 0
       const daysText = isExpired ? `Expired (${Math.abs(daysLeft)} hari lalu)` : `${daysLeft} hari lagi`
-      const badgeColor = isExpired ? '#dc2626' : daysLeft <= 14 ? '#ea580c' : '#d97706'
+      const badgeColor = isExpired ? '#b91c1c' : daysLeft <= 14 ? '#c2410c' : '#b45309'
 
-      return `<tr>
-        <td style="padding:10px 12px;border:1px solid #e2e8f0;font-family:monospace;font-size:12px;font-weight:600;color:#0f172a;">${emp.employeeSn || '-'}</td>
-        <td style="padding:10px 12px;border:1px solid #e2e8f0;font-weight:600;color:#0f172a;">${emp.name}</td>
-        <td style="padding:10px 12px;border:1px solid #e2e8f0;color:#475569;font-size:12px;">${emp.jobTitle || emp.department || '-'}</td>
-        <td style="padding:10px 12px;border:1px solid #e2e8f0;color:#0f172a;font-size:12px;">${expDate}</td>
-        <td style="padding:10px 12px;border:1px solid #e2e8f0;font-weight:700;color:${badgeColor};font-size:12px;">${daysText}</td>
-      </tr>`
+      return `<li style="margin:0 0 10px;padding:12px 14px;background:#f8fafc;border-left:4px solid ${badgeColor};border-radius:6px;color:#334155;font-size:13px;line-height:1.55;">
+        <strong style="display:block;color:#0f172a;font-size:14px;">${idx + 1}. ${escapeEmailHtml(emp.name)}</strong>
+        <span>NIK ${escapeEmailHtml(emp.employeeSn || '-')} · ${escapeEmailHtml(emp.jobTitle || emp.department || '-')} · Exp. ${escapeEmailHtml(expDate)}</span><br>
+        <span style="color:${badgeColor};font-weight:700;">${daysText}</span>
+      </li>`
     })
-    .join('')
-
-  const tableContentHtml = `
-    <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:13px;background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
-      <thead>
-        <tr style="background:#fef3c7;color:#92400e;text-align:left;">
-          <th style="padding:10px 12px;border:1px solid #e2e8f0;font-size:12px;">NIK</th>
-          <th style="padding:10px 12px;border:1px solid #e2e8f0;font-size:12px;">Nama Karyawan</th>
-          <th style="padding:10px 12px;border:1px solid #e2e8f0;font-size:12px;">Jabatan</th>
-          <th style="padding:10px 12px;border:1px solid #e2e8f0;font-size:12px;">Exp. Date</th>
-          <th style="padding:10px 12px;border:1px solid #e2e8f0;font-size:12px;">Sisa Waktu</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${tableRowsHtml}
-      </tbody>
-    </table>
+    .join('\n')}
+    </ul>
   `
+
+  const tableContentText = expiringEmployees
+    .map((emp, idx) => {
+      const expDate = emp.expMinePermit || '-'
+      const daysLeft = Math.ceil(
+        (new Date(emp.expMinePermit!).getTime() - Date.now()) / (24 * 60 * 60 * 1000)
+      )
+      const isExpired = daysLeft < 0
+      const daysText = isExpired ? `Expired (${Math.abs(daysLeft)} hari lalu)` : `${daysLeft} hari lagi`
+      return `${idx + 1}. ${emp.name} (NIK: ${emp.employeeSn || '-'}) | Posisi: ${emp.jobTitle || emp.department || '-'} | Exp: ${expDate} (${daysText})`
+    })
+    .join('\n')
 
   const appUrl = getPublicAppUrl()
   const viewLink = `${appUrl}/dashboard/hc/employee`
@@ -455,7 +490,8 @@ export async function sendSiteMinePermitExpiryReminder(
   // Send Email via Centralized sendWorkflowEmail
   await sendWorkflowEmail({
     to: toEmails,
-    cc: ccEmails.length > 0 ? ccEmails : undefined,
+    cc: ccEmails.length > 0 ? ccEmails : [],
+    exactCc: true,
     templateCode: 'hc_employee_mine_permit_reminder',
     templateName: 'HC Mine Permit Expiry Reminder',
     fallbackSubject: `[Reminder] Mine Permit Karyawan Segera Berakhir — Site ${site.name} (${expiringEmployees.length} Karyawan)`,
@@ -483,12 +519,14 @@ export async function sendSiteMinePermitExpiryReminder(
         </div>
       </div>
     `,
-    fallbackText: `Peringatan Expiry Mine Permit — Site ${site.name}\n\nTotal ${expiringEmployees.length} karyawan Mine Permit-nya akan berakhir dalam ${config.reminderDays} hari ke depan.\n\nSilakan cek data selengkapnya di: ${viewLink}\n\nSistem HERO PT Chitra Paratama`,
+    fallbackText: `Peringatan Expiry Mine Permit — Site ${site.name}\n\nTotal ${expiringEmployees.length} karyawan Mine Permit-nya akan berakhir dalam ${config.reminderDays} hari ke depan:\n\n${tableContentText}\n\nSilakan cek data selengkapnya di: ${viewLink}\n\nSistem HERO PT Chitra Paratama`,
     variables: {
       siteName: site.name,
       totalExpiring: String(expiringEmployees.length),
       reminderDays: String(config.reminderDays),
       tableContentHtml,
+      tableContentText,
+      employeeListText: tableContentText,
       viewLink,
     },
   })

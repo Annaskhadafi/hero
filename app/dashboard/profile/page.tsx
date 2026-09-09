@@ -23,18 +23,6 @@ export default async function ProfilePage() {
     }
   }
 
-  if (!employee) {
-    const [firstEmp] = await db
-      .select()
-      .from(employees)
-      .where(eq(employees.isActive, true))
-      .orderBy(asc(employees.id))
-      .limit(1)
-    if (firstEmp) {
-      employee = firstEmp
-    }
-  }
-
   if (!employee) return notFound()
 
   const profile = {

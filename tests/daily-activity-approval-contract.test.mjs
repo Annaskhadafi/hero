@@ -54,4 +54,17 @@ test('Daily Activity Approval Files and Endpoints Contract Verification Suite', 
   assert.ok(formContent.includes('text-rose-600'), 'Form must render rejected status in rose red')
   assert.ok(formContent.includes('text-amber-600'), 'Form must render reverted status in amber')
   assert.ok(formContent.includes('text-emerald-600'), 'Form must render approved status in emerald green')
+
+  // Verify Floating Missing Signature Dialog is wired
+  assert.ok(formContent.includes('MissingSignatureDialog'), 'Form must include MissingSignatureDialog')
+  assert.ok(fs.readFileSync(publicApprovalComponent, 'utf8').includes('MissingSignatureDialog'), 'Public approval must include MissingSignatureDialog')
+  assert.ok(fs.readFileSync(path.join(root, 'app/dashboard/activity-hub/approval/client.tsx'), 'utf8').includes('MissingSignatureDialog'), 'Activity Hub approval client must include MissingSignatureDialog')
+  assert.ok(fs.readFileSync(path.join(root, 'components/mobile/mobile-daily-activity-client.tsx'), 'utf8').includes('MissingSignatureDialog'), 'Mobile approval client must include MissingSignatureDialog')
+
+  // Verify Rejection Action Contract
+  assert.ok(actionsContent.includes('batchRejectDailyActivitySessionsAction'), 'Must export batchRejectDailyActivitySessionsAction')
+  assert.ok(actionsContent.includes('singleRejectDailyActivityAction'), 'Must export singleRejectDailyActivityAction')
+  assert.ok(actionsContent.includes('rejectDailyActivityStepByToken'), 'Must export rejectDailyActivityStepByToken')
+  assert.ok(!actionsContent.includes("set({ status: 'Rejected' })"), 'Must use lowercase status rejected')
 })
+

@@ -1071,6 +1071,26 @@ export async function manageActivityLibraryAction(formData: FormData) {
       throw new Error('Library activity tidak valid.')
     }
 
+    const [existingLib] = await db
+      .select()
+      .from(activityLibraries)
+      .where(eq(activityLibraries.id, payload.id))
+      .limit(1)
+
+    if (existingLib) {
+      await db
+        .delete(activityRouteTemplates)
+        .where(
+          or(
+            eq(activityRouteTemplates.routeCode, `GRP-${existingLib.activityCode}`),
+            eq(activityRouteTemplates.routeName, `Group: ${existingLib.activityName}`)
+          )
+        )
+      await db
+        .delete(activityRouteItems)
+        .where(eq(activityRouteItems.libraryActivityId, existingLib.id))
+    }
+
     await db.delete(activityLibraries).where(eq(activityLibraries.id, payload.id))
     revalidateDailyActivitySurfaces()
     return
@@ -1269,6 +1289,15 @@ export async function manageActivityLibraryAction(formData: FormData) {
           }
         }
       }
+    } else if (!payload.isGroupActivity || (payload.childActivityIds && payload.childActivityIds.length === 0)) {
+      await db
+        .delete(activityRouteTemplates)
+        .where(
+          or(
+            eq(activityRouteTemplates.routeCode, `GRP-${payload.activityCode}`),
+            eq(activityRouteTemplates.routeName, `Group: ${payload.activityName}`)
+          )
+        )
     }
   }
 
@@ -4175,22 +4204,103 @@ export async function submitDailyActivityApprovalStepAction(
         .limit(1)
 
       if (step1?.approverEmail) {
-        await sendDailyActivityRevertedEmail({
-          sessionId: payload.sessionId,
-          sessionCode: session.sessionCode || `ACT-${payload.sessionId}`,
-          targetApproverName: step1.approverName || 'Karyawan',
-          targetApproverEmail: step1.approverEmail,
-          managerName: currentEmployee.name || 'Department Head',
-          revertReason: payload.remarks,
-        })
+        try {
+          await sendDailyActivityRevertedEmail({
+            sessionId: payload.sessionId,
+            sessionCode: session.sessionCode || `ACT-${payload.sessionId}`,
+            targetApproverName: step1.approverName || 'Karyawan',
+            targetApproverEmail: step1.approverEmail,
+            managerName: currentEmployee.name || 'Department Head',
+            revertReason: payload.remarks,
+          })
+        } catch (emailErr) {
+          console.error('[submitDailyActivityApprovalStepAction] Revert email error:', emailErr)
+        }
       }
 
       safeRevalidatePath(`/dashboard/activity-hub/document/${payload.sessionId}`)
       safeRevalidatePath(`/dashboard/activity-hub/document/${payload.sessionId}/approval`)
+      safeRevalidatePath(`/dashboard/activity-hub/approval`)
+      safeRevalidatePath(`/dashboard/approval`)
 
       return {
         status: 'success',
         message: 'Dokumen berhasil dikembalikan (revert) ke tahap awal untuk revisi.',
+      }
+    }
+
+    if (payload.action === 'reject') {
+      const now = new Date()
+
+      // 1. Mark target step as rejected
+      await db
+        .update(dailyActivityApprovals)
+        .set({
+          status: 'rejected',
+          signatureDataUrl: null,
+          remarks: payload.remarks || 'Ditolak saat review dokumen.',
+          approverEmployeeId: currentEmployee.id,
+          signedAt: now,
+        })
+        .where(eq(dailyActivityApprovals.id, approvalRow.id))
+
+      // 2. Cancel all subsequent steps
+      await db
+        .update(dailyActivityApprovals)
+        .set({ status: 'cancelled', remarks: '' })
+        .where(
+          and(
+            eq(dailyActivityApprovals.sessionId, payload.sessionId),
+            sql`${dailyActivityApprovals.stepOrder} > ${approvalRow.stepOrder}`
+          )
+        )
+
+      // 3. Mark session as rejected
+      await db
+        .update(dailyActivitySessions)
+        .set({ status: 'rejected', updatedAt: now })
+        .where(eq(dailyActivitySessions.id, payload.sessionId))
+
+      try {
+        const [empRow] = await db
+          .select({ name: employees.name, email: employees.email })
+          .from(employees)
+          .where(eq(employees.id, session.employeeId))
+          .limit(1)
+
+        if (empRow?.email) {
+          await sendDailyActivityRejectedEmail({
+            sessionId: payload.sessionId,
+            sessionCode: session.sessionCode || `ACT-${payload.sessionId}`,
+            employeeName: empRow.name,
+            employeeEmail: empRow.email,
+            approverName: currentEmployee.name || 'Approver',
+            remarks: payload.remarks || 'Ditolak saat review dokumen.',
+          }).catch((err) => console.error('[submitDailyActivityApprovalStepAction] Reject email error:', err))
+
+          await notifyWorkflowBellRecipients({
+            recipientEmails: [empRow.email],
+            eventType: 'daily_activity_rejected',
+            category: 'approval_requests',
+            title: `Daily Activity Ditolak: ${session.sessionCode || ''}`,
+            body: `Laporan aktivitas harian Anda ditolak oleh ${currentEmployee.name || 'Approver'}.${payload.remarks ? ` Alasan: ${payload.remarks}` : ''}`,
+            url: `/dashboard/activity-hub/document/${payload.sessionId}`,
+            tagPrefix: 'daily-activity-rejected',
+            metadata: { sessionId: payload.sessionId },
+          }).catch((bellErr) => console.error('Error notifying bell on reject:', bellErr))
+        }
+      } catch (notifErr) {
+        console.error('[submitDailyActivityApprovalStepAction] Reject notification error:', notifErr)
+      }
+
+      safeRevalidatePath(`/dashboard/activity-hub/document/${payload.sessionId}`)
+      safeRevalidatePath(`/dashboard/activity-hub/document/${payload.sessionId}/approval`)
+      safeRevalidatePath(`/dashboard/activity-hub/approval`)
+      safeRevalidatePath(`/dashboard/approval`)
+
+      return {
+        status: 'success',
+        message: 'Aktivitas berhasil ditolak (rejected).',
       }
     }
 
@@ -4217,62 +4327,18 @@ export async function submitDailyActivityApprovalStepAction(
     }
 
     const now = new Date()
-    const signatureUrl = payload.action === 'approve' ? (payload.signatureDataUrl || null) : null
+    const signatureUrl = payload.signatureDataUrl || null
 
     await db
       .update(dailyActivityApprovals)
       .set({
-        status: payload.action === 'approve' ? 'approved' : 'rejected',
+        status: 'approved',
         signatureDataUrl: signatureUrl,
         remarks: payload.remarks,
         approverEmployeeId: currentEmployee.id,
-        signedAt: payload.action === 'approve' ? now : null,
+        signedAt: now,
       })
       .where(eq(dailyActivityApprovals.id, payload.approvalId))
-
-    if (payload.action === 'reject') {
-      await db
-        .update(dailyActivityApprovals)
-        .set({ status: 'cancelled', remarks: '' })
-        .where(
-          and(
-            eq(dailyActivityApprovals.sessionId, payload.sessionId),
-            sql`${dailyActivityApprovals.stepOrder} > ${approvalRow.stepOrder}`
-          )
-        )
-      await db
-        .update(dailyActivitySessions)
-        .set({ status: 'rejected', updatedAt: now })
-        .where(eq(dailyActivitySessions.id, payload.sessionId))
-
-      const [empRow] = await db
-        .select({ name: employees.name, email: employees.email })
-        .from(employees)
-        .where(eq(employees.id, session.employeeId))
-        .limit(1)
-
-      if (empRow?.email) {
-        await sendDailyActivityRejectedEmail({
-          sessionId: payload.sessionId,
-          sessionCode: session.sessionCode || `ACT-${payload.sessionId}`,
-          employeeName: empRow.name,
-          employeeEmail: empRow.email,
-          approverName: currentEmployee.name || 'Approver',
-          remarks: payload.remarks,
-        })
-      }
-
-      await notifyWorkflowBellRecipients({
-        recipientEmails: [empRow?.email].filter(Boolean),
-        eventType: 'daily_activity_rejected',
-        category: 'approval_requests',
-        title: `Daily Activity Ditolak: ${session.sessionCode || ''}`,
-        body: `Laporan aktivitas harian Anda ditolak oleh ${currentEmployee.name || 'Approver'}.${payload.remarks ? ` Alasan: ${payload.remarks}` : ''}`,
-        url: `/dashboard/activity-hub/document/${payload.sessionId}`,
-        tagPrefix: 'daily-activity-rejected',
-        metadata: { sessionId: payload.sessionId },
-      }).catch((bellErr) => console.error('Error notifying bell on reject:', bellErr))
-    }
 
     if (payload.action === 'approve') {
       const [nextStep] = await db
@@ -4404,14 +4470,30 @@ export async function submitDailyActivityApprovalStepAction(
   }
 }
 
-export async function getDailyActivityApprovalData(sessionIdInput: number | string) {
+export async function getDailyActivityApprovalData(sessionIdInput: number | string, overrideEmail?: string) {
   const numId = typeof sessionIdInput === 'number' ? sessionIdInput : Number(sessionIdInput)
   const isNumeric = !isNaN(numId) && numId > 0
-  const session = await auth.api.getSession({ headers: await headers() })
-  if (!session?.user?.email) return null
+  let userEmail = overrideEmail?.trim().toLowerCase()
+  let authUserId: string | null = null
+  let userName: string | null = null
+  let userRole: string | null = null
 
-  const normalizedEmail = session.user.email.trim().toLowerCase()
-  const [currentEmployeeByAuth] = session.user.id
+  if (!userEmail) {
+    let session = await getServerSession().catch(() => null)
+    if (!session?.user?.email) {
+      try {
+        session = await auth.api.getSession({ headers: await headers() })
+      } catch {}
+    }
+    userEmail = session?.user?.email?.trim().toLowerCase()
+    authUserId = session?.user?.id ?? null
+    userName = session?.user?.name ?? null
+    userRole = (session?.user as any)?.role ?? null
+  }
+  if (!userEmail) return null
+
+  const normalizedEmail = userEmail
+  const [currentEmployeeByAuth] = authUserId
     ? await db
         .select({
           id: employees.id,
@@ -4421,7 +4503,7 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
           accessRole: employees.accessRole,
         })
         .from(employees)
-        .where(eq(employees.authUserId, session.user.id))
+        .where(eq(employees.authUserId, authUserId))
         .limit(1)
     : []
 
@@ -4441,10 +4523,10 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
 
   const currentEmployee = currentEmployeeByAuth || currentEmployeeByEmail || {
     id: 0,
-    name: session.user.name || 'Admin',
-    email: session.user.email,
+    name: userName || 'Admin',
+    email: userEmail,
     siteId: null,
-    accessRole: (session.user as any)?.role || 'Super Admin',
+    accessRole: userRole || 'Super Admin',
   }
 
   const [header] = await withDbRetry(() =>
@@ -4539,8 +4621,45 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
       parsedPayload = JSON.parse(item.snapshotPayload || '{}')
     } catch (e) {}
 
-    const photoUrl = parsedPayload?.photo?.url || parsedPayload?.photo?.dataUrl || (parsedPayload?.photos && parsedPayload?.photos[0]?.url) || null
-    const photos = parsedPayload?.photos || (parsedPayload?.photo ? [parsedPayload.photo] : [])
+    const cleanPhotoUrl = (u: any) => {
+      const str = typeof u === 'string' ? u : u?.url || u?.dataUrl || ''
+      if (!str || typeof str !== 'string') return ''
+      const trimmed = str.trim()
+      if (trimmed.includes('is3.cloudhost.id') && (trimmed.includes('X-Amz-') || trimmed.includes('?'))) {
+        return trimmed.split('?')[0]
+      }
+      return trimmed
+    }
+
+    const rawExtractedUrls: string[] = []
+    if (Array.isArray(parsedPayload?.photoUrls)) {
+      parsedPayload.photoUrls.forEach((u: any) => {
+        const cleaned = cleanPhotoUrl(u)
+        if (cleaned) rawExtractedUrls.push(cleaned)
+      })
+    }
+    if (Array.isArray(parsedPayload?.photos)) {
+      parsedPayload.photos.forEach((u: any) => {
+        const cleaned = cleanPhotoUrl(u)
+        if (cleaned) rawExtractedUrls.push(cleaned)
+      })
+    }
+    if (parsedPayload?.photoUrl) {
+      const cleaned = cleanPhotoUrl(parsedPayload.photoUrl)
+      if (cleaned) rawExtractedUrls.push(cleaned)
+    }
+    if (parsedPayload?.photo) {
+      const cleaned = cleanPhotoUrl(parsedPayload.photo)
+      if (cleaned) rawExtractedUrls.push(cleaned)
+    }
+    if (parsedPayload?.evidencePhotoUrl) {
+      const cleaned = cleanPhotoUrl(parsedPayload.evidencePhotoUrl)
+      if (cleaned) rawExtractedUrls.push(cleaned)
+    }
+
+    const photoUrls: string[] = Array.from(new Set(rawExtractedUrls.filter(Boolean)))
+    const photoUrl = photoUrls[0] || null
+    const photos = photoUrls
 
     return {
       id: item.id,
@@ -4559,6 +4678,8 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
       sortOrder: item.sortOrder || 0,
       photoUrl,
       photos,
+      photoUrls,
+      snapshotPayload: item.snapshotPayload,
       startedAt: item.startedAt,
       endedAt: item.endedAt,
     }
@@ -4601,6 +4722,9 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
 
   const sigMap = new Map(employeeSigs.map((e) => [e.id, e.signatureDataUrl]))
 
+  const teamMatch = (header.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)
+  const teamMembersSummary = teamMatch ? teamMatch[1].trim() : null
+
   return {
     sessionId: header.sessionId,
     sessionCode: header.sessionCode,
@@ -4611,6 +4735,7 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
     routeTemplateId: header.routeTemplateId,
     overtimeCommandLetterId: header.overtimeCommandLetterId,
     summaryRemark: header.summaryRemark,
+    teamMembersSummary,
     submittedAt: header.submittedAt,
     approvedAt: header.approvedAt,
     employee: {
@@ -4675,7 +4800,15 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
     }),
     permissions: {
       canApprove,
-      isCurrentEmployee: header.employeeId === currentEmployee.id,
+      isCurrentEmployee:
+        header.employeeId === currentEmployee.id ||
+        Boolean(
+          currentEmployee.name &&
+            (header.summaryRemark || '')
+              .toLowerCase()
+              .includes(currentEmployee.name.toLowerCase().trim())
+        ),
+      isPrimarySubmitter: header.employeeId === currentEmployee.id,
       currentEmployeeId: currentEmployee.id,
       currentEmployeeEmail: currentEmployee.email,
       currentEmployeeName: currentEmployee.name,
@@ -5429,6 +5562,7 @@ export async function saveDailyActivityApprovalForm(payload: {
   shiftCode?: string
   notes?: string
   summaryRemark?: string
+  customerName?: string
   items?: Array<{
     id?: number
     label: string
@@ -5513,6 +5647,36 @@ export async function saveDailyActivityApprovalForm(payload: {
       sessionUpdates.summaryRemark = (payload.notes ?? payload.summaryRemark ?? '').substring(0, 1000)
     }
 
+    if (payload.customerName && payload.customerName.trim()) {
+      const custTrimmed = payload.customerName.trim()
+      let targetSiteId = sessionUpdates.siteId
+      if (!targetSiteId) {
+        const [sessRow] = await db
+          .select({ siteId: dailyActivitySessions.siteId, employeeId: dailyActivitySessions.employeeId })
+          .from(dailyActivitySessions)
+          .where(eq(dailyActivitySessions.id, payload.sessionId))
+          .limit(1)
+        targetSiteId = sessRow?.siteId
+        if (!targetSiteId && sessRow?.employeeId) {
+          const [empRow] = await db
+            .select({ siteId: employees.siteId })
+            .from(employees)
+            .where(eq(employees.id, sessRow.employeeId))
+            .limit(1)
+          targetSiteId = empRow?.siteId ?? null
+          if (targetSiteId) {
+            sessionUpdates.siteId = targetSiteId
+          }
+        }
+      }
+      if (targetSiteId) {
+        await db
+          .update(sites)
+          .set({ customerName: custTrimmed })
+          .where(eq(sites.id, targetSiteId))
+      }
+    }
+
     const [existingSession] = await db
       .select({
         id: dailyActivitySessions.id,
@@ -5544,6 +5708,13 @@ export async function saveDailyActivityApprovalForm(payload: {
 
       const now = new Date()
 
+      // Fetch all approval steps for this session
+      const existingApprovals = await db
+        .select()
+        .from(dailyActivityApprovals)
+        .where(eq(dailyActivityApprovals.sessionId, payload.sessionId))
+        .orderBy(asc(dailyActivityApprovals.stepOrder))
+
       // 1. Step 1 (Karyawan Sign) is approved and signed by submitter
       const [sessionEmp] = existingSession?.employeeId
         ? await db
@@ -5558,12 +5729,14 @@ export async function saveDailyActivityApprovalForm(payload: {
             .limit(1)
         : []
 
+      const leaderSigDataUrl = payload.leaderSignatureDataUrl || (payload.signatures ? payload.signatures[1] : undefined)
+
       await db
         .update(dailyActivityApprovals)
         .set({
           status: 'approved',
           signedAt: now,
-          signatureDataUrl: sessionEmp?.signatureDataUrl || payload.signatureDataUrl || null,
+          signatureDataUrl: leaderSigDataUrl || sessionEmp?.signatureDataUrl || null,
           remarks: '',
         })
         .where(
@@ -5573,31 +5746,31 @@ export async function saveDailyActivityApprovalForm(payload: {
           )
         )
 
-      // 2. Step 2 (Leader / PJO) is reset to 'pending'
-      const [step2] = await db
-        .select()
-        .from(dailyActivityApprovals)
+      // Find the step that was reverted (the approver who requested revision)
+      const revertedStep = existingApprovals.find(
+        (s) => (s.status || '').toLowerCase() === 'reverted' || (s.status || '').toLowerCase() === 'needs_revision'
+      )
+      const targetStepOrder = revertedStep?.stepOrder && revertedStep.stepOrder > 1 ? revertedStep.stepOrder : 2
+
+      // Any intermediate step (between 1 and targetStepOrder) that was already approved stays approved!
+      // (The approvers who already signed and approved are skipped/loncati)
+      // The target step (the one who reverted) becomes 'pending' for them to review again:
+      await db
+        .update(dailyActivityApprovals)
+        .set({
+          status: 'pending',
+          signatureDataUrl: null,
+          signedAt: null,
+          remarks: '',
+        })
         .where(
           and(
             eq(dailyActivityApprovals.sessionId, payload.sessionId),
-            eq(dailyActivityApprovals.stepOrder, 2)
+            eq(dailyActivityApprovals.stepOrder, targetStepOrder)
           )
         )
-        .limit(1)
 
-      if (step2) {
-        await db
-          .update(dailyActivityApprovals)
-          .set({
-            status: 'pending',
-            signatureDataUrl: null,
-            signedAt: null,
-            remarks: '',
-          })
-          .where(eq(dailyActivityApprovals.id, step2.id))
-      }
-
-      // 3. Reset subsequent steps (e.g. Step 3 Section Head) to 'waiting'
+      // Reset any steps AFTER targetStepOrder to 'waiting'
       await db
         .update(dailyActivityApprovals)
         .set({
@@ -5609,16 +5782,18 @@ export async function saveDailyActivityApprovalForm(payload: {
         .where(
           and(
             eq(dailyActivityApprovals.sessionId, payload.sessionId),
-            sql`${dailyActivityApprovals.stepOrder} > 2`
+            sql`${dailyActivityApprovals.stepOrder} > ${targetStepOrder}`
           )
         )
 
-      // 4. Send email notification to Step 2 (Leader / PJO)
+      const targetStep = existingApprovals.find((s) => s.stepOrder === targetStepOrder)
+
+      // Send email notification to targetStep (the person who reverted!)
       const [siteRow] = existingSession?.siteId
         ? await db.select({ name: sites.name }).from(sites).where(eq(sites.id, existingSession.siteId)).limit(1)
         : []
 
-      if (step2?.approverEmail) {
+      if (targetStep?.approverEmail) {
         try {
           await sendDailyActivityStepApprovalEmail({
             sessionId: payload.sessionId,
@@ -5626,10 +5801,10 @@ export async function saveDailyActivityApprovalForm(payload: {
             employeeName: sessionEmp?.name || 'Karyawan',
             workDate: existingSession?.workDate,
             siteName: siteRow?.name || '-',
-            approverName: step2.approverName || 'Leader / PJO',
-            approverEmail: step2.approverEmail,
-            approvalStep: step2.stepLabel || 'Leader / PJO',
-            approvalToken: step2.approvalToken,
+            approverName: targetStep.approverName || targetStep.stepLabel || 'Approver',
+            approverEmail: targetStep.approverEmail,
+            approvalStep: targetStep.stepLabel || 'Approval Step',
+            approvalToken: targetStep.approvalToken,
           })
         } catch (mailErr) {
           console.error('Error sending smart resume daily activity email:', mailErr)
@@ -5665,8 +5840,63 @@ export async function saveDailyActivityApprovalForm(payload: {
       // Update or insert items
       for (let idx = 0; idx < payload.items.length; idx++) {
         const item = payload.items[idx]
-        const startedAtDate = item.startedAt ? new Date(item.startedAt) : null
-        const endedAtDate = item.endedAt ? new Date(item.endedAt) : null
+        const parseSafeItemDate = (val: any) => {
+          if (!val) return null
+          const d = val instanceof Date ? val : new Date(val)
+          return isNaN(d.getTime()) ? null : d
+        }
+        const startedAtDate = parseSafeItemDate(item.startedAt)
+        const endedAtDate = parseSafeItemDate(item.endedAt)
+
+        const cleanPhotoUrl = (u: any) => {
+          const str = typeof u === 'string' ? u : u?.url || u?.dataUrl || ''
+          if (!str || typeof str !== 'string') return ''
+          const trimmed = str.trim()
+          if (trimmed.includes('is3.cloudhost.id') && (trimmed.includes('X-Amz-') || trimmed.includes('?'))) {
+            return trimmed.split('?')[0]
+          }
+          return trimmed
+        }
+
+        const rawExtracted: string[] = []
+        if (Array.isArray(item.photos)) {
+          item.photos.forEach((p: any) => {
+            const cleaned = cleanPhotoUrl(p)
+            if (cleaned) rawExtracted.push(cleaned)
+          })
+        }
+        if (item.photoUrl) {
+          const cleaned = cleanPhotoUrl(item.photoUrl)
+          if (cleaned) rawExtracted.push(cleaned)
+        }
+        const cleanedPhotoUrls = Array.from(new Set(rawExtracted))
+        const firstPhotoUrl = cleanedPhotoUrls[0] || null
+
+        let safeLibraryActivityId: number | null = null
+        if (item.libraryActivityId && Number(item.libraryActivityId) > 0) {
+          const numLibId = Number(item.libraryActivityId)
+          const [exists] = await db
+            .select({ id: activityLibraries.id })
+            .from(activityLibraries)
+            .where(eq(activityLibraries.id, numLibId))
+            .limit(1)
+          if (exists) {
+            safeLibraryActivityId = numLibId
+          }
+        }
+
+        let safeRouteItemId: number | null = null
+        if (item.routeItemId && Number(item.routeItemId) > 0) {
+          const numRouteId = Number(item.routeItemId)
+          const [exists] = await db
+            .select({ id: activityRouteItems.id })
+            .from(activityRouteItems)
+            .where(eq(activityRouteItems.id, numRouteId))
+            .limit(1)
+          if (exists) {
+            safeRouteItemId = numRouteId
+          }
+        }
 
         const itemPayloadJson = JSON.stringify({
           unitNumber: item.unitNumber ?? '',
@@ -5674,10 +5904,12 @@ export async function saveDailyActivityApprovalForm(payload: {
           materialUsed: item.materialUsed ?? '',
           startedAt: item.startedAt ?? null,
           endedAt: item.endedAt ?? null,
-          photo: item.photoUrl ? { url: item.photoUrl } : undefined,
-          photos: item.photos || (item.photoUrl ? [{ url: item.photoUrl }] : []),
-          libraryActivityId: item.libraryActivityId || null,
-          routeItemId: item.routeItemId || null,
+          photoUrl: firstPhotoUrl,
+          photoUrls: cleanedPhotoUrls,
+          photo: firstPhotoUrl ? { url: firstPhotoUrl } : undefined,
+          photos: cleanedPhotoUrls.map((u) => ({ url: u })),
+          libraryActivityId: safeLibraryActivityId,
+          routeItemId: safeRouteItemId,
         })
 
         if (item.id && item.id > 0) {
@@ -5686,8 +5918,8 @@ export async function saveDailyActivityApprovalForm(payload: {
             .set({
               snapshotLabel: item.label,
               snapshotGroupName: item.group || 'Technical',
-              libraryActivityId: item.libraryActivityId ? Number(item.libraryActivityId) : undefined,
-              routeItemId: item.routeItemId ? Number(item.routeItemId) : undefined,
+              libraryActivityId: safeLibraryActivityId,
+              routeItemId: safeRouteItemId,
               unitNumber: item.unitNumber ?? '',
               actualPoints: item.points ?? 0,
               remark: (payload.itemRemarks?.[item.id] ?? item.remark ?? '').substring(0, 600),
@@ -5703,8 +5935,8 @@ export async function saveDailyActivityApprovalForm(payload: {
             sessionId: payload.sessionId,
             snapshotLabel: item.label.trim(),
             snapshotGroupName: item.group || 'Technical',
-            libraryActivityId: item.libraryActivityId ? Number(item.libraryActivityId) : null,
-            routeItemId: item.routeItemId ? Number(item.routeItemId) : null,
+            libraryActivityId: safeLibraryActivityId,
+            routeItemId: safeRouteItemId,
             unitNumber: item.unitNumber ?? '',
             actualPoints: item.points ?? 5,
             isChecked: true,
@@ -6318,6 +6550,7 @@ export async function createDailyActivitySessionAction(input: {
   workDate: string
   shiftCode: string
   siteId?: number | null
+  customerName?: string | null
   notes?: string | null
   summaryRemark?: string | null
   leaderEmployeeId?: number | null
@@ -6389,375 +6622,382 @@ export async function createDailyActivitySessionAction(input: {
       }
     }
 
-    for (const emp of allEmps) {
-      // Fallback siteId if none is provided
-      let siteId = input.siteId || emp.siteId
-      if (!siteId) {
-        const [firstSite] = await db.select({ id: sites.id }).from(sites).limit(1)
-        siteId = firstSite?.id || 1
+    // Create ONE session and approval flow for the team DAR submission
+    const emp = primaryEmp
+    let siteId = input.siteId || emp.siteId
+    if (!siteId) {
+      const [firstSite] = await db.select({ id: sites.id }).from(sites).limit(1)
+      siteId = firstSite?.id || 1
+    }
+
+    if (input.customerName && input.customerName.trim() && siteId) {
+      await db
+        .update(sites)
+        .set({ customerName: input.customerName.trim() })
+        .where(eq(sites.id, siteId))
+    }
+
+    const dateFormatted = input.workDate
+      ? input.workDate.replace(/-/g, '')
+      : new Date().toISOString().slice(0, 10).replace(/-/g, '')
+    const sessionCode = `DAS-${dateFormatted}-${emp.employeeSn || emp.id}-${Math.floor(100 + Math.random() * 900)}`
+
+    const parsedWorkDate = input.workDate
+      ? new Date(`${input.workDate}T00:00:00.000Z`)
+      : new Date()
+
+    let validDeptId: number | null = null
+    if (emp.departmentId) {
+      const [dept] = await db
+        .select({ id: masterDepartments.id })
+        .from(masterDepartments)
+        .where(eq(masterDepartments.id, emp.departmentId))
+        .limit(1)
+      if (dept) validDeptId = dept.id
+    }
+
+    let validSecId: number | null = null
+    if (emp.sectionId) {
+      const [sec] = await db
+        .select({ id: masterSections.id })
+        .from(masterSections)
+        .where(eq(masterSections.id, emp.sectionId))
+        .limit(1)
+      if (sec) validSecId = sec.id
+    }
+
+    let validPosId: number | null = null
+    if (emp.positionId) {
+      const [pos] = await db
+        .select({ id: masterPositions.id })
+        .from(masterPositions)
+        .where(eq(masterPositions.id, emp.positionId))
+        .limit(1)
+      if (pos) validPosId = pos.id
+    }
+
+    const otherTeamNames = allEmps
+      .filter((e) => e.id !== emp.id)
+      .map((e) => e.name)
+      .filter(Boolean)
+      .join(', ')
+
+    let finalSummary = (input.summaryRemark || input.notes || '').trim()
+    if (otherTeamNames.length > 0 && !finalSummary.includes('[Team:')) {
+      finalSummary = finalSummary
+        ? `${finalSummary} | [Team: ${otherTeamNames}]`
+        : `[Team: ${otherTeamNames}]`
+    }
+
+    const [created] = await db
+      .insert(dailyActivitySessions)
+      .values({
+        employeeId: emp.id,
+        sessionCode,
+        workDate: parsedWorkDate,
+        shiftCode: input.shiftCode || 'ALL',
+        siteId,
+        departmentId: validDeptId,
+        sectionId: validSecId,
+        positionId: validPosId,
+        status: 'submitted',
+        summaryRemark: finalSummary,
+        submittedAt: new Date(),
+      })
+      .returning()
+
+    primaryCreatedSessionId = created.id
+
+    // Insert activity items if provided
+    if (input.items && input.items.length > 0) {
+      const itemsToInsert = input.items
+        .filter((it) => it.label && it.label.trim().length > 0)
+        .map((it, idx) => {
+          const startedAtDate = it.startedAt
+            ? it.startedAt instanceof Date
+              ? it.startedAt
+              : new Date(it.startedAt)
+            : new Date(parsedWorkDate.getTime() + 8 * 3600000)
+          const endedAtDate = it.endedAt
+            ? it.endedAt instanceof Date
+              ? it.endedAt
+              : new Date(it.endedAt)
+            : new Date(parsedWorkDate.getTime() + 9 * 3600000)
+
+          return {
+            sessionId: created.id,
+            snapshotLabel: it.label.trim(),
+            snapshotGroupName: it.group || 'Technical',
+            libraryActivityId: it.libraryActivityId ? Number(it.libraryActivityId) : null,
+            routeItemId: it.routeItemId ? Number(it.routeItemId) : null,
+            overtimeCommandLetterItemId: it.overtimeCommandLetterItemId
+              ? Number(it.overtimeCommandLetterItemId)
+              : null,
+            unitNumber: it.unitNumber?.trim() || '',
+            remark: it.remark?.trim() || '',
+            actualPoints: Number(it.points) || 5,
+            isChecked: true,
+            sortOrder: idx + 1,
+            snapshotPayload: JSON.stringify({
+              duration: it.duration || '60m',
+              materialUsed: it.materialUsed || '',
+              photoUrl: it.photoUrl || null,
+              photos: it.photos || [],
+            }),
+            startedAt: startedAtDate,
+            endedAt: endedAtDate,
+          }
+        })
+
+      if (itemsToInsert.length > 0) {
+        await db.insert(dailyActivitySessionItems).values(itemsToInsert)
       }
+    }
 
-      const dateFormatted = input.workDate
-        ? input.workDate.replace(/-/g, '')
-        : new Date().toISOString().slice(0, 10).replace(/-/g, '')
-      const sessionCode = `DAS-${dateFormatted}-${emp.employeeSn || emp.id}-${Math.floor(100 + Math.random() * 900)}`
+    // 1. Resolve Leader
+    let leaderEmpId = input.leaderEmployeeId
+    let leaderName = input.leaderName
+    let leaderEmail = ''
 
-      const parsedWorkDate = input.workDate
-        ? new Date(`${input.workDate}T00:00:00.000Z`)
-        : new Date()
-
-      let validDeptId: number | null = null
-      if (emp.departmentId) {
-        const [dept] = await db
-          .select({ id: masterDepartments.id })
-          .from(masterDepartments)
-          .where(eq(masterDepartments.id, emp.departmentId))
-          .limit(1)
-        if (dept) validDeptId = dept.id
+    if (leaderEmpId) {
+      const [found] = await db
+        .select({ id: employees.id, name: employees.name, email: employees.email })
+        .from(employees)
+        .where(eq(employees.id, leaderEmpId))
+        .limit(1)
+      if (found) {
+        leaderName = found.name
+        leaderEmail = found.email || ''
       }
+    } else if (emp.directManagerId) {
+      const [found] = await db
+        .select({ id: employees.id, name: employees.name, email: employees.email })
+        .from(employees)
+        .where(eq(employees.id, emp.directManagerId))
+        .limit(1)
+      if (found) {
+        leaderEmpId = found.id
+        leaderName = found.name
+        leaderEmail = found.email || ''
+      }
+    }
 
-      let validSecId: number | null = null
+    if (!leaderEmpId && !leaderEmail) {
       if (emp.sectionId) {
-        const [sec] = await db
-          .select({ id: masterSections.id })
+        const [secLeader] = await db
+          .select({ id: employees.id, name: employees.name, email: employees.email })
+          .from(employees)
+          .where(
+            and(
+              eq(employees.sectionId, emp.sectionId),
+              eq(employees.isActive, true),
+              or(
+                sql`LOWER(${employees.jobTitle}) LIKE '%leader%'`,
+                sql`LOWER(${employees.jobTitle}) LIKE '%supervisor%'`,
+                sql`LOWER(${employees.role}) LIKE '%leader%'`,
+                sql`LOWER(${employees.role}) LIKE '%admin%'`
+              )
+            )
+          )
+          .limit(1)
+        if (secLeader) {
+          leaderEmpId = secLeader.id
+          leaderName = secLeader.name
+          leaderEmail = secLeader.email || ''
+        }
+      }
+      if (!leaderEmpId && emp.siteId) {
+        const [siteLeader] = await db
+          .select({ id: employees.id, name: employees.name, email: employees.email })
+          .from(employees)
+          .where(
+            and(
+              eq(employees.siteId, emp.siteId),
+              eq(employees.isActive, true),
+              or(
+                sql`LOWER(${employees.jobTitle}) LIKE '%leader%'`,
+                sql`LOWER(${employees.jobTitle}) LIKE '%pjo%'`,
+                sql`LOWER(${employees.jobTitle}) LIKE '%admin%'`,
+                sql`LOWER(${employees.role}) LIKE '%admin%'`
+              )
+            )
+          )
+          .limit(1)
+        if (siteLeader) {
+          leaderEmpId = siteLeader.id
+          leaderName = siteLeader.name
+          leaderEmail = siteLeader.email || ''
+        }
+      }
+    }
+
+    if (!leaderName) {
+      leaderName = 'Leader Lapangan'
+    }
+
+    // 2. Resolve Section Head (Superior)
+    let superiorEmpId = input.superiorEmployeeId
+    let superiorName = input.superiorName
+    let superiorEmail = ''
+
+    if (superiorEmpId) {
+      const [found] = await db
+        .select({ id: employees.id, name: employees.name, email: employees.email })
+        .from(employees)
+        .where(eq(employees.id, superiorEmpId))
+        .limit(1)
+      if (found) {
+        superiorName = found.name
+        superiorEmail = found.email || ''
+      }
+    } else {
+      const empSectionLower = (emp.section || '').trim().toLowerCase()
+      const empDeptLower = (emp.department || '').trim().toLowerCase()
+
+      const matchedSecConfig = (workflowSettings.approvalMatrix.sectionHeads || []).find((sh) => {
+        const secLower = (sh.section || '').trim().toLowerCase()
+        return (
+          secLower &&
+          (secLower === empSectionLower ||
+            empSectionLower.includes(secLower) ||
+            secLower.includes(empSectionLower) ||
+            secLower === empDeptLower)
+        )
+      })
+
+      if (matchedSecConfig?.name) {
+        superiorName = matchedSecConfig.name
+        superiorEmail = matchedSecConfig.email || ''
+        if (matchedSecConfig.email) {
+          const [matEmp] = await db
+            .select({ id: employees.id })
+            .from(employees)
+            .where(
+              sql`LOWER(TRIM(${employees.email})) = ${matchedSecConfig.email.trim().toLowerCase()}`
+            )
+            .limit(1)
+          if (matEmp) superiorEmpId = matEmp.id
+        }
+      } else if (emp.sectionId) {
+        const [secRow] = await db
+          .select({ headEmployeeId: masterSections.headEmployeeId })
           .from(masterSections)
           .where(eq(masterSections.id, emp.sectionId))
           .limit(1)
-        if (sec) validSecId = sec.id
+        if (secRow?.headEmployeeId) {
+          const [headEmp] = await db
+            .select({ id: employees.id, name: employees.name, email: employees.email })
+            .from(employees)
+            .where(eq(employees.id, secRow.headEmployeeId))
+            .limit(1)
+          if (headEmp) {
+            superiorEmpId = headEmp.id
+            superiorName = headEmp.name
+            superiorEmail = headEmp.email || ''
+          }
+        }
       }
+    }
+    if (!superiorName) {
+      superiorName = 'Section Head'
+    }
 
-      let validPosId: number | null = null
-      if (emp.positionId) {
-        const [pos] = await db
-          .select({ id: masterPositions.id })
-          .from(masterPositions)
-          .where(eq(masterPositions.id, emp.positionId))
+    const step1Token = randomUUID()
+    const step2Token = randomUUID()
+    const step3Token = randomUUID()
+
+    // Generate sequential approval steps:
+    // Step 1: Karyawan Sign (pending without auto-signature)
+    // Step 2: Leader / PJO (waiting)
+    // Step 3: Section Head (waiting)
+    const now = new Date()
+
+    await db.insert(dailyActivityApprovals).values([
+      {
+        sessionId: created.id,
+        stepOrder: 1,
+        stepLabel: 'Karyawan Sign',
+        approverRole: 'employee',
+        approverEmployeeId: emp.id,
+        approverName: emp.name,
+        approverEmail: emp.email || '',
+        status: 'pending',
+        signatureDataUrl: null,
+        signedAt: null,
+        approvalToken: step1Token,
+        createdAt: now,
+      },
+      {
+        sessionId: created.id,
+        stepOrder: 2,
+        stepLabel: 'Leader / PJO',
+        approverRole: 'leader',
+        approverEmployeeId: leaderEmpId ?? null,
+        approverName: leaderName,
+        approverEmail: leaderEmail,
+        status: 'waiting',
+        approvalToken: step2Token,
+        createdAt: now,
+      },
+      {
+        sessionId: created.id,
+        stepOrder: 3,
+        stepLabel: 'Section Head',
+        approverRole: 'section_head',
+        approverEmployeeId: superiorEmpId ?? null,
+        approverName: superiorName,
+        approverEmail: superiorEmail,
+        status: 'waiting',
+        approvalToken: step3Token,
+        createdAt: now,
+      },
+    ])
+
+    // Send Step 2 (Leader / PJO) email and in-app notification to Leader
+    const [siteRow] = created.siteId
+      ? await db
+          .select({ name: sites.name })
+          .from(sites)
+          .where(eq(sites.id, created.siteId))
           .limit(1)
-        if (pos) validPosId = pos.id
-      }
+      : []
 
-      const otherTeamNames = allEmps
-        .filter((e) => e.id !== emp.id)
-        .map((e) => e.name)
-        .filter(Boolean)
-        .join(', ')
-
-      let finalSummary = (input.summaryRemark || input.notes || '').trim()
-      if (otherTeamNames.length > 0 && !finalSummary.includes('[Team:')) {
-        finalSummary = finalSummary
-          ? `${finalSummary} | [Team: ${otherTeamNames}]`
-          : `[Team: ${otherTeamNames}]`
-      }
-
-      const [created] = await db
-        .insert(dailyActivitySessions)
-        .values({
-          employeeId: emp.id,
-          sessionCode,
+    try {
+      if (leaderEmail) {
+        await publishInAppApprovalNotification({
+          recipientEmail: leaderEmail,
+          title: `Daily Activity Approval: ${created.sessionCode}`,
+          body: `Laporan aktivitas harian dari ${emp.name}${otherTeamNames ? ` (dan Tim: ${otherTeamNames})` : ''} membutuhkan persetujuan Anda sebagai Leader / PJO.`,
+          url: `/dashboard/approval`,
+          eventType: 'daily_activity_approval_needed',
+        })
+        await sendDailyActivityStepApprovalEmail({
+          sessionId: created.id,
+          sessionCode: created.sessionCode,
+          employeeName: otherTeamNames ? `${emp.name} (+ Tim: ${otherTeamNames})` : emp.name,
           workDate: parsedWorkDate,
-          shiftCode: input.shiftCode || 'ALL',
-          siteId,
-          departmentId: validDeptId,
-          sectionId: validSecId,
-          positionId: validPosId,
-          status: 'submitted',
-          summaryRemark: finalSummary,
-          submittedAt: new Date(),
-        })
-        .returning()
-
-      if (emp.id === targetEmpId) {
-        primaryCreatedSessionId = created.id
-      }
-
-      // Insert activity items if provided
-      if (input.items && input.items.length > 0) {
-        const itemsToInsert = input.items
-          .filter((it) => it.label && it.label.trim().length > 0)
-          .map((it, idx) => {
-            const startedAtDate = it.startedAt
-              ? it.startedAt instanceof Date
-                ? it.startedAt
-                : new Date(it.startedAt)
-              : new Date(parsedWorkDate.getTime() + 8 * 3600000)
-            const endedAtDate = it.endedAt
-              ? it.endedAt instanceof Date
-                ? it.endedAt
-                : new Date(it.endedAt)
-              : new Date(parsedWorkDate.getTime() + 9 * 3600000)
-
-            return {
-              sessionId: created.id,
-              snapshotLabel: it.label.trim(),
-              snapshotGroupName: it.group || 'Technical',
-              libraryActivityId: it.libraryActivityId ? Number(it.libraryActivityId) : null,
-              routeItemId: it.routeItemId ? Number(it.routeItemId) : null,
-              overtimeCommandLetterItemId: it.overtimeCommandLetterItemId
-                ? Number(it.overtimeCommandLetterItemId)
-                : null,
-              unitNumber: it.unitNumber?.trim() || '',
-              remark: it.remark?.trim() || '',
-              actualPoints: Number(it.points) || 5,
-              isChecked: true,
-              sortOrder: idx + 1,
-              snapshotPayload: JSON.stringify({
-                duration: it.duration || '60m',
-                materialUsed: it.materialUsed || '',
-                photoUrl: it.photoUrl || null,
-                photos: it.photos || [],
-              }),
-              startedAt: startedAtDate,
-              endedAt: endedAtDate,
-            }
-          })
-
-        if (itemsToInsert.length > 0) {
-          await db.insert(dailyActivitySessionItems).values(itemsToInsert)
-        }
-      }
-
-      // 1. Resolve Leader
-      let leaderEmpId = input.leaderEmployeeId
-      let leaderName = input.leaderName
-      let leaderEmail = ''
-
-      if (leaderEmpId) {
-        const [found] = await db
-          .select({ id: employees.id, name: employees.name, email: employees.email })
-          .from(employees)
-          .where(eq(employees.id, leaderEmpId))
-          .limit(1)
-        if (found) {
-          leaderName = found.name
-          leaderEmail = found.email || ''
-        }
-      } else if (emp.directManagerId) {
-        const [found] = await db
-          .select({ id: employees.id, name: employees.name, email: employees.email })
-          .from(employees)
-          .where(eq(employees.id, emp.directManagerId))
-          .limit(1)
-        if (found) {
-          leaderEmpId = found.id
-          leaderName = found.name
-          leaderEmail = found.email || ''
-        }
-      }
-
-      if (!leaderEmpId && !leaderEmail) {
-        if (emp.sectionId) {
-          const [secLeader] = await db
-            .select({ id: employees.id, name: employees.name, email: employees.email })
-            .from(employees)
-            .where(
-              and(
-                eq(employees.sectionId, emp.sectionId),
-                eq(employees.isActive, true),
-                or(
-                  sql`LOWER(${employees.jobTitle}) LIKE '%leader%'`,
-                  sql`LOWER(${employees.jobTitle}) LIKE '%supervisor%'`,
-                  sql`LOWER(${employees.role}) LIKE '%leader%'`,
-                  sql`LOWER(${employees.role}) LIKE '%admin%'`
-                )
-              )
-            )
-            .limit(1)
-          if (secLeader) {
-            leaderEmpId = secLeader.id
-            leaderName = secLeader.name
-            leaderEmail = secLeader.email || ''
-          }
-        }
-        if (!leaderEmpId && emp.siteId) {
-          const [siteLeader] = await db
-            .select({ id: employees.id, name: employees.name, email: employees.email })
-            .from(employees)
-            .where(
-              and(
-                eq(employees.siteId, emp.siteId),
-                eq(employees.isActive, true),
-                or(
-                  sql`LOWER(${employees.jobTitle}) LIKE '%leader%'`,
-                  sql`LOWER(${employees.jobTitle}) LIKE '%pjo%'`,
-                  sql`LOWER(${employees.jobTitle}) LIKE '%admin%'`,
-                  sql`LOWER(${employees.role}) LIKE '%admin%'`
-                )
-              )
-            )
-            .limit(1)
-          if (siteLeader) {
-            leaderEmpId = siteLeader.id
-            leaderName = siteLeader.name
-            leaderEmail = siteLeader.email || ''
-          }
-        }
-      }
-
-      if (!leaderName) {
-        leaderName = 'Leader Lapangan'
-      }
-
-      // 2. Resolve Section Head (Superior)
-      let superiorEmpId = input.superiorEmployeeId
-      let superiorName = input.superiorName
-      let superiorEmail = ''
-
-      if (superiorEmpId) {
-        const [found] = await db
-          .select({ id: employees.id, name: employees.name, email: employees.email })
-          .from(employees)
-          .where(eq(employees.id, superiorEmpId))
-          .limit(1)
-        if (found) {
-          superiorName = found.name
-          superiorEmail = found.email || ''
-        }
-      } else {
-        const empSectionLower = (emp.section || '').trim().toLowerCase()
-        const empDeptLower = (emp.department || '').trim().toLowerCase()
-
-        const matchedSecConfig = (workflowSettings.approvalMatrix.sectionHeads || []).find((sh) => {
-          const secLower = (sh.section || '').trim().toLowerCase()
-          return (
-            secLower &&
-            (secLower === empSectionLower ||
-              empSectionLower.includes(secLower) ||
-              secLower.includes(empSectionLower) ||
-              secLower === empDeptLower)
-          )
-        })
-
-        if (matchedSecConfig?.name) {
-          superiorName = matchedSecConfig.name
-          superiorEmail = matchedSecConfig.email || ''
-          if (matchedSecConfig.email) {
-            const [matEmp] = await db
-              .select({ id: employees.id })
-              .from(employees)
-              .where(
-                sql`LOWER(TRIM(${employees.email})) = ${matchedSecConfig.email.trim().toLowerCase()}`
-              )
-              .limit(1)
-            if (matEmp) superiorEmpId = matEmp.id
-          }
-        } else if (emp.sectionId) {
-          const [secRow] = await db
-            .select({ headEmployeeId: masterSections.headEmployeeId })
-            .from(masterSections)
-            .where(eq(masterSections.id, emp.sectionId))
-            .limit(1)
-          if (secRow?.headEmployeeId) {
-            const [headEmp] = await db
-              .select({ id: employees.id, name: employees.name, email: employees.email })
-              .from(employees)
-              .where(eq(employees.id, secRow.headEmployeeId))
-              .limit(1)
-            if (headEmp) {
-              superiorEmpId = headEmp.id
-              superiorName = headEmp.name
-              superiorEmail = headEmp.email || ''
-            }
-          }
-        }
-      }
-      if (!superiorName) {
-        superiorName = 'Section Head'
-      }
-
-      const step1Token = randomUUID()
-      const step2Token = randomUUID()
-      const step3Token = randomUUID()
-
-      // Generate sequential approval steps:
-      // Step 1: Karyawan Sign (pending without auto-signature)
-      // Step 2: Leader / PJO (waiting)
-      // Step 3: Section Head (waiting)
-      const now = new Date()
-
-      await db.insert(dailyActivityApprovals).values([
-        {
-          sessionId: created.id,
-          stepOrder: 1,
-          stepLabel: 'Karyawan Sign',
-          approverRole: 'employee',
-          approverEmployeeId: emp.id,
-          approverName: emp.name,
-          approverEmail: emp.email || '',
-          status: 'pending',
-          signatureDataUrl: null,
-          signedAt: null,
-          approvalToken: step1Token,
-          createdAt: now,
-        },
-        {
-          sessionId: created.id,
-          stepOrder: 2,
-          stepLabel: 'Leader / PJO',
-          approverRole: 'leader',
-          approverEmployeeId: leaderEmpId ?? null,
+          siteName: siteRow?.name || '-',
           approverName: leaderName,
           approverEmail: leaderEmail,
-          status: 'waiting',
+          approvalStep: 'Leader / PJO',
           approvalToken: step2Token,
-          createdAt: now,
-        },
-        {
-          sessionId: created.id,
-          stepOrder: 3,
-          stepLabel: 'Section Head',
-          approverRole: 'section_head',
-          approverEmployeeId: superiorEmpId ?? null,
-          approverName: superiorName,
-          approverEmail: superiorEmail,
-          status: 'waiting',
-          approvalToken: step3Token,
-          createdAt: now,
-        },
-      ])
+        })
+      }
 
-      // Send Step 2 (Leader / PJO) email and in-app notification to Leader
-      const [siteRow] = created.siteId
-        ? await db
-            .select({ name: sites.name })
-            .from(sites)
-            .where(eq(sites.id, created.siteId))
-            .limit(1)
-        : []
-
-      try {
-        if (leaderEmail) {
+      // Notify submitter and all team members
+      for (const targetEmp of allEmps) {
+        if (targetEmp.email) {
           await publishInAppApprovalNotification({
-            recipientEmail: leaderEmail,
-            title: `Daily Activity Approval: ${created.sessionCode}`,
-            body: `Laporan aktivitas harian dari ${emp.name} membutuhkan persetujuan Anda sebagai Leader / PJO.`,
-            url: `/dashboard/approval`,
-            eventType: 'daily_activity_approval_needed',
-          })
-          await sendDailyActivityStepApprovalEmail({
-            sessionId: created.id,
-            sessionCode: created.sessionCode,
-            employeeName: emp.name,
-            workDate: parsedWorkDate,
-            siteName: siteRow?.name || '-',
-            approverName: leaderName,
-            approverEmail: leaderEmail,
-            approvalStep: 'Leader / PJO',
-            approvalToken: step2Token,
-          })
-        }
-
-        if (emp.email) {
-          await publishInAppApprovalNotification({
-            recipientEmail: emp.email,
+            recipientEmail: targetEmp.email,
             title: `Daily Activity: ${created.sessionCode}`,
-            body: `Laporan aktivitas Anda telah diajukan dan sedang menunggu persetujuan ${leaderName}.`,
+            body: `Laporan aktivitas tim Anda telah diajukan dan sedang menunggu persetujuan ${leaderName}.`,
             url: `/mobile/activity`,
             eventType: 'daily_activity_submitted',
           })
         }
-      } catch (notifyErr) {
-        console.warn('Non-blocking notification warning:', notifyErr)
       }
+    } catch (notifyErr) {
+      console.warn('Non-blocking notification warning:', notifyErr)
     }
 
     try {
@@ -7034,7 +7274,10 @@ export async function batchRejectDailyActivitySessionsAction(sessionIds: number[
       return { success: false as const, error: 'Pilih minimal satu aktivitas.' }
     }
 
-    const emp = await getCurrentEmployee()
+    let emp = await getCurrentEmployee()
+    if (!emp) {
+      emp = await getAuthenticatedEmployeeContext().catch(() => null)
+    }
     if (!emp) {
       return { success: false as const, error: 'Sesi login tidak ditemukan.' }
     }
@@ -7090,7 +7333,7 @@ export async function batchRejectDailyActivitySessionsAction(sessionIds: number[
 
       await db
         .update(dailyActivitySessions)
-        .set({ status: 'Rejected' })
+        .set({ status: 'rejected', updatedAt: now })
         .where(eq(dailyActivitySessions.id, sessionId))
 
       // Dispatch rejection notification & email to original requester
@@ -7133,6 +7376,11 @@ export async function batchRejectDailyActivitySessionsAction(sessionIds: number[
           }).catch((err) => console.error('[batchRejectDailyActivitySessionsAction] Bell error:', err))
         }
       }
+
+      try {
+        safeRevalidatePath(`/dashboard/activity-hub/document/${sessionId}`)
+        safeRevalidatePath(`/dashboard/activity-hub/document/${sessionId}/approval`)
+      } catch {}
     }
 
     try {
@@ -7154,7 +7402,10 @@ export async function batchRevertDailyActivitySessionsAction(sessionIds: number[
       return { success: false as const, error: 'Pilih minimal satu aktivitas.' }
     }
 
-    const emp = await getCurrentEmployee()
+    let emp = await getCurrentEmployee()
+    if (!emp) {
+      emp = await getAuthenticatedEmployeeContext().catch(() => null)
+    }
     if (!emp) {
       return { success: false as const, error: 'Sesi login tidak ditemukan.' }
     }
@@ -7248,7 +7499,7 @@ export async function batchRevertDailyActivitySessionsAction(sessionIds: number[
             sessionCode: sessionRow?.sessionCode || `ACT-${sessionId}`,
             targetApproverName: step1.approverName || 'Karyawan',
             targetApproverEmail: step1.approverEmail,
-            managerName: emp.name || 'Atasan',
+            managerName: emp.name || 'Department Head',
             revertReason: remarks || 'Dokumen dikembalikan untuk revisi.',
           })
 

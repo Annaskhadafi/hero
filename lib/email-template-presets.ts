@@ -46,7 +46,9 @@ const RAW_EMAIL_TEMPLATE_PRESETS: EmailTemplatePreset[] = [
 </div>`,
     textContent: `Yth. Bapak/Ibu Manajemen & PIC Site {{siteName}},
 
-Berikut adalah daftar karyawan di Site {{siteName}} yang Mine Permit-nya akan segera berakhir dalam {{reminderDays}} hari ke depan (Total: {{totalExpiring}} orang).
+Berikut adalah daftar karyawan di Site {{siteName}} yang Mine Permit-nya akan segera berakhir dalam {{reminderDays}} hari ke depan (Total: {{totalExpiring}} orang):
+
+{{tableContentText}}
 
 Mohon segera melakukan tindak lanjut proses perpanjangan Mine Permit untuk memastikan kepatuhan keselamatan kerja di site.
 
@@ -59,13 +61,14 @@ Human Capital - PT Chitra Paratama`,
       'totalExpiring',
       'reminderDays',
       'tableContentHtml',
+      'tableContentText',
       'viewLink',
     ],
     sampleValues: {
       siteName: 'Tabang',
       totalExpiring: '3',
       reminderDays: '30',
-      tableContentHtml: '<table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:13px;"><tr style="background:#fef3c7;"><th style="padding:8px;border:1px solid #e2e8f0;text-align:left;">NIK</th><th style="padding:8px;border:1px solid #e2e8f0;text-align:left;">Nama</th><th style="padding:8px;border:1px solid #e2e8f0;text-align:left;">Posisi</th><th style="padding:8px;border:1px solid #e2e8f0;text-align:left;">Exp Date</th><th style="padding:8px;border:1px solid #e2e8f0;text-align:left;">Sisa Hari</th></tr><tr><td style="padding:8px;border:1px solid #e2e8f0;">CP001</td><td style="padding:8px;border:1px solid #e2e8f0;">Budi Santoso</td><td style="padding:8px;border:1px solid #e2e8f0;">Mechanic</td><td style="padding:8px;border:1px solid #e2e8f0;">2026-09-30</td><td style="padding:8px;border:1px solid #e2e8f0;color:#dc2626;font-weight:bold;">21 hari</td></tr></table>',
+      tableContentHtml: '<ul style="margin:16px 0;padding:0;list-style:none;"><li style="margin-bottom:10px;padding:12px 14px;background:#f8fafc;border-left:4px solid #b45309;border-radius:6px;"><strong style="display:block;">1. Budi Santoso</strong><span>NIK CP001 · Mechanic · Exp. 2026-09-30</span><br><span style="color:#b45309;font-weight:700;">21 hari lagi</span></li></ul>',
       viewLink: 'https://hero.chitraparatama.com/dashboard/hc/employee',
     },
   },
@@ -3863,7 +3866,13 @@ function inferTemplateFeature(templateCode: string) {
 }
 function buildUnifiedEmailHtml(preset: EmailTemplatePreset) {
   const feature = inferTemplateFeature(preset.templateCode)
-  const body = formatEmailBody(preset.textContent || preset.description || preset.subject)
+  let body = formatEmailBody(preset.textContent || preset.description || preset.subject)
+  if (preset.textContent.includes('{{tableContentText}}') || preset.htmlContent?.includes('{{tableContentHtml}}')) {
+    body = body.replace(
+      /<p[^>]*>\s*(\{\{\s*tableContent(Text|Html)\s*\}\})\s*<\/p>/gi,
+      '{{tableContentHtml}}'
+    ).replace('{{tableContentText}}', '{{tableContentHtml}}')
+  }
   return `<div style="margin:0;padding:0;background:#e5e7eb;font-family:'Segoe UI',Arial,sans-serif;color:#0f172a">
 <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#e5e7eb;padding:28px 12px">
 <tr><td align="center">

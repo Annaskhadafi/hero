@@ -2,6 +2,7 @@ import { getDailyActivityApprovalData } from '@/app/dashboard/activity-hub/actio
 import { getEmployeesForContract } from '@/app/actions/employee'
 import { getOrgChartData } from '@/app/actions/org-chart'
 import { DailyActivityApprovalForm } from '@/components/daily-activity-approval-form'
+import { getServerSession } from '@/lib/auth-session'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -15,11 +16,12 @@ export default async function DailyActivityApprovalPage({
 }: {
   params: Promise<{ sessionId: string }>
 }) {
+  const session = await getServerSession()
   const { sessionId } = await params
   const sessionIdNum = Number(sessionId)
 
   const [data, employeesRaw, orgNodes] = await Promise.all([
-    getDailyActivityApprovalData(sessionIdNum),
+    getDailyActivityApprovalData(sessionIdNum, session?.user?.email),
     getEmployeesForContract(),
     getOrgChartData(),
   ])

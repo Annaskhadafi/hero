@@ -99,11 +99,12 @@ function librarySectionMatches(secIdCol: AnyPgColumn, secIdsCol: AnyPgColumn, em
 const DAILY_ACTIVITY_REVALIDATE_PATHS = [
   '/dashboard/activity-hub/my-day',
   '/dashboard/activity-hub/team-board',
-  '/dashboard/overtime-requests',
+  '/dashboard/activity-hub/approval',
   '/dashboard/activity-hub/library',
   '/dashboard/activity-hub/routes',
   '/dashboard/activity-hub/blueprint',
   '/dashboard/activity-hub/configuration',
+  '/dashboard/overtime-requests',
   '/dashboard/approval',
   '/dashboard/leaderboard',
   '/mobile',
@@ -2379,7 +2380,10 @@ export async function getDailyActivityEmployeeData(
         .from(dailyActivitySessions)
         .where(
           and(
-            eq(dailyActivitySessions.employeeId, employee.id),
+            or(
+              eq(dailyActivitySessions.employeeId, employee.id),
+              sql`${dailyActivitySessions.summaryRemark} ILIKE ${'%' + (employee.name || '').trim() + '%'}`
+            ),
             or(
               inArray(dailyActivitySessions.status, ['submitted', 'pending', 'reverted', 'needs_revision', 'draft', 'Draft', 'Submitted', 'pending l1', 'pending approval']),
               and(gte(dailyActivitySessions.workDate, dayStart), lte(dailyActivitySessions.workDate, dayEnd)),

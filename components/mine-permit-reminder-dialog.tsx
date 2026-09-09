@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Clock,
   Send,
@@ -12,6 +12,9 @@ import {
   Calendar,
   Mail,
   Users,
+  Filter,
+  Check,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -51,14 +54,19 @@ interface SiteConfig {
   ccEmails: string[];
   additionalCcEmails: string;
   isActive: boolean;
+  isConfigured?: boolean;
   lastSentAt: string | null;
 }
+
+const STORAGE_KEY = "last_selected_mine_permit_site_id";
 
 export function MinePermitReminderDialog() {
   const [open, setOpen] = useState(false);
   const [sites, setSites] = useState<SiteOption[]>([]);
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
+  const [allConfigs, setAllConfigs] = useState<SiteConfig[]>([]);
   const [selectedSiteId, setSelectedSiteId] = useState<number | null>(null);
+  const [filterType, setFilterType] = useState<"all" | "configured" | "unconfigured">("all");
 
   const [config, setConfig] = useState<SiteConfig>({
     siteId: 0,
@@ -68,6 +76,7 @@ export function MinePermitReminderDialog() {
     ccEmails: [],
     additionalCcEmails: "",
     isActive: true,
+    isConfigured: false,
     lastSentAt: null,
   });
 
@@ -82,22 +91,88 @@ export function MinePermitReminderDialog() {
     }
   }, [open]);
 
+  // Create a map for quick lookup of configuration state per site
+  const configsMap = useMemo(() => {
+    const map = new Map<number, SiteConfig>();
+    for (const c of allConfigs) {
+      map.set(c.siteId, c);
+    }
+    return map;
+  }, [allConfigs]);
+
+  const configuredCount = useMemo(
+    () => allConfigs.filter((c) => c.isConfigured).length,
+    [allConfigs]
+  );
+  const unconfiguredCount = useMemo(
+    () => Math.max(0, sites.length - configuredCount),
+    [sites.length, configuredCount]
+  );
+
+  // Filtered sites for dropdown based on filter pill
+  const filteredSites = useMemo(() => {
+    if (filterType === "configured") {
+      return sites.filter((s) => configsMap.get(s.id)?.isConfigured);
+    }
+    if (filterType === "unconfigured") {
+      return sites.filter((s) => !configsMap.get(s.id)?.isConfigured);
+    }
+    return sites;
+  }, [sites, configsMap, filterType]);
+
   async function loadInitialData() {
     setIsLoading(true);
     try {
-      const res = await fetch("/dashboard/api/mine-permit-reminder-config");
+      // Determine what site to load
+      const savedSiteIdStr =
+        typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
+      const savedSiteId = savedSiteIdStr ? parseInt(savedSiteIdStr, 10) : null;
+
+      const url = savedSiteId
+        ? `/dashboard/api/mine-permit-reminder-config?siteId=${savedSiteId}`
+        : `/dashboard/api/mine-permit-reminder-config`;
+
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
-        setSites(data.sites || []);
-        setEmployees(data.employees || []);
+        const loadedSites: SiteOption[] = data.sites || [];
+        const loadedConfigs: SiteConfig[] = data.configs || [];
 
-        if (data.sites && data.sites.length > 0) {
-          const firstSiteId = data.sites[0].id;
-          setSelectedSiteId(firstSiteId);
-          await loadSiteConfig(firstSiteId);
+        setSites(loadedSites);
+        setEmployees(data.employees || []);
+        setAllConfigs(loadedConfigs);
+
+        // Decide which site to select:
+        let targetSiteId: number | null = null;
+
+        // 1. If currently selected site is valid, keep it
+        if (selectedSiteId && loadedSites.some((s) => s.id === selectedSiteId)) {
+          targetSiteId = selectedSiteId;
+        }
+        // 2. Or if localStorage site is valid in loadedSites
+        else if (savedSiteId && loadedSites.some((s) => s.id === savedSiteId)) {
+          targetSiteId = savedSiteId;
+        }
+        // 3. Or prioritize the first site that is already configured!
+        else {
+          const firstConfigured = loadedConfigs.find((c) => c.isConfigured);
+          if (firstConfigured) {
+            targetSiteId = firstConfigured.siteId;
+          } else if (loadedSites.length > 0) {
+            targetSiteId = loadedSites[0].id;
+          }
+        }
+
+        if (targetSiteId) {
+          setSelectedSiteId(targetSiteId);
+          if (data.config && data.config.siteId === targetSiteId) {
+            applyConfigToForm(data.config);
+          } else {
+            await loadSiteConfig(targetSiteId);
+          }
         }
       } else {
-        toast.error("Gagal memuat daftar site.");
+        toast.error("Gagal memuat konfigurasi.");
       }
     } catch (e) {
       console.error(e);
@@ -107,25 +182,32 @@ export function MinePermitReminderDialog() {
     }
   }
 
+  function applyConfigToForm(c: any) {
+    setConfig({
+      id: c.id,
+      siteId: c.siteId,
+      siteName: c.siteName,
+      intervalDays: c.intervalDays ?? 1,
+      reminderDays: c.reminderDays ?? 30,
+      recipientEmails: c.recipientEmails ?? [],
+      ccEmails: c.ccEmails ?? [],
+      additionalCcEmails: c.additionalCcEmails ?? "",
+      isActive: c.isActive ?? true,
+      isConfigured: c.isConfigured ?? Boolean(c.id),
+      lastSentAt: c.lastSentAt ?? null,
+    });
+  }
+
   async function loadSiteConfig(siteId: number) {
     setIsConfigLoading(true);
     try {
       const res = await fetch(`/dashboard/api/mine-permit-reminder-config?siteId=${siteId}`);
       if (res.ok) {
         const data = await res.json();
-        const c = data.config;
-        setConfig({
-          id: c.id,
-          siteId: c.siteId,
-          siteName: c.siteName,
-          intervalDays: c.intervalDays ?? 1,
-          reminderDays: c.reminderDays ?? 30,
-          recipientEmails: c.recipientEmails ?? [],
-          ccEmails: c.ccEmails ?? [],
-          additionalCcEmails: c.additionalCcEmails ?? "",
-          isActive: c.isActive ?? true,
-          lastSentAt: c.lastSentAt ?? null,
-        });
+        applyConfigToForm(data.config);
+        if (data.configs) {
+          setAllConfigs(data.configs);
+        }
       }
     } catch (e) {
       console.error("Failed loading site config:", e);
@@ -138,6 +220,9 @@ export function MinePermitReminderDialog() {
     const siteId = parseInt(val, 10);
     if (!isNaN(siteId)) {
       setSelectedSiteId(siteId);
+      if (typeof window !== "undefined") {
+        localStorage.setItem(STORAGE_KEY, String(siteId));
+      }
       loadSiteConfig(siteId);
     }
   };
@@ -168,6 +253,25 @@ export function MinePermitReminderDialog() {
       if (res.ok) {
         const currentSiteName = sites.find((s) => s.id === selectedSiteId)?.name;
         toast.success(`Pengaturan Reminder Site ${currentSiteName || ""} berhasil disimpan.`);
+
+        // Mark as configured immediately in state
+        setConfig((prev) => ({ ...prev, isConfigured: true }));
+        setAllConfigs((prev) =>
+          prev.map((item) =>
+            item.siteId === selectedSiteId
+              ? {
+                  ...item,
+                  isConfigured: true,
+                  intervalDays: Number(config.intervalDays) || 1,
+                  reminderDays: Number(config.reminderDays) || 30,
+                  recipientEmails: config.recipientEmails,
+                  ccEmails: config.ccEmails,
+                  additionalCcEmails: config.additionalCcEmails,
+                  isActive: config.isActive,
+                }
+              : item
+          )
+        );
       } else {
         toast.error("Gagal menyimpan pengaturan reminder.");
       }
@@ -183,6 +287,11 @@ export function MinePermitReminderDialog() {
     if (!selectedSiteId) return;
     const currentSiteName = sites.find((s) => s.id === selectedSiteId)?.name;
 
+    if (config.recipientEmails.length === 0) {
+      toast.error("Pilih minimal 1 Penerima Utama (To) sebelum melakukan test kirim.");
+      return;
+    }
+
     setIsSending(true);
     try {
       const res = await fetch("/dashboard/api/mine-permit-reminder-config", {
@@ -191,6 +300,12 @@ export function MinePermitReminderDialog() {
         body: JSON.stringify({
           siteId: selectedSiteId,
           action: "test",
+          intervalDays: Number(config.intervalDays) || 1,
+          reminderDays: Number(config.reminderDays) || 30,
+          recipientEmails: config.recipientEmails,
+          ccEmails: config.ccEmails,
+          additionalCcEmails: config.additionalCcEmails,
+          isActive: config.isActive,
         }),
       });
 
@@ -200,6 +315,23 @@ export function MinePermitReminderDialog() {
         if (r?.sent) {
           toast.success(
             `Berhasil! ${r.count} karyawan terdeteksi. Email dikirim ke ${r.toCount} To & ${r.ccCount} CC.`
+          );
+          setConfig((prev) => ({ ...prev, isConfigured: true }));
+          setAllConfigs((prev) =>
+            prev.map((item) =>
+              item.siteId === selectedSiteId
+                ? {
+                    ...item,
+                    isConfigured: true,
+                    intervalDays: Number(config.intervalDays) || 1,
+                    reminderDays: Number(config.reminderDays) || 30,
+                    recipientEmails: config.recipientEmails,
+                    ccEmails: config.ccEmails,
+                    additionalCcEmails: config.additionalCcEmails,
+                    isActive: config.isActive,
+                  }
+                : item
+            )
           );
           // Reload config to refresh lastSentAt
           loadSiteConfig(selectedSiteId);
@@ -220,6 +352,7 @@ export function MinePermitReminderDialog() {
   }
 
   const selectedSite = sites.find((s) => s.id === selectedSiteId);
+  const isSelectedSiteConfigured = Boolean(config.isConfigured || config.id);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -248,58 +381,138 @@ export function MinePermitReminderDialog() {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-5 pt-2">
-            {/* Site Selector Bar */}
+            {/* Site Selector Bar with Config Status Indicator */}
             <div className="rounded-xl border border-amber-200/70 bg-amber-50/50 p-4 space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs font-semibold uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+              {/* Overview Counter Badges */}
+              <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-amber-200/60">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
                     <Building2 className="size-3.5 text-amber-700" />
-                    Pilih Site yang Dikelola
+                    Status Site HERO ({sites.length}):
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setFilterType("all")}
+                    className={`text-[11px] px-2 py-0.5 rounded-full font-medium transition-colors ${
+                      filterType === "all"
+                        ? "bg-amber-700 text-white"
+                        : "bg-white text-amber-900 border border-amber-200 hover:bg-amber-100/60"
+                    }`}
+                  >
+                    Semua ({sites.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilterType("configured")}
+                    className={`text-[11px] px-2 py-0.5 rounded-full font-medium transition-colors flex items-center gap-1 ${
+                      filterType === "configured"
+                        ? "bg-emerald-700 text-white"
+                        : "bg-white text-emerald-800 border border-emerald-300 hover:bg-emerald-50"
+                    }`}
+                  >
+                    <span className="size-1.5 rounded-full bg-emerald-500 inline-block" />
+                    Sudah Diisi ({configuredCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFilterType("unconfigured")}
+                    className={`text-[11px] px-2 py-0.5 rounded-full font-medium transition-colors flex items-center gap-1 ${
+                      filterType === "unconfigured"
+                        ? "bg-slate-700 text-white"
+                        : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    <span className="size-1.5 rounded-full bg-slate-400 inline-block" />
+                    Belum Diisi ({unconfiguredCount})
+                  </button>
+                </div>
+              </div>
+
+              {/* Dropdown Selector */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                <div className="space-y-0.5">
+                  <Label className="text-xs font-semibold text-amber-950">
+                    Pilih Site untuk Dikelola:
                   </Label>
                   <p className="text-[11px] text-amber-700/80">
-                    Setiap site memiliki konfigurasi pengingat dan daftar PIC penerima tersendiri.
+                    Pilih site untuk melihat dan menyimpan parameter pengingatnya.
                   </p>
                 </div>
-                <div className="w-full sm:w-64">
+                <div className="w-full sm:w-80">
                   <Select
                     value={selectedSiteId ? String(selectedSiteId) : ""}
                     onValueChange={handleSiteChange}
                   >
-                    <SelectTrigger className="bg-white border-amber-300">
+                    <SelectTrigger className="bg-white border-amber-300 min-h-10 text-xs">
                       <SelectValue placeholder="Pilih Site..." />
                     </SelectTrigger>
-                    <SelectContent>
-                      {sites.map((site) => (
-                        <SelectItem key={site.id} value={String(site.id)}>
-                          {site.name}
-                        </SelectItem>
-                      ))}
+                    <SelectContent className="max-h-72">
+                      {filteredSites.map((site) => {
+                        const siteCfg = configsMap.get(site.id);
+                        const isSet = Boolean(siteCfg?.isConfigured);
+                        return (
+                          <SelectItem key={site.id} value={String(site.id)} className="text-xs py-2">
+                            <div className="flex items-center justify-between w-full gap-3">
+                              <span className="font-semibold text-slate-800">{site.name}</span>
+                              {isSet ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full whitespace-nowrap">
+                                  <Check className="size-3 text-emerald-600" />
+                                  Sudah Diisi
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center text-[10px] text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+                                  Belum Diisi
+                                </span>
+                              )}
+                            </div>
+                          </SelectItem>
+                        );
+                      })}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
 
+              {/* Site Status Banner */}
               {selectedSite && (
-                <div className="pt-2 border-t border-amber-200/60 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      id="is-active-switch"
-                      checked={config.isActive}
-                      onCheckedChange={(checked) => setConfig({ ...config, isActive: checked })}
-                    />
-                    <Label htmlFor="is-active-switch" className="text-xs font-semibold cursor-pointer">
-                      {config.isActive ? (
-                        <span className="text-emerald-700 flex items-center gap-1">
-                          <span className="size-1.5 rounded-full bg-emerald-600 inline-block" />
-                          Pengingat Aktif untuk Site Ini
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground flex items-center gap-1">
-                          <span className="size-1.5 rounded-full bg-slate-400 inline-block" />
-                          Pengingat Nonaktif
-                        </span>
-                      )}
-                    </Label>
+                <div className="pt-2 border-t border-amber-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id="is-active-switch"
+                        checked={config.isActive}
+                        onCheckedChange={(checked) => setConfig({ ...config, isActive: checked })}
+                      />
+                      <Label htmlFor="is-active-switch" className="text-xs font-semibold cursor-pointer">
+                        {config.isActive ? (
+                          <span className="text-emerald-700 flex items-center gap-1">
+                            <span className="size-2 rounded-full bg-emerald-600 inline-block animate-pulse" />
+                            Pengingat Aktif
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground flex items-center gap-1">
+                            <span className="size-2 rounded-full bg-slate-400 inline-block" />
+                            Pengingat Nonaktif
+                          </span>
+                        )}
+                      </Label>
+                    </div>
+
+                    <div className="h-3 w-px bg-amber-200 hidden sm:block" />
+
+                    {isSelectedSiteConfigured ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                        <CheckCircle2 className="size-3 text-emerald-600" />
+                        Data Tersimpan
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-amber-800 bg-amber-100/60 px-2 py-0.5 rounded">
+                        <AlertCircle className="size-3 text-amber-600" />
+                        Belum Dikonfigurasi
+                      </span>
+                    )}
                   </div>
 
                   {config.lastSentAt ? (
@@ -309,6 +522,8 @@ export function MinePermitReminderDialog() {
                         day: "numeric",
                         month: "short",
                         year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
                       })}
                     </span>
                   ) : (
@@ -436,7 +651,7 @@ export function MinePermitReminderDialog() {
                       <Users className="size-3.5 text-primary" />
                       Penerima Utama Notifikasi (To)
                     </Label>
-                    <span className="text-[11px] text-muted-foreground">
+                    <span className="text-[11px] font-semibold text-amber-800">
                       {config.recipientEmails.length} PIC dipilih
                     </span>
                   </div>
@@ -459,7 +674,7 @@ export function MinePermitReminderDialog() {
                       <Mail className="size-3.5 text-primary" />
                       Penerima Tembusan (CC)
                     </Label>
-                    <span className="text-[11px] text-muted-foreground">
+                    <span className="text-[11px] font-semibold text-slate-700">
                       {config.ccEmails.length} Karyawan di-CC
                     </span>
                   </div>

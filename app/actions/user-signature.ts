@@ -26,20 +26,7 @@ async function resolveEmployeeForSignature() {
     }
   }
 
-  // Fallback: match first active employee (consistent with profile page & daily activity)
-  if (!emp) {
-    const [firstEmp] = await db
-      .select()
-      .from(employees)
-      .where(eq(employees.isActive, true))
-      .orderBy(asc(employees.id))
-      .limit(1)
-    if (firstEmp) {
-      emp = firstEmp
-    }
-  }
-
-  return emp
+  return emp || null
 }
 
 function triggerSignatureRevalidations() {

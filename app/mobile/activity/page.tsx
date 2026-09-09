@@ -1,6 +1,9 @@
 import { redirect } from "next/navigation";
 import { desc, eq, asc } from "drizzle-orm";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 import { MobileDailyActivityClient } from "@/components/mobile/mobile-daily-activity-client";
 import { db } from "@/db";
 import { employeeMcu, employees, masterSections, masterDepartments, sites } from "@/db/schema/hero";
@@ -164,7 +167,7 @@ export default async function MobileActivityPage({
       ? Number(numericId)
       : editSessionId;
     try {
-      editSessionData = await getDailyActivityApprovalData(sessionIdVal);
+      editSessionData = await getDailyActivityApprovalData(sessionIdVal, session.user.email);
     } catch (err) {
       console.error("[MobileActivityPage] Failed to fetch edit session:", err);
     }
