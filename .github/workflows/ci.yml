@@ -88,7 +88,7 @@ jobs:
             -e POSTGRES_USER=postgres `
             -e POSTGRES_PASSWORD=postgres `
             -e POSTGRES_DB=postgres `
-            -p 5432:5432 postgres:16
+            -p 5433:5432 postgres:16
           $ready = $false
           1..30 | ForEach-Object {
             if (-not $ready) {
@@ -105,12 +105,12 @@ jobs:
       - name: Setup database
         run: npm run db:push
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5433/postgres
 
       - name: Run tests
         run: npm test
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5433/postgres
           BETTER_AUTH_SECRET: test-secret-key-for-ci
           BETTER_AUTH_URL: http://localhost:3000
           NEXT_PUBLIC_BETTER_AUTH_URL: http://localhost:3000
