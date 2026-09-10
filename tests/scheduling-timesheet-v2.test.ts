@@ -30,12 +30,13 @@ describe('scheduling timesheet V2', () => {
     expect(rows[0].schedule).toEqual(Array(dayCount).fill(''))
   })
 
-  it('cycles blank, OFF, DS, NS, FB, and blank', () => {
+  it('cycles blank, OFF, DS, NS, FB, ST, and blank', () => {
     expect(cycleScheduleV2Code('')).toBe('OFF')
     expect(cycleScheduleV2Code('OFF')).toBe('DS')
     expect(cycleScheduleV2Code('DS')).toBe('NS')
     expect(cycleScheduleV2Code('NS')).toBe('FB')
-    expect(cycleScheduleV2Code('FB')).toBe('')
+    expect(cycleScheduleV2Code('FB')).toBe('ST')
+    expect(cycleScheduleV2Code('ST')).toBe('')
   })
 
   it('repeats OFF weekly from the selected date and allows custom override', () => {
@@ -81,7 +82,10 @@ describe('scheduling timesheet V2', () => {
     )
     const actions = fs.readFileSync(path.join(process.cwd(), 'app/dashboard/admin-actions.ts'), 'utf8')
     expect(fieldBreakWorkspace).toContain('hasValidSavedNextFieldBreak')
-    expect(fieldBreakWorkspace).toContain('next.fieldBreakDate < addDays(row.lastFieldBreakDate, 90)')
+    expect(
+      fieldBreakWorkspace.includes('next.fieldBreakDate < addDays(row.lastFieldBreakDate, fieldBreakWorkCycleDays)') ||
+      fieldBreakWorkspace.includes('next.fieldBreakDate < addDays(row.lastFieldBreakDate, 90)')
+    ).toBe(true)
     expect(actions).toContain("revalidatePath('/dashboard/scheduling-timesheet/field-break')")
     expect(actions).toContain('Jeda Next Field Break minimal 90 hari dari Last Field Break.')
   })
@@ -281,11 +285,11 @@ describe('scheduling timesheet V2', () => {
     expect(actions).toContain("issues.push('Payroll snapshot belum dibuat.')")
     expect(actions).toContain('exception payroll belum diselesaikan')
     expect(actions).toContain("params.templateKey === 'timesheet-period-review'")
-    expect(approval).toContain('"timesheet-period-review"')
+    expect(approval).toContain("'timesheet-period-review'")
     expect(workspace).toContain('Submit ke HR')
     expect(workspace).toContain('Menunggu HR')
     const loader = fs.readFileSync(path.join(process.cwd(), 'lib/hero-admin.ts'), 'utf8')
-    expect(loader).toContain('canSeeSchedulingSite')
+    expect(loader).toContain('canSeeSchedulingEmployee')
     expect(loader).toContain('hasGlobalSchedulingScope')
   })
 
@@ -314,9 +318,10 @@ describe('scheduling timesheet V2', () => {
     expect(normalizedWorkspace).toContain('sections={groupedAttendanceOvertimeRows.map')
     expect(normalizedWorkspace).toContain("'Section',\n                  'Employee'")
     expect(normalizedWorkspace).toContain('payrollSectionLabel(row.rosterSection),\n                  row.employee.name')
-    expect(normalizedWorkspace).toContain("const eligibleMsa = isWorkDay && !holiday && cell.status === 'present'")
-    expect(normalizedWorkspace).toContain("siteConfig.mealsType === 'field-break' && isFieldBreakDay")
-    expect(normalizedWorkspace).toContain('calculatePayrollOvertime')
+    expect(normalizedWorkspace).toContain('isMsaEligibleDay(scheduleCode, isFieldBreakDay)')
+    expect(normalizedWorkspace).toContain('isMealsEligibleScheduleCode(scheduleCode, isFieldBreakDay)')
+    expect(normalizedWorkspace).toContain('buildPayrollSnapshot')
+    expect(normalizedWorkspace).toContain('calculateAttendanceOvertime')
     expect(normalizedWorkspace).not.toContain('Rooster Kerja 5 : 2')
   })
 })
