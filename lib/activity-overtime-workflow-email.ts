@@ -25,6 +25,10 @@ export type StepNotificationParams = {
 }
 
 function getTargetRecipients(email?: string | null) {
+  return email && email.trim() ? [email.trim()] : []
+}
+
+function getSplTargetRecipients(email?: string | null) {
   return ['raihanaraya36@gmail.com']
 }
 
@@ -343,7 +347,7 @@ export async function sendDailyActivityRevertedEmail(params: {
 // ─── Overtime Request (SPL) Email Helpers ─────────────────────────────────────
 
 export async function sendOvertimeStepApprovalEmail(params: StepNotificationParams) {
-  const recipients = getTargetRecipients(params.approverEmail)
+  const recipients = getSplTargetRecipients(params.approverEmail)
 
   const baseUrl = getPublicAppUrl()
   const docIdentifier = params.splNumber || (params.documentId ? String(params.documentId) : '')
@@ -427,7 +431,7 @@ export async function sendOvertimeCompletedEmail(params: {
   requesterEmail: string
   requesterName: string
 }) {
-  const recipients = getTargetRecipients(params.requesterEmail)
+  const recipients = getSplTargetRecipients(params.requesterEmail)
   const baseUrl = getPublicAppUrl()
   const viewLink = `${baseUrl}/dashboard/overtime-requests/${params.documentId}/approval`
 
@@ -498,7 +502,7 @@ export async function sendOvertimeRejectedEmail(params: {
   approverName: string
   remarks?: string | null
 }) {
-  const recipients = getTargetRecipients(params.requesterEmail)
+  const recipients = getSplTargetRecipients(params.requesterEmail)
   const baseUrl = getPublicAppUrl()
   const viewLink = `${baseUrl}/dashboard/overtime-requests/${params.documentId}/approval`
 
@@ -575,7 +579,7 @@ export async function sendOvertimeRevertedEmail(params: {
   managerName: string
   revertReason?: string | null
 }) {
-  const recipients = getTargetRecipients(params.targetApproverEmail)
+  const recipients = getSplTargetRecipients(params.targetApproverEmail)
   const baseUrl = getPublicAppUrl()
   const docIdentifier = params.splNumber || String(params.documentId)
   const approvalLink = `${baseUrl}/dashboard/approval?openDoc=${encodeURIComponent(docIdentifier)}`

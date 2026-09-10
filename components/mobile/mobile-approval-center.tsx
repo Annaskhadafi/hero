@@ -7,54 +7,74 @@ import type { getApprovalCenterData } from '@/lib/approval-workspace'
 
 type ApprovalCenterData = Awaited<ReturnType<typeof getApprovalCenterData>>
 
-export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
-  const dailyCount =
-    (data.dailyActivityInboxItems?.length ?? 0) +
-    (data.inboxGroups || []).reduce(
-      (sum, g) => sum + (g.activityCount || g.items.length),
-      0
-    )
-  const totalPending =
-    dailyCount +
-    (data.overtimeInboxItems?.length ?? 0) +
-    (data.ptwInboxItems?.length ?? 0) +
-    (data.rfrInboxItems?.length ?? 0) +
-    (data.sopWinRequestInboxItems?.length ?? 0) +
-    (data.contractReviewInboxItems?.length ?? 0)
+export function MobileApprovalCenter({
+  data,
+  categoryFilter,
+  hideHeader = false,
+}: {
+  data: ApprovalCenterData
+  categoryFilter?: string
+  hideHeader?: boolean
+}) {
+  const isOvertimeOnly = categoryFilter === 'OVERTIME'
 
-  const totalGroups =
-    (data.inboxGroups?.length ?? 0) +
-    (data.dailyActivityInboxItems?.length ?? 0) +
-    (data.overtimeInboxItems?.length ?? 0) +
-    (data.ptwInboxItems?.length ?? 0) +
-    (data.rfrInboxItems?.length ?? 0) +
-    (data.sopWinRequestInboxItems?.length ?? 0) +
-    (data.contractReviewInboxItems?.length ?? 0)
+  const overtimeCount = data.overtimeInboxItems?.length ?? 0
+  const dailyCount = isOvertimeOnly
+    ? 0
+    : (data.dailyActivityInboxItems?.length ?? 0) +
+      (data.inboxGroups || []).reduce(
+        (sum, g) => sum + (g.activityCount || g.items.length),
+        0
+      )
+  const ptwCount = isOvertimeOnly ? 0 : data.ptwInboxItems?.length ?? 0
+  const rfrCount = isOvertimeOnly ? 0 : data.rfrInboxItems?.length ?? 0
+  const sopWinCount = isOvertimeOnly ? 0 : data.sopWinRequestInboxItems?.length ?? 0
+  const contractReviewCount = isOvertimeOnly ? 0 : data.contractReviewInboxItems?.length ?? 0
+
+  const totalPending = isOvertimeOnly
+    ? overtimeCount
+    : dailyCount + overtimeCount + ptwCount + rfrCount + sopWinCount + contractReviewCount
+
+  const totalGroups = isOvertimeOnly
+    ? overtimeCount
+    : (data.inboxGroups?.length ?? 0) +
+      (data.dailyActivityInboxItems?.length ?? 0) +
+      overtimeCount +
+      ptwCount +
+      rfrCount +
+      sopWinCount +
+      contractReviewCount
 
   return (
-    <div className="space-y-5">
-      <section className="space-y-1">
-        <p className="text-[10px] font-black tracking-[0.28em] text-[#486275] uppercase">
-          Approval Inbox
-        </p>
-        <h1 className="text-2xl font-black tracking-tight text-[#003461]">Approval</h1>
-        <p className="text-sm font-semibold text-[#486275]">
-          Inbox per requester dan riwayat hasil approval pengajuan Anda.
-        </p>
-      </section>
+    <div className="space-y-4">
+      {!hideHeader && (
+        <section className="space-y-1">
+          <p className="text-[10px] font-black tracking-[0.28em] text-[#486275] uppercase">
+            {isOvertimeOnly ? 'Approval SPL' : 'Approval Inbox'}
+          </p>
+          <h1 className="text-2xl font-black tracking-tight text-[#003461]">
+            {isOvertimeOnly ? 'Persetujuan SPL' : 'Approval'}
+          </h1>
+          <p className="text-sm font-semibold text-[#486275]">
+            {isOvertimeOnly
+              ? 'Inbox persetujuan Surat Perintah Lembur (SPL) yang menunggu tindakan Anda.'
+              : 'Inbox per requester dan riwayat hasil approval pengajuan Anda.'}
+          </p>
+        </section>
+      )}
 
       <section className="grid grid-cols-2 gap-3">
-        <div className="rounded-[1.2rem] bg-white p-4 shadow-[0_12px_28px_rgba(8,32,51,0.07)]">
+        <div className="rounded-[1.2rem] bg-white p-4 shadow-[0_12px_28px_rgba(8,32,51,0.07)] border border-slate-100">
           <p className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
-            Inbox Group
+            {isOvertimeOnly ? 'SPL Pending' : 'Inbox Group'}
           </p>
           <p className="mt-3 text-2xl font-black text-[#082033]">
             {totalGroups}
           </p>
         </div>
-        <div className="rounded-[1.2rem] bg-white p-4 shadow-[0_12px_28px_rgba(8,32,51,0.07)]">
+        <div className="rounded-[1.2rem] bg-white p-4 shadow-[0_12px_28px_rgba(8,32,51,0.07)] border border-slate-100">
           <p className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
-            Pending Item
+            {isOvertimeOnly ? 'Item Lembur' : 'Pending Item'}
           </p>
           <p className="mt-3 text-2xl font-black text-[#082033]">
             {totalPending}
@@ -75,20 +95,39 @@ export function MobileApprovalCenter({ data }: { data: ApprovalCenterData }) {
         <TabsContent value="inbox" className="space-y-3">
           <InboxTab
             viewMode="mobile"
-            groups={data.inboxGroups || []}
-            contractReviewItems={data.contractReviewInboxItems || []}
-            rfrItems={data.rfrInboxItems || []}
+            filterCategory={categoryFilter}
+            groups={isOvertimeOnly ? [] : (data.inboxGroups || [])}
+            contractReviewItems={isOvertimeOnly ? [] : (data.contractReviewInboxItems || [])}
+            rfrItems={isOvertimeOnly ? [] : (data.rfrInboxItems || [])}
             overtimeItems={data.overtimeInboxItems || []}
-            ptwItems={data.ptwInboxItems || []}
-            sopWinRequestItems={data.sopWinRequestInboxItems || []}
-            dailyActivityItems={data.dailyActivityInboxItems || []}
+            ptwItems={isOvertimeOnly ? [] : (data.ptwInboxItems || [])}
+            sopWinRequestItems={isOvertimeOnly ? [] : (data.sopWinRequestInboxItems || [])}
+            dailyActivityItems={isOvertimeOnly ? [] : (data.dailyActivityInboxItems || [])}
           />
         </TabsContent>
 
         <TabsContent value="history" className="space-y-3">
-          <HistoryTab viewMode="mobile" groups={data.historyGroups || []} />
+          <HistoryTab
+            viewMode="mobile"
+            filterCategory={categoryFilter}
+            groups={
+              isOvertimeOnly
+                ? (data.historyGroups || []).filter((g) =>
+                    g.items.some(
+                      (i: any) =>
+                        i.activityType?.toLowerCase().includes('lembur') ||
+                        i.activityType?.toLowerCase().includes('overtime') ||
+                        i.activityType?.toLowerCase().includes('spl') ||
+                        i.title?.toLowerCase().includes('lembur') ||
+                        i.title?.toLowerCase().includes('spl')
+                    )
+                  )
+                : (data.historyGroups || [])
+            }
+          />
         </TabsContent>
       </Tabs>
     </div>
   )
 }
+

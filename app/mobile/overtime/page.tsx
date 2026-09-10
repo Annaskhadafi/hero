@@ -325,7 +325,7 @@ export default async function MobileOvertimePage({
                   Pusat Persetujuan Mobile
                 </p>
                 <h2 className="mt-0.5 text-base font-extrabold text-[#003461]">
-                  Persetujuan Lembur & Aktivitas
+                  Persetujuan Surat Lembur (SPL)
                 </h2>
               </div>
               {pendingSplCount > 0 ? (
