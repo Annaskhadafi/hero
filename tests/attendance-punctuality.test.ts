@@ -1,16 +1,11 @@
 import {
   calculateAttendancePunctuality,
-  calculateLateMinutesFromTimes,
+  evaluateAttendanceGridPunctuality,
   inferShiftCodeForEvent,
-  isOffScheduleCode,
   normalizeSiteAttendanceClockConfig,
-  resolveConfiguredShiftClockIn,
+  resolveSiteAttendanceClockConfig,
+  updatePunctualityInNote,
 } from '@/lib/timesheet/attendance-punctuality'
-import {
-  minutesFromTime,
-  normalizeTo24HourTime,
-  formatTo12HourTime,
-} from '@/lib/timesheet/attendance-real'
 
 describe('site attendance punctuality', () => {
   const config = normalizeSiteAttendanceClockConfig({
@@ -46,68 +41,249 @@ describe('site attendance punctuality', () => {
     expect(inferShiftCodeForEvent(new Date('2026-07-15T10:05:00.000Z'), config)).toBe('night')
   })
 
-  it('correctly handles 12-hour AM/PM and 24-hour time strings', () => {
-    expect(minutesFromTime('06:24 PM')).toBe(18 * 60 + 24)
-    expect(minutesFromTime('6:24 pm')).toBe(18 * 60 + 24)
-    expect(minutesFromTime('18:24')).toBe(18 * 60 + 24)
-    expect(minutesFromTime('06:24 AM')).toBe(6 * 60 + 24)
-    expect(minutesFromTime('12:00 AM')).toBe(0)
-    expect(minutesFromTime('12:00 PM')).toBe(720)
+  describe('resolveSiteAttendanceClockConfig', () => {
+    it('resolves site-specific shift times and timezone from schedulingConfig', () => {
+      const siteConfig = resolveSiteAttendanceClockConfig(
+        {
+          id: 1,
+          name: 'Site Borneo',
+          location: 'Balikpapan',
+          timezone: 'WITA',
+        },
+        {
+          siteId: 1,
+          timezone: 'WITA',
+          fieldBreakConfig: {
+            dayShiftClockIn: '07:30',
+            nightShiftClockIn: '19:30',
+          },
+        }
+      )
 
-    expect(normalizeTo24HourTime('06:24 PM')).toBe('18:24')
-    expect(normalizeTo24HourTime('6:24 AM')).toBe('06:24')
-    expect(normalizeTo24HourTime('18:24')).toBe('18:24')
-
-    expect(formatTo12HourTime('18:24')).toBe('06:24 PM')
-    expect(formatTo12HourTime('08:00')).toBe('08:00 AM')
-    expect(formatTo12HourTime('00:00')).toBe('12:00 AM')
-    expect(formatTo12HourTime('12:00')).toBe('12:00 PM')
-  })
-
-  it('calculates late minutes accurately for Night Shift (18:00) with 06:24 PM (+24m, not +624m)', () => {
-    const scheduled = resolveConfiguredShiftClockIn('NS', {
-      dayShiftClockIn: '08:00',
-      nightShiftClockIn: '18:00',
-      timezone: 'WITA',
+      expect(siteConfig.timezone).toBe('WITA')
+      expect(siteConfig.dayShiftClockIn).toBe('07:30')
+      expect(siteConfig.nightShiftClockIn).toBe('19:30')
     })
-    expect(scheduled).toBe('18:00')
 
-    // 06:24 PM against 18:00 schedule -> 24 minutes late
-    expect(calculateLateMinutesFromTimes('06:24 PM', scheduled)).toBe(24)
-    expect(calculateLateMinutesFromTimes('18:24', scheduled)).toBe(24)
+    it('respects site timezone when scheduling config has no timezone', () => {
+      const siteConfig = resolveSiteAttendanceClockConfig(
+        {
+          id: 2,
+          name: 'Head Office Jakarta',
+          location: 'Jakarta',
+          timezone: 'WIB',
+        },
+        {
+          siteId: 2,
+          fieldBreakConfig: {
+            dayShiftClockIn: '08:30',
+          },
+        }
+      )
 
-    // On time (17:55 against 18:00) -> 0 minutes late
-    expect(calculateLateMinutesFromTimes('17:55', scheduled)).toBe(0)
-    expect(calculateLateMinutesFromTimes('05:55 PM', scheduled)).toBe(0)
+      expect(siteConfig.timezone).toBe('WIB')
+      expect(siteConfig.dayShiftClockIn).toBe('08:30')
+      expect(siteConfig.nightShiftClockIn).toBe('18:00') // default fallback
+    })
+
+    it('infers timezone from site location when timezone is not set', () => {
+      const siteConfig = resolveSiteAttendanceClockConfig(
+        {
+          id: 3,
+          name: 'Site Timika Papua',
+          location: 'Timika, Papua',
+        },
+        null
+      )
+
+      expect(siteConfig.timezone).toBe('WIT')
+      expect(siteConfig.dayShiftClockIn).toBe('08:00')
+      expect(siteConfig.nightShiftClockIn).toBe('18:00')
+    })
   })
 
-  it('correctly identifies off-schedule codes and suppresses late calculation', () => {
-    expect(isOffScheduleCode('OFF')).toBe(true)
-    expect(isOffScheduleCode('FB')).toBe(true)
-    expect(isOffScheduleCode('LIBUR')).toBe(true)
-    expect(isOffScheduleCode('CUTI')).toBe(true)
-    expect(isOffScheduleCode('SAKIT')).toBe(true)
-    expect(isOffScheduleCode('IZIN')).toBe(true)
-    expect(isOffScheduleCode('DS')).toBe(false)
-    expect(isOffScheduleCode('NS')).toBe(false)
-    expect(isOffScheduleCode('IN')).toBe(false)
-    expect(isOffScheduleCode('PAGI')).toBe(false)
-    expect(isOffScheduleCode('MALAM')).toBe(false)
-  })
-
-  it('resolves night shift aliases (NG, M, S2) and day shift aliases (PAGI, SIANG, S1)', () => {
-    const siteCfg = {
-      dayShiftClockIn: '08:00',
-      nightShiftClockIn: '18:00',
+  describe('evaluateAttendanceGridPunctuality', () => {
+    const siteConfig = {
+      dayShiftClockIn: '08:30',
+      nightShiftClockIn: '19:00',
       timezone: 'WITA' as const,
     }
-    expect(resolveConfiguredShiftClockIn('NG', siteCfg)).toBe('18:00')
-    expect(resolveConfiguredShiftClockIn('M', siteCfg)).toBe('18:00')
-    expect(resolveConfiguredShiftClockIn('S2', siteCfg)).toBe('18:00')
-    expect(resolveConfiguredShiftClockIn('PAGI', siteCfg)).toBe('08:00')
-    expect(resolveConfiguredShiftClockIn('SIANG', siteCfg)).toBe('08:00')
-    expect(resolveConfiguredShiftClockIn('S1', siteCfg)).toBe('08:00')
-    expect(resolveConfiguredShiftClockIn('OFF', siteCfg)).toBeNull()
-    expect(resolveConfiguredShiftClockIn('FB', siteCfg)).toBeNull()
+
+    it('calculates on-time status correctly based on site dayShiftClockIn', () => {
+      const result = evaluateAttendanceGridPunctuality({
+        clockIn: '08:20',
+        scheduleCode: 'DS',
+        siteConfig,
+      })
+
+      expect(result.isLate).toBe(false)
+      expect(result.lateMinutes).toBe(0)
+      expect(result.scheduledClockIn).toBe('08:30')
+      expect(result.punctualityNote).toBe('Kehadiran: Tepat waktu (jadwal 08:30)')
+    })
+
+    it('calculates late status correctly based on site dayShiftClockIn', () => {
+      const result = evaluateAttendanceGridPunctuality({
+        clockIn: '08:45',
+        scheduleCode: 'DS',
+        siteConfig,
+      })
+
+      expect(result.isLate).toBe(true)
+      expect(result.lateMinutes).toBe(15)
+      expect(result.scheduledClockIn).toBe('08:30')
+      expect(result.punctualityNote).toBe('Kehadiran: Terlambat 15 menit (jadwal 08:30)')
+    })
+
+    it('calculates night shift punctuality based on site nightShiftClockIn', () => {
+      const onTime = evaluateAttendanceGridPunctuality({
+        clockIn: '18:50',
+        scheduleCode: 'NS',
+        siteConfig,
+      })
+      expect(onTime.isLate).toBe(false)
+      expect(onTime.lateMinutes).toBe(0)
+      expect(onTime.scheduledClockIn).toBe('19:00')
+
+      const late = evaluateAttendanceGridPunctuality({
+        clockIn: '19:25',
+        scheduleCode: 'NS',
+        siteConfig,
+      })
+      expect(late.isLate).toBe(true)
+      expect(late.lateMinutes).toBe(25)
+      expect(late.scheduledClockIn).toBe('19:00')
+      expect(late.punctualityNote).toBe('Kehadiran: Terlambat 25 menit (jadwal 19:00)')
+    })
+
+    it('infers shift for off-day attendance without schedule code', () => {
+      const nightClockIn = evaluateAttendanceGridPunctuality({
+        clockIn: '19:10',
+        scheduleCode: 'OFF',
+        siteConfig,
+      })
+      expect(nightClockIn.shiftCode).toBe('OFF')
+      expect(nightClockIn.scheduledClockIn).toBe('19:00')
+      expect(nightClockIn.isLate).toBe(true)
+      expect(nightClockIn.lateMinutes).toBe(10)
+
+      const dayClockIn = evaluateAttendanceGridPunctuality({
+        clockIn: '08:15',
+        scheduleCode: null,
+        siteConfig,
+      })
+      expect(dayClockIn.scheduledClockIn).toBe('08:30')
+      expect(dayClockIn.isLate).toBe(false)
+      expect(dayClockIn.lateMinutes).toBe(0)
+    })
+
+    it('returns nulls when clockIn is missing', () => {
+      const result = evaluateAttendanceGridPunctuality({
+        clockIn: '',
+        scheduleCode: 'DS',
+        siteConfig,
+      })
+      expect(result.isLate).toBe(false)
+      expect(result.lateMinutes).toBeNull()
+      expect(result.punctualityNote).toBeNull()
+    })
+  })
+
+  describe('updatePunctualityInNote', () => {
+    it('replaces existing Kehadiran segment with newly calculated punctuality note', () => {
+      const rawNote =
+        'Face Attendance | Kehadiran: Terlambat 20 menit (jadwal 08:00) | Confidence 99%'
+      const updated = updatePunctualityInNote(
+        rawNote,
+        'Kehadiran: Tepat waktu (jadwal 08:30)'
+      )
+
+      expect(updated).toBe(
+        'Face Attendance | Kehadiran: Tepat waktu (jadwal 08:30) | Confidence 99%'
+      )
+    })
+
+    it('appends punctuality note if no Kehadiran segment was present', () => {
+      const rawNote = 'Face Attendance | Confidence 99%'
+      const updated = updatePunctualityInNote(
+        rawNote,
+        'Kehadiran: Terlambat 10 menit (jadwal 08:30)'
+      )
+
+      expect(updated).toBe(
+        'Face Attendance | Confidence 99% | Kehadiran: Terlambat 10 menit (jadwal 08:30)'
+      )
+    })
+
+    it('returns punctuality note when baseNote is empty', () => {
+      expect(updatePunctualityInNote('', 'Kehadiran: Tepat waktu (jadwal 08:00)')).toBe(
+        'Kehadiran: Tepat waktu (jadwal 08:00)'
+      )
+    })
+  })
+
+  describe('Attendance Grid Lateness Regression (User Bug)', () => {
+    it('does not falsely flag Terlambat when stored note has Terlambat but selected site schedule allows it', () => {
+      // Scenario: Employee checked in at 08:15.
+      // Old capture stored: "Kehadiran: Terlambat 15 menit (jadwal 08:00)".
+      // But selected site config has dayShiftClockIn = 08:30.
+      const siteConfig = {
+        dayShiftClockIn: '08:30',
+        nightShiftClockIn: '18:00',
+        timezone: 'WITA' as const,
+      }
+      const storedLocationNote =
+        'Face Attendance | Kehadiran: Terlambat 15 menit (jadwal 08:00) | Validasi 99%'
+
+      const punctuality = evaluateAttendanceGridPunctuality({
+        clockIn: '08:15',
+        scheduleCode: 'DS',
+        siteConfig,
+      })
+
+      // Must be evaluated against site's 08:30, NOT the stored 08:00 note
+      expect(punctuality.isLate).toBe(false)
+      expect(punctuality.lateMinutes).toBe(0)
+      expect(punctuality.scheduledClockIn).toBe('08:30')
+
+      const updatedNote = updatePunctualityInNote(
+        storedLocationNote,
+        punctuality.punctualityNote
+      )
+      expect(updatedNote).toBe(
+        'Face Attendance | Kehadiran: Tepat waktu (jadwal 08:30) | Validasi 99%'
+      )
+    })
+
+    it('flags Terlambat when stored note says Tepat waktu but site requires earlier clock-in', () => {
+      // Scenario: Employee checked in at 07:45.
+      // Old capture stored: "Kehadiran: Tepat waktu (jadwal 08:00)".
+      // But selected site config has dayShiftClockIn = 07:30.
+      const siteConfig = {
+        dayShiftClockIn: '07:30',
+        nightShiftClockIn: '18:00',
+        timezone: 'WITA' as const,
+      }
+      const storedLocationNote =
+        'Face Attendance | Kehadiran: Tepat waktu (jadwal 08:00)'
+
+      const punctuality = evaluateAttendanceGridPunctuality({
+        clockIn: '07:45',
+        scheduleCode: 'DS',
+        siteConfig,
+      })
+
+      expect(punctuality.isLate).toBe(true)
+      expect(punctuality.lateMinutes).toBe(15)
+      expect(punctuality.scheduledClockIn).toBe('07:30')
+
+      const updatedNote = updatePunctualityInNote(
+        storedLocationNote,
+        punctuality.punctualityNote
+      )
+      expect(updatedNote).toBe(
+        'Face Attendance | Kehadiran: Terlambat 15 menit (jadwal 07:30)'
+      )
+    })
   })
 })

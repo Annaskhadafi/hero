@@ -80,6 +80,7 @@ export const service360Quotations = pgTable("hero_service360_quotations", {
   discountValue: decimal("discount_value", { precision: 15, scale: 2 }).notNull().default("0"),
   showDays: boolean("show_days").notNull().default(true),
   includeBast: boolean("include_bast").notNull().default(false),
+  includeRoster: boolean("include_roster").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
