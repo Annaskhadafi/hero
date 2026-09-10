@@ -3,7 +3,9 @@ import type { NextConfig } from 'next'
 const nextConfig: NextConfig = {
   output: 'standalone',
   productionBrowserSourceMaps: false,
-  turbopack: {},
+  turbopack: {
+    root: process.cwd(),
+  },
   outputFileTracingExcludes: {
     '*': [
       'node_modules/@swc/core-linux-x64-gnu',
