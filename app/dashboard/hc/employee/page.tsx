@@ -17,7 +17,7 @@ export default async function EmployeePage() {
   const fullAccess = await getCurrentMenuPermission('hc_employee')
 
   if (!fullAccess.canView) {
-    redirect('/403')
+    redirect('/dashboard')
   }
 
   const [allEmployees, filterOptions, accessContext] = await Promise.all([

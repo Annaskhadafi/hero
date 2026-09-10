@@ -34,12 +34,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
     redirect('/mobile')
   }
 
-  const routePermission = await getDashboardRoutePermission(
-    headerStore.get('x-hero-dashboard-path') ?? ''
-  )
-  if (routePermission && !routePermission.canView) {
-    redirect('/403')
-  }
+ const routePermission = await getDashboardRoutePermission(
+   headerStore.get('x-hero-dashboard-path') ?? ''
+ )
+  const dashboardPath = headerStore.get('x-hero-dashboard-path') ?? ''
+  if (dashboardPath !== '/dashboard' && routePermission && !routePermission.canView) {
+    redirect('/dashboard')
+ }
 
   const cookieStore = await cookies()
   const defaultOpen = cookieStore.get('sidebar_state')?.value === 'true'

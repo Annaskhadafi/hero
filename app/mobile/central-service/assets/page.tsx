@@ -15,7 +15,7 @@ export default async function MobileCentralServiceAssetsPage() {
   const access = await getCurrentMenuPermission("central-service-assets");
 
   if (!access.canView) {
-    redirect("/403");
+    redirect("/dashboard");
   }
 
   let assets: any[] = [];

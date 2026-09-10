@@ -12,7 +12,7 @@ export default async function CentralServiceAssetsPage() {
   const access = await getCurrentMenuPermission('central-service-assets')
 
   if (!access.canView) {
-    redirect('/403')
+    redirect('/dashboard')
   }
 
   const [assetsResult, masterSections] = await Promise.all([getAssets(), getMasterSectionOptions()])
