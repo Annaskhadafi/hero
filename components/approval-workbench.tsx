@@ -1441,7 +1441,7 @@ export function InboxTab({
       </div>
 
       {/* Adaptive Category Filter Chips */}
-      {categorySummary.length > 0 && (
+      {categorySummary.length > 1 && !filterCategory && (
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-0.5 px-0.5 scrollbar-none select-none">
           <button
             type="button"
@@ -1650,7 +1650,19 @@ export function InboxTab({
                     <a
                       href={
                         item.category === 'DAILY_ACTIVITY'
-                          ? `/mobile/activity?edit=${(item as any).sessionId || (item as any).rawDaily?.sessionId || item.id.replace('daily-activity-', '')}`
+                          ? `/mobile/activity?edit=${(item as any).sessionId || (item as any).rawDaily?.sessionId || String(item.id).replace('daily-activity-', '')}`
+                          : item.category === 'OVERTIME'
+                          ? `/mobile/overtime?edit=${(item as any).splId || (item as any).rawOvertime?.splId || (item as any).rawOvertime?.id || String(item.id).replace('overtime-', '')}&tab=apply`
+                          : item.category === 'APD'
+                          ? `/mobile/apd`
+                          : item.category === 'MATERIAL'
+                          ? `/mobile/material`
+                          : item.category === 'TOOLS'
+                          ? `/mobile/tools`
+                          : item.category === 'PTW'
+                          ? `/mobile/hse/ptw`
+                          : item.category === 'SOP_WIN' || item.category === 'SOP_WIN_REQUEST'
+                          ? `/mobile/sop-win`
                           : item.url || '#'
                       }
                     >
@@ -1703,7 +1715,7 @@ export function InboxTab({
           }
         >
           {/* Adaptive Category Filter Chips for Desktop */}
-          {categorySummary.length > 0 && (
+          {categorySummary.length > 1 && !filterCategory && (
             <div className="mb-4 flex flex-wrap items-center gap-2 select-none">
               <button
                 type="button"
@@ -3858,12 +3870,35 @@ export function InboxTab({
 
 export function HistoryTab({
   groups,
+  filterCategory,
   viewMode = 'desktop',
 }: {
   groups: ApprovalCenterData['historyGroups']
+  filterCategory?: string
   viewMode?: 'desktop' | 'mobile'
 }) {
-  if (groups.length === 0) {
+  const safeGroups = useMemo(() => {
+    const arr = Array.isArray(groups) ? groups : []
+    if (!filterCategory) return arr
+    if (filterCategory === 'OVERTIME') {
+      return arr
+        .map((group) => ({
+          ...group,
+          items: (group.items || []).filter(
+            (item: any) =>
+              item.activityType?.toLowerCase().includes('lembur') ||
+              item.activityType?.toLowerCase().includes('overtime') ||
+              item.activityType?.toLowerCase().includes('spl') ||
+              item.title?.toLowerCase().includes('lembur') ||
+              item.title?.toLowerCase().includes('spl')
+          ),
+        }))
+        .filter((group) => group.items.length > 0)
+    }
+    return arr
+  }, [groups, filterCategory])
+
+  if (safeGroups.length === 0) {
     if (viewMode === 'mobile') {
       return (
         <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-500">
@@ -3881,7 +3916,6 @@ export function HistoryTab({
     )
   }
 
-  const safeGroups = Array.isArray(groups) ? groups : []
   const sites = Array.from(new Set(safeGroups.map((group) => (group as any)?.siteName || 'Site Operasional'))).sort()
   const priorities = Array.from(
     new Set(safeGroups.flatMap((group) => (group?.items || []).map((item) => item?.priority || 'normal')))
@@ -3937,7 +3971,17 @@ export function HistoryTab({
               asChild
               className="w-full h-10 text-xs font-bold bg-[#003461] hover:bg-[#00274a] text-white rounded-xl shadow-xs flex items-center justify-center gap-2"
             >
-              <a href={`/dashboard/daily-activity/${item.activityId}`}>
+              <a
+                href={
+                  item.activityType?.toLowerCase().includes('lembur') ||
+                  item.activityType?.toLowerCase().includes('overtime') ||
+                  item.activityType?.toLowerCase().includes('spl') ||
+                  item.title?.toLowerCase().includes('lembur') ||
+                  item.title?.toLowerCase().includes('spl')
+                    ? `/mobile/overtime?tab=history`
+                    : `/mobile/activity?tab=history`
+                }
+              >
                 Lihat Detail ↗
               </a>
             </Button>
