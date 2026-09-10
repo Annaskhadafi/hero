@@ -18,9 +18,6 @@ import { TrainingGroupedTable } from "@/components/training-grouped-table";
 import { getOperationalCrudOptions, getTrainingRecordPageData, getSioCertificationPageData } from "@/lib/hero-admin";
 import { syncLmsToTrainingRecords } from "@/lib/lms-mysql";
 import { getServerSession } from "@/lib/auth-session";
-import { db } from "@/db";
-import { employees } from "@/db/schema/hero";
-import { eq } from "drizzle-orm";
 import { SioDatabaseTab } from "@/components/sio-database-tab";
 import { computeAggregates } from "@/lib/sio-certification";
 
@@ -87,27 +84,19 @@ export default async function TrainingRecordsPage({
     }
   }
 
-  // Also sync selected employee's LMS records if filtered
-  const selectedEmployeeId = getSearchParamValue(resolvedSearchParams, "employeeId");
-  if (selectedEmployeeId) {
-    try {
-      const [emp] = await db
-        .select({ email: employees.email })
-        .from(employees)
-        .where(eq(employees.id, Number(selectedEmployeeId)))
-        .limit(1);
-      if (emp?.email) {
-        await syncLmsToTrainingRecords(emp.email);
-      }
-    } catch (error) {
-      console.error("[LMS Sync Admin Selected] Error:", error);
-    }
-  }
-
   const [data, options] = await Promise.all([
     getTrainingRecordPageData(),
     getOperationalCrudOptions(),
   ]);
+  const scopedEmployeeIds = new Set(data.employeeOptions.map((employee) => employee.id));
+  const scopedOptions = {
+    ...options,
+    employees: options.employees.filter((employee) => scopedEmployeeIds.has(employee.id)),
+    sites: options.sites.filter((site) =>
+      data.employeeOptions.some((employee) => employee.siteId === site.id)
+    ),
+  };
+  const selectedEmployeeId = getSearchParamValue(resolvedSearchParams, "employeeId");
   const selectedDepartment = getSearchParamValue(resolvedSearchParams, "department");
   const selectedSection = getSearchParamValue(resolvedSearchParams, "section");
   const selectedYear = getSearchParamValue(resolvedSearchParams, "year");
@@ -263,20 +252,22 @@ export default async function TrainingRecordsPage({
                 summaryClassName="bg-transparent px-1 py-0 shadow-none"
                 actions={
                   <div className="flex items-center gap-2">
-                    <HcCrudForms
-                      employees={options.employees}
-                      sites={options.sites}
-                      categoryOptions={options.categoryOptions}
+                    {data.permission.canEdit && <HcCrudForms
+                      employees={scopedOptions.employees}
+                      sites={scopedOptions.sites}
+                      categoryOptions={scopedOptions.categoryOptions}
                       mode="training"
-                    />
-                    <TrainingRecordImportExport />
+                    />}
+                    {data.permission.canEdit && <TrainingRecordImportExport />}
                   </div>
                 }
               >
                 <TrainingGroupedTable
                   trainingRecords={filteredRows}
-                  employees={options.employees}
-                  categoryOptions={options.categoryOptions}
+                  employees={scopedOptions.employees}
+                  categoryOptions={scopedOptions.categoryOptions}
+                  canEdit={data.permission.canEdit}
+                  canDelete={data.permission.canDelete}
                 />
               </MinimalTableShell>
             </CardContent>

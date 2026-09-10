@@ -16,42 +16,20 @@ import {
   notificationDeliveries,
   notificationEvents,
 } from "@/db/schema/hero";
-import { getCurrentMenuPermission, getCurrentEmployeeAccessRole } from "@/lib/hero-access";
+import { getCurrentMenuPermission } from "@/lib/hero-access";
 import { LMS_SECTION_MANAGEMENT_RESOURCE } from '@/lib/chitralearning-lms/notifications'
 
 export async function canManageLmsSection() {
   const permission = await getCurrentMenuPermission(LMS_SECTION_MANAGEMENT_RESOURCE)
-  return permission.canView || permission.canEdit
+  return permission.canEdit
 }
 
-export async function isLmsAdmin(session: any) {
-  // [1] Check RBAC permission for LMS Builder (primary path)
-  const perm = await getCurrentMenuPermission("chitralearning_lms_builder");
-  if (perm?.canView || perm?.canEdit) {
-    return true;
-  }
-
-  // [2] Fallback: check employee.accessRole from DB (most reliable)
-  const dynamicRole = await getCurrentEmployeeAccessRole();
-
-  // [3] Also check session role as secondary fallback
-  const rawRole = dynamicRole || session?.user?.role;
-
-  if (!rawRole) return false;
-
-  // Normalize: lowercase, remove spaces/underscores/hyphens for loose matching
-  const normalized = rawRole.toLowerCase().replace(/[\s_\-]+/g, "");
-
-  // Accept any variant of: admin, superadmin, hradmin, hr
-  // e.g. "Super Admin", "super_admin", "Super-Admin", "HR Admin", "hr_admin"
-  const ADMIN_NORMALIZED = ["admin", "superadmin", "hradmin", "hr"];
-  if (ADMIN_NORMALIZED.includes(normalized)) return true;
-
-  // Also accept if the role name simply contains "admin" or "super"
-  // This covers custom role names like "LMS Admin", "System Admin", etc.
-  if (normalized.includes("admin") || normalized.includes("super")) return true;
-
-  return false;
+export async function isLmsAdmin(_session?: unknown) {
+  const [builder, management] = await Promise.all([
+    getCurrentMenuPermission("chitralearning_lms_builder"),
+    getCurrentMenuPermission(LMS_SECTION_MANAGEMENT_RESOURCE),
+  ])
+  return builder.canEdit || management.canEdit
 }
 
 export const INTERNAL_LMS_FEATURES = [

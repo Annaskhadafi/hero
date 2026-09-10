@@ -368,6 +368,8 @@ export function RowStatusDeleteActions({
   currentStatus,
   deleteLabel = "Hapus",
   children,
+  canEdit = true,
+  canDelete = true,
 }: {
   id: number;
   action: CrudAction;
@@ -375,13 +377,15 @@ export function RowStatusDeleteActions({
   currentStatus: string;
   deleteLabel?: string;
   children?: React.ReactNode;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }) {
   const formAction = action as unknown as NativeFormAction;
 
   return (
     <div className="flex min-w-[220px] flex-wrap items-center gap-2">
       {children}
-      <form action={formAction} className="flex gap-2">
+      {canEdit && <form action={formAction} className="flex gap-2">
         <input type="hidden" name="intent" value="update-status" />
         <input type="hidden" name="id" value={id} />
         <select
@@ -398,14 +402,14 @@ export function RowStatusDeleteActions({
         <Button variant="ghost" size="icon" aria-label="Update status" type="submit" className="h-9 rounded-lg px-3">
           <Check className="size-4" />
         </Button>
-      </form>
-      <form action={formAction}>
+      </form>}
+      {canDelete && <form action={formAction}>
         <input type="hidden" name="intent" value="delete" />
         <input type="hidden" name="id" value={id} />
         <Button type="submit" size="icon" variant="ghost" className="h-9 rounded-lg px-3 text-red-600" aria-label="Delete">
           <Trash2 className="size-4" />
         </Button>
-      </form>
+      </form>}
     </div>
   );
 }
@@ -675,10 +679,14 @@ export function TrainingRowActions({
   row,
   employees,
   categoryOptions,
+  canEdit = true,
+  canDelete = true,
 }: {
   row: TrainingRow;
   employees: EmployeeOption[];
   categoryOptions?: MasterCategoryOptionMap;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }) {
   return (
     <div className="grid min-w-[300px] gap-2">
@@ -687,8 +695,10 @@ export function TrainingRowActions({
         action={manageTrainingRecordAction}
         statusOptions={getCategoryOptions(categoryOptions, "training_status", trainingStatusOptions.map((status) => ({ code: status, label: status }))).map((status) => status.code)}
         currentStatus={row.status}
+        canEdit={canEdit}
+        canDelete={canDelete}
       >
-        <RowEditShell id={row.id} action={manageTrainingRecordAction}>
+        {canEdit && <RowEditShell id={row.id} action={manageTrainingRecordAction}>
           <SearchableEmployeeSelect employees={employees} defaultValue={`${row.employeeId}`} />
           <div className="grid gap-3 sm:grid-cols-2">
             <TextField name="trainingName" label="Training" defaultValue={row.trainingName} />
@@ -707,7 +717,7 @@ export function TrainingRowActions({
               ))}
             </SelectField>
           </div>
-        </RowEditShell>
+        </RowEditShell>}
       </RowStatusDeleteActions>
     </div>
   );

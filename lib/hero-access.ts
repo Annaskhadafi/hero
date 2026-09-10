@@ -143,7 +143,9 @@ export async function getDashboardRoutePermission(pathname: string) {
     })
     .sort((left, right) => right.url.length - left.url.length)[0]
 
-  return matchingMenu ? getCurrentMenuPermission(matchingMenu.resource) : null
+  return matchingMenu
+    ? getCurrentMenuPermission(matchingMenu.resource)
+    : getMenuPermissionForRole(null, '')
 }
 
 export async function getCurrentEmployeeAccessContext(): Promise<HeroEmployeeAccessContext | null> {

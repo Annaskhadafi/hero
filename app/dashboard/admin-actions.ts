@@ -243,6 +243,46 @@ async function requireSchedulingTimesheetAccess(
   return access
 }
 
+async function requireTrainingRecordAccess(
+  action: 'edit' | 'delete',
+  employeeId?: number,
+  recordId?: number,
+) {
+  const [permission, context] = await Promise.all([
+    getCurrentMenuPermission('training_records'),
+    getCurrentEmployeeAccessContext(),
+  ])
+  if (!permission.canView || (action === 'edit' ? !permission.canEdit : !permission.canDelete)) {
+    throw new Error('Unauthorized training records access')
+  }
+  if (permission.dataScope === 'global') return { permission, context }
+  if (!context) throw new Error('Unauthorized training records access')
+
+  let targetEmployeeId = employeeId
+  if (recordId) {
+    const [record] = await db
+      .select({ employeeId: trainingRecords.employeeId })
+      .from(trainingRecords)
+      .where(eq(trainingRecords.id, recordId))
+      .limit(1)
+    if (!record?.employeeId) throw new Error('Training record not found')
+    targetEmployeeId = record.employeeId
+  }
+  if (!targetEmployeeId) throw new Error('Training record employee is required')
+
+  const [target] = await db
+    .select({ id: employees.id, siteId: employees.siteId })
+    .from(employees)
+    .where(eq(employees.id, targetEmployeeId))
+    .limit(1)
+  const allowed =
+    permission.dataScope === 'own'
+      ? target?.id === context.employeeId
+      : permission.dataScope === 'site' && target?.siteId === context.siteId
+  if (!allowed) throw new Error('Training record is outside your data scope')
+  return { permission, context }
+}
+
 async function assertSchedulingSiteScope(
   siteId: number,
   permission: 'edit' | 'finalize' = 'edit',
@@ -9137,6 +9177,11 @@ export async function manageHseIncidentAction(formData: FormData): Promise<Admin
 export async function manageTrainingRecordAction(formData: FormData): Promise<AdminMutationState> {
   try {
     const payload = manageTrainingRecordSchema.parse(Object.fromEntries(formData))
+    const action = payload.intent === 'delete' ? 'delete' : 'edit'
+    await requireTrainingRecordAccess(action, payload.employeeId, payload.id)
+    if (payload.intent === 'update' && payload.employeeId) {
+      await requireTrainingRecordAccess('edit', payload.employeeId)
+    }
     await ensureHeroSeedData()
 
     if (payload.intent === 'create') {
@@ -9245,6 +9290,7 @@ export async function importTrainingRecordsAction(
   formData: FormData
 ): Promise<TrainingRecordImportState> {
   try {
+    const access = await requireTrainingRecordAccess('edit')
     await ensureHeroSeedData()
 
     const rawCsv = `${formData.get('rawCsv') ?? ''}`.trim()
@@ -9278,9 +9324,18 @@ export async function importTrainingRecordsAction(
         email: employees.email,
         employeeSn: employees.employeeSn,
         department: employees.department,
+        siteId: employees.siteId,
       })
       .from(employees)
       .where(eq(employees.isActive, true))
+    const allowedEmployeeIds = new Set(
+      employeeRows.filter((employee) => {
+        if (access.permission.dataScope === 'global') return true
+        if (access.permission.dataScope === 'own') return employee.id === access.context?.employeeId
+        return employee.siteId === access.context?.siteId
+      }).map((employee) => employee.id)
+    )
+    const scopedEmployeeRows = employeeRows.filter((employee) => allowedEmployeeIds.has(employee.id))
 
     const existingRows = await db
       .select({
@@ -9292,17 +9347,17 @@ export async function importTrainingRecordsAction(
       .from(trainingRecords)
 
     const employeeBySn = new Map(
-      employeeRows
+      scopedEmployeeRows
         .filter((employee) => employee.employeeSn.trim())
         .map((employee) => [normalizeTrainingRecordKey(employee.employeeSn), employee])
     )
     const employeeByEmail = new Map(
-      employeeRows
+      scopedEmployeeRows
         .filter((employee) => employee.email.trim())
         .map((employee) => [normalizeTrainingRecordKey(employee.email), employee])
     )
     const fuse = new Fuse(
-      employeeRows.map((emp) => ({
+      scopedEmployeeRows.map((emp) => ({
         ...emp,
         normalizedName: normalizeTrainingRecordKey(emp.name),
       })),
@@ -9313,7 +9368,7 @@ export async function importTrainingRecordsAction(
       }
     )
 
-    const employeesByName = employeeRows.reduce<Map<string, typeof employeeRows>>(
+    const employeesByName = scopedEmployeeRows.reduce<Map<string, typeof scopedEmployeeRows>>(
       (map, employee) => {
         const key = normalizeTrainingRecordKey(employee.name)
         const current = map.get(key) ?? []

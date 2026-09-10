@@ -8,6 +8,7 @@ import {
   getInternalLmsWorkspaceData,
 } from "@/lib/chitralearning-lms";
 import { getServerSession } from "@/lib/auth-session";
+import { getCurrentMenuPermission } from "@/lib/hero-access";
 
 export const runtime = "nodejs";
 
@@ -16,6 +17,10 @@ export async function GET(request: Request) {
 
   if (!session?.user?.email) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+  const permission = await getCurrentMenuPermission("chitralearning_lms_workspace");
+  if (!permission.canView) {
+    return NextResponse.json({ message: "Forbidden" }, { status: 403 });
   }
 
   const url = new URL(request.url);

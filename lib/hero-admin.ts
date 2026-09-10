@@ -6169,6 +6169,28 @@ export async function getHcPageData() {
 export async function getTrainingRecordPageData() {
   await ensureHeroSeedData()
 
+  const [permission, context] = await Promise.all([
+    getCurrentMenuPermission('training_records'),
+    getCurrentEmployeeAccessContext(),
+  ])
+  if (!permission.canView || !context) {
+    return {
+      rows: [],
+      employeeOptions: [],
+      departmentOptions: [],
+      sectionOptions: [],
+      yearOptions: [],
+      permission,
+    }
+  }
+
+  const scopeCondition =
+    permission.dataScope === 'global'
+      ? undefined
+      : permission.dataScope === 'site'
+        ? eq(employees.siteId, context.siteId)
+        : eq(employees.id, context.employeeId)
+
   const [rows, employeeOptions] = await Promise.all([
     db
       .select({
@@ -6187,6 +6209,7 @@ export async function getTrainingRecordPageData() {
       })
       .from(trainingRecords)
       .innerJoin(employees, eq(trainingRecords.employeeId, employees.id))
+      .where(scopeCondition)
       .orderBy(
         desc(trainingRecords.completedYear),
         asc(employees.name),
@@ -6197,11 +6220,12 @@ export async function getTrainingRecordPageData() {
         id: employees.id,
         name: employees.name,
         employeeSn: employees.employeeSn,
+        siteId: employees.siteId,
         department: employees.department,
         section: employees.section,
       })
       .from(employees)
-      .where(eq(employees.isActive, true))
+      .where(and(eq(employees.isActive, true), scopeCondition))
       .orderBy(asc(employees.name)),
   ])
 
@@ -6221,6 +6245,7 @@ export async function getTrainingRecordPageData() {
     departmentOptions,
     sectionOptions,
     yearOptions,
+    permission,
   }
 }
 

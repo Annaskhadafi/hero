@@ -44,6 +44,8 @@ interface TrainingGroupedTableProps {
   trainingRecords: TrainingRow[]
   employees: EmployeeOption[]
   categoryOptions?: any
+  canEdit?: boolean
+  canDelete?: boolean
 }
 
 const APP_TIME_ZONE = "Asia/Makassar"
@@ -84,6 +86,8 @@ export function TrainingGroupedTable({
   trainingRecords,
   employees,
   categoryOptions,
+  canEdit = true,
+  canDelete = true,
 }: TrainingGroupedTableProps) {
   const [expandedEmployees, setExpandedEmployees] = useState<Record<string, boolean>>({})
   const referenceDate = startOfDayInAppTimeZone(new Date())
@@ -317,6 +321,8 @@ export function TrainingGroupedTable({
                                   row={rec}
                                   employees={employees}
                                   categoryOptions={categoryOptions}
+                                  canEdit={canEdit}
+                                  canDelete={canDelete}
                                 />
                               </div>
                             </div>
