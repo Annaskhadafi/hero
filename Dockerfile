@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # ============================================
 # Multi-stage Dockerfile for Dokploy Deployment
 # Next.js 15 + Drizzle ORM + PostgreSQL
@@ -13,7 +14,8 @@ WORKDIR /app
 FROM base AS deps
 COPY package.json package-lock.json* ./
 # Install all dependencies (production + development) to ensure drizzle-kit is available
-RUN npm ci --ignore-scripts --no-audit --no-fund
+RUN --mount=type=cache,id=hero-npm,target=/root/.npm \
+    npm ci --ignore-scripts --no-audit --no-fund
 
 # Stage 3: Build the application
 FROM base AS builder
@@ -28,7 +30,8 @@ ENV NODE_OPTIONS="--max-old-space-size=8192"
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_DISABLE_SOURCEMAPS=1
 
-RUN npm run build
+RUN --mount=type=cache,id=hero-next,target=/app/.next/cache \
+    npm run build
 
 # Stage 4: Production runner
 FROM node:20.19-alpine AS runner
