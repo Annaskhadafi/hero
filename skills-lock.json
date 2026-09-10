@@ -61,11 +61,23 @@
       "skillPath": "skills/brutalist-skill/SKILL.md",
       "computedHash": "e66e5a2a8b73cef79ab6546459c665e8b983645689c5f3772f7eed8b9f1e8e0e"
     },
+    "memory-manager": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": "skills/memory-manager/SKILL.md",
+      "computedHash": "25C74CD6C4E0E7143676EFBC1898E230FF100D66B2E1AFE33B0B724502033977"
+    },
     "minimalist-ui": {
       "source": "Leonxlnx/taste-skill",
       "sourceType": "github",
       "skillPath": "skills/minimalist-skill/SKILL.md",
       "computedHash": "7e88897e0371184e97a82b8d9ef080323c13f21eb067b58ef71eb05173a08ac2"
+    },
+    "prompt-engineering-patterns": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/llm-application-dev/skills/prompt-engineering-patterns/SKILL.md",
+      "computedHash": "3cfeff53f7cbc7b33a5ea1624c1d38563f22c6f7e52ad00b5c9a8b822a763a44"
     },
     "redesign-existing-projects": {
       "source": "Leonxlnx/taste-skill",
@@ -78,12 +90,6 @@
       "sourceType": "github",
       "skillPath": "skills/stitch-skill/SKILL.md",
       "computedHash": "acf2921a7e50c06e637f072ba52e36a994cbb44ecbe6e31435bc113b894f5499"
-    },
-    "memory-manager": {
-      "source": "local",
-      "sourceType": "local",
-      "skillPath": "skills/memory-manager/SKILL.md",
-      "computedHash": "25C74CD6C4E0E7143676EFBC1898E230FF100D66B2E1AFE33B0B724502033977"
     }
   }
 }

@@ -257,7 +257,7 @@ export async function POST(req: NextRequest) {
     const siteConfig = await getSiteAttendanceClockConfig(targetSiteId)
     const offDayCheck = checkEmployeeOffDayStatus({
       eventTime,
-      role: resolvedEmployee.role || resolvedEmployee.jobTitle,
+      role: resolvedEmployee.jobTitle,
       scheduleType: siteConfig.scheduleType,
       rosterType: siteConfig.rosterType,
       timeZone: siteConfig.timezone,
@@ -280,7 +280,6 @@ export async function POST(req: NextRequest) {
       eventType,
       eventTime,
       shiftCode: shiftCode || null,
-      employeeId: resolvedEmployee.id,
     })
 
     // ── 7. Insert attendance record ───────────────────────────────────────────

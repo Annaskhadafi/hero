@@ -26,7 +26,7 @@ const MODEL_FILES = [
 ]
 
 async function downloadFile(url, dest) {
-  const response = await fetch(url)
+  const response = await fetch(url, { signal: AbortSignal.timeout(15000) })
   if (!response.ok) throw new Error(`Failed to download ${url}: ${response.status}`)
   const buffer = Buffer.from(await response.arrayBuffer())
   await writeFile(dest, buffer)

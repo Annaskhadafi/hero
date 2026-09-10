@@ -58,7 +58,7 @@ export async function GET(
             workSummary: "Belum ada item checklist yang dicentang.",
             actualPoints: 0,
             photoUrl: null,
-          },
+          } as any,
         ];
 
   const rowPages = chunk(rows, ROWS_PER_PAGE);

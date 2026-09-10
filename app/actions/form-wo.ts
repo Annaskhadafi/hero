@@ -1,6 +1,6 @@
 'use server'
 
-import { and, asc, desc, eq, gt, inArray, ne, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, lt, inArray, ne, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
@@ -711,7 +711,7 @@ export async function updateFormWo(id: number, data: z.infer<typeof formWoUpdate
           notifyWorkflowBellRecipients({
             recipientEmails: [approverEmp.email, ...previousApproverEmails],
             eventType: 'form_wo_review',
-            category: 'approval',
+            category: 'approval_requests',
             title: `Form WO Telah Direvisi (Step ${targetLevel})`,
             body: `${parsed.pemohon || existing.pemohon || 'Pemohon'} telah merevisi Form WO (${existing.noPengajuan}) yang Anda minta revisi. Silakan review kembali.`,
             url: `/dashboard/approval`,
@@ -745,7 +745,7 @@ export async function updateFormWo(id: number, data: z.infer<typeof formWoUpdate
 
     safeRevalidatePath(FORM_WO_PATH)
     safeRevalidatePath('/dashboard/approval')
-    return { success: true }
+    return { success: true, noPengajuan: existing.noPengajuan }
   } catch (error) {
     console.error('Update Form WO Error:', error)
     return { success: false, error: 'Gagal memperbarui pengajuan WO' }
@@ -785,7 +785,7 @@ async function triggerFormWoCompletedPdfNotification(formWoId: number, noWoTerbi
       const creator = await db
         .select({ email: employees.email })
         .from(employees)
-        .where(eq(employees.id, existing.createdBy))
+        .where(eq(employees.id, Number(existing.createdBy)))
         .limit(1)
         .then((r) => r[0])
       creatorEmail = creator?.email
@@ -873,7 +873,7 @@ async function triggerFormWoCompletedPdfNotification(formWoId: number, noWoTerbi
 
     const pdfData: FormWoPdfData = {
       id: existing.id,
-      noPengajuan: existing.noPengajuan,
+      noPengajuan: existing.noPengajuan || '',
       jenisPengajuan: existing.jenisPengajuan,
       noWoTerbit,
       noPo: existing.noPo,
@@ -894,7 +894,7 @@ async function triggerFormWoCompletedPdfNotification(formWoId: number, noWoTerbi
     await sendFormWoCompletedWithPdfEmail({
       recipients: dynamicRecipients,
       pemohon: existing.pemohon || 'Pemohon',
-      noPengajuan: existing.noPengajuan,
+      noPengajuan: existing.noPengajuan || '',
       noWoTerbit,
       noPo: existing.noPo || undefined,
       customer: existing.customer || undefined,
@@ -910,7 +910,7 @@ async function triggerFormWoCompletedPdfNotification(formWoId: number, noWoTerbi
       notifyWorkflowBellRecipients({
         recipientEmails: finalRecipients,
         eventType: 'form_wo_approved',
-        category: 'approval',
+        category: 'approval_requests',
         title: 'Form WO Resmi Terbit (PDF Dilampirkan)',
         body: `Nomor WO resmi (${noWoTerbit}) telah diterbitkan untuk ${existing.noPengajuan}. File PDF Form WO dapat diunduh melalui sistem atau email Anda.`,
         url: `/dashboard/repair-retread/form-wo`,
@@ -957,7 +957,7 @@ export async function updateFormWoStatus(
             const emp = await db
               .select({ email: employees.email })
               .from(employees)
-              .where(eq(employees.id, record.createdBy))
+              .where(eq(employees.id, Number(record.createdBy)))
               .limit(1)
               .then((r) => r[0])
             requesterEmail = emp?.email

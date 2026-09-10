@@ -31,7 +31,7 @@ export default async function PtwPublicPage({ params }: PageProps) {
   }
 
   const { approval, ...restData } = result.data
-  const docIdentifier = restData.permitNumber || String(restData.id || '')
+  const docIdentifier = restData.permitNumber || String(restData.permitId || (restData as any).id || '')
 
   // 1. Check if user is currently logged in to Hero
   const session = await getServerSession()

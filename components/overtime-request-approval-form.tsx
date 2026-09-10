@@ -314,6 +314,11 @@ export function OvertimeRequestApprovalForm({
   const isRejected = (data.status || '').toLowerCase() === 'rejected'
   const isLocked = isApproved || isRejected
 
+  const isRequesterLocked = isLocked || (initialRequester?.status || '').toLowerCase() === 'approved' || Boolean(initialRequester?.signedAt)
+  const isLeaderLocked = isLocked || (initialLeader?.status || '').toLowerCase() === 'approved' || Boolean(initialLeader?.signedAt)
+  const isSectionHeadLocked = isLocked || (initialSectionHead?.status || '').toLowerCase() === 'approved' || Boolean(initialSectionHead?.signedAt)
+  const isManagerLocked = isLocked || (initialManager?.status || '').toLowerCase() === 'approved' || Boolean(initialManager?.signedAt)
+
   const [activeView, setActiveView] = useState<'form' | 'preview'>('form')
 
   const handleAddWorker = () => {
@@ -410,14 +415,38 @@ export function OvertimeRequestApprovalForm({
         lineItems,
         signatures: signaturesByStepId,
         stepRemarks,
-        leaderName: selectedLeader?.name,
-        superiorName: selectedSectionHead?.name,
-        managerName: selectedManager?.name,
+        leaderName: isLeaderLocked ? undefined : selectedLeader?.name,
+        superiorName: isSectionHeadLocked ? undefined : selectedSectionHead?.name,
+        managerName: isManagerLocked ? undefined : selectedManager?.name,
         signatories: [
-          ...(initialRequester ? [{ id: initialRequester.id, stepOrder: initialRequester.stepOrder, name: selectedRequester?.name || data.requesterName, employeeId: selectedRequester?.id, email: selectedRequester?.email }] : []),
-          ...(initialLeader ? [{ id: initialLeader.id, stepOrder: initialLeader.stepOrder, name: selectedLeader?.name, employeeId: selectedLeader?.id, email: selectedLeader?.email }] : []),
-          ...(initialSectionHead ? [{ id: initialSectionHead.id, stepOrder: initialSectionHead.stepOrder, name: selectedSectionHead?.name, employeeId: selectedSectionHead?.id, email: selectedSectionHead?.email }] : []),
-          ...(initialManager ? [{ id: initialManager.id, stepOrder: initialManager.stepOrder, name: selectedManager?.name, employeeId: selectedManager?.id, email: selectedManager?.email }] : []),
+          ...(initialRequester ? [{ 
+            id: initialRequester.id, 
+            stepOrder: initialRequester.stepOrder, 
+            name: isRequesterLocked ? (initialRequester.approverName || data.requesterName) : (selectedRequester?.name || data.requesterName), 
+            employeeId: isRequesterLocked ? initialRequester.approverEmployeeId : selectedRequester?.id, 
+            email: isRequesterLocked ? initialRequester.approverEmail : selectedRequester?.email 
+          }] : []),
+          ...(initialLeader ? [{ 
+            id: initialLeader.id, 
+            stepOrder: initialLeader.stepOrder, 
+            name: isLeaderLocked ? initialLeader.approverName : selectedLeader?.name, 
+            employeeId: isLeaderLocked ? initialLeader.approverEmployeeId : selectedLeader?.id, 
+            email: isLeaderLocked ? initialLeader.approverEmail : selectedLeader?.email 
+          }] : []),
+          ...(initialSectionHead ? [{ 
+            id: initialSectionHead.id, 
+            stepOrder: initialSectionHead.stepOrder, 
+            name: isSectionHeadLocked ? initialSectionHead.approverName : selectedSectionHead?.name, 
+            employeeId: isSectionHeadLocked ? initialSectionHead.approverEmployeeId : selectedSectionHead?.id, 
+            email: isSectionHeadLocked ? initialSectionHead.approverEmail : selectedSectionHead?.email 
+          }] : []),
+          ...(initialManager ? [{ 
+            id: initialManager.id, 
+            stepOrder: initialManager.stepOrder, 
+            name: isManagerLocked ? initialManager.approverName : selectedManager?.name, 
+            employeeId: isManagerLocked ? initialManager.approverEmployeeId : selectedManager?.id, 
+            email: isManagerLocked ? initialManager.approverEmail : selectedManager?.email 
+          }] : []),
         ],
       })
 
@@ -1023,7 +1052,7 @@ export function OvertimeRequestApprovalForm({
                     <tbody className="divide-y divide-slate-100">
                       {lineItems.length > 0 ? (
                         lineItems.map((item, idx) => (
-                          <tr key={item.id ? `spl-item-${item.id}` : `spl-it-${item.employeeId ?? 'anon'}-${idx}`} className="hover:bg-slate-50/80 transition-colors">
+                          <tr key={item.id ? `spl-item-${item.id}` : `spl-it-${(item as any).employeeId ?? (item as any).assignedEmployeeId ?? 'anon'}-${idx}`} className="hover:bg-slate-50/80 transition-colors">
                             <td className="py-2.5 px-3 text-center font-mono text-slate-500 font-semibold">{idx + 1}</td>
                             <td className="py-2 px-3">
                               <Input
@@ -1163,11 +1192,18 @@ export function OvertimeRequestApprovalForm({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Row 1: Serviceman / Karyawan */}
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">Serviceman / Karyawan</Label>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-semibold text-slate-700">Serviceman / Karyawan</Label>
+                      {isRequesterLocked ? (
+                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                          SUDAH DISETUJUI (TERKUNCI)
+                        </span>
+                      ) : null}
+                    </div>
                     <SearchableSelect
                       label="Serviceman"
                       placeholder="PILIH SERVICEMAN..."
-                      disabled={isLocked}
+                      disabled={isRequesterLocked}
                       value={selectedRequesterId}
                       onValueChange={(val) => {
                         setSelectedRequesterId(val)
@@ -1187,20 +1223,27 @@ export function OvertimeRequestApprovalForm({
                     <Label className="text-xs font-semibold text-slate-700">Job Title</Label>
                     <Input
                       value={requesterTitle}
-                      disabled={isLocked}
+                      disabled={isRequesterLocked}
                       onChange={(e) => setRequesterTitle(e.target.value)}
                       placeholder="Serviceman"
-                      className={cn("h-10 text-xs", isLocked ? "bg-slate-50 border-slate-200 text-slate-600 cursor-not-allowed" : "bg-slate-50/60 border-slate-200")}
+                      className={cn("h-10 text-xs", isRequesterLocked ? "bg-slate-50 border-slate-200 text-slate-600 cursor-not-allowed" : "bg-slate-50/60 border-slate-200")}
                     />
                   </div>
 
                   {/* Row 2: Leader / Pengawas */}
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">Leader / Pengawas Name</Label>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-semibold text-slate-700">Leader / Pengawas Name</Label>
+                      {isLeaderLocked ? (
+                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                          SUDAH DISETUJUI (TERKUNCI)
+                        </span>
+                      ) : null}
+                    </div>
                     <SearchableSelect
                       label="Leader"
                       placeholder="PILIH LEADER / PENGAWAS..."
-                      disabled={isLocked}
+                      disabled={isLeaderLocked}
                       value={selectedLeaderId}
                       onValueChange={(val) => {
                         setSelectedLeaderId(val)
@@ -1220,20 +1263,27 @@ export function OvertimeRequestApprovalForm({
                     <Label className="text-xs font-semibold text-slate-700">Leader Title</Label>
                     <Input
                       value={leaderTitle}
-                      disabled={isLocked}
+                      disabled={isLeaderLocked}
                       onChange={(e) => setLeaderTitle(e.target.value)}
                       placeholder="Leader / Pengawas"
-                      className={cn("h-10 text-xs", isLocked ? "bg-slate-50 border-slate-200 text-slate-600 cursor-not-allowed" : "bg-slate-50/60 border-slate-200")}
+                      className={cn("h-10 text-xs", isLeaderLocked ? "bg-slate-50 border-slate-200 text-slate-600 cursor-not-allowed" : "bg-slate-50/60 border-slate-200")}
                     />
                   </div>
 
                   {/* Row 3: Section Head */}
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">Section Head Name</Label>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-semibold text-slate-700">Section Head Name</Label>
+                      {isSectionHeadLocked ? (
+                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                          SUDAH DISETUJUI (TERKUNCI)
+                        </span>
+                      ) : null}
+                    </div>
                     <SearchableSelect
                       label="Section Head"
                       placeholder="PILIH SECTION HEAD..."
-                      disabled={isLocked}
+                      disabled={isSectionHeadLocked}
                       value={selectedSectionHeadId}
                       onValueChange={(val) => {
                         setSelectedSectionHeadId(val)
@@ -1253,12 +1303,56 @@ export function OvertimeRequestApprovalForm({
                     <Label className="text-xs font-semibold text-slate-700">Section Head Title</Label>
                     <Input
                       value={sectionHeadTitle}
-                      disabled={isLocked}
+                      disabled={isSectionHeadLocked}
                       onChange={(e) => setSectionHeadTitle(e.target.value)}
                       placeholder="Section Head"
-                      className={cn("h-10 text-xs", isLocked ? "bg-slate-50 border-slate-200 text-slate-600 cursor-not-allowed" : "bg-slate-50/60 border-slate-200")}
+                      className={cn("h-10 text-xs", isSectionHeadLocked ? "bg-slate-50 border-slate-200 text-slate-600 cursor-not-allowed" : "bg-slate-50/60 border-slate-200")}
                     />
                   </div>
+
+                  {/* Row 4: Manager / Dept Head (if exists in workflow) */}
+                  {initialManager ? (
+                    <>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs font-semibold text-slate-700">Manager / Dept Head Name</Label>
+                          {isManagerLocked ? (
+                            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                              SUDAH DISETUJUI (TERKUNCI)
+                            </span>
+                          ) : null}
+                        </div>
+                        <SearchableSelect
+                          label="Manager"
+                          placeholder="PILIH MANAGER / DEPT HEAD..."
+                          disabled={isManagerLocked}
+                          value={selectedManagerId}
+                          onValueChange={(val) => {
+                            setSelectedManagerId(val)
+                            const matched = employeesProp.find((e) => String(e.id) === val)
+                            if (matched) {
+                              setManagerTitle(matched.jobTitle || matched.rank || matched.position || 'Department Head / Manager')
+                            }
+                          }}
+                          options={employeesProp.map((emp) => ({
+                            value: String(emp.id),
+                            label: `${emp.name} - ${emp.jobTitle || emp.rank || 'Manager'}`,
+                          }))}
+                          widthClassName="w-full"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold text-slate-700">Manager Title</Label>
+                        <Input
+                          value={managerTitle}
+                          disabled={isManagerLocked}
+                          onChange={(e) => setManagerTitle(e.target.value)}
+                          placeholder="Department Head / Manager"
+                          className={cn("h-10 text-xs", isManagerLocked ? "bg-slate-50 border-slate-200 text-slate-600 cursor-not-allowed" : "bg-slate-50/60 border-slate-200")}
+                        />
+                      </div>
+                    </>
+                  ) : null}
                 </div>
               </CardContent>
             </Card>

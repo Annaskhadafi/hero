@@ -8,6 +8,9 @@ const QTY_ONLY_COLUMNS = [
 ];
 const SAFETY_SHOES_COL = 'Safety Shoes';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default async function PrintSummaryPage({
   params,
   searchParams,

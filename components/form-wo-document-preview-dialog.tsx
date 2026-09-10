@@ -329,7 +329,7 @@ export function FormWoDocumentView({
         s.status === 'pending' || (currentLevel === stepLevel && s.status !== 'approved')
 
       const signerName = s.approverName || s.jobTitle || 'Approver'
-      const jobTitle = s.jobTitle || s.label || 'Approver'
+      const jobTitle = s.jobTitle || (s as any).label || 'Approver'
 
       const sigUrl =
         s.status === 'approved' && s.signatureUrl
@@ -721,12 +721,16 @@ export function FormWoDocumentPreviewDialog({
   doc,
   liveSignatureUrl,
   currentLevel,
+  onEdit,
+  canEdit,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   doc: FormWoDocumentData | null
   liveSignatureUrl?: string | null
   currentLevel?: number
+  onEdit?: () => void
+  canEdit?: boolean
 }) {
   const printRef = useRef<HTMLDivElement>(null)
 

@@ -1,4 +1,4 @@
-import { and, eq, or } from 'drizzle-orm'
+import { and, eq, or, sql } from 'drizzle-orm'
 
 import { db } from '@/db'
 import { user as authUser } from '@/db/schema/auth'
@@ -49,7 +49,9 @@ export async function getCurrentEmployeeAccessRole(): Promise<string> {
     .where(
       or(
         session.user.id ? eq(employees.authUserId, session.user.id) : undefined,
-        session.user.email ? eq(employees.email, session.user.email) : undefined
+        session.user.email
+          ? sql`lower(${employees.email}) = lower(${session.user.email})`
+          : undefined
       )
     )
     .limit(1)
@@ -94,7 +96,12 @@ export async function getMenuPermissionForRole(
     .from(roleMenuPermissions)
     .innerJoin(securityRoles, eq(roleMenuPermissions.roleId, securityRoles.id))
     .innerJoin(navbarMenuItems, eq(roleMenuPermissions.menuItemId, navbarMenuItems.id))
-    .where(and(eq(securityRoles.name, roleName), eq(navbarMenuItems.resource, resource)))
+    .where(
+      and(
+        sql`lower(${securityRoles.name}) = lower(${roleName})`,
+        eq(navbarMenuItems.resource, resource)
+      )
+    )
     .limit(1)
 
   if (permission) {
@@ -121,6 +128,24 @@ export async function getMenuPermissionForRole(
 export async function getCurrentMenuPermission(resource: string) {
   const roleName = await getCurrentEmployeeAccessRole()
   return getMenuPermissionForRole(roleName, resource)
+}
+
+export async function getDashboardRoutePermission(pathname: string) {
+  const cleanPath = pathname.split('?')[0].replace(/\/$/, '') || '/dashboard'
+  const menuItems = await db
+    .select({ url: navbarMenuItems.url, resource: navbarMenuItems.resource })
+    .from(navbarMenuItems)
+
+  const matchingMenu = menuItems
+    .filter(({ url }) => {
+      const cleanUrl = url.split('?')[0].replace(/\/$/, '')
+      return cleanPath === cleanUrl || cleanPath.startsWith(`${cleanUrl}/`)
+    })
+    .sort((left, right) => right.url.length - left.url.length)[0]
+
+  return matchingMenu
+    ? getCurrentMenuPermission(matchingMenu.resource)
+    : getMenuPermissionForRole(null, '')
 }
 
 export async function getCurrentEmployeeAccessContext(): Promise<HeroEmployeeAccessContext | null> {

@@ -340,7 +340,7 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
 
   // Send initial step 1 email
   if (requester?.email) {
-    await sendOvertimeStepApprovalEmail({
+    sendOvertimeStepApprovalEmail({
       documentId: document.id,
       splNumber: document.splNumber || `SPL-${document.id}`,
       title: document.title || 'Penugasan Lembur Operasional',
@@ -351,7 +351,7 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
       approverEmail: requester.email,
       approvalStep: 'Karyawan Sign',
       approvalToken: step1Token,
-    })
+    }).catch((err) => console.error('[ensureOvertimeApprovalsExist] Email error:', err))
   }
 }
 
@@ -601,22 +601,18 @@ export async function saveOvertimeApprovalForm(params: {
           ? await db.select({ name: employees.name }).from(employees).where(eq(employees.id, existingDoc.requestedByEmployeeId)).limit(1)
           : []
 
-        try {
-          await sendOvertimeStepApprovalEmail({
-            documentId: params.documentId,
-            splNumber: existingDoc?.splNumber || `SPL-${params.documentId}`,
-            title: existingDoc?.title || 'Penugasan Lembur Operasional',
-            workDate: existingDoc?.workDate,
-            employeeName: requester?.name || 'Pemohon',
-            requesterName: requester?.name || 'Pemohon',
-            approverName: targetStep.approverName || 'Approver',
-            approverEmail: targetStep.approverEmail || '',
-            approvalStep: targetStep.stepLabel,
-            approvalToken: targetStep.approvalToken,
-          })
-        } catch (mailErr) {
-          console.error('Error sending smart resume overtime email:', mailErr)
-        }
+        sendOvertimeStepApprovalEmail({
+          documentId: params.documentId,
+          splNumber: existingDoc?.splNumber || `SPL-${params.documentId}`,
+          title: existingDoc?.title || 'Penugasan Lembur Operasional',
+          workDate: existingDoc?.workDate,
+          employeeName: requester?.name || 'Pemohon',
+          requesterName: requester?.name || 'Pemohon',
+          approverName: targetStep.approverName || 'Approver',
+          approverEmail: targetStep.approverEmail || '',
+          approvalStep: targetStep.stepLabel,
+          approvalToken: targetStep.approvalToken,
+        }).catch((mailErr) => console.error('[saveOvertimeApprovalForm] Error sending smart resume overtime email:', mailErr))
       }
     }
 
@@ -625,44 +621,47 @@ export async function saveOvertimeApprovalForm(params: {
       .set(updateData)
       .where(eq(overtimeCommandLetters.id, params.documentId))
 
-    // If participants provided, sync participants
+    // If participants provided, sync participants in bulk
     if (params.participants && Array.isArray(params.participants)) {
       await db
         .delete(overtimeCommandLetterParticipants)
         .where(eq(overtimeCommandLetterParticipants.overtimeCommandLetterId, params.documentId))
 
-      for (const p of params.participants) {
-        if (p.employeeId) {
-          await db.insert(overtimeCommandLetterParticipants).values({
-            overtimeCommandLetterId: params.documentId,
-            employeeId: p.employeeId,
-            category: p.category || 'after_mandatory_ot',
-            shiftCode: p.shiftCode || 'DS',
-            rosterType: p.rosterType || '5:2',
-          })
-        }
+      const partRows = params.participants
+        .filter((p) => Boolean(p.employeeId))
+        .map((p) => ({
+          overtimeCommandLetterId: params.documentId,
+          employeeId: p.employeeId,
+          category: p.category || 'after_mandatory_ot',
+          shiftCode: p.shiftCode || 'DS',
+          rosterType: p.rosterType || '5:2',
+        }))
+
+      if (partRows.length > 0) {
+        await db.insert(overtimeCommandLetterParticipants).values(partRows)
       }
     }
 
-    // If line items provided, sync line items
+    // If line items provided, sync line items in bulk
     if (params.lineItems && Array.isArray(params.lineItems)) {
       await db
         .delete(overtimeCommandLetterItems)
         .where(eq(overtimeCommandLetterItems.overtimeCommandLetterId, params.documentId))
 
-      for (let idx = 0; idx < params.lineItems.length; idx++) {
-        const item = params.lineItems[idx]
-        if (item && item.lineLabel) {
-          await db.insert(overtimeCommandLetterItems).values({
-            overtimeCommandLetterId: params.documentId,
-            lineLabel: item.lineLabel,
-            lineDescription: item.lineDescription || '',
-            targetUnit: item.targetUnit || '',
-            estimatedMinutes: Number(item.estimatedMinutes) || 60,
-            plannedPoints: Number(item.plannedPoints) || 10,
-            sortOrder: idx + 1,
-          })
-        }
+      const itemRows = params.lineItems
+        .filter((item) => Boolean(item && item.lineLabel && item.lineLabel.trim()))
+        .map((item, idx) => ({
+          overtimeCommandLetterId: params.documentId,
+          lineLabel: item.lineLabel.trim(),
+          lineDescription: item.lineDescription || '',
+          targetUnit: item.targetUnit || '',
+          estimatedMinutes: Number(item.estimatedMinutes) || 60,
+          plannedPoints: Number(item.plannedPoints) || 10,
+          sortOrder: idx + 1,
+        }))
+
+      if (itemRows.length > 0) {
+        await db.insert(overtimeCommandLetterItems).values(itemRows)
       }
     }
 
@@ -690,8 +689,18 @@ export async function saveOvertimeApprovalForm(params: {
           updateSig.signedAt = new Date()
         }
         if (Object.keys(updateSig).length > 0) {
+          // If signature is NOT being set (only changing approver metadata), do NOT overwrite approved steps
+          const notApprovedCondition = sql`LOWER(COALESCE(${overtimeApprovals.status}, '')) NOT IN ('approved', 'signed', 'completed')`
           if (sig.id) {
-            await db.update(overtimeApprovals).set(updateSig).where(eq(overtimeApprovals.id, sig.id))
+            await db
+              .update(overtimeApprovals)
+              .set(updateSig)
+              .where(
+                and(
+                  eq(overtimeApprovals.id, sig.id),
+                  sig.signatureDataUrl ? undefined : notApprovedCondition
+                )
+              )
           } else if (sig.stepOrder) {
             await db
               .update(overtimeApprovals)
@@ -699,7 +708,8 @@ export async function saveOvertimeApprovalForm(params: {
               .where(
                 and(
                   eq(overtimeApprovals.overtimeCommandLetterId, params.documentId),
-                  eq(overtimeApprovals.stepOrder, sig.stepOrder)
+                  eq(overtimeApprovals.stepOrder, sig.stepOrder),
+                  sig.signatureDataUrl ? undefined : notApprovedCondition
                 )
               )
           }
@@ -707,7 +717,7 @@ export async function saveOvertimeApprovalForm(params: {
       }
     }
 
-    // Direct role updates if passed
+    // Direct role updates if passed - only update if step is NOT yet approved
     if (params.leaderName || params.superiorName || params.managerName) {
       if (params.leaderName) {
         await db
@@ -716,7 +726,8 @@ export async function saveOvertimeApprovalForm(params: {
           .where(
             and(
               eq(overtimeApprovals.overtimeCommandLetterId, params.documentId),
-              sql`LOWER(${overtimeApprovals.approverRole}) IN ('leader', 'pjo_or_te_initial')`
+              sql`LOWER(${overtimeApprovals.approverRole}) IN ('leader', 'pjo_or_te_initial')`,
+              sql`LOWER(COALESCE(${overtimeApprovals.status}, '')) NOT IN ('approved', 'signed', 'completed')`
             )
           )
       }
@@ -727,7 +738,8 @@ export async function saveOvertimeApprovalForm(params: {
           .where(
             and(
               eq(overtimeApprovals.overtimeCommandLetterId, params.documentId),
-              sql`LOWER(${overtimeApprovals.approverRole}) IN ('section_head', 'section_head_confirmation')`
+              sql`LOWER(${overtimeApprovals.approverRole}) IN ('section_head', 'section_head_confirmation')`,
+              sql`LOWER(COALESCE(${overtimeApprovals.status}, '')) NOT IN ('approved', 'signed', 'completed')`
             )
           )
       }
@@ -738,7 +750,8 @@ export async function saveOvertimeApprovalForm(params: {
           .where(
             and(
               eq(overtimeApprovals.overtimeCommandLetterId, params.documentId),
-              sql`LOWER(${overtimeApprovals.approverRole}) IN ('manager', 'department_head')`
+              sql`LOWER(${overtimeApprovals.approverRole}) IN ('manager', 'department_head')`,
+              sql`LOWER(COALESCE(${overtimeApprovals.status}, '')) NOT IN ('approved', 'signed', 'completed')`
             )
           )
       }
@@ -810,7 +823,7 @@ export async function saveOvertimeApprovalForm(params: {
                   .where(eq(overtimeApprovals.id, nextStep.id))
 
                 if (nextStep.approverEmail) {
-                  await sendOvertimeStepApprovalEmail({
+                  sendOvertimeStepApprovalEmail({
                     documentId: params.documentId,
                     splNumber: doc?.splNumber || `SPL-${params.documentId}`,
                     title: doc?.title || 'Penugasan Lembur Operasional',
@@ -821,7 +834,7 @@ export async function saveOvertimeApprovalForm(params: {
                     approverEmail: nextStep.approverEmail,
                     approvalStep: nextStep.stepLabel,
                     approvalToken: nextStep.approvalToken,
-                  })
+                  }).catch((err) => console.error('[signAndApproveOvertimeRequestAction] Next step email error:', err))
                 }
               }
             } else {
@@ -831,13 +844,13 @@ export async function saveOvertimeApprovalForm(params: {
                 .where(eq(overtimeCommandLetters.id, params.documentId))
 
               if (currentStep.approverEmail) {
-                await sendOvertimeCompletedEmail({
+                sendOvertimeCompletedEmail({
                   documentId: params.documentId,
                   splNumber: doc?.splNumber || `SPL-${params.documentId}`,
                   title: doc?.title || 'Penugasan Lembur Operasional',
                   requesterName: currentStep.approverName || 'Pemohon',
                   requesterEmail: currentStep.approverEmail,
-                })
+                }).catch((err) => console.error('[signAndApproveOvertimeRequestAction] Completed email error:', err))
               }
             }
           }
@@ -974,7 +987,7 @@ export async function submitOvertimeApprovalStepAction(
         .limit(1)
 
       if (requester?.email || step1?.approverEmail) {
-        await sendOvertimeRevertedEmail({
+        sendOvertimeRevertedEmail({
           documentId,
           splNumber: document.splNumber,
           title: document.title,
@@ -982,9 +995,9 @@ export async function submitOvertimeApprovalStepAction(
           targetApproverEmail: step1?.approverEmail || requester?.email || '',
           managerName: approval.approverName || 'Department Head',
           revertReason: remarks,
-        })
+        }).catch((err) => console.error('[submitOvertimeApprovalStepAction] Reverted email error:', err))
 
-        await notifyWorkflowBellRecipients({
+        notifyWorkflowBellRecipients({
           recipientEmails: [requester?.email, step1?.approverEmail].filter(Boolean) as string[],
           eventType: 'overtime_reverted',
           category: 'approval_requests',
@@ -1104,7 +1117,7 @@ export async function submitOvertimeApprovalStepAction(
 
           // Send sequential email notification to next approver
           if (nextStep.approverEmail) {
-            await sendOvertimeStepApprovalEmail({
+            sendOvertimeStepApprovalEmail({
               documentId,
               splNumber: document.splNumber,
               title: document.title,
@@ -1115,9 +1128,9 @@ export async function submitOvertimeApprovalStepAction(
               approverEmail: nextStep.approverEmail,
               approvalStep: nextStep.stepLabel,
               approvalToken: nextStep.approvalToken,
-            })
+            }).catch((err) => console.error('[submitOvertimeApprovalStepAction] Next step email error:', err))
 
-            await notifyWorkflowBellRecipients({
+            notifyWorkflowBellRecipients({
               recipientEmails: [nextStep.approverEmail],
               eventType: 'overtime_approval_needed',
               category: 'approval_requests',
@@ -1137,15 +1150,15 @@ export async function submitOvertimeApprovalStepAction(
           .where(eq(overtimeCommandLetters.id, documentId))
 
         if (requester?.email) {
-          await sendOvertimeCompletedEmail({
+          sendOvertimeCompletedEmail({
             documentId,
             splNumber: document.splNumber,
             title: document.title,
             requesterName: requester.name || 'Pemohon',
             requesterEmail: requester.email,
-          })
+          }).catch((err) => console.error('[submitOvertimeApprovalStepAction] Completed email error:', err))
 
-          await notifyWorkflowBellRecipients({
+          notifyWorkflowBellRecipients({
             recipientEmails: [requester.email],
             eventType: 'overtime_approved',
             category: 'approval_requests',
@@ -1179,7 +1192,7 @@ export async function submitOvertimeApprovalStepAction(
         .where(eq(overtimeCommandLetters.id, documentId))
 
       if (requester?.email) {
-        await sendOvertimeRejectedEmail({
+        sendOvertimeRejectedEmail({
           documentId,
           splNumber: document.splNumber,
           title: document.title,
@@ -1187,9 +1200,9 @@ export async function submitOvertimeApprovalStepAction(
           requesterEmail: requester.email,
           approverName: approval.approverName || 'Approver',
           remarks,
-        })
+        }).catch((err) => console.error('[submitOvertimeApprovalStepAction] Rejected email error:', err))
 
-        await notifyWorkflowBellRecipients({
+        notifyWorkflowBellRecipients({
           recipientEmails: [requester.email],
           eventType: 'overtime_rejected',
           category: 'approval_requests',
@@ -1638,26 +1651,31 @@ export async function createOvertimeCommandLetterAction(payload: {
       })
       .returning()
 
-    // Insert participants
+    // Insert participants in bulk
     if (payload.workerParticipants && payload.workerParticipants.length > 0) {
-      for (const p of payload.workerParticipants) {
-        if (!p.employeeId) continue
-        await db.insert(overtimeCommandLetterParticipants).values({
+      const partRows = payload.workerParticipants
+        .filter((p) => Boolean(p.employeeId))
+        .map((p) => ({
           overtimeCommandLetterId: inserted.id,
           employeeId: p.employeeId,
           shiftCode: p.shiftCode || 'DS',
           rosterType: p.rosterType || '5:2',
           category: p.category || 'after_mandatory_ot',
           createdAt: new Date(),
-        })
+        }))
+      if (partRows.length > 0) {
+        await db.insert(overtimeCommandLetterParticipants).values(partRows)
       }
     } else if (payload.workerEmployeeIds && payload.workerEmployeeIds.length > 0) {
-      for (const empId of payload.workerEmployeeIds) {
-        await db.insert(overtimeCommandLetterParticipants).values({
+      const partRows = payload.workerEmployeeIds
+        .filter(Boolean)
+        .map((empId) => ({
           overtimeCommandLetterId: inserted.id,
           employeeId: empId,
           createdAt: new Date(),
-        })
+        }))
+      if (partRows.length > 0) {
+        await db.insert(overtimeCommandLetterParticipants).values(partRows)
       }
     }
 
@@ -1753,7 +1771,7 @@ export async function createOvertimeCommandLetterAction(payload: {
         })
 
       if (requesterEmp?.email || currentEmp?.email) {
-        await sendOvertimeStepApprovalEmail({
+        sendOvertimeStepApprovalEmail({
           documentId: inserted.id,
           splNumber: inserted.splNumber || `SPL-${inserted.id}`,
           title: inserted.title || payload.title || 'Penugasan Lembur Operasional',
@@ -1764,7 +1782,7 @@ export async function createOvertimeCommandLetterAction(payload: {
           approverEmail: requesterEmp?.email || currentEmp?.email || '',
           approvalStep: 'Karyawan Sign',
           approvalToken: step1Token,
-        })
+        }).catch((err) => console.error('[createOvertimeCommandLetterAction] Email dispatch error:', err))
       }
     } else {
       await ensureOvertimeApprovalsExist(inserted.id)
@@ -2037,23 +2055,19 @@ export async function approveOvertimeStepByToken(
         .set({ status: 'pending' })
         .where(eq(overtimeApprovals.id, next.id))
 
-      try {
-        if (next.approverEmail) {
-          await sendOvertimeStepApprovalEmail({
-            documentId: approval.overtimeCommandLetterId,
-            splNumber: document?.splNumber || '',
-            title: document?.title || '',
-            workDate: document?.workDate,
-            employeeName: requester?.name || 'Pemohon',
-            requesterName: requester?.name || 'Pemohon',
-            approverName: next.approverName || 'Approver',
-            approverEmail: next.approverEmail,
-            approvalStep: next.stepLabel,
-            approvalToken: next.approvalToken,
-          })
-        }
-      } catch (mailErr) {
-        console.error('Error sending overtime step approval email:', mailErr)
+      if (next.approverEmail) {
+        sendOvertimeStepApprovalEmail({
+          documentId: approval.overtimeCommandLetterId,
+          splNumber: document?.splNumber || '',
+          title: document?.title || '',
+          workDate: document?.workDate,
+          employeeName: requester?.name || 'Pemohon',
+          requesterName: requester?.name || 'Pemohon',
+          approverName: next.approverName || 'Approver',
+          approverEmail: next.approverEmail,
+          approvalStep: next.stepLabel,
+          approvalToken: next.approvalToken,
+        }).catch((mailErr) => console.error('[approveOvertimeStepByToken] Error sending overtime step approval email:', mailErr))
       }
     } else {
       await db
@@ -2061,18 +2075,14 @@ export async function approveOvertimeStepByToken(
         .set({ status: 'approved', approvedByEmployeeId: approval.approverEmployeeId, updatedAt: new Date() })
         .where(eq(overtimeCommandLetters.id, approval.overtimeCommandLetterId))
 
-      try {
-        if (requester?.email) {
-          await sendOvertimeCompletedEmail({
-            documentId: approval.overtimeCommandLetterId,
-            splNumber: document?.splNumber || '',
-            title: document?.title || '',
-            requesterName: requester.name || 'Pemohon',
-            requesterEmail: requester.email,
-          })
-        }
-      } catch (mailErr) {
-        console.error('Error sending overtime completed email:', mailErr)
+      if (requester?.email) {
+        sendOvertimeCompletedEmail({
+          documentId: approval.overtimeCommandLetterId,
+          splNumber: document?.splNumber || '',
+          title: document?.title || '',
+          requesterName: requester.name || 'Pemohon',
+          requesterEmail: requester.email,
+        }).catch((mailErr) => console.error('[approveOvertimeStepByToken] Error sending overtime completed email:', mailErr))
       }
     }
 
@@ -2098,19 +2108,26 @@ export async function rejectOvertimeStepByToken(
       .limit(1)
 
     if (!approval) throw new Error('Approval token tidak valid.')
+    if (approval.status === 'rejected') return { success: true as const }
+
+    const now = new Date()
 
     await db
       .update(overtimeApprovals)
       .set({
         status: 'rejected',
-        remarks: payload.remarks || '',
-        signedAt: new Date(),
+        remarks: payload.remarks || 'Ditolak',
+        signatureDataUrl: null,
+        signedAt: null,
       })
       .where(eq(overtimeApprovals.id, approval.id))
 
     await db
       .update(overtimeApprovals)
-      .set({ status: 'cancelled' })
+      .set({
+        status: 'cancelled',
+        remarks: '',
+      })
       .where(
         and(
           eq(overtimeApprovals.overtimeCommandLetterId, approval.overtimeCommandLetterId),
@@ -2120,7 +2137,7 @@ export async function rejectOvertimeStepByToken(
 
     await db
       .update(overtimeCommandLetters)
-      .set({ status: 'returned', updatedAt: new Date() })
+      .set({ status: 'rejected', updatedAt: now })
       .where(eq(overtimeCommandLetters.id, approval.overtimeCommandLetterId))
 
     const [document] = await db
@@ -2142,20 +2159,16 @@ export async function rejectOvertimeStepByToken(
           .limit(1)
       : []
 
-    try {
-      if (requester?.email) {
-        await sendOvertimeRejectedEmail({
-          documentId: approval.overtimeCommandLetterId,
-          splNumber: document?.splNumber || '',
-          title: document?.title || '',
-          requesterName: requester.name || 'Pemohon',
-          requesterEmail: requester.email,
-          approverName: approval.approverName || 'Approver',
-          remarks: payload.remarks,
-        })
-      }
-    } catch (mailErr) {
-      console.error('Error sending overtime rejected email:', mailErr)
+    if (requester?.email) {
+      sendOvertimeRejectedEmail({
+        documentId: approval.overtimeCommandLetterId,
+        splNumber: document?.splNumber || '',
+        title: document?.title || '',
+        requesterName: requester.name || 'Pemohon',
+        requesterEmail: requester.email,
+        approverName: approval.approverName || 'Approver',
+        remarks: payload.remarks,
+      }).catch((mailErr) => console.error('[rejectOvertimeStepByToken] Error sending overtime rejected email:', mailErr))
     }
 
     safeRevalidatePath('/dashboard/overtime-requests')
@@ -2239,20 +2252,16 @@ export async function revertOvertimeStepByToken(
       )
       .limit(1)
 
-    try {
-      if (step1?.approverEmail) {
-        await sendOvertimeRevertedEmail({
-          documentId: approval.overtimeCommandLetterId,
-          splNumber: document?.splNumber || '',
-          title: document?.title || '',
-          targetApproverName: step1.approverName || 'Pemohon / Step 1',
-          targetApproverEmail: step1.approverEmail,
-          managerName: approval.approverName || 'Atasan',
-          revertReason: payload.remarks,
-        })
-      }
-    } catch (mailErr) {
-      console.error('Error sending overtime reverted email:', mailErr)
+    if (step1?.approverEmail) {
+      sendOvertimeRevertedEmail({
+        documentId: approval.overtimeCommandLetterId,
+        splNumber: document?.splNumber || '',
+        title: document?.title || '',
+        targetApproverName: step1.approverName || 'Pemohon / Step 1',
+        targetApproverEmail: step1.approverEmail,
+        managerName: approval.approverName || 'Atasan',
+        revertReason: payload.remarks,
+      }).catch((mailErr) => console.error('[revertOvertimeStepByToken] Error sending overtime reverted email:', mailErr))
     }
 
     safeRevalidatePath('/dashboard/overtime-requests')
@@ -2377,22 +2386,18 @@ export async function batchApproveOvertimeRequestsAction(splIds: number[], remar
             .where(eq(employees.id, splDoc.requestedByEmployeeId))
             .limit(1)
 
-          try {
-            await sendOvertimeStepApprovalEmail({
-              documentId: splDoc.id,
-              splNumber: splDoc.splNumber,
-              title: splDoc.title || 'Penugasan Lembur Operasional',
-              employeeName: requester?.name || 'Karyawan',
-              workDate: (splDoc as any).workDate || new Date(),
-              approverName: nextStep.approverName || 'Approver',
-              approverEmail: nextStep.approverEmail,
-              requesterName: requester?.name || 'Pemohon',
-              approvalStep: nextStep.stepLabel,
-              approvalToken: (nextStep.approvalToken || '') as any,
-            })
-          } catch (err) {
-            console.error('Error dispatching overtime next step email:', err)
-          }
+          sendOvertimeStepApprovalEmail({
+            documentId: splDoc.id,
+            splNumber: splDoc.splNumber,
+            title: splDoc.title || 'Penugasan Lembur Operasional',
+            employeeName: requester?.name || 'Karyawan',
+            workDate: (splDoc as any).workDate || new Date(),
+            approverName: nextStep.approverName || 'Approver',
+            approverEmail: nextStep.approverEmail,
+            requesterName: requester?.name || 'Pemohon',
+            approvalStep: nextStep.stepLabel,
+            approvalToken: (nextStep.approvalToken || '') as any,
+          }).catch((err) => console.error('[approveOvertimeStepCustomAction] Next step email error:', err))
         }
       } else {
         // Final approval
@@ -2412,17 +2417,13 @@ export async function batchApproveOvertimeRequestsAction(splIds: number[], remar
             .limit(1)
 
           if (requester?.email) {
-            try {
-              await sendOvertimeCompletedEmail({
-                documentId: splDoc.id,
-                splNumber: splDoc.splNumber,
-                title: splDoc.title || 'Penugasan Lembur Operasional',
-                requesterName: requester.name || 'Pemohon',
-                requesterEmail: requester.email,
-              })
-            } catch (err) {
-              console.error('Error dispatching final overtime completed email:', err)
-            }
+            sendOvertimeCompletedEmail({
+              documentId: splDoc.id,
+              splNumber: splDoc.splNumber,
+              title: splDoc.title || 'Penugasan Lembur Operasional',
+              requesterName: requester.name || 'Pemohon',
+              requesterEmail: requester.email,
+            }).catch((err) => console.error('[approveOvertimeStepCustomAction] Completed email error:', err))
           }
         }
       }
@@ -2630,31 +2631,27 @@ export async function batchRevertOvertimeRequestsAction(splIds: number[], remark
         .where(eq(overtimeCommandLetters.id, splId))
         .limit(1)
 
-      try {
-        if (step1?.approverEmail) {
-          await sendOvertimeRevertedEmail({
-            documentId: splId,
-            splNumber: document?.splNumber || '',
-            title: document?.title || '',
-            targetApproverName: step1.approverName || 'Pemohon',
-            targetApproverEmail: step1.approverEmail,
-            managerName: emp.name || 'Atasan',
-            revertReason: finalRemark,
-          })
+      if (step1?.approverEmail) {
+        sendOvertimeRevertedEmail({
+          documentId: splId,
+          splNumber: document?.splNumber || '',
+          title: document?.title || '',
+          targetApproverName: step1.approverName || 'Pemohon',
+          targetApproverEmail: step1.approverEmail,
+          managerName: emp.name || 'Atasan',
+          revertReason: finalRemark,
+        }).catch((mailErr) => console.error('[revertOvertimeStepAction] Error sending overtime reverted email in batch revert:', mailErr))
 
-          await notifyWorkflowBellRecipients({
-            recipientEmails: [step1.approverEmail],
-            eventType: 'overtime_reverted',
-            category: 'approval_requests',
-            title: `SPL Dikembalikan: #${document?.splNumber || splId}`,
-            body: `Surat Perintah Lembur #${document?.splNumber || splId} dikembalikan untuk revisi oleh ${emp.name || 'Atasan'}.${finalRemark ? ` Catatan: ${finalRemark}` : ''}`,
-            url: `/dashboard/overtime-requests/${splId}/approval`,
-            tagPrefix: 'overtime-reverted',
-            metadata: { documentId: splId },
-          }).catch((bellErr) => console.error('Error notifying bell on batch revert:', bellErr))
-        }
-      } catch (mailErr) {
-        console.error('Error sending overtime reverted email in batch revert:', mailErr)
+        notifyWorkflowBellRecipients({
+          recipientEmails: [step1.approverEmail],
+          eventType: 'overtime_reverted',
+          category: 'approval_requests',
+          title: `SPL Dikembalikan: #${document?.splNumber || splId}`,
+          body: `Surat Perintah Lembur #${document?.splNumber || splId} dikembalikan untuk revisi oleh ${emp.name || 'Atasan'}.${finalRemark ? ` Catatan: ${finalRemark}` : ''}`,
+          url: `/dashboard/overtime-requests/${splId}/approval`,
+          tagPrefix: 'overtime-reverted',
+          metadata: { documentId: splId },
+        }).catch((bellErr) => console.error('Error notifying bell on batch revert:', bellErr))
       }
     }
 

@@ -7,6 +7,8 @@ import { join } from "path";
 import { existsSync, readFileSync } from "fs";
 import { getS3ObjectForProxy, isS3UploadConfigured } from "@/lib/s3-storage";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 export const runtime = "nodejs";
 
 function formatDateTime(dateInput: string | Date | number | null | undefined): string {
@@ -127,11 +129,12 @@ export async function GET(request: Request) {
         const cleanPath = docUrl.replace(/^\/api\/uploads\//, "").replace(/^\/uploads\//, "");
         const fileName = cleanPath.split("/").pop() || "";
 
+        const publicDir = join(/*turbopackIgnore: true*/ process.cwd(), "public");
         const candidatePaths = [
-          join(process.cwd(), "public", "uploads", cleanPath),
-          join(process.cwd(), "public", "uploads", fileName),
-          join(process.cwd(), "public", cleanPath),
-          join(process.cwd(), "public", fileName),
+          join(publicDir, "uploads", cleanPath),
+          join(publicDir, "uploads", fileName),
+          join(publicDir, cleanPath),
+          join(publicDir, fileName),
         ];
 
         for (const p of candidatePaths) {
@@ -538,7 +541,7 @@ async function createApprovalSheetPdf(
       }
     } else if (sigDataUrl && sigDataUrl.startsWith("/")) {
       try {
-        const localSigPath = join(process.cwd(), "public", sigDataUrl.replace(/^\//, ""));
+        const localSigPath = join(/*turbopackIgnore: true*/ process.cwd(), "public", sigDataUrl.replace(/^\//, ""));
         if (existsSync(localSigPath)) {
           const imageBytes = readFileSync(localSigPath);
           const img = sigDataUrl.endsWith(".png")

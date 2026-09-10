@@ -1,15 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { securityRoles, roleMenuPermissions, navbarMenuItems } from "@/db/schema/hero";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getServerSession } from "@/lib/auth-session";
-import { getCurrentEmployeeAccessRole } from "@/lib/get-current-employee";
+import {
+  getCurrentEmployeeAccessRole,
+  getCurrentMenuPermission,
+  isSuperAdminRole,
+} from "@/lib/hero-access";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getServerSession();
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const managementPermission = await getCurrentMenuPermission("settings_navbar");
+    if (!managementPermission.canView) {
+      return NextResponse.json({ error: "Forbidden: Akses ditolak" }, { status: 403 });
+    }
+
     const { id } = await params;
     const menuItemId = parseInt(id);
 
@@ -37,12 +50,15 @@ export async function GET(
 
     const result = roles.map((role) => {
       const perm = permMap.get(role.id);
+      const isSuperAdmin = isSuperAdminRole(role.name);
       return {
         roleId: role.id,
         roleName: role.name,
-        canView: perm ? perm.canView : role.name === "Super Admin",
-        canEdit: perm ? perm.canEdit : role.name === "Super Admin",
-        canDelete: perm ? perm.canDelete : role.name === "Super Admin",
+        canView: isSuperAdmin || !!perm?.canView,
+        canEdit: isSuperAdmin || !!perm?.canEdit,
+        canDelete: isSuperAdmin || !!perm?.canDelete,
+        canSelectAll: isSuperAdmin || !!perm?.canSelectAll,
+        dataScope: isSuperAdmin ? "global" : perm?.dataScope ?? "own",
       };
     });
 
@@ -71,7 +87,8 @@ export async function POST(
     }
 
     const role = await getCurrentEmployeeAccessRole();
-    if (!role || (role !== "Super Admin" && role !== "HC Manager")) {
+    const managementPermission = await getCurrentMenuPermission("settings_navbar");
+    if (!role || (!isSuperAdminRole(role) && !managementPermission.canEdit)) {
       return NextResponse.json({ error: "Forbidden: Akses ditolak" }, { status: 403 });
     }
 
@@ -89,6 +106,8 @@ export async function POST(
         canView: boolean;
         canEdit: boolean;
         canDelete: boolean;
+        canSelectAll?: boolean;
+        dataScope?: "own" | "site" | "global";
       }>;
     };
 
@@ -101,8 +120,10 @@ export async function POST(
         .select()
         .from(roleMenuPermissions)
         .where(
-          eq(roleMenuPermissions.menuItemId, menuItemId) &&
+          and(
+            eq(roleMenuPermissions.menuItemId, menuItemId),
             eq(roleMenuPermissions.roleId, p.roleId)
+          )
         )
         .limit(1);
 
@@ -113,6 +134,8 @@ export async function POST(
             canView: p.canView,
             canEdit: p.canEdit,
             canDelete: p.canDelete,
+            canSelectAll: p.canSelectAll ?? false,
+            dataScope: p.dataScope ?? "own",
           })
           .where(eq(roleMenuPermissions.id, existing[0].id));
       } else {
@@ -122,6 +145,8 @@ export async function POST(
           canView: p.canView,
           canEdit: p.canEdit,
           canDelete: p.canDelete,
+          canSelectAll: p.canSelectAll ?? false,
+          dataScope: p.dataScope ?? "own",
         });
       }
     }

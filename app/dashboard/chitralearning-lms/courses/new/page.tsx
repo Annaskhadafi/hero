@@ -11,9 +11,9 @@ export default async function NewCoursePage() {
     redirect('/auth/signin')
   }
 
-  const { canManageLmsSection } = await import('@/lib/chitralearning-lms')
-  if (!(await canManageLmsSection())) {
-    redirect('/dashboard/chitralearning-lms/catalog')
+  const { getCurrentMenuPermission } = await import('@/lib/hero-access')
+  if (!(await getCurrentMenuPermission('chitralearning_lms_builder')).canEdit) {
+    redirect('/403')
   }
 
   const [categories, allEmployees] = await Promise.all([

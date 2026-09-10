@@ -83,7 +83,8 @@ export function MobileFiveRApprovalCard({ item, group }: MobileFiveRApprovalCard
     item.fiveRReport?.id ||
     (item as any).fiveRReportId ||
     item.requestNumber ||
-    item.activityCode ||
+    (item as any).activityCode ||
+    item.activityId ||
     matchedReportNumber
 
   // Automatically open review dialog if matched via URL query params (?openDoc=5R-...)
@@ -161,7 +162,7 @@ export function MobileFiveRApprovalCard({ item, group }: MobileFiveRApprovalCard
   const currentLevel = item.level || report?.currentApprovalLevel || 1
   const targetReportId = report?.id || (typeof reportIdentifier === 'number' ? reportIdentifier : 0)
 
-  const isReverted = report?.status === 'reverted' || item.isReverted
+  const isReverted = report?.status === 'reverted' || (item as any).isReverted
   const isRejected = report?.status === 'rejected' || (item as any).status === 'rejected'
 
   const handleDownloadPdf = async () => {
@@ -256,11 +257,11 @@ export function MobileFiveRApprovalCard({ item, group }: MobileFiveRApprovalCard
         {/* Employee Name & Location */}
         <div className="space-y-1">
           <p className="text-sm font-extrabold text-slate-900">
-            {report?.auditorName || group?.requesterName || item.employeeName || 'Auditor 5R'}
+            {report?.auditorName || group?.requesterName || (item as any).employeeName || 'Auditor 5R'}
           </p>
           <p className="text-xs text-slate-500 flex items-center gap-1">
             <MapPin className="h-3 w-3 text-slate-400" />
-            {report?.siteName || group?.siteName || 'Balikpapan'} • Area {report?.picAreaName || item.location || 'Area Kerja'}
+            {report?.siteName || group?.siteName || 'Balikpapan'} • Area {report?.picAreaName || (item as any).location || 'Area Kerja'}
           </p>
         </div>
 
@@ -312,7 +313,7 @@ export function MobileFiveRApprovalCard({ item, group }: MobileFiveRApprovalCard
                   Review &amp; Approval Dokumen
                 </h2>
                 <p className="text-[10px] text-slate-500 truncate">
-                  {report?.auditorName || group?.requesterName || item.employeeName} • {formatDate(report?.createdAt || item.submittedAt)}
+                  {report?.auditorName || group?.requesterName || (item as any).employeeName} • {formatDate(report?.createdAt || item.submittedAt)}
                 </p>
               </div>
             </div>
@@ -443,7 +444,7 @@ export function MobileFiveRApprovalCard({ item, group }: MobileFiveRApprovalCard
                     <p>
                       <span className="text-slate-400">Auditor:</span>{' '}
                       <span className="font-bold text-slate-900">
-                        {report?.auditorName || group?.requesterName || item.employeeName}
+                        {report?.auditorName || group?.requesterName || (item as any).employeeName}
                       </span>
                     </p>
                     <p>
@@ -461,7 +462,7 @@ export function MobileFiveRApprovalCard({ item, group }: MobileFiveRApprovalCard
                     <p>
                       <span className="text-slate-400">Area &amp; Site:</span>{' '}
                       <span className="font-semibold text-slate-800">
-                        {report?.picAreaName || item.location || '-'} • {report?.siteName || group?.siteName || '-'}
+                        {report?.picAreaName || (item as any).location || '-'} • {report?.siteName || group?.siteName || '-'}
                       </span>
                     </p>
                   </div>

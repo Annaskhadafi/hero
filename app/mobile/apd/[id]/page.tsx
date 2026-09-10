@@ -39,11 +39,12 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-export default async function MobileApdDetailPage({ params }: { params: { id: string } }) {
+export default async function MobileApdDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession();
   if (!session?.user?.email) redirect("/sign-in");
 
-  const id = parseInt(params.id, 10);
+  const { id: rawId } = await params;
+  const id = parseInt(rawId, 10);
   if (isNaN(id)) return notFound();
 
   const request = await fetchApdRequestById(id);

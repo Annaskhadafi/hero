@@ -20,12 +20,27 @@ import { buildSafetyCharts, buildSafetyKpis } from "@/lib/safety-dashboard/aggre
 import type { SafetyDashboardAccess } from "@/lib/safety-dashboard/types"
 
 async function getSafetyAccess(): Promise<SafetyDashboardAccess> {
-  const perm = await getCurrentMenuPermission("safety")
+  const roleName = await getCurrentEmployeeAccessRole()
+  if (roleName === "HSE" || roleName === "Super Admin") {
+    return {
+      canView: true,
+      canEdit: true,
+      canDelete: true,
+      canSelectAll: true,
+    }
+  }
+
+  const [permDataMgmt, permDashboard, permSafety] = await Promise.all([
+    getCurrentMenuPermission("safety_data_management"),
+    getCurrentMenuPermission("safety_dashboard"),
+    getCurrentMenuPermission("safety"),
+  ])
+
   return {
-    canView: perm.canView,
-    canEdit: perm.canEdit,
-    canDelete: perm.canDelete,
-    canSelectAll: perm.canSelectAll,
+    canView: permDataMgmt.canView || permDashboard.canView || permSafety.canView,
+    canEdit: permDataMgmt.canEdit || permDashboard.canEdit || permSafety.canEdit,
+    canDelete: permDataMgmt.canDelete || permDashboard.canDelete || permSafety.canDelete,
+    canSelectAll: permDataMgmt.canSelectAll || permDashboard.canSelectAll || permSafety.canSelectAll,
   }
 }
 

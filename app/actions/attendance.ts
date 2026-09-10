@@ -114,6 +114,8 @@ async function getCurrentEmployee() {
       workLocation: employees.workLocation,
       siteId: employees.siteId,
       siteName: sites.name,
+      sectionId: employees.sectionId,
+      section: employees.section,
       employeeSn: employees.employeeSn,
       faceRegisteredAt: employees.faceRegisteredAt,
       faceRarayId: employees.faceRarayId,
@@ -146,6 +148,8 @@ async function getCurrentEmployee() {
       workLocation: employees.workLocation,
       siteId: employees.siteId,
       siteName: sites.name,
+      sectionId: employees.sectionId,
+      section: employees.section,
       employeeSn: employees.employeeSn,
       faceRegisteredAt: employees.faceRegisteredAt,
       faceRarayId: employees.faceRarayId,
@@ -215,10 +219,16 @@ async function getCurrentEmployee() {
       authUserId: employees.authUserId,
       name: employees.name,
       email: employees.email,
+      role: employees.role,
       jobTitle: employees.jobTitle,
       workLocation: employees.workLocation,
       siteId: employees.siteId,
+      sectionId: employees.sectionId,
+      section: employees.section,
+      employeeSn: employees.employeeSn,
       faceRegisteredAt: employees.faceRegisteredAt,
+      faceRarayId: employees.faceRarayId,
+      faceRarayRegisteredAt: employees.faceRarayRegisteredAt,
     })
 
   return createdEmployee
@@ -644,7 +654,6 @@ export async function submitAttendance(formData: FormData) {
       eventType,
       eventTime,
       shiftCode,
-      employeeId: employee.id,
     })
 
     const rawContext = getTrimmedFormValue(formData, 'attendanceContext')

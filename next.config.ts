@@ -2,7 +2,24 @@ import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
   output: 'standalone',
-  turbopack: {},
+  productionBrowserSourceMaps: false,
+  turbopack: {
+    root: process.cwd(),
+  },
+  outputFileTracingExcludes: {
+    '*': [
+      'node_modules/@swc/core-linux-x64-gnu',
+      'node_modules/@swc/core-linux-x64-musl',
+      'node_modules/esbuild',
+      'node_modules/terser',
+      '.git/**/*',
+      'docs/**/*',
+      'documentation/**/*',
+      'scratch/**/*',
+      'tests/**/*',
+      'backups/**/*',
+    ],
+  },
   images: {
     remotePatterns: [
       {
@@ -17,7 +34,7 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: '25mb',
     },
-    cpus: 2,
+    cpus: 3,
   },
   async headers() {
     return [

@@ -31,6 +31,7 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env files (can opt-in for committing if needed, allow .env.example)
+env
 .env*
 !.env.example
 
@@ -68,7 +69,16 @@ scripts/sync-new-karyawan.ts
 
 # excel/data files
 *.xlsx
+!public/PPA BIB roster juli.xlsx
 *.xls
+*.csv
+attandance site/
+datahero.csv
+outputs/
+tools/data_hero_normalized/
+tools/*.json
+*.pdf
+!public/HERO_RMS_Suggestion_System.pdf
 tmp_*.txt
 test.ts
 scratch_*.ts

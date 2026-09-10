@@ -14,9 +14,9 @@ export function usePermissions(userPermissions?: UserPermissions) {
   // Naming format: 'resource:action' (e.g. 'customers:edit', 'sales-orders:view')
   const hasResourcePermission = useMemo(
     () => (resource: string, action: ActionType = "view"): boolean => {
-      if (!userPermissions) return true // Default fallback for development flexibility
+      if (!userPermissions) return false
       if (userPermissions.isSuperAdmin) return true
-      if (!userPermissions.permissions) return true
+      if (!userPermissions.permissions) return false
 
       const requiredPermission = `${resource}:${action}`
       return (
@@ -30,9 +30,9 @@ export function usePermissions(userPermissions?: UserPermissions) {
 
   const hasPermission = useMemo(
     () => (permission: string): boolean => {
-      if (!userPermissions) return true
+      if (!userPermissions) return false
       if (userPermissions.isSuperAdmin) return true
-      if (!userPermissions.permissions) return true
+      if (!userPermissions.permissions) return false
 
       return userPermissions.permissions.includes(permission)
     },

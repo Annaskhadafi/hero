@@ -100,9 +100,9 @@ export function FormWoApprovalDialog({ item, group }: FormWoApprovalDialogProps)
     size: rawWo?.size || null,
     jobType: rawWo?.jobType || null,
     noWoTerbit: rawWo?.noWoTerbit || null,
-    statusPengajuan: rawWo?.statusPengajuan || item.status || 'pending',
-    submitterSignatureUrl: rawWo?.submitterSignatureUrl || (item as any).signatureUrl || null,
-    steps: rawWo?.steps || (item as any).rawFormWo?.steps || item.steps?.map((s) => ({
+    statusPengajuan: (rawWo as any)?.statusPengajuan || (item as any).status || 'pending',
+    submitterSignatureUrl: (rawWo as any)?.submitterSignatureUrl || (item as any).signatureUrl || null,
+    steps: (rawWo as any)?.steps || (item as any).rawFormWo?.steps || (item as any).steps?.map((s: any) => ({
       level: s.level,
       approverName: s.approverName,
       jobTitle: s.label,

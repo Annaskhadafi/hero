@@ -22,7 +22,15 @@ import {
 } from '@/app/dashboard/quality/5r/actions'
 import { CheckCircle2, XCircle, AlertCircle, FileCheck, Loader2, PenLine, FileText, ArrowRight } from 'lucide-react'
 import { toast } from 'sonner'
-import type { ApprovalItem, ApprovalGroup } from '@/lib/approval-workspace'
+import type { getApprovalCenterData } from '@/lib/approval-workspace'
+
+type ApprovalItem = Awaited<
+  ReturnType<typeof getApprovalCenterData>
+>['inboxGroups'][number]['items'][number]
+
+type ApprovalGroup = Awaited<
+  ReturnType<typeof getApprovalCenterData>
+>['inboxGroups'][number]
 
 interface FiveRApprovalDialogProps {
   item: ApprovalItem
@@ -50,7 +58,8 @@ export function FiveRApprovalDialog({ item, group }: FiveRApprovalDialogProps) {
     item.fiveRReport?.id ||
     (item as any).fiveRReportId ||
     item.requestNumber ||
-    item.activityCode ||
+    (item as any).activityCode ||
+    item.activityId ||
     matchedReportNumber
 
   useEffect(() => {
@@ -205,10 +214,10 @@ export function FiveRApprovalDialog({ item, group }: FiveRApprovalDialogProps) {
           <div className="min-w-0 pr-6">
             <DialogTitle className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2 truncate">
               <FileCheck className="size-4 sm:size-5 text-emerald-600 shrink-0" />
-              <span>Review Laporan 5R — {reportDetails?.reportNumber || item.activityCode}</span>
+              <span>Review Laporan 5R — {reportDetails?.reportNumber || (item as any).activityCode || item.activityId}</span>
             </DialogTitle>
             <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 truncate">
-              Auditor: {group.requesterName} • Area: {reportDetails?.picAreaName || item.title} • {item.currentStepLabel}
+              Auditor: {group.requesterName} • Area: {reportDetails?.picAreaName || item.title} • {(item as any).currentStepLabel || (item as any).stepLabel || 'Step Pending'}
             </p>
           </div>
         </DialogHeader>

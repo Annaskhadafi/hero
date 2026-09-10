@@ -607,6 +607,22 @@ async function uploadActivityPhoto(file: File): Promise<string> {
     [rows, selectedIds]
   )
   const currentBatchDoc = selectedBatchRows[batchReviewIndex] || selectedBatchRows[0] || null
+  const [currentBatchQrDataUrl, setCurrentBatchQrDataUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!currentBatchDoc?.sessionId) {
+      setCurrentBatchQrDataUrl(null)
+      return
+    }
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    QRCode.toDataURL(`${origin}/activity-evidence/${currentBatchDoc.sessionId}`, {
+      margin: 1,
+      width: 140,
+      errorCorrectionLevel: 'M',
+    })
+      .then((url) => setCurrentBatchQrDataUrl(url))
+      .catch((err) => console.error('Failed to generate batch preview QR:', err))
+  }, [currentBatchDoc?.sessionId])
 
   const handleOpenBatchReview = () => {
     if (selectedIds.length === 0) {
@@ -2076,13 +2092,17 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                               <td className="text-center align-middle">
                                 <div
                                   onClick={() => {
-                                    setSelectedEvidenceSessionId(Number(currentBatchDoc.sessionId))
+                                    setEvidenceModalSessionId(currentBatchDoc.sessionId)
                                     setIsEvidenceModalOpen(true)
                                   }}
                                   className="inline-flex flex-col items-center justify-center cursor-pointer hover:opacity-80 transition-opacity p-0.5"
                                   title="Klik untuk melihat bukti foto aktivitas"
                                 >
-                                  <DailyActivityEvidenceQr sessionId={currentBatchDoc.sessionId} size={28} />
+                                  {currentBatchQrDataUrl ? (
+                                    <img src={currentBatchQrDataUrl} alt="QR" className="w-7 h-7 object-contain mx-auto" />
+                                  ) : (
+                                    <span className="text-[7pt] text-blue-600 underline">Lihat QR</span>
+                                  )}
                                 </div>
                               </td>
                               <td className="text-left text-[7.5pt] align-middle">{item.remark || '-'}</td>
@@ -4246,7 +4266,7 @@ async function uploadActivityPhoto(file: File): Promise<string> {
             header: {
               sessionId: previewTarget.sessionId,
               sessionCode: previewTarget.sessionCode,
-              workDate: previewTarget.workDate,
+              workDate: previewTarget.workDate || new Date(),
               shiftCode: previewTarget.shiftCode,
               status: previewTarget.sessionStatus,
               summaryRemark: null,
@@ -4258,11 +4278,16 @@ async function uploadActivityPhoto(file: File): Promise<string> {
               employeeSection: previewTarget.section || null,
               employeeJobTitle: previewTarget.jobTitle || null,
               siteId: 0,
-              siteName: previewTarget.siteName || null,
+              siteName: previewTarget.siteName || '',
               customerName: previewTarget.customerName || null,
+              contractNumber: null,
+              splId: null,
+              splNumber: null,
+              splTitle: null,
             },
-            items: processedItems,
-            teamMembers: [],
+            allItems: processedItems,
+            evidenceItems: processedItems,
+            approvals: [],
           }
         })()}
       />

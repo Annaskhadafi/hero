@@ -7,6 +7,9 @@ import { getS3ObjectReadUrl } from '@/lib/s3-storage';
 import { parseApprovalNoteEntries } from '@/lib/approval-notes';
 import { ApdLiveSignatureListener } from '@/components/admin/apd-approval-dialog';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default async function PrintApdPage({
   params,
   searchParams,
@@ -106,16 +109,16 @@ export default async function PrintApdPage({
         level: rs.stepOrder,
         status: 'pending' as const,
         approverName: rs.approverName || '_______________________',
-        approverEmployeeId: rs.approverEmployeeId,
+        approverEmployeeId: rs.approverEmployeeId ?? null,
         approverJobTitle: rs.label || rs.nodeLabel || (rs.stepOrder === 1 ? 'HSE / PJO Site' : 'Section Head'),
         approverSignatureDataUrl: null,
         decisionNote: '',
         signatureUrl: null,
         reviewedAt: null,
         createdAt: new Date(),
-        routeSnapshot: approvalHistory[0]?.routeSnapshot || null,
+        routeSnapshot: approvalHistory[0]?.routeSnapshot || '',
       }));
-    effectiveApprovalHistory = [...approvalHistory, ...extraSteps].sort((a, b) => a.level - b.level);
+    effectiveApprovalHistory = ([...approvalHistory, ...extraSteps] as any).sort((a: any, b: any) => a.level - b.level);
   }
 
   function getStepHeaderTitle(index: number, totalApprovers: number) {

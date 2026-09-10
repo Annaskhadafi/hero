@@ -585,8 +585,8 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
           approverName: s.approverName,
           status: s.status,
           signatureUrl: s.signatureUrl,
-          actedAt: s.actedAt,
-          notes: s.notes,
+          actedAt: (s as any).actedAt ?? s.reviewedAt,
+          notes: (s as any).notes ?? s.decisionNote,
         }))
 
       return [
@@ -909,8 +909,8 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       resolvedRemarks = spl.requestNotes
     } else if (currentRepairWo?.deskripsiPekerjaan) {
       resolvedRemarks = currentRepairWo.deskripsiPekerjaan
-    } else if (currentRepairWo?.keluhan) {
-      resolvedRemarks = currentRepairWo.keluhan
+    } else if ((currentRepairWo as any)?.keluhan) {
+      resolvedRemarks = (currentRepairWo as any).keluhan
     } else if (row.remarks) {
       resolvedRemarks = row.remarks
     } else if (summaryFromSnapshot) {
@@ -924,8 +924,8 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       resolvedDescription = spl.requestNotes
     } else if (currentRepairWo?.deskripsiPekerjaan) {
       resolvedDescription = currentRepairWo.deskripsiPekerjaan
-    } else if (currentRepairWo?.keluhan) {
-      resolvedDescription = currentRepairWo.keluhan
+    } else if ((currentRepairWo as any)?.keluhan) {
+      resolvedDescription = (currentRepairWo as any).keluhan
     } else if (summaryFromSnapshot) {
       resolvedDescription = summaryFromSnapshot
     } else if (row.remarks) {
@@ -2879,13 +2879,13 @@ export async function getApprovalCenterData(email: string) {
       ptwInboxItems,
       sopWinRequestInboxItems,
     ] = await Promise.all([
-      safeQuery(() => fetchApprovalRowsForUser(email, currentEmployee), [], "fetchApprovalRowsForUser"),
-      safeQuery(() => getContractReviewInboxItems(email, currentEmployee), [], "getContractReviewInboxItems"),
-      safeQuery(() => getRfrInboxItems(email, currentEmployee), [], "getRfrInboxItems"),
-      safeQuery(() => getDailyActivityInboxItems(email, currentEmployee), [], "getDailyActivityInboxItems"),
-      safeQuery(() => getOvertimeInboxItems(email, currentEmployee), [], "getOvertimeInboxItems"),
-      safeQuery(() => getPtwInboxItems(email, currentEmployee), [], "getPtwInboxItems"),
-      safeQuery(() => getSopWinRequestInboxItems(email, currentEmployee), [], "getSopWinRequestInboxItems"),
+      safeQuery(() => fetchApprovalRowsForUser(email, currentEmployee as any), [], "fetchApprovalRowsForUser"),
+      safeQuery(() => getContractReviewInboxItems(email, currentEmployee as any), [], "getContractReviewInboxItems"),
+      safeQuery(() => getRfrInboxItems(email, currentEmployee as any), [], "getRfrInboxItems"),
+      safeQuery(() => getDailyActivityInboxItems(email, currentEmployee as any), [], "getDailyActivityInboxItems"),
+      safeQuery(() => getOvertimeInboxItems(email, currentEmployee as any), [], "getOvertimeInboxItems"),
+      safeQuery(() => getPtwInboxItems(email, currentEmployee as any), [], "getPtwInboxItems"),
+      safeQuery(() => getSopWinRequestInboxItems(email, currentEmployee as any), [], "getSopWinRequestInboxItems"),
     ])
   const queue = approvalRows
     .map((row) => enrichApprovalRow(row, now))

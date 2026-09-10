@@ -4,6 +4,7 @@ import { navbarMenuItems } from "@/db/schema/hero";
 import { eq } from "drizzle-orm";
 import { getServerSession } from "@/lib/auth-session";
 import { getCurrentEmployeeAccessRole } from "@/lib/get-current-employee";
+import { getCurrentMenuPermission, isSuperAdminRole } from "@/lib/hero-access";
 
 export async function PATCH(
   request: NextRequest,
@@ -15,7 +16,8 @@ export async function PATCH(
   }
 
   const role = await getCurrentEmployeeAccessRole();
-  if (!role || (role !== "Super Admin" && role !== "HC Manager")) {
+  const managementPermission = await getCurrentMenuPermission("settings_navbar");
+  if (!role || (!isSuperAdminRole(role) && !managementPermission.canEdit)) {
     return NextResponse.json({ error: "Forbidden: Akses ditolak" }, { status: 403 });
   }
 
@@ -50,7 +52,8 @@ export async function DELETE(
   }
 
   const role = await getCurrentEmployeeAccessRole();
-  if (!role || (role !== "Super Admin" && role !== "HC Manager")) {
+  const managementPermission = await getCurrentMenuPermission("settings_navbar");
+  if (!role || (!isSuperAdminRole(role) && !managementPermission.canDelete)) {
     return NextResponse.json({ error: "Forbidden: Akses ditolak" }, { status: 403 });
   }
 

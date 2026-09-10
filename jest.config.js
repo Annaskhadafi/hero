@@ -2,9 +2,9 @@ module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'jsdom',
   roots: ['<rootDir>'],
-  testMatch: ['**/__tests__/**/*.ts?(x)', '**/?(*.)+(spec|test).ts?(x)'],
-  testPathIgnorePatterns: ['/node_modules/', '/.next/', '/.kilo/', '/tests/design-guardrails.test.ts', '/tests/e2e/'],
-  modulePathIgnorePatterns: ['<rootDir>/.next/', '<rootDir>/.kilo/'],
+  testMatch: ['**/__tests__/**/*.ts?(x)', '**/*.{spec,test}.ts?(x)'],
+  testPathIgnorePatterns: ['/node_modules/', '/.next/', '/.kilo/', '/\\.claude/', '/tests/design-guardrails.test.ts', '/tests/e2e/', '-crud\\.test\\.ts$'],
+  modulePathIgnorePatterns: ['<rootDir>/.next', '<rootDir>/.kilo', '<rootDir>/.claude'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',

@@ -3505,7 +3505,7 @@ export async function getWorkflowStudioConsoleData() {
     const relatedMatrices = (() => {
       const direct = activeMatrixByTransaction.get(normalizeStatus(item.transactionType)) ?? []
       if (direct.length > 0) return direct
-      if (item.transactionType === 'apd-request-apd' || item.transactionType === 'apd-request') {
+      if ((item.transactionType as string) === 'apd-request-apd' || (item.transactionType as string) === 'apd-request') {
         return (
           activeMatrixByTransaction.get('apd-request-apd') ??
           activeMatrixByTransaction.get('apd-request') ??

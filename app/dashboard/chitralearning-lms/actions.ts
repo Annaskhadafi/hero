@@ -36,7 +36,8 @@ import { syncLmsToTrainingRecords } from "@/lib/lms-mysql";
 const LMS_PATH = "/dashboard/chitralearning-lms";
 
 export async function createCourse(formData: FormData) {
-  if (!(await canManageLmsSection())) {
+  const { getCurrentMenuPermission } = await import('@/lib/hero-access');
+  if (!(await getCurrentMenuPermission('chitralearning_lms_builder')).canEdit) {
     throw new Error("Unauthorized");
   }
 
@@ -807,6 +808,7 @@ export async function createInternalLmsCourseAction(formData: FormData) {
 }
 
 export async function updateInternalLmsCourseGovernanceAction(formData: FormData) {
+  if (!(await isLmsAdmin())) throw new Error("Unauthorized");
   const courseId = numberValue(formData, "courseId");
   const actorEmployeeId = await getCurrentEmployeeId();
   const course = await getCourse(courseId);
@@ -868,6 +870,7 @@ export async function updateInternalLmsCourseGovernanceAction(formData: FormData
 }
 
 export async function createInternalLmsCampaignAction(formData: FormData) {
+  if (!(await isLmsAdmin())) throw new Error("Unauthorized");
   const title = textValue(formData, "title");
   const campaignType = textValue(formData, "campaignType", "posttest") || "posttest";
   const courseId = numberValue(formData, "courseId");
@@ -938,6 +941,7 @@ export async function createInternalLmsCampaignAction(formData: FormData) {
 }
 
 export async function publishInternalLmsCampaignAction(formData: FormData) {
+  if (!(await isLmsAdmin())) throw new Error("Unauthorized");
   const campaignId = numberValue(formData, "campaignId");
   const actorEmployeeId = await getCurrentEmployeeId();
 
@@ -1406,6 +1410,7 @@ export async function submitInternalLmsAssignmentResponseAction(formData: FormDa
 }
 
 export async function cloneInternalLmsCourseAction(formData: FormData) {
+  if (!(await isLmsAdmin())) throw new Error("Unauthorized");
   const sourceCourseId = numberValue(formData, "courseId");
   const createdByEmployeeId = await getCurrentEmployeeId();
   const source = await getCourse(sourceCourseId);
@@ -1478,6 +1483,7 @@ export async function cloneInternalLmsCourseAction(formData: FormData) {
 }
 
 export async function duplicateInternalLmsQuestionAction(formData: FormData) {
+  if (!(await isLmsAdmin())) throw new Error("Unauthorized");
   const questionId = numberValue(formData, "questionId");
   const [question] = await db
     .select()
@@ -1512,6 +1518,7 @@ export async function duplicateInternalLmsQuestionAction(formData: FormData) {
 }
 
 export async function createInternalLmsLessonAction(formData: FormData) {
+  if (!(await isLmsAdmin())) throw new Error("Unauthorized");
   const courseId = numberValue(formData, "courseId");
   const title = textValue(formData, "title");
 
@@ -1535,6 +1542,7 @@ export async function createInternalLmsLessonAction(formData: FormData) {
 }
 
 export async function createInternalLmsQuizQuestionAction(formData: FormData) {
+  if (!(await isLmsAdmin())) throw new Error("Unauthorized");
   const courseId = numberValue(formData, "courseId");
   const questionText = textValue(formData, "questionText");
 
@@ -1564,6 +1572,7 @@ export async function createInternalLmsQuizQuestionAction(formData: FormData) {
 }
 
 export async function createInternalLmsAccessRuleAction(formData: FormData) {
+  if (!(await isLmsAdmin())) throw new Error("Unauthorized");
   const courseId = numberValue(formData, "courseId");
   const accessType = textValue(formData, "accessType", "all") || "all";
   const accessValue = accessType === "all" ? "*" : textValue(formData, "accessValue");
@@ -1584,6 +1593,7 @@ export async function createInternalLmsAccessRuleAction(formData: FormData) {
 }
 
 export async function issueInternalLmsCertificateAction(formData: FormData) {
+  if (!(await isLmsAdmin())) throw new Error("Unauthorized");
   const courseId = numberValue(formData, "courseId");
   const employeeId = numberValue(formData, "employeeId");
 
@@ -1655,6 +1665,7 @@ export async function issueInternalLmsCertificateAction(formData: FormData) {
 }
 
 export async function runInternalLmsReminderAction(formData: FormData) {
+  if (!(await isLmsAdmin())) throw new Error("Unauthorized");
   const actorEmployeeId = await getCurrentEmployeeId();
 
   await runInternalLmsReminderTick({

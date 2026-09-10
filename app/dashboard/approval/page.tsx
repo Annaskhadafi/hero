@@ -28,6 +28,7 @@ export default async function ApprovalPage() {
       ptwCount: 0,
       sopWinRequestCount: 0,
       contractReviewCount: 0,
+      rfrCount: 0,
       generalActivityCount: 0,
     },
     historyMetrics: {
@@ -37,13 +38,14 @@ export default async function ApprovalPage() {
       needsRevision: 0,
       inReview: 0,
     },
+    historyGroups: [],
     inboxGroups: [],
-    dailyActivityInboxItems: data?.dailyActivityInboxItems || [],
-    overtimeInboxItems: data?.overtimeInboxItems || [],
-    ptwInboxItems: data?.ptwInboxItems || [],
-    contractReviewInboxItems: data?.contractReviewInboxItems || [],
-    sopWinRequestInboxItems: data?.sopWinRequestInboxItems || [],
-    rfrInboxItems: data?.rfrInboxItems || [],
+    dailyActivityInboxItems: (data as any)?.dailyActivityInboxItems || [],
+    overtimeInboxItems: (data as any)?.overtimeInboxItems || [],
+    ptwInboxItems: (data as any)?.ptwInboxItems || [],
+    contractReviewInboxItems: (data as any)?.contractReviewInboxItems || [],
+    sopWinRequestInboxItems: (data as any)?.sopWinRequestInboxItems || [],
+    rfrInboxItems: (data as any)?.rfrInboxItems || [],
   };
 
   return <ApprovalWorkbench data={safeData} />;
