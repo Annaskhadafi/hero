@@ -12,6 +12,7 @@ import {
   getNavbarSettingsData,
   getSidebarDataForUser,
 } from '@/lib/hero-admin'
+import { getDashboardRoutePermission } from '@/lib/hero-access'
 import { getRecipientUnreadNotificationCount } from '@/lib/notification-feed'
 import { FaceRegistrationReminderPopup } from '@/components/face-registration-reminder-popup'
 import { FloatingGeniusChatClient } from '@/components/hero-genius/floating-genius-chat-client'
@@ -31,6 +32,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const headerStore = await headers()
   if (isMobileUserAgent(headerStore.get('user-agent'))) {
     redirect('/mobile')
+  }
+
+  const routePermission = await getDashboardRoutePermission(
+    headerStore.get('x-hero-dashboard-path') ?? ''
+  )
+  if (routePermission && !routePermission.canView) {
+    redirect('/403')
   }
 
   const cookieStore = await cookies()

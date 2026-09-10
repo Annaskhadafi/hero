@@ -5,21 +5,46 @@ import { navbarMenuItems, roleMenuPermissions, securityRoles } from '@/db/schema
 
 const VALID_SCOPES = new Set(['own', 'site', 'global'])
 const DASHBOARD_ROOT = path.resolve('app/dashboard')
+const DASHBOARD_LAYOUT = fs.readFileSync(path.join(DASHBOARD_ROOT, 'layout.tsx'), 'utf8')
 
 function pageUrls(dir = DASHBOARD_ROOT, prefix = '/dashboard'): string[] {
   if (!fs.existsSync(dir)) return []
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const fullPath = path.join(dir, entry.name)
     if (entry.isDirectory()) {
-      return pageUrls(fullPath, `${prefix}/${entry.name.replace(/^\[|\]$/g, '')}`)
+      return pageUrls(fullPath, `${prefix}/${entry.name}`)
     }
     return entry.name === 'page.tsx' ? [prefix] : []
   })
 }
 
 function routeMatches(url: string, pages: string[]) {
-  const normalized = url.split('?')[0].replace(/\/(\d+|[a-f0-9-]{20,})$/, '/[id]')
-  return pages.some((page) => page === normalized || page === url || page.includes('/[id]'))
+  const normalized = url.split('?')[0].replace(/\/$/, '')
+  return pages.some((page) => page === normalized)
+}
+
+function pagePathForUrl(url: string) {
+  const pathname = url.split('?')[0].replace(/^\/dashboard\/?/, '')
+  return path.join(DASHBOARD_ROOT, pathname, 'page.tsx')
+}
+
+function pageGuardForMenu(menu: { url: string; resource: string; isIframe: boolean }) {
+  if (menu.isIframe) return { page: null, guard: 'N/A:iframe' }
+  const page = pagePathForUrl(menu.url)
+  if (!fs.existsSync(page)) return { page, guard: 'FAIL:no-page' }
+  if (
+    DASHBOARD_LAYOUT.includes('getDashboardRoutePermission') &&
+    DASHBOARD_LAYOUT.includes('routePermission && !routePermission.canView')
+  ) {
+    return { page, guard: 'PASS:dashboard-layout' }
+  }
+  const source = fs.readFileSync(page, 'utf8')
+  const resourcePattern = new RegExp(
+    `getCurrentMenuPermission\\(\\s*["']${menu.resource.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}["']\\s*\\)`
+  )
+  if (resourcePattern.test(source)) return { page, guard: 'PASS' }
+  if (source.includes('getCurrentMenuPermission')) return { page, guard: 'FAIL:resource-mismatch' }
+  return { page, guard: 'FAIL:page-guard-missing' }
 }
 
 async function main() {
@@ -39,11 +64,14 @@ async function main() {
     const matches = byPair.get(`${role.id}:${menu.id}`) ?? []
     const permission = matches[0]
     const isSuperAdmin = role.name.trim().toLowerCase() === 'super admin'
+    const pageCheck = pageGuardForMenu(menu)
     const status = [
       matches.length !== 1 ? 'FAIL:permission-pair' : '',
       !VALID_SCOPES.has(permission?.dataScope ?? '') ? 'FAIL:scope' : '',
       menu.isVisible && !permission?.canView ? 'CHECK:hidden-by-rbac' : '',
-      !routeMatches(menu.url, pages) && !menu.isIframe ? 'CHECK:no-page' : '',
+      !pageCheck.guard.startsWith('PASS') && pageCheck.guard !== 'N/A:iframe'
+        ? pageCheck.guard
+        : '',
     ].filter(Boolean)
     return {
       role: role.name,
@@ -57,6 +85,8 @@ async function main() {
       dataScope: isSuperAdmin ? 'global' : permission?.dataScope ?? 'MISSING',
       pairCount: matches.length,
       route: routeMatches(menu.url, pages) || menu.isIframe ? 'yes' : 'no',
+      page: pageCheck.page ? path.relative(process.cwd(), pageCheck.page).replace(/\\/g, '/') : null,
+      pageGuard: pageCheck.guard,
       status: status.join('; ') || 'PASS',
     }
   }))

@@ -130,6 +130,22 @@ export async function getCurrentMenuPermission(resource: string) {
   return getMenuPermissionForRole(roleName, resource)
 }
 
+export async function getDashboardRoutePermission(pathname: string) {
+  const cleanPath = pathname.split('?')[0].replace(/\/$/, '') || '/dashboard'
+  const menuItems = await db
+    .select({ url: navbarMenuItems.url, resource: navbarMenuItems.resource })
+    .from(navbarMenuItems)
+
+  const matchingMenu = menuItems
+    .filter(({ url }) => {
+      const cleanUrl = url.split('?')[0].replace(/\/$/, '')
+      return cleanPath === cleanUrl || cleanPath.startsWith(`${cleanUrl}/`)
+    })
+    .sort((left, right) => right.url.length - left.url.length)[0]
+
+  return matchingMenu ? getCurrentMenuPermission(matchingMenu.resource) : null
+}
+
 export async function getCurrentEmployeeAccessContext(): Promise<HeroEmployeeAccessContext | null> {
   const session = await getServerSession()
 
