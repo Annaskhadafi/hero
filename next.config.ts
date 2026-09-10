@@ -29,7 +29,6 @@ const nextConfig: NextConfig = {
     ],
   },
   typescript: { ignoreBuildErrors: true },
-  eslint: { ignoreDuringBuilds: true },
   serverExternalPackages: ['face-api.js'],
   experimental: {
     serverActions: {

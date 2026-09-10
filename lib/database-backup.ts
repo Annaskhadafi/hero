@@ -223,7 +223,10 @@ async function downloadBackupFromS3(key: string) {
   if (!response.Body) throw new Error(`Backup S3 kosong: ${key}`);
 
   const bytes = await response.Body.transformToByteArray();
-  const file = path.join(os.tmpdir(), path.basename(key));
+  // Keep runtime backup files scoped; tracing the temp root scans unrelated system files.
+  const downloadDir = path.join(os.tmpdir(), "hero-backups");
+  fs.mkdirSync(downloadDir, { recursive: true });
+  const file = path.join(downloadDir, path.basename(key));
   fs.writeFileSync(file, Buffer.from(bytes));
   return file;
 }
