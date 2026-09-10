@@ -23,8 +23,10 @@ COPY . .
 # Build arguments for environment variables needed at build time
 ARG NEXT_PUBLIC_BETTER_AUTH_URL
 ENV NEXT_PUBLIC_BETTER_AUTH_URL=$NEXT_PUBLIC_BETTER_AUTH_URL
-# Prevent Out-Of-Memory errors during build on limited-RAM servers
-ENV NODE_OPTIONS="--max-old-space-size=2560"
+# Aggressive Garbage Collection to keep build memory under 1.5GB RAM
+ENV NODE_OPTIONS="--max-old-space-size=1536"
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_DISABLE_SOURCEMAPS=1
 
 RUN npm run build
 

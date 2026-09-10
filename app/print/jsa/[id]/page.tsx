@@ -4,6 +4,9 @@ import { notFound } from 'next/navigation'
 import { getJsaById } from '@/app/dashboard/hse/jsa/actions'
 import { PrintAction } from './print-action'
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export default async function PrintJsaPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const data = await getJsaById(id)

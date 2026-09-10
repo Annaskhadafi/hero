@@ -3,8 +3,20 @@ import type { NextConfig } from 'next'
 const nextConfig: NextConfig = {
   output: 'standalone',
   productionBrowserSourceMaps: false,
-  turbopack: {
-    root: process.cwd(),
+  turbopack: {},
+  outputFileTracingExcludes: {
+    '*': [
+      'node_modules/@swc/core-linux-x64-gnu',
+      'node_modules/@swc/core-linux-x64-musl',
+      'node_modules/esbuild',
+      'node_modules/terser',
+      '.git/**/*',
+      'docs/**/*',
+      'documentation/**/*',
+      'scratch/**/*',
+      'tests/**/*',
+      'backups/**/*',
+    ],
   },
   images: {
     remotePatterns: [
@@ -15,6 +27,7 @@ const nextConfig: NextConfig = {
     ],
   },
   typescript: { ignoreBuildErrors: true },
+  eslint: { ignoreDuringBuilds: true },
   serverExternalPackages: ['face-api.js'],
   experimental: {
     serverActions: {

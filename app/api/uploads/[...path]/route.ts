@@ -4,6 +4,8 @@ import { getServerSession } from "@/lib/auth-session"
 import { join } from "path"
 import { existsSync, readFileSync } from "fs"
 
+export const dynamic = "force-dynamic"
+export const revalidate = 0
 export const runtime = "nodejs"
 
 const ALLOWED_UPLOAD_PREFIXES = new Set([
@@ -75,11 +77,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
   const fileName = path[path.length - 1]
 
   // 1. Check local public/uploads directory candidates
+  const publicDir = join(/*turbopackIgnore: true*/ process.cwd(), "public")
   const candidateLocalPaths = [
-    join(process.cwd(), "public", "uploads", relativePath),
-    join(process.cwd(), "public", "uploads", fileName),
-    join(process.cwd(), "public", relativePath),
-    join(process.cwd(), "public", fileName),
+    join(publicDir, "uploads", relativePath),
+    join(publicDir, "uploads", fileName),
+    join(publicDir, relativePath),
+    join(publicDir, fileName),
   ]
 
   for (const localPath of candidateLocalPaths) {
