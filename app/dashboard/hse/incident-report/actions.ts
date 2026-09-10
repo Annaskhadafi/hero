@@ -267,7 +267,7 @@ export async function deleteIncidentRecord(id: number) {
   try {
     const access = await requireIncidentPermission('delete')
     const [record] = await db
-      .select({ picEmployeeId: hseIncidentRecords.picEmployeeId })
+      .select({ picEmployeeId: hseIncidentRecords.picEmployeeId, siteId: hseIncidentRecords.siteId })
       .from(hseIncidentRecords)
       .where(eq(hseIncidentRecords.id, id))
       .limit(1)

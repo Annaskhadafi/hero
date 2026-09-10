@@ -698,7 +698,7 @@ function buildSiteSchedulingConfig(
     ? normalizeIndonesiaTimezone(
         currentSiteObj.timezone ||
           inferTimezoneFromLocation(
-            [currentSiteObj.location, currentSiteObj.provinceName, currentSiteObj.name]
+            [currentSiteObj.location, (currentSiteObj as any).provinceName, currentSiteObj.name]
               .filter(Boolean)
               .join(' ')
           )

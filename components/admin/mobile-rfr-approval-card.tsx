@@ -30,7 +30,7 @@ import { Badge } from '@/components/ui/badge'
 import { AdminStatusBadge } from '@/components/admin-status-badge'
 import type { getApprovalCenterData } from '@/lib/approval-workspace'
 
-type RfrInboxItem = Awaited<ReturnType<typeof getApprovalCenterData>>['rfrInboxItems'][number]
+type RfrInboxItem = NonNullable<Awaited<ReturnType<typeof getApprovalCenterData>>['rfrInboxItems']>[number]
 
 /**
  * Komponen pembungkus dokumen RFR A4 yang secara responsif mengecilkan

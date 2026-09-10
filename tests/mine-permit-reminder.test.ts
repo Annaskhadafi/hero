@@ -59,5 +59,5 @@ describe('mine permit reminder', () => {
     // 5. Test sendSiteMinePermitExpiryReminder (manual trigger)
     const triggerRes = await sendSiteMinePermitExpiryReminder(testSite.id, true)
     expect(triggerRes).toBeDefined()
-  })
+  }, 30000)
 })

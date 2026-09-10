@@ -106,6 +106,8 @@ type ApprovalData = {
   summaryRemark?: string | null
   submittedAt: Date | string | null
   approvedAt: Date | string | null
+  teamMembersSummary?: string | null
+  spl?: any | null
   employee: {
     id?: number
     name: string
@@ -1701,8 +1703,8 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
                                       variant="ghost"
                                       size="sm"
                                       onClick={() => {
-                                        handleUpdateItem(idx, 'photoUrl', null)
-                                        handleUpdateItem(idx, 'photos', [])
+                                        handleUpdateItem(idx, 'photoUrl' as any, null)
+                                        handleUpdateItem(idx, 'photos' as any, [])
                                       }}
                                       className="h-7 px-2 text-[11px] text-rose-600 hover:bg-rose-50 hover:text-rose-700 rounded-lg cursor-pointer"
                                     >
@@ -2229,15 +2231,15 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
               workDate: data.workDate,
               shiftCode: data.shiftCode,
               status: data.status,
-              summaryRemark: data.summaryRemark,
+              summaryRemark: data.summaryRemark ?? null,
               submittedAt: data.submittedAt,
-              employeeId: data.employee.id,
+              employeeId: data.employee.id ?? 0,
               employeeName: data.employee.name,
               employeeSn: data.employee.sn,
               employeeDepartment: data.employee.department,
               employeeSection: data.employee.section,
               employeeJobTitle: data.employee.jobTitle,
-              siteId: data.site.id,
+              siteId: data.site.id ?? 0,
               siteName: data.site.name,
               customerName: data.site.customerName,
               contractNumber: null,

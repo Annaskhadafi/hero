@@ -298,7 +298,6 @@ export async function POST(request: NextRequest) {
       eventType: eventType.trim(),
       eventTime,
       shiftCode,
-      employeeId: employee.id,
     })
     const locationNote = [
       isPhotoFallback

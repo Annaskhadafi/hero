@@ -235,7 +235,7 @@ export async function saveMobilePtwPermit(params: {
 
   const [created] = await db
     .insert(hsePtwPermits)
-    .values({ ...payload, permitNumber: generatePermitNumber(), createdByEmployeeId: actorId })
+    .values({ ...payload, permitNumber: generatePermitNumber(), createdByEmployeeId: actorId } as any)
     .returning()
 
   await ensurePtwApprovalsExist(created.id)

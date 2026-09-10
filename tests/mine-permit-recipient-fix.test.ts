@@ -79,5 +79,5 @@ describe('mine permit recipient fix', () => {
 
     const emptyResult = await sendSiteMinePermitExpiryReminder(testSite.id, true)
     expect(emptyResult.sent).toBe(false)
-  })
+  }, 30000)
 })

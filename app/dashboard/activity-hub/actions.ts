@@ -7085,7 +7085,7 @@ export async function batchApproveDailyActivitySessionsAction(
     if (signatureDataUrl && (!empRecord?.signatureDataUrl || empRecord.signatureDataUrl !== signatureDataUrl)) {
       await db
         .update(employees)
-        .set({ signatureDataUrl, updatedAt: new Date() })
+        .set({ signatureDataUrl, signatureRegisteredAt: new Date() })
         .where(eq(employees.id, emp.id))
       sigUrl = signatureDataUrl
     }
@@ -7274,10 +7274,7 @@ export async function batchRejectDailyActivitySessionsAction(sessionIds: number[
       return { success: false as const, error: 'Pilih minimal satu aktivitas.' }
     }
 
-    let emp = await getCurrentEmployee()
-    if (!emp) {
-      emp = await getAuthenticatedEmployeeContext().catch(() => null)
-    }
+    const emp = (await getCurrentEmployee()) ?? (await getAuthenticatedEmployeeContext().catch(() => null))
     if (!emp) {
       return { success: false as const, error: 'Sesi login tidak ditemukan.' }
     }
@@ -7402,10 +7399,7 @@ export async function batchRevertDailyActivitySessionsAction(sessionIds: number[
       return { success: false as const, error: 'Pilih minimal satu aktivitas.' }
     }
 
-    let emp = await getCurrentEmployee()
-    if (!emp) {
-      emp = await getAuthenticatedEmployeeContext().catch(() => null)
-    }
+    const emp = (await getCurrentEmployee()) ?? (await getAuthenticatedEmployeeContext().catch(() => null))
     if (!emp) {
       return { success: false as const, error: 'Sesi login tidak ditemukan.' }
     }

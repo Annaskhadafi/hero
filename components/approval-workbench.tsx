@@ -463,7 +463,7 @@ export function InboxTab({
   const allUnifiedItems = useMemo(() => {
     const list: Array<{
       id: string
-      category: 'DAILY_ACTIVITY' | 'OVERTIME' | 'PTW' | 'CONTRACT_REVIEW' | 'SOP_WIN_REQUEST' | 'RFR' | 'GENERAL'
+      category: 'DAILY_ACTIVITY' | 'OVERTIME' | 'PTW' | 'CONTRACT_REVIEW' | 'SOP_WIN_REQUEST' | 'RFR' | 'GENERAL' | 'FORM_WO' | 'APD' | 'MATERIAL' | 'TOOLS' | 'SUMMARY' | 'QUALITY_5R' | 'SOP_WIN' | string
       categoryLabel: string
       documentNumber: string
       title: string
@@ -483,6 +483,18 @@ export function InboxTab({
       url: string
       isReverted?: boolean
       actionLabel?: string
+      // Extended fields for FORM_WO / APD / General
+      customerName?: string | null
+      approvalId?: number | null
+      level?: number
+      activityType?: string
+      activityId?: number
+      repairFormWo?: any
+      totalAmount?: string | number
+      signatureUrl?: string | null
+      rawFormWo?: any
+      rawFiveR?: any
+      fiveRReport?: any
       rawDaily?: (typeof dailyActivityItems)[number]
       rawOvertime?: (typeof overtimeItems)[number]
       rawPtw?: (typeof ptwItems)[number]
@@ -490,6 +502,7 @@ export function InboxTab({
       rawSopWinRequest?: (typeof sopWinRequestItems)[number]
       rawRfr?: (typeof rfrItems)[number]
       rawGeneralGroup?: (typeof groups)[number]
+      [key: string]: any
     }> = []
 
     for (const d of dailyActivityItems) {
@@ -656,7 +669,7 @@ export function InboxTab({
           title: `Work Order: ${(woData.jenisPengajuan || 'WO').toUpperCase()} - ${woData.customer || g.siteName || 'Customer'}`,
           employeeName: woData.pemohon || g.requesterName,
           siteName: woData.site || g.siteName,
-          workDate: woData.tanggalPengajuan ? new Date(woData.tanggalPengajuan) : g.workDate,
+          workDate: (woData as any).tanggalPengajuan ? new Date((woData as any).tanggalPengajuan) : g.workDate,
           stepLabel: formWoItem?.currentStepLabel || `${g.items.length} Step Pending`,
           dueState: g.overdueCount > 0 ? 'overdue' : g.dueSoonCount > 0 ? 'due_soon' : 'open',
           dueAt: g.items[0]?.dueAt || new Date(),
@@ -666,9 +679,9 @@ export function InboxTab({
           level: formWoItem?.level || g.items[0]?.level || 1,
           repairFormWo: woData,
           customerName: woData.customer,
-          totalAmount: woData.totalAmount,
-          signatureUrl: woData.submitterSignatureUrl,
-          approverName: g.items[0]?.approverName || formWoItem?.approverName || null,
+          totalAmount: woData.totalAmount ?? undefined,
+          signatureUrl: (woData as any).submitterSignatureUrl ?? undefined,
+          approverName: (g.items[0] as any)?.approverName || (formWoItem as any)?.approverName || null,
           rawFormWo: {
             ...woData,
             steps:
@@ -680,7 +693,7 @@ export function InboxTab({
                 decision: s.status,
                 reviewedAt: s.reviewedAt,
                 signatureUrl: s.signatureUrl || null,
-              })) || (woData.steps || []),
+              })) || ((woData as any).steps || []),
           },
           rawGeneralGroup: g,
         })
@@ -755,9 +768,9 @@ export function InboxTab({
           submittedAt: g.items[0]?.submittedAt || new Date(),
           url: isApd ? (isSummary ? `/print/summary/${apdItem?.activityId}` : `/print/apd/${apdItem?.activityId}`) : '#',
           activityType: isSummary ? 'Summary APD' : (apdItem?.activityType || (isApd ? (isMaterial ? 'Request Material' : isTools ? 'Request Tools' : 'Request APD') : 'Form Activity')),
-          activityId: apdItem?.activityId || g.id,
-          approvalId: apdItem?.approvalId || g.items[0]?.approvalId,
-          approverName: g.items[0]?.approverName || null,
+          activityId: Number(apdItem?.activityId) || (typeof g.id === 'number' ? g.id : 0),
+          approvalId: apdItem?.approvalId || (g.items[0] as any)?.approvalId,
+          approverName: (g.items[0] as any)?.approverName || null,
           rawGeneralGroup: g,
         })
       }
@@ -1040,7 +1053,7 @@ export function InboxTab({
           formData.append('approvalId', String(currentBatchDoc.approvalId))
         }
         formData.append('decision', action === 'approve' ? 'approved' : action === 'revert' ? 'needs_correction' : 'rejected')
-        formData.append('note', currentRemark || (action === 'revert' ? 'Form WO Dikembalikan untuk revisi' : action === 'rejected' ? 'Form WO Ditolak' : ''))
+        formData.append('note', currentRemark || ((action as string) === 'revert' ? 'Form WO Dikembalikan untuk revisi' : (action as string) === 'rejected' ? 'Form WO Ditolak' : ''))
         if (signatureDataUrl) {
           formData.append('signatureUrl', signatureDataUrl)
         }
@@ -1222,7 +1235,7 @@ export function InboxTab({
           formData.append('approvalId', String(item.approvalId))
         }
         formData.append('decision', action === 'approve' ? 'approved' : action === 'revert' ? 'needs_correction' : 'rejected')
-        formData.append('note', reason || (action === 'revert' ? 'Form WO Dikembalikan untuk revisi' : action === 'rejected' ? 'Form WO Ditolak' : ''))
+        formData.append('note', reason || ((action as string) === 'revert' ? 'Form WO Dikembalikan untuk revisi' : (action as string) === 'rejected' ? 'Form WO Ditolak' : ''))
         if (signatureDataUrl) {
           formData.append('signatureUrl', signatureDataUrl)
         }
@@ -1640,7 +1653,7 @@ export function InboxTab({
 
                 {/* Action Button */}
                 {item.category === 'RFR' && item.rawRfr ? (
-                  <RfrApprovalDialog item={item.rawRfr} />
+                  <RfrApprovalDialog item={item.rawRfr as any} />
                 ) : isReverted ? (
                   <Button
                     size="sm"
@@ -1919,7 +1932,7 @@ export function InboxTab({
                     </TableCell>
                     <TableCell className="align-top text-right">
                       {item.category === 'RFR' && item.rawRfr ? (
-                        <RfrApprovalDialog item={item.rawRfr} />
+                        <RfrApprovalDialog item={item.rawRfr as any} />
                       ) : (item as any).activityType === 'Work Order' ||
                         (item as any).repairFormWo ||
                         (item as any).title?.toLowerCase().includes('wo') ? (

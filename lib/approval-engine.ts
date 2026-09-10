@@ -50,10 +50,16 @@ export type ResolvedApprovalStep = {
     | 'legacy_site_pjo'
     | 'legacy_site_foreman'
     | 'apd_site_pjo'
+    | 'apd_pjo_site'
     | 'apd_head_section'
     | 'form_wo_custom'
+    | 'form_wo_service'
+    | 'form_wo_repair_retread'
     | 'apd_hse_site'
     | 'apd_specific_approver'
+    | 'apd_admin_cp'
+    | 'section_head'
+    | 'fallback_manager'
     | 'vacant'
   canDelegate: boolean
   slaHours: number

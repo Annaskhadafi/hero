@@ -319,7 +319,7 @@ export function FormWoDocumentView({
         (currentLevel === stepLevel && s.status !== 'approved')
 
       const signerName = s.approverName || s.jobTitle || 'Approver'
-      const jobTitle = s.jobTitle || s.label || 'Approver'
+      const jobTitle = s.jobTitle || (s as any).label || 'Approver'
 
       const sigUrl =
         s.status === 'approved' && s.signatureUrl
@@ -542,7 +542,7 @@ export function FormWoDocumentView({
                       <td className="py-1.5 px-2.5 font-mono text-slate-600">{row.serialNo || '-'}</td>
                       <td className="py-1.5 px-2.5">{row.refNo || '-'}</td>
                       <td className="py-1.5 px-2.5 font-mono">{row.noPo || doc.noPo || '-'}</td>
-                      <td className="py-1.5 px-2.5 font-mono">{row.noWoCp || doc.noWoTerbit || doc.idWo || '-'}</td>
+                      <td className="py-1.5 px-2.5 font-mono">{row.noWoCp || doc.noWoTerbit || (doc as any).idWo || '-'}</td>
                       <td className="py-1.5 px-2.5 text-right font-medium">{formatCurrency(row.price)}</td>
                     </tr>
                   ))}
@@ -581,7 +581,7 @@ export function FormWoDocumentView({
                       <td className="py-1.5 px-2.5">{row.customer || '-'}</td>
                       <td className="py-1.5 px-2.5 font-semibold">{row.category || '-'}</td>
                       <td className="py-1.5 px-2.5 font-mono">{row.noPo || doc.noPo || '-'}</td>
-                      <td className="py-1.5 px-2.5 font-mono">{row.noWoCp || doc.noWoTerbit || doc.idWo || '-'}</td>
+                      <td className="py-1.5 px-2.5 font-mono">{row.noWoCp || doc.noWoTerbit || (doc as any).idWo || '-'}</td>
                       <td className="py-1.5 px-2.5 text-right font-medium">{formatCurrency(row.price)}</td>
                     </tr>
                   ))}
@@ -672,12 +672,16 @@ export function FormWoDocumentPreviewDialog({
   doc,
   liveSignatureUrl,
   currentLevel,
+  onEdit,
+  canEdit,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   doc: FormWoDocumentData | null
   liveSignatureUrl?: string | null
   currentLevel?: number
+  onEdit?: () => void
+  canEdit?: boolean
 }) {
   const printRef = useRef<HTMLDivElement>(null)
 

@@ -85,7 +85,7 @@ async function notifyDailyReportDelivery(input: {
   })
 }
 
-import { and, asc, desc, eq, inArray, isNull, isNotNull, ne, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, isNotNull, lt, ne, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { hashPassword } from 'better-auth/crypto'
@@ -4585,7 +4585,7 @@ async function applyApprovalDecision(params: {
               notifyWorkflowBellRecipients({
                 recipientEmails: [nextEmp.email],
                 eventType: 'form_wo_review',
-                category: 'approval',
+                category: 'approval_requests',
                 title: 'Review Form WO',
                 body: `${reqInfo.pemohon || 'Karyawan Site'} mengajukan Form WO (${reqInfo.noPengajuan}) yang membutuhkan persetujuan Anda (${nextApproverName}).`,
                 url: `/dashboard/approval`,
@@ -4599,7 +4599,7 @@ async function applyApprovalDecision(params: {
             approverEmail: nextEmpEmail,
             approverName: nextApproverName,
             pemohon: reqInfo.pemohon || 'Karyawan Site',
-            noPengajuan: reqInfo.noPengajuan,
+            noPengajuan: reqInfo.noPengajuan || '',
             customer: reqInfo.customer || '-',
             site: reqInfo.site || '-',
             jobType: reqInfo.jobType || '-',
@@ -4616,7 +4616,7 @@ async function applyApprovalDecision(params: {
             const [creatorEmp] = await tx
               .select({ email: employees.email })
               .from(employees)
-              .where(eq(employees.id, reqInfo.createdBy))
+              .where(eq(employees.id, Number(reqInfo.createdBy)))
               .limit(1)
             creatorEmail = creatorEmp?.email
           }
@@ -4662,7 +4662,7 @@ async function applyApprovalDecision(params: {
             const { sendFormWoReadyForWoNumberEmail } = await import('@/lib/form-wo-email')
             sendFormWoReadyForWoNumberEmail({
               billingEmail,
-              noPengajuan: reqInfo.noPengajuan,
+              noPengajuan: reqInfo.noPengajuan || '',
               pemohon: reqInfo.pemohon || 'Pemohon',
               customer: reqInfo.customer || '-',
               site: reqInfo.site || '-',
@@ -4675,7 +4675,7 @@ async function applyApprovalDecision(params: {
             notifyWorkflowBellRecipients({
               recipientEmails: [billingEmail],
               eventType: 'form_wo_ready_for_wo_number',
-              category: 'approval',
+              category: 'approval_requests',
               title: 'Form WO Siap Terbit (Isi No. WO)',
               body: `Form WO (${reqInfo.noPengajuan}) telah disetujui lengkap oleh Inventory & Warehouse Management SPV. Silakan isi Nomor WO.`,
               url: `/dashboard/repair-retread/form-wo`,
@@ -4689,7 +4689,7 @@ async function applyApprovalDecision(params: {
             const [creatorEmp] = await tx
               .select({ email: employees.email })
               .from(employees)
-              .where(eq(employees.id, reqInfo.createdBy))
+              .where(eq(employees.id, Number(reqInfo.createdBy)))
               .limit(1)
             creatorEmail = creatorEmp?.email
           }
@@ -4698,7 +4698,7 @@ async function applyApprovalDecision(params: {
             sendFormWoStatusApprovedEmail({
               requesterEmail: creatorEmail,
               pemohon: reqInfo.pemohon || 'Pemohon',
-              noPengajuan: reqInfo.noPengajuan,
+              noPengajuan: reqInfo.noPengajuan || '',
               noWoTerbit: '-', // not yet issued
               customer: reqInfo.customer || '-',
               site: reqInfo.site || '-',
@@ -4709,7 +4709,7 @@ async function applyApprovalDecision(params: {
             notifyWorkflowBellRecipients({
               recipientEmails: [creatorEmail],
               eventType: 'form_wo_approved',
-              category: 'approval',
+              category: 'approval_requests',
               title: 'Form WO Disetujui (Menunggu No. WO)',
               body: `Form WO (${reqInfo.noPengajuan}) telah disetujui lengkap oleh Inventory & Warehouse Management SPV. Menunggu Team Billing menerbitkan Nomor WO.`,
               url: `/dashboard/repair-retread/form-wo`,
@@ -4726,7 +4726,7 @@ async function applyApprovalDecision(params: {
             const [creatorEmp] = await tx
               .select({ email: employees.email })
               .from(employees)
-              .where(eq(employees.id, reqInfo.createdBy))
+              .where(eq(employees.id, Number(reqInfo.createdBy)))
               .limit(1)
             creatorEmail = creatorEmp?.email
           }
@@ -4768,7 +4768,7 @@ async function applyApprovalDecision(params: {
             sendFormWoStatusRevertedEmail({
               requesterEmail: creatorEmail,
               pemohon: reqInfo.pemohon || 'Pemohon',
-              noPengajuan: reqInfo.noPengajuan,
+              noPengajuan: reqInfo.noPengajuan || '',
               catatanRevisi: trimmedNote || 'Pengajuan dikembalikan untuk revisi.',
               ccEmails: previousApproverEmails,
             }).catch(console.error)
@@ -4778,7 +4778,7 @@ async function applyApprovalDecision(params: {
             notifyWorkflowBellRecipients({
               recipientEmails: [creatorEmail, ...previousApproverEmails],
               eventType: 'form_wo_reverted',
-              category: 'approval',
+              category: 'approval_requests',
               title: 'Form WO Perlu Revisi',
               body: `Form WO (${reqInfo.noPengajuan}) dikembalikan oleh approver: ${trimmedNote}`,
               url: `/dashboard/repair-retread/form-wo`,
@@ -4795,7 +4795,7 @@ async function applyApprovalDecision(params: {
             const [creatorEmp] = await tx
               .select({ email: employees.email })
               .from(employees)
-              .where(eq(employees.id, reqInfo.createdBy))
+              .where(eq(employees.id, Number(reqInfo.createdBy)))
               .limit(1)
             creatorEmail = creatorEmp?.email
           }
@@ -4805,7 +4805,7 @@ async function applyApprovalDecision(params: {
             sendFormWoStatusRejectedEmail({
               requesterEmail: creatorEmail,
               pemohon: reqInfo.pemohon || 'Pemohon',
-              noPengajuan: reqInfo.noPengajuan,
+              noPengajuan: reqInfo.noPengajuan || '',
               catatanPengajuan: trimmedNote || 'Pengajuan tidak disetujui oleh approver.',
             }).catch(console.error)
 
@@ -4814,7 +4814,7 @@ async function applyApprovalDecision(params: {
             notifyWorkflowBellRecipients({
               recipientEmails: [creatorEmail],
               eventType: 'form_wo_rejected',
-              category: 'approval',
+              category: 'approval_requests',
               title: 'Form WO Ditolak',
               body: `Form WO (${reqInfo.noPengajuan}) telah ditolak: ${trimmedNote}`,
               url: `/dashboard/repair-retread/form-wo`,
@@ -4836,9 +4836,10 @@ async function applyApprovalDecision(params: {
   ) {
     const summaryId = approval.apdSummaryId as number
     const now = new Date()
+    const { getSummaryDetails } = await import('@/lib/summary-engine')
 
     if (params.decision === 'approved') {
-      const { approveSummaryStep, getSummaryDetails } = await import('@/lib/summary-engine')
+      const { approveSummaryStep } = await import('@/lib/summary-engine')
       const { sendSummaryApprovedEmail } = await import('@/lib/summary-email')
       const sigUrl = params.signatureUrl || ''
       const result = await approveSummaryStep(
@@ -4929,10 +4930,7 @@ async function applyApprovalDecision(params: {
     const now = new Date()
     const isApproved = params.decision === 'approved'
     const isRejected = params.decision === 'rejected'
-    const isReverted =
-      params.decision === 'needs_correction' ||
-      params.decision === 'revision_requested' ||
-      params.decision === 'reverted'
+    const isReverted = params.decision === 'needs_correction'
 
     const decisionStatus = isApproved
       ? 'proses_order'
@@ -5111,7 +5109,7 @@ async function applyApprovalDecision(params: {
             notifyWorkflowBellRecipients({
               recipientEmails: [reqInfo.requesterEmail, 'muhammad.akbar@chitraparatama.co.id'],
               eventType: 'material_tools_request_approved',
-              category: 'approval_status',
+              category: 'approval_requests',
               title: `Permintaan ${reqInfo.requestCategory} Disetujui`,
               body: `Permintaan ${reqInfo.requestCategory} (${reqInfo.requestNumber}) telah disetujui oleh ${actorName}.`,
               url: `/dashboard/apd`,
@@ -5147,7 +5145,7 @@ async function applyApprovalDecision(params: {
             notifyWorkflowBellRecipients({
               recipientEmails: [reqInfo.requesterEmail],
               eventType: 'apd_request_approved',
-              category: 'approval_status',
+              category: 'approval_requests',
               title: `Permintaan ${reqInfo.requestCategory} Disetujui`,
               body: `Permintaan ${reqInfo.requestCategory} (${reqInfo.requestNumber}) telah disetujui oleh ${actorName}.`,
               url: `/dashboard/apd`,
@@ -8117,11 +8115,11 @@ export async function manageSecurityUserAction(
       const actorEmail = await getCurrentActorEmail()
       await logAuditEvent({
         actorEmail,
-        action: 'user.activated',
+        action: 'user.unbanned',
         entityType: 'user',
         entityLabel: employee.name,
         description: `Activated user ${employee.name} (${employee.email})`,
-        severity: 'normal',
+        severity: 'info',
       })
 
       revalidateAdminSurfaces()

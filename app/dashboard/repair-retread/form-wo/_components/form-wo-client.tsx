@@ -119,6 +119,8 @@ export type ServiceItemRow = {
   refNo: string // No Surat Jalan / WO Customer / No PR / No PO
   noWoCp: string
   price: string
+  noPo?: string
+  tanggalPo?: string
 }
 
 export type RepairItemRow = {
@@ -127,13 +129,13 @@ export type RepairItemRow = {
   site: string
   size: string // Tire Size
   description: string // SN Tire
-  brand: string // Brand
+  brand?: string // Brand
   category: string // Category Injury (R1, R2, R3, etc.)
   price: string
   noWoCp: string // WO CP
-  noPo: string // Number PO
-  tanggalPo: string // Date PO
-  pos: string // POS
+  noPo?: string // Number PO
+  tanggalPo?: string // Date PO
+  pos?: string // POS
   noUnit?: string
 }
 
@@ -180,6 +182,10 @@ type FormWoRow = {
   items: string | null // JSON string of ServiceItemRow[] or RepairItemRow[]
   noPo: string | null
   tanggalPo: string | null
+  noWoCp?: string | null
+  submitterSignatureUrl?: string | null
+  signatureUrl?: string | null
+  steps?: any[]
   createdBy: string | null
   createdAt: Date
   updatedAt: Date
@@ -2573,8 +2579,8 @@ function DaftarPengajuanTab({
     setJenisFilter(initialJenisFilter)
   }, [initialJenisFilter])
 
-  const toggleExpand = (id: string) => {
-    setExpandedRows((prev) => ({ ...prev, [id]: !prev[id] }))
+  const toggleExpand = (id: number | string) => {
+    setExpandedRows((prev) => ({ ...prev, [String(id)]: !prev[String(id)] }))
   }
 
   const filtered = useMemo(() => {
@@ -2681,7 +2687,7 @@ function DaftarPengajuanTab({
     const firstSub = parsed[0]
     const res = await updateFormWo(item.id, {
       items: JSON.stringify(parsed),
-      totalAmount: newTotal > 0 ? String(newTotal) : item.totalAmount,
+      totalAmount: newTotal > 0 ? String(newTotal) : (item.totalAmount ?? undefined),
       noPo: field === "noPo" ? val : (firstSub?.noPo || item.noPo || undefined),
       tanggalPo: field === "tanggalPo" ? val : (firstSub?.tanggalPo || item.tanggalPo || undefined),
       brand: field === "brand" ? val : (firstSub?.brand || item.brand || undefined),

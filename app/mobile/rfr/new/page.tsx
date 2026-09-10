@@ -15,9 +15,9 @@ export default async function MobileRfrCreatePage() {
   let defaultSectionDepartment = ''
   let defaultEmployeeId: number | null = null
 
-  if (session?.user?.email || session?.user?.employeeSn) {
+  if (session?.user?.email || (session?.user as any)?.employeeSn) {
     const userEmail = session.user.email
-    const employeeSn = session.user.employeeSn ? String(session.user.employeeSn) : ''
+    const employeeSn = (session.user as any).employeeSn ? String((session.user as any).employeeSn) : ''
 
     try {
       const rows = await db

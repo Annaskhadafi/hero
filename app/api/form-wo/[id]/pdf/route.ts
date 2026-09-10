@@ -57,7 +57,7 @@ export async function GET(
 
     const pdfBuffer = await generateFormWoPdf({
       id: doc.id,
-      noPengajuan: doc.noPengajuan,
+      noPengajuan: doc.noPengajuan || '',
       jenisPengajuan: doc.jenisPengajuan,
       noWoTerbit: doc.noWoTerbit,
       noPo: doc.noPo,
