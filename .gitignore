@@ -69,6 +69,7 @@ scripts/sync-new-karyawan.ts
 
 # excel/data files
 *.xlsx
+!public/PPA BIB roster juli.xlsx
 *.xls
 *.csv
 attandance site/
