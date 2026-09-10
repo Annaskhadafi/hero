@@ -195,7 +195,8 @@ export async function GET(request: NextRequest) {
 
       return {
         ...row,
-        email: row.email || row.enrichEmail || null,
+        // hero_employees (User Management) is single source of truth for email
+        email: row.enrichEmail || row.email || null,
         section: row.enrichSection || row.section || '',
         gender: row.enrichGender ?? '',
         religion: row.enrichReligion ?? '',
