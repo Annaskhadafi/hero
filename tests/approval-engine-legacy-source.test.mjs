@@ -15,7 +15,7 @@ test('approval schema now supports submission-based requests', () => {
 
   assert.match(heroSchema, /submissionId: integer\('submission_id'\)/)
   assert.match(heroSchema, /approvalSubmissionId: integer\('approval_submission_id'\)/)
-  assert.match(timesheetSchema, /approvalSubmissionId: integer\("approval_submission_id"\)/)
+  assert.match(timesheetSchema, /approvalSubmissionId: integer\(['"]approval_submission_id['"]\)/)
 })
 
 test('legacy approval engine helper exists for non-activity workflows', () => {

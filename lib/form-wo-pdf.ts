@@ -1,7 +1,11 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 import fs from 'fs'
 import path from 'path'
-import { getS3ObjectForProxy, isS3UploadConfigured, extractS3ObjectKeyFromUrl } from '@/lib/s3-storage'
+import {
+  getS3ObjectForProxy,
+  isS3UploadConfigured,
+  extractS3ObjectKeyFromUrl,
+} from '@/lib/s3-storage'
 
 export interface FormWoPdfStep {
   level: number
@@ -56,13 +60,18 @@ function formatIndoDateTime(val?: string | Date | null): string {
     month: 'short',
     year: 'numeric',
   })
-  const timeStr = d.toLocaleTimeString('id-ID', {
-    timeZone: 'Asia/Makassar',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).replace(':', '.')
+  const timeStr = d
+    .toLocaleTimeString('id-ID', {
+      timeZone: 'Asia/Makassar',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+    .replace(':', '.')
   return `${dateStr} • ${timeStr} WITA`
 }
+
+import { isCiptaKridatamaCustomer } from '@/lib/form-wo-customer'
+export { isCiptaKridatamaCustomer }
 
 function extractCleanNote(rawNote: string | null | undefined): string {
   if (!rawNote || !rawNote.trim()) return ''
@@ -75,7 +84,10 @@ function extractCleanNote(rawNote: string | null | undefined): string {
         noteText = parsed.message.trim()
       }
     } catch {
-      const lines = trimmed.split('\n').map((l) => l.trim()).filter(Boolean)
+      const lines = trimmed
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)
       for (let i = lines.length - 1; i >= 0; i--) {
         try {
           const p = JSON.parse(lines[i])
@@ -137,26 +149,42 @@ function fitText(text: string, maxWidth: number, font: any, fontSize: number): s
   return str + '..'
 }
 
-async function loadSignatureImageBytes(sigUrl: string | null | undefined): Promise<{ bytes: Uint8Array | Buffer; format: 'png' | 'jpg' } | null> {
+async function loadSignatureImageBytes(
+  sigUrl: string | null | undefined
+): Promise<{ bytes: Uint8Array | Buffer; format: 'png' | 'jpg' } | null> {
   if (!sigUrl) return null
   try {
     const trimmed = sigUrl.trim()
     if (trimmed.startsWith('data:image/png;base64,')) {
-      return { bytes: Buffer.from(trimmed.replace('data:image/png;base64,', ''), 'base64'), format: 'png' }
+      return {
+        bytes: Buffer.from(trimmed.replace('data:image/png;base64,', ''), 'base64'),
+        format: 'png',
+      }
     }
-    if (trimmed.startsWith('data:image/jpeg;base64,') || trimmed.startsWith('data:image/jpg;base64,')) {
-      return { bytes: Buffer.from(trimmed.replace(/^data:image\/\w+;base64,/, ''), 'base64'), format: 'jpg' }
+    if (
+      trimmed.startsWith('data:image/jpeg;base64,') ||
+      trimmed.startsWith('data:image/jpg;base64,')
+    ) {
+      return {
+        bytes: Buffer.from(trimmed.replace(/^data:image\/\w+;base64,/, ''), 'base64'),
+        format: 'jpg',
+      }
     }
     if (trimmed.startsWith('data:image/')) {
       const b64 = trimmed.split(',')[1]
       if (b64) return { bytes: Buffer.from(b64, 'base64'), format: 'png' }
     }
 
-    const s3Key = extractS3ObjectKeyFromUrl(trimmed) || trimmed.replace(/^\/api\/uploads\//, '').replace(/^\/uploads\//, '')
+    const s3Key =
+      extractS3ObjectKeyFromUrl(trimmed) ||
+      trimmed.replace(/^\/api\/uploads\//, '').replace(/^\/uploads\//, '')
     if (isS3UploadConfigured() && s3Key) {
       const s3Obj = await getS3ObjectForProxy(s3Key).catch(() => null)
       if (s3Obj?.body) {
-        const format = s3Obj.contentType?.includes('jpeg') || s3Key.endsWith('.jpg') || s3Key.endsWith('.jpeg') ? 'jpg' : 'png'
+        const format =
+          s3Obj.contentType?.includes('jpeg') || s3Key.endsWith('.jpg') || s3Key.endsWith('.jpeg')
+            ? 'jpg'
+            : 'png'
         return { bytes: s3Obj.body, format }
       }
     }
@@ -279,8 +307,20 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
   const row2Y = curY - 32
 
   // Col 1: Hari
-  page.drawText('HARI', { x: boxX + 10, y: row1Y, size: 7, font: fontBold, color: rgb(0.4, 0.45, 0.5) })
-  page.drawText(displayDay, { x: boxX + 10, y: row2Y, size: 9, font: fontBold, color: rgb(0.1, 0.15, 0.25) })
+  page.drawText('HARI', {
+    x: boxX + 10,
+    y: row1Y,
+    size: 7,
+    font: fontBold,
+    color: rgb(0.4, 0.45, 0.5),
+  })
+  page.drawText(displayDay, {
+    x: boxX + 10,
+    y: row2Y,
+    size: 9,
+    font: fontBold,
+    color: rgb(0.1, 0.15, 0.25),
+  })
 
   // Vertical Divider 1
   page.drawLine({
@@ -291,8 +331,20 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
   })
 
   // Col 2: Tanggal
-  page.drawText('TANGGAL', { x: boxX + colW + 10, y: row1Y, size: 7, font: fontBold, color: rgb(0.4, 0.45, 0.5) })
-  page.drawText(displayDate, { x: boxX + colW + 10, y: row2Y, size: 9, font: fontBold, color: rgb(0.1, 0.15, 0.25) })
+  page.drawText('TANGGAL', {
+    x: boxX + colW + 10,
+    y: row1Y,
+    size: 7,
+    font: fontBold,
+    color: rgb(0.4, 0.45, 0.5),
+  })
+  page.drawText(displayDate, {
+    x: boxX + colW + 10,
+    y: row2Y,
+    size: 9,
+    font: fontBold,
+    color: rgb(0.1, 0.15, 0.25),
+  })
 
   // Vertical Divider 2
   page.drawLine({
@@ -303,8 +355,20 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
   })
 
   // Col 3: Jenis Form
-  page.drawText('JENIS FORM', { x: boxX + colW * 2 + 10, y: row1Y, size: 7, font: fontBold, color: rgb(0.4, 0.45, 0.5) })
-  page.drawText(jenisForm, { x: boxX + colW * 2 + 10, y: row2Y, size: 9, font: fontBold, color: rgb(0.1, 0.15, 0.25) })
+  page.drawText('JENIS FORM', {
+    x: boxX + colW * 2 + 10,
+    y: row1Y,
+    size: 7,
+    font: fontBold,
+    color: rgb(0.4, 0.45, 0.5),
+  })
+  page.drawText(jenisForm, {
+    x: boxX + colW * 2 + 10,
+    y: row2Y,
+    size: 9,
+    font: fontBold,
+    color: rgb(0.1, 0.15, 0.25),
+  })
 
   // Vertical Divider 3
   page.drawLine({
@@ -315,11 +379,26 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
   })
 
   // Col 4: Pemohon
-  page.drawText('PEMOHON', { x: boxX + colW * 3 + 10, y: row1Y, size: 7, font: fontBold, color: rgb(0.4, 0.45, 0.5) })
-  const pemohonDisplay = (data.pemohon || 'Admin CP Site').length > 22 ? (data.pemohon || 'Admin CP Site').substring(0, 20) + '..' : (data.pemohon || 'Admin CP Site')
-  page.drawText(pemohonDisplay, { x: boxX + colW * 3 + 10, y: row2Y, size: 9, font: fontBold, color: rgb(0.1, 0.15, 0.25) })
+  page.drawText('PEMOHON', {
+    x: boxX + colW * 3 + 10,
+    y: row1Y,
+    size: 7,
+    font: fontBold,
+    color: rgb(0.4, 0.45, 0.5),
+  })
+  const pemohonDisplay =
+    (data.pemohon || 'Admin CP Site').length > 22
+      ? (data.pemohon || 'Admin CP Site').substring(0, 20) + '..'
+      : data.pemohon || 'Admin CP Site'
+  page.drawText(pemohonDisplay, {
+    x: boxX + colW * 3 + 10,
+    y: row2Y,
+    size: 9,
+    font: fontBold,
+    color: rgb(0.1, 0.15, 0.25),
+  })
 
-  curY -= (boxH + 10)
+  curY -= boxH + 10
 
   // Customer, Site, & No. PO Box (with vertical divider lines)
   const metaBoxH = 26
@@ -350,8 +429,14 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
   // Col 1: Customer
   const custLabel = 'Customer: '
   const custLabelW = fontBold.widthOfTextAtSize(custLabel, 8)
-  page.drawText(custLabel, { x: boxX + 10, y: curY - 17, size: 8, font: fontBold, color: rgb(0.25, 0.3, 0.38) })
-  
+  page.drawText(custLabel, {
+    x: boxX + 10,
+    y: curY - 17,
+    size: 8,
+    font: fontBold,
+    color: rgb(0.25, 0.3, 0.38),
+  })
+
   const rawCustomer = data.customer || '-'
   const fittedCustomer = fitText(rawCustomer, custColW - custLabelW - 16, fontRegular, 8)
   page.drawText(fittedCustomer, {
@@ -373,7 +458,13 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
   // Col 2: Site
   const siteLabel = 'Site: '
   const siteLabelW = fontBold.widthOfTextAtSize(siteLabel, 8)
-  page.drawText(siteLabel, { x: boxX + custColW + 10, y: curY - 17, size: 8, font: fontBold, color: rgb(0.25, 0.3, 0.38) })
+  page.drawText(siteLabel, {
+    x: boxX + custColW + 10,
+    y: curY - 17,
+    size: 8,
+    font: fontBold,
+    color: rgb(0.25, 0.3, 0.38),
+  })
 
   const rawSite = data.site || '-'
   const fittedSite = fitText(rawSite, siteColW - siteLabelW - 16, fontRegular, 8)
@@ -396,11 +487,18 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
   // Col 3: No. PO
   const poLabel = 'No. PO: '
   const poLabelW = fontBold.widthOfTextAtSize(poLabel, 8)
-  page.drawText(poLabel, { x: boxX + custColW + siteColW + 10, y: curY - 17, size: 8, font: fontBold, color: rgb(0.25, 0.3, 0.38) })
+  page.drawText(poLabel, {
+    x: boxX + custColW + siteColW + 10,
+    y: curY - 17,
+    size: 8,
+    font: fontBold,
+    color: rgb(0.25, 0.3, 0.38),
+  })
 
   const headerNoPo = data.noPo || (itemsList[0]?.noPo ?? '-')
   const headerTglPo = data.tanggalPo || (itemsList[0]?.tanggalPo ?? '')
-  const poDisplay = headerNoPo !== '-' && headerTglPo ? `${headerNoPo} (${headerTglPo})` : headerNoPo
+  const poDisplay =
+    headerNoPo !== '-' && headerTglPo ? `${headerNoPo} (${headerTglPo})` : headerNoPo
   const fittedPo = fitText(poDisplay, poColW - poLabelW - 16, fontRegular, 8)
   page.drawText(fittedPo, {
     x: boxX + custColW + siteColW + 10 + poLabelW,
@@ -410,7 +508,7 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
     color: rgb(0.1, 0.15, 0.25),
   })
 
-  curY -= (metaBoxH + 16)
+  curY -= metaBoxH + 16
 
   // Section: Rincian Permintaan Pekerjaan (Items Table)
   page.drawText('RINCIAN PERMINTAAN PEKERJAAN (ITEMS)', {
@@ -438,10 +536,15 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
   })
 
   const isService = data.jenisPengajuan === 'service'
+  const isCk =
+    !isService &&
+    (isCiptaKridatamaCustomer(data.customer) ||
+      itemsList.some((r: any) => isCiptaKridatamaCustomer(r.customer)))
 
   // Dynamic Column definitions for Landscape A4 (tableW = 769.89 pt)
   // Service: NO, DESCRIPTION, JOB, CUSTOMER, SITE, SERIAL NO, REF NO, NO PO, NO WO CP, PRICE / AMOUNT
-  // Repair: NO, DESCRIPTION (TIRE SN), ID UNIT, BRAND, POS, SIZE, SITE, CUSTOMER, CATEGORY, NO PO, NO WO CP, PRICE / AMOUNT
+  // Repair (CK): NO, DESCRIPTION (TIRE SN), ID UNIT, BRAND, POS, SIZE, SITE, CUSTOMER, CATEGORY, NO PO, NO WO CP, PRICE / AMOUNT
+  // Repair (Non-CK): NO, DESCRIPTION (TIRE SN), BRAND, POS, SIZE, SITE, CUSTOMER, CATEGORY, NO PO, NO WO CP, PRICE / AMOUNT
   const columns = isService
     ? [
         { label: 'NO', w: 22, align: 'center' },
@@ -455,25 +558,44 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
         { label: 'NO WO CP', w: 75 },
         { label: 'PRICE / AMOUNT', w: 127.89, align: 'right' },
       ]
-    : [
-        { label: 'NO', w: 20, align: 'center' },
-        { label: 'DESCRIPTION (TIRE SN)', w: 90 },
-        { label: 'ID UNIT', w: 45 },
-        { label: 'BRAND', w: 55 },
-        { label: 'POS', w: 28, align: 'center' },
-        { label: 'SIZE', w: 52 },
-        { label: 'SITE', w: 60 },
-        { label: 'CUSTOMER', w: 85 },
-        { label: 'CATEGORY', w: 60 },
-        { label: 'NO PO', w: 75 },
-        { label: 'NO WO CP', w: 75 },
-        { label: 'PRICE / AMOUNT', w: 124.89, align: 'right' },
-      ]
+    : isCk
+      ? [
+          { label: 'NO', w: 20, align: 'center' },
+          { label: 'DESCRIPTION (TIRE SN)', w: 90 },
+          { label: 'ID UNIT', w: 45 },
+          { label: 'BRAND', w: 55 },
+          { label: 'POS', w: 28, align: 'center' },
+          { label: 'SIZE', w: 52 },
+          { label: 'SITE', w: 60 },
+          { label: 'CUSTOMER', w: 85 },
+          { label: 'CATEGORY', w: 60 },
+          { label: 'NO PO', w: 75 },
+          { label: 'NO WO CP', w: 75 },
+          { label: 'PRICE / AMOUNT', w: 124.89, align: 'right' },
+        ]
+      : [
+          { label: 'NO', w: 20, align: 'center' },
+          { label: 'DESCRIPTION (TIRE SN)', w: 110 },
+          { label: 'BRAND', w: 65 },
+          { label: 'POS', w: 30, align: 'center' },
+          { label: 'SIZE', w: 57 },
+          { label: 'SITE', w: 63 },
+          { label: 'CUSTOMER', w: 90 },
+          { label: 'CATEGORY', w: 60 },
+          { label: 'NO PO', w: 75 },
+          { label: 'NO WO CP', w: 75 },
+          { label: 'PRICE / AMOUNT', w: 124.89, align: 'right' },
+        ]
 
   let curColX = tableX
   for (let cIdx = 0; cIdx < columns.length; cIdx++) {
     const col = columns[cIdx]
-    const textX = col.align === 'right' ? curColX + col.w - 4 - fontBold.widthOfTextAtSize(col.label, 6.5) : col.align === 'center' ? curColX + (col.w - fontBold.widthOfTextAtSize(col.label, 6.5)) / 2 : curColX + 4
+    const textX =
+      col.align === 'right'
+        ? curColX + col.w - 4 - fontBold.widthOfTextAtSize(col.label, 6.5)
+        : col.align === 'center'
+          ? curColX + (col.w - fontBold.widthOfTextAtSize(col.label, 6.5)) / 2
+          : curColX + 4
     page.drawText(col.label, {
       x: textX,
       y: curY - 13,
@@ -499,28 +621,36 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
 
   // Render Table Rows (up to 8 rows max per page)
   let totalAmountCalculated = 0
-  const renderRows = itemsList.length > 0 ? itemsList.slice(0, 8) : [{
-    customer: data.customer || '-',
-    site: data.site || '-',
-    size: '-',
-    description: '-',
-    job: '-',
-    serialNo: '-',
-    refNo: '-',
-    brand: '-',
-    category: isService ? 'Service' : 'R1',
-    price: data.totalAmount || 0,
-    noWoCp: data.noWoTerbit || '-',
-    noPo: data.noPo || '-',
-    tanggalPo: data.tanggalPo || '-',
-    pos: '-',
-    noUnit: '-',
-  }]
+  const renderRows =
+    itemsList.length > 0
+      ? itemsList.slice(0, 8)
+      : [
+          {
+            customer: data.customer || '-',
+            site: data.site || '-',
+            size: '-',
+            description: '-',
+            job: '-',
+            serialNo: '-',
+            refNo: '-',
+            brand: '-',
+            category: isService ? 'Service' : 'R1',
+            price: data.totalAmount || 0,
+            noWoCp: data.noWoTerbit || '-',
+            noPo: data.noPo || '-',
+            tanggalPo: data.tanggalPo || '-',
+            pos: '-',
+            noUnit: '-',
+          },
+        ]
 
   for (let idx = 0; idx < renderRows.length; idx++) {
     const row = renderRows[idx]
     const rowH = 18
-    const priceNum = typeof row.price === 'number' ? row.price : parseFloat(String(row.price || '').replace(/[^0-9.-]+/g, '')) || 0
+    const priceNum =
+      typeof row.price === 'number'
+        ? row.price
+        : parseFloat(String(row.price || '').replace(/[^0-9.-]+/g, '')) || 0
     totalAmountCalculated += priceNum
 
     page.drawRectangle({
@@ -546,20 +676,34 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
           row.noWoCp || data.noWoTerbit || '-',
           priceNum > 0 ? formatCurrency(priceNum) : '-',
         ]
-      : [
-          String(idx + 1),
-          row.description || row.tireSn || '-',
-          row.noUnit || '-',
-          row.brand || '-',
-          row.pos || '-',
-          row.size || '-',
-          row.site || data.site || '-',
-          row.customer || data.customer || '-',
-          row.category || 'R1',
-          row.noPo || data.noPo || '-',
-          row.noWoCp || data.noWoTerbit || '-',
-          priceNum > 0 ? formatCurrency(priceNum) : '-',
-        ]
+      : isCk
+        ? [
+            String(idx + 1),
+            row.description || row.tireSn || '-',
+            row.noUnit || '-',
+            row.brand || '-',
+            row.pos || '-',
+            row.size || '-',
+            row.site || data.site || '-',
+            row.customer || data.customer || '-',
+            row.category || 'R1',
+            row.noPo || data.noPo || '-',
+            row.noWoCp || data.noWoTerbit || '-',
+            priceNum > 0 ? formatCurrency(priceNum) : '-',
+          ]
+        : [
+            String(idx + 1),
+            row.description || row.tireSn || '-',
+            row.brand || '-',
+            row.pos || '-',
+            row.size || '-',
+            row.site || data.site || '-',
+            row.customer || data.customer || '-',
+            row.category || 'R1',
+            row.noPo || data.noPo || '-',
+            row.noWoCp || data.noWoTerbit || '-',
+            priceNum > 0 ? formatCurrency(priceNum) : '-',
+          ]
 
     let rowColX = tableX
     for (let cIdx = 0; cIdx < columns.length; cIdx++) {
@@ -567,7 +711,12 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
       const rawVal = rowValues[cIdx] || '-'
       const displayVal = fitText(rawVal, col.w - 8, fontRegular, 6.5)
       const textW = fontRegular.widthOfTextAtSize(displayVal, 6.5)
-      const textX = col.align === 'right' ? rowColX + col.w - 4 - textW : col.align === 'center' ? rowColX + (col.w - textW) / 2 : rowColX + 4
+      const textX =
+        col.align === 'right'
+          ? rowColX + col.w - 4 - textW
+          : col.align === 'center'
+            ? rowColX + (col.w - textW) / 2
+            : rowColX + 4
 
       page.drawText(displayVal, {
         x: textX,
@@ -623,7 +772,9 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
     color: rgb(0.75, 0.8, 0.85),
   })
 
-  const finalTotalText = formatCurrency(totalAmountCalculated > 0 ? totalAmountCalculated : data.totalAmount)
+  const finalTotalText = formatCurrency(
+    totalAmountCalculated > 0 ? totalAmountCalculated : data.totalAmount
+  )
   const totalTextW = fontBold.widthOfTextAtSize(finalTotalText, 8.5)
   page.drawText(finalTotalText, {
     x: priceColX + columns[priceColIndex].w - 4 - totalTextW,
@@ -633,7 +784,7 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
     color: rgb(0.1, 0.1, 0.1),
   })
 
-  curY -= (totalRowH + 20)
+  curY -= totalRowH + 20
 
   // 5 Signature Boxes Table
   const steps = data.steps || []
@@ -809,9 +960,10 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
       const sigData = await loadSignatureImageBytes(col.sigUrl)
       if (sigData) {
         try {
-          embeddedSig = sigData.format === 'jpg'
-            ? await pdfDoc.embedJpg(sigData.bytes)
-            : await pdfDoc.embedPng(sigData.bytes)
+          embeddedSig =
+            sigData.format === 'jpg'
+              ? await pdfDoc.embedJpg(sigData.bytes)
+              : await pdfDoc.embedPng(sigData.bytes)
         } catch (embedErr) {
           console.error('Failed to embed signature into PDF:', embedErr)
         }
@@ -838,7 +990,7 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
       const waitW = fontRegular.widthOfTextAtSize(waitText, 6.5)
       page.drawText(waitText, {
         x: x + (sigBoxW - waitW) / 2,
-        y: curY - sigHeaderH - (sigCanvasH / 2) - 3,
+        y: curY - sigHeaderH - sigCanvasH / 2 - 3,
         size: 6.5,
         font: fontRegular,
         color: rgb(0.6, 0.65, 0.7),
@@ -905,13 +1057,16 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
 
   // Bottom Footer / Timestamp
   const printTimestamp = `${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Makassar' }).replace(':', '.')} WITA`
-  page.drawText(`Dokumen resmi PT Chitra Paratama dicetak otomatis melalui HERO System pada ${printTimestamp}`, {
-    x: 36,
-    y: 20,
-    size: 6.5,
-    font: fontRegular,
-    color: rgb(0.6, 0.65, 0.7),
-  })
+  page.drawText(
+    `Dokumen resmi PT Chitra Paratama dicetak otomatis melalui HERO System pada ${printTimestamp}`,
+    {
+      x: 36,
+      y: 20,
+      size: 6.5,
+      font: fontRegular,
+      color: rgb(0.6, 0.65, 0.7),
+    }
+  )
 
   const pdfBytes = await pdfDoc.save()
   return Buffer.from(pdfBytes)

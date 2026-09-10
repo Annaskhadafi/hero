@@ -4393,9 +4393,16 @@ async function applyApprovalDecision(params: {
   const isAssignedApprover =
     approval.approverEmployeeId === actor.employeeId ||
     approval.approverName === actorName ||
-    actor.employeeId === 5 ||
     approval.apdRequestId != null ||
-    approval.apdSummaryId != null
+    approval.apdSummaryId != null ||
+    (approval.repairFormWoId != null &&
+      approval.approverName &&
+      (approval.approverName.toLowerCase().includes('billing') ||
+        approval.approverName.toLowerCase().includes('biling')) &&
+      ((actor.section && (actor.section.toLowerCase().includes('billing') || actor.section.toLowerCase().includes('biling'))) ||
+        (actor.department && (actor.department.toLowerCase().includes('billing') || actor.department.toLowerCase().includes('biling'))) ||
+        (actor.jobTitle && (actor.jobTitle.toLowerCase().includes('billing') || actor.jobTitle.toLowerCase().includes('biling'))) ||
+        (actor.email && (actor.email.toLowerCase().includes('billing') || actor.email.toLowerCase().includes('biling')))))
   const hasAdminReviewAccess =
     approvalPermission.canEdit &&
     (hasGlobalDataAccess(approvalPermission) ||
@@ -4580,18 +4587,58 @@ async function applyApprovalDecision(params: {
               .limit(1)
             if (nextEmp?.email) {
               nextEmpEmail = nextEmp.email
-              const { notifyWorkflowBellRecipients } =
-                await import('@/lib/workflow-notification-center')
-              notifyWorkflowBellRecipients({
-                recipientEmails: [nextEmp.email],
-                eventType: 'form_wo_review',
-                category: 'approval',
-                title: 'Review Form WO',
-                body: `${reqInfo.pemohon || 'Karyawan Site'} mengajukan Form WO (${reqInfo.noPengajuan}) yang membutuhkan persetujuan Anda (${nextApproverName}).`,
-                url: `/dashboard/approval`,
-                tagPrefix: 'form-wo',
-              }).catch(console.error)
             }
+          }
+
+          if (!nextEmpEmail && nextApproverName) {
+            const [nextEmp] = await tx
+              .select({ email: employees.email })
+              .from(employees)
+              .where(
+                and(
+                  eq(employees.isActive, true),
+                  sql`lower(${employees.name}) = lower(${nextApproverName})`
+                )
+              )
+              .limit(1)
+            if (nextEmp?.email) {
+              nextEmpEmail = nextEmp.email
+            }
+          }
+
+          if (!nextEmpEmail && nextApproverName && nextApproverName.toLowerCase().includes('billing')) {
+            const [billingEmp] = await tx
+              .select({ email: employees.email })
+              .from(employees)
+              .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+              .where(
+                and(
+                  eq(employees.isActive, true),
+                  or(
+                    ilike(masterSections.name, '%Billing%'),
+                    ilike(employees.section, '%Billing%'),
+                    ilike(employees.jobTitle, '%Billing%')
+                  )
+                )
+              )
+              .limit(1)
+            if (billingEmp?.email) {
+              nextEmpEmail = billingEmp.email
+            }
+          }
+
+          if (nextEmpEmail) {
+            const { notifyWorkflowBellRecipients } =
+              await import('@/lib/workflow-notification-center')
+            notifyWorkflowBellRecipients({
+              recipientEmails: [nextEmpEmail],
+              eventType: 'form_wo_review',
+              category: 'approval',
+              title: 'Review Form WO',
+              body: `${reqInfo.pemohon || 'Karyawan Site'} mengajukan Form WO (${reqInfo.noPengajuan}) yang membutuhkan persetujuan Anda (${nextApproverName}).`,
+              url: `/dashboard/approval`,
+              tagPrefix: 'form-wo',
+            }).catch(console.error)
           }
 
           const { sendFormWoApprovalRequestEmail } = await import('@/lib/form-wo-email')
@@ -4639,19 +4686,39 @@ async function applyApprovalDecision(params: {
           const billingApproval =
             allFormApprovals.find(
               (a) =>
-                (a.approverName &&
-                  (a.approverName.toLowerCase().includes('billing') ||
-                    a.approverName.toLowerCase().includes('andika'))) ||
-                a.approverEmployeeId === 1102
+                a.approverName &&
+                (a.approverName.toLowerCase().includes('billing') ||
+                  a.approverName.toLowerCase().includes('biling'))
             ) ?? allFormApprovals.find((a) => a.level === 2 || a.level === 3 || a.level === 4)
 
           let billingEmail: string | undefined
-          const billingEmpId = billingApproval?.approverEmployeeId ?? 1102
+          const billingEmpId = billingApproval?.approverEmployeeId
           if (billingEmpId) {
             const [billingEmp] = await tx
               .select({ email: employees.email })
               .from(employees)
               .where(eq(employees.id, billingEmpId))
+              .limit(1)
+            if (billingEmp?.email) {
+              billingEmail = billingEmp.email
+            }
+          }
+
+          if (!billingEmail) {
+            const [billingEmp] = await tx
+              .select({ email: employees.email })
+              .from(employees)
+              .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+              .where(
+                and(
+                  eq(employees.isActive, true),
+                  or(
+                    ilike(masterSections.name, '%Billing%'),
+                    ilike(employees.section, '%Billing%'),
+                    ilike(employees.jobTitle, '%Billing%')
+                  )
+                )
+              )
               .limit(1)
             if (billingEmp?.email) {
               billingEmail = billingEmp.email

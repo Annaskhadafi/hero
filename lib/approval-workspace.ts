@@ -388,6 +388,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
             id: employees.id,
             name: employees.name,
             jobTitle: employees.jobTitle,
+            email: employees.email,
           })
           .from(employees)
           .where(inArray(employees.id, approverEmployeeIds)),
@@ -989,7 +990,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
             : 'waiting')
         : row.status,
       approverName: row.approverName,
-      approverEmail: (row as any).approverEmail ?? null,
+      approverEmail: (row.approverEmployeeId ? approverEmpMap.get(row.approverEmployeeId)?.email : null) || (row as any).approverEmail || null,
       approverEmployeeId: row.approverEmployeeId,
       submittedAt: row.submittedAt,
       reviewedAt: row.reviewedAt,
@@ -1343,11 +1344,54 @@ async function fetchApprovalRows() {
   return normalizeApprovalRows(rawRows)
 }
 
+function isRoleOrSectionMatching(
+  currentEmployee: { section?: string | null; department?: string | null; jobTitle?: string | null; role?: string | null } | null,
+  approverName?: string | null,
+  routeSnapshot?: string | null
+): boolean {
+  if (!currentEmployee) return false
+
+  const empSection = normalizeMatchValue(currentEmployee.section)
+  const empDept = normalizeMatchValue(currentEmployee.department)
+  const empJob = normalizeMatchValue(currentEmployee.jobTitle)
+  const empRole = normalizeMatchValue(currentEmployee.role)
+
+  const apprNameNorm = normalizeMatchValue(approverName)
+  const snapshotNorm = normalizeMatchValue(routeSnapshot)
+
+  const targetTokens = [apprNameNorm, snapshotNorm].filter(Boolean)
+  const empTokens = [empSection, empDept, empJob, empRole].filter(Boolean)
+
+  const keyRoles = [
+    'billing',
+    'biling',
+    'finance',
+    'accounting',
+    'warehouse',
+    'logistic',
+    'logistik',
+    'repair',
+    'retread',
+    'service',
+    'qc',
+  ]
+  for (const key of keyRoles) {
+    const empHasKey = empTokens.some((t) => t.includes(key))
+    const targetHasKey = targetTokens.some((t) => t.includes(key))
+    if (empHasKey && targetHasKey) {
+      return true
+    }
+  }
+
+  return false
+}
+
 async function fetchApprovalRowsForUser(
   email: string,
   currentEmployee: Awaited<ReturnType<typeof getEmployeeByEmail>> | null
 ) {
   const normalizedEmail = normalizeMatchValue(email)
+  const employeeEmailNorm = normalizeMatchValue(currentEmployee?.email)
   const normalizedEmployeeName = normalizeMatchValue(currentEmployee?.name)
 
   const rows = await fetchApprovalRows()
@@ -1355,15 +1399,22 @@ async function fetchApprovalRowsForUser(
   return rows
     .filter((row) => {
       const emailMatches =
-        normalizedEmail && normalizeMatchValue(row.approverEmail) === normalizedEmail
+        (normalizedEmail && normalizeMatchValue(row.approverEmail) === normalizedEmail) ||
+        (employeeEmailNorm && normalizeMatchValue(row.approverEmail) === employeeEmailNorm)
       const employeeMatches =
         currentEmployee?.id != null && row.approverEmployeeId === currentEmployee.id
       const nameMatches =
         normalizedEmployeeName && normalizeMatchValue(row.approverName) === normalizedEmployeeName
       const requesterMatches =
-        normalizedEmail && normalizeMatchValue(row.requesterEmail) === normalizedEmail
+        (normalizedEmail && normalizeMatchValue(row.requesterEmail) === normalizedEmail) ||
+        (employeeEmailNorm && normalizeMatchValue(row.requesterEmail) === employeeEmailNorm)
+      const roleSectionMatches = isRoleOrSectionMatching(
+        currentEmployee,
+        row.approverName,
+        row.routeSnapshot
+      )
 
-      return emailMatches || employeeMatches || nameMatches || requesterMatches
+      return emailMatches || employeeMatches || nameMatches || requesterMatches || roleSectionMatches
     })
     .slice(0, 240)
 }
@@ -1567,7 +1618,10 @@ async function getEmployeeByEmail(email: string) {
       .where(
         or(
           sql`lower(${employees.email}) = ${norm}`,
-          sql`lower(${authUser.email}) = ${norm}`
+          sql`lower(${authUser.email}) = ${norm}`,
+          sql`lower(${employees.name}) = ${norm}`,
+          sql`${employees.email} ILIKE ${'%' + norm + '%'}`,
+          sql`${authUser.email} ILIKE ${'%' + norm + '%'}`
         )
       )
       .limit(1)
@@ -2841,19 +2895,25 @@ export async function getApprovalCenterData(email: string) {
         (left.submittedAt ? new Date(left.submittedAt).getTime() : 0)
     )
 
-  const normalizedEmail = normalizeMatchValue(email)
-  const employeeEmailNorm = normalizeMatchValue(currentEmployee?.email)
-  const normalizedEmployeeName = normalizeMatchValue(currentEmployee?.name)
-  const isAdmin = checkIsAdmin(email, currentEmployee)
-
   const inboxRows = queue.filter(
-    (item) =>
-      item.isPending &&
-      ((currentEmployee?.id != null && item.approverEmployeeId === currentEmployee.id) ||
+    (item) => {
+      if (!item.isPending) return false
+
+      const emailMatches =
         (normalizedEmail && normalizeMatchValue(item.approverEmail) === normalizedEmail) ||
-        (employeeEmailNorm && normalizeMatchValue(item.approverEmail) === employeeEmailNorm) ||
-        (normalizedEmployeeName &&
-          normalizeMatchValue(item.approverName) === normalizedEmployeeName))
+        (employeeEmailNorm && normalizeMatchValue(item.approverEmail) === employeeEmailNorm)
+      const employeeMatches =
+        currentEmployee?.id != null && item.approverEmployeeId === currentEmployee.id
+      const nameMatches =
+        normalizedEmployeeName && normalizeMatchValue(item.approverName) === normalizedEmployeeName
+      const roleSectionMatches = isRoleOrSectionMatching(
+        currentEmployee,
+        item.approverName,
+        item.routeSnapshot
+      )
+
+      return emailMatches || employeeMatches || nameMatches || roleSectionMatches
+    }
   )
 
   const inboxGroupsMap = new Map<

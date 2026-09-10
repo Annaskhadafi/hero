@@ -18,7 +18,7 @@ test("approval routing sends Central Service outside Jakarta/Balikpapan to PJO S
   assert.match(source, /siteHeadEmployeeId: sites\.headEmployeeId/);
   assert.match(source, /context\.siteHeadEmployeeId/);
   assert.match(source, /Head Area\/PJO Site dari master Lokasi Site/);
-  assert.match(source, /resolutionSource: "legacy_site_pjo"/);
+  assert.match(source, /resolutionSource: ['"]legacy_site_pjo['"]/);
 });
 
 test("approval routing keeps non Central Service on direct manager or org matrix path", () => {
@@ -26,7 +26,7 @@ test("approval routing keeps non Central Service on direct manager or org matrix
 
   assert.match(source, /const matrixCandidates = await db/);
   assert.match(source, /return resolveLegacyFallbackRoute\(context\)/);
-  assert.match(source, /label: "Direct Manager"/);
-  assert.match(source, /resolutionSource: "legacy_manager"/);
+  assert.match(source, /label: ['"]Direct Manager['"]/);
+  assert.match(source, /resolutionSource: ['"]legacy_manager['"]/);
 });
 

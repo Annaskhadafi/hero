@@ -610,7 +610,7 @@ export function InboxTab({
     }
 
     for (const g of groups) {
-      const formWoItem = g.items.find(
+      const formWoItems = g.items.filter(
         (i: any) =>
           i.repairFormWo ||
           i.activityType === 'Form WO' ||
@@ -620,47 +620,42 @@ export function InboxTab({
           (i as any).title?.toLowerCase().includes('work order') ||
           (i as any).title?.toLowerCase().includes('wo ')
       )
-      const isFormWo = Boolean(
-        formWoItem &&
-          (formWoItem.repairFormWo ||
-            formWoItem.activityType === 'Work Order' ||
-            (formWoItem as any).repairFormWoId != null)
-      )
-      const woData =
-        formWoItem?.repairFormWo ||
-        (isFormWo && formWoItem
-          ? {
-              id: (formWoItem as any).repairFormWoId || formWoItem.activityId,
-              noPengajuan: formWoItem.requestNumber || formWoItem.title || `WO-${formWoItem.activityId}`,
-              jenisPengajuan: formWoItem.title?.toLowerCase().includes('service') ? 'service' : 'repair',
-              pemohon: formWoItem.requesterName || g.requesterName,
-              pemohonJobTitle: formWoItem.requesterJobTitle || 'Pemohon',
-              customer: formWoItem.unitNumber || g.siteName || 'Customer',
-              site: formWoItem.siteName || g.siteName,
-              deskripsiPekerjaan:
-                formWoItem.description && formWoItem.description !== '-'
-                  ? formWoItem.description
-                  : formWoItem.title || formWoItem.remarks || 'Work Order Request',
-              totalAmount: String((formWoItem as any).totalAmount || 0),
-              submitterSignatureUrl: formWoItem.signatureUrl || null,
-              steps: (formWoItem as any).steps || [],
-            }
-          : null)
+      const nonFormWoItems = g.items.filter((i: any) => !formWoItems.includes(i))
 
-      if (isFormWo && woData) {
+      for (const formWoItem of formWoItems) {
+        const isFormWo = true
+        const woData =
+          formWoItem?.repairFormWo ||
+          {
+            id: (formWoItem as any).repairFormWoId || formWoItem.activityId,
+            noPengajuan: formWoItem.requestNumber || formWoItem.title || `WO-${formWoItem.activityId}`,
+            jenisPengajuan: formWoItem.title?.toLowerCase().includes('service') ? 'service' : 'repair',
+            pemohon: formWoItem.requesterName || g.requesterName,
+            pemohonJobTitle: formWoItem.requesterJobTitle || 'Pemohon',
+            customer: formWoItem.unitNumber || g.siteName || 'Customer',
+            site: formWoItem.siteName || g.siteName,
+            deskripsiPekerjaan:
+              formWoItem.description && formWoItem.description !== '-'
+                ? formWoItem.description
+                : formWoItem.title || formWoItem.remarks || 'Work Order Request',
+            totalAmount: String((formWoItem as any).totalAmount || 0),
+            submitterSignatureUrl: formWoItem.signatureUrl || null,
+            steps: (formWoItem as any).steps || [],
+          }
+
         list.push({
-          id: `form-wo-${woData.id}`,
+          id: `form-wo-${woData.id || formWoItem.approvalId}`,
           category: 'FORM_WO',
           categoryLabel: 'Form Permintaan Work Order',
           documentNumber: woData.noPengajuan || `WO-${woData.id}`,
           title: `Work Order: ${(woData.jenisPengajuan || 'WO').toUpperCase()} - ${woData.customer || g.siteName || 'Customer'}`,
           employeeName: woData.pemohon || g.requesterName,
           siteName: woData.site || g.siteName,
-          workDate: woData.tanggalPengajuan ? new Date(woData.tanggalPengajuan) : g.workDate,
-          stepLabel: formWoItem?.currentStepLabel || `${g.items.length} Step Pending`,
-          dueState: g.overdueCount > 0 ? 'overdue' : g.dueSoonCount > 0 ? 'due_soon' : 'open',
-          dueAt: g.items[0]?.dueAt || new Date(),
-          submittedAt: g.items[0]?.submittedAt || new Date(),
+          workDate: woData.tanggalPengajuan ? new Date(woData.tanggalPengajuan) : (formWoItem.submittedAt ? new Date(formWoItem.submittedAt) : g.workDate),
+          stepLabel: formWoItem?.currentStepLabel || 'Menunggu Approval',
+          dueState: formWoItem?.dueState || (g.overdueCount > 0 ? 'overdue' : g.dueSoonCount > 0 ? 'due_soon' : 'open'),
+          dueAt: formWoItem?.dueAt || g.items[0]?.dueAt || new Date(),
+          submittedAt: formWoItem?.submittedAt || g.items[0]?.submittedAt || new Date(),
           url: '#',
           approvalId: formWoItem?.approvalId,
           level: formWoItem?.level || g.items[0]?.level || 1,
@@ -668,7 +663,7 @@ export function InboxTab({
           customerName: woData.customer,
           totalAmount: woData.totalAmount,
           signatureUrl: woData.submitterSignatureUrl,
-          approverName: g.items[0]?.approverName || formWoItem?.approverName || null,
+          approverName: formWoItem?.approverName || g.items[0]?.approverName || null,
           rawFormWo: {
             ...woData,
             steps:
@@ -682,10 +677,15 @@ export function InboxTab({
                 signatureUrl: s.signatureUrl || null,
               })) || (woData.steps || []),
           },
-          rawGeneralGroup: g,
+          rawGeneralGroup: {
+            ...g,
+            items: [formWoItem],
+          },
         })
-      } else {
-        const apdItem = g.items.find(
+      }
+
+      if (nonFormWoItems.length > 0) {
+        const apdItem = nonFormWoItems.find(
           (i: any) =>
             i.activityType?.toLowerCase().includes('request apd') ||
             i.activityType?.toLowerCase().includes('request tools') ||
@@ -738,7 +738,7 @@ export function InboxTab({
 
         const resolvedTitle = isApd
           ? (apdItem?.title || `${resolvedCategoryLabel} - ${g.requesterName}`)
-          : `${g.requesterName} - ${g.activityCount} Item Activity`
+          : `${g.requesterName} - ${nonFormWoItems.length} Item Activity`
 
         list.push({
           id: `general-group-${g.id}`,
@@ -749,16 +749,20 @@ export function InboxTab({
           employeeName: g.requesterName,
           siteName: g.siteName,
           workDate: g.workDate,
-          stepLabel: isApd && apdItem?.currentStepLabel ? apdItem.currentStepLabel : `${g.items.length} Step Pending`,
+          stepLabel: isApd && apdItem?.currentStepLabel ? apdItem.currentStepLabel : `${nonFormWoItems.length} Step Pending`,
           dueState: g.overdueCount > 0 ? 'overdue' : g.dueSoonCount > 0 ? 'due_soon' : 'open',
-          dueAt: g.items[0]?.dueAt || new Date(),
-          submittedAt: g.items[0]?.submittedAt || new Date(),
+          dueAt: nonFormWoItems[0]?.dueAt || new Date(),
+          submittedAt: nonFormWoItems[0]?.submittedAt || new Date(),
           url: isApd ? (isSummary ? `/print/summary/${apdItem?.activityId}` : `/print/apd/${apdItem?.activityId}`) : '#',
           activityType: isSummary ? 'Summary APD' : (apdItem?.activityType || (isApd ? (isMaterial ? 'Request Material' : isTools ? 'Request Tools' : 'Request APD') : 'Form Activity')),
           activityId: apdItem?.activityId || g.id,
-          approvalId: apdItem?.approvalId || g.items[0]?.approvalId,
-          approverName: g.items[0]?.approverName || null,
-          rawGeneralGroup: g,
+          approvalId: apdItem?.approvalId || nonFormWoItems[0]?.approvalId,
+          approverName: nonFormWoItems[0]?.approverName || null,
+          rawGeneralGroup: {
+            ...g,
+            items: nonFormWoItems,
+            activityCount: nonFormWoItems.length,
+          },
         })
       }
     }

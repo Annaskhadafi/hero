@@ -50,19 +50,15 @@ async function ensureEmployeeAuthProvisioned(
         createdAt: now,
         updatedAt: now,
       })
+      await db.update(employees).set({ authUserId: userId }).where(eq(employees.id, employeeId))
     }
-
-    // Link employee to authUserId
-    await db.update(employees).set({ authUserId: userId }).where(eq(employees.id, employeeId))
 
     // Check account
     const [existingAccount] = await db.select({ id: account.id }).from(account).where(eq(account.userId, userId)).limit(1)
-    const plainPassword = `Chitra#${employeeSn || '47006'}`
-    const hashedPassword = await hashPassword(plainPassword)
 
-    if (existingAccount) {
-      await db.update(account).set({ password: hashedPassword, updatedAt: now }).where(eq(account.id, existingAccount.id))
-    } else {
+    if (!existingAccount) {
+      const plainPassword = `Chitra#${employeeSn || '47006'}`
+      const hashedPassword = await hashPassword(plainPassword)
       await db.insert(account).values({
         id: randomUUID(),
         userId: userId,
