@@ -1579,7 +1579,12 @@ export const roleMenuPermissions = pgTable('hero_role_menu_permissions', {
   canSelectAll: boolean('can_select_all').notNull().default(false),
   dataScope: text('data_scope').notNull().default('own'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
-})
+}, (table) => ({
+  roleMenuUnique: uniqueIndex('hero_role_menu_permissions_role_menu_uq').on(
+    table.roleId,
+    table.menuItemId,
+  ),
+}))
 
 export const portalChitraApps = pgTable('hero_portal_chitra_apps', {
   id: serial('id').primaryKey(),

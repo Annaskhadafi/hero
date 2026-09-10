@@ -76,6 +76,7 @@ import {
   getCurrentEmployeeAccessContext,
   getCurrentMenuPermission,
   hasGlobalDataAccess,
+  isSuperAdminRole,
 } from '@/lib/hero-access'
 import {
   ensureMasterCategoryTables,
@@ -1758,6 +1759,7 @@ const DEPRECATED_MENU_RESOURCES = [
   'hc_certificate',
   'scheduling_timesheet_schedule',
   'lms_integration',
+  'hc_org_chart',
 ]
 const DEPRECATED_MENU_URLS = [
   '/dashboard/slow-moving',
@@ -1765,6 +1767,7 @@ const DEPRECATED_MENU_URLS = [
   '/dashboard/hc/technical-engineer',
   '/dashboard/hc/certificate',
   '/dashboard/scheduling-timesheet/schedule',
+  '/dashboard/hc/org-chart',
   '/dashboard/lms',
   '/api/lms/sso',
 ]
@@ -7768,6 +7771,7 @@ export const getSidebarDataForUser = cache(async function getSidebarDataForUser(
         .limit(1)
 
       const activeRole = role
+      const superAdmin = isSuperAdminRole(roleName)
 
       if (!activeRole) {
         return {
@@ -7800,7 +7804,7 @@ export const getSidebarDataForUser = cache(async function getSidebarDataForUser(
 
       const visibleItems = dedupeMenuItemsByPage(
         permittedMenuItems
-          .filter((item) => item.isVisible && item.canView)
+          .filter((item) => item.isVisible && (superAdmin || item.canView))
           .map((item) => ({
             ...item,
             url: item.isIframe ? `/dashboard/iframe/${item.id}` : item.url,

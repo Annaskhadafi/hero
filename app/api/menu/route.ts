@@ -5,12 +5,17 @@ import { user as authUser } from "@/db/schema/auth";
 import { eq, or } from "drizzle-orm";
 import { getServerSession } from "@/lib/auth-session";
 import { getCurrentEmployeeAccessRole } from "@/lib/get-current-employee";
+import { getCurrentMenuPermission, isSuperAdminRole } from "@/lib/hero-access";
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession();
 
   if (!session?.user?.email) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const managementPermission = await getCurrentMenuPermission("settings_navbar");
+  if (!managementPermission.canView) {
+    return NextResponse.json({ error: "Forbidden: Akses ditolak" }, { status: 403 });
   }
 
   const [employee] = await db
@@ -22,7 +27,8 @@ export async function GET(request: NextRequest) {
     .where(or(eq(employees.email, session.user.email), eq(authUser.email, session.user.email)))
     .limit(1);
 
-  const roleName = employee?.accessRole ?? 'User';
+  const roleName = employee?.accessRole;
+  if (!roleName) return NextResponse.json([]);
   const [role] = await db
     .select()
     .from(securityRoles)
@@ -58,7 +64,9 @@ export async function GET(request: NextRequest) {
     .where(eq(roleMenuPermissions.roleId, role.id))
     .orderBy(navbarMenuItems.section, navbarMenuItems.sortOrder);
 
-  const visibleItems = permittedMenuItems.filter((item) => item.isVisible && item.canView);
+  const visibleItems = permittedMenuItems.filter(
+    (item) => item.isVisible && (isSuperAdminRole(roleName) || item.canView)
+  );
 
   return NextResponse.json(visibleItems);
 }
@@ -70,7 +78,8 @@ export async function POST(request: NextRequest) {
   }
 
   const role = await getCurrentEmployeeAccessRole();
-  if (!role || (role !== "Super Admin" && role !== "HC Manager")) {
+  const managementPermission = await getCurrentMenuPermission("settings_navbar");
+  if (!role || (!isSuperAdminRole(role) && !managementPermission.canEdit)) {
     return NextResponse.json({ error: "Forbidden: Akses ditolak" }, { status: 403 });
   }
 

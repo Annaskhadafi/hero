@@ -2,8 +2,12 @@ import { GroupLabelStyleManager } from "@/components/group-label-style-manager";
 import { NavbarMenuManager } from "@/components/navbar-menu-manager";
 import { NavbarSettingsPanel } from "@/components/navbar-settings-panel";
 import { getGroupLabelStyles, getNavbarSettingsData } from "@/lib/hero-admin";
+import { getCurrentMenuPermission } from "@/lib/hero-access";
+import { redirect } from "next/navigation";
 
 export default async function NavbarSettingsPage() {
+  const permission = await getCurrentMenuPermission("settings_navbar");
+  if (!permission.canView) redirect("/dashboard");
   const { theme, menuItems } = await getNavbarSettingsData();
   const groupLabelColor = await getGroupLabelStyles();
 

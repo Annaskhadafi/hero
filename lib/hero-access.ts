@@ -1,4 +1,4 @@
-import { and, eq, or } from 'drizzle-orm'
+import { and, eq, or, sql } from 'drizzle-orm'
 
 import { db } from '@/db'
 import { user as authUser } from '@/db/schema/auth'
@@ -49,7 +49,9 @@ export async function getCurrentEmployeeAccessRole(): Promise<string> {
     .where(
       or(
         session.user.id ? eq(employees.authUserId, session.user.id) : undefined,
-        session.user.email ? eq(employees.email, session.user.email) : undefined
+        session.user.email
+          ? sql`lower(${employees.email}) = lower(${session.user.email})`
+          : undefined
       )
     )
     .limit(1)
@@ -94,7 +96,12 @@ export async function getMenuPermissionForRole(
     .from(roleMenuPermissions)
     .innerJoin(securityRoles, eq(roleMenuPermissions.roleId, securityRoles.id))
     .innerJoin(navbarMenuItems, eq(roleMenuPermissions.menuItemId, navbarMenuItems.id))
-    .where(and(eq(securityRoles.name, roleName), eq(navbarMenuItems.resource, resource)))
+    .where(
+      and(
+        sql`lower(${securityRoles.name}) = lower(${roleName})`,
+        eq(navbarMenuItems.resource, resource)
+      )
+    )
     .limit(1)
 
   if (permission) {
