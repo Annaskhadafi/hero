@@ -29,7 +29,7 @@ export type SectionWithSummary = {
   id: number;
   name: string;
   code: string;
-  departmentId: number;
+  departmentId: number | null;
   headEmployeeId: number | null;
   targetSite: string;
   approvedCount: number;

@@ -103,6 +103,11 @@ type ContractStatus = {
   type: "ACTIVE" | "EXPIRING" | "COMPLETED" | "NO_CONTRACT";
 };
 
+type MinePermitStatus = {
+  label: string;
+  type: "ACTIVE" | "EXPIRING" | "EXPIRED" | "NONE";
+};
+
 type EmployeeFormData = {
   employeeId: string;
   fullName: string;
@@ -352,6 +357,28 @@ function getContractStatus(contractEnd: string | null): ContractStatus {
   return { label: "Aktif", type: "ACTIVE" };
 }
 
+function getMinePermitStatus(expMinePermit: string | null): MinePermitStatus {
+  if (!expMinePermit) {
+    return { label: "Tanpa Mine Permit", type: "NONE" };
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const exp = new Date(expMinePermit);
+  exp.setHours(0, 0, 0, 0);
+  const diffDays = Math.ceil(
+    (exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  if (diffDays <= 0) {
+    return { label: "Kadaluarsa", type: "EXPIRED" };
+  }
+  if (diffDays <= 30) {
+    return { label: "Akan Berakhir", type: "EXPIRING" };
+  }
+  return { label: "Aktif", type: "ACTIVE" };
+}
+
 function isOnProgress(employee: Employee): boolean {
   if (!employee.joinDate) return false;
   const today = new Date();
@@ -533,6 +560,14 @@ export function EmployeeClientPage({
     const map = new Map<number, ContractStatus>();
     for (const emp of data) {
       map.set(emp.id, getContractStatus(emp.contractEnd));
+    }
+    return map;
+  }, [data]);
+
+  const minePermitStatusMap = useMemo(() => {
+    const map = new Map<number, MinePermitStatus>();
+    for (const emp of data) {
+      map.set(emp.id, getMinePermitStatus(emp.expMinePermit));
     }
     return map;
   }, [data]);
@@ -874,6 +909,17 @@ export function EmployeeClientPage({
               ]}
               widthClassName="w-[160px]"
             />
+            <TableMultiFilter
+              label="Mine Permit"
+              filterKey="mine-permit"
+              options={[
+                { value: "Aktif", label: "Aktif" },
+                { value: "Akan Berakhir", label: "Akan Berakhir" },
+                { value: "Kadaluarsa", label: "Kadaluarsa" },
+                { value: "Tanpa Mine Permit", label: "Tanpa Mine Permit" },
+              ]}
+              widthClassName="w-[170px]"
+            />
           </>
         }
         actions={
@@ -928,6 +974,10 @@ export function EmployeeClientPage({
                   label: "-",
                   type: "NO_CONTRACT" as const,
                 };
+                const minePermitStatus = minePermitStatusMap.get(emp.id) ?? {
+                  label: "Tanpa Mine Permit",
+                  type: "NONE" as const,
+                };
                 const isOnProg = onProgressSet.has(emp.id);
 
                 return (
@@ -938,6 +988,7 @@ export function EmployeeClientPage({
                     data-filter-location={emp.siteName ?? ""}
                     data-filter-gender={emp.genderCode ?? ""}
                     data-filter-contract={status.label}
+                    data-filter-mine-permit={minePermitStatus.label}
                     className={hcTableRowClassName}
                   >
                     <TableCell className="text-center">
@@ -1006,7 +1057,21 @@ export function EmployeeClientPage({
                       )}
                     </TableCell>
                     <TableCell className="text-center text-muted-foreground">
-                      {formatDate(emp.expMinePermit)}
+                      {minePermitStatus.type === "EXPIRING" ? (
+                        <Badge className="bg-amber-500 text-white hover:bg-amber-600 whitespace-nowrap shadow-sm">
+                          {formatDate(emp.expMinePermit)}
+                        </Badge>
+                      ) : minePermitStatus.type === "EXPIRED" ? (
+                        <Badge className="bg-red-500 text-white hover:bg-red-600 whitespace-nowrap shadow-sm">
+                          {formatDate(emp.expMinePermit)}
+                        </Badge>
+                      ) : minePermitStatus.type === "ACTIVE" ? (
+                        <Badge className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 ring-1 ring-emerald-200 whitespace-nowrap">
+                          {formatDate(emp.expMinePermit)}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">{formatDate(emp.expMinePermit)}</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-center text-muted-foreground">
                       {formatDate(emp.lastMcuDate)}

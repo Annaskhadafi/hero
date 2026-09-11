@@ -7,7 +7,7 @@ export const revalidate = 0
 
 export default async function MonthlyForecastPage() {
   const access = await getCurrentMenuPermission('cs-forecast')
-  if (!access.canView) redirect('/403')
+  if (!access.canView) redirect('/dashboard')
 
   const periods = await getForecastPeriods()
   const salesEmployees = await getSalesEmployees()

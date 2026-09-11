@@ -90,7 +90,7 @@ export function ApprovalRequestDetails({ item }: { item: ApprovalInboxItem }) {
               </p>
               <h3 className="mt-1 text-lg font-black tracking-tight">{wo?.noPengajuan || item.requestNumber || item.title}</h3>
             </div>
-            <AdminStatusBadge value={wo?.status || 'Pending'} />
+            <AdminStatusBadge value={(wo as any)?.status || 'Pending'} />
           </div>
           <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
             <div>

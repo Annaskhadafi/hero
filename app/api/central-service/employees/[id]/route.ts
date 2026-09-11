@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { centralServiceEmployees } from "@/db/schema/central-service";
 import { employees as heroEmployees } from "@/db/schema/hero";
-import { user } from "@/db/schema/auth";
 import { getServerSession } from "@/lib/auth-session";
 import { eq } from "drizzle-orm";
 
@@ -59,16 +58,19 @@ export async function PATCH(
     const [employee] = await db.update(centralServiceEmployees).set({ ...body, updatedAt: new Date() }).where(eq(centralServiceEmployees.id, id)).returning();
     if (!employee) return NextResponse.json({ error: "Employee not found" }, { status: 404 });
 
-    // Sync email to employees and Better Auth user if email changed
-    if (body.email && employee.employeeSn) {
-      await db.update(heroEmployees)
-        .set({ email: body.email })
-        .where(eq(heroEmployees.employeeSn, employee.employeeSn));
-
-      if (employee.authUserId) {
-        await db.update(user)
-          .set({ email: body.email })
-          .where(eq(user.id, employee.authUserId));
+    // Sync email FROM hero_employees (User Management is single source of truth)
+    // Do NOT write email back to hero_employees from Central Service
+    if (employee.employeeSn) {
+      const [heroEmp] = await db
+        .select({ email: heroEmployees.email })
+        .from(heroEmployees)
+        .where(eq(heroEmployees.employeeSn, employee.employeeSn))
+        .limit(1)
+      if (heroEmp?.email) {
+        await db
+          .update(centralServiceEmployees)
+          .set({ email: heroEmp.email })
+          .where(eq(centralServiceEmployees.id, id))
       }
     }
     return NextResponse.json({ success: true, data: employee });

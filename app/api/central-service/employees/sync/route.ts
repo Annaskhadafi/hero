@@ -139,3 +139,67 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+/**
+ * GET /api/central-service/employees/sync
+ * Bulk-refresh all CS employee emails FROM hero_employees (User Management).
+ * hero_employees is the single source of truth for email.
+ */
+export async function GET(request: NextRequest) {
+  try {
+    const access = await requireCentralServiceAccess()
+    if (access.error) return access.error
+
+    // Fetch all CS employees that are synced to User Management
+    const csEmployees = await db
+      .select({
+        id: centralServiceEmployees.id,
+        employeeSn: centralServiceEmployees.employeeSn,
+        currentEmail: centralServiceEmployees.email,
+      })
+      .from(centralServiceEmployees)
+      .where(eq(centralServiceEmployees.isActive, true))
+
+    if (csEmployees.length === 0) {
+      return NextResponse.json({ success: true, updated: 0, skipped: 0 })
+    }
+
+    // Fetch all hero_employees emails matched by employeeSn
+    const heroEmps = await db
+      .select({ employeeSn: employees.employeeSn, email: employees.email })
+      .from(employees)
+
+    const heroEmailMap = new Map<string, string | null>()
+    for (const e of heroEmps) {
+      if (e.employeeSn) heroEmailMap.set(e.employeeSn.toLowerCase(), e.email)
+    }
+
+    let updated = 0
+    let skipped = 0
+
+    for (const csEmp of csEmployees) {
+      const sn = csEmp.employeeSn?.toLowerCase() ?? ''
+      const heroEmail = heroEmailMap.get(sn) ?? heroEmailMap.get(sn.replace(/^emp-/i, '')) ?? heroEmailMap.get(`emp-${sn}`)
+      if (!heroEmail) { skipped++; continue }
+      if (heroEmail === csEmp.currentEmail) { skipped++; continue }
+
+      await db
+        .update(centralServiceEmployees)
+        .set({ email: heroEmail, updatedAt: new Date() })
+        .where(eq(centralServiceEmployees.id, csEmp.id))
+      updated++
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `Email sync selesai: ${updated} diperbarui, ${skipped} tidak berubah`,
+      updated,
+      skipped,
+    })
+  } catch (error) {
+    console.error('Bulk email sync error:', error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Bulk sync failed' },
+      { status: 500 }
+    )
+  }
+}

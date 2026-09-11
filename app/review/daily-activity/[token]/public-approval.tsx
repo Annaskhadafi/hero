@@ -179,8 +179,9 @@ export function DailyActivityPublicApproval({
   sessionItems = [],
   allApprovals = [],
   totals = { itemCount: 0, totalPoints: 0 },
-  registeredSignature,
+  registeredSignature: initialRegisteredSignature,
 }: PublicApprovalProps) {
+  const [registeredSignature, setRegisteredSignature] = useState(initialRegisteredSignature)
   const signatureRef = useRef<SignatureCanvas | null>(null)
   const [done, setDone] = useState(approval?.status === 'approved')
   const [rejected, setRejected] = useState(approval?.status === 'rejected')

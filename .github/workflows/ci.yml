@@ -6,17 +6,20 @@ on:
   pull_request:
     branches: [main, develop]
 
+env:
+  NODE_OPTIONS: '--disable-warning=DEP0040'
+
 jobs:
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Windows, X64]
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Install dependencies
         run: npm install --no-audit
@@ -26,14 +29,14 @@ jobs:
 
   typecheck:
     name: Type Check
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Windows, X64]
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Install dependencies
         run: npm install --no-audit
@@ -41,18 +44,18 @@ jobs:
       - name: Run TypeScript compiler
         run: npm run type-check
         env:
-          NODE_OPTIONS: '--max-old-space-size=6144'
+          NODE_OPTIONS: '--disable-warning=DEP0040 --max-old-space-size=6144'
 
   build:
     name: Build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Windows, X64]
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Install dependencies
         run: npm install --no-audit
@@ -60,7 +63,7 @@ jobs:
       - name: Build application
         run: npm run build
         env:
-          NODE_OPTIONS: '--max-old-space-size=6144'
+          NODE_OPTIONS: '--disable-warning=DEP0040 --max-old-space-size=6144'
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
           BETTER_AUTH_SECRET: test-secret-key-for-ci
           BETTER_AUTH_URL: http://localhost:3000
@@ -68,42 +71,49 @@ jobs:
 
   test:
     name: Test
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: postgres
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-
+    runs-on: [self-hosted, Windows, X64]
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Install dependencies
         run: npm install --no-audit
 
+      - name: Start PostgreSQL
+        shell: pwsh
+        run: |
+          docker rm -f hero-ci-postgres 2>$null
+          docker run -d --name hero-ci-postgres --restart unless-stopped `
+            -e POSTGRES_USER=postgres `
+            -e POSTGRES_PASSWORD=postgres `
+            -e POSTGRES_DB=postgres `
+            -p 5433:5432 postgres:16
+          $ready = $false
+          1..30 | ForEach-Object {
+            if (-not $ready) {
+              docker exec hero-ci-postgres pg_isready -U postgres -d postgres 2>$null
+              if ($LASTEXITCODE -eq 0) { $ready = $true }
+              else { Start-Sleep -Seconds 2 }
+            }
+          }
+          if (-not $ready) {
+            docker logs hero-ci-postgres
+            exit 1
+          }
+
       - name: Setup database
         run: npm run db:push
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5433/postgres
 
       - name: Run tests
         run: npm test
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5433/postgres
           BETTER_AUTH_SECRET: test-secret-key-for-ci
           BETTER_AUTH_URL: http://localhost:3000
           NEXT_PUBLIC_BETTER_AUTH_URL: http://localhost:3000

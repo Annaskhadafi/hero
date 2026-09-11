@@ -141,6 +141,8 @@ type ApprovalData = {
   summaryRemark?: string | null
   submittedAt: Date | string | null
   approvedAt: Date | string | null
+  teamMembersSummary?: string | null
+  spl?: any | null
   employee: {
     id?: number
     name: string
@@ -2546,15 +2548,15 @@ export function DailyActivityApprovalForm({
               workDate: data.workDate,
               shiftCode: data.shiftCode,
               status: data.status,
-              summaryRemark: data.summaryRemark,
+              summaryRemark: data.summaryRemark ?? null,
               submittedAt: data.submittedAt,
-              employeeId: data.employee.id,
+              employeeId: data.employee.id ?? 0,
               employeeName: data.employee.name,
               employeeSn: data.employee.sn,
               employeeDepartment: data.employee.department,
               employeeSection: data.employee.section,
               employeeJobTitle: data.employee.jobTitle,
-              siteId: data.site.id,
+              siteId: data.site.id ?? 0,
               siteName: data.site.name,
               customerName: data.site.customerName,
               contractNumber: null,

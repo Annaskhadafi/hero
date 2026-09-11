@@ -28,7 +28,15 @@ function populateEmailsFromEmployees(settings: any, empList: any[]) {
   return s
 }
 
+import { redirect } from "next/navigation"
+import { getCurrentMenuPermission } from "@/lib/hero-access"
+
 export default async function ContractReviewPage() {
+  const access = await getCurrentMenuPermission('hc_contract_review')
+  if (!access.canView) {
+    redirect('/dashboard')
+  }
+
   const [reviewsResult, settings, expiringEmployees] = await Promise.all([
     getContractReviews(),
     getContractReviewSettings(),

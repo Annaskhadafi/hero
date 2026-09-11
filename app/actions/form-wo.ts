@@ -1,6 +1,6 @@
 'use server'
 
-import { and, asc, desc, eq, gt, inArray, ne, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, lt, inArray, ne, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
@@ -10,6 +10,7 @@ import { resolveApprovalRouteForActivity } from '@/lib/approval-engine'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import { repairFormWo, repairWipPo } from '@/db/schema/form-wo'
 import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { getCurrentMenuPermission } from '@/lib/hero-access'
 import {
   sendFormWoApprovalRequestEmail,
   sendFormWoStatusApprovedEmail,
@@ -146,7 +147,10 @@ async function generateNoPengajuan(): Promise<string> {
 // --- Schemas ----------------------------------------------------------------
 
 const formWoCreateSchema = z.object({
-  jenisPengajuan: z.enum(['repair', 'service', 'non_repair', 'retread']).optional().default('repair'),
+  jenisPengajuan: z
+    .enum(['repair', 'service', 'non_repair', 'retread'])
+    .optional()
+    .default('repair'),
   idWo: z.string().optional(),
   tireSn: z.string().optional(),
   customer: z.string().optional(),
@@ -376,18 +380,8 @@ export async function createFormWo(data: z.infer<typeof formWoCreateSchema>) {
     const parsed = formWoCreateSchema.parse(data)
     const noPengajuan = await generateNoPengajuan()
 
-    let employee = null
-    try {
-      employee = await getCurrentEmployee()
-    } catch {
-      const annas = await db.select().from(employees).where(eq(employees.id, 5)).limit(1)
-      employee = annas[0] ?? null
-    }
-    if (!employee) {
-      const firstActive = await db.select().from(employees).where(eq(employees.isActive, true)).limit(1)
-      employee = firstActive[0] ?? null
-    }
-    if (!employee) throw new Error('Unauthorized')
+    const employee = await getCurrentEmployee()
+    if (!employee) throw new Error('Unauthorized: Sesi karyawan tidak ditemukan')
 
     // Wajib tanda tangan digital pemohon sebelum submit
     if (!parsed.submitterSignatureUrl || !parsed.submitterSignatureUrl.trim()) {
@@ -494,8 +488,7 @@ export async function createFormWo(data: z.infer<typeof formWoCreateSchema>) {
 
       if (approvalIds.length > 0) {
         // Step 1 is the active pending step for Approver Tahap 1
-        const activePendingStep =
-          route.steps.find((s) => s.stepOrder === 1) || route.steps[0]
+        const activePendingStep = route.steps.find((s) => s.stepOrder === 1) || route.steps[0]
 
         let approverEmail: string | undefined
         if (activePendingStep && activePendingStep.approverEmployeeId) {
@@ -506,16 +499,35 @@ export async function createFormWo(data: z.infer<typeof formWoCreateSchema>) {
             .limit(1)
           if (approverEmp?.email) {
             approverEmail = approverEmp.email
-            notifyWorkflowBellRecipients({
-              recipientEmails: [approverEmail],
-              eventType: 'form_wo_review',
-              category: 'approval',
-              title: 'Review Form WO',
-              body: `${finalPemohon} mengajukan Form WO baru (${noPengajuan}) yang membutuhkan persetujuan Anda (${activePendingStep.label}).`,
-              url: `/dashboard/approval`,
-              tagPrefix: 'form-wo',
-            }).catch(console.error)
           }
+        }
+
+        if (!approverEmail && activePendingStep?.approverName) {
+          const [approverEmp] = await db
+            .select({ email: employees.email })
+            .from(employees)
+            .where(
+              and(
+                eq(employees.isActive, true),
+                sql`lower(${employees.name}) = lower(${activePendingStep.approverName})`
+              )
+            )
+            .limit(1)
+          if (approverEmp?.email) {
+            approverEmail = approverEmp.email
+          }
+        }
+
+        if (approverEmail) {
+          notifyWorkflowBellRecipients({
+            recipientEmails: [approverEmail],
+            eventType: 'form_wo_review',
+            category: 'approval_requests',
+            title: 'Review Form WO',
+            body: `${finalPemohon} mengajukan Form WO baru (${noPengajuan}) yang membutuhkan persetujuan Anda (${activePendingStep.label}).`,
+            url: `/dashboard/approval`,
+            tagPrefix: 'form-wo',
+          }).catch(console.error)
         }
 
         sendFormWoApprovalRequestEmail({
@@ -564,7 +576,7 @@ export async function updateFormWo(id: number, data: z.infer<typeof formWoUpdate
     const nextStatus =
       existing?.statusPengajuan === 'revisi' || existing?.statusPengajuan === 'needs_correction'
         ? 'pending'
-        : parsed.statusPengajuan ?? existing?.statusPengajuan ?? 'pending'
+        : (parsed.statusPengajuan ?? existing?.statusPengajuan ?? 'pending')
 
     await db
       .update(repairFormWo)
@@ -586,12 +598,7 @@ export async function updateFormWo(id: number, data: z.infer<typeof formWoUpdate
       const revertedStep = await db
         .select()
         .from(approvals)
-        .where(
-          and(
-            eq(approvals.repairFormWoId, id),
-            eq(approvals.status, 'needs_correction')
-          )
-        )
+        .where(and(eq(approvals.repairFormWoId, id), eq(approvals.status, 'needs_correction')))
         .orderBy(asc(approvals.level))
         .limit(1)
         .then((r) => r[0])
@@ -602,12 +609,7 @@ export async function updateFormWo(id: number, data: z.infer<typeof formWoUpdate
         targetStep = await db
           .select()
           .from(approvals)
-          .where(
-            and(
-              eq(approvals.repairFormWoId, id),
-              ne(approvals.status, 'approved')
-            )
-          )
+          .where(and(eq(approvals.repairFormWoId, id), ne(approvals.status, 'approved')))
           .orderBy(asc(approvals.level))
           .limit(1)
           .then((r) => r[0])
@@ -640,12 +642,7 @@ export async function updateFormWo(id: number, data: z.infer<typeof formWoUpdate
         .set({
           status: 'waiting',
         })
-        .where(
-          and(
-            eq(approvals.repairFormWoId, id),
-            gt(approvals.level, targetLevel)
-          )
-        )
+        .where(and(eq(approvals.repairFormWoId, id), gt(approvals.level, targetLevel)))
 
       // Update Form WO status to 'diproses' if targetLevel > 1, or 'pending' if level 1
       const effectiveFormWoStatus = targetLevel > 1 ? 'diproses' : 'pending'
@@ -683,9 +680,7 @@ export async function updateFormWo(id: number, data: z.infer<typeof formWoUpdate
           .select({ email: employees.email })
           .from(employees)
           .where(inArray(employees.id, prevApproverEmpIds))
-        previousApproverEmails = prevEmps
-          .map((e) => e.email)
-          .filter(Boolean) as string[]
+        previousApproverEmails = prevEmps.map((e) => e.email).filter(Boolean) as string[]
       }
 
       // Notify the specific approver of targetLevel
@@ -703,7 +698,7 @@ export async function updateFormWo(id: number, data: z.infer<typeof formWoUpdate
           notifyWorkflowBellRecipients({
             recipientEmails: [approverEmp.email, ...previousApproverEmails],
             eventType: 'form_wo_review',
-            category: 'approval',
+            category: 'approval_requests',
             title: `Form WO Telah Direvisi (Step ${targetLevel})`,
             body: `${parsed.pemohon || existing.pemohon || 'Pemohon'} telah merevisi Form WO (${existing.noPengajuan}) yang Anda minta revisi. Silakan review kembali.`,
             url: `/dashboard/approval`,
@@ -737,7 +732,7 @@ export async function updateFormWo(id: number, data: z.infer<typeof formWoUpdate
 
     safeRevalidatePath(FORM_WO_PATH)
     safeRevalidatePath('/dashboard/approval')
-    return { success: true }
+    return { success: true, noPengajuan: existing.noPengajuan }
   } catch (error) {
     console.error('Update Form WO Error:', error)
     return { success: false, error: 'Gagal memperbarui pengajuan WO' }
@@ -777,7 +772,7 @@ async function triggerFormWoCompletedPdfNotification(formWoId: number, noWoTerbi
       const creator = await db
         .select({ email: employees.email })
         .from(employees)
-        .where(eq(employees.id, existing.createdBy))
+        .where(eq(employees.id, Number(existing.createdBy)))
         .limit(1)
         .then((r) => r[0])
       creatorEmail = creator?.email
@@ -799,7 +794,10 @@ async function triggerFormWoCompletedPdfNotification(formWoId: number, noWoTerbi
           .where(eq(employees.id, serviceSpvStep.approverEmployeeId))
           .limit(1)
           .then((r) => r[0])
-        if (emp?.email && !dynamicRecipients.some((r) => r.email.toLowerCase() === emp.email.toLowerCase())) {
+        if (
+          emp?.email &&
+          !dynamicRecipients.some((r) => r.email.toLowerCase() === emp.email.toLowerCase())
+        ) {
           let roleName = 'Service Operation Coord. SPV'
           if (serviceSpvStep.routeSnapshot) {
             try {
@@ -825,7 +823,10 @@ async function triggerFormWoCompletedPdfNotification(formWoId: number, noWoTerbi
           .where(eq(employees.id, qcStep.approverEmployeeId))
           .limit(1)
           .then((r) => r[0])
-        if (emp?.email && !dynamicRecipients.some((r) => r.email.toLowerCase() === emp.email.toLowerCase())) {
+        if (
+          emp?.email &&
+          !dynamicRecipients.some((r) => r.email.toLowerCase() === emp.email.toLowerCase())
+        ) {
           let roleName = 'QC / Leader'
           if (qcStep.routeSnapshot) {
             try {
@@ -859,7 +860,7 @@ async function triggerFormWoCompletedPdfNotification(formWoId: number, noWoTerbi
 
     const pdfData: FormWoPdfData = {
       id: existing.id,
-      noPengajuan: existing.noPengajuan,
+      noPengajuan: existing.noPengajuan || '',
       jenisPengajuan: existing.jenisPengajuan,
       noWoTerbit,
       noPo: existing.noPo,
@@ -880,7 +881,7 @@ async function triggerFormWoCompletedPdfNotification(formWoId: number, noWoTerbi
     await sendFormWoCompletedWithPdfEmail({
       recipients: dynamicRecipients,
       pemohon: existing.pemohon || 'Pemohon',
-      noPengajuan: existing.noPengajuan,
+      noPengajuan: existing.noPengajuan || '',
       noWoTerbit,
       noPo: existing.noPo || undefined,
       customer: existing.customer || undefined,
@@ -896,7 +897,7 @@ async function triggerFormWoCompletedPdfNotification(formWoId: number, noWoTerbi
       notifyWorkflowBellRecipients({
         recipientEmails: finalRecipients,
         eventType: 'form_wo_approved',
-        category: 'approval',
+        category: 'approval_requests',
         title: 'Form WO Resmi Terbit (PDF Dilampirkan)',
         body: `Nomor WO resmi (${noWoTerbit}) telah diterbitkan untuk ${existing.noPengajuan}. File PDF Form WO dapat diunduh melalui sistem atau email Anda.`,
         url: `/dashboard/repair-retread/form-wo`,
@@ -943,7 +944,7 @@ export async function updateFormWoStatus(
             const emp = await db
               .select({ email: employees.email })
               .from(employees)
-              .where(eq(employees.id, record.createdBy))
+              .where(eq(employees.id, Number(record.createdBy)))
               .limit(1)
               .then((r) => r[0])
             requesterEmail = emp?.email
@@ -985,6 +986,14 @@ export async function updateFormWoStatus(
 
 export async function deleteFormWo(id: number) {
   try {
+    const employee = await getCurrentEmployee()
+    if (!employee) {
+      return { success: false, error: 'Unauthorized: Silakan login terlebih dahulu' }
+    }
+    const permission = await getCurrentMenuPermission('repair_form_wo')
+    if (!permission.canDelete) {
+      return { success: false, error: 'Akses ditolak: Anda tidak memiliki izin menghapus Form WO' }
+    }
     await ensureFormWoTable()
     await db.delete(repairFormWo).where(eq(repairFormWo.id, id))
     safeRevalidatePath(FORM_WO_PATH)

@@ -82,8 +82,14 @@ async function requireMcuWellnessAccess(action: 'view' | 'edit' = 'view') {
 
 type McuWellnessAccess = Awaited<ReturnType<typeof requireMcuWellnessAccess>>
 
-function assertMcuWellnessEmployeeScope(access: McuWellnessAccess, employeeId: number) {
+function assertMcuWellnessEmployeeScope(access: McuWellnessAccess, employeeId: number, targetEmployeeSiteId?: number | null) {
   if (access.hasGlobalScope) return
+  if (access.permission.dataScope === 'site') {
+    if (!access.context?.siteId || access.context.siteId !== targetEmployeeSiteId) {
+      throw new Error('Role Anda hanya bisa mengakses data wellness site sendiri.')
+    }
+    return
+  }
   if (!access.context?.employeeId || access.context.employeeId !== employeeId) {
     throw new Error('Role Anda hanya bisa mengakses data wellness sendiri.')
   }
@@ -100,7 +106,11 @@ export async function getMcuWellnessList(filters?: {
   const access = await requireMcuWellnessAccess('view')
   const conditions = []
   if (!access.hasGlobalScope) {
-    conditions.push(eq(employees.id, access.context?.employeeId ?? -1))
+    if (access.permission.dataScope === 'site') {
+      conditions.push(eq(employees.siteId, access.context?.siteId ?? -1))
+    } else {
+      conditions.push(eq(employees.id, access.context?.employeeId ?? -1))
+    }
   }
   if (filters?.departmentId) {
     conditions.push(eq(employees.departmentId, filters.departmentId))

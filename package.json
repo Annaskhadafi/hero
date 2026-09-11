@@ -12,13 +12,14 @@
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,css,md}\"",
     "format:check": "prettier --check \"**/*.{js,jsx,ts,tsx,json,css,md}\"",
     "type-check": "node --max-old-space-size=8192 ./node_modules/typescript/bin/tsc --noEmit",
-    "test": "jest",
+    "test": "jest --forceExit --runInBand",
     "test:playwright": "playwright test",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "qa:attendance-import": "tsx scripts/qa-attendance-import.ts",
     "check:attendance-db": "tsx scripts/check-attendance-db-drift.ts",
     "audit:master-data-sync": "tsx scripts/audit-master-data-sync.ts",
+    "audit:rbac": "tsx scripts/audit-rbac-sync.ts",
     "check:focused": "npm run qa:attendance-import && npm run check:attendance-db && npm test -- --runInBand tests/scheduling-timesheet.test.ts && npm run type-check && npm run lint",
     "db:generate": "drizzle-kit generate",
     "db:push": "tsx scripts/db-push.ts",
@@ -177,7 +178,6 @@
     "fast-xml-parser": "^4.5.3",
     "flatted": "^3.3.3",
     "js-yaml": "^4.1.1",
-    "lodash": "^4.17.21",
-    "ajv": "^8.17.1"
+    "lodash": "^4.17.21"
   }
 }

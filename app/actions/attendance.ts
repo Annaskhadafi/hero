@@ -114,6 +114,8 @@ async function getCurrentEmployee() {
       workLocation: employees.workLocation,
       siteId: employees.siteId,
       siteName: sites.name,
+      sectionId: employees.sectionId,
+      section: employees.section,
       employeeSn: employees.employeeSn,
       faceRegisteredAt: employees.faceRegisteredAt,
       faceRarayId: employees.faceRarayId,
@@ -146,6 +148,8 @@ async function getCurrentEmployee() {
       workLocation: employees.workLocation,
       siteId: employees.siteId,
       siteName: sites.name,
+      sectionId: employees.sectionId,
+      section: employees.section,
       employeeSn: employees.employeeSn,
       faceRegisteredAt: employees.faceRegisteredAt,
       faceRarayId: employees.faceRarayId,
@@ -215,10 +219,16 @@ async function getCurrentEmployee() {
       authUserId: employees.authUserId,
       name: employees.name,
       email: employees.email,
+      role: employees.role,
       jobTitle: employees.jobTitle,
       workLocation: employees.workLocation,
       siteId: employees.siteId,
+      sectionId: employees.sectionId,
+      section: employees.section,
+      employeeSn: employees.employeeSn,
       faceRegisteredAt: employees.faceRegisteredAt,
+      faceRarayId: employees.faceRarayId,
+      faceRarayRegisteredAt: employees.faceRarayRegisteredAt,
     })
 
   return createdEmployee
@@ -644,7 +654,6 @@ export async function submitAttendance(formData: FormData) {
       eventType,
       eventTime,
       shiftCode,
-      employeeId: employee.id,
     })
 
     const rawContext = getTrimmedFormValue(formData, 'attendanceContext')
@@ -1113,33 +1122,66 @@ export async function getTodayAttendanceLogs() {
     return { success: false, employee: null, logs: [] }
   }
 
+  const access = await getCurrentMenuPermission('attendance_records')
+  if (!access.canView) {
+    return { success: false, employee, logs: [] }
+  }
+
   const attendanceWindow = getAttendanceQueryWindow()
 
+  const conditions = [
+    gte(attendanceRecords.eventTime, attendanceWindow.start),
+    lte(attendanceRecords.eventTime, attendanceWindow.end),
+  ]
+
+  // Apply data scope: global = all records, site = site only, own = self only
+  if (!hasGlobalDataAccess(access)) {
+    if (access.dataScope === 'site') {
+      conditions.push(eq(attendanceRecords.siteId, employee.siteId))
+    } else {
+      // default 'own'
+      conditions.push(eq(attendanceRecords.employeeId, employee.id))
+    }
+  }
+
   const logs = await db
-    .select()
+    .select({
+      id: attendanceRecords.id,
+      employeeId: attendanceRecords.employeeId,
+      siteId: attendanceRecords.siteId,
+      eventType: attendanceRecords.eventType,
+      eventTime: attendanceRecords.eventTime,
+      status: attendanceRecords.status,
+      locationNote: attendanceRecords.locationNote,
+      latitude: attendanceRecords.latitude,
+      longitude: attendanceRecords.longitude,
+      photoUrl: attendanceRecords.photoUrl,
+      // Enrich employee info from hero_employees
+      employeeName: employees.name,
+      employeeEmail: employees.email,
+      siteName: sites.name,
+      workLocation: employees.workLocation,
+    })
     .from(attendanceRecords)
-    .where(
-      and(
-        eq(attendanceRecords.employeeId, employee.id),
-        gte(attendanceRecords.eventTime, attendanceWindow.start),
-        lte(attendanceRecords.eventTime, attendanceWindow.end)
-      )
-    )
+    .leftJoin(employees, eq(attendanceRecords.employeeId, employees.id))
+    .leftJoin(sites, eq(attendanceRecords.siteId, sites.id))
+    .where(and(...conditions))
     .orderBy(desc(attendanceRecords.eventTime))
 
   const logsWithPhotoPreview = await Promise.all(
     logs.map(async (log) => ({
       ...log,
-      employeeName: employee.name,
-      employeeEmail: employee.email,
-      siteName: employee.siteName,
-      workLocation: employee.workLocation,
+      employeeName: log.employeeName ?? employee.name,
+      employeeEmail: log.employeeEmail ?? employee.email,
+      siteName: log.siteName ?? employee.siteName,
+      workLocation: log.workLocation ?? employee.workLocation,
       photoPreviewUrl: await getS3ObjectReadUrl(log.photoUrl),
     }))
   )
 
   return { success: true, employee, logs: logsWithPhotoPreview }
 }
+
 
 export async function getLiveAttendanceMapData(dateStr?: string) {
   const [employee, access] = await Promise.all([

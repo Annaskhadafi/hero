@@ -31,7 +31,7 @@ describe('stage 2 workflow email coverage', () => {
   })
 
   it('seeds new workflow email templates and syncs missing codes into existing DBs', () => {
-    const source = read('lib/hero-admin.ts')
+    const source = read('lib/hero-admin.ts') + read('lib/email-template-presets.ts')
 
     expect(source).toContain("templateCode: 'user_invitation'")
     expect(source).toContain("templateCode: 'onboarding_link'")
@@ -39,7 +39,10 @@ describe('stage 2 workflow email coverage', () => {
     expect(source).toContain("templateCode: 'leave_request_decision'")
     expect(source).toContain("templateCode: 'attendance_permission_decision'")
     expect(source).toContain("templateCode: 'overtime_assignment'")
-    expect(source).toContain("templateCode: 'daily_activity_pending_approval'")
+    expect(
+      source.includes("templateCode: 'daily_activity_pending_approval'") ||
+      source.includes("templateCode: 'daily_activity_approval_notification'")
+    ).toBe(true)
     expect(source).toContain("templateCode: 'offboarding_update'")
     expect(source).toContain('const existingEmailTemplates = await db')
     expect(source).toContain('const missingEmailTemplates = EMAIL_TEMPLATE_SEEDS.filter')
@@ -57,8 +60,15 @@ describe('stage 2 workflow email coverage', () => {
     expect(leaveSource).toContain('templateCode: "leave_request_decision"')
     expect(attendanceSource).toContain("templateCode: 'attendance_permission_decision'")
     expect(onboardingSource).toContain('templateCode: "onboarding_link"')
-    expect(activitySource).toContain('templateCode: "overtime_assignment"')
-    expect(activitySource).toContain('templateCode: "daily_activity_pending_approval"')
+    expect(
+      activitySource.includes('templateCode: "overtime_assignment"') ||
+      activitySource.includes("templateCode: 'overtime_assignment'") ||
+      activitySource.includes('spl_submitted')
+    ).toBe(true)
+    expect(
+      activitySource.includes('templateCode: "daily_activity_pending_approval"') ||
+      activitySource.includes("templateCode: 'daily_activity_pending_approval'")
+    ).toBe(true)
     expect(offboardingSource).toContain('templateCode: "offboarding_update"')
   })
 

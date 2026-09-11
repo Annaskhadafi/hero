@@ -894,7 +894,7 @@ export async function resubmitFiveRReportAction(reportId: number, notes?: string
       .set({
         status: 'pending',
         submittedAt: new Date(),
-        decisionNote: notes ? `Diajukan ulang: ${notes}` : null,
+        decisionNote: notes ? `Diajukan ulang: ${notes}` : '',
       })
       .where(
         and(

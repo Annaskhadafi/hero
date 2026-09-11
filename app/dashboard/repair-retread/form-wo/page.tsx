@@ -20,6 +20,11 @@ async function FormWoContent() {
     getCurrentMenuPermission("repair_form_wo"),
   ])
 
+  if (!permission.canView) {
+    const { redirect } = await import("next/navigation");
+    redirect("/dashboard");
+  }
+
   const customerList = customerRes && customerRes.success && Array.isArray(customerRes.data) ? customerRes.data : []
 
   return (

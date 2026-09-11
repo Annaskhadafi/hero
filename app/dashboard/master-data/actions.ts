@@ -251,6 +251,9 @@ export async function manageEmployeeAssignmentAction(
   _state: MasterDataActionState,
   formData: FormData
 ): Promise<MasterDataActionState> {
+  if (!(await canEditMasterData())) {
+    return { status: "error", message: "Akses ditolak: Anda tidak memiliki izin mengelola master data." };
+  }
   const raw = Object.fromEntries(formData.entries());
 
   const parsed = z.object({
@@ -365,6 +368,13 @@ export async function manageSiteAction(
   _state: MasterDataActionState,
   formData: FormData
 ): Promise<MasterDataActionState> {
+  if (!(await canEditMasterData())) {
+    return {
+      status: "error",
+      message: "Akses ditolak: Anda tidak memiliki izin mengelola master data.",
+    };
+  }
+
   await ensureHeroGovernanceSeedData();
 
   const raw = Object.fromEntries(formData.entries());
@@ -852,6 +862,9 @@ export async function manageSectionAction(
   _state: MasterDataActionState,
   formData: FormData
 ): Promise<MasterDataActionState> {
+  if (!(await canEditMasterData())) {
+    return { status: "error", message: "Akses ditolak: Anda tidak memiliki izin mengelola master data." };
+  }
   await ensureHeroGovernanceSeedData();
 
   const raw = Object.fromEntries(formData.entries());
@@ -1074,6 +1087,9 @@ export async function manageJobTitleAction(
   _state: MasterDataActionState,
   formData: FormData
 ): Promise<MasterDataActionState> {
+  if (!(await canEditMasterData())) {
+    return { status: "error", message: "Akses ditolak: Anda tidak memiliki izin mengelola master data." };
+  }
   await ensureHeroGovernanceSeedData();
 
   const raw = Object.fromEntries(formData.entries());
@@ -1179,6 +1195,9 @@ export async function manageLevelStaffAction(
   _state: MasterDataActionState,
   formData: FormData
 ): Promise<MasterDataActionState> {
+  if (!(await canEditMasterData())) {
+    return { status: "error", message: "Akses ditolak: Anda tidak memiliki izin mengelola master data." };
+  }
   await ensureHeroGovernanceSeedData();
 
   const raw = Object.fromEntries(formData.entries());
@@ -1277,6 +1296,9 @@ export async function manageDepartmentAction(
   _state: MasterDataActionState,
   formData: FormData
 ): Promise<MasterDataActionState> {
+  if (!(await canEditMasterData())) {
+    return { status: "error", message: "Akses ditolak: Anda tidak memiliki izin mengelola master data." };
+  }
   await ensureHeroGovernanceSeedData();
 
   const raw = Object.fromEntries(formData.entries());
@@ -1531,6 +1553,9 @@ export async function managePositionAction(
   _state: MasterDataActionState,
   formData: FormData
 ): Promise<MasterDataActionState> {
+  if (!(await canEditMasterData())) {
+    return { status: "error", message: "Akses ditolak: Anda tidak memiliki izin mengelola master data." };
+  }
   await ensureHeroGovernanceSeedData();
 
   const raw = Object.fromEntries(formData.entries());
@@ -1713,6 +1738,9 @@ export async function manageOrgStructureAction(
   _state: MasterDataActionState,
   formData: FormData
 ): Promise<MasterDataActionState> {
+  if (!(await canEditMasterData())) {
+    return { status: "error", message: "Akses ditolak: Anda tidak memiliki izin mengelola master data." };
+  }
   await ensureHeroGovernanceSeedData();
 
   const raw = Object.fromEntries(formData.entries());
@@ -2056,6 +2084,9 @@ export async function manageApprovalMatrixAction(
   _state: MasterDataActionState,
   formData: FormData
 ): Promise<MasterDataActionState> {
+  if (!(await canEditMasterData())) {
+    return { status: "error", message: "Akses ditolak: Anda tidak memiliki izin mengelola master data." };
+  }
   await ensureHeroGovernanceSeedData();
 
   const raw = Object.fromEntries(formData.entries());

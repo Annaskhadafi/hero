@@ -356,7 +356,7 @@ function PtwLandscapePdfSheet({
       {/* ── UNIFIED TABLE FOR PERMIT TYPES (PERFECT HORIZONTAL & BOTTOM ALIGNMENT) ── */}
       <PtwChecklistTable
         permitType={doc.permitType}
-        subTypes={doc?.subTypes}
+        subTypes={doc?.subTypes as any}
         checkedEquipment={checkedEquipmentList}
         columnsToShow={columnsToShow}
       />
@@ -386,7 +386,7 @@ function PtwLandscapePdfSheet({
           DESKRIPSI PEKERJAAN :
         </span>
         <div className="text-[7.5pt] text-slate-700 mt-0.5 leading-relaxed whitespace-pre-wrap font-medium">
-          {cleanPtwDescription(doc.description) || doc.description || doc.additionalNotes || doc.controlSteps || <span className="text-slate-400 italic text-[7pt]">— Tidak ada deskripsi pekerjaan —</span>}
+          {cleanPtwDescription(doc.description) || doc.description || (doc as any).additionalNotes || doc.controlSteps || <span className="text-slate-400 italic text-[7pt]">— Tidak ada deskripsi pekerjaan —</span>}
         </div>
       </div>
 
@@ -513,7 +513,7 @@ function PtwLandscapePdfSheet({
           <div className="min-h-14 flex flex-wrap items-center justify-center gap-2 my-1">
             {pelaksanaApprovals.length > 0 ? (
               pelaksanaApprovals.map((pStep, pIdx) => (
-                <div key={pStep.id || pIdx} className="flex flex-col items-center justify-center text-center">
+                <div key={(pStep as any).id || pStep.stepOrder || pIdx} className="flex flex-col items-center justify-center text-center">
                   {pStep.status === 'rejected' ? (
                     <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak</span>
                   ) : pStep.status === 'reverted' ? (

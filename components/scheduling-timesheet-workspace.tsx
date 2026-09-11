@@ -122,10 +122,8 @@ import {
 import {
   attendanceStatusLabel,
   calculateAttendanceOvertime,
-  formatTo12HourTime,
   minutesFromTime,
   normalizeAttendanceStatus,
-  normalizeTo24HourTime,
   type AttendanceCellStatus,
 } from '@/lib/timesheet/attendance-real'
 import {
@@ -165,10 +163,12 @@ import {
 } from '@/lib/timesheet/employee-benefit-policy'
 import {
   calculateLateMinutesFromTimes,
-  getPunctualityDetail,
+  evaluateAttendanceGridPunctuality,
   inferShiftFromClockInTime,
-  isOffScheduleCode,
   resolveConfiguredShiftClockIn,
+  resolveSiteAttendanceClockConfig,
+  updatePunctualityInNote,
+  type SiteAttendanceClockConfig,
 } from '@/lib/timesheet/attendance-punctuality'
 import {
   DEFAULT_QUOTATION_BILLING_STATUS_CONFIG,
@@ -674,6 +674,150 @@ function normalizePdfConfig(
     customSigners,
     logoUrl: (cfg.logoUrl as string) || '',
   }
+}
+
+function buildSiteSchedulingConfig(
+  siteId: string,
+  schedulingConfigs: unknown[],
+  sites: SiteOption[],
+  currentEmployeeName?: string,
+  employees: EmployeeOption[] = []
+): SiteSchedulingConfig {
+  if (siteId === 'all') return defaultSiteConfig
+
+  const savedConfig = schedulingConfigs.find(
+    (config: any) => String(config.siteId) === siteId
+  ) as any
+  const currentSiteObj = sites.find((s) => String(s.id) === siteId)
+  const fieldBreakConfig =
+    ((savedConfig as Record<string, unknown> | undefined)?.fieldBreakConfig as
+      | Record<string, unknown>
+      | undefined) ?? {}
+  const savedRosterType = savedConfig?.rosterType as SiteRosterType | undefined
+  const inferredTimezone = currentSiteObj
+    ? normalizeIndonesiaTimezone(
+        currentSiteObj.timezone ||
+          inferTimezoneFromLocation(
+            [currentSiteObj.location, (currentSiteObj as any).provinceName, currentSiteObj.name]
+              .filter(Boolean)
+              .join(' ')
+          )
+      ).code
+    : 'WITA'
+
+  const siteTimezone =
+    (savedConfig as { timezone?: string } | undefined)?.timezone ||
+    (fieldBreakConfig.timezone as string | undefined) ||
+    inferredTimezone
+  const hasWeekBasedFieldBreak =
+    savedRosterType === '13:1' && fieldBreakConfig.fieldBreakUnit === 'weeks'
+  const hasIncorrectThirteenOneDefaults =
+    hasWeekBasedFieldBreak &&
+    Number(fieldBreakConfig.fieldBreakWorkMonths) === 13 &&
+    Number(fieldBreakConfig.fieldBreakBreakDays) === 1
+
+  return savedConfig
+    ? {
+        scheduleType: savedConfig.scheduleType as SiteScheduleType,
+        rosterType: savedRosterType ?? '5:2',
+        msaType: savedConfig.msaType as SiteMsaType,
+        mealsType: (savedConfig.mealsType === 'none'
+          ? 'none'
+          : savedConfig.mealsType === 'field-break'
+            ? 'field-break'
+            : 'workday') as SiteMealsType,
+        overtimeType: savedConfig.overtimeType as SiteOvertimeType,
+        timezone: siteTimezone as IndonesiaTimezoneCode,
+        defaultShiftType:
+          (fieldBreakConfig.defaultShiftType as DefaultShiftType | undefined) ?? 'day-shift',
+        defaultClockIn: (fieldBreakConfig.defaultClockIn as string | undefined) ?? '07:00',
+        defaultClockOut: (fieldBreakConfig.defaultClockOut as string | undefined) ?? '17:00',
+        dayShiftClockIn:
+          (fieldBreakConfig.dayShiftClockIn as string | undefined) ??
+          (fieldBreakConfig.defaultClockIn as string | undefined) ??
+          '08:00',
+        dayShiftClockOut:
+          (fieldBreakConfig.dayShiftClockOut as string | undefined) ??
+          (fieldBreakConfig.defaultClockOut as string | undefined) ??
+          '17:00',
+        nightShiftClockIn: (fieldBreakConfig.nightShiftClockIn as string | undefined) ?? '18:00',
+        nightShiftClockOut:
+          (fieldBreakConfig.nightShiftClockOut as string | undefined) ?? '06:00',
+        day6WorkingTimeEnabled: Boolean(fieldBreakConfig.day6WorkingTimeEnabled ?? false),
+        day6DayShiftClockIn:
+          (fieldBreakConfig.day6DayShiftClockIn as string | undefined) ?? '08:00',
+        day6DayShiftClockOut:
+          (fieldBreakConfig.day6DayShiftClockOut as string | undefined) ?? '14:00',
+        day6NightShiftClockIn:
+          (fieldBreakConfig.day6NightShiftClockIn as string | undefined) ?? '20:00',
+        day6NightShiftClockOut:
+          (fieldBreakConfig.day6NightShiftClockOut as string | undefined) ?? '02:00',
+        day7WorkingTimeEnabled: Boolean(fieldBreakConfig.day7WorkingTimeEnabled ?? false),
+        day7DayShiftClockIn:
+          (fieldBreakConfig.day7DayShiftClockIn as string | undefined) ?? '08:00',
+        day7DayShiftClockOut:
+          (fieldBreakConfig.day7DayShiftClockOut as string | undefined) ?? '14:00',
+        day7NightShiftClockIn:
+          (fieldBreakConfig.day7NightShiftClockIn as string | undefined) ?? '20:00',
+        day7NightShiftClockOut:
+          (fieldBreakConfig.day7NightShiftClockOut as string | undefined) ?? '02:00',
+        defaultEarlyOvertimeHours:
+          (fieldBreakConfig.defaultEarlyOvertimeHours as number | undefined) ?? 1,
+        defaultOvertimeEnd:
+          (fieldBreakConfig.defaultOvertimeEnd as string | undefined) ?? '19:00',
+        lokasiKhususRate:
+          Number(
+            fieldBreakConfig.lokasiKhususRate ??
+              fieldBreakConfig.lokasiKhususRateStaff ??
+              fieldBreakConfig.lokasiKhususRateNonStaff ??
+              35000
+          ) || 0,
+        lokasiKhususRateStaff:
+          Number(
+            fieldBreakConfig.lokasiKhususRateStaff ??
+              fieldBreakConfig.lokasiKhususRate ??
+              35000
+          ) || 0,
+        lokasiKhususRateNonStaff:
+          Number(
+            fieldBreakConfig.lokasiKhususRateNonStaff ??
+              fieldBreakConfig.lokasiKhususRate ??
+              35000
+          ) || 0,
+        lokasiKhususEnabled: Boolean(fieldBreakConfig.lokasiKhususEnabled ?? false),
+        fieldBreakWorkMonths:
+          savedRosterType === '13:1' &&
+          (!hasWeekBasedFieldBreak || hasIncorrectThirteenOneDefaults)
+            ? 12
+            : Number(fieldBreakConfig.fieldBreakWorkMonths ?? 3) || 3,
+        fieldBreakBreakDays:
+          savedRosterType === '13:1' &&
+          (!hasWeekBasedFieldBreak || hasIncorrectThirteenOneDefaults)
+            ? 2
+            : Number(fieldBreakConfig.fieldBreakBreakDays ?? 14) || 14,
+        employeeBenefitConfig: normalizeEmployeeBenefitConfig(
+          fieldBreakConfig.employeeBenefitConfig,
+          {
+            enabled: fieldBreakConfig.lokasiKhususEnabled,
+            rate: fieldBreakConfig.lokasiKhususRate,
+          }
+        ),
+        quotationBillingConfig: normalizeQuotationBillingStatusConfig(
+          fieldBreakConfig.quotationBillingConfig
+        ),
+        overtimeConfig: normalizeSiteOvertimeConfig(savedConfig.overtimeConfig),
+        pdfConfig: normalizePdfConfig(
+          savedConfig.pdfConfig,
+          currentEmployeeName ?? '',
+          siteId,
+          employees,
+          sites
+        ),
+      }
+    : {
+        ...defaultSiteConfig,
+        timezone: inferredTimezone,
+      }
 }
 
 const defaultAllowanceVariables: AllowanceVariable[] = [
@@ -1511,29 +1655,17 @@ export function SchedulingTimesheetWorkspace({
   const [isAttendanceDirty, setIsAttendanceDirty] = useState(false)
   const [isSavingAttendance, startSavingAttendance] = useTransition()
 
-  const [draftCellStatus, setDraftCellStatus] = useState<AttendanceCellStatus>('present')
-  const [draftClockIn, setDraftClockIn] = useState<string>('')
-  const [draftClockOut, setDraftClockOut] = useState<string>('')
-  const [draftNote, setDraftNote] = useState<string>('')
   const [draftOvertimeHours, setDraftOvertimeHours] = useState<string>('')
 
   useEffect(() => {
     if (selectedAttendanceCell) {
       const cell = getAttendanceCell(selectedAttendanceCell.employeeId, selectedAttendanceCell.day)
-      setDraftCellStatus(cell.status)
-      setDraftClockIn(cell.clockIn || '')
-      setDraftClockOut(cell.clockOut || '')
-      setDraftNote(cell.note || '')
       setDraftOvertimeHours(
         cell.overtimeHours !== undefined && cell.overtimeHours !== null
           ? String(cell.overtimeHours)
           : ''
       )
     } else {
-      setDraftCellStatus('present')
-      setDraftClockIn('')
-      setDraftClockOut('')
-      setDraftNote('')
       setDraftOvertimeHours('')
     }
   }, [selectedAttendanceCell])
@@ -1596,7 +1728,25 @@ export function SchedulingTimesheetWorkspace({
     [holidays]
   )
   const site = useMemo(() => sites.find((item) => String(item.id) === siteId), [siteId, sites])
-  const siteConfig = siteConfigs[siteId] ?? defaultSiteConfig
+  const siteConfig = useMemo(() => {
+    if (siteConfigs[siteId]) return siteConfigs[siteId]
+    return buildSiteSchedulingConfig(
+      siteId,
+      schedulingConfigs,
+      sites,
+      currentEmployeeName,
+      employees
+    )
+  }, [siteConfigs, siteId, schedulingConfigs, sites, currentEmployeeName, employees])
+  const effectiveSiteClockConfig = useMemo<SiteAttendanceClockConfig>(() => {
+    const savedConfig = schedulingConfigs.find((config) => String(config.siteId) === siteId)
+    const clockConfig = resolveSiteAttendanceClockConfig(site, savedConfig)
+    return {
+      dayShiftClockIn: siteConfig.dayShiftClockIn || clockConfig.dayShiftClockIn,
+      nightShiftClockIn: siteConfig.nightShiftClockIn || clockConfig.nightShiftClockIn,
+      timezone: siteConfig.timezone || clockConfig.timezone,
+    }
+  }, [site, schedulingConfigs, siteId, siteConfig.dayShiftClockIn, siteConfig.nightShiftClockIn, siteConfig.timezone])
   const siteApprovalSections = useMemo(
     () => approvalSections.filter((row) => row.siteId == null || String(row.siteId) === siteId),
     [approvalSections, siteId]
@@ -1935,7 +2085,7 @@ export function SchedulingTimesheetWorkspace({
       }
     >()
 
-    const effectiveTz = siteConfig.timezone || site?.timezone || 'WITA'
+    const effectiveTz = effectiveSiteClockConfig.timezone
 
     // Group records by cell key first
     const grouped = new Map<string, AttendanceRealRecord[]>()
@@ -1990,7 +2140,7 @@ export function SchedulingTimesheetWorkspace({
     }
 
     return map
-  }, [attendanceRecords, employees, period, site, siteConfig.timezone, siteId])
+  }, [attendanceRecords, employees, period, site, effectiveSiteClockConfig.timezone, siteId])
 
   useEffect(() => {
     const firstConfig = schedulingConfigs.find((config) => String(config.siteId) === siteId)
@@ -2074,140 +2224,17 @@ export function SchedulingTimesheetWorkspace({
   useEffect(() => {
     if (siteId === 'all') return
 
-    const savedConfig = schedulingConfigs.find((config) => String(config.siteId) === siteId)
-    const currentSiteObj = sites.find((s) => String(s.id) === siteId)
-    const fieldBreakConfig =
-      ((savedConfig as Record<string, unknown> | undefined)?.fieldBreakConfig as
-        | Record<string, unknown>
-        | undefined) ?? {}
-    const savedRosterType = savedConfig?.rosterType as SiteRosterType | undefined
-    const inferredTimezone = currentSiteObj
-      ? normalizeIndonesiaTimezone(
-          currentSiteObj.timezone ||
-            inferTimezoneFromLocation(
-              [currentSiteObj.location, (currentSiteObj as any).provinceName, currentSiteObj.name]
-                .filter(Boolean)
-                .join(' ')
-            )
-        ).code
-      : 'WITA'
-
-    const siteTimezone =
-      (savedConfig as { timezone?: string } | undefined)?.timezone ||
-      (fieldBreakConfig.timezone as string | undefined) ||
-      inferredTimezone
-    const hasWeekBasedFieldBreak =
-      savedRosterType === '13:1' && fieldBreakConfig.fieldBreakUnit === 'weeks'
-    const hasIncorrectThirteenOneDefaults =
-      hasWeekBasedFieldBreak &&
-      Number(fieldBreakConfig.fieldBreakWorkMonths) === 13 &&
-      Number(fieldBreakConfig.fieldBreakBreakDays) === 1
-    const config = savedConfig
-      ? {
-          scheduleType: savedConfig.scheduleType as SiteScheduleType,
-          rosterType: savedRosterType ?? '5:2',
-          msaType: savedConfig.msaType as SiteMsaType,
-          mealsType: (savedConfig.mealsType === 'none'
-            ? 'none'
-            : savedConfig.mealsType === 'field-break'
-              ? 'field-break'
-              : 'workday') as SiteMealsType,
-          overtimeType: savedConfig.overtimeType as SiteOvertimeType,
-          timezone: siteTimezone as IndonesiaTimezoneCode,
-          defaultShiftType:
-            (fieldBreakConfig.defaultShiftType as DefaultShiftType | undefined) ?? 'day-shift',
-          defaultClockIn: (fieldBreakConfig.defaultClockIn as string | undefined) ?? '07:00',
-          defaultClockOut: (fieldBreakConfig.defaultClockOut as string | undefined) ?? '17:00',
-          dayShiftClockIn:
-            (fieldBreakConfig.dayShiftClockIn as string | undefined) ??
-            (fieldBreakConfig.defaultClockIn as string | undefined) ??
-            '08:00',
-          dayShiftClockOut:
-            (fieldBreakConfig.dayShiftClockOut as string | undefined) ??
-            (fieldBreakConfig.defaultClockOut as string | undefined) ??
-            '17:00',
-          nightShiftClockIn: (fieldBreakConfig.nightShiftClockIn as string | undefined) ?? '18:00',
-          nightShiftClockOut:
-            (fieldBreakConfig.nightShiftClockOut as string | undefined) ?? '06:00',
-          day6WorkingTimeEnabled: Boolean(fieldBreakConfig.day6WorkingTimeEnabled ?? false),
-          day6DayShiftClockIn:
-            (fieldBreakConfig.day6DayShiftClockIn as string | undefined) ?? '08:00',
-          day6DayShiftClockOut:
-            (fieldBreakConfig.day6DayShiftClockOut as string | undefined) ?? '14:00',
-          day6NightShiftClockIn:
-            (fieldBreakConfig.day6NightShiftClockIn as string | undefined) ?? '20:00',
-          day6NightShiftClockOut:
-            (fieldBreakConfig.day6NightShiftClockOut as string | undefined) ?? '02:00',
-          day7WorkingTimeEnabled: Boolean(fieldBreakConfig.day7WorkingTimeEnabled ?? false),
-          day7DayShiftClockIn:
-            (fieldBreakConfig.day7DayShiftClockIn as string | undefined) ?? '08:00',
-          day7DayShiftClockOut:
-            (fieldBreakConfig.day7DayShiftClockOut as string | undefined) ?? '14:00',
-          day7NightShiftClockIn:
-            (fieldBreakConfig.day7NightShiftClockIn as string | undefined) ?? '20:00',
-          day7NightShiftClockOut:
-            (fieldBreakConfig.day7NightShiftClockOut as string | undefined) ?? '02:00',
-          defaultEarlyOvertimeHours:
-            (fieldBreakConfig.defaultEarlyOvertimeHours as number | undefined) ?? 1,
-          defaultOvertimeEnd:
-            (fieldBreakConfig.defaultOvertimeEnd as string | undefined) ?? '19:00',
-          lokasiKhususRate:
-            Number(
-              fieldBreakConfig.lokasiKhususRate ??
-                fieldBreakConfig.lokasiKhususRateStaff ??
-                fieldBreakConfig.lokasiKhususRateNonStaff ??
-                35000
-            ) || 0,
-          lokasiKhususRateStaff:
-            Number(
-              fieldBreakConfig.lokasiKhususRateStaff ??
-                fieldBreakConfig.lokasiKhususRate ??
-                35000
-            ) || 0,
-          lokasiKhususRateNonStaff:
-            Number(
-              fieldBreakConfig.lokasiKhususRateNonStaff ??
-                fieldBreakConfig.lokasiKhususRate ??
-                35000
-            ) || 0,
-          lokasiKhususEnabled: Boolean(fieldBreakConfig.lokasiKhususEnabled ?? false),
-          fieldBreakWorkMonths:
-            savedRosterType === '13:1' &&
-            (!hasWeekBasedFieldBreak || hasIncorrectThirteenOneDefaults)
-              ? 12
-              : Number(fieldBreakConfig.fieldBreakWorkMonths ?? 3) || 3,
-          fieldBreakBreakDays:
-            savedRosterType === '13:1' &&
-            (!hasWeekBasedFieldBreak || hasIncorrectThirteenOneDefaults)
-              ? 2
-              : Number(fieldBreakConfig.fieldBreakBreakDays ?? 14) || 14,
-          employeeBenefitConfig: normalizeEmployeeBenefitConfig(
-            fieldBreakConfig.employeeBenefitConfig,
-            {
-              enabled: fieldBreakConfig.lokasiKhususEnabled,
-              rate: fieldBreakConfig.lokasiKhususRate,
-            }
-          ),
-          quotationBillingConfig: normalizeQuotationBillingStatusConfig(
-            fieldBreakConfig.quotationBillingConfig
-          ),
-          overtimeConfig: normalizeSiteOvertimeConfig(savedConfig.overtimeConfig),
-          pdfConfig: normalizePdfConfig(
-            savedConfig.pdfConfig,
-            currentEmployeeName,
-            siteId,
-            employees,
-            sites
-          ),
-        }
-      : {
-          ...defaultSiteConfig,
-          timezone: inferredTimezone,
-        }
+    const config = buildSiteSchedulingConfig(
+      siteId,
+      schedulingConfigs,
+      sites,
+      currentEmployeeName,
+      employees
+    )
     setSiteConfigs((current) => ({ ...current, [siteId]: config }))
     setRoster(config.rosterType)
     setSiteScheduleTypes((current) => ({ ...current, [siteId]: config.scheduleType }))
-  }, [siteId, schedulingConfigs, sites])
+  }, [siteId, schedulingConfigs, sites, currentEmployeeName, employees])
 
   useEffect(() => {
     if (!savedPlan) {
@@ -4380,85 +4407,21 @@ export function SchedulingTimesheetWorkspace({
     const manual = manualAttendance[key]
     const real = attendanceByCell.get(key)
     const rowCode = scheduleCode ?? rows.find((r) => r.employee.id === employeeId)?.schedule[day - 1]
-    const effectiveTz = siteConfig.timezone || site?.timezone || 'WITA'
 
-    if (manual) {
-      const note = manual.note || real?.clockIn?.locationNote || real?.records[0]?.locationNote || ''
-      const punctualityDetail = getPunctualityDetail(note)
-
-      const isNonWorkManual = [
-        'off',
-        'standby',
-        'field_break',
-        'sick',
-        'leave',
-        'absent',
-        'empty',
-      ].includes(manual.status)
-
-      // If manual status is non-work, do not fall back to real clock-in/out unless manual explicitly has them
-      const clockIn =
-        manual.clockIn !== undefined && manual.clockIn !== null && manual.clockIn !== ''
-          ? manual.clockIn
-          : isNonWorkManual
-            ? ''
-            : timeFromIso(real?.clockIn?.eventTime, effectiveTz)
-      const clockOut =
-        manual.clockOut !== undefined && manual.clockOut !== null && manual.clockOut !== ''
-          ? manual.clockOut
-          : isNonWorkManual
-            ? ''
-            : timeFromIso(real?.clockOut?.eventTime, effectiveTz)
-
-      const configuredClockIn = resolveConfiguredShiftClockIn(rowCode, siteConfig)
-      const inferred = clockIn ? inferShiftFromClockInTime(clockIn, siteConfig) : null
-      const scheduledClockIn =
-        configuredClockIn || inferred?.scheduledClockIn || siteConfig.dayShiftClockIn
-
-      const isOffSchedule = isOffScheduleCode(rowCode)
-
-      const effectiveStatus = manual.status
-
-      let lateMinutes =
-        isNonWorkManual || isOffSchedule || effectiveStatus !== 'present'
-          ? null
-          : calculateLateMinutesFromTimes(clockIn, scheduledClockIn)
-
-      if (
-        lateMinutes === null &&
-        !isNonWorkManual &&
-        !isOffSchedule &&
-        effectiveStatus === 'present'
-      ) {
-        const punctMatch = punctualityDetail?.match(/Terlambat\s+(\d+)\s*menit/i)
-        if (punctMatch) {
-          lateMinutes = Number(punctMatch[1])
-        }
-      }
-
-      const isLatePending =
-        effectiveStatus === 'present' &&
-        !isOffSchedule &&
-        (lateMinutes !== null
-          ? lateMinutes > 0
-          : Boolean(punctualityDetail?.startsWith('Kehadiran: Terlambat')))
-
-      return {
-        ...manual,
-        status: effectiveStatus,
-        clockIn,
-        clockOut,
-        note,
-        lateMinutes: isLatePending ? lateMinutes : null,
-        isLatePending: Boolean(isLatePending),
-        scheduledClockIn,
-        shiftCode: rowCode || inferred?.shiftCode || 'DS',
+    let cellClockConfig = effectiveSiteClockConfig
+    if (siteId === 'all') {
+      const empSiteId = employees.find((e) => e.id === employeeId)?.siteId
+      if (empSiteId != null) {
+        const empSite = sites.find((s) => s.id === empSiteId)
+        const empSavedConfig = schedulingConfigs.find((c) => c.siteId === empSiteId)
+        cellClockConfig = resolveSiteAttendanceClockConfig(empSite, empSavedConfig)
       }
     }
+    const effectiveTz = cellClockConfig.timezone
 
-    if (!real) {
+    if (!manual && !real) {
       const rosterStatus = normalizeAttendanceStatus(rowCode)
-      const configuredClockIn = resolveConfiguredShiftClockIn(rowCode, siteConfig)
+      const configuredClockIn = resolveConfiguredShiftClockIn(rowCode, cellClockConfig)
       if (
         rosterStatus === 'off' ||
         rosterStatus === 'field_break' ||
@@ -4472,7 +4435,7 @@ export function SchedulingTimesheetWorkspace({
           clockOut: '',
           note: '',
           scheduledClockIn: configuredClockIn,
-          shiftCode: rowCode || 'DS',
+          shiftCode: rowCode || null,
         }
       }
       return {
@@ -4482,65 +4445,60 @@ export function SchedulingTimesheetWorkspace({
         note: '',
         source: 'attendance',
         scheduledClockIn: configuredClockIn,
-        shiftCode: rowCode || 'DS',
+        shiftCode: rowCode || null,
       }
     }
 
-    const rawRealStatus = real.clockIn?.status ?? real.clockOut?.status ?? real.records[0]?.status
-    let status = normalizeAttendanceStatus(rawRealStatus)
-    const clockIn = timeFromIso(real.clockIn?.eventTime, effectiveTz)
-    const clockOut = timeFromIso(real.clockOut?.eventTime, effectiveTz)
-    
-    // When real attendance records exist with clock in, status is 'present' (replaces OFF for actual work)
-    if (clockIn || real.records.length > 0) {
-      if (status === 'empty' || status === 'off') {
-        status = 'present'
+    const isManual = Boolean(manual)
+    const rawStatus = isManual
+      ? manual.status
+      : normalizeAttendanceStatus(real?.clockIn?.status ?? real?.clockOut?.status ?? real?.records[0]?.status)
+    const clockIn = isManual
+      ? (manual.clockIn || timeFromIso(real?.clockIn?.eventTime, effectiveTz))
+      : timeFromIso(real?.clockIn?.eventTime, effectiveTz)
+    const clockOut = isManual
+      ? (manual.clockOut || timeFromIso(real?.clockOut?.eventTime, effectiveTz))
+      : timeFromIso(real?.clockOut?.eventTime, effectiveTz)
+
+    const rawNote = isManual
+      ? (manual.note || real?.clockIn?.locationNote || real?.records[0]?.locationNote || '')
+      : (real?.clockIn?.locationNote || real?.clockOut?.locationNote || real?.records[0]?.locationNote || 'Face/location attendance')
+
+    let effectiveStatus = rawStatus
+    if (clockIn || real?.clockIn || (real?.records && real.records.length > 0)) {
+      if (effectiveStatus === 'empty' || effectiveStatus === 'off') {
+        effectiveStatus = 'present'
+      }
+    } else if (!effectiveStatus || effectiveStatus === 'empty') {
+      const rosterStatus = normalizeAttendanceStatus(rowCode)
+      if (rosterStatus === 'off') {
+        effectiveStatus = clockIn ? 'present' : 'off'
       }
     }
 
-    const note =
-      real.clockIn?.locationNote ||
-      real.clockOut?.locationNote ||
-      real.records[0]?.locationNote ||
-      'Face/location attendance'
-    const punctualityDetail = getPunctualityDetail(note)
+    const punctuality = evaluateAttendanceGridPunctuality({
+      clockIn,
+      scheduleCode: rowCode,
+      siteConfig: cellClockConfig,
+    })
 
-    const configuredClockIn = resolveConfiguredShiftClockIn(rowCode, siteConfig)
-    const inferred = clockIn ? inferShiftFromClockInTime(clockIn, siteConfig) : null
-    const scheduledClockIn =
-      configuredClockIn || inferred?.scheduledClockIn || siteConfig.dayShiftClockIn
-
-    const isOffSchedule = isOffScheduleCode(rowCode)
-
-    let lateMinutes =
-      isOffSchedule || status !== 'present'
-        ? null
-        : calculateLateMinutesFromTimes(clockIn, scheduledClockIn)
-
-    if (lateMinutes === null && !isOffSchedule && status === 'present') {
-      const punctMatch = punctualityDetail?.match(/Terlambat\s+(\d+)\s*menit/i)
-      if (punctMatch) {
-        lateMinutes = Number(punctMatch[1])
-      }
-    }
-
-    const isLatePending =
-      status === 'present' &&
-      !isOffSchedule &&
-      (lateMinutes !== null
-        ? lateMinutes > 0
-        : Boolean(punctualityDetail?.startsWith('Kehadiran: Terlambat')))
+    const isLatePending = effectiveStatus === 'present' && punctuality.isLate
+    const lateMinutes = effectiveStatus === 'present' ? punctuality.lateMinutes : null
+    const note = effectiveStatus === 'present' && punctuality.punctualityNote
+      ? updatePunctualityInNote(rawNote, punctuality.punctualityNote)
+      : rawNote
 
     return {
-      status,
+      ...(manual ?? {}),
+      status: effectiveStatus,
       clockIn,
       clockOut,
       note,
-      source: 'attendance',
-      lateMinutes: isLatePending ? lateMinutes : null,
-      isLatePending: Boolean(isLatePending),
-      scheduledClockIn,
-      shiftCode: rowCode || inferred?.shiftCode || 'DS',
+      source: isManual ? (manual.source || 'manual') : 'attendance',
+      lateMinutes,
+      isLatePending,
+      scheduledClockIn: punctuality.scheduledClockIn,
+      shiftCode: punctuality.shiftCode,
     }
   }
 
@@ -4551,14 +4509,7 @@ export function SchedulingTimesheetWorkspace({
   ) {
     if (!guardOpenPeriod('Edit attendance')) return
     const key = attendanceKey(employeeId, day)
-    const statusClearsTime =
-      patch.status === 'off' ||
-      patch.status === 'standby' ||
-      patch.status === 'field_break' ||
-      patch.status === 'sick' ||
-      patch.status === 'leave' ||
-      patch.status === 'absent' ||
-      patch.status === 'empty'
+    const statusClearsTime = patch.status === 'standby' || patch.status === 'field_break'
     setManualAttendance((current) => ({
       ...current,
       [key]: {
@@ -4603,24 +4554,11 @@ export function SchedulingTimesheetWorkspace({
 
   function applyBulkAttendance(patch: Partial<ManualAttendanceCell>) {
     if (!guardOpenPeriod('Bulk edit attendance')) return
-    const statusClearsTime =
-      patch.status === 'off' ||
-      patch.status === 'standby' ||
-      patch.status === 'field_break' ||
-      patch.status === 'sick' ||
-      patch.status === 'leave' ||
-      patch.status === 'absent' ||
-      patch.status === 'empty'
     setManualAttendance((current) => {
       const next = { ...current }
       for (const key of selectedAttendanceKeys) {
         const [employeeId, day] = key.split('-').map(Number)
-        next[key] = {
-          ...getAttendanceCell(employeeId, day),
-          source: 'manual',
-          ...patch,
-          ...(statusClearsTime ? { clockIn: '', clockOut: '' } : {}),
-        }
+        next[key] = { ...getAttendanceCell(employeeId, day), source: 'manual', ...patch }
       }
       return next
     })
@@ -4950,8 +4888,8 @@ export function SchedulingTimesheetWorkspace({
 
   function saveAttendanceRealWithData(nextManual: Record<string, ManualAttendanceCell>) {
     if (!guardOpenPeriod('Save attendance')) return
-    if (isFinalized) return
-
+    const numericSiteId = Number(siteId)
+    if (!Number.isFinite(numericSiteId) || numericSiteId <= 0 || isFinalized) return
     const overrides = Object.entries(nextManual || {}).map(([key, cell]) => {
       const [employeeId, day] = key.split('-').map(Number)
       return {
@@ -4968,42 +4906,24 @@ export function SchedulingTimesheetWorkspace({
             : null,
       }
     })
-
-    const numericSiteId = Number(siteId) > 0 ? Number(siteId) : Number(site?.id) || 0
-    const siteOverridesMap = new Map<number, typeof overrides>()
-    if (numericSiteId > 0) {
-      siteOverridesMap.set(numericSiteId, overrides)
-    } else {
-      for (const item of overrides) {
-        const emp = employees.find((e) => e.id === item.employeeId)
-        const empSite = emp?.siteId ? Number(emp.siteId) : 0
-        if (empSite > 0) {
-          if (!siteOverridesMap.has(empSite)) {
-            siteOverridesMap.set(empSite, [])
-          }
-          siteOverridesMap.get(empSite)!.push(item)
-        }
-      }
-    }
-
-    if (siteOverridesMap.size === 0 && numericSiteId <= 0) {
-      toast.error('Pilih site terlebih dahulu sebelum menyimpan.')
-      return
-    }
+    console.log(
+      '[CLIENT] overrides payload being sent:',
+      overrides.filter((o) => o.overtimeHours !== null)
+    )
 
     startSavingAttendance(async () => {
       try {
-        for (const [targetSiteId, siteOverrides] of siteOverridesMap.entries()) {
-          await saveAttendanceRealOverridesAction({
-            siteId: targetSiteId,
-            period,
-            overrides: siteOverrides,
-          })
+        const result = await saveAttendanceRealOverridesAction({
+          siteId: numericSiteId,
+          period,
+          overrides,
+        })
+        if (result.ok) {
+          setAttendanceSavedAt(new Date().toISOString())
+          setIsAttendanceDirty(false)
+          router.refresh()
+          toast.success('Attendance saved')
         }
-        setAttendanceSavedAt(new Date().toISOString())
-        setIsAttendanceDirty(false)
-        router.refresh()
-        toast.success('Attendance saved')
       } catch (error) {
         toast.error('Save attendance failed', {
           description: error instanceof Error ? error.message : 'Unknown error',
@@ -9902,9 +9822,6 @@ export function SchedulingTimesheetWorkspace({
                       clockOut: '17:00',
                     })
                   }
-                  onSetOff={() =>
-                    applyBulkAttendance({ status: 'off', clockIn: '', clockOut: '' })
-                  }
                   onSetSick={() =>
                     applyBulkAttendance({ status: 'sick', clockIn: '', clockOut: '' })
                   }
@@ -11358,8 +11275,8 @@ export function SchedulingTimesheetWorkspace({
                 const defaultOtCalculation = calculateDayOvertime(
                   employeeScheduleForDialog,
                   selectedAttendanceCell.day,
-                  draftClockIn,
-                  draftClockOut,
+                  selectedAttendanceValue.clockIn,
+                  selectedAttendanceValue.clockOut,
                   isStaffForDialog,
                   selectedAttendanceCell.employeeId,
                   true
@@ -11369,83 +11286,50 @@ export function SchedulingTimesheetWorkspace({
                   : calculateLegacyOvertime(
                       employeeScheduleForDialog,
                       selectedAttendanceCell.day,
-                      draftClockIn,
-                      draftClockOut
+                      selectedAttendanceValue.clockIn,
+                      selectedAttendanceValue.clockOut
                     )
-                const isNonWorkingDialogStatus = [
-                  'empty',
-                  'sick',
-                  'leave',
-                  'absent',
-                  'field_break',
-                  'off',
-                  'standby',
-                ].includes(draftCellStatus)
+                const isNonWorkingDialogStatus =
+                  selectedAttendanceValue.status === 'empty' ||
+                  selectedAttendanceValue.status === 'sick' ||
+                  selectedAttendanceValue.status === 'leave' ||
+                  selectedAttendanceValue.status === 'absent' ||
+                  selectedAttendanceValue.status === 'field_break'
                 const defaultOtHours =
-                  isNonWorkingDialogStatus && !draftClockIn && !draftClockOut
+                  isNonWorkingDialogStatus && !selectedAttendanceValue.clockIn && !selectedAttendanceValue.clockOut
                     ? 0
                     : defaultOtCalculation.totalHours > 0
                       ? defaultOtCalculation.totalHours
                       : legacyOt
-
-                const isOffDayShift = isOffScheduleCode(selectedAttendanceValue.shiftCode || '')
-                const draftLateMinutes =
-                  isNonWorkingDialogStatus || draftCellStatus !== 'present' || isOffDayShift
-                    ? null
-                    : calculateLateMinutesFromTimes(draftClockIn, selectedAttendanceValue.scheduledClockIn)
-                const draftIsLate = draftCellStatus === 'present' && !isOffDayShift && draftLateMinutes !== null && draftLateMinutes > 0
 
                 const onSaveAndClose = async () => {
                   const key = attendanceKey(
                     selectedAttendanceCell.employeeId,
                     selectedAttendanceCell.day
                   )
+                  // When user hasn't changed anything, treat the shown default value as the intended override
                   const finalOt =
                     draftOvertimeHours === '' ? defaultOtHours : Number(draftOvertimeHours)
                   logClientActionAction(
                     `[CLIENT LOG] onSaveAndClose key=${key} draftOvertimeHours='${draftOvertimeHours}' finalOt=${finalOt}`
                   )
-                  const currentCell = getAttendanceCell(
-                    selectedAttendanceCell.employeeId,
-                    selectedAttendanceCell.day
-                  )
-                  const isNonWork = [
-                    'off',
-                    'standby',
-                    'field_break',
-                    'sick',
-                    'leave',
-                    'absent',
-                    'empty',
-                  ].includes(draftCellStatus)
-
+                  // Update local state immediately so UI reflects change
                   const updatedCell: ManualAttendanceCell = {
-                    ...currentCell,
-                    status: draftCellStatus,
-                    clockIn: isNonWork && !draftClockIn ? '' : draftClockIn,
-                    clockOut: isNonWork && !draftClockOut ? '' : draftClockOut,
-                    note: draftNote,
+                    ...getAttendanceCell(
+                      selectedAttendanceCell.employeeId,
+                      selectedAttendanceCell.day
+                    ),
+                    ...selectedAttendanceValue,
                     overtimeHours: finalOt,
                     source: 'manual' as const,
                   }
-                  // Apply to table state only upon explicit save
                   setManualAttendance((prev) => ({ ...prev, [key]: updatedCell }))
-                  setIsAttendanceDirty(true)
                   setSelectedAttendanceCell(null)
 
                   // Save ONLY this single cell directly to the server
                   if (!guardOpenPeriod('Save attendance')) return
-                  const empSiteId = selectedAttendanceEmployee?.siteId
-                  const numericSiteId =
-                    Number(siteId) > 0
-                      ? Number(siteId)
-                      : empSiteId && Number(empSiteId) > 0
-                        ? Number(empSiteId)
-                        : Number(site?.id) || 0
-                  if (!Number.isFinite(numericSiteId) || numericSiteId <= 0 || isFinalized) {
-                    toast.error('Gagal menyimpan: Site ID tidak valid.')
-                    return
-                  }
+                  const numericSiteId = Number(siteId)
+                  if (!Number.isFinite(numericSiteId) || numericSiteId <= 0 || isFinalized) return
                   startSavingAttendance(async () => {
                     try {
                       const result = await saveAttendanceRealOverridesAction({
@@ -11456,9 +11340,9 @@ export function SchedulingTimesheetWorkspace({
                             employeeId: selectedAttendanceCell.employeeId,
                             day: selectedAttendanceCell.day,
                             status: updatedCell.status,
-                            clockIn: updatedCell.clockIn ?? '',
-                            clockOut: updatedCell.clockOut ?? '',
-                            note: updatedCell.note ?? '',
+                            clockIn: updatedCell.clockIn,
+                            clockOut: updatedCell.clockOut,
+                            note: updatedCell.note,
                             source: 'manual',
                             overtimeHours: finalOt,
                           },
@@ -11482,18 +11366,15 @@ export function SchedulingTimesheetWorkspace({
                       <div>
                         Tanggal {selectedAttendanceCell.day} • Shift:{' '}
                         <span className="font-semibold text-slate-900 dark:text-slate-100">
-                          {selectedAttendanceValue.shiftCode || 'DS'} (Jadwal Masuk:{' '}
-                          {selectedAttendanceValue.scheduledClockIn
-                            ? `${selectedAttendanceValue.scheduledClockIn} • ${formatTo12HourTime(selectedAttendanceValue.scheduledClockIn)}`
-                            : siteConfig.dayShiftClockIn}
-                          )
+                          {selectedAttendanceValue.shiftCode || 'Day'} (Jadwal Masuk:{' '}
+                          {selectedAttendanceValue.scheduledClockIn || siteConfig.dayShiftClockIn})
                         </span>
                       </div>
-                      {draftIsLate ? (
+                      {selectedAttendanceValue.isLatePending ? (
                         <span className="inline-flex items-center rounded-md bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700">
-                          Terlambat +{draftLateMinutes}m
+                          Terlambat {selectedAttendanceValue.lateMinutes ? `+${selectedAttendanceValue.lateMinutes}m` : ''}
                         </span>
-                      ) : draftClockIn && draftCellStatus === 'present' ? (
+                      ) : selectedAttendanceValue.clockIn ? (
                         <span className="inline-flex items-center rounded-md bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">
                           Tepat Waktu
                         </span>
@@ -11503,24 +11384,14 @@ export function SchedulingTimesheetWorkspace({
                       <div className="space-y-2">
                         <Label>Status</Label>
                         <NativeSelect
-                          value={draftCellStatus}
-                          onValueChange={(value) => {
-                            const nextStatus = value as AttendanceCellStatus
-                            setDraftCellStatus(nextStatus)
-                            const statusClearsTime = [
-                              'off',
-                              'standby',
-                              'field_break',
-                              'sick',
-                              'leave',
-                              'absent',
-                              'empty',
-                            ].includes(nextStatus)
-                            if (statusClearsTime) {
-                              setDraftClockIn('')
-                              setDraftClockOut('')
-                            }
-                          }}
+                          value={selectedAttendanceValue.status}
+                          onValueChange={(value) =>
+                            updateAttendanceCell(
+                              selectedAttendanceCell.employeeId,
+                              selectedAttendanceCell.day,
+                              { status: value as AttendanceCellStatus }
+                            )
+                          }
                           options={[
                             { value: 'present', label: 'Masuk' },
                             { value: 'off', label: 'OFF (tetap dapat tunjangan)' },
@@ -11534,53 +11405,55 @@ export function SchedulingTimesheetWorkspace({
                         />
                       </div>
                       <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <Label>Jam Masuk</Label>
-                          {draftClockIn ? (
-                            <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
-                              {formatTo12HourTime(draftClockIn)}
-                            </span>
-                          ) : null}
-                        </div>
+                        <Label>Jam Masuk</Label>
                         <Input
                           type="time"
-                          value={normalizeTo24HourTime(draftClockIn)}
-                          onChange={(event) => {
-                            const val = event.target.value
-                            setDraftClockIn(val)
-                            if (val) {
-                              setDraftCellStatus('present')
-                            }
-                          }}
+                          value={selectedAttendanceValue.clockIn}
+                          onChange={(event) =>
+                            updateAttendanceCell(
+                              selectedAttendanceCell.employeeId,
+                              selectedAttendanceCell.day,
+                              {
+                                clockIn: event.target.value,
+                                status: event.target.value
+                                  ? 'present'
+                                  : selectedAttendanceValue.status,
+                              }
+                            )
+                          }
                         />
                       </div>
                       <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <Label>Jam Pulang</Label>
-                          {draftClockOut ? (
-                            <span className="text-[11px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded">
-                              {formatTo12HourTime(draftClockOut)}
-                            </span>
-                          ) : null}
-                        </div>
+                        <Label>Jam Pulang</Label>
                         <Input
                           type="time"
-                          value={normalizeTo24HourTime(draftClockOut)}
-                          onChange={(event) => {
-                            const val = event.target.value
-                            setDraftClockOut(val)
-                            if (val) {
-                              setDraftCellStatus('present')
-                            }
-                          }}
+                          value={selectedAttendanceValue.clockOut}
+                          onChange={(event) =>
+                            updateAttendanceCell(
+                              selectedAttendanceCell.employeeId,
+                              selectedAttendanceCell.day,
+                              {
+                                clockOut: event.target.value,
+                                status: event.target.value
+                                  ? 'present'
+                                  : selectedAttendanceValue.status,
+                              }
+                            )
+                          }
                         />
                       </div>
                     </div>
                     <div className="space-y-2">
                       <Label>Catatan</Label>
                       <Input
-                        value={draftNote}
-                        onChange={(event) => setDraftNote(event.target.value)}
+                        value={selectedAttendanceValue.note}
+                        onChange={(event) =>
+                          updateAttendanceCell(
+                            selectedAttendanceCell.employeeId,
+                            selectedAttendanceCell.day,
+                            { note: event.target.value }
+                          )
+                        }
                         placeholder="Face loc / izin / sakit / manual"
                       />
                     </div>
@@ -11611,15 +11484,7 @@ export function SchedulingTimesheetWorkspace({
                             </span>
                           )}
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          onClick={() => setSelectedAttendanceCell(null)}
-                        >
-                          Batal
-                        </Button>
-                        <Button onClick={onSaveAndClose}>Simpan</Button>
-                      </div>
+                      <Button onClick={onSaveAndClose}>Simpan</Button>
                     </div>
                   </div>
                 )

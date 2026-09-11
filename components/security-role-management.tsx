@@ -18,6 +18,7 @@ import {
   Search,
   Settings,
   Zap,
+  RefreshCw,
 } from 'lucide-react'
 import { manageSecurityRoleAction, type AdminMutationState } from '@/app/dashboard/admin-actions'
 import { Badge } from '@/components/ui/badge'
@@ -354,14 +355,16 @@ function SubmitButton({
   children,
   variant = 'default',
   size = 'default',
+  title,
 }: {
   children: React.ReactNode
   variant?: 'default' | 'outline' | 'destructive'
   size?: 'default' | 'sm' | 'lg' | 'icon'
+  title?: string
 }) {
   const { pending } = useFormStatus()
   return (
-    <Button type="submit" variant={variant} size={size} disabled={pending}>
+    <Button type="submit" variant={variant} size={size} title={title} disabled={pending}>
       {pending ? 'Memproses...' : children}
     </Button>
   )
@@ -667,13 +670,21 @@ export function SecurityRoleManagement({
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
               <CardTitle className="text-base">Daftar Peran</CardTitle>
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button size="sm">
-                    <Plus className="size-4" />
-                    Peran Baru
-                  </Button>
-                </DialogTrigger>
+              <div className="flex items-center gap-2">
+                <form action={roleFormAction}>
+                  <input type="hidden" name="intent" value="sync-permissions" />
+                  <SubmitButton variant="outline" size="sm" title="Sinkronkan semua menu dan halaman baru ke matriks role">
+                    <RefreshCw className="mr-1 size-3.5" />
+                    Sync
+                  </SubmitButton>
+                </form>
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button size="sm">
+                      <Plus className="size-4" />
+                      Peran Baru
+                    </Button>
+                  </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Buat Peran Baru</DialogTitle>
@@ -709,6 +720,7 @@ export function SecurityRoleManagement({
                   </form>
                 </DialogContent>
               </Dialog>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-2">

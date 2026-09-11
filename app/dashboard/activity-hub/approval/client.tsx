@@ -723,6 +723,22 @@ async function uploadActivityPhoto(file: File): Promise<string> {
     [rows, selectedIds]
   )
   const currentBatchDoc = selectedBatchRows[batchReviewIndex] || selectedBatchRows[0] || null
+  const [currentBatchQrDataUrl, setCurrentBatchQrDataUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!currentBatchDoc?.sessionId) {
+      setCurrentBatchQrDataUrl(null)
+      return
+    }
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    QRCode.toDataURL(`${origin}/activity-evidence/${currentBatchDoc.sessionId}`, {
+      margin: 1,
+      width: 140,
+      errorCorrectionLevel: 'M',
+    })
+      .then((url) => setCurrentBatchQrDataUrl(url))
+      .catch((err) => console.error('Failed to generate batch preview QR:', err))
+  }, [currentBatchDoc?.sessionId])
 
   const canBatchReview = useMemo(
     () =>
@@ -4543,6 +4559,55 @@ async function uploadActivityPhoto(file: File): Promise<string> {
         isOpen={isEvidenceModalOpen}
         onClose={() => setIsEvidenceModalOpen(false)}
         sessionId={evidenceModalSessionId || previewTarget?.sessionId || null}
+        fallbackData={(() => {
+          if (!previewTarget) return null
+          const processedItems = (previewTarget.items || []).map((item, index) => {
+            const photoUrl = (item as any).photoUrl || null
+            return {
+              id: item.id || index + 1,
+              itemIndex: index + 1,
+              snapshotLabel: item.label,
+              snapshotGroupName: (item as any).group || null,
+              unitNumber: item.unitNumber || null,
+              remark: item.remark || null,
+              actualPoints: Number(item.points) || 0,
+              isChecked: true,
+              startedAt: (item as any).startedAt || null,
+              endedAt: (item as any).endedAt || null,
+              startLabel: '-',
+              endLabel: '-',
+              durationLabel: item.duration || '-',
+              photoUrl,
+            }
+          })
+          return {
+            header: {
+              sessionId: previewTarget.sessionId,
+              sessionCode: previewTarget.sessionCode,
+              workDate: previewTarget.workDate || new Date(),
+              shiftCode: previewTarget.shiftCode,
+              status: previewTarget.sessionStatus,
+              summaryRemark: null,
+              submittedAt: null,
+              employeeId: 0,
+              employeeName: previewTarget.employeeName,
+              employeeSn: previewTarget.employeeSn,
+              employeeDepartment: previewTarget.department || null,
+              employeeSection: previewTarget.section || null,
+              employeeJobTitle: previewTarget.jobTitle || null,
+              siteId: 0,
+              siteName: previewTarget.siteName || '',
+              customerName: previewTarget.customerName || null,
+              contractNumber: null,
+              splId: null,
+              splNumber: null,
+              splTitle: null,
+            },
+            allItems: processedItems,
+            evidenceItems: processedItems,
+            approvals: [],
+          }
+        })()}
       />
     </AdminPageShell>
   )

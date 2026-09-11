@@ -27,8 +27,9 @@ function parsePhotoUrls(raw: string | null | undefined): string[] {
   return [trimmed];
 }
 
-export default async function ApdRequestDetailPage({ params }: { params: { id: string } }) {
-  const id = parseInt(params.id, 10);
+export default async function ApdRequestDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id: rawId } = await params;
+  const id = parseInt(rawId, 10);
   if (isNaN(id)) return notFound();
 
   const request = await fetchApdRequestById(id);

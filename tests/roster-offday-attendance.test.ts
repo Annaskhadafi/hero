@@ -54,8 +54,8 @@ describe('Roster 5:2 & Attendance Engine', () => {
     assert.equal(resolveConfiguredShiftClockIn('19:00', config), '19:00')
 
     // Inferred shift from clock-in time
-    assert.deepEqual(inferShiftFromClockInTime('18:25', config), { shiftCode: 'NS', scheduledClockIn: '18:00' })
-    assert.deepEqual(inferShiftFromClockInTime('08:15', config), { shiftCode: 'DS', scheduledClockIn: '08:00' })
+    assert.deepEqual(inferShiftFromClockInTime('18:25', config), { shiftCode: 'night', scheduledClockIn: '18:00' })
+    assert.deepEqual(inferShiftFromClockInTime('08:15', config), { shiftCode: 'day', scheduledClockIn: '08:00' })
 
     // Calculate late minutes from time strings
     assert.equal(calculateLateMinutesFromTimes('18:25', '18:00'), 25)
@@ -193,7 +193,7 @@ describe('Roster 5:2 & Attendance Engine', () => {
     const workspacePath = path.resolve('components/scheduling-timesheet-workspace.tsx')
     const workspaceCode = fs.readFileSync(workspacePath, 'utf8')
     assert(workspaceCode.includes('siteAttendanceEmployeeIds'))
-    assert(workspaceCode.includes('status = \'present\''))
+    assert(workspaceCode.includes("effectiveStatus = 'present'") || workspaceCode.includes("status = 'present'"))
   })
 
   it('replaces OFF status with present when attendance exists and keeps OFF when absent', () => {

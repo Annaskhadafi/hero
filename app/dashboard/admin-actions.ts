@@ -85,7 +85,7 @@ async function notifyDailyReportDelivery(input: {
   })
 }
 
-import { and, asc, desc, eq, inArray, isNull, isNotNull, ne, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, inArray, isNull, isNotNull, lt, ne, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { hashPassword } from 'better-auth/crypto'
@@ -185,6 +185,7 @@ import {
   ensureHeroGovernanceSeedData,
   ensureHeroSeedData,
   evaluatePointThresholdBadges,
+  syncMenuPermissionsMatrix,
 } from '@/lib/hero-admin'
 import { createNotificationEventForEmployee, sendPushNotification } from '@/lib/push-notifications'
 import { splDateKey } from '@/lib/spl-data'
@@ -241,6 +242,46 @@ async function requireSchedulingTimesheetAccess(
   const allowed = permission === 'finalize' ? access.canDelete : access.canEdit
   if (!access.canView || !allowed) throw new Error('Unauthorized scheduling timesheet access')
   return access
+}
+
+async function requireTrainingRecordAccess(
+  action: 'edit' | 'delete',
+  employeeId?: number,
+  recordId?: number,
+) {
+  const [permission, context] = await Promise.all([
+    getCurrentMenuPermission('training_records'),
+    getCurrentEmployeeAccessContext(),
+  ])
+  if (!permission.canView || (action === 'edit' ? !permission.canEdit : !permission.canDelete)) {
+    throw new Error('Unauthorized training records access')
+  }
+  if (permission.dataScope === 'global') return { permission, context }
+  if (!context) throw new Error('Unauthorized training records access')
+
+  let targetEmployeeId = employeeId
+  if (recordId) {
+    const [record] = await db
+      .select({ employeeId: trainingRecords.employeeId })
+      .from(trainingRecords)
+      .where(eq(trainingRecords.id, recordId))
+      .limit(1)
+    if (!record?.employeeId) throw new Error('Training record not found')
+    targetEmployeeId = record.employeeId
+  }
+  if (!targetEmployeeId) throw new Error('Training record employee is required')
+
+  const [target] = await db
+    .select({ id: employees.id, siteId: employees.siteId })
+    .from(employees)
+    .where(eq(employees.id, targetEmployeeId))
+    .limit(1)
+  const allowed =
+    permission.dataScope === 'own'
+      ? target?.id === context.employeeId
+      : permission.dataScope === 'site' && target?.siteId === context.siteId
+  if (!allowed) throw new Error('Training record is outside your data scope')
+  return { permission, context }
 }
 
 async function assertSchedulingSiteScope(
@@ -3339,6 +3380,7 @@ const manageSecurityRoleSchema = z.object({
     'save-menu-permissions',
     'assign-user-role',
     'remove-user-role',
+    'sync-permissions',
   ]),
   roleId: optionalFormString,
   roleName: optionalFormString,
@@ -4300,29 +4342,20 @@ async function applyApprovalDecision(params: {
   note: string
   signatureUrl?: string
 }) {
-  let actor = await getCurrentEmployeeAccessContext()
+  const actor = await getCurrentEmployeeAccessContext()
   const approvalPermission = await getCurrentMenuPermission('approval_inbox')
-  if (!actor) {
-    const fallbackEmp = await db
-      .select({
-        employeeId: employees.id,
-        siteId: employees.siteId,
-        sectionId: employees.sectionId,
-        roleName: employees.accessRole,
-      })
-      .from(employees)
-      .where(eq(employees.id, 5))
-      .limit(1)
-      .then((r) => r[0])
-    if (fallbackEmp) {
-      actor = fallbackEmp
-    }
-  }
   if (!actor) {
     throw new Error('Authenticated employee profile is required.')
   }
   const [actorEmployee] = await db
-    .select({ name: employees.name, signatureDataUrl: employees.signatureDataUrl })
+    .select({
+      name: employees.name,
+      signatureDataUrl: employees.signatureDataUrl,
+      section: employees.section,
+      department: employees.department,
+      jobTitle: employees.jobTitle,
+      email: employees.email,
+    })
     .from(employees)
     .where(eq(employees.id, actor.employeeId))
     .limit(1)
@@ -4393,9 +4426,16 @@ async function applyApprovalDecision(params: {
   const isAssignedApprover =
     approval.approverEmployeeId === actor.employeeId ||
     approval.approverName === actorName ||
-    actor.employeeId === 5 ||
     approval.apdRequestId != null ||
-    approval.apdSummaryId != null
+    approval.apdSummaryId != null ||
+    (approval.repairFormWoId != null &&
+      approval.approverName &&
+      (approval.approverName.toLowerCase().includes('billing') ||
+        approval.approverName.toLowerCase().includes('biling')) &&
+      ((actorEmployee?.section && (actorEmployee.section.toLowerCase().includes('billing') || actorEmployee.section.toLowerCase().includes('biling'))) ||
+        (actorEmployee?.department && (actorEmployee.department.toLowerCase().includes('billing') || actorEmployee.department.toLowerCase().includes('biling'))) ||
+        (actorEmployee?.jobTitle && (actorEmployee.jobTitle.toLowerCase().includes('billing') || actorEmployee.jobTitle.toLowerCase().includes('biling'))) ||
+        (actorEmployee?.email && (actorEmployee.email.toLowerCase().includes('billing') || actorEmployee.email.toLowerCase().includes('biling')))))
   const hasAdminReviewAccess =
     approvalPermission.canEdit &&
     (hasGlobalDataAccess(approvalPermission) ||
@@ -4580,18 +4620,58 @@ async function applyApprovalDecision(params: {
               .limit(1)
             if (nextEmp?.email) {
               nextEmpEmail = nextEmp.email
-              const { notifyWorkflowBellRecipients } =
-                await import('@/lib/workflow-notification-center')
-              notifyWorkflowBellRecipients({
-                recipientEmails: [nextEmp.email],
-                eventType: 'form_wo_review',
-                category: 'approval',
-                title: 'Review Form WO',
-                body: `${reqInfo.pemohon || 'Karyawan Site'} mengajukan Form WO (${reqInfo.noPengajuan}) yang membutuhkan persetujuan Anda (${nextApproverName}).`,
-                url: `/dashboard/approval`,
-                tagPrefix: 'form-wo',
-              }).catch(console.error)
             }
+          }
+
+          if (!nextEmpEmail && nextApproverName) {
+            const [nextEmp] = await tx
+              .select({ email: employees.email })
+              .from(employees)
+              .where(
+                and(
+                  eq(employees.isActive, true),
+                  sql`lower(${employees.name}) = lower(${nextApproverName})`
+                )
+              )
+              .limit(1)
+            if (nextEmp?.email) {
+              nextEmpEmail = nextEmp.email
+            }
+          }
+
+          if (!nextEmpEmail && nextApproverName && nextApproverName.toLowerCase().includes('billing')) {
+            const [billingEmp] = await tx
+              .select({ email: employees.email })
+              .from(employees)
+              .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+              .where(
+                and(
+                  eq(employees.isActive, true),
+                  or(
+                    ilike(masterSections.name, '%Billing%'),
+                    ilike(employees.section, '%Billing%'),
+                    ilike(employees.jobTitle, '%Billing%')
+                  )
+                )
+              )
+              .limit(1)
+            if (billingEmp?.email) {
+              nextEmpEmail = billingEmp.email
+            }
+          }
+
+          if (nextEmpEmail) {
+            const { notifyWorkflowBellRecipients } =
+              await import('@/lib/workflow-notification-center')
+            notifyWorkflowBellRecipients({
+              recipientEmails: [nextEmpEmail],
+              eventType: 'form_wo_review',
+              category: 'approval_requests',
+              title: 'Review Form WO',
+              body: `${reqInfo.pemohon || 'Karyawan Site'} mengajukan Form WO (${reqInfo.noPengajuan}) yang membutuhkan persetujuan Anda (${nextApproverName}).`,
+              url: `/dashboard/approval`,
+              tagPrefix: 'form-wo',
+            }).catch(console.error)
           }
 
           const { sendFormWoApprovalRequestEmail } = await import('@/lib/form-wo-email')
@@ -4599,7 +4679,7 @@ async function applyApprovalDecision(params: {
             approverEmail: nextEmpEmail,
             approverName: nextApproverName,
             pemohon: reqInfo.pemohon || 'Karyawan Site',
-            noPengajuan: reqInfo.noPengajuan,
+            noPengajuan: reqInfo.noPengajuan || '',
             customer: reqInfo.customer || '-',
             site: reqInfo.site || '-',
             jobType: reqInfo.jobType || '-',
@@ -4616,7 +4696,7 @@ async function applyApprovalDecision(params: {
             const [creatorEmp] = await tx
               .select({ email: employees.email })
               .from(employees)
-              .where(eq(employees.id, reqInfo.createdBy))
+              .where(eq(employees.id, Number(reqInfo.createdBy)))
               .limit(1)
             creatorEmail = creatorEmp?.email
           }
@@ -4639,14 +4719,13 @@ async function applyApprovalDecision(params: {
           const billingApproval =
             allFormApprovals.find(
               (a) =>
-                (a.approverName &&
-                  (a.approverName.toLowerCase().includes('billing') ||
-                    a.approverName.toLowerCase().includes('andika'))) ||
-                a.approverEmployeeId === 1102
+                a.approverName &&
+                (a.approverName.toLowerCase().includes('billing') ||
+                  a.approverName.toLowerCase().includes('biling'))
             ) ?? allFormApprovals.find((a) => a.level === 2 || a.level === 3 || a.level === 4)
 
           let billingEmail: string | undefined
-          const billingEmpId = billingApproval?.approverEmployeeId ?? 1102
+          const billingEmpId = billingApproval?.approverEmployeeId
           if (billingEmpId) {
             const [billingEmp] = await tx
               .select({ email: employees.email })
@@ -4658,11 +4737,32 @@ async function applyApprovalDecision(params: {
             }
           }
 
+          if (!billingEmail) {
+            const [billingEmp] = await tx
+              .select({ email: employees.email })
+              .from(employees)
+              .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+              .where(
+                and(
+                  eq(employees.isActive, true),
+                  or(
+                    ilike(masterSections.name, '%Billing%'),
+                    ilike(employees.section, '%Billing%'),
+                    ilike(employees.jobTitle, '%Billing%')
+                  )
+                )
+              )
+              .limit(1)
+            if (billingEmp?.email) {
+              billingEmail = billingEmp.email
+            }
+          }
+
           if (billingEmail) {
             const { sendFormWoReadyForWoNumberEmail } = await import('@/lib/form-wo-email')
             sendFormWoReadyForWoNumberEmail({
               billingEmail,
-              noPengajuan: reqInfo.noPengajuan,
+              noPengajuan: reqInfo.noPengajuan || '',
               pemohon: reqInfo.pemohon || 'Pemohon',
               customer: reqInfo.customer || '-',
               site: reqInfo.site || '-',
@@ -4675,7 +4775,7 @@ async function applyApprovalDecision(params: {
             notifyWorkflowBellRecipients({
               recipientEmails: [billingEmail],
               eventType: 'form_wo_ready_for_wo_number',
-              category: 'approval',
+              category: 'approval_requests',
               title: 'Form WO Siap Terbit (Isi No. WO)',
               body: `Form WO (${reqInfo.noPengajuan}) telah disetujui lengkap oleh Inventory & Warehouse Management SPV. Silakan isi Nomor WO.`,
               url: `/dashboard/repair-retread/form-wo`,
@@ -4689,7 +4789,7 @@ async function applyApprovalDecision(params: {
             const [creatorEmp] = await tx
               .select({ email: employees.email })
               .from(employees)
-              .where(eq(employees.id, reqInfo.createdBy))
+              .where(eq(employees.id, Number(reqInfo.createdBy)))
               .limit(1)
             creatorEmail = creatorEmp?.email
           }
@@ -4698,7 +4798,7 @@ async function applyApprovalDecision(params: {
             sendFormWoStatusApprovedEmail({
               requesterEmail: creatorEmail,
               pemohon: reqInfo.pemohon || 'Pemohon',
-              noPengajuan: reqInfo.noPengajuan,
+              noPengajuan: reqInfo.noPengajuan || '',
               noWoTerbit: '-', // not yet issued
               customer: reqInfo.customer || '-',
               site: reqInfo.site || '-',
@@ -4709,7 +4809,7 @@ async function applyApprovalDecision(params: {
             notifyWorkflowBellRecipients({
               recipientEmails: [creatorEmail],
               eventType: 'form_wo_approved',
-              category: 'approval',
+              category: 'approval_requests',
               title: 'Form WO Disetujui (Menunggu No. WO)',
               body: `Form WO (${reqInfo.noPengajuan}) telah disetujui lengkap oleh Inventory & Warehouse Management SPV. Menunggu Team Billing menerbitkan Nomor WO.`,
               url: `/dashboard/repair-retread/form-wo`,
@@ -4726,7 +4826,7 @@ async function applyApprovalDecision(params: {
             const [creatorEmp] = await tx
               .select({ email: employees.email })
               .from(employees)
-              .where(eq(employees.id, reqInfo.createdBy))
+              .where(eq(employees.id, Number(reqInfo.createdBy)))
               .limit(1)
             creatorEmail = creatorEmp?.email
           }
@@ -4768,7 +4868,7 @@ async function applyApprovalDecision(params: {
             sendFormWoStatusRevertedEmail({
               requesterEmail: creatorEmail,
               pemohon: reqInfo.pemohon || 'Pemohon',
-              noPengajuan: reqInfo.noPengajuan,
+              noPengajuan: reqInfo.noPengajuan || '',
               catatanRevisi: trimmedNote || 'Pengajuan dikembalikan untuk revisi.',
               ccEmails: previousApproverEmails,
             }).catch(console.error)
@@ -4778,7 +4878,7 @@ async function applyApprovalDecision(params: {
             notifyWorkflowBellRecipients({
               recipientEmails: [creatorEmail, ...previousApproverEmails],
               eventType: 'form_wo_reverted',
-              category: 'approval',
+              category: 'approval_requests',
               title: 'Form WO Perlu Revisi',
               body: `Form WO (${reqInfo.noPengajuan}) dikembalikan oleh approver: ${trimmedNote}`,
               url: `/dashboard/repair-retread/form-wo`,
@@ -4795,7 +4895,7 @@ async function applyApprovalDecision(params: {
             const [creatorEmp] = await tx
               .select({ email: employees.email })
               .from(employees)
-              .where(eq(employees.id, reqInfo.createdBy))
+              .where(eq(employees.id, Number(reqInfo.createdBy)))
               .limit(1)
             creatorEmail = creatorEmp?.email
           }
@@ -4805,7 +4905,7 @@ async function applyApprovalDecision(params: {
             sendFormWoStatusRejectedEmail({
               requesterEmail: creatorEmail,
               pemohon: reqInfo.pemohon || 'Pemohon',
-              noPengajuan: reqInfo.noPengajuan,
+              noPengajuan: reqInfo.noPengajuan || '',
               catatanPengajuan: trimmedNote || 'Pengajuan tidak disetujui oleh approver.',
             }).catch(console.error)
 
@@ -4814,7 +4914,7 @@ async function applyApprovalDecision(params: {
             notifyWorkflowBellRecipients({
               recipientEmails: [creatorEmail],
               eventType: 'form_wo_rejected',
-              category: 'approval',
+              category: 'approval_requests',
               title: 'Form WO Ditolak',
               body: `Form WO (${reqInfo.noPengajuan}) telah ditolak: ${trimmedNote}`,
               url: `/dashboard/repair-retread/form-wo`,
@@ -4836,9 +4936,10 @@ async function applyApprovalDecision(params: {
   ) {
     const summaryId = approval.apdSummaryId as number
     const now = new Date()
+    const { getSummaryDetails } = await import('@/lib/summary-engine')
 
     if (params.decision === 'approved') {
-      const { approveSummaryStep, getSummaryDetails } = await import('@/lib/summary-engine')
+      const { approveSummaryStep } = await import('@/lib/summary-engine')
       const { sendSummaryApprovedEmail } = await import('@/lib/summary-email')
       const sigUrl = params.signatureUrl || ''
       const result = await approveSummaryStep(
@@ -4929,10 +5030,7 @@ async function applyApprovalDecision(params: {
     const now = new Date()
     const isApproved = params.decision === 'approved'
     const isRejected = params.decision === 'rejected'
-    const isReverted =
-      params.decision === 'needs_correction' ||
-      params.decision === 'revision_requested' ||
-      params.decision === 'reverted'
+    const isReverted = params.decision === 'needs_correction'
 
     const decisionStatus = isApproved
       ? 'proses_order'
@@ -5111,7 +5209,7 @@ async function applyApprovalDecision(params: {
             notifyWorkflowBellRecipients({
               recipientEmails: [reqInfo.requesterEmail, 'muhammad.akbar@chitraparatama.co.id'],
               eventType: 'material_tools_request_approved',
-              category: 'approval_status',
+              category: 'approval_requests',
               title: `Permintaan ${reqInfo.requestCategory} Disetujui`,
               body: `Permintaan ${reqInfo.requestCategory} (${reqInfo.requestNumber}) telah disetujui oleh ${actorName}.`,
               url: `/dashboard/apd`,
@@ -5147,7 +5245,7 @@ async function applyApprovalDecision(params: {
             notifyWorkflowBellRecipients({
               recipientEmails: [reqInfo.requesterEmail],
               eventType: 'apd_request_approved',
-              category: 'approval_status',
+              category: 'approval_requests',
               title: `Permintaan ${reqInfo.requestCategory} Disetujui`,
               body: `Permintaan ${reqInfo.requestCategory} (${reqInfo.requestNumber}) telah disetujui oleh ${actorName}.`,
               url: `/dashboard/apd`,
@@ -8117,11 +8215,11 @@ export async function manageSecurityUserAction(
       const actorEmail = await getCurrentActorEmail()
       await logAuditEvent({
         actorEmail,
-        action: 'user.activated',
+        action: 'user.unbanned',
         entityType: 'user',
         entityLabel: employee.name,
         description: `Activated user ${employee.name} (${employee.email})`,
-        severity: 'normal',
+        severity: 'info',
       })
 
       revalidateAdminSurfaces()
@@ -8625,6 +8723,26 @@ export async function manageSecurityRoleAction(
       return {
         status: 'success',
         message: `${employee.name} berhasil dihapus dari role. Dikembalikan ke ${defaultRole}.`,
+      }
+    }
+
+    if (payload.intent === 'sync-permissions') {
+      const { insertedMenus, insertedPermissions } = await syncMenuPermissionsMatrix()
+
+      const actorEmail = await getCurrentActorEmail()
+      await logAuditEvent({
+        actorEmail,
+        action: 'role.permissions_synced',
+        entityType: 'role_matrix',
+        entityLabel: 'RBAC Matrix Sync',
+        description: `Sinkronisasi matriks permission RBAC berhasil. Menambah ${insertedMenus} menu baru dan ${insertedPermissions} entri permission role.`,
+        severity: 'info',
+      })
+
+      revalidateAdminSurfaces()
+      return {
+        status: 'success',
+        message: `Sinkronisasi berhasil! ${insertedMenus} menu baru dan ${insertedPermissions} entri permission role telah disinkronkan ke database.`,
       }
     }
 
@@ -9139,6 +9257,11 @@ export async function manageHseIncidentAction(formData: FormData): Promise<Admin
 export async function manageTrainingRecordAction(formData: FormData): Promise<AdminMutationState> {
   try {
     const payload = manageTrainingRecordSchema.parse(Object.fromEntries(formData))
+    const action = payload.intent === 'delete' ? 'delete' : 'edit'
+    await requireTrainingRecordAccess(action, payload.employeeId, payload.id)
+    if (payload.intent === 'update' && payload.employeeId) {
+      await requireTrainingRecordAccess('edit', payload.employeeId)
+    }
     await ensureHeroSeedData()
 
     if (payload.intent === 'create') {
@@ -9247,6 +9370,7 @@ export async function importTrainingRecordsAction(
   formData: FormData
 ): Promise<TrainingRecordImportState> {
   try {
+    const access = await requireTrainingRecordAccess('edit')
     await ensureHeroSeedData()
 
     const rawCsv = `${formData.get('rawCsv') ?? ''}`.trim()
@@ -9280,9 +9404,18 @@ export async function importTrainingRecordsAction(
         email: employees.email,
         employeeSn: employees.employeeSn,
         department: employees.department,
+        siteId: employees.siteId,
       })
       .from(employees)
       .where(eq(employees.isActive, true))
+    const allowedEmployeeIds = new Set(
+      employeeRows.filter((employee) => {
+        if (access.permission.dataScope === 'global') return true
+        if (access.permission.dataScope === 'own') return employee.id === access.context?.employeeId
+        return employee.siteId === access.context?.siteId
+      }).map((employee) => employee.id)
+    )
+    const scopedEmployeeRows = employeeRows.filter((employee) => allowedEmployeeIds.has(employee.id))
 
     const existingRows = await db
       .select({
@@ -9294,17 +9427,17 @@ export async function importTrainingRecordsAction(
       .from(trainingRecords)
 
     const employeeBySn = new Map(
-      employeeRows
+      scopedEmployeeRows
         .filter((employee) => employee.employeeSn.trim())
         .map((employee) => [normalizeTrainingRecordKey(employee.employeeSn), employee])
     )
     const employeeByEmail = new Map(
-      employeeRows
+      scopedEmployeeRows
         .filter((employee) => employee.email.trim())
         .map((employee) => [normalizeTrainingRecordKey(employee.email), employee])
     )
     const fuse = new Fuse(
-      employeeRows.map((emp) => ({
+      scopedEmployeeRows.map((emp) => ({
         ...emp,
         normalizedName: normalizeTrainingRecordKey(emp.name),
       })),
@@ -9315,7 +9448,7 @@ export async function importTrainingRecordsAction(
       }
     )
 
-    const employeesByName = employeeRows.reduce<Map<string, typeof employeeRows>>(
+    const employeesByName = scopedEmployeeRows.reduce<Map<string, typeof scopedEmployeeRows>>(
       (map, employee) => {
         const key = normalizeTrainingRecordKey(employee.name)
         const current = map.get(key) ?? []

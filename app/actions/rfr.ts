@@ -682,6 +682,7 @@ async function sendRfrCompletedEmail(params: {
       functionalCompetencies: Array.isArray(params.rfr.functionalCompetencies) ? params.rfr.functionalCompetencies : [],
       approvals: params.approvals.map((a: any) => ({
         stepOrder: a.stepOrder,
+        stepKey: a.stepKey || `step_${a.stepOrder}`,
         roleLabel: a.roleLabel,
         approverName: a.approverName || '-',
         approverTitle: a.approverTitle || '-',

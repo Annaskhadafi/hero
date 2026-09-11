@@ -86,6 +86,9 @@
 
 - Dilarang melakukan `git commit` dan `git push` tanpa perintah eksplisit dari user.
 - Selalu minta konfirmasi sebelum setiap `git commit` atau `git push`, meskipun user pernah menyetujui di sesi/percakapan sebelumnya.
+- Sebelum pemeriksaan apa pun (`git diff --check`, test, lint, atau type-check), wajib `git fetch origin` lalu sinkronkan branch lokal dengan `origin/main`. Jika worktree kotor, simpan perubahan lokal secara reversible terlebih dahulu; jangan menimpa perubahan lokal atau data terbaru dari remote, dan selesaikan konflik sebelum melanjutkan.
+- Sebelum `git add`, `git commit`, atau `git push`, wajib jalankan `npm test`, lint, dan type-check yang tersedia di repository. Jika ada kegagalan, perbaiki terlebih dahulu lalu ulangi seluruh pemeriksaan sampai lulus.
+- Urutan wajib: `git fetch origin` → sinkronisasi dengan `origin/main` → `npm test` → lint → type-check → perbaiki semua error bila ada → `git add` → `git commit` → `git push`.
 - Operasi git read-only seperti `git status`, `git diff`, `git log`, `git branch` boleh dilakukan tanpa konfirmasi.
 
 ## graphify
@@ -496,7 +499,19 @@ Aturan di bawah ini adalah sumber kebenaran implementasi RBAC HERO. Jika aturan 
 - Setelah role/permission berubah, cache sidebar, permission, page, dan session yang relevan harus di-revalidate/invalidate. Request berikutnya wajib membaca konfigurasi terbaru.
 - Perubahan Role Management tidak boleh memberi caller jalur privilege escalation: izin mengelola user tidak otomatis memberi izin mengubah role/permission atau menetapkan Super Admin.
 
-##### 8. Regression check wajib
+##### 9. Strict Enforcement: Tidak Ada Bypasses, Hardcoded Fallbacks, atau Hardcoded Filters
+
+- **Dilarang Keras Hardcoded Fallback Actor:** Tidak boleh menggunakan fallback statis ke ID karyawan manapun (misal ID 5 atau karyawan aktif pertama). Jika session/context null, wajib tolak dengan `Unauthorized`.
+- **Dilarang Keras Hardcoded Filter Departemen/Scope:** Halaman data umum (seperti Master Employee) dilarang memfilter secara hardcoded ke satu departemen saja (misal `e.departmentName === 'Central Services'`) tanpa alasan bisnis yang disetujui. Super Admin & role Global wajib dapat melihat seluruh departemen.
+- **Wajib Guard di Setiap Page:** Setiap file `page.tsx` wajib memiliki blok penolakan dini sebelum me-render UI atau melakukan query berat:
+  ```typescript
+  const access = await getCurrentMenuPermission('<resource_name>')
+  if (!access.canView) redirect('/dashboard')
+  ```
+- **Wajib Proteksi Mutasi:** Setiap server action mutasi (create/update/delete) wajib memeriksa session dan permission (`canEdit` atau `canDelete`) sebelum mengeksekusi operasi database.
+- **Konsistensi Scope Data:** Setiap query yang menampilkan data transaksi wajib menyaring berdasarkan context session jika `dataScope` bukan global (`own` -> `employeeId`, `site` -> `siteId`).
+
+##### 10. Regression check wajib
 
 Untuk setiap perubahan RBAC, tambahkan atau jalankan smoke/regression check minimum yang membuktikan:
 

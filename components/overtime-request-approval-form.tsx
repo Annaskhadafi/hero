@@ -1056,7 +1056,7 @@ export function OvertimeRequestApprovalForm({
                     <tbody className="divide-y divide-slate-100">
                       {lineItems.length > 0 ? (
                         lineItems.map((item, idx) => (
-                          <tr key={item.id ? `spl-item-${item.id}` : `spl-it-${item.employeeId ?? 'anon'}-${idx}`} className="hover:bg-slate-50/80 transition-colors">
+                          <tr key={item.id ? `spl-item-${item.id}` : `spl-it-${(item as any).employeeId ?? (item as any).assignedEmployeeId ?? 'anon'}-${idx}`} className="hover:bg-slate-50/80 transition-colors">
                             <td className="py-2.5 px-3 text-center font-mono text-slate-500 font-semibold">{idx + 1}</td>
                             <td className="py-2 px-3">
                               <Input

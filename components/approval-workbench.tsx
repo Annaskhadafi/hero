@@ -544,7 +544,7 @@ export function InboxTab({
   const allUnifiedItems = useMemo(() => {
     const list: Array<{
       id: string
-      category: 'DAILY_ACTIVITY' | 'OVERTIME' | 'PTW' | 'CONTRACT_REVIEW' | 'SOP_WIN_REQUEST' | 'RFR' | 'GENERAL'
+      category: 'DAILY_ACTIVITY' | 'OVERTIME' | 'PTW' | 'CONTRACT_REVIEW' | 'SOP_WIN_REQUEST' | 'RFR' | 'GENERAL' | 'FORM_WO' | 'APD' | 'MATERIAL' | 'TOOLS' | 'SUMMARY' | 'QUALITY_5R' | 'SOP_WIN' | string
       categoryLabel: string
       documentNumber: string
       title: string
@@ -564,6 +564,18 @@ export function InboxTab({
       url: string
       isReverted?: boolean
       actionLabel?: string
+      // Extended fields for FORM_WO / APD / General
+      customerName?: string | null
+      approvalId?: number | null
+      level?: number
+      activityType?: string
+      activityId?: number
+      repairFormWo?: any
+      totalAmount?: string | number
+      signatureUrl?: string | null
+      rawFormWo?: any
+      rawFiveR?: any
+      fiveRReport?: any
       rawDaily?: (typeof dailyActivityItems)[number]
       rawOvertime?: (typeof overtimeItems)[number]
       rawPtw?: (typeof ptwItems)[number]
@@ -571,6 +583,7 @@ export function InboxTab({
       rawSopWinRequest?: (typeof sopWinRequestItems)[number]
       rawRfr?: (typeof rfrItems)[number]
       rawGeneralGroup?: (typeof groups)[number]
+      [key: string]: any
     }> = []
 
     for (const d of dailyActivityItems) {
@@ -691,7 +704,7 @@ export function InboxTab({
     }
 
     for (const g of groups) {
-      const formWoItem = g.items.find(
+      const formWoItems = g.items.filter(
         (i: any) =>
           i.repairFormWo ||
           i.activityType === 'Form WO' ||
@@ -701,55 +714,50 @@ export function InboxTab({
           (i as any).title?.toLowerCase().includes('work order') ||
           (i as any).title?.toLowerCase().includes('wo ')
       )
-      const isFormWo = Boolean(
-        formWoItem &&
-          (formWoItem.repairFormWo ||
-            formWoItem.activityType === 'Work Order' ||
-            (formWoItem as any).repairFormWoId != null)
-      )
-      const woData =
-        formWoItem?.repairFormWo ||
-        (isFormWo && formWoItem
-          ? {
-              id: (formWoItem as any).repairFormWoId || formWoItem.activityId,
-              noPengajuan: formWoItem.requestNumber || formWoItem.title || `WO-${formWoItem.activityId}`,
-              jenisPengajuan: formWoItem.title?.toLowerCase().includes('service') ? 'service' : 'repair',
-              pemohon: formWoItem.requesterName || g.requesterName,
-              pemohonJobTitle: formWoItem.requesterJobTitle || 'Pemohon',
-              customer: formWoItem.unitNumber || g.siteName || 'Customer',
-              site: formWoItem.siteName || g.siteName,
-              deskripsiPekerjaan:
-                formWoItem.description && formWoItem.description !== '-'
-                  ? formWoItem.description
-                  : formWoItem.title || formWoItem.remarks || 'Work Order Request',
-              totalAmount: String((formWoItem as any).totalAmount || 0),
-              submitterSignatureUrl: formWoItem.signatureUrl || null,
-              steps: (formWoItem as any).steps || [],
-            }
-          : null)
+      const nonFormWoItems = g.items.filter((i: any) => !formWoItems.includes(i))
 
-      if (isFormWo && woData) {
+      for (const formWoItem of formWoItems) {
+        const isFormWo = true
+        const woData =
+          formWoItem?.repairFormWo ||
+          {
+            id: (formWoItem as any).repairFormWoId || formWoItem.activityId,
+            noPengajuan: formWoItem.requestNumber || formWoItem.title || `WO-${formWoItem.activityId}`,
+            jenisPengajuan: formWoItem.title?.toLowerCase().includes('service') ? 'service' : 'repair',
+            pemohon: formWoItem.requesterName || g.requesterName,
+            pemohonJobTitle: formWoItem.requesterJobTitle || 'Pemohon',
+            customer: formWoItem.unitNumber || g.siteName || 'Customer',
+            site: formWoItem.siteName || g.siteName,
+            deskripsiPekerjaan:
+              formWoItem.description && formWoItem.description !== '-'
+                ? formWoItem.description
+                : formWoItem.title || formWoItem.remarks || 'Work Order Request',
+            totalAmount: String((formWoItem as any).totalAmount || 0),
+            submitterSignatureUrl: formWoItem.signatureUrl || null,
+            steps: (formWoItem as any).steps || [],
+          }
+
         list.push({
-          id: `form-wo-${woData.id}`,
+          id: `form-wo-${woData.id || formWoItem.approvalId}`,
           category: 'FORM_WO',
           categoryLabel: 'Form Permintaan Work Order',
           documentNumber: woData.noPengajuan || `WO-${woData.id}`,
           title: `Work Order: ${(woData.jenisPengajuan || 'WO').toUpperCase()} - ${woData.customer || g.siteName || 'Customer'}`,
           employeeName: woData.pemohon || g.requesterName,
           siteName: woData.site || g.siteName,
-          workDate: woData.tanggalPengajuan ? new Date(woData.tanggalPengajuan) : g.workDate,
-          stepLabel: formWoItem?.currentStepLabel || `${g.items.length} Step Pending`,
-          dueState: g.overdueCount > 0 ? 'overdue' : g.dueSoonCount > 0 ? 'due_soon' : 'open',
-          dueAt: g.items[0]?.dueAt || new Date(),
-          submittedAt: g.items[0]?.submittedAt || new Date(),
+          workDate: (woData as any).tanggalPengajuan ? new Date((woData as any).tanggalPengajuan) : (formWoItem.submittedAt ? new Date(formWoItem.submittedAt) : g.workDate),
+          stepLabel: formWoItem?.currentStepLabel || 'Menunggu Approval',
+          dueState: formWoItem?.dueState || (g.overdueCount > 0 ? 'overdue' : g.dueSoonCount > 0 ? 'due_soon' : 'open'),
+          dueAt: formWoItem?.dueAt || g.items[0]?.dueAt || new Date(),
+          submittedAt: formWoItem?.submittedAt || g.items[0]?.submittedAt || new Date(),
           url: '#',
           approvalId: formWoItem?.approvalId,
           level: formWoItem?.level || g.items[0]?.level || 1,
           repairFormWo: woData,
           customerName: woData.customer,
-          totalAmount: woData.totalAmount,
+          totalAmount: woData.totalAmount ?? undefined,
           signatureUrl: woData.submitterSignatureUrl,
-          approverName: g.items[0]?.approverName || formWoItem?.approverName || null,
+          approverName: (formWoItem as any)?.approverName || (g.items[0] as any)?.approverName || null,
           rawFormWo: {
             ...woData,
             steps:
@@ -761,12 +769,17 @@ export function InboxTab({
                 decision: s.status,
                 reviewedAt: s.reviewedAt,
                 signatureUrl: s.signatureUrl || null,
-              })) || (woData.steps || []),
+              })) || ((woData as any).steps || []),
           },
-          rawGeneralGroup: g,
+          rawGeneralGroup: {
+            ...g,
+            items: [formWoItem],
+          },
         })
-      } else {
-        const apdItem = g.items.find(
+      }
+
+      if (nonFormWoItems.length > 0) {
+        const apdItem = nonFormWoItems.find(
           (i: any) =>
             i.activityType?.toLowerCase().includes('request apd') ||
             i.activityType?.toLowerCase().includes('request tools') ||
@@ -819,7 +832,7 @@ export function InboxTab({
 
         const resolvedTitle = isApd
           ? (apdItem?.title || `${resolvedCategoryLabel} - ${g.requesterName}`)
-          : `${g.requesterName} - ${g.activityCount} Item Activity`
+          : `${g.requesterName} - ${nonFormWoItems.length} Item Activity`
 
         list.push({
           id: `general-group-${g.id}`,
@@ -830,16 +843,20 @@ export function InboxTab({
           employeeName: g.requesterName,
           siteName: g.siteName,
           workDate: g.workDate,
-          stepLabel: isApd && apdItem?.currentStepLabel ? apdItem.currentStepLabel : `${g.items.length} Step Pending`,
+          stepLabel: isApd && apdItem?.currentStepLabel ? apdItem.currentStepLabel : `${nonFormWoItems.length} Step Pending`,
           dueState: g.overdueCount > 0 ? 'overdue' : g.dueSoonCount > 0 ? 'due_soon' : 'open',
-          dueAt: g.items[0]?.dueAt || new Date(),
-          submittedAt: g.items[0]?.submittedAt || new Date(),
+          dueAt: nonFormWoItems[0]?.dueAt || new Date(),
+          submittedAt: nonFormWoItems[0]?.submittedAt || new Date(),
           url: isApd ? (isSummary ? `/print/summary/${apdItem?.activityId}` : `/print/apd/${apdItem?.activityId}`) : '#',
           activityType: isSummary ? 'Summary APD' : (apdItem?.activityType || (isApd ? (isMaterial ? 'Request Material' : isTools ? 'Request Tools' : 'Request APD') : 'Form Activity')),
-          activityId: apdItem?.activityId || g.id,
-          approvalId: apdItem?.approvalId || g.items[0]?.approvalId,
-          approverName: g.items[0]?.approverName || null,
-          rawGeneralGroup: g,
+          activityId: apdItem?.activityId ?? Number(g.id),
+          approvalId: apdItem?.approvalId || nonFormWoItems[0]?.approvalId,
+          approverName: (nonFormWoItems[0] as any)?.approverName || null,
+          rawGeneralGroup: {
+            ...g,
+            items: nonFormWoItems,
+            activityCount: nonFormWoItems.length,
+          },
         })
       }
     }
@@ -1121,7 +1138,7 @@ export function InboxTab({
           formData.append('approvalId', String(currentBatchDoc.approvalId))
         }
         formData.append('decision', action === 'approve' ? 'approved' : action === 'revert' ? 'needs_correction' : 'rejected')
-        formData.append('note', currentRemark || (action === 'revert' ? 'Form WO Dikembalikan untuk revisi' : action === 'rejected' ? 'Form WO Ditolak' : ''))
+        formData.append('note', currentRemark || ((action as string) === 'revert' ? 'Form WO Dikembalikan untuk revisi' : (action as string) === 'rejected' ? 'Form WO Ditolak' : ''))
         if (signatureDataUrl) {
           formData.append('signatureUrl', signatureDataUrl)
         }
@@ -1306,7 +1323,7 @@ export function InboxTab({
           formData.append('approvalId', String(item.approvalId))
         }
         formData.append('decision', action === 'approve' ? 'approved' : action === 'revert' ? 'needs_correction' : 'rejected')
-        formData.append('note', reason || (action === 'revert' ? 'Form WO Dikembalikan untuk revisi' : action === 'rejected' ? 'Form WO Ditolak' : ''))
+        formData.append('note', reason || ((action as string) === 'revert' ? 'Form WO Dikembalikan untuk revisi' : (action as string) === 'rejected' ? 'Form WO Ditolak' : ''))
         if (signatureDataUrl) {
           formData.append('signatureUrl', signatureDataUrl)
         }
@@ -1724,7 +1741,7 @@ export function InboxTab({
 
                 {/* Action Button */}
                 {item.category === 'RFR' && item.rawRfr ? (
-                  <RfrApprovalDialog item={item.rawRfr} />
+                  <RfrApprovalDialog item={item.rawRfr as any} />
                 ) : isReverted ? (
                   <Button
                     size="sm"
@@ -2003,7 +2020,7 @@ export function InboxTab({
                     </TableCell>
                     <TableCell className="align-top text-right">
                       {item.category === 'RFR' && item.rawRfr ? (
-                        <RfrApprovalDialog item={item.rawRfr} />
+                        <RfrApprovalDialog item={item.rawRfr as any} />
                       ) : (item as any).activityType === 'Work Order' ||
                         (item as any).repairFormWo ||
                         (item as any).title?.toLowerCase().includes('wo') ? (

@@ -52,6 +52,10 @@ export default async function DailyActivityConfigurationPage() {
     getCurrentMenuPermission("activity_configuration"),
   ]);
 
+  if (!menuPermission.canView) {
+    redirect("/dashboard");
+  }
+
   const pagePurpose = getActivityPagePurpose("configuration");
 
   const permissions = {

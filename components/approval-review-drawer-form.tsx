@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useTransition, useEffect, useRef } from 'react'
+import React, { useState, useTransition, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -193,7 +193,7 @@ export function ApprovalReviewDrawerForm({ item, group }: ApprovalReviewDrawerFo
       tanggal: wo.tanggal || null,
       tanggalPengajuan: wo.tanggalPengajuan || (item as any).submittedAt || item.startTime,
       pemohon: wo.pemohon || (item as any).employeeName || item.requesterName || (group as any)?.requesterName || '-',
-      pemohonJobTitle: wo.pemohonJobTitle || (item as any).requesterJobTitle || (group as any)?.requesterJobTitle || 'Pemohon',
+      pemohonJobTitle: (wo as any).pemohonJobTitle || (item as any).requesterJobTitle || (group as any)?.requesterJobTitle || 'Pemohon',
       customer: wo.customer || (item as any).customerName || item.requestKindLabel || '-',
       site: wo.site || (item as any).siteName || (group as any)?.siteName || item.siteName || '-',
       deskripsiPekerjaan: wo.deskripsiPekerjaan || 'Labour Service',
@@ -209,9 +209,9 @@ export function ApprovalReviewDrawerForm({ item, group }: ApprovalReviewDrawerFo
       size: wo.size || null,
       jobType: wo.jobType || null,
       noWoTerbit: wo.noWoTerbit || null,
-      statusPengajuan: wo.statusPengajuan || item.status || 'pending',
-      submitterSignatureUrl: wo.submitterSignatureUrl || (item as any).signatureUrl || null,
-      steps: wo.steps || (item as any).rawFormWo?.steps || item.steps?.map((s) => ({
+      statusPengajuan: (wo as any).statusPengajuan || (item as any).status || 'pending',
+      submitterSignatureUrl: (wo as any).submitterSignatureUrl || (item as any).signatureUrl || null,
+      steps: (wo as any).steps || (item as any).rawFormWo?.steps || (item as any).steps?.map((s: any) => ({
         level: s.level,
         approverName: s.approverName,
         jobTitle: s.label,

@@ -1,4 +1,6 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
+import { getCurrentMenuPermission } from '@/lib/hero-access'
 import { AdminPageShell } from '@/components/admin-page-shell'
 import { FileText } from 'lucide-react'
 import { getAttendancePermissionDashboardData, type IzinDashboardKpis, type IzinDashboardCharts, type AttendancePermissionRow } from '@/lib/attendance-permission-dashboard'
@@ -10,6 +12,11 @@ const emptyCharts: IzinDashboardCharts = { sickByCategory: [], lateByReason: [],
 export default async function HcPermissionDashboardPage(props: {
   searchParams?: Promise<{ dateFrom?: string; dateTo?: string; siteId?: string }>
 }) {
+  const access = await getCurrentMenuPermission('hc_attendance_permission')
+  if (!access.canView) {
+    redirect('/dashboard')
+  }
+
   const params = await props.searchParams
 
   let rows: AttendancePermissionRow[] = []

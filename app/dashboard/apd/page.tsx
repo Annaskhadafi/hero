@@ -13,9 +13,16 @@ import { DeleteApdButton } from "./delete-button";
 import { ApdStatusActions } from "./status-actions";
 import { normalizeApdRequestStatus } from "@/lib/apd-status";
 
+import { redirect } from "next/navigation";
+
 export default async function ApdRequestsPage(props: {
   searchParams: Promise<{ tab?: string }>;
 }) {
+  const apdAccess = await getCurrentMenuPermission("apd-request");
+  if (!apdAccess.canView) {
+    redirect("/dashboard");
+  }
+
   const searchParams = await props.searchParams;
   const currentEmployee = await getCurrentEmployee();
   
@@ -23,14 +30,16 @@ export default async function ApdRequestsPage(props: {
   const inventoryPermission = await getCurrentMenuPermission('hse_inventaris');
   
   // Legacy status check for backward compatibility on other UI elements if needed
-  const canManageStatus = currentEmployee?.role === "admin" || currentEmployee?.role === "superadmin";
+  const canManageStatus = currentEmployee?.role === "admin" || currentEmployee?.role === "superadmin" || apdAccess.canEdit;
   
   // Determine if the user can view the inventory button based on either legacy or new RBAC
   const canViewInventory = canManageStatus || inventoryPermission.canView;
   
   const activeTab = searchParams?.tab === "tools" || searchParams?.tab === "material" || searchParams?.tab === "apd" ? searchParams.tab : "all";
   
-  const rows = await fetchApdRequests();
+  // Filter by employee ID if scope is own
+  const employeeIdFilter = apdAccess.dataScope === "own" && currentEmployee?.id ? currentEmployee.id : undefined;
+  const rows = await fetchApdRequests(employeeIdFilter);
   const filteredRows = activeTab === "all" ? rows : rows.filter((row) => row.requestCategory === activeTab.toUpperCase());
   
   return (

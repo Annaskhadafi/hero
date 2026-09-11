@@ -22,3 +22,7 @@ if (typeof global.FormData === 'undefined') {
 if (typeof global.fetch === 'undefined') {
   global.fetch = globalThis.fetch || (typeof fetch !== 'undefined' ? fetch : jest.fn())
 }
+if (typeof global.setImmediate === 'undefined') {
+  global.setImmediate = (fn, ...args) => setTimeout(fn, 0, ...args)
+  global.clearImmediate = (id) => clearTimeout(id)
+}

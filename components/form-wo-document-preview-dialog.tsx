@@ -1,16 +1,12 @@
 'use client'
 
 import React, { useRef } from 'react'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Printer, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { isCiptaKridatamaCustomer } from '@/lib/form-wo-customer'
 
 export interface ServiceItemRow {
   id: string
@@ -55,6 +51,7 @@ export interface FormWoApprovalStepData {
 
 export interface FormWoDocumentData {
   id?: number
+  idWo?: string | number | null
   noPengajuan?: string | null
   jenisPengajuan?: string | null
   hari?: string | null
@@ -118,7 +115,10 @@ export function extractCleanNote(rawNote: string | null | undefined): string {
         noteText = parsed.message.trim()
       }
     } catch {
-      const lines = trimmed.split('\n').map((l) => l.trim()).filter(Boolean)
+      const lines = trimmed
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)
       for (let i = lines.length - 1; i >= 0; i--) {
         try {
           const p = JSON.parse(lines[i])
@@ -181,12 +181,20 @@ function formatIndoTime(dateVal: Date | string | null | undefined): string {
   return `${d.toLocaleTimeString('id-ID', { timeZone: 'Asia/Makassar', hour: '2-digit', minute: '2-digit' }).replace(':', '.')} WITA`
 }
 
-function formatIndoDateTime(dateVal: Date | string | null | undefined): { date: string; time: string } {
+function formatIndoDateTime(dateVal: Date | string | null | undefined): {
+  date: string
+  time: string
+} {
   if (!dateVal) return { date: '-', time: '-' }
   const d = typeof dateVal === 'string' ? new Date(dateVal) : dateVal
   if (isNaN(d.getTime())) return { date: String(dateVal), time: '-' }
   return {
-    date: d.toLocaleDateString('id-ID', { timeZone: 'Asia/Makassar', day: '2-digit', month: 'long', year: 'numeric' }),
+    date: d.toLocaleDateString('id-ID', {
+      timeZone: 'Asia/Makassar',
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    }),
     time: `${d.toLocaleTimeString('id-ID', { timeZone: 'Asia/Makassar', hour: '2-digit', minute: '2-digit' }).replace(':', '.')} WITA`,
   }
 }
@@ -210,22 +218,6 @@ export function FormWoDocumentView({
   currentLevel?: number
 }) {
   const isService = doc.jenisPengajuan === 'service'
-  const serviceItemsList = parseItems<ServiceItemRow>(doc.items, [
-    {
-      id: '1',
-      description: doc.deskripsiPekerjaan || 'Labour Service',
-      job: doc.jobType || '',
-      customer: doc.customer || '',
-      site: doc.site || '',
-      serialNo: doc.tireSn || '',
-      refNo: doc.storeLoc || '',
-      noPo: doc.noPo || '',
-      tanggalPo: doc.tanggalPo || '',
-      noWoCp: doc.noWoTerbit || '',
-      price: doc.totalAmount || '',
-    },
-  ])
-
   const repairItemsList = parseItems<RepairItemRow>(doc.items, [
     {
       id: '1',
@@ -243,6 +235,26 @@ export function FormWoDocumentView({
       noWoCp: doc.noWoTerbit || '',
     },
   ])
+  const isCk =
+    !isService &&
+    (isCiptaKridatamaCustomer(doc.customer) ||
+      repairItemsList.some((r) => isCiptaKridatamaCustomer(r.customer)))
+  const serviceItemsList = parseItems<ServiceItemRow>(doc.items, [
+    {
+      id: '1',
+      description: doc.deskripsiPekerjaan || 'Labour Service',
+      job: doc.jobType || '',
+      customer: doc.customer || '',
+      site: doc.site || '',
+      serialNo: doc.tireSn || '',
+      refNo: doc.storeLoc || '',
+      noPo: doc.noPo || '',
+      tanggalPo: doc.tanggalPo || '',
+      noWoCp: doc.noWoTerbit || '',
+      price: doc.totalAmount || '',
+    },
+  ])
+
 
   const serviceTotal = serviceItemsList.reduce(
     (sum, r) => sum + (parseFloat((r.price || '').replace(/[^0-9.-]+/g, '')) || 0),
@@ -254,11 +266,11 @@ export function FormWoDocumentView({
   )
 
   const rawTotal = isService ? serviceTotal : repairTotal
-  const displayTotal =
-    rawTotal > 0 ? formatCurrency(rawTotal) : formatCurrency(doc.totalAmount)
+  const displayTotal = rawTotal > 0 ? formatCurrency(rawTotal) : formatCurrency(doc.totalAmount)
 
   const headerNoPo = doc.noPo || (isService ? serviceItemsList[0]?.noPo : repairItemsList[0]?.noPo)
-  const headerTglPo = doc.tanggalPo || (isService ? serviceItemsList[0]?.tanggalPo : repairItemsList[0]?.tanggalPo)
+  const headerTglPo =
+    doc.tanggalPo || (isService ? serviceItemsList[0]?.tanggalPo : repairItemsList[0]?.tanggalPo)
 
   const jenisMeta = JENIS_CONFIG[doc.jenisPengajuan || ''] || {
     label: doc.jenisPengajuan?.toUpperCase() || 'WORK ORDER',
@@ -315,11 +327,10 @@ export function FormWoDocumentView({
 
       const stepLevel = s.level || idx + 1
       const isCurrentActiveStep =
-        s.status === 'pending' ||
-        (currentLevel === stepLevel && s.status !== 'approved')
+        s.status === 'pending' || (currentLevel === stepLevel && s.status !== 'approved')
 
       const signerName = s.approverName || s.jobTitle || 'Approver'
-      const jobTitle = s.jobTitle || s.label || 'Approver'
+      const jobTitle = s.jobTitle || (s as any).label || 'Approver'
 
       const sigUrl =
         s.status === 'approved' && s.signatureUrl
@@ -358,9 +369,15 @@ export function FormWoDocumentView({
           header: 'DISETUJUI OLEH',
           signerName: 'Service Operation Others Coord. SPV',
           jobTitle: 'Service Operation Others Coord. SPV',
-          signatureUrl: (currentLevel === 1 || currentLevel === 0) && liveSignatureUrl ? liveSignatureUrl : null,
+          signatureUrl:
+            (currentLevel === 1 || currentLevel === 0) && liveSignatureUrl
+              ? liveSignatureUrl
+              : null,
           isApproved: (currentLevel === 1 || currentLevel === 0) && Boolean(liveSignatureUrl),
-          dateTime: (currentLevel === 1 || currentLevel === 0) && liveSignatureUrl ? formatIndoDateTime(new Date()) : null,
+          dateTime:
+            (currentLevel === 1 || currentLevel === 0) && liveSignatureUrl
+              ? formatIndoDateTime(new Date())
+              : null,
           note: null,
         },
         {
@@ -391,9 +408,15 @@ export function FormWoDocumentView({
           header: 'DIKETAHUI OLEH',
           signerName: 'QC / Leader',
           jobTitle: 'QC / Leader',
-          signatureUrl: (currentLevel === 1 || currentLevel === 0) && liveSignatureUrl ? liveSignatureUrl : null,
+          signatureUrl:
+            (currentLevel === 1 || currentLevel === 0) && liveSignatureUrl
+              ? liveSignatureUrl
+              : null,
           isApproved: (currentLevel === 1 || currentLevel === 0) && Boolean(liveSignatureUrl),
-          dateTime: (currentLevel === 1 || currentLevel === 0) && liveSignatureUrl ? formatIndoDateTime(new Date()) : null,
+          dateTime:
+            (currentLevel === 1 || currentLevel === 0) && liveSignatureUrl
+              ? formatIndoDateTime(new Date())
+              : null,
           note: null,
         },
         {
@@ -439,37 +462,40 @@ export function FormWoDocumentView({
   return (
     <div
       ref={containerRef}
-      className="print-area relative mx-auto bg-white w-full max-w-[297mm] min-h-[200mm] p-4 sm:p-6 space-y-2.5 text-slate-900 font-sans border border-slate-300 rounded-lg shadow-sm overflow-hidden flex flex-col justify-between"
+      className="print-area relative mx-auto flex min-h-[200mm] w-full max-w-[297mm] flex-col justify-between space-y-2.5 overflow-hidden rounded-lg border border-slate-300 bg-white p-4 font-sans text-slate-900 shadow-sm sm:p-6"
     >
       <div className="space-y-3.5">
         {/* Top Header: Logo on left, Title on far right */}
-        <div className="flex items-center justify-between border-b border-slate-300/80 pb-3 gap-4">
+        <div className="flex items-center justify-between gap-4 border-b border-slate-300/80 pb-3">
           <div className="flex items-center gap-3">
             <img
               src="/cp_logo-removebg-preview.png"
               alt="PT Chitra Paratama"
-              className="h-10 w-auto object-contain shrink-0"
+              className="h-10 w-auto shrink-0 object-contain"
             />
             <div>
-              <h2 className="text-sm font-bold text-slate-900 tracking-tight leading-tight">
+              <h2 className="text-sm leading-tight font-bold tracking-tight text-slate-900">
                 PT. CHITRA PARATAMA
               </h2>
-              <p className="text-[11px] font-semibold text-teal-700 tracking-wide">
+              <p className="text-[11px] font-semibold tracking-wide text-teal-700">
                 Total Tire Solution
               </p>
             </div>
           </div>
           <div className="text-right">
-            <h1 className="text-base sm:text-lg font-black text-slate-950 tracking-tight uppercase">
+            <h1 className="text-base font-black tracking-tight text-slate-950 uppercase sm:text-lg">
               FORM PERMINTAAN WORK ORDER
             </h1>
-            <div className="flex flex-col items-end gap-0.5 text-right font-mono text-[11px] mt-0.5">
+            <div className="mt-0.5 flex flex-col items-end gap-0.5 text-right font-mono text-[11px]">
               <p className="text-slate-600">
                 No. Pengajuan: <strong className="text-slate-900">{doc.noPengajuan || '-'}</strong>
               </p>
               {doc.noWoTerbit ? (
-                <p className="text-emerald-700 font-bold">
-                  No. WO Terbit: <strong className="text-emerald-950 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-300">{doc.noWoTerbit}</strong>
+                <p className="font-bold text-emerald-700">
+                  No. WO Terbit:{' '}
+                  <strong className="rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-emerald-950">
+                    {doc.noWoTerbit}
+                  </strong>
                 </p>
               ) : null}
             </div>
@@ -477,31 +503,37 @@ export function FormWoDocumentView({
         </div>
 
         {/* Structured Meta Info Box */}
-        <div className="border border-slate-300 bg-white/95 rounded-lg p-3 text-xs shadow-xs">
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <div className="rounded-lg border border-slate-300 bg-white/95 p-3 text-xs shadow-xs">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
             <div>
-              <span className="text-slate-500 font-medium block text-[11px]">Hari / Tanggal</span>
-              <strong className="text-slate-900 text-xs">{displayDay}, {displayDate}</strong>
+              <span className="block text-[11px] font-medium text-slate-500">Hari / Tanggal</span>
+              <strong className="text-xs text-slate-900">
+                {displayDay}, {displayDate}
+              </strong>
             </div>
             <div>
-              <span className="text-slate-500 font-medium block text-[11px]">Jenis Form</span>
-              <div className={`text-[11px] font-semibold px-2 py-0.5 mt-0.5 border rounded w-fit ${jenisMeta.cls}`}>
+              <span className="block text-[11px] font-medium text-slate-500">Jenis Form</span>
+              <div
+                className={`mt-0.5 w-fit rounded border px-2 py-0.5 text-[11px] font-semibold ${jenisMeta.cls}`}
+              >
                 {jenisMeta.label}
               </div>
             </div>
             <div>
-              <span className="text-slate-500 font-medium block text-[11px]">Nama Pemohon</span>
-              <strong className="text-slate-900 text-xs truncate block">{doc.pemohon || '-'}</strong>
+              <span className="block text-[11px] font-medium text-slate-500">Nama Pemohon</span>
+              <strong className="block truncate text-xs text-slate-900">
+                {doc.pemohon || '-'}
+              </strong>
             </div>
             <div>
-              <span className="text-slate-500 font-medium block text-[11px]">Customer & Site</span>
-              <strong className="text-slate-900 text-xs truncate block">
+              <span className="block text-[11px] font-medium text-slate-500">Customer & Site</span>
+              <strong className="block truncate text-xs text-slate-900">
                 {doc.customer || '-'} {doc.site ? `• ${doc.site}` : ''}
               </strong>
             </div>
             <div>
-              <span className="text-slate-500 font-medium block text-[11px]">Nomor & Tgl PO</span>
-              <strong className="text-slate-900 text-xs truncate block font-mono">
+              <span className="block text-[11px] font-medium text-slate-500">Nomor & Tgl PO</span>
+              <strong className="block truncate font-mono text-xs text-slate-900">
                 {headerNoPo ? `${headerNoPo}${headerTglPo ? ` (${headerTglPo})` : ''}` : '-'}
               </strong>
             </div>
@@ -510,79 +542,97 @@ export function FormWoDocumentView({
 
         {/* Items Table */}
         <div className="space-y-1.5">
-          <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+          <h3 className="text-[11px] font-bold tracking-wider text-slate-700 uppercase">
             Rincian Permintaan Pekerjaan (Items)
           </h3>
 
           {isService ? (
-            <div className="border border-slate-300 rounded-lg overflow-hidden bg-white/95 shadow-xs">
-              <table className="w-full text-xs text-left border-collapse">
+            <div className="overflow-hidden rounded-lg border border-slate-300 bg-white/95 shadow-xs">
+              <table className="w-full border-collapse text-left text-xs">
                 <thead>
-                  <tr className="bg-slate-100/90 border-b border-slate-300 text-slate-700 font-semibold uppercase text-[10px]">
-                    <th className="py-2 px-2.5 w-8 text-center">NO</th>
-                    <th className="py-2 px-2.5">DESCRIPTION</th>
-                    <th className="py-2 px-2.5">JOB</th>
-                    <th className="py-2 px-2.5">CUSTOMER</th>
-                    <th className="py-2 px-2.5">SITE</th>
-                    <th className="py-2 px-2.5">SERIAL NO</th>
-                    <th className="py-2 px-2.5">REF NO</th>
-                    <th className="py-2 px-2.5">NO PO</th>
-                    <th className="py-2 px-2.5">NO WO CP</th>
-                    <th className="py-2 px-2.5 text-right">PRICE / AMOUNT</th>
+                  <tr className="border-b border-slate-300 bg-slate-100/90 text-[10px] font-semibold text-slate-700 uppercase">
+                    <th className="w-8 px-2.5 py-2 text-center">NO</th>
+                    <th className="px-2.5 py-2">DESCRIPTION</th>
+                    <th className="px-2.5 py-2">JOB</th>
+                    <th className="px-2.5 py-2">CUSTOMER</th>
+                    <th className="px-2.5 py-2">SITE</th>
+                    <th className="px-2.5 py-2">SERIAL NO</th>
+                    <th className="px-2.5 py-2">REF NO</th>
+                    <th className="px-2.5 py-2">NO PO</th>
+                    <th className="px-2.5 py-2">NO WO CP</th>
+                    <th className="px-2.5 py-2 text-right">PRICE / AMOUNT</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {serviceItemsList.map((row: any, idx: number) => (
-                    <tr key={row.id || idx} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-1.5 px-2.5 text-center font-medium text-slate-500">{idx + 1}</td>
-                      <td className="py-1.5 px-2.5 font-semibold text-slate-800">{row.description || '-'}</td>
-                      <td className="py-1.5 px-2.5">{row.job || '-'}</td>
-                      <td className="py-1.5 px-2.5">{row.customer || '-'}</td>
-                      <td className="py-1.5 px-2.5">{row.site || '-'}</td>
-                      <td className="py-1.5 px-2.5 font-mono text-slate-600">{row.serialNo || '-'}</td>
-                      <td className="py-1.5 px-2.5">{row.refNo || '-'}</td>
-                      <td className="py-1.5 px-2.5 font-mono">{row.noPo || doc.noPo || '-'}</td>
-                      <td className="py-1.5 px-2.5 font-mono">{row.noWoCp || doc.noWoTerbit || doc.idWo || '-'}</td>
-                      <td className="py-1.5 px-2.5 text-right font-medium">{formatCurrency(row.price)}</td>
+                    <tr key={row.id || idx} className="transition-colors hover:bg-slate-50/80">
+                      <td className="px-2.5 py-1.5 text-center font-medium text-slate-500">
+                        {idx + 1}
+                      </td>
+                      <td className="px-2.5 py-1.5 font-semibold text-slate-800">
+                        {row.description || '-'}
+                      </td>
+                      <td className="px-2.5 py-1.5">{row.job || '-'}</td>
+                      <td className="px-2.5 py-1.5">{row.customer || '-'}</td>
+                      <td className="px-2.5 py-1.5">{row.site || '-'}</td>
+                      <td className="px-2.5 py-1.5 font-mono text-slate-600">
+                        {row.serialNo || '-'}
+                      </td>
+                      <td className="px-2.5 py-1.5">{row.refNo || '-'}</td>
+                      <td className="px-2.5 py-1.5 font-mono">{row.noPo || doc.noPo || '-'}</td>
+                      <td className="px-2.5 py-1.5 font-mono">
+                        {row.noWoCp || doc.noWoTerbit || doc.idWo || '-'}
+                      </td>
+                      <td className="px-2.5 py-1.5 text-right font-medium">
+                        {formatCurrency(row.price)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           ) : (
-            <div className="border border-slate-300 rounded-lg overflow-hidden bg-white/95 shadow-xs">
-              <table className="w-full text-xs text-left border-collapse">
+            <div className="overflow-hidden rounded-lg border border-slate-300 bg-white/95 shadow-xs">
+              <table className="w-full border-collapse text-left text-xs">
                 <thead>
-                  <tr className="bg-slate-100/90 border-b border-slate-300 text-slate-700 font-semibold uppercase text-[10px]">
-                    <th className="py-2 px-2.5 w-8 text-center">NO</th>
-                    <th className="py-2 px-2.5">DESCRIPTION (TIRE SN)</th>
-                    <th className="py-2 px-2.5">ID UNIT</th>
-                    <th className="py-2 px-2.5">BRAND</th>
-                    <th className="py-2 px-2.5">POS</th>
-                    <th className="py-2 px-2.5">SIZE</th>
-                    <th className="py-2 px-2.5">SITE</th>
-                    <th className="py-2 px-2.5">CUSTOMER</th>
-                    <th className="py-2 px-2.5">CATEGORY</th>
-                    <th className="py-2 px-2.5">NO PO</th>
-                    <th className="py-2 px-2.5">NO WO CP</th>
-                    <th className="py-2 px-2.5 text-right">PRICE / AMOUNT</th>
+                  <tr className="border-b border-slate-300 bg-slate-100/90 text-[10px] font-semibold text-slate-700 uppercase">
+                    <th className="w-8 px-2.5 py-2 text-center">NO</th>
+                    <th className="px-2.5 py-2">DESCRIPTION (TIRE SN)</th>
+                    {isCk && <th className="px-2.5 py-2">ID UNIT</th>}
+                    <th className="px-2.5 py-2">BRAND</th>
+                    <th className="px-2.5 py-2">POS</th>
+                    <th className="px-2.5 py-2">SIZE</th>
+                    <th className="px-2.5 py-2">SITE</th>
+                    <th className="px-2.5 py-2">CUSTOMER</th>
+                    <th className="px-2.5 py-2">CATEGORY</th>
+                    <th className="px-2.5 py-2">NO PO</th>
+                    <th className="px-2.5 py-2">NO WO CP</th>
+                    <th className="px-2.5 py-2 text-right">PRICE / AMOUNT</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {repairItemsList.map((row: any, idx: number) => (
-                    <tr key={row.id || idx} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-1.5 px-2.5 text-center font-medium text-slate-500">{idx + 1}</td>
-                      <td className="py-1.5 px-2.5 font-semibold text-slate-800">{row.description || '-'}</td>
-                      <td className="py-1.5 px-2.5">{row.noUnit || '-'}</td>
-                      <td className="py-1.5 px-2.5">{row.brand || '-'}</td>
-                      <td className="py-1.5 px-2.5">{row.pos || '-'}</td>
-                      <td className="py-1.5 px-2.5">{row.size || '-'}</td>
-                      <td className="py-1.5 px-2.5">{row.site || '-'}</td>
-                      <td className="py-1.5 px-2.5">{row.customer || '-'}</td>
-                      <td className="py-1.5 px-2.5 font-semibold">{row.category || '-'}</td>
-                      <td className="py-1.5 px-2.5 font-mono">{row.noPo || doc.noPo || '-'}</td>
-                      <td className="py-1.5 px-2.5 font-mono">{row.noWoCp || doc.noWoTerbit || doc.idWo || '-'}</td>
-                      <td className="py-1.5 px-2.5 text-right font-medium">{formatCurrency(row.price)}</td>
+                    <tr key={row.id || idx} className="transition-colors hover:bg-slate-50/80">
+                      <td className="px-2.5 py-1.5 text-center font-medium text-slate-500">
+                        {idx + 1}
+                      </td>
+                      <td className="px-2.5 py-1.5 font-semibold text-slate-800">
+                        {row.description || '-'}
+                      </td>
+                      {isCk && <td className="px-2.5 py-1.5">{row.noUnit || '-'}</td>}
+                      <td className="px-2.5 py-1.5">{row.brand || '-'}</td>
+                      <td className="px-2.5 py-1.5">{row.pos || '-'}</td>
+                      <td className="px-2.5 py-1.5">{row.size || '-'}</td>
+                      <td className="px-2.5 py-1.5">{row.site || '-'}</td>
+                      <td className="px-2.5 py-1.5">{row.customer || '-'}</td>
+                      <td className="px-2.5 py-1.5 font-semibold">{row.category || '-'}</td>
+                      <td className="px-2.5 py-1.5 font-mono">{row.noPo || doc.noPo || '-'}</td>
+                      <td className="px-2.5 py-1.5 font-mono">
+                        {row.noWoCp || doc.noWoTerbit || doc.idWo || '-'}
+                      </td>
+                      <td className="px-2.5 py-1.5 text-right font-medium">
+                        {formatCurrency(row.price)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -590,34 +640,34 @@ export function FormWoDocumentView({
             </div>
           )}
 
-          <div className="bg-[#ffd700] text-slate-950 font-bold px-3.5 py-1.5 flex items-center justify-between border border-amber-300 rounded-md text-xs sm:text-sm shadow-xs">
-            <span className="tracking-wide uppercase text-[11px]">TOTAL AMOUNT</span>
-            <span className="font-mono text-xs sm:text-sm font-black">{displayTotal}</span>
+          <div className="flex items-center justify-between rounded-md border border-amber-300 bg-[#ffd700] px-3.5 py-1.5 text-xs font-bold text-slate-950 shadow-xs sm:text-sm">
+            <span className="text-[11px] tracking-wide uppercase">TOTAL AMOUNT</span>
+            <span className="font-mono text-xs font-black sm:text-sm">{displayTotal}</span>
           </div>
         </div>
       </div>
 
       {/* Signature Grid */}
-      <div className="border border-slate-300 rounded-lg overflow-hidden bg-white/95 text-xs shadow-xs mt-3">
-        <table className="w-full border-collapse table-fixed">
+      <div className="mt-3 overflow-hidden rounded-lg border border-slate-300 bg-white/95 text-xs shadow-xs">
+        <table className="w-full table-fixed border-collapse">
           <thead>
-            <tr className="bg-slate-100/90 border-b border-slate-300 text-slate-800 font-bold uppercase text-[10px] divide-x divide-slate-300">
+            <tr className="divide-x divide-slate-300 border-b border-slate-300 bg-slate-100/90 text-[10px] font-bold text-slate-800 uppercase">
               {signatureColumns.map((col) => (
-                <th key={col.key} className="py-1.5 px-2 text-center">
+                <th key={col.key} className="px-2 py-1.5 text-center">
                   {col.header}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            <tr className="divide-x divide-slate-300 bg-white border-b border-slate-300">
+            <tr className="divide-x divide-slate-300 border-b border-slate-300 bg-white">
               {signatureColumns.map((col) => (
-                <td key={col.key} className="h-18 sm:h-22 p-1.5 text-center align-middle">
+                <td key={col.key} className="h-18 p-1.5 text-center align-middle sm:h-22">
                   {col.signatureUrl ? (
                     <img
                       src={col.signatureUrl}
                       alt={`Tanda Tangan ${col.jobTitle}`}
-                      className="h-12 sm:h-16 w-auto max-w-[95%] mx-auto object-contain"
+                      className="mx-auto h-12 w-auto max-w-[95%] object-contain sm:h-16"
                       onError={(e) => {
                         e.currentTarget.onerror = null
                         e.currentTarget.src =
@@ -634,22 +684,22 @@ export function FormWoDocumentView({
                 </td>
               ))}
             </tr>
-            <tr className="divide-x divide-slate-300 bg-slate-50/70 border-t border-slate-300">
+            <tr className="divide-x divide-slate-300 border-t border-slate-300 bg-slate-50/70">
               {signatureColumns.map((col) => {
                 const cleanNote = extractCleanNote(col.note)
                 return (
-                  <td key={col.key} className="py-2.5 px-2 text-center align-top space-y-1">
-                    <p className="text-[11px] font-bold text-slate-900 leading-snug truncate">
+                  <td key={col.key} className="space-y-1 px-2 py-2.5 text-center align-top">
+                    <p className="truncate text-[11px] leading-snug font-bold text-slate-900">
                       ( {col.signerName} )
                     </p>
-                    <p className="text-[10px] text-slate-600 font-medium leading-snug truncate">
+                    <p className="truncate text-[10px] leading-snug font-medium text-slate-600">
                       {col.jobTitle}
                     </p>
-                    <p className="text-[9px] text-slate-500 font-mono leading-snug">
+                    <p className="font-mono text-[9px] leading-snug text-slate-500">
                       {col.dateTime ? `${col.dateTime.date} • ${col.dateTime.time}` : '-'}
                     </p>
                     {cleanNote ? (
-                      <p className="text-[9px] text-slate-500 italic leading-snug line-clamp-2">
+                      <p className="line-clamp-2 text-[9px] leading-snug text-slate-500 italic">
                         Catatan: {cleanNote}
                       </p>
                     ) : null}
@@ -672,12 +722,16 @@ export function FormWoDocumentPreviewDialog({
   doc,
   liveSignatureUrl,
   currentLevel,
+  onEdit,
+  canEdit,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   doc: FormWoDocumentData | null
   liveSignatureUrl?: string | null
   currentLevel?: number
+  onEdit?: () => void
+  canEdit?: boolean
 }) {
   const printRef = useRef<HTMLDivElement>(null)
 
@@ -727,30 +781,27 @@ export function FormWoDocumentPreviewDialog({
           page-break-inside: avoid !important;
         }
       }
-    `
+    `,
   })
 
   if (!doc) return null
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[96vw] lg:max-w-[1340px] w-[96vw] max-h-[94vh] overflow-y-auto p-0 border border-slate-300 rounded-2xl shadow-2xl bg-slate-200/80">
+      <DialogContent className="max-h-[94vh] w-[96vw] overflow-y-auto rounded-2xl border border-slate-300 bg-slate-200/80 p-0 shadow-2xl sm:max-w-[96vw] lg:max-w-[1340px]">
         <DialogHeader className="sr-only">
           <DialogTitle>Preview Dokumen Form WO</DialogTitle>
         </DialogHeader>
 
-        <div className="p-4 sm:p-6 flex flex-col items-center">
-          <div className="w-full max-w-[297mm] flex flex-wrap items-center justify-end gap-2 mb-4">
+        <div className="flex flex-col items-center p-4 sm:p-6">
+          <div className="mb-4 flex w-full max-w-[297mm] flex-wrap items-center justify-end gap-2">
             {doc.id ? (
-              <a
-                href={`/api/form-wo/${doc.id}/pdf`}
-                download={`Form_WO_${doc.id}.pdf`}
-              >
+              <a href={`/api/form-wo/${doc.id}/pdf`} download={`Form_WO_${doc.id}.pdf`}>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="border-sky-300 bg-sky-50 font-semibold text-sky-800 hover:bg-sky-100 shadow-xs cursor-pointer"
+                  className="cursor-pointer border-sky-300 bg-sky-50 font-semibold text-sky-800 shadow-xs hover:bg-sky-100"
                 >
                   <Download className="mr-1.5 h-4 w-4 text-sky-600" />
                   Download PDF
@@ -762,17 +813,12 @@ export function FormWoDocumentPreviewDialog({
               variant="outline"
               size="sm"
               onClick={() => handlePrint()}
-              className="border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50 shadow-xs"
+              className="border-slate-300 bg-white font-semibold text-slate-700 shadow-xs hover:bg-slate-50"
             >
               <Printer className="mr-1.5 h-4 w-4" />
               Cetak Printer
             </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => onOpenChange(false)}
-            >
+            <Button type="button" variant="secondary" size="sm" onClick={() => onOpenChange(false)}>
               Tutup
             </Button>
           </div>
@@ -788,4 +834,3 @@ export function FormWoDocumentPreviewDialog({
     </Dialog>
   )
 }
-

@@ -30,9 +30,17 @@ const HR_SIGNER_OVERRIDES: Record<string, { jobTitle: string; signatureUrl?: str
   },
 }
 
+import { redirect } from 'next/navigation'
+import { getCurrentMenuPermission } from '@/lib/hero-access'
+
 export default async function SuratPage(props: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }) {
+  const access = await getCurrentMenuPermission('hc_surat')
+  if (!access.canView) {
+    redirect('/dashboard')
+  }
+
   const resolvedSearchParams = await props.searchParams
   const rawTab = resolvedSearchParams?.tab
   const requestedTab = typeof rawTab === 'string' ? rawTab : undefined

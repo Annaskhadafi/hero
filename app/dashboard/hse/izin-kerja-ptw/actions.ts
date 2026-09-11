@@ -1136,6 +1136,7 @@ export async function createPtwPermitAction(
         authorizedByName?: string
         description?: string
         controlSteps?: string
+        additionalNotes?: string
         ppe?: string[] | string
         subTypes?: Record<string, string[]> | string[] | string
         checkedEquipment?: string[]

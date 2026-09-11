@@ -128,7 +128,6 @@ export async function verifyAndSubmitFaceAttendanceAction(params: FaceAttendance
       eventType,
       eventTime,
       shiftCode,
-      employeeId: currentEmp.id,
     })
 
     const offDayLabel = offDayCheck.isOffDay ? ' [Hari OFF / Lembur]' : ''

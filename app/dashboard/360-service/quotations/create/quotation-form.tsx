@@ -94,6 +94,7 @@ const quotationSchema = z.object({
   customIntro: z.string().optional(),
   notes: z.string().optional(),
   includeBast: z.boolean().optional(),
+  includeRoster: z.boolean().optional(),
   items: z.array(itemSchema).min(1, "At least one item is required")
 }).refine(data => {
   if (data.customerId === "manual" && !data.manualCustomerName) {
@@ -241,6 +242,7 @@ const router = useRouter()
       showIntro: initialData?.showIntro ?? true,
       customIntro: initialData?.customIntro || "",
       includeBast: initialData?.includeBast ?? false,
+      includeRoster: initialData?.includeRoster ?? false,
       items: initialData?.items?.map((i: any, idx: number) => {
         const parsedPrimary = parseMonthPeriod(i.quotationItem.monthPeriod || "");
         const parsedBackup = parseMonthPeriod(i.quotationItem.backupMonthPeriod || "");
@@ -299,6 +301,7 @@ const router = useRouter()
   const showLevel = watch("showLevel")
   const showQty = watch("showQty")
   const includeBast = watch("includeBast")
+  const includeRoster = watch("includeRoster")
   const attn = watch("attn") || ""
   const cc = watch("cc") || ""
   const fromName = watch("fromName") || ""
@@ -886,6 +889,10 @@ const router = useRouter()
                   <div className="flex items-center gap-2">
                     <Switch checked={includeBast} onCheckedChange={(v) => setValue("includeBast", v)} />
                     <label className="text-xs leading-tight text-primary font-bold">Include<br/>BAST</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Switch checked={includeRoster} onCheckedChange={(v) => setValue("includeRoster", v)} />
+                    <label className="text-xs leading-tight text-primary font-bold">Include<br/>Roster</label>
                   </div>
                 </div>
               </div>

@@ -8,7 +8,7 @@ export const revalidate = 0
 
 export default async function DailyReportPage() {
   const access = await getCurrentMenuPermission('cs-forecast')
-  if (!access.canView) redirect('/403')
+  if (!access.canView) redirect('/dashboard')
 
   const [periods, dailyItems] = await Promise.all([getForecastPeriods(), getDailyForecastItems()])
 

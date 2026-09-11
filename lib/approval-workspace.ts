@@ -42,6 +42,7 @@ import { parseApprovalNoteEntries } from '@/lib/approval-notes'
 import { ensureHeroSeedData } from '@/lib/hero-admin'
 import { resolveUploadUrl } from '@/lib/s3-storage'
 import { user as authUser } from '@/db/schema/auth'
+import { isSuperAdminRole } from '@/lib/hero-access'
 
 type ApprovalRecordRow = {
   approvalId: number
@@ -388,6 +389,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
             id: employees.id,
             name: employees.name,
             jobTitle: employees.jobTitle,
+            email: employees.email,
           })
           .from(employees)
           .where(inArray(employees.id, approverEmployeeIds)),
@@ -584,8 +586,8 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
           approverName: s.approverName,
           status: s.status,
           signatureUrl: s.signatureUrl,
-          actedAt: s.actedAt,
-          notes: s.notes,
+          actedAt: (s as any).actedAt ?? s.reviewedAt,
+          notes: (s as any).notes ?? s.decisionNote,
         }))
 
       return [
@@ -908,8 +910,8 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       resolvedRemarks = spl.requestNotes
     } else if (currentRepairWo?.deskripsiPekerjaan) {
       resolvedRemarks = currentRepairWo.deskripsiPekerjaan
-    } else if (currentRepairWo?.keluhan) {
-      resolvedRemarks = currentRepairWo.keluhan
+    } else if ((currentRepairWo as any)?.keluhan) {
+      resolvedRemarks = (currentRepairWo as any).keluhan
     } else if (row.remarks) {
       resolvedRemarks = row.remarks
     } else if (summaryFromSnapshot) {
@@ -923,8 +925,8 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       resolvedDescription = spl.requestNotes
     } else if (currentRepairWo?.deskripsiPekerjaan) {
       resolvedDescription = currentRepairWo.deskripsiPekerjaan
-    } else if (currentRepairWo?.keluhan) {
-      resolvedDescription = currentRepairWo.keluhan
+    } else if ((currentRepairWo as any)?.keluhan) {
+      resolvedDescription = (currentRepairWo as any).keluhan
     } else if (summaryFromSnapshot) {
       resolvedDescription = summaryFromSnapshot
     } else if (row.remarks) {
@@ -989,7 +991,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
             : 'waiting')
         : row.status,
       approverName: row.approverName,
-      approverEmail: (row as any).approverEmail ?? null,
+      approverEmail: (row.approverEmployeeId ? approverEmpMap.get(row.approverEmployeeId)?.email : null) || (row as any).approverEmail || null,
       approverEmployeeId: row.approverEmployeeId,
       submittedAt: row.submittedAt,
       reviewedAt: row.reviewedAt,
@@ -1343,27 +1345,84 @@ async function fetchApprovalRows() {
   return normalizeApprovalRows(rawRows)
 }
 
+function isRoleOrSectionMatching(
+  currentEmployee: { section?: string | null; department?: string | null; jobTitle?: string | null; role?: string | null } | null,
+  approverName?: string | null,
+  routeSnapshot?: string | null
+): boolean {
+  if (!currentEmployee) return false
+
+  const empSection = normalizeMatchValue(currentEmployee.section)
+  const empDept = normalizeMatchValue(currentEmployee.department)
+  const empJob = normalizeMatchValue(currentEmployee.jobTitle)
+  const empRole = normalizeMatchValue(currentEmployee.role)
+
+  const apprNameNorm = normalizeMatchValue(approverName)
+  const snapshotNorm = normalizeMatchValue(routeSnapshot)
+
+  const targetTokens = [apprNameNorm, snapshotNorm].filter(Boolean)
+  const empTokens = [empSection, empDept, empJob, empRole].filter(Boolean)
+
+  const keyRoles = [
+    'billing',
+    'biling',
+    'finance',
+    'accounting',
+    'warehouse',
+    'logistic',
+    'logistik',
+    'repair',
+    'retread',
+    'service',
+    'qc',
+  ]
+  for (const key of keyRoles) {
+    const empHasKey = empTokens.some((t) => t.includes(key))
+    const targetHasKey = targetTokens.some((t) => t.includes(key))
+    if (empHasKey && targetHasKey) {
+      return true
+    }
+  }
+
+  return false
+}
+
 async function fetchApprovalRowsForUser(
   email: string,
   currentEmployee: Awaited<ReturnType<typeof getEmployeeByEmail>> | null
 ) {
   const normalizedEmail = normalizeMatchValue(email)
+  const employeeEmailNorm = normalizeMatchValue(currentEmployee?.email)
   const normalizedEmployeeName = normalizeMatchValue(currentEmployee?.name)
 
   const rows = await fetchApprovalRows()
 
+  // Cek apakah user adalah Super Admin atau memiliki permission global pada approval_inbox
+  const isSuperAdmin = isSuperAdminRole(currentEmployee?.accessRole)
+
+  if (isSuperAdmin) {
+    return rows.slice(0, 500)
+  }
+
   return rows
     .filter((row) => {
       const emailMatches =
-        normalizedEmail && normalizeMatchValue(row.approverEmail) === normalizedEmail
+        (normalizedEmail && normalizeMatchValue(row.approverEmail) === normalizedEmail) ||
+        (employeeEmailNorm && normalizeMatchValue(row.approverEmail) === employeeEmailNorm)
       const employeeMatches =
         currentEmployee?.id != null && row.approverEmployeeId === currentEmployee.id
       const nameMatches =
         normalizedEmployeeName && normalizeMatchValue(row.approverName) === normalizedEmployeeName
       const requesterMatches =
-        normalizedEmail && normalizeMatchValue(row.requesterEmail) === normalizedEmail
+        (normalizedEmail && normalizeMatchValue(row.requesterEmail) === normalizedEmail) ||
+        (employeeEmailNorm && normalizeMatchValue(row.requesterEmail) === employeeEmailNorm)
+      const roleSectionMatches = isRoleOrSectionMatching(
+        currentEmployee,
+        row.approverName,
+        row.routeSnapshot
+      )
 
-      return emailMatches || employeeMatches || nameMatches || requesterMatches
+      return emailMatches || employeeMatches || nameMatches || requesterMatches || roleSectionMatches
     })
     .slice(0, 240)
 }
@@ -1567,7 +1626,10 @@ async function getEmployeeByEmail(email: string) {
       .where(
         or(
           sql`lower(${employees.email}) = ${norm}`,
-          sql`lower(${authUser.email}) = ${norm}`
+          sql`lower(${authUser.email}) = ${norm}`,
+          sql`lower(${employees.name}) = ${norm}`,
+          sql`${employees.email} ILIKE ${'%' + norm + '%'}`,
+          sql`${authUser.email} ILIKE ${'%' + norm + '%'}`
         )
       )
       .limit(1)
@@ -2816,6 +2878,10 @@ export async function getApprovalCenterData(email: string) {
   try {
     const now = new Date()
     const currentEmployee = await safeQuery(() => getEmployeeByEmail(email), null, "getEmployeeByEmail")
+    const normalizedEmail = normalizeMatchValue(email)
+    const employeeEmailNorm = normalizeMatchValue(currentEmployee?.email)
+    const normalizedEmployeeName = normalizeMatchValue(currentEmployee?.name)
+    const isAdmin = checkIsAdmin(email, currentEmployee)
     const [
       approvalRows,
       contractReviewInboxItems,
@@ -2825,13 +2891,13 @@ export async function getApprovalCenterData(email: string) {
       ptwInboxItems,
       sopWinRequestInboxItems,
     ] = await Promise.all([
-      safeQuery(() => fetchApprovalRowsForUser(email, currentEmployee), [], "fetchApprovalRowsForUser"),
-      safeQuery(() => getContractReviewInboxItems(email, currentEmployee), [], "getContractReviewInboxItems"),
-      safeQuery(() => getRfrInboxItems(email, currentEmployee), [], "getRfrInboxItems"),
-      safeQuery(() => getDailyActivityInboxItems(email, currentEmployee), [], "getDailyActivityInboxItems"),
-      safeQuery(() => getOvertimeInboxItems(email, currentEmployee), [], "getOvertimeInboxItems"),
-      safeQuery(() => getPtwInboxItems(email, currentEmployee), [], "getPtwInboxItems"),
-      safeQuery(() => getSopWinRequestInboxItems(email, currentEmployee), [], "getSopWinRequestInboxItems"),
+      safeQuery(() => fetchApprovalRowsForUser(email, currentEmployee as any), [], "fetchApprovalRowsForUser"),
+      safeQuery(() => getContractReviewInboxItems(email, currentEmployee as any), [], "getContractReviewInboxItems"),
+      safeQuery(() => getRfrInboxItems(email, currentEmployee as any), [], "getRfrInboxItems"),
+      safeQuery(() => getDailyActivityInboxItems(email, currentEmployee as any), [], "getDailyActivityInboxItems"),
+      safeQuery(() => getOvertimeInboxItems(email, currentEmployee as any), [], "getOvertimeInboxItems"),
+      safeQuery(() => getPtwInboxItems(email, currentEmployee as any), [], "getPtwInboxItems"),
+      safeQuery(() => getSopWinRequestInboxItems(email, currentEmployee as any), [], "getSopWinRequestInboxItems"),
     ])
   const queue = approvalRows
     .map((row) => enrichApprovalRow(row, now))
@@ -2841,19 +2907,25 @@ export async function getApprovalCenterData(email: string) {
         (left.submittedAt ? new Date(left.submittedAt).getTime() : 0)
     )
 
-  const normalizedEmail = normalizeMatchValue(email)
-  const employeeEmailNorm = normalizeMatchValue(currentEmployee?.email)
-  const normalizedEmployeeName = normalizeMatchValue(currentEmployee?.name)
-  const isAdmin = checkIsAdmin(email, currentEmployee)
-
   const inboxRows = queue.filter(
-    (item) =>
-      item.isPending &&
-      ((currentEmployee?.id != null && item.approverEmployeeId === currentEmployee.id) ||
+    (item) => {
+      if (!item.isPending) return false
+
+      const emailMatches =
         (normalizedEmail && normalizeMatchValue(item.approverEmail) === normalizedEmail) ||
-        (employeeEmailNorm && normalizeMatchValue(item.approverEmail) === employeeEmailNorm) ||
-        (normalizedEmployeeName &&
-          normalizeMatchValue(item.approverName) === normalizedEmployeeName))
+        (employeeEmailNorm && normalizeMatchValue(item.approverEmail) === employeeEmailNorm)
+      const employeeMatches =
+        currentEmployee?.id != null && item.approverEmployeeId === currentEmployee.id
+      const nameMatches =
+        normalizedEmployeeName && normalizeMatchValue(item.approverName) === normalizedEmployeeName
+      const roleSectionMatches = isRoleOrSectionMatching(
+        currentEmployee,
+        item.approverName,
+        item.routeSnapshot
+      )
+
+      return emailMatches || employeeMatches || nameMatches || roleSectionMatches
+    }
   )
 
   const inboxGroupsMap = new Map<
@@ -3875,6 +3947,14 @@ export async function getApprovalCenterData(email: string) {
 export async function getRequestCenterData(email?: string) {
   await ensureHeroSeedData()
 
+  let isGlobal = false
+  if (email) {
+    const currentEmp = await getEmployeeByEmail(email)
+    if (isSuperAdminRole(currentEmp?.accessRole)) {
+      isGlobal = true
+    }
+  }
+
   const activitiesRows = await db
     .select({
       id: activities.id,
@@ -3900,9 +3980,11 @@ export async function getRequestCenterData(email?: string) {
     .orderBy(desc(activities.createdAt), desc(activities.id))
 
   const approvalRows = (await fetchApprovalRows()).map((row) => enrichApprovalRow(row, new Date()))
-  const filteredActivities = email
+  const filteredActivities = isGlobal
+    ? activitiesRows
+    : email
     ? activitiesRows.filter(
-        (row) => row.requesterEmail.toLowerCase() === email.trim().toLowerCase()
+        (row) => row.requesterEmail?.toLowerCase() === email.trim().toLowerCase()
       )
     : activitiesRows
 
@@ -3970,9 +4052,11 @@ export async function getRequestCenterData(email?: string) {
     .where(isNull(formSubmissions.legacyActivityId))
     .orderBy(desc(formSubmissions.updatedAt), desc(formSubmissions.id))
 
-  const filteredDraftRows = email
-    ? draftRows.filter((row) => row.requesterEmail.toLowerCase() === email.trim().toLowerCase())
-    : draftRows
+  const filteredDraftRows = isGlobal
+    ? draftRows
+    : email
+    ? draftRows.filter((row) => row.requesterEmail?.toLowerCase() === email.trim().toLowerCase())
+    : []
 
   const draftRequests = filteredDraftRows.map((row) => {
     const payload = JSON.parse(row.payloadSnapshot || '{}') as Record<string, string>

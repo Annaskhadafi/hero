@@ -44,14 +44,10 @@ export async function sendFormWoApprovalRequestEmail(params: {
     params.approvalLink ||
     `${baseUrl}/dashboard/approval`
 
-  const recipients = Array.from(
-    new Set(
-      [
-        params.approverEmail,
-        tierConfigEmails && tierConfigEmails.length > 0 ? tierConfigEmails[0] : null,
-      ].filter(Boolean) as string[]
-    )
-  )
+  const targetEmail = (params.approverEmail || "").trim()
+  const recipients = targetEmail
+    ? [targetEmail]
+    : (tierConfigEmails && tierConfigEmails.length > 0 ? [tierConfigEmails[0]] : []).filter(Boolean)
 
   if (recipients.length === 0) {
     return { success: false, message: 'No valid recipient email configured for Form WO approval.' }

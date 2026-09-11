@@ -274,7 +274,6 @@ export async function submitApdRequest(formData: FormData) {
         approvalStepId: firstStep?.approvalMatrixStepId,
         resolutionSource: firstStep?.resolutionSource ?? 'system',
         routeSnapshot: JSON.stringify(route),
-        payloadSnapshot,
         decisionNote: '',
         submittedAt: new Date(),
       })

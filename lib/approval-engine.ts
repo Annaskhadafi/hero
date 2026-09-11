@@ -1,4 +1,4 @@
-import { and, asc, eq, ilike, inArray, or } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, inArray, or } from 'drizzle-orm'
 import { db } from '@/db'
 import {
   approvalMatrices,
@@ -50,10 +50,16 @@ export type ResolvedApprovalStep = {
     | 'legacy_site_pjo'
     | 'legacy_site_foreman'
     | 'apd_site_pjo'
+    | 'apd_pjo_site'
     | 'apd_head_section'
     | 'form_wo_custom'
+    | 'form_wo_service'
+    | 'form_wo_repair_retread'
     | 'apd_hse_site'
     | 'apd_specific_approver'
+    | 'apd_admin_cp'
+    | 'section_head'
+    | 'fallback_manager'
     | 'vacant'
   canDelegate: boolean
   slaHours: number
@@ -511,6 +517,108 @@ async function resolveCentralServiceSitePjoRoute(
 }
 
 
+async function resolveDynamicApproverForRoleOrSection(options: {
+  sectionKeywords: string[]
+  nodeKeywords?: string[]
+  roleKeywords?: string[]
+  defaultLabel: string
+}): Promise<{ id: number | null; name: string; label: string }> {
+  // 1. Try masterSections by sectionKeywords
+  for (const kw of options.sectionKeywords) {
+    const [sec] = await db
+      .select({
+        headEmployeeId: masterSections.headEmployeeId,
+        headName: employees.name,
+        headJobTitle: employees.jobTitle,
+        secName: masterSections.name,
+      })
+      .from(masterSections)
+      .leftJoin(employees, eq(masterSections.headEmployeeId, employees.id))
+      .where(ilike(masterSections.name, `%${kw}%`))
+      .limit(1)
+
+    if (sec?.headEmployeeId && sec?.headName) {
+      return {
+        id: sec.headEmployeeId,
+        name: sec.headName,
+        label: sec.headJobTitle || options.defaultLabel,
+      }
+    }
+  }
+
+  // 2. Try orgChartNodes by nodeKeywords / roleKeywords / sectionKeywords
+  const nodeSearchTerms = [
+    ...(options.nodeKeywords || []),
+    ...(options.roleKeywords || []),
+    ...options.sectionKeywords,
+  ]
+  for (const term of nodeSearchTerms) {
+    const [node] = await db
+      .select({
+        employeeId: orgChartNodes.employeeId,
+        nodeLabel: orgChartNodes.label,
+        empName: employees.name,
+        empJobTitle: employees.jobTitle,
+      })
+      .from(orgChartNodes)
+      .leftJoin(employees, eq(orgChartNodes.employeeId, employees.id))
+      .where(
+        or(
+          ilike(orgChartNodes.label, `%${term}%`),
+          ilike(orgChartNodes.approvalRole, `%${term}%`)
+        )
+      )
+      .orderBy(desc(orgChartNodes.id))
+      .limit(1)
+
+    if (node?.employeeId && node?.empName) {
+      return {
+        id: node.employeeId,
+        name: node.empName,
+        label: node.empJobTitle || node.nodeLabel || options.defaultLabel,
+      }
+    }
+  }
+
+  // 3. Try employees table by section or jobTitle
+  for (const kw of options.sectionKeywords) {
+    const [emp] = await db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        jobTitle: employees.jobTitle,
+      })
+      .from(employees)
+      .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+      .where(
+        and(
+          eq(employees.isActive, true),
+          or(
+            ilike(masterSections.name, `%${kw}%`),
+            ilike(employees.section, `%${kw}%`),
+            ilike(employees.jobTitle, `%${kw}%`)
+          )
+        )
+      )
+      .orderBy(asc(employees.id))
+      .limit(1)
+
+    if (emp?.id && emp?.name) {
+      return {
+        id: emp.id,
+        name: emp.name,
+        label: emp.jobTitle || options.defaultLabel,
+      }
+    }
+  }
+
+  return {
+    id: null,
+    name: options.defaultLabel,
+    label: options.defaultLabel,
+  }
+}
+
 async function resolveFormWoServiceApprovalRoute(
   context: ApprovalContext,
   customerName?: string
@@ -534,10 +642,34 @@ async function resolveFormWoServiceApprovalRoute(
     custUpper.includes('PT.CK')
 
   const stage1Approver = isMvcCompany
-    ? { id: 955, name: 'Apriyanto', label: 'Service Operation MVC Coord. SPV' }
-    : { id: 15, name: 'Junaidi', label: 'Service Operation Others Coord. SPV' }
+    ? await resolveDynamicApproverForRoleOrSection({
+        sectionKeywords: ['Service Operation MVC', 'MVC'],
+        nodeKeywords: ['Service Operation MVC', 'MVC'],
+        roleKeywords: ['Service Operation MVC Supervisor', 'Service Operation MVC'],
+        defaultLabel: 'Service Operation MVC Coord. SPV',
+      })
+    : await resolveDynamicApproverForRoleOrSection({
+        sectionKeywords: ['Service Operation Others', 'Others'],
+        nodeKeywords: ['Service Operation Others', 'Others'],
+        roleKeywords: ['Service Operation Others Coord. SPV', 'Service Operation Others'],
+        defaultLabel: 'Service Operation Others Coord. SPV',
+      })
 
-  // Step 1: Disetujui Oleh (Apriyanto / Junaidi based on company)
+  const billingApprover = await resolveDynamicApproverForRoleOrSection({
+    sectionKeywords: ['Billing'],
+    nodeKeywords: ['Billing', 'Team Billing', 'Billing Team'],
+    roleKeywords: ['Billing', 'Billing Coordinator', 'Billing Staff'],
+    defaultLabel: 'Team Billing',
+  })
+
+  const inventoryApprover = await resolveDynamicApproverForRoleOrSection({
+    sectionKeywords: ['Logistic Management', 'Inventory', 'Warehouse'],
+    nodeKeywords: ['Inventory & Warehouse Management SPV', 'Warehouse & Inventory', 'Logistic'],
+    roleKeywords: ['Inventory & Warehouse Management SPV', 'Logistic Management'],
+    defaultLabel: 'Inventory & Warehouse Management SPV',
+  })
+
+  // Step 1: Disetujui Oleh (MVC / Others Coord SPV)
   steps.push({
     stepOrder: 1,
     label: stage1Approver.label,
@@ -554,12 +686,12 @@ async function resolveFormWoServiceApprovalRoute(
     escalationLabel: null,
   })
 
-  // Step 2: Diperiksa Oleh (Andika - Team Billing)
+  // Step 2: Diperiksa Oleh (Team Billing)
   steps.push({
     stepOrder: 2,
     label: 'Team Billing',
-    approverName: 'Andika Ferdiansyah',
-    approverEmployeeId: 1102,
+    approverName: billingApprover.name,
+    approverEmployeeId: billingApprover.id,
     approverNodeId: null,
     approvalMatrixStepId: null,
     approvalMode: 'sequential',
@@ -571,12 +703,12 @@ async function resolveFormWoServiceApprovalRoute(
     escalationLabel: null,
   })
 
-  // Step 3: Disetujui Oleh (Ali Rahman - Inventory & Warehouse Management SPV)
+  // Step 3: Disetujui Oleh (Inventory & Warehouse Management SPV)
   steps.push({
     stepOrder: 3,
     label: 'Inventory & Warehouse Management SPV',
-    approverName: 'Ali Rahman',
-    approverEmployeeId: 979,
+    approverName: inventoryApprover.name,
+    approverEmployeeId: inventoryApprover.id,
     approverNodeId: null,
     approvalMatrixStepId: null,
     approvalMode: 'sequential',
@@ -604,12 +736,40 @@ async function resolveFormWoRepairRetreadApprovalRoute(
 ): Promise<ApprovalRouteResolution> {
   const steps: ResolvedApprovalStep[] = []
 
-  // Step 1: Diketahui Oleh (QC / Leader - mode "any", default Renaldo)
+  const qcApprover = await resolveDynamicApproverForRoleOrSection({
+    sectionKeywords: ['Repair / Retread Operation', 'Repair', 'Retread'],
+    nodeKeywords: ['QC / Leader', 'QC', 'Leader Repair'],
+    roleKeywords: ['QC / Leader', 'QC Staff', 'Leader Repair / Retread Operation'],
+    defaultLabel: 'QC / Leader',
+  })
+
+  const repairSpvApprover = await resolveDynamicApproverForRoleOrSection({
+    sectionKeywords: ['Repair / Retread Operation', 'Repair', 'Retread'],
+    nodeKeywords: ['Repair Retread Operation SPV', 'SPV Repair / Retread', 'Repair / Retread Operation SPV'],
+    roleKeywords: ['Leader Repair / Retread Operation', 'Repair / Retread Operation SPV'],
+    defaultLabel: 'Repair Retread Operation SPV',
+  })
+
+  const billingApprover = await resolveDynamicApproverForRoleOrSection({
+    sectionKeywords: ['Billing'],
+    nodeKeywords: ['Billing', 'Team Billing', 'Billing Team'],
+    roleKeywords: ['Billing', 'Billing Coordinator', 'Billing Staff'],
+    defaultLabel: 'Team Billing',
+  })
+
+  const inventoryApprover = await resolveDynamicApproverForRoleOrSection({
+    sectionKeywords: ['Logistic Management', 'Inventory', 'Warehouse'],
+    nodeKeywords: ['Inventory & Warehouse Management SPV', 'Warehouse & Inventory', 'Logistic'],
+    roleKeywords: ['Inventory & Warehouse Management SPV', 'Logistic Management'],
+    defaultLabel: 'Inventory & Warehouse Management SPV',
+  })
+
+  // Step 1: Diketahui Oleh (QC / Leader)
   steps.push({
     stepOrder: 1,
     label: 'QC / Leader',
-    approverName: 'Renaldo',
-    approverEmployeeId: 991,
+    approverName: qcApprover.name,
+    approverEmployeeId: qcApprover.id,
     approverNodeId: null,
     approvalMatrixStepId: null,
     approvalMode: 'sequential',
@@ -625,8 +785,8 @@ async function resolveFormWoRepairRetreadApprovalRoute(
   steps.push({
     stepOrder: 2,
     label: 'Repair Retread Operation SPV',
-    approverName: 'Ary Maulana',
-    approverEmployeeId: 996,
+    approverName: repairSpvApprover.name,
+    approverEmployeeId: repairSpvApprover.id,
     approverNodeId: null,
     approvalMatrixStepId: null,
     approvalMode: 'sequential',
@@ -638,12 +798,12 @@ async function resolveFormWoRepairRetreadApprovalRoute(
     escalationLabel: null,
   })
 
-  // Step 3: Diperiksa Oleh (Andika - Team Billing)
+  // Step 3: Diperiksa Oleh (Team Billing)
   steps.push({
     stepOrder: 3,
     label: 'Team Billing',
-    approverName: 'Andika Ferdiansyah',
-    approverEmployeeId: 1102,
+    approverName: billingApprover.name,
+    approverEmployeeId: billingApprover.id,
     approverNodeId: null,
     approvalMatrixStepId: null,
     approvalMode: 'sequential',
@@ -659,8 +819,8 @@ async function resolveFormWoRepairRetreadApprovalRoute(
   steps.push({
     stepOrder: 4,
     label: 'Inventory & Warehouse Management SPV',
-    approverName: 'Ali Rahman',
-    approverEmployeeId: 979,
+    approverName: inventoryApprover.name,
+    approverEmployeeId: inventoryApprover.id,
     approverNodeId: null,
     approvalMatrixStepId: null,
     approvalMode: 'sequential',

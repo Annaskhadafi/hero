@@ -1,5 +1,7 @@
 import { getCustomersAction } from "@/app/actions/customer-management"
 import { CustomerManagementWorkspace } from "@/components/customer-management-workspace"
+import { getCurrentMenuPermission } from "@/lib/hero-access"
+import { redirect } from "next/navigation"
 
 export const metadata = {
   title: "Customer Management | HERO",
@@ -7,6 +9,9 @@ export const metadata = {
 }
 
 export default async function CustomersPage() {
+  const permission = await getCurrentMenuPermission('service360_customers')
+  if (!permission.canView) redirect('/dashboard')
+
   const result = await getCustomersAction()
 
   return (
