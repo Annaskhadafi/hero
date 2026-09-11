@@ -3,11 +3,9 @@
 import { db } from '@/db'
 import { centralServiceEmployees } from '@/db/schema/central-service'
 import { employees } from '@/db/schema/hero'
-import { account, user } from '@/db/schema/auth'
+import { user } from '@/db/schema/auth'
 import { and, eq, or, sql } from 'drizzle-orm'
 import type { AnyColumn } from 'drizzle-orm'
-import { hashPassword } from 'better-auth/crypto'
-import { randomUUID } from 'crypto'
 
 function buildSnLookupVariants(sn: string) {
   const trimmedSn = sn.trim()
@@ -25,53 +23,6 @@ function buildSnLookupVariants(sn: string) {
 function snMatches(column: AnyColumn, snVariants: string[]) {
   const normalizedColumn = sql<string>`upper(trim(${column}))`
   return or(...snVariants.map((variant) => eq(normalizedColumn, variant)))
-}
-
-async function ensureEmployeeAuthProvisioned(
-  employeeId: number,
-  employeeSn: string | null,
-  emailStr: string,
-  nameStr: string
-) {
-  try {
-    const normalizedEmail = emailStr.toLowerCase().trim()
-    const [existingUser] = await db.select({ id: user.id }).from(user).where(eq(user.email, normalizedEmail)).limit(1)
-
-    let userId = existingUser?.id
-    const now = new Date()
-
-    if (!userId) {
-      userId = randomUUID()
-      await db.insert(user).values({
-        id: userId,
-        name: nameStr || normalizedEmail,
-        email: normalizedEmail,
-        emailVerified: true,
-        createdAt: now,
-        updatedAt: now,
-      })
-      await db.update(employees).set({ authUserId: userId }).where(eq(employees.id, employeeId))
-    }
-
-    // Check account
-    const [existingAccount] = await db.select({ id: account.id }).from(account).where(eq(account.userId, userId)).limit(1)
-
-    if (!existingAccount) {
-      const plainPassword = `Chitra#${employeeSn || '47006'}`
-      const hashedPassword = await hashPassword(plainPassword)
-      await db.insert(account).values({
-        id: randomUUID(),
-        userId: userId,
-        accountId: normalizedEmail,
-        providerId: 'credential',
-        password: hashedPassword,
-        createdAt: now,
-        updatedAt: now,
-      })
-    }
-  } catch (err) {
-    console.error('ensureEmployeeAuthProvisioned error:', err)
-  }
 }
 
 export async function resolveSnAction(sn: string) {
@@ -99,9 +50,12 @@ export async function resolveSnAction(sn: string) {
 
     if (matched?.email) {
       if (matched.isActive === false || matched.employmentStatus === 'inactive') {
-        return { success: false, error: 'Akun Anda telah dinonaktifkan oleh administrator. Silakan hubungi tim HR / Admin.' }
+        return {
+          success: false,
+          error:
+            'Akun Anda telah dinonaktifkan oleh administrator. Silakan hubungi tim HR / Admin.',
+        }
       }
-      await ensureEmployeeAuthProvisioned(matched.id, matched.employeeSn, matched.email, matched.fullName)
       return { success: true, email: matched.email, name: matched.fullName }
     }
 
@@ -121,9 +75,12 @@ export async function resolveSnAction(sn: string) {
 
     if (empDirect?.email) {
       if (empDirect.isActive === false || empDirect.employmentStatus === 'inactive') {
-        return { success: false, error: 'Akun Anda telah dinonaktifkan oleh administrator. Silakan hubungi tim HR / Admin.' }
+        return {
+          success: false,
+          error:
+            'Akun Anda telah dinonaktifkan oleh administrator. Silakan hubungi tim HR / Admin.',
+        }
       }
-      await ensureEmployeeAuthProvisioned(empDirect.id, empDirect.employeeSn, empDirect.email, empDirect.fullName)
       return { success: true, email: empDirect.email, name: empDirect.fullName }
     }
 

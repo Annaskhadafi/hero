@@ -2,56 +2,38 @@ import fs from 'fs'
 import path from 'path'
 
 describe('user management password reset', () => {
-  it('writes credential accountId as normalized email not authUserId', () => {
-    const source = fs.readFileSync(
-      path.join(process.cwd(), 'app/dashboard/admin-actions.ts'),
-      'utf8'
-    )
+  const helper = () => fs.readFileSync(path.join(process.cwd(), 'lib/auth-credentials.ts'), 'utf8')
+  const admin = () =>
+    fs.readFileSync(path.join(process.cwd(), 'app/dashboard/admin-actions.ts'), 'utf8')
+
+  it('stores one normalized-email credential and scopes auth-user lookup', () => {
+    const source = helper()
     expect(source).toContain('normalizeAuthEmail')
     expect(source).toContain('email.trim().toLowerCase()')
     expect(source).toContain('accountId: normalizedEmail')
-    expect(source).not.toMatch(/accountId:\s*authUserId/)
+    expect(source).toContain(
+      'const ownerMatches = authUserId ? [eq(account.userId, authUserId)] : matches'
+    )
+    expect(source).not.toContain('eq(account.userId, authUserId), ...matches')
   })
 
-  it('uses upsertCredentialAccount for both create-user and change-password', () => {
-    const source = fs.readFileSync(
-      path.join(process.cwd(), 'app/dashboard/admin-actions.ts'),
-      'utf8'
-    )
-    expect(source).toContain('upsertCredentialAccount')
-
-    // Check create-user uses upsertCredentialAccount
-    const createUserStart = source.indexOf("payload.intent === 'create-user'")
-    const createUserEnd = source.indexOf("payload.intent === 'update-profile'", createUserStart)
-    const createUserSection = source.substring(createUserStart, createUserEnd)
-    expect(createUserSection).toContain('upsertCredentialAccount')
-
-    // Check change-password uses upsertCredentialAccount
-    const changePasswordStart = source.indexOf("payload.intent === 'change-password'")
-    const changePasswordEnd = source.indexOf("return { status: 'success'", changePasswordStart)
-    const changePasswordSection = source.substring(changePasswordStart, changePasswordEnd + 100)
-    expect(changePasswordSection).toContain('upsertCredentialAccount')
+  it('preserves defaults but makes explicit resets authoritative and deduplicates', () => {
+    const source = helper()
+    expect(source).toContain('preserveExistingPassword: true')
+    expect(source).toContain('preserveExistingPassword: false')
+    expect(source).toContain('await tx.delete(account).where(eq(account.id, duplicateId))')
+    expect(admin()).toContain('await upsertCredentialAccount({')
   })
 
-  it('upsertCredentialAccount finds credential by userId or target accountId', () => {
-    const source = fs.readFileSync(
-      path.join(process.cwd(), 'app/dashboard/admin-actions.ts'),
-      'utf8'
-    )
-    expect(source).toContain("eq(account.providerId, 'credential')")
-    expect(source).toContain('eq(account.userId, authUserId)')
-    expect(source).toContain('eq(account.accountId, accountId)')
-  })
-
-  it('email profile changes sync credential accountId from previous email or legacy authUserId', () => {
-    const source = fs.readFileSync(
-      path.join(process.cwd(), 'app/dashboard/admin-actions.ts'),
-      'utf8'
-    )
-    expect(source).toContain('updateCredentialEmailAccountId')
-    expect(source).toContain('const previousAccountId = previousEmail ? normalizeAuthEmail(previousEmail) :')
-    expect(source).toContain('new Set([previousAccountId, authUserId].filter(Boolean))')
-    expect(source).toContain('inArray(account.accountId, accountIds)')
+  it('routes default provisioning, admin reset, and profile change through the helper', () => {
+    expect(admin()).toContain('ensureCredentialAccount')
+    expect(admin()).toContain('updateCredentialEmailAccountId')
+    expect(
+      fs.readFileSync(path.join(process.cwd(), 'app/dashboard/profile/actions.ts'), 'utf8')
+    ).toContain('upsertCredentialAccount')
+    expect(
+      fs.readFileSync(path.join(process.cwd(), 'app/actions/resolve-sn-action.ts'), 'utf8')
+    ).not.toContain('ensureCredentialAccount')
   })
 
   it('reset password form uses intent change-password and field newPassword', () => {
@@ -64,10 +46,7 @@ describe('user management password reset', () => {
   })
 
   it('does not duplicate credential insert logic in change-password branch', () => {
-    const source = fs.readFileSync(
-      path.join(process.cwd(), 'app/dashboard/admin-actions.ts'),
-      'utf8'
-    )
+    const source = admin()
     const changePasswordStart = source.indexOf("payload.intent === 'change-password'")
     const changePasswordEnd = source.indexOf("return { status: 'success'", changePasswordStart)
     const changePasswordSection = source.substring(changePasswordStart, changePasswordEnd + 100)

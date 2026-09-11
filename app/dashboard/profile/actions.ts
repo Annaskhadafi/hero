@@ -2,14 +2,15 @@
 
 import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
-import { and, eq, ne, or, sql } from 'drizzle-orm'
+import { and, eq, ne } from 'drizzle-orm'
 
 import { db } from '@/db'
-import { account, session, user } from '@/db/schema/auth'
+import { session, user } from '@/db/schema/auth'
 import { employees } from '@/db/schema/hero'
 import { auth } from '@/lib/auth'
+import { findCredentialAccount, upsertCredentialAccount } from '@/lib/auth-credentials'
 import { getCurrentEmployee } from '@/lib/get-current-employee'
-import { hashPassword, verifyPassword } from 'better-auth/crypto'
+import { verifyPassword } from 'better-auth/crypto'
 
 export type ProfileActionState = { ok: boolean; message: string }
 
@@ -25,7 +26,8 @@ export async function updateMyProfileAction(
   formData: FormData
 ): Promise<ProfileActionState> {
   const sessionData = await auth.api.getSession({ headers: await headers() })
-  if (!sessionData?.user?.id) return { ok: false, message: 'Sesi tidak valid. Silakan login ulang.' }
+  if (!sessionData?.user?.id)
+    return { ok: false, message: 'Sesi tidak valid. Silakan login ulang.' }
 
   const name = formVal(formData, 'name')
   const phone = formVal(formData, 'phoneNumber')
@@ -93,29 +95,15 @@ export async function changeMyPasswordAction(
     return { ok: false, message: 'Password baru minimal 6 karakter.' }
   }
 
-  const userEmail = sessionData?.user?.email?.toLowerCase().trim() || currentEmp?.email?.toLowerCase().trim()
-  const employeeSn = currentEmp?.employeeSn?.trim()
+  const userEmail =
+    sessionData?.user?.email?.toLowerCase().trim() || currentEmp?.email?.toLowerCase().trim()
+  if (!userEmail)
+    return { ok: false, message: 'Email akun tidak ditemukan. Hubungi Administrator.' }
 
-  // Find existing credential record
-  const [cred] = await db
-    .select({
-      id: account.id,
-      password: account.password,
-      userId: account.userId,
-      accountId: account.accountId,
-    })
-    .from(account)
-    .where(
-      and(
-        eq(account.providerId, 'credential'),
-        or(
-          targetAuthUserId ? eq(account.userId, targetAuthUserId) : sql`false`,
-          userEmail ? eq(account.accountId, userEmail) : sql`false`,
-          employeeSn ? eq(account.accountId, employeeSn) : sql`false`
-        )
-      )
-    )
-    .limit(1)
+  const cred = await findCredentialAccount({
+    authUserId: targetAuthUserId ?? null,
+    email: userEmail,
+  })
 
   if (!cred?.password) {
     return { ok: false, message: 'Akun login tidak ditemukan. Hubungi Administrator.' }
@@ -142,23 +130,22 @@ export async function changeMyPasswordAction(
     return { ok: false, message: 'Password saat ini tidak sesuai / salah.' }
   }
 
-  const passwordHash = await hashPassword(newPassword)
   const now = new Date()
 
-  await db
-    .update(account)
-    .set({
-      password: passwordHash,
-      userId: targetAuthUserId || cred.userId,
-      updatedAt: now,
-    })
-    .where(eq(account.id, cred.id))
+  await upsertCredentialAccount({
+    authUserId: targetAuthUserId || cred.userId,
+    email: userEmail,
+    password: newPassword,
+    now,
+  })
 
   // Delete all other sessions except current if session exists
   if (sessionData?.user?.id) {
     await db
       .delete(session)
-      .where(and(eq(session.userId, sessionData.user.id), ne(session.id, sessionData.session?.id ?? '')))
+      .where(
+        and(eq(session.userId, sessionData.user.id), ne(session.id, sessionData.session?.id ?? ''))
+      )
       .catch(() => null)
   }
 
@@ -176,4 +163,3 @@ export async function changeMyPasswordDirectAction(payload: {
   fd.append('newPassword', payload.newPassword)
   return changeMyPasswordAction(emptyState, fd)
 }
-

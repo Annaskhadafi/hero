@@ -88,7 +88,13 @@ async function notifyDailyReportDelivery(input: {
 import { and, asc, desc, eq, ilike, inArray, isNull, isNotNull, lt, ne, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { hashPassword } from 'better-auth/crypto'
+import {
+  buildDefaultCredentialPassword,
+  ensureCredentialAccount,
+  normalizeAuthEmail,
+  updateCredentialEmailAccountId,
+  upsertCredentialAccount,
+} from '@/lib/auth-credentials'
 import { db } from '@/db'
 import { account, session, user } from '@/db/schema/auth'
 import {
@@ -247,7 +253,7 @@ async function requireSchedulingTimesheetAccess(
 async function requireTrainingRecordAccess(
   action: 'edit' | 'delete',
   employeeId?: number,
-  recordId?: number,
+  recordId?: number
 ) {
   const [permission, context] = await Promise.all([
     getCurrentMenuPermission('training_records'),
@@ -4433,10 +4439,18 @@ async function applyApprovalDecision(params: {
       approval.approverName &&
       (approval.approverName.toLowerCase().includes('billing') ||
         approval.approverName.toLowerCase().includes('biling')) &&
-      ((actorEmployee?.section && (actorEmployee.section.toLowerCase().includes('billing') || actorEmployee.section.toLowerCase().includes('biling'))) ||
-        (actorEmployee?.department && (actorEmployee.department.toLowerCase().includes('billing') || actorEmployee.department.toLowerCase().includes('biling'))) ||
-        (actorEmployee?.jobTitle && (actorEmployee.jobTitle.toLowerCase().includes('billing') || actorEmployee.jobTitle.toLowerCase().includes('biling'))) ||
-        (actorEmployee?.email && (actorEmployee.email.toLowerCase().includes('billing') || actorEmployee.email.toLowerCase().includes('biling')))))
+      ((actorEmployee?.section &&
+        (actorEmployee.section.toLowerCase().includes('billing') ||
+          actorEmployee.section.toLowerCase().includes('biling'))) ||
+        (actorEmployee?.department &&
+          (actorEmployee.department.toLowerCase().includes('billing') ||
+            actorEmployee.department.toLowerCase().includes('biling'))) ||
+        (actorEmployee?.jobTitle &&
+          (actorEmployee.jobTitle.toLowerCase().includes('billing') ||
+            actorEmployee.jobTitle.toLowerCase().includes('biling'))) ||
+        (actorEmployee?.email &&
+          (actorEmployee.email.toLowerCase().includes('billing') ||
+            actorEmployee.email.toLowerCase().includes('biling')))))
   const hasAdminReviewAccess =
     approvalPermission.canEdit &&
     (hasGlobalDataAccess(approvalPermission) ||
@@ -4671,7 +4685,11 @@ async function applyApprovalDecision(params: {
             }
           }
 
-          if (!nextEmpEmail && nextApproverName && nextApproverName.toLowerCase().includes('billing')) {
+          if (
+            !nextEmpEmail &&
+            nextApproverName &&
+            nextApproverName.toLowerCase().includes('billing')
+          ) {
             const [billingEmp] = await tx
               .select({ email: employees.email })
               .from(employees)
@@ -5087,11 +5105,7 @@ async function applyApprovalDecision(params: {
     const isRejected = params.decision === 'rejected'
     const isReverted = params.decision === 'needs_correction'
 
-    const decisionStatus = isApproved
-      ? 'proses_order'
-      : isRejected
-        ? 'cancel'
-        : 'needs_correction'
+    const decisionStatus = isApproved ? 'proses_order' : isRejected ? 'cancel' : 'needs_correction'
     const approvalRoute = parseApprovalRouteSnapshot(approval.routeSnapshot)
 
     await db.transaction(async (tx) => {
@@ -5174,7 +5188,9 @@ async function applyApprovalDecision(params: {
 
           const isMaterialOrTools =
             notifInfo.requestCategory === 'MATERIAL' || notifInfo.requestCategory === 'TOOLS'
-          const materialToolsCc = isMaterialOrTools ? ['muhammad.akbar@chitraparatama.co.id'] : undefined
+          const materialToolsCc = isMaterialOrTools
+            ? ['muhammad.akbar@chitraparatama.co.id']
+            : undefined
 
           // 1. Email + bell ke requester (progress update)
           if (notifInfo.requesterEmail) {
@@ -5325,7 +5341,8 @@ async function applyApprovalDecision(params: {
           .then((res) => res[0])
 
         if (reqInfo?.requesterEmail) {
-          const isMaterialOrTools = reqInfo.requestCategory === 'MATERIAL' || reqInfo.requestCategory === 'TOOLS'
+          const isMaterialOrTools =
+            reqInfo.requestCategory === 'MATERIAL' || reqInfo.requestCategory === 'TOOLS'
           const ccEmails = isMaterialOrTools ? ['muhammad.akbar@chitraparatama.co.id'] : undefined
 
           const { sendApdRequestRejectedEmail } = await import('@/lib/apd-email')
@@ -5366,7 +5383,8 @@ async function applyApprovalDecision(params: {
           .then((res) => res[0])
 
         if (reqInfo?.requesterEmail) {
-          const isMaterialOrTools = reqInfo.requestCategory === 'MATERIAL' || reqInfo.requestCategory === 'TOOLS'
+          const isMaterialOrTools =
+            reqInfo.requestCategory === 'MATERIAL' || reqInfo.requestCategory === 'TOOLS'
           const ccEmails = isMaterialOrTools ? ['muhammad.akbar@chitraparatama.co.id'] : undefined
 
           const { sendApdRequestRevertedEmail } = await import('@/lib/apd-email')
@@ -5873,7 +5891,13 @@ async function resolveHrEmployeeGovernanceIds(params: {
   statusName?: string
 }) {
   const [departments, sections, positions, orgNodes, statuses] = await Promise.all([
-    db.select({ id: masterDepartments.id, code: masterDepartments.code, name: masterDepartments.name }).from(masterDepartments),
+    db
+      .select({
+        id: masterDepartments.id,
+        code: masterDepartments.code,
+        name: masterDepartments.name,
+      })
+      .from(masterDepartments),
     db
       .select({
         id: masterSections.id,
@@ -5900,8 +5924,10 @@ async function resolveHrEmployeeGovernanceIds(params: {
     (params.departmentId ? departments.find((item) => item.id === params.departmentId) : null) ??
     departments.find(
       (item) =>
-        (params.department && normalizeLookupValue(item.name) === normalizeLookupValue(params.department)) ||
-        (params.department && normalizeLookupValue(item.code) === normalizeLookupValue(params.department))
+        (params.department &&
+          normalizeLookupValue(item.name) === normalizeLookupValue(params.department)) ||
+        (params.department &&
+          normalizeLookupValue(item.code) === normalizeLookupValue(params.department))
     ) ??
     null
 
@@ -5909,16 +5935,17 @@ async function resolveHrEmployeeGovernanceIds(params: {
     (params.sectionId ? sections.find((item) => item.id === params.sectionId) : null) ??
     sections.find(
       (item) =>
-        (params.section &&
-          (normalizeLookupValue(item.name) === normalizeLookupValue(params.section) ||
-            normalizeLookupValue(item.code) === normalizeLookupValue(params.section))) &&
+        params.section &&
+        (normalizeLookupValue(item.name) === normalizeLookupValue(params.section) ||
+          normalizeLookupValue(item.code) === normalizeLookupValue(params.section)) &&
         (department?.id == null || item.departmentId === department.id)
     ) ??
     null
 
   const position =
     positions.find(
-      (item) => params.jobTitle && normalizeLookupValue(item.name) === normalizeLookupValue(params.jobTitle)
+      (item) =>
+        params.jobTitle && normalizeLookupValue(item.name) === normalizeLookupValue(params.jobTitle)
     ) ?? null
 
   const orgNode =
@@ -5993,98 +6020,6 @@ function normalizeProfileImageValue(value: string | undefined) {
   }
 }
 
-function normalizeAuthEmail(email: string) {
-  return email.trim().toLowerCase()
-}
-
-function buildDefaultUserManagementPassword(employeeSn: string | null | undefined) {
-  const normalizedSn = (employeeSn ?? '').trim().replace(/^emp[-]?/i, '')
-  const base = `Chitra#${normalizedSn}`
-  if (base.length < 8) {
-    return `Chitra#${normalizedSn.padStart(4, '0')}`
-  }
-  return base
-}
-
-async function upsertCredentialAccount({
-  authUserId,
-  email,
-  password,
-  now,
-  employeeSn,
-}: {
-  authUserId: string
-  email: string
-  password: string
-  now: Date
-  employeeSn?: string | null
-}) {
-  const normalizedEmail = normalizeAuthEmail(email)
-  const passwordHash = await hashPassword(password)
-
-  const upsertOne = async (accountId: string) => {
-    const [existingCredential] = await db
-      .select({ id: account.id })
-      .from(account)
-      .where(and(eq(account.providerId, 'credential'), eq(account.accountId, accountId)))
-      .limit(1)
-
-    const credentialValues = {
-      accountId,
-      providerId: 'credential' as const,
-      userId: authUserId,
-      password: passwordHash,
-      updatedAt: now,
-    }
-
-    if (existingCredential) {
-      await db.update(account).set(credentialValues).where(eq(account.id, existingCredential.id))
-    } else {
-      await db.insert(account).values({
-        id: randomUUID(),
-        ...credentialValues,
-        createdAt: now,
-      })
-    }
-  }
-
-  // Create credential for email login
-  await upsertOne(normalizedEmail)
-
-  // Create credential for SN login (supports login with SN as username)
-  const normalizedSn = (employeeSn ?? '').trim()
-  if (normalizedSn && normalizedSn !== normalizedEmail) {
-    await upsertOne(normalizedSn)
-  }
-}
-
-async function updateCredentialEmailAccountId({
-  authUserId,
-  previousEmail,
-  email,
-  now,
-}: {
-  authUserId: string
-  previousEmail: string | null
-  email: string
-  now: Date
-}) {
-  const normalizedEmail = normalizeAuthEmail(email)
-  const previousAccountId = previousEmail ? normalizeAuthEmail(previousEmail) : ''
-  const accountIds = Array.from(new Set([previousAccountId, authUserId].filter(Boolean)))
-
-  await db
-    .update(account)
-    .set({ accountId: normalizedEmail, updatedAt: now })
-    .where(
-      and(
-        eq(account.providerId, 'credential'),
-        eq(account.userId, authUserId),
-        inArray(account.accountId, accountIds)
-      )
-    )
-}
-
 // ─── Bulk Provisioning Types & Helpers ───────────────────────────────────────
 
 export interface BulkProvisionResult {
@@ -6095,16 +6030,6 @@ export interface BulkProvisionResult {
   failed: number
   failures: Array<{ employeeId: string; error: string }>
   interrupted: boolean
-}
-
-function determinePassword(employee: {
-  emailPasswordMigration: string | null
-  employeeId: string
-}): string {
-  const migration = employee.emailPasswordMigration?.trim()
-  if (migration && migration.length > 0) return migration
-  const normalizedSn = employee.employeeId.trim().replace(/^EMP-/i, '')
-  return `Chitra#${normalizedSn}`
 }
 
 function isValidEmailFormat(email: string): boolean {
@@ -6190,26 +6115,6 @@ export async function bulkProvisionAuthAccountsAction(): Promise<BulkProvisionRe
         continue
       }
 
-      // Determine password
-      const plainPassword = determinePassword({
-        emailPasswordMigration: null,
-        employeeId: emp.employeeId,
-      })
-
-      // Hash password
-      let hashedPassword: string
-      try {
-        hashedPassword = await hashPassword(plainPassword)
-      } catch (hashErr) {
-        failed++
-        consecutiveFailures++
-        failures.push({
-          employeeId: emp.employeeId,
-          error: `Password hashing failed: ${hashErr instanceof Error ? hashErr.message : String(hashErr)}`,
-        })
-        continue
-      }
-
       // Create or find auth user
       const authUserId = randomUUID()
       const now = new Date()
@@ -6289,10 +6194,9 @@ export async function bulkProvisionAuthAccountsAction(): Promise<BulkProvisionRe
 
       // Upsert credential account
       try {
-        await upsertCredentialAccount({
+        await ensureCredentialAccount({
           authUserId: finalAuthUserId,
           email: normalizedEmail,
-          password: plainPassword,
           now: new Date(),
           employeeSn: emp.employeeId,
         })
@@ -6701,7 +6605,9 @@ export async function reviewApprovalAction(formData: FormData) {
 
   // Check if a signature file or signature data URL is provided
   const signatureFile = formData.get('signatureFile') as File | null
-  const rawSignatureDataUrl = (formData.get('signatureDataUrl') || formData.get('signatureUrl')) as string | null
+  const rawSignatureDataUrl = (formData.get('signatureDataUrl') || formData.get('signatureUrl')) as
+    | string
+    | null
   let signatureUrl: string | undefined
 
   if (signatureFile && signatureFile.size > 0) {
@@ -6719,7 +6625,12 @@ export async function reviewApprovalAction(formData: FormData) {
   }
 
   // Fallback to rawSignatureDataUrl if file upload was not performed or failed
-  if (!signatureUrl && rawSignatureDataUrl && typeof rawSignatureDataUrl === 'string' && rawSignatureDataUrl.trim().length > 0) {
+  if (
+    !signatureUrl &&
+    rawSignatureDataUrl &&
+    typeof rawSignatureDataUrl === 'string' &&
+    rawSignatureDataUrl.trim().length > 0
+  ) {
     signatureUrl = rawSignatureDataUrl.trim()
   }
 
@@ -6729,7 +6640,9 @@ export async function reviewApprovalAction(formData: FormData) {
     await db.update(approvals).set({ signatureUrl }).where(eq(approvals.id, payload.approvalId))
   }
 
-  const rawNoWoTerbit = ((formData.get('noWoTerbit') || formData.get('noWoCp')) as string | null)?.trim()
+  const rawNoWoTerbit = (
+    (formData.get('noWoTerbit') || formData.get('noWoCp')) as string | null
+  )?.trim()
 
   await applyApprovalDecision({
     approvalId: payload.approvalId,
@@ -6761,7 +6674,9 @@ export async function approveApprovalGroupAction(formData: FormData) {
   const note = (formData.get('note') || formData.get('notes') || '') as string
   const decision = ((formData.get('decision') as string) || 'approved') as any
   const signatureUrl = (formData.get('signatureUrl') as string) || undefined
-  const rawNoWoTerbit = ((formData.get('noWoTerbit') || formData.get('noWoCp')) as string | null)?.trim()
+  const rawNoWoTerbit = (
+    (formData.get('noWoTerbit') || formData.get('noWoCp')) as string | null
+  )?.trim()
 
   if (approvalIds.length === 0) {
     throw new Error('Tidak ada ID approval yang valid untuk diproses.')
@@ -7066,7 +6981,6 @@ export async function importSecurityUsersAction(
 
       let linkedAuthUserId = existing?.authUserId ?? existingAuthUser?.id ?? null
       if (!linkedAuthUserId) {
-        const password = buildDefaultUserManagementPassword(employeeSn)
         const newAuthUserId = randomUUID()
         await db.insert(user).values({
           id: newAuthUserId,
@@ -7076,10 +6990,9 @@ export async function importSecurityUsersAction(
           createdAt: new Date(),
           updatedAt: new Date(),
         })
-        await upsertCredentialAccount({
+        await ensureCredentialAccount({
           authUserId: newAuthUserId,
           email,
-          password,
           now: new Date(),
           employeeSn,
         })
@@ -7733,7 +7646,8 @@ export async function manageSecurityUserAction(
       const fullName = payload.fullName?.trim() ?? ''
       const email = normalizeEmail(payload.email ?? '')
       const employeeSn = payload.employeeSn?.trim() ?? ''
-      const password = payload.password?.trim() || buildDefaultUserManagementPassword(employeeSn)
+      const suppliedPassword = payload.password?.trim() || ''
+      const password = suppliedPassword || buildDefaultCredentialPassword(employeeSn)
       const department = payload.department?.trim() || 'General'
       const section = payload.section?.trim() || department
       const jobTitle = payload.jobTitle?.trim() || 'Staff'
@@ -7912,8 +7826,12 @@ export async function manageSecurityUserAction(
         })
       }
 
-      // 2. Upsert credential account
-      await upsertCredentialAccount({ authUserId, email, password, now, employeeSn })
+      // 2. Keep defaults non-destructive; explicit admin passwords are authoritative.
+      if (suppliedPassword) {
+        await upsertCredentialAccount({ authUserId, email, password, now })
+      } else {
+        await ensureCredentialAccount({ authUserId, email, employeeSn, now })
+      }
 
       // 3. Upsert employee profile record
       let createdLegacyEmployeeId: number | null = null
@@ -8412,7 +8330,6 @@ export async function manageSecurityUserAction(
         email: latestEmployee.email,
         password: newPassword,
         now,
-        employeeSn: employee.employeeSn,
       })
 
       await db.delete(session).where(eq(session.userId, authUserId))
@@ -9469,13 +9386,18 @@ export async function importTrainingRecordsAction(
       .from(employees)
       .where(eq(employees.isActive, true))
     const allowedEmployeeIds = new Set(
-      employeeRows.filter((employee) => {
-        if (access.permission.dataScope === 'global') return true
-        if (access.permission.dataScope === 'own') return employee.id === access.context?.employeeId
-        return employee.siteId === access.context?.siteId
-      }).map((employee) => employee.id)
+      employeeRows
+        .filter((employee) => {
+          if (access.permission.dataScope === 'global') return true
+          if (access.permission.dataScope === 'own')
+            return employee.id === access.context?.employeeId
+          return employee.siteId === access.context?.siteId
+        })
+        .map((employee) => employee.id)
     )
-    const scopedEmployeeRows = employeeRows.filter((employee) => allowedEmployeeIds.has(employee.id))
+    const scopedEmployeeRows = employeeRows.filter((employee) =>
+      allowedEmployeeIds.has(employee.id)
+    )
 
     const existingRows = await db
       .select({
