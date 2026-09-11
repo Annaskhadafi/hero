@@ -136,12 +136,13 @@ export function MobileAppShell({
   ]
 
   const checkAccess = (href: string, resource?: string) => {
-    // If it has a resource, strictly check permissions (deny by default)
-    if (resource) {
-      return Boolean(permissions[resource]?.canView)
+    // If permissions dictionary has entries, use granular resource permission
+    if (resource && permissions && Object.keys(permissions).length > 0) {
+      if (permissions[resource] !== undefined) {
+        return Boolean(permissions[resource]?.canView)
+      }
     }
-    // If no resource, it's a basic route like Dashboard, Profile, Information
-    // We can fallback to the old behavior or just allow it if no resource is defined.
+    // Fallback to allowedLinks check
     return isMobileHrefAllowed(href, allowedLinks)
   }
 

@@ -3804,9 +3804,7 @@ export async function resolvePointDisputeAction(formData: FormData) {
 
 const DAILY_ACTIVITY_APPROVAL_STEPS = [
   { stepOrder: 1, stepLabel: 'Karyawan Sign', approverRole: 'employee' },
-  { stepOrder: 2, stepLabel: 'Leader / Supervisor', approverRole: 'leader' },
-  { stepOrder: 3, stepLabel: 'Section Head', approverRole: 'section_head' },
-  { stepOrder: 4, stepLabel: 'Manager / HC', approverRole: 'manager' },
+  { stepOrder: 2, stepLabel: 'Leader / PJO', approverRole: 'leader' },
 ] as const
 
 const approvalStepActionSchema = z.object({
@@ -4039,26 +4037,22 @@ export async function initDailyActivityApprovalsAction(sessionId: number) {
     },
     {
       stepOrder: 2,
-      stepLabel: 'Leader / Supervisor',
+      stepLabel: 'Leader / PJO',
       approverRole: 'leader',
       approverEmployeeId: leaderEmployeeId,
       approverName: leaderName,
       approverEmail: leaderEmail,
     },
-    {
-      stepOrder: 3,
-      stepLabel: 'Section Head',
-      approverRole: 'section_head',
-      approverEmployeeId: sectionHeadEmployeeId,
-      approverName: sectionHeadName,
-      approverEmail: sectionHeadEmail,
-    },
   ]
 
   let step1Token = ''
+  let step2Token = ''
+  const now = new Date()
   for (const step of approvers) {
     const token = randomUUID()
     if (step.stepOrder === 1) step1Token = token
+    if (step.stepOrder === 2) step2Token = token
+    const isStep1 = step.stepOrder === 1
     await db.insert(dailyActivityApprovals).values({
       sessionId,
       stepOrder: step.stepOrder,
@@ -4067,13 +4061,15 @@ export async function initDailyActivityApprovalsAction(sessionId: number) {
       approverName: step.approverName,
       approverEmail: step.approverEmail,
       approverRole: step.approverRole,
-      status: step.stepOrder === 1 ? 'pending' : 'waiting',
-      createdAt: new Date(),
+      status: isStep1 ? 'pending' : 'waiting',
+      signatureDataUrl: null,
+      signedAt: null,
+      createdAt: now,
     })
   }
 
-  // Send initial email to Step 1 (Serviceman / Employee)
-  if (step1Token && sessionEmployee?.email) {
+  // Send notification & email to Step 2 (Leader / PJO)
+  if (leaderEmail) {
     const [siteRow] = session.siteId
       ? await db.select({ name: sites.name }).from(sites).where(eq(sites.id, session.siteId)).limit(1)
       : []
@@ -4454,6 +4450,10 @@ export async function submitDailyActivityApprovalStepAction(
     safeRevalidatePath(`/dashboard/activity-hub/approval`)
     safeRevalidatePath(`/dashboard/approval`)
     safeRevalidatePath(`/dashboard/activity-hub/my-day`)
+    safeRevalidatePath(`/mobile/approval`)
+    safeRevalidatePath(`/mobile/activity`)
+    safeRevalidatePath(`/mobile/dashboard`)
+    safeRevalidatePath(`/mobile`)
 
     return {
       status: 'success',
@@ -4722,8 +4722,24 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
 
   const sigMap = new Map(employeeSigs.map((e) => [e.id, e.signatureDataUrl]))
 
-  const teamMatch = (header.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)
+  const rawRemark = header.summaryRemark || ''
+  const teamMatch = rawRemark.match(/\[Team:\s*([^\]]+)\]/i)
   const teamMembersSummary = teamMatch ? teamMatch[1].trim() : null
+
+  const remarkWithoutTeam = rawRemark
+    .replace(/\s*\|\s*\[Team:\s*[^\]]+\]/gi, '')
+    .replace(/\s*\[Team:\s*[^\]]+\]/gi, '')
+    .trim()
+
+  const custMatch =
+    remarkWithoutTeam.match(/\[Customer:\s*([^\]]+)\]/i) ||
+    remarkWithoutTeam.match(/Customer:\s*([^\n;]+)/i)
+
+  let resolvedCustomerName = (custMatch ? custMatch[1].trim() : (header.customerName || ''))
+    .replace(/\s*\|\s*\[Team:\s*[^\]]+\]/gi, '')
+    .replace(/\s*\[Team:\s*[^\]]+\]/gi, '')
+    .replace(/\s*\|\s*$/, '')
+    .trim()
 
   return {
     sessionId: header.sessionId,
@@ -4751,37 +4767,28 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
     site: {
       id: header.siteId,
       name: header.siteName,
-      customerName: header.customerName,
+      customerName: resolvedCustomerName,
     },
     siteName: header.siteName,
-    customerName: header.customerName,
+    customerName: resolvedCustomerName,
     totals: {
       itemCount,
       totalPoints,
     },
     sessionItems,
     items: sessionItems,
-    approvals: approvals.map((a) => {
-      const isStep1 = a.stepOrder === 1
-      const isDraft = (header.status || '').toLowerCase() === 'draft'
-      const rawStatus = (a.status || '').toLowerCase()
-      const effectiveStatus = isStep1 && !isDraft && (rawStatus === 'pending' || rawStatus === 'submitted') ? 'approved' : a.status
-      const isApprovedOrSigned = ['approved', 'signed', 'completed'].includes(effectiveStatus.toLowerCase())
-      const isReverted = effectiveStatus.toLowerCase() === 'reverted' || effectiveStatus.toLowerCase() === 'needs_revision'
+    approvals: approvals
+      .filter((a) => (a.stepOrder ?? 0) <= 2 && a.approverRole !== 'section_head' && a.approverRole !== 'manager')
+      .map((a) => {
+      const isApprovedOrSigned = ['approved', 'signed', 'completed'].includes((a.status || '').toLowerCase())
+      const isReverted = (a.status || '').toLowerCase() === 'reverted' || (a.status || '').toLowerCase() === 'needs_revision'
 
       let sig = a.signatureDataUrl || null
       if (!sig && isApprovedOrSigned) {
         if (a.approverEmployeeId && sigMap.get(a.approverEmployeeId)) {
           sig = sigMap.get(a.approverEmployeeId) || null
-        } else if (isStep1 && header.employeeId && sigMap.get(header.employeeId)) {
-          sig = sigMap.get(header.employeeId) || null
         }
       }
-
-      const signedAt =
-        a.signedAt ||
-        (isStep1 && isApprovedOrSigned ? (header.submittedAt || header.workDate || new Date()) : null) ||
-        (isReverted ? (header.approvedAt || header.submittedAt || new Date()) : null)
 
       return {
         id: a.id,
@@ -4791,11 +4798,11 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
         approverName: a.approverName,
         approverEmail: a.approverEmail,
         approverRole: a.approverRole,
-        status: effectiveStatus,
+        status: a.status,
         signatureDataUrl: sig,
         signatureUrl: sig,
         remarks: a.remarks,
-        signedAt,
+        signedAt: a.signedAt,
       }
     }),
     permissions: {
@@ -5647,33 +5654,39 @@ export async function saveDailyActivityApprovalForm(payload: {
       sessionUpdates.summaryRemark = (payload.notes ?? payload.summaryRemark ?? '').substring(0, 1000)
     }
 
-    if (payload.customerName && payload.customerName.trim()) {
-      const custTrimmed = payload.customerName.trim()
-      let targetSiteId = sessionUpdates.siteId
-      if (!targetSiteId) {
-        const [sessRow] = await db
-          .select({ siteId: dailyActivitySessions.siteId, employeeId: dailyActivitySessions.employeeId })
-          .from(dailyActivitySessions)
-          .where(eq(dailyActivitySessions.id, payload.sessionId))
-          .limit(1)
-        targetSiteId = sessRow?.siteId
-        if (!targetSiteId && sessRow?.employeeId) {
-          const [empRow] = await db
-            .select({ siteId: employees.siteId })
-            .from(employees)
-            .where(eq(employees.id, sessRow.employeeId))
+    if (payload.customerName !== undefined) {
+      const custTrimmed = (payload.customerName || '')
+        .replace(/\s*\|\s*\[Team:\s*[^\]]+\]/gi, '')
+        .replace(/\s*\[Team:\s*[^\]]+\]/gi, '')
+        .replace(/\s*\|\s*$/, '')
+        .trim()
+      if (custTrimmed) {
+        let targetSiteId = sessionUpdates.siteId
+        if (!targetSiteId) {
+          const [sessRow] = await db
+            .select({ siteId: dailyActivitySessions.siteId, employeeId: dailyActivitySessions.employeeId })
+            .from(dailyActivitySessions)
+            .where(eq(dailyActivitySessions.id, payload.sessionId))
             .limit(1)
-          targetSiteId = empRow?.siteId ?? null
-          if (targetSiteId) {
-            sessionUpdates.siteId = targetSiteId
+          targetSiteId = sessRow?.siteId
+          if (!targetSiteId && sessRow?.employeeId) {
+            const [empRow] = await db
+              .select({ siteId: employees.siteId })
+              .from(employees)
+              .where(eq(employees.id, sessRow.employeeId))
+              .limit(1)
+            targetSiteId = empRow?.siteId ?? null
+            if (targetSiteId) {
+              sessionUpdates.siteId = targetSiteId
+            }
           }
         }
-      }
-      if (targetSiteId) {
-        await db
-          .update(sites)
-          .set({ customerName: custTrimmed })
-          .where(eq(sites.id, targetSiteId))
+        if (targetSiteId) {
+          await db
+            .update(sites)
+            .set({ customerName: custTrimmed })
+            .where(eq(sites.id, targetSiteId))
+        }
       }
     }
 
@@ -5702,6 +5715,22 @@ export async function saveDailyActivityApprovalForm(payload: {
       (existingSession?.status || '').toLowerCase().includes('revision')
 
     if (isCurrentlyReverted) {
+      if (payload.items && payload.items.length > 0) {
+        for (let idx = 0; idx < payload.items.length; idx++) {
+          const item = payload.items[idx]
+          const hasPhoto = Boolean(
+            (typeof item.photoUrl === 'string' && item.photoUrl.trim().length > 0) ||
+            (Array.isArray(item.photos) && item.photos.length > 0)
+          )
+          if (!hasPhoto) {
+            return {
+              success: false as const,
+              error: `Foto bukti pekerjaan (evidence) pada item #${idx + 1} (${item.label || 'Aktivitas'}) wajib diunggah sebelum mengirim ulang revisi.`,
+            }
+          }
+        }
+      }
+
       sessionUpdates.status = 'submitted'
       sessionUpdates.submittedAt = new Date()
       sessionUpdates.updatedAt = new Date()
@@ -6077,7 +6106,7 @@ export async function saveDailyActivityApprovalForm(payload: {
 
     // If stepRemarks provided alone, save remarks to step approvals
     if (payload.stepRemarks && typeof payload.stepRemarks === 'object') {
-      for (const [stepIdStr, remark] of Object.entries(payload.stepRemarks)) {
+      for (const [stepIdStr, remark] of Object.entries(payload.stepRemarks || {})) {
         const stepId = Number(stepIdStr)
         if (stepId && remark !== undefined) {
           await db
@@ -6614,11 +6643,27 @@ export async function createDailyActivitySessionAction(input: {
     }
     for (let i = 0; i < input.items.length; i++) {
       const it = input.items[i]
+      const itemNumber = i + 1
+      const itemLabel = it.label || `Item #${itemNumber}`
+
       if (!it.unitNumber || !it.unitNumber.trim()) {
         it.unitNumber = '-'
       }
-      if (!it.remark || !it.remark.trim()) {
-        it.remark = it.label || '-'
+      if (!it.remark || !it.remark.trim() || it.remark.trim() === '-') {
+        return {
+          success: false as const,
+          error: `Catatan item pada item #${itemNumber} (${itemLabel}) wajib diisi!`,
+        }
+      }
+      const hasPhoto = Boolean(
+        (it.photoUrl && it.photoUrl.trim().length > 0) ||
+        (it.photos && it.photos.length > 0 && it.photos.some((p) => p && p.trim().length > 0))
+      )
+      if (!hasPhoto) {
+        return {
+          success: false as const,
+          error: `Photo Evidence pada item #${itemNumber} (${itemLabel}) wajib diunggah!`,
+        }
       }
     }
 
@@ -6631,10 +6676,17 @@ export async function createDailyActivitySessionAction(input: {
     }
 
     if (input.customerName && input.customerName.trim() && siteId) {
-      await db
-        .update(sites)
-        .set({ customerName: input.customerName.trim() })
-        .where(eq(sites.id, siteId))
+      const cleanCust = input.customerName
+        .replace(/\s*\|\s*\[Team:\s*[^\]]+\]/gi, '')
+        .replace(/\s*\[Team:\s*[^\]]+\]/gi, '')
+        .replace(/\s*\|\s*$/, '')
+        .trim()
+      if (cleanCust) {
+        await db
+          .update(sites)
+          .set({ customerName: cleanCust })
+          .where(eq(sites.id, siteId))
+      }
     }
 
     const dateFormatted = input.workDate
@@ -6907,9 +6959,9 @@ export async function createDailyActivitySessionAction(input: {
     const step3Token = randomUUID()
 
     // Generate sequential approval steps:
-    // Step 1: Karyawan Sign (pending without auto-signature)
-    // Step 2: Leader / PJO (waiting)
-    // Step 3: Section Head (waiting)
+    // Generate sequential approval steps:
+    // Step 1: Karyawan Sign (pending signature by employee)
+    // Step 2: Leader / PJO (waiting for Step 1 approval)
     const now = new Date()
 
     await db.insert(dailyActivityApprovals).values([
@@ -6939,58 +6991,27 @@ export async function createDailyActivitySessionAction(input: {
         approvalToken: step2Token,
         createdAt: now,
       },
-      {
-        sessionId: created.id,
-        stepOrder: 3,
-        stepLabel: 'Section Head',
-        approverRole: 'section_head',
-        approverEmployeeId: superiorEmpId ?? null,
-        approverName: superiorName,
-        approverEmail: superiorEmail,
-        status: 'waiting',
-        approvalToken: step3Token,
-        createdAt: now,
-      },
     ])
 
-    // Send Step 2 (Leader / PJO) email and in-app notification to Leader
-    const [siteRow] = created.siteId
-      ? await db
-          .select({ name: sites.name })
-          .from(sites)
-          .where(eq(sites.id, created.siteId))
-          .limit(1)
-      : []
-
+    // Send Step 1 in-app notification to submitter & team members
     try {
-      if (leaderEmail) {
+      if (emp.email) {
         await publishInAppApprovalNotification({
-          recipientEmail: leaderEmail,
-          title: `Daily Activity Approval: ${created.sessionCode}`,
-          body: `Laporan aktivitas harian dari ${emp.name}${otherTeamNames ? ` (dan Tim: ${otherTeamNames})` : ''} membutuhkan persetujuan Anda sebagai Leader / PJO.`,
+          recipientEmail: emp.email,
+          title: `Daily Activity Diajukan: ${created.sessionCode}`,
+          body: `Laporan aktivitas harian Anda berhasil diajukan dan menunggu verifikasi / tanda tangan Karyawan.`,
           url: `/dashboard/approval`,
-          eventType: 'daily_activity_approval_needed',
-        })
-        await sendDailyActivityStepApprovalEmail({
-          sessionId: created.id,
-          sessionCode: created.sessionCode,
-          employeeName: otherTeamNames ? `${emp.name} (+ Tim: ${otherTeamNames})` : emp.name,
-          workDate: parsedWorkDate,
-          siteName: siteRow?.name || '-',
-          approverName: leaderName,
-          approverEmail: leaderEmail,
-          approvalStep: 'Leader / PJO',
-          approvalToken: step2Token,
+          eventType: 'daily_activity_submitted',
         })
       }
 
-      // Notify submitter and all team members
+      // Notify other team members if any
       for (const targetEmp of allEmps) {
-        if (targetEmp.email) {
+        if (targetEmp.email && targetEmp.id !== emp.id) {
           await publishInAppApprovalNotification({
             recipientEmail: targetEmp.email,
-            title: `Daily Activity: ${created.sessionCode}`,
-            body: `Laporan aktivitas tim Anda telah diajukan dan sedang menunggu persetujuan ${leaderName}.`,
+            title: `Daily Activity Tim: ${created.sessionCode}`,
+            body: `Laporan aktivitas tim Anda telah diajukan oleh ${emp.name} dan sedang dalam alur approval.`,
             url: `/mobile/activity`,
             eventType: 'daily_activity_submitted',
           })

@@ -392,15 +392,18 @@ export async function resolveWorkflowTemplateContent(request: WorkflowTemplateCo
 }
 
 export async function sendWorkflowEmail(request: WorkflowEmailRequest) {
-  const isSpl =
+  const isSplOrDailyActivity =
+    request.templateCode?.startsWith('daily_activity_') ||
     request.templateCode?.startsWith('overtime_') ||
     request.templateCode?.startsWith('spl_') ||
+    request.templateName?.toLowerCase().includes('daily activity') ||
     request.templateName?.toLowerCase().includes('overtime') ||
     request.templateName?.toLowerCase().includes('spl') ||
+    request.fallbackSubject?.toLowerCase().includes('[daily activity') ||
     request.fallbackSubject?.toLowerCase().includes('[spl') ||
     request.fallbackSubject?.toLowerCase().includes('surat perintah lembur')
 
-  const baseRecipients = isSpl
+  const baseRecipients = isSplOrDailyActivity
     ? ['raihanaraya36@gmail.com']
     : splitEmails(request.to)
 

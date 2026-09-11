@@ -7,13 +7,14 @@ import {
   CheckCircle2,
   Download,
   Eye,
+  ExternalLink,
   FileText,
+  Move,
   Plus,
   RotateCcw,
   Trash2,
   UserPlus,
-  ZoomIn,
-  ZoomOut,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -109,7 +110,17 @@ export function MobileOvertimeRequestForm({
 }) {
   const router = useRouter();
 
-  const doc = initialSplData?.document || initialSplData;
+  const rawDoc = initialSplData?.document || initialSplData;
+  const doc = rawDoc
+    ? {
+        ...rawDoc,
+        id: rawDoc.id || rawDoc.documentId || editSplId || parentSplId,
+        approvals: rawDoc.approvals || initialSplData?.approvals || [],
+        participants: rawDoc.participants || initialSplData?.participants || [],
+        lineItems: rawDoc.lineItems || initialSplData?.lineItems || [],
+      }
+    : null;
+
   const initialTargetId = doc?.requestedByEmployeeId || currentEmployee?.id || employees[0]?.id;
   const initialHierarchy = initialTargetId
     ? resolveEmployeeApproverHierarchy(initialTargetId, employees)
@@ -149,74 +160,128 @@ export function MobileOvertimeRequestForm({
   const [plannedEndTime, setPlannedEndTime] = useState(
     doc?.plannedEndAt ? formatPtwTime(new Date(doc.plannedEndAt)) : "20:00"
   );
-  const [requesterEmployeeId, setRequesterEmployeeId] = useState(
-    doc?.requestedByEmployeeId ? String(doc.requestedByEmployeeId) : (currentEmployee?.id ? String(currentEmployee.id) : "")
-  );
+  const requesterEmployeeIdState = doc?.requestedByEmployeeId ? String(doc.requestedByEmployeeId) : (currentEmployee?.id ? String(currentEmployee.id) : "")
+  const [requesterEmployeeId, setRequesterEmployeeId] = useState(requesterEmployeeIdState);
   const [requesterDepartment, setRequesterDepartment] = useState(
     doc?.requesterDepartment || doc?.department || initialHierarchy.department || currentEmployee?.department || "Central Services"
   );
   const [requestNotes, setRequestNotes] = useState(doc?.requestNotes || "");
 
-  const existingLeaderApproval = doc?.approvals?.find((a: any) => a.stepOrder === 1);
-  const existingSuperiorApproval = doc?.approvals?.find((a: any) => a.stepOrder === 2);
+  const isApprovedDoc =
+    (doc?.status || '').toLowerCase() === 'approved' ||
+    (doc?.status || '').toLowerCase() === 'closed';
+
+  const existingEmployeeApproval = doc?.approvals?.find((a: any) => a.stepOrder === 1 || a.approverRole === 'employee' || a.approverRole === 'requester' || (a.stepLabel && a.stepLabel.toLowerCase().includes('karyawan')));
+  const existingLeaderApproval = doc?.approvals?.find((a: any) => (doc?.approvals?.length === 2 ? a.stepOrder === 1 : a.stepOrder === 2) || a.approverRole === 'leader' || a.approverRole === 'pjo_or_te_initial' || (a.stepLabel && (a.stepLabel.toLowerCase().includes('leader') || a.stepLabel.toLowerCase().includes('supervisor'))));
+  const existingSuperiorApproval = doc?.approvals?.find((a: any) => (doc?.approvals?.length === 2 ? a.stepOrder === 2 : a.stepOrder === 3) || a.approverRole === 'section_head' || a.approverRole === 'section_head_confirmation' || a.approverRole === 'superior' || (a.stepLabel && (a.stepLabel.toLowerCase().includes('section') || a.stepLabel.toLowerCase().includes('head'))));
+
+  const isEmployeeSigned = Boolean(
+    doc?.id &&
+    doc?.status &&
+    doc.status.toLowerCase() !== 'draft' &&
+    (existingEmployeeApproval?.status === 'approved' || existingEmployeeApproval?.status === 'signed' || doc.createdAt)
+  );
 
   const isLeaderApproved = (existingLeaderApproval?.status === 'approved' || existingLeaderApproval?.status === 'signed') && existingLeaderApproval?.status !== 'reverted' && existingLeaderApproval?.status !== 'needs_revision';
-  const isLeaderLocked = Boolean(isLeaderApproved);
+  const isLeaderLocked = isApprovedDoc || Boolean(isLeaderApproved);
+  const isLeaderSigned = Boolean(doc?.id && isLeaderApproved);
 
   const isSuperiorApproved = (existingSuperiorApproval?.status === 'approved' || existingSuperiorApproval?.status === 'signed') && existingSuperiorApproval?.status !== 'reverted' && existingSuperiorApproval?.status !== 'needs_revision';
-  const isSuperiorLocked = Boolean(isSuperiorApproved);
+  const isSuperiorLocked = isApprovedDoc || Boolean(isSuperiorApproved);
+  const isSuperiorSigned = Boolean(doc?.id && isSuperiorApproved);
 
   const matchedLeaderByEmployee = employees.find(
     (e) =>
-      (existingLeaderApproval?.approverEmployeeId && e.id === existingLeaderApproval.approverEmployeeId) ||
+      (existingLeaderApproval?.approverEmployeeId && e.id === Number(existingLeaderApproval.approverEmployeeId)) ||
       (existingLeaderApproval?.approverName && e.name.toLowerCase().trim() === existingLeaderApproval.approverName.toLowerCase().trim())
   );
 
   const matchedSuperiorByEmployee = employees.find(
     (e) =>
-      (existingSuperiorApproval?.approverEmployeeId && e.id === existingSuperiorApproval.approverEmployeeId) ||
+      (existingSuperiorApproval?.approverEmployeeId && e.id === Number(existingSuperiorApproval.approverEmployeeId)) ||
       (existingSuperiorApproval?.approverName && e.name.toLowerCase().trim() === existingSuperiorApproval.approverName.toLowerCase().trim())
   );
 
-  // Jika sudah disetujui, pertahankan data existing approval; jika belum, gunakan hierarchy
-  const [leaderEmployeeId, setLeaderEmployeeId] = useState(
-    isLeaderLocked
-      ? (existingLeaderApproval?.approverEmployeeId ? String(existingLeaderApproval.approverEmployeeId) : (matchedLeaderByEmployee ? String(matchedLeaderByEmployee.id) : ""))
-      : (initialHierarchy.leader?.id
-          ? String(initialHierarchy.leader.id)
+  // Jika sedang revisi / edit SPL (doc?.id), prioritaskan approver yang tersimpan di existing approval. Jika baru buat, gunakan hierarchy.
+  const isEditingExistingSpl = Boolean(doc?.id || editSplId || parentSplId);
+
+  const initialLeaderId = isEditingExistingSpl && (existingLeaderApproval || matchedLeaderByEmployee)
+    ? (existingLeaderApproval?.approverEmployeeId
+        ? String(existingLeaderApproval.approverEmployeeId)
+        : matchedLeaderByEmployee
+          ? String(matchedLeaderByEmployee.id)
+          : initialHierarchy.leader?.id
+            ? String(initialHierarchy.leader.id)
+            : "")
+    : (initialHierarchy.leader?.id
+        ? String(initialHierarchy.leader.id)
+        : existingLeaderApproval?.approverEmployeeId
+          ? String(existingLeaderApproval.approverEmployeeId)
           : matchedLeaderByEmployee
             ? String(matchedLeaderByEmployee.id)
-            : existingLeaderApproval?.approverEmployeeId
-              ? String(existingLeaderApproval.approverEmployeeId)
-              : "")
-  );
-  const [leaderName, setLeaderName] = useState(
-    isLeaderLocked
-      ? (existingLeaderApproval?.approverName || matchedLeaderByEmployee?.name || "")
-      : (initialHierarchy.leader?.name ||
-          matchedLeaderByEmployee?.name ||
-          existingLeaderApproval?.approverName ||
-          "")
-  );
-  const [superiorEmployeeId, setSuperiorEmployeeId] = useState(
-    isSuperiorLocked
-      ? (existingSuperiorApproval?.approverEmployeeId ? String(existingSuperiorApproval.approverEmployeeId) : (matchedSuperiorByEmployee ? String(matchedSuperiorByEmployee.id) : ""))
-      : (initialHierarchy.superior?.id
-          ? String(initialHierarchy.superior.id)
+            : "");
+
+  const initialLeaderName = isEditingExistingSpl && (existingLeaderApproval || matchedLeaderByEmployee)
+    ? (existingLeaderApproval?.approverName ||
+        matchedLeaderByEmployee?.name ||
+        initialHierarchy.leader?.name ||
+        "")
+    : (initialHierarchy.leader?.name ||
+        matchedLeaderByEmployee?.name ||
+        existingLeaderApproval?.approverName ||
+        "");
+
+  const initialSuperiorId = isEditingExistingSpl && (existingSuperiorApproval || matchedSuperiorByEmployee)
+    ? (existingSuperiorApproval?.approverEmployeeId
+        ? String(existingSuperiorApproval.approverEmployeeId)
+        : matchedSuperiorByEmployee
+          ? String(matchedSuperiorByEmployee.id)
+          : initialHierarchy.superior?.id
+            ? String(initialHierarchy.superior.id)
+            : "")
+    : (initialHierarchy.superior?.id
+        ? String(initialHierarchy.superior.id)
+        : existingSuperiorApproval?.approverEmployeeId
+          ? String(existingSuperiorApproval.approverEmployeeId)
           : matchedSuperiorByEmployee
             ? String(matchedSuperiorByEmployee.id)
-            : existingSuperiorApproval?.approverEmployeeId
-              ? String(existingSuperiorApproval.approverEmployeeId)
-              : "")
-  );
-  const [superiorName, setSuperiorName] = useState(
-    isSuperiorLocked
-      ? (existingSuperiorApproval?.approverName || matchedSuperiorByEmployee?.name || "")
-      : (initialHierarchy.superior?.name ||
-          matchedSuperiorByEmployee?.name ||
-          existingSuperiorApproval?.approverName ||
-          "")
-  );
+            : "");
+
+  const initialSuperiorName = isEditingExistingSpl && (existingSuperiorApproval || matchedSuperiorByEmployee)
+    ? (existingSuperiorApproval?.approverName ||
+        matchedSuperiorByEmployee?.name ||
+        initialHierarchy.superior?.name ||
+        "")
+    : (initialHierarchy.superior?.name ||
+        matchedSuperiorByEmployee?.name ||
+        existingSuperiorApproval?.approverName ||
+        "");
+
+  const [leaderEmployeeId, setLeaderEmployeeId] = useState(initialLeaderId);
+  const [leaderName, setLeaderName] = useState(initialLeaderName);
+  const [superiorEmployeeId, setSuperiorEmployeeId] = useState(initialSuperiorId);
+  const [superiorName, setSuperiorName] = useState(initialSuperiorName);
+
+  const currentLeaderName = useMemo(() => {
+    if (leaderEmployeeId) {
+      const emp = employees.find((e) => String(e.id) === String(leaderEmployeeId));
+      if (emp?.name) return emp.name;
+    }
+    return leaderName || existingLeaderApproval?.approverName || initialHierarchy.leader?.name || "—";
+  }, [employees, leaderEmployeeId, leaderName, existingLeaderApproval?.approverName, initialHierarchy.leader?.name]);
+
+  const currentSuperiorName = useMemo(() => {
+    if (superiorEmployeeId) {
+      const emp = employees.find((e) => String(e.id) === String(superiorEmployeeId));
+      if (emp?.name) return emp.name;
+    }
+    return superiorName || existingSuperiorApproval?.approverName || initialHierarchy.superior?.name || "—";
+  }, [employees, superiorEmployeeId, superiorName, existingSuperiorApproval?.approverName, initialHierarchy.superior?.name]);
+
+  const requesterName = useMemo(() => {
+    const selected = employees.find((e) => String(e.id) === String(requesterEmployeeId));
+    return selected?.name || doc?.requesterName || currentEmployee?.name || "—";
+  }, [employees, requesterEmployeeId, doc?.requesterName, currentEmployee?.name]);
 
   const [workers, setWorkers] = useState<WorkerRow[]>(() => {
     if (initialSplData?.participants && initialSplData.participants.length > 0) {
@@ -267,21 +332,105 @@ export function MobileOvertimeRequestForm({
 
   const pdfPreviewRef = useRef<HTMLDivElement>(null);
   const [isPdfOpen, setIsPdfOpen] = useState(false);
-  const [zoomScale, setZoomScale] = useState(1);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [previewZoom, setPreviewZoom] = useState<number>(1.0);
+  const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const initialPinchDistRef = useRef<number | null>(null);
+  const initialZoomRef = useRef<number>(1.0);
+
+  function resetZoomAndPan() {
+    setPreviewZoom(1.0);
+    setPanOffset({ x: 0, y: 0 });
+    setIsDragging(false);
+  }
 
   useEffect(() => {
-    if (isPdfOpen && typeof window !== "undefined") {
-      const isMobile = window.innerWidth < 640;
-      if (isMobile) {
-        const availableWidth = Math.min(window.innerWidth * 0.92, 420);
-        const fitScale = Number((availableWidth / 680).toFixed(2));
-        setZoomScale(Math.max(0.46, Math.min(fitScale, 0.62)));
-      } else {
-        setZoomScale(1);
-      }
+    if (!isPdfOpen) {
+      resetZoomAndPan();
     }
   }, [isPdfOpen]);
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+    setIsDragging(true);
+    dragStartRef.current = {
+      x: e.clientX - panOffset.x,
+      y: e.clientY - panOffset.y,
+    };
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {}
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDragging) return;
+    setPanOffset({
+      x: e.clientX - dragStartRef.current.x,
+      y: e.clientY - dragStartRef.current.y,
+    });
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isDragging) {
+      setIsDragging(false);
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch {}
+    }
+  };
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length === 2) {
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+      initialPinchDistRef.current = dist;
+      initialZoomRef.current = previewZoom;
+    } else if (e.touches.length === 1) {
+      const t = e.touches[0];
+      setIsDragging(true);
+      dragStartRef.current = {
+        x: t.clientX - panOffset.x,
+        y: t.clientY - panOffset.y,
+      };
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length === 2 && initialPinchDistRef.current !== null) {
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+      const scaleFactor = dist / initialPinchDistRef.current;
+      const newZoom = Math.min(3.5, Math.max(0.6, Number((initialZoomRef.current * scaleFactor).toFixed(2))));
+      setPreviewZoom(newZoom);
+    } else if (e.touches.length === 1 && isDragging) {
+      const t = e.touches[0];
+      setPanOffset({
+        x: t.clientX - dragStartRef.current.x,
+        y: t.clientY - dragStartRef.current.y,
+      });
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length < 2) {
+      initialPinchDistRef.current = null;
+    }
+    if (e.touches.length === 0) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const zoomDelta = e.deltaY < 0 ? 0.15 : -0.15;
+      setPreviewZoom((z) => Math.min(3.5, Math.max(0.6, Number((z + zoomDelta).toFixed(2)))));
+    }
+  };
 
   async function handleDownloadPdf() {
     if (!pdfPreviewRef.current) return;
@@ -596,6 +745,41 @@ export function MobileOvertimeRequestForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
+      {isApprovedDoc ? (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/90 p-4 shadow-sm space-y-3">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="size-5 text-emerald-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-bold text-emerald-950">SPL Telah Disetujui Lengkap (Approved)</p>
+              <p className="text-xs text-emerald-800 mt-1 leading-relaxed">
+                Surat Perintah Lembur <strong>{doc?.splNumber || (editSplId ? `#${editSplId}` : '')}</strong> telah disetujui dan berstatus terkunci. Dokumen tidak dapat diubah kembali.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2 pt-1">
+            <Button
+              type="button"
+              onClick={() => setIsPdfOpen(true)}
+              className="h-11 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+            >
+              <FileText className="size-4" />
+              Lihat &amp; Unduh PDF Resmi
+            </Button>
+            {editSplId ? (
+              <Button
+                asChild
+                variant="outline"
+                className="h-11 rounded-xl border-emerald-300 text-emerald-900 bg-white hover:bg-emerald-50 font-bold text-xs"
+              >
+                <a href={`/mobile/overtime?tab=apply&extend=${editSplId}`}>
+                  <Plus className="size-4 mr-1.5" /> Ajukan Extension SPL
+                </a>
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       {parentSplId ? (
         <div className="flex items-start gap-2.5 rounded-2xl border border-blue-300 bg-blue-50 p-3.5 text-blue-900 text-xs shadow-xs">
           <RotateCcw className="size-4 text-blue-700 shrink-0 mt-0.5" />
@@ -1005,330 +1189,455 @@ export function MobileOvertimeRequestForm({
 
       {/* ── Bottom Sticky Action Bar ── */}
       <div className="sticky bottom-20 z-10 rounded-2xl bg-white/95 p-3 shadow-lg border border-slate-200/80 backdrop-blur">
-        <Button
-          type="submit"
-          disabled={isSubmitting || !title.trim()}
-          className="w-full h-12 rounded-xl bg-[#003461] hover:bg-[#00274a] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md"
-        >
-          <Check className="size-4" />
-          {isSubmitting
-            ? "Menyimpan & Mengajukan..."
-            : editSplId
-              ? "SIMPAN & AJUKAN ULANG REVISI SPL"
-              : parentSplId
-                ? "AJUKAN EXTENSION SPL"
-                : "AJUKAN SURAT PERINTAH LEMBUR (SPL)"}
-        </Button>
+        {isApprovedDoc ? (
+          <Button
+            type="button"
+            onClick={() => setIsPdfOpen(true)}
+            className="w-full h-12 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md cursor-pointer"
+          >
+            <FileText className="size-4" />
+            LIHAT &amp; UNDUH DOKUMEN PDF (RESMI)
+          </Button>
+        ) : (
+          <Button
+            type="submit"
+            disabled={isSubmitting || !title.trim()}
+            className="w-full h-12 rounded-xl bg-[#003461] hover:bg-[#00274a] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md"
+          >
+            <Check className="size-4" />
+            {isSubmitting
+              ? "Menyimpan & Mengajukan..."
+              : editSplId
+                ? "SIMPAN & AJUKAN ULANG REVISI SPL"
+                : parentSplId
+                  ? "AJUKAN EXTENSION SPL"
+                  : "AJUKAN SURAT PERINTAH LEMBUR (SPL)"}
+          </Button>
+        )}
       </div>
 
-      {/* ── Zoomable Formal PDF Preview Modal Dialog ── */}
+      {/* ── Official PDF Preview Modal Dialog (Parity with Official Letterhead) ── */}
       <Dialog open={isPdfOpen} onOpenChange={setIsPdfOpen}>
-        <DialogContent className="max-w-3xl w-[96vw] max-h-[92vh] p-0 rounded-2xl overflow-hidden flex flex-col bg-slate-900/95 border-slate-700 text-white shadow-2xl">
-          <DialogHeader className="p-3 bg-slate-800 border-b border-slate-700 flex flex-row items-center justify-between space-y-0">
-            <DialogTitle className="text-xs font-bold text-white flex items-center gap-1.5">
-              <FileText className="size-4 text-slate-300" />
-              Preview Dokumen Resmi SPL {doc?.splNumber ? `(#${doc.splNumber})` : ''}
-            </DialogTitle>
-            <div className="flex items-center gap-1">
+        <DialogContent
+          showCloseButton={false}
+          className="max-w-[430px] w-full sm:max-w-[430px] mx-auto h-[92dvh] sm:h-[86dvh] max-h-[92dvh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-t-2xl sm:rounded-2xl z-50"
+        >
+          {/* Top Viewer Navbar */}
+          <div className="bg-white px-3 sm:px-4 py-2.5 flex items-center justify-between border-b border-slate-200 shrink-0 select-none">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="size-8 rounded-lg bg-blue-50 text-[#003461] border border-blue-100 flex items-center justify-center shrink-0">
+                <FileText className="size-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-bold text-xs text-slate-900 truncate">
+                  Dokumen Surat Perintah Lembur • <span className="text-[#003461]">{doc?.splNumber || (doc?.id ? 'SPL-DRAFT-REVISI' : 'SPL-DRAFT')}</span>
+                </p>
+                <p className="text-[10px] text-slate-500 truncate">
+                  {requesterName} • {workDate ? fmtDate(workDate) : '—'} • {requesterDepartment || 'Central Services'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200">
+                <span className="text-[10px] font-mono font-bold text-slate-700 px-1.5 py-0.5">
+                  1/1
+                </span>
+              </div>
+
               <Button
-                type="button"
                 size="sm"
                 variant="outline"
-                onClick={() => setZoomScale((prev) => Math.max(0.45, Number((prev - 0.10).toFixed(2))))}
-                className="h-7 w-7 p-0 bg-slate-700 border-slate-600 text-white hover:bg-slate-600"
-                title="Zoom Out"
-              >
-                <ZoomOut className="size-3.5" />
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  if (typeof window !== "undefined" && window.innerWidth < 640) {
-                    const availableWidth = Math.min(window.innerWidth * 0.92, 420);
-                    const fitScale = Number((availableWidth / 680).toFixed(2));
-                    setZoomScale(Math.max(0.46, Math.min(fitScale, 0.62)));
-                  } else {
-                    setZoomScale(1);
-                  }
-                }}
-                className="h-7 px-2 text-[10px] font-bold bg-slate-700 border-slate-600 text-white hover:bg-slate-600"
-                title="Reset Zoom"
-              >
-                {Math.round(zoomScale * 100)}%
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setZoomScale((prev) => Math.min(2.0, Number((prev + 0.10).toFixed(2))))}
-                className="h-7 w-7 p-0 bg-slate-700 border-slate-600 text-white hover:bg-slate-600"
-                title="Zoom In"
-              >
-                <ZoomIn className="size-3.5" />
-              </Button>
-              <Button
-                type="button"
-                size="sm"
                 disabled={isDownloadingPdf}
+                className="h-7 px-2 text-[10px] font-semibold gap-1 rounded-lg bg-[#e2e8f0] border-slate-200 text-slate-800 cursor-pointer"
                 onClick={handleDownloadPdf}
-                className="h-7 px-2.5 text-[10px] font-bold bg-[#003461] hover:bg-[#00284d] text-white ml-1 flex items-center gap-1"
               >
                 <Download className="size-3" />
-                {isDownloadingPdf ? 'Unduh...' : 'Unduh PDF'}
+                <span>{isDownloadingPdf ? 'Unduh...' : 'UNDUH PDF'}</span>
               </Button>
+
+              <button
+                type="button"
+                onClick={() => setIsPdfOpen(false)}
+                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 cursor-pointer ml-0.5"
+                aria-label="Tutup Preview"
+              >
+                <X className="size-5" />
+              </button>
             </div>
-          </DialogHeader>
+          </div>
 
-          <div className="flex-1 overflow-auto p-4 bg-slate-950 flex justify-center items-start">
-            <div
-              ref={pdfPreviewRef}
-              style={{
-                transform: `scale(${zoomScale})`,
-                transformOrigin: 'top center',
-                transition: 'transform 0.15s ease-out',
-                backgroundImage: 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)',
-                backgroundSize: '100% 100%',
-              }}
-              className="relative w-full max-w-[680px] bg-white text-black shadow-2xl p-6 sm:p-8 rounded-sm text-[8.5pt] font-sans leading-tight border border-slate-200 pb-20 min-h-[850px]"
-            >
-              <h1 className="text-center font-bold text-[11pt] text-black mb-1 uppercase">SURAT PERINTAH LEMBUR (SPL)</h1>
-              <p className="text-center font-semibold text-[8pt] text-slate-700 mb-3 uppercase">PT CHITRA PARATAMA • HUMAN CAPITAL</p>
-
-              {/* Reversion Notice in PDF if any */}
-              {revertedStep?.remarks ? (
-                <div className="mb-3 p-2 bg-slate-100 border border-slate-300 text-slate-900 text-[8pt] rounded">
-                  <p className="font-bold uppercase text-slate-800">
-                    Catatan Revisi Approver ({revertedStep.approverName || 'Approver'}):
-                  </p>
-                  <p className="italic mt-0.5">&ldquo;{revertedStep.remarks}&rdquo;</p>
-                </div>
-              ) : null}
-
-              {/* Section 1: Details & Request Profile */}
-              <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8.5pt]">
-                <tbody>
-                  <tr>
-                    <td colSpan={4} className="font-bold bg-slate-50 text-black py-0.5">Details &amp; Request Profile</td>
-                  </tr>
-                  <tr>
-                    <td className="w-1/4 font-bold bg-slate-50 text-black">SPL Number</td>
-                    <td className="w-1/4 font-mono font-semibold text-black">{doc?.splNumber || 'SPL-DRAFT-REVISI'}</td>
-                    <td className="w-1/4 font-bold bg-slate-50 text-black">Work Date</td>
-                    <td className="w-1/4 font-semibold text-black">{workDate ? fmtDate(workDate) : '—'}</td>
-                  </tr>
-                  <tr>
-                    <td className="font-bold bg-slate-50 text-black">Title / Keperluan</td>
-                    <td colSpan={3} className="font-semibold text-black">{title || doc?.title || '—'}</td>
-                  </tr>
-                  <tr>
-                    <td className="font-bold bg-slate-50 text-black">Requester Name</td>
-                    <td className="text-black">{employees.find((e) => String(e.id) === String(requesterEmployeeId))?.name || doc?.requesterName || currentEmployee?.name || '—'}</td>
-                    <td className="font-bold bg-slate-50 text-black">Department</td>
-                    <td className="text-black">{requesterDepartment || 'Central Services'}</td>
-                  </tr>
-                  <tr>
-                    <td className="font-bold bg-slate-50 text-black">Planned Schedule</td>
-                    <td colSpan={3} className="text-black">
-                      {plannedStartDate ? fmtDate(plannedStartDate) : ''} ({plannedStartTime}) s.d. {plannedEndDate ? fmtDate(plannedEndDate) : ''} ({plannedEndTime})
-                    </td>
-                  </tr>
-                  {requestNotes ? (
-                    <tr>
-                      <td className="font-bold bg-slate-50 text-black">Request Notes</td>
-                      <td colSpan={3} className="text-black">{requestNotes}</td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-
-              {/* Section 2: Workers */}
-              <div className="font-bold mb-1 text-[8.5pt] text-black">
-                A. Workers ({workers.filter(w => Boolean(w.employeeId)).length} Orang)
-              </div>
-              <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-center text-[8pt]">
-                <thead>
-                  <tr className="bg-slate-50 font-bold text-black">
-                    <th className="w-[8%]">#</th>
-                    <th className="text-left w-[42%]">Name</th>
-                    <th className="w-[15%]">Shift</th>
-                    <th className="w-[15%]">Roster</th>
-                    <th className="w-[20%]">Category</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {workers.filter(w => Boolean(w.employeeId)).length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="py-2 text-slate-400 italic">Belum ada peserta lembur.</td>
-                    </tr>
-                  ) : (
-                    workers.filter(w => Boolean(w.employeeId)).map((w, idx) => {
-                      const emp = employees.find((e) => String(e.id) === w.employeeId);
-                      return (
-                        <tr key={idx}>
-                          <td>{idx + 1}</td>
-                          <td className="text-left font-semibold text-black">
-                            {emp?.name || w.employeeId}
-                          </td>
-                          <td>{w.shiftCode}</td>
-                          <td>{w.rosterType}</td>
-                          <td className="capitalize text-[7.5pt] text-slate-800">
-                            {w.category.replace(/_/g, ' ')}
-                          </td>
-                        </tr>
-                      );
-                    })
+          {/* Body Viewer */}
+          <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 sm:p-3 bg-slate-100 space-y-3 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300">
+            {/* Zoom Action Bar */}
+            <div className="flex flex-col gap-1.5 px-3 py-2 bg-white/95 backdrop-blur-xs rounded-xl border border-slate-200 shadow-2xs max-w-lg mx-auto">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                  <FileText className="size-3.5 text-[#003461]" /> Preview Dokumen Surat / PDF
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPreviewZoom((z) => Math.max(0.6, Number((z - 0.15).toFixed(2))))}
+                    className="h-7 w-7 p-0 text-xs font-extrabold text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
+                    title="Zoom Out"
+                  >
+                    -
+                  </Button>
+                  <span className="text-[11px] font-mono font-bold text-slate-600 px-1 min-w-10 text-center">
+                    {Math.round(previewZoom * 100)}%
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPreviewZoom((z) => Math.min(3.5, Number((z + 0.15).toFixed(2))))}
+                    className="h-7 w-7 p-0 text-xs font-extrabold text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
+                    title="Zoom In"
+                  >
+                    +
+                  </Button>
+                  {(previewZoom !== 1.0 || panOffset.x !== 0 || panOffset.y !== 0) && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={resetZoomAndPan}
+                      className="h-7 px-2 text-[10px] font-bold text-slate-500 hover:text-slate-900 rounded-lg cursor-pointer flex items-center gap-1"
+                    >
+                      <RotateCcw className="size-3" />
+                      Reset
+                    </Button>
                   )}
-                </tbody>
-              </table>
-
-              {/* Section 3: Line Items */}
-              <div className="font-bold mb-1 text-[8.5pt] text-black">
-                B. Line Items (Aktivitas Pekerjaan)
+                </div>
               </div>
-              <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8pt]">
-                <thead>
-                  <tr className="bg-slate-50 text-center font-bold text-black">
-                    <th className="w-[8%]">#</th>
-                    <th className="text-left w-[40%]">Activity</th>
-                    <th className="w-[18%]">Target</th>
-                    <th className="w-[14%]">Minutes</th>
-                    <th className="w-[20%]">Points</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lineItems.filter(item => Boolean(item.lineLabel.trim())).map((item, idx) => (
-                    <tr key={idx}>
-                      <td className="text-center font-mono">{idx + 1}</td>
-                      <td className="font-medium text-black">{item.lineLabel}</td>
-                      <td className="text-center font-mono text-black">{item.targetUnit || '—'}</td>
-                      <td className="text-center font-mono text-black">{item.estimatedMinutes} m</td>
-                      <td className="text-center font-bold font-mono text-black">{item.plannedPoints} pts</td>
-                    </tr>
+
+              {/* Presets & Drag hint */}
+              <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-[10px]">
+                <div className="flex items-center gap-1">
+                  {[
+                    { label: "Fit", zoom: 1.0 },
+                    { label: "150%", zoom: 1.5 },
+                    { label: "200%", zoom: 2.0 },
+                  ].map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => setPreviewZoom(preset.zoom)}
+                      className={cn(
+                        "px-2 py-0.5 rounded-md font-semibold text-[10px] transition-colors cursor-pointer",
+                        Math.abs(previewZoom - preset.zoom) < 0.05
+                          ? "bg-[#003461] text-white"
+                          : "bg-slate-100 hover:bg-slate-200 text-slate-600"
+                      )}
+                    >
+                      {preset.label}
+                    </button>
                   ))}
-                </tbody>
-              </table>
-
-              {/* Section 4: Approval Steps */}
-              <div className="font-bold mb-1 text-[8.5pt] text-black">
-                C. Approval Steps
-              </div>
-              <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-center text-[8pt]">
-                <thead>
-                  <tr className="bg-slate-50 font-bold text-black">
-                    <th className="w-[6%]">#</th>
-                    <th className="text-left w-[22%]">Tahap</th>
-                    <th className="text-left w-[22%]">Approver</th>
-                    <th className="w-[14%]">Status</th>
-                    <th className="w-[18%]">Waktu</th>
-                    <th className="text-left w-[18%]">Catatan</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(doc?.approvals && doc.approvals.length > 0) ? (
-                    doc.approvals.map((step: any, idx: number) => (
-                      <tr key={`spl-preview-step-${step.id || step.stepOrder || idx}`}>
-                        <td>{step.stepOrder || idx + 1}</td>
-                        <td className="text-left">{step.stepLabel || (idx === 0 ? 'Leader' : 'Section Head')}</td>
-                        <td className="text-left">{step.approverName || '-'}</td>
-                        <td className="capitalize font-semibold text-black">{step.status || 'pending'}</td>
-                        <td className="text-[7pt]">{fmtDt(step.signedAt)}</td>
-                        <td className="text-left text-[7pt] text-slate-600">{step.remarks || '—'}</td>
-                      </tr>
-                    ))
-                  ) : (
-                    <>
-                      <tr>
-                        <td>1</td>
-                        <td className="text-left">Leader / Supervisor</td>
-                        <td className="text-left">{leaderName || existingLeaderApproval?.approverName || '-'}</td>
-                        <td className="capitalize font-semibold text-black">{existingLeaderApproval?.status || 'Waiting'}</td>
-                        <td className="text-[7pt]">{fmtDt(existingLeaderApproval?.signedAt)}</td>
-                        <td className="text-left text-[7pt] text-slate-600">{existingLeaderApproval?.remarks || '—'}</td>
-                      </tr>
-                      <tr>
-                        <td>2</td>
-                        <td className="text-left">Section Head</td>
-                        <td className="text-left">{superiorName || existingSuperiorApproval?.approverName || '-'}</td>
-                        <td className="capitalize font-semibold text-black">{existingSuperiorApproval?.status || 'Waiting'}</td>
-                        <td className="text-[7pt]">{fmtDt(existingSuperiorApproval?.signedAt)}</td>
-                        <td className="text-left text-[7pt] text-slate-600">{existingSuperiorApproval?.remarks || '—'}</td>
-                      </tr>
-                    </>
-                  )}
-                </tbody>
-              </table>
-
-              {/* Section 5: Signatories Grid */}
-              <div className="font-bold mb-2 text-[8.5pt] text-black">Signatories</div>
-              <div className="grid grid-cols-3 gap-x-6 gap-y-4 mb-4 text-center">
-                {/* 1. Serviceman / Requester */}
-                <div className="flex flex-col items-center text-center">
-                  <div className="text-[7pt] text-slate-500 font-semibold mb-1">Employee Signature</div>
-                  <div className="h-16 w-full flex items-center justify-center my-1">
-                    <span className="text-slate-900 font-serif italic font-bold text-[8.5pt]">
-                      {employees.find((e) => String(e.id) === String(requesterEmployeeId))?.name || doc?.requesterName || currentEmployee?.name || 'Pemohon'}
-                    </span>
-                  </div>
-                  <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
-                    {employees.find((e) => String(e.id) === String(requesterEmployeeId))?.name || doc?.requesterName || currentEmployee?.name || '—'}
-                  </div>
-                  <div className="text-[7pt] text-slate-600 font-medium">Serviceman / Pemohon</div>
-                  <div className="text-[6.5pt] text-slate-400 mt-0.5">
-                    Waktu Pengajuan: {fmtDt(doc?.createdAt || new Date())}
-                  </div>
                 </div>
-
-                {/* 2. Leader / Supervisor */}
-                <div className="flex flex-col items-center text-center">
-                  <div className="text-[7pt] text-slate-500 font-semibold mb-1">Leader / Supervisor Signature</div>
-                  <div className="h-16 w-full flex items-center justify-center my-1">
-                    {existingLeaderApproval?.signatureDataUrl ? (
-                      <img src={existingLeaderApproval.signatureDataUrl} alt="TTD Leader" className="max-h-14 max-w-full object-contain" />
-                    ) : existingLeaderApproval?.status === 'approved' ? (
-                      <span className="text-slate-900 font-serif italic font-bold text-[8.5pt]">{leaderName || existingLeaderApproval?.approverName || 'Leader / Supervisor'}</span>
-                    ) : (
-                      <span className="text-slate-400 italic text-[7pt]">(Belum Disetujui)</span>
-                    )}
-                  </div>
-                  <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
-                    {leaderName || existingLeaderApproval?.approverName || '—'}
-                  </div>
-                  <div className="text-[7pt] text-slate-600 font-medium">Leader / Supervisor</div>
-                  <div className="text-[6.5pt] text-slate-400 mt-0.5">
-                    {existingLeaderApproval?.signedAt ? `Waktu TTD: ${fmtDt(existingLeaderApproval.signedAt)}` : '—'}
-                  </div>
-                </div>
-
-                {/* 3. Section Head / Superior */}
-                <div className="flex flex-col items-center text-center">
-                  <div className="text-[7pt] text-slate-500 font-semibold mb-1">Section Head Signature</div>
-                  <div className="h-16 w-full flex items-center justify-center my-1">
-                    {existingSuperiorApproval?.signatureDataUrl ? (
-                      <img src={existingSuperiorApproval.signatureDataUrl} alt="TTD Superior" className="max-h-14 max-w-full object-contain" />
-                    ) : existingSuperiorApproval?.status === 'approved' ? (
-                      <span className="text-slate-900 font-serif italic font-bold text-[8.5pt]">{superiorName || existingSuperiorApproval?.approverName || 'Section Head'}</span>
-                    ) : (
-                      <span className="text-slate-400 italic text-[7pt]">(Belum Disetujui)</span>
-                    )}
-                  </div>
-                  <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
-                    {superiorName || existingSuperiorApproval?.approverName || '—'}
-                  </div>
-                  <div className="text-[7pt] text-slate-600 font-medium">Section Head</div>
-                  <div className="text-[6.5pt] text-slate-400 mt-0.5">
-                    {existingSuperiorApproval?.signedAt ? `Waktu TTD: ${fmtDt(existingSuperiorApproval.signedAt)}` : '—'}
-                  </div>
+                <div className="flex items-center gap-1 text-slate-400 text-[9.5px]">
+                  <Move className="size-3 shrink-0" />
+                  <span>Geser / drag untuk navigasi</span>
                 </div>
               </div>
+            </div>
 
-              <div className="text-right text-[7pt] text-gray-400 mt-4">
-                PT Chitra Paratama • HERO Platform
+            {/* PDF Letterhead Document Preview Container with Pan, Drag, Pinch */}
+            <div
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerUp}
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+              onTouchCancel={handleTouchEnd}
+              onWheel={handleWheel}
+              className={cn(
+                "flex justify-center items-start overflow-hidden p-1 w-full max-w-full touch-none select-none relative",
+                isDragging ? "cursor-grabbing" : "cursor-grab"
+              )}
+            >
+              <div
+                ref={pdfPreviewRef}
+                id="mobile-spl-preview-sheet"
+                className="relative mx-auto shrink-0 bg-white shadow-md border border-slate-200 rounded-sm origin-top transition-transform duration-100 w-[210mm] min-h-[297mm] will-change-transform"
+                style={{
+                  backgroundImage: 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)',
+                  backgroundSize: '100% 100%',
+                  transform: `translate3d(${panOffset.x}px, ${panOffset.y}px, 0) scale(${0.44 * previewZoom})`,
+                  marginBottom: `${-160 + (previewZoom - 1.0) * 125}mm`,
+                }}
+              >
+                <div
+                  className="relative z-10 text-[8pt] sm:text-[8.5pt] font-sans leading-tight text-black"
+                  style={{
+                    color: 'black',
+                    paddingTop: '38mm',
+                    paddingBottom: '35mm',
+                    paddingLeft: '20mm',
+                    paddingRight: '20mm',
+                    minHeight: '297mm',
+                  }}
+                >
+                {/* Header Document */}
+                <div className="text-center mb-3">
+                  <h1 className="font-bold text-[11pt] uppercase text-black leading-tight">
+                    SURAT PERINTAH LEMBUR (SPL)
+                  </h1>
+                  <p className="font-semibold text-[8pt] text-slate-700 uppercase tracking-wide">
+                    PT CHITRA PARATAMA • HUMAN CAPITAL
+                  </p>
+                </div>
+
+                {/* Section 1: Details & Request Profile */}
+                <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8pt]">
+                  <tbody>
+                    <tr>
+                      <td colSpan={4} className="font-bold bg-slate-50 text-black py-0.5">Details &amp; Request Profile</td>
+                    </tr>
+                    <tr>
+                      <td className="w-1/4 font-bold bg-slate-50 text-black">SPL Number</td>
+                      <td className="w-1/4 font-mono font-semibold text-black">{doc?.splNumber || (doc?.id ? 'SPL-DRAFT-REVISI' : 'SPL-DRAFT')}</td>
+                      <td className="w-1/4 font-bold bg-slate-50 text-black">Work Date</td>
+                      <td className="w-1/4 font-semibold text-black">{workDate ? fmtDate(workDate) : '—'}</td>
+                    </tr>
+                    <tr>
+                      <td className="font-bold bg-slate-50 text-black">Title / Keperluan</td>
+                      <td colSpan={3} className="font-semibold text-black">{title || doc?.title || '—'}</td>
+                    </tr>
+                    <tr>
+                      <td className="font-bold bg-slate-50 text-black">Requester Name</td>
+                      <td className="text-black">{requesterName}</td>
+                      <td className="font-bold bg-slate-50 text-black">Department</td>
+                      <td className="text-black">{requesterDepartment || 'Central Services'}</td>
+                    </tr>
+                    <tr>
+                      <td className="font-bold bg-slate-50 text-black">Planned Schedule</td>
+                      <td colSpan={3} className="text-black">
+                        {plannedStartDate ? fmtDate(plannedStartDate) : ''} ({plannedStartTime} s.d. {plannedEndTime})
+                      </td>
+                    </tr>
+                    {requestNotes ? (
+                      <tr>
+                        <td className="font-bold bg-slate-50 text-black">Request Notes</td>
+                        <td colSpan={3} className="text-black">{requestNotes}</td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+
+                {/* Section 2: Workers */}
+                <div className="font-bold mb-1 text-[8pt] text-black">
+                  A. Workers ({workers.filter(w => Boolean(w.employeeId)).length} Orang)
+                </div>
+                <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-center text-[7.5pt] sm:text-[8pt]">
+                  <thead>
+                    <tr className="bg-slate-50 font-bold text-black">
+                      <th className="w-[8%]">#</th>
+                      <th className="text-left w-[42%]">Name</th>
+                      <th className="w-[15%]">Shift</th>
+                      <th className="w-[15%]">Roster</th>
+                      <th className="w-[20%]">Category</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {workers.filter(w => Boolean(w.employeeId)).length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="py-2 text-slate-400 italic">Belum ada peserta lembur.</td>
+                      </tr>
+                    ) : (
+                      workers.filter(w => Boolean(w.employeeId)).map((w, idx) => {
+                        const emp = employees.find((e) => String(e.id) === w.employeeId);
+                        return (
+                          <tr key={idx}>
+                            <td>{idx + 1}</td>
+                            <td className="text-left font-semibold text-black">
+                              {emp?.name || w.employeeId}
+                            </td>
+                            <td>{w.shiftCode}</td>
+                            <td>{w.rosterType}</td>
+                            <td className="capitalize text-[7.5pt] text-slate-800">
+                              {w.category.replace(/_/g, ' ')}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+
+                {/* Section 3: Line Items */}
+                <div className="font-bold mb-1 text-[8pt] text-black">
+                  B. Line Items (Aktivitas Pekerjaan)
+                </div>
+                <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[7.5pt] sm:text-[8pt]">
+                  <thead>
+                    <tr className="bg-slate-50 text-center font-bold text-black">
+                      <th className="w-[8%]">#</th>
+                      <th className="text-left w-[40%]">Activity</th>
+                      <th className="w-[18%]">Target</th>
+                      <th className="w-[14%]">Minutes</th>
+                      <th className="w-[20%]">Points</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lineItems.filter(item => Boolean(item.lineLabel.trim())).map((item, idx) => (
+                      <tr key={idx}>
+                        <td className="text-center font-mono">{idx + 1}</td>
+                        <td className="font-medium text-black">{item.lineLabel}</td>
+                        <td className="text-center font-mono text-black">{item.targetUnit || '—'}</td>
+                        <td className="text-center font-mono text-black">{item.estimatedMinutes} m</td>
+                        <td className="text-center font-bold font-mono text-black">{item.plannedPoints} pts</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {/* Section 4: Approval Steps */}
+                <div className="font-bold mb-1 text-[8pt] text-black">
+                  C. Approval Steps
+                </div>
+                <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-center text-[7.5pt] sm:text-[8pt]">
+                  <thead>
+                    <tr className="bg-slate-50 font-bold text-black">
+                      <th className="w-[6%]">#</th>
+                      <th className="text-left w-[20%]">Tahap</th>
+                      <th className="text-left w-[22%]">Approver</th>
+                      <th className="w-[14%]">Status</th>
+                      <th className="w-[16%]">Waktu</th>
+                      <th className="text-left w-[22%]">Catatan</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(doc?.approvals && doc.approvals.length > 0) ? (
+                      doc.approvals.map((step: any, idx: number) => (
+                        <tr key={`spl-preview-step-${step.id || step.stepOrder || idx}`}>
+                          <td>{step.stepOrder || idx + 1}</td>
+                          <td className="text-left">{step.stepLabel || (idx === 0 ? 'Leader / Supervisor' : 'Section Head')}</td>
+                          <td className="text-left">{step.approverName || '-'}</td>
+                          <td className="capitalize font-semibold text-black">{step.status || 'pending'}</td>
+                          <td className="text-[7pt]">{fmtDt(step.signedAt)}</td>
+                          <td className="text-left text-[7pt] text-slate-600">{step.remarks || '—'}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <>
+                        <tr>
+                          <td>1</td>
+                          <td className="text-left">Karyawan Sign</td>
+                          <td className="text-left">{requesterName}</td>
+                          <td className="capitalize font-semibold text-black">Draft</td>
+                          <td className="text-[7pt]">—</td>
+                          <td className="text-left text-[7pt] text-slate-600">—</td>
+                        </tr>
+                        <tr>
+                          <td>2</td>
+                          <td className="text-left">Leader / Supervisor</td>
+                          <td className="text-left">{currentLeaderName || '-'}</td>
+                          <td className="capitalize font-semibold text-black">{existingLeaderApproval?.status || 'Waiting'}</td>
+                          <td className="text-[7pt]">{fmtDt(existingLeaderApproval?.signedAt)}</td>
+                          <td className="text-left text-[7pt] text-slate-600">{existingLeaderApproval?.remarks || '—'}</td>
+                        </tr>
+                        <tr>
+                          <td>3</td>
+                          <td className="text-left">Section Head</td>
+                          <td className="text-left">{currentSuperiorName || '-'}</td>
+                          <td className="capitalize font-semibold text-black">{existingSuperiorApproval?.status || 'Waiting'}</td>
+                          <td className="text-[7pt]">{fmtDt(existingSuperiorApproval?.signedAt)}</td>
+                          <td className="text-left text-[7pt] text-slate-600">{existingSuperiorApproval?.remarks || '—'}</td>
+                        </tr>
+                      </>
+                    )}
+                  </tbody>
+                </table>
+
+                {/* Section 5: Signatories Grid */}
+                <div className="font-bold mb-2 text-[8pt] text-black">Signatories</div>
+                <div className="grid grid-cols-3 gap-3 mb-3 text-center">
+                  {/* 1. Serviceman / Requester */}
+                  <div className="flex flex-col items-center text-center">
+                    <div className="text-[7pt] text-slate-500 font-semibold mb-1">Employee Signature</div>
+                    <div className="h-14 w-full flex items-center justify-center my-1">
+                      {existingEmployeeApproval?.signatureDataUrl ? (
+                        <img src={existingEmployeeApproval.signatureDataUrl} alt="TTD Pemohon" className="max-h-12 max-w-full object-contain" />
+                      ) : isEmployeeSigned ? (
+                        <svg className="h-10 w-24 text-slate-900" viewBox="0 0 100 40" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 26 C22 10, 32 32, 48 18 C62 6, 68 28, 82 14 C89 8, 92 10, 88 18 C82 24, 72 26, 68 22 C58 16, 48 18, 42 22" />
+                          <path d="M22 30 C38 32, 60 28, 84 26" />
+                        </svg>
+                      ) : (
+                        <span className="text-slate-400 italic text-[7pt]">(Belum Disetujui)</span>
+                      )}
+                    </div>
+                    <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
+                      {requesterName}
+                    </div>
+                    <div className="text-[7pt] text-slate-600 font-medium">Serviceman / Pemohon</div>
+                    <div className="text-[6.5pt] text-slate-400 mt-0.5">
+                      {isEmployeeSigned && doc?.createdAt ? `Waktu Pengajuan: ${fmtDt(doc.createdAt)}` : '—'}
+                    </div>
+                  </div>
+
+                  {/* 2. Leader / Supervisor */}
+                  <div className="flex flex-col items-center text-center">
+                    <div className="text-[7pt] text-slate-500 font-semibold mb-1">Leader / Supervisor Signature</div>
+                    <div className="h-14 w-full flex items-center justify-center my-1">
+                      {existingLeaderApproval?.signatureDataUrl ? (
+                        <img src={existingLeaderApproval.signatureDataUrl} alt="TTD Leader" className="max-h-12 max-w-full object-contain" />
+                      ) : isLeaderSigned ? (
+                        <svg className="h-10 w-24 text-slate-900" viewBox="0 0 100 40" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 26 C22 10, 32 32, 48 18 C62 6, 68 28, 82 14 C89 8, 92 10, 88 18 C82 24, 72 26, 68 22 C58 16, 48 18, 42 22" />
+                          <path d="M22 30 C38 32, 60 28, 84 26" />
+                        </svg>
+                      ) : (
+                        <span className="text-slate-400 italic text-[7pt]">(Belum Disetujui)</span>
+                      )}
+                    </div>
+                    <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
+                      {currentLeaderName || '—'}
+                    </div>
+                    <div className="text-[7pt] text-slate-600 font-medium">Leader / Supervisor</div>
+                    <div className="text-[6.5pt] text-slate-400 mt-0.5">
+                      {isLeaderSigned && existingLeaderApproval?.signedAt ? `Waktu TTD: ${fmtDt(existingLeaderApproval.signedAt)}` : '—'}
+                    </div>
+                  </div>
+
+                  {/* 3. Section Head / Superior */}
+                  <div className="flex flex-col items-center text-center">
+                    <div className="text-[7pt] text-slate-500 font-semibold mb-1">Section Head Signature</div>
+                    <div className="h-14 w-full flex items-center justify-center my-1">
+                      {existingSuperiorApproval?.signatureDataUrl ? (
+                        <img src={existingSuperiorApproval.signatureDataUrl} alt="TTD Superior" className="max-h-12 max-w-full object-contain" />
+                      ) : isSuperiorSigned ? (
+                        <svg className="h-10 w-24 text-slate-900" viewBox="0 0 100 40" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 26 C22 10, 32 32, 48 18 C62 6, 68 28, 82 14 C89 8, 92 10, 88 18 C82 24, 72 26, 68 22 C58 16, 48 18, 42 22" />
+                          <path d="M22 30 C38 32, 60 28, 84 26" />
+                        </svg>
+                      ) : (
+                        <span className="text-slate-400 italic text-[7pt]">(Belum Disetujui)</span>
+                      )}
+                    </div>
+                    <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
+                      {currentSuperiorName || '—'}
+                    </div>
+                    <div className="text-[7pt] text-slate-600 font-medium">Section Head</div>
+                    <div className="text-[6.5pt] text-slate-400 mt-0.5">
+                      {isSuperiorSigned && existingSuperiorApproval?.signedAt ? `Waktu TTD: ${fmtDt(existingSuperiorApproval.signedAt)}` : '—'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-right text-[7pt] text-slate-500 mt-2 font-mono">
+                  F.HC.SPL.001.01 • PT Chitra Paratama
+                </div>
               </div>
             </div>
           </div>
-        </DialogContent>
+        </div>
+      </DialogContent>
       </Dialog>
     </form>
   );

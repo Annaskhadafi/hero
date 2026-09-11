@@ -61,7 +61,9 @@ export async function GET(
           },
         ];
 
-  const rowPages = chunk(rows, ROWS_PER_PAGE);
+  const itemsWithPhotos = data.items.filter((item) => Boolean(item.photoUrl));
+  const photoPages = chunk(itemsWithPhotos, 4);
+  const totalPages = rowPages.length + photoPages.length;
 
   for (const [pageIndex, pageRows] of rowPages.entries()) {
     const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
@@ -76,12 +78,25 @@ export async function GET(
       });
     }
 
-    const tableStartY = drawDocumentHeader(page, data, boldFont, regularFont, pageIndex + 1, rowPages.length);
-    await drawWorkTable(page, pdfDoc, pageRows, tableStartY, boldFont, regularFont);
+    const tableStartY = drawDocumentHeader(page, data, boldFont, regularFont, pageIndex + 1, totalPages);
+    const tableEndY = await drawWorkTable(page, pdfDoc, pageRows, tableStartY, boldFont, regularFont);
 
     if (pageIndex === rowPages.length - 1) {
+      drawApprovalStepsTable(page, data, tableEndY, boldFont, regularFont);
       await drawSignatureArea(page, pdfDoc, data, boldFont, regularFont);
     }
+  }
+
+  if (itemsWithPhotos.length > 0) {
+    await drawEvidencePhotoPages(
+      pdfDoc,
+      itemsWithPhotos,
+      data,
+      boldFont,
+      regularFont,
+      rowPages.length + 1,
+      totalPages,
+    );
   }
 
   const pdfBytes = await pdfDoc.save();
@@ -279,6 +294,40 @@ function drawDocumentHeader(
   );
   boxY -= rowH;
 
+  // Optional Row: Catatan Sesi / Notes
+  const rawSessionNote = (data.summaryRemark || "")
+    .replace(/\s*\|\s*\[Team:\s*[^\]]+\]/gi, "")
+    .replace(/\s*\[Team:\s*[^\]]+\]/gi, "")
+    .replace(/\s*\|\s*\[Customer:\s*[^\]]+\]/gi, "")
+    .replace(/\s*\[Customer:\s*[^\]]+\]/gi, "")
+    .trim();
+
+  if (rawSessionNote) {
+    page.drawRectangle({
+      x: startX,
+      y: boxY - rowH,
+      width: boxWidth,
+      height: rowH,
+      borderColor: rgb(0, 0, 0),
+      borderWidth: 0.6,
+    });
+    page.drawText("Catatan Sesi:", {
+      x: startX + 6,
+      y: boxY - 11,
+      size: 7.5,
+      font: boldFont,
+      color: rgb(0, 0, 0),
+    });
+    page.drawText(rawSessionNote.slice(0, 95), {
+      x: startX + 70,
+      y: boxY - 11,
+      size: 7.5,
+      font: regularFont,
+      color: rgb(0, 0, 0),
+    });
+    boxY -= rowH;
+  }
+
   // Optional Row: Anggota Tim
   if (data.teamMembersSummary) {
     page.drawRectangle({
@@ -386,11 +435,14 @@ async function drawWorkTable(
     workSummary: string;
     actualPoints: number;
     photoUrl?: string | null;
+    remark?: string | null;
+    snapshotLabel?: string | null;
+    unitNumber?: string | null;
   }>,
   startY: number,
   boldFont: PDFFont,
   regularFont: PDFFont,
-) {
+): Promise<number> {
   const startX = 36;
   const tableWidth = 523.28;
   const headerHeight = 18;
@@ -406,14 +458,13 @@ async function drawWorkTable(
 
   const currentY = startY - 12;
 
-  // Columns: # (24), Aktivitas (195), Unit (64), Durasi (55), Poin (45), Remark (140.28)
+  // Columns: # (24), Aktivitas (220), Durasi (60), Poin (45), Catatan (174.28)
   const columns = [
     { title: "#", width: 24, align: "center" as const },
-    { title: "Aktivitas", width: 195, align: "left" as const },
-    { title: "Unit", width: 64, align: "center" as const },
-    { title: "Durasi", width: 55, align: "center" as const },
+    { title: "Aktivitas", width: 220, align: "left" as const },
+    { title: "Durasi", width: 60, align: "center" as const },
     { title: "Poin", width: 45, align: "center" as const },
-    { title: "Remark", width: 140.28, align: "left" as const },
+    { title: "Catatan", width: 174.28, align: "left" as const },
   ];
 
   page.drawRectangle({
@@ -471,7 +522,8 @@ async function drawWorkTable(
     cellX += columns[0].width;
 
     // Col 1: Aktivitas
-    const activityLines = splitText(item.workSummary || "-", 34);
+    const actLabel = [item.snapshotLabel || item.workSummary || "-", item.unitNumber].filter(Boolean).join(" - ");
+    const activityLines = splitText(actLabel, 38);
     let actY = rowTopY - 11;
     for (const line of activityLines.slice(0, 2)) {
       page.drawText(line, {
@@ -485,10 +537,10 @@ async function drawWorkTable(
     }
     cellX += columns[1].width;
 
-    // Col 2: Unit
-    const unitText = item.workSummary?.match(/Unit:\s*([^,\-]+)/i)?.[1]?.trim() || "-";
-    page.drawText(unitText, {
-      x: cellX + (columns[2].width - regularFont.widthOfTextAtSize(unitText, 7.5)) / 2,
+    // Col 2: Durasi
+    const durText = item.durationLabel && item.durationLabel !== "-" ? item.durationLabel : `${item.startLabel} - ${item.endLabel}`;
+    page.drawText(durText, {
+      x: cellX + (columns[2].width - regularFont.widthOfTextAtSize(durText, 7.5)) / 2,
       y: rowTopY - rowHeight / 2 - 3,
       size: 7.5,
       font: regularFont,
@@ -496,31 +548,20 @@ async function drawWorkTable(
     });
     cellX += columns[2].width;
 
-    // Col 3: Durasi
-    const durText = item.durationLabel && item.durationLabel !== "-" ? item.durationLabel : `${item.startLabel} - ${item.endLabel}`;
-    page.drawText(durText, {
-      x: cellX + (columns[3].width - regularFont.widthOfTextAtSize(durText, 7.5)) / 2,
-      y: rowTopY - rowHeight / 2 - 3,
-      size: 7.5,
-      font: regularFont,
-      color: rgb(0, 0, 0),
-    });
-    cellX += columns[3].width;
-
-    // Col 4: Poin
+    // Col 3: Poin
     const pointsText = String(item.actualPoints || 0);
     page.drawText(pointsText, {
-      x: cellX + (columns[4].width - boldFont.widthOfTextAtSize(pointsText, 8)) / 2,
+      x: cellX + (columns[3].width - boldFont.widthOfTextAtSize(pointsText, 8)) / 2,
       y: rowTopY - rowHeight / 2 - 3,
       size: 8,
       font: boldFont,
       color: rgb(0, 0, 0),
     });
-    cellX += columns[4].width;
+    cellX += columns[3].width;
 
-    // Col 5: Remark
-    const remarkText = item.workSummary?.match(/Remark:\s*([^,\-]+)/i)?.[1]?.trim() || "-";
-    const remarkLines = splitText(remarkText, 24);
+    // Col 4: Catatan
+    const remarkText = (item.remark?.trim() || (item as any).remarks?.trim() || item.workSummary?.match(/Remark:\s*([^,\-]+)/i)?.[1]?.trim() || "-");
+    const remarkLines = splitText(remarkText, 30);
     let remY = rowTopY - 11;
     for (const line of remarkLines.slice(0, 2)) {
       page.drawText(line, {
@@ -528,13 +569,164 @@ async function drawWorkTable(
         y: remY,
         size: 7,
         font: regularFont,
-        color: rgb(0.3, 0.3, 0.3),
+        color: rgb(0.25, 0.25, 0.25),
       });
       remY -= 9;
     }
 
     rowTopY -= rowHeight;
   }
+
+  return rowTopY - 10;
+}
+
+function drawApprovalStepsTable(
+  page: PDFPage,
+  data: NonNullable<Awaited<ReturnType<typeof getDailyActivitySessionDocumentData>>>,
+  startY: number,
+  boldFont: PDFFont,
+  regularFont: PDFFont,
+): number {
+  const startX = 36;
+  const tableWidth = 523.28;
+  const headerHeight = 16;
+  const approvals = (data.approvals || []).filter(
+    (a) => Number(a.stepOrder) <= 2 && a.approverRole !== 'section_head' && a.approverRole !== 'manager'
+  );
+
+  page.drawText("B. Approval Steps", {
+    x: startX,
+    y: startY + 2,
+    size: 8.5,
+    font: boldFont,
+    color: rgb(0, 0, 0),
+  });
+
+  const currentY = startY - 10;
+  const stepCols = [
+    { title: "#", width: 24, align: "center" as const },
+    { title: "Tahap", width: 115, align: "left" as const },
+    { title: "Approver", width: 125, align: "left" as const },
+    { title: "Status", width: 75, align: "center" as const },
+    { title: "Waktu", width: 80, align: "center" as const },
+    { title: "Catatan", width: 104.28, align: "left" as const },
+  ];
+
+  page.drawRectangle({
+    x: startX,
+    y: currentY - headerHeight,
+    width: tableWidth,
+    height: headerHeight,
+    color: rgb(0.95, 0.95, 0.95),
+    borderColor: rgb(0, 0, 0),
+    borderWidth: 0.6,
+  });
+
+  let colX = startX;
+  for (const col of stepCols) {
+    const textX =
+      col.align === "center"
+        ? colX + (col.width - boldFont.widthOfTextAtSize(col.title, 7.5)) / 2
+        : colX + 5;
+    page.drawText(col.title, {
+      x: textX,
+      y: currentY - 11,
+      size: 7.5,
+      font: boldFont,
+      color: rgb(0, 0, 0),
+    });
+    colX += col.width;
+  }
+
+  let rowTopY = currentY - headerHeight;
+  const rowHeight = 18;
+
+  for (const [idx, step] of (approvals.length > 0 ? approvals : [
+    { stepOrder: 1, stepLabel: 'Karyawan Sign', approverName: data.employee.name, status: 'approved', signedAt: data.signoff.employeeSignedAt, remarks: '-' },
+    { stepOrder: 2, stepLabel: 'Leader / PJO', approverName: 'Leader Lapangan', status: 'pending', signedAt: null, remarks: '-' }
+  ]).entries()) {
+    page.drawRectangle({
+      x: startX,
+      y: rowTopY - rowHeight,
+      width: tableWidth,
+      height: rowHeight,
+      borderColor: rgb(0, 0, 0),
+      borderWidth: 0.5,
+      color: idx % 2 === 0 ? rgb(1, 1, 1) : rgb(0.99, 0.99, 0.99),
+    });
+
+    let cellX = startX;
+    // #
+    const numText = String(step.stepOrder || idx + 1);
+    page.drawText(numText, {
+      x: cellX + (stepCols[0].width - regularFont.widthOfTextAtSize(numText, 7.5)) / 2,
+      y: rowTopY - 12,
+      size: 7.5,
+      font: regularFont,
+      color: rgb(0, 0, 0),
+    });
+    cellX += stepCols[0].width;
+
+    // Tahap
+    page.drawText((step.stepLabel || "-").slice(0, 20), {
+      x: cellX + 5,
+      y: rowTopY - 12,
+      size: 7.5,
+      font: regularFont,
+      color: rgb(0, 0, 0),
+    });
+    cellX += stepCols[1].width;
+
+    // Approver
+    const appName = (step.approverName || (step.stepOrder === 1 ? data.employee.name : "-")).slice(0, 22);
+    page.drawText(appName, {
+      x: cellX + 5,
+      y: rowTopY - 12,
+      size: 7.5,
+      font: boldFont,
+      color: rgb(0, 0, 0),
+    });
+    cellX += stepCols[2].width;
+
+    // Status
+    const isApp = step.status === "approved" || step.status === "signed";
+    const stText = isApp ? "Approved" : (step.status || "Pending");
+    page.drawText(stText, {
+      x: cellX + (stepCols[3].width - (isApp ? boldFont : regularFont).widthOfTextAtSize(stText, 7.5)) / 2,
+      y: rowTopY - 12,
+      size: 7.5,
+      font: isApp ? boldFont : regularFont,
+      color: isApp ? rgb(0.06, 0.45, 0.25) : rgb(0.2, 0.2, 0.2),
+    });
+    cellX += stepCols[3].width;
+
+    // Waktu
+    const timeText = step.signedAt
+      ? new Date(step.signedAt).toLocaleDateString("id-ID", { day: "2-digit", month: "2-digit", year: "numeric" })
+      : "-";
+    page.drawText(timeText, {
+      x: cellX + (stepCols[4].width - regularFont.widthOfTextAtSize(timeText, 7)) / 2,
+      y: rowTopY - 12,
+      size: 7,
+      font: regularFont,
+      color: rgb(0.3, 0.3, 0.3),
+    });
+    cellX += stepCols[4].width;
+
+    // Catatan
+    const remText = (step.remarks || "-").slice(0, 20);
+    page.drawText(remText, {
+      x: cellX + 5,
+      y: rowTopY - 12,
+      size: 7,
+      font: regularFont,
+      color: rgb(0.4, 0.4, 0.4),
+    });
+
+    rowTopY -= rowHeight;
+  }
+
+  return rowTopY - 10;
 }
 
 async function drawSignatureArea(
@@ -575,20 +767,29 @@ async function drawSignatureArea(
       status: leaderStep?.status || "pending",
     },
     {
-      title: "Section Head Signature",
-      signerName: sectionHeadStep?.approverName || "Section Head",
-      signedAt: isSectionHeadApproved && sectionHeadStep?.signedAt ? new Date(sectionHeadStep.signedAt) : null,
-      signatureUrl: isSectionHeadApproved ? (sectionHeadStep?.signatureDataUrl || "") : "",
-      footer: sectionHeadStep?.approverName || "Kepala Seksi",
-      roleLabel: "Section Head",
-      jobTitle: "Section Head",
-      status: sectionHeadStep?.status || "pending",
+      title: "Customer Signature",
+      signerName: "",
+      signedAt: null,
+      signatureUrl: "",
+      footer: "",
+      roleLabel: "Customer",
+      jobTitle: "Customer",
+      status: "pending",
     },
   ];
 
   const blockWidth = 145;
   const startX = 36;
   const startY = 70;
+
+  // Signatories title
+  page.drawText("Signatories", {
+    x: startX,
+    y: startY + 104,
+    size: 8.5,
+    font: boldFont,
+    color: rgb(0, 0, 0),
+  });
 
   for (const [index, block] of blocks.entries()) {
     const x = startX + index * 155;
@@ -700,19 +901,230 @@ async function drawSignatureArea(
   }
 }
 
+async function drawEvidencePhotoPages(
+  pdfDoc: PDFDocument,
+  itemsWithPhotos: Array<{
+    id: number;
+    sortOrder?: number;
+    snapshotLabel?: string;
+    workSummary?: string;
+    unitNumber?: string | null;
+    remark?: string | null;
+    durationLabel?: string;
+    startLabel?: string;
+    endLabel?: string;
+    actualPoints?: number;
+    photoUrl?: string | null;
+  }>,
+  data: NonNullable<Awaited<ReturnType<typeof getDailyActivitySessionDocumentData>>>,
+  boldFont: PDFFont,
+  regularFont: PDFFont,
+  startPageNumber: number,
+  totalPages: number,
+) {
+  const photoPages = chunk(itemsWithPhotos, 4);
+
+  for (const [pageIdx, pageItems] of photoPages.entries()) {
+    const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+    const currentPageNumber = startPageNumber + pageIdx;
+    const startX = 36;
+    const boxWidth = 523.28;
+
+    // Header title
+    page.drawText("PT. CHITRA PARATAMA", {
+      x: (PAGE_WIDTH - boldFont.widthOfTextAtSize("PT. CHITRA PARATAMA", 11)) / 2,
+      y: 805,
+      size: 11,
+      font: boldFont,
+      color: rgb(0.1, 0.1, 0.1),
+    });
+
+    const headerTitle = "LAMPIRAN BUKTI FOTO PEKERJAAN";
+    page.drawText(headerTitle, {
+      x: (PAGE_WIDTH - boldFont.widthOfTextAtSize(headerTitle, 12)) / 2,
+      y: 790,
+      size: 12,
+      font: boldFont,
+      color: rgb(0, 0.2, 0.38),
+    });
+
+    page.drawText(`Halaman ${currentPageNumber}/${totalPages}`, {
+      x: 485,
+      y: 805,
+      size: 7.5,
+      font: regularFont,
+      color: rgb(0.4, 0.4, 0.4),
+    });
+
+    // Sub-header Info Box
+    const infoY = 774;
+    page.drawRectangle({
+      x: startX,
+      y: infoY - 18,
+      width: boxWidth,
+      height: 18,
+      color: rgb(0.95, 0.96, 0.98),
+      borderColor: rgb(0.7, 0.75, 0.82),
+      borderWidth: 0.6,
+    });
+
+    const formattedWorkDate = data.workDate.toLocaleDateString("id-ID", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+    const infoText = `Kode Sesi: ${data.sessionCode}  |  Karyawan: ${data.employee.name} (${data.employee.employeeSn || "-"})  |  Tanggal: ${formattedWorkDate}  |  Foto: ${itemsWithPhotos.length} Lampiran`;
+    page.drawText(infoText, {
+      x: startX + 8,
+      y: infoY - 12,
+      size: 7.5,
+      font: boldFont,
+      color: rgb(0.1, 0.15, 0.25),
+    });
+
+    // 2x2 Grid for 4 photos
+    const colWidth = 254;
+    const cardHeight = 350;
+    const gapX = 15;
+    const gapY = 15;
+    const topGridY = infoY - 26;
+
+    for (const [itemIdx, item] of pageItems.entries()) {
+      const colIndex = itemIdx % 2;
+      const rowIndex = Math.floor(itemIdx / 2);
+      const cardX = startX + colIndex * (colWidth + gapX);
+      const cardY = topGridY - rowIndex * (cardHeight + gapY);
+
+      // Card boundary
+      page.drawRectangle({
+        x: cardX,
+        y: cardY - cardHeight,
+        width: colWidth,
+        height: cardHeight,
+        color: rgb(1, 1, 1),
+        borderColor: rgb(0.8, 0.83, 0.88),
+        borderWidth: 0.6,
+      });
+
+      // Card title bar
+      page.drawRectangle({
+        x: cardX,
+        y: cardY - 22,
+        width: colWidth,
+        height: 22,
+        color: rgb(0.94, 0.96, 0.98),
+        borderColor: rgb(0.8, 0.83, 0.88),
+        borderWidth: 0.6,
+      });
+
+      const itemNumber = pageIdx * 4 + itemIdx + 1;
+      const itemTitle = `#${itemNumber} ${item.snapshotLabel || item.workSummary || "Aktivitas"}`;
+      page.drawText(itemTitle.slice(0, 42), {
+        x: cardX + 6,
+        y: cardY - 15,
+        size: 8,
+        font: boldFont,
+        color: rgb(0, 0.2, 0.38),
+      });
+
+      // Image Box
+      const imgBoxX = cardX + 7;
+      const imgBoxY = cardY - 22 - 250;
+      const imgBoxW = colWidth - 14;
+      const imgBoxH = 245;
+
+      page.drawRectangle({
+        x: imgBoxX,
+        y: imgBoxY,
+        width: imgBoxW,
+        height: imgBoxH,
+        color: rgb(0.96, 0.97, 0.98),
+        borderColor: rgb(0.88, 0.9, 0.93),
+        borderWidth: 0.5,
+      });
+
+      if (item.photoUrl) {
+        const embeddedImg = await loadPdfImage(pdfDoc, item.photoUrl);
+        if (embeddedImg) {
+          const { width: origW, height: origH } = embeddedImg;
+          const scale = Math.min(imgBoxW / origW, imgBoxH / origH);
+          const drawW = origW * scale;
+          const drawH = origH * scale;
+          const drawX = imgBoxX + (imgBoxW - drawW) / 2;
+          const drawY = imgBoxY + (imgBoxH - drawH) / 2;
+
+          page.drawImage(embeddedImg, {
+            x: drawX,
+            y: drawY,
+            width: drawW,
+            height: drawH,
+          });
+        } else {
+          page.drawText("Foto bukti pekerjaan", {
+            x: imgBoxX + 70,
+            y: imgBoxY + imgBoxH / 2,
+            size: 8,
+            font: regularFont,
+            color: rgb(0.6, 0.6, 0.6),
+          });
+        }
+      }
+
+      // Metadata footer in card
+      let footerY = imgBoxY - 12;
+      const unitText = item.unitNumber ? `Unit: ${item.unitNumber}` : null;
+      const durText =
+        item.durationLabel && item.durationLabel !== "-"
+          ? item.durationLabel
+          : item.startLabel && item.endLabel
+            ? `${item.startLabel} - ${item.endLabel}`
+            : null;
+      const metaLine = [unitText, durText, item.actualPoints ? `${item.actualPoints} Poin` : null]
+        .filter(Boolean)
+        .join("  •  ");
+
+      if (metaLine) {
+        page.drawText(metaLine, {
+          x: cardX + 7,
+          y: footerY,
+          size: 7.5,
+          font: boldFont,
+          color: rgb(0.2, 0.25, 0.35),
+        });
+        footerY -= 12;
+      }
+
+      const remark = item.remark || item.workSummary?.match(/Remark:\s*([^,\-]+)/i)?.[1]?.trim();
+      if (remark && remark !== "-") {
+        const remLines = splitText(`Keterangan: ${remark}`, 48);
+        for (const line of remLines.slice(0, 3)) {
+          page.drawText(line, {
+            x: cardX + 7,
+            y: footerY,
+            size: 7,
+            font: regularFont,
+            color: rgb(0.35, 0.35, 0.35),
+          });
+          footerY -= 9;
+        }
+      }
+    }
+  }
+}
+
 async function loadPdfImage(pdfDoc: PDFDocument, imageUrl: string) {
   try {
     if (!imageUrl) return null;
 
-    let bytes: Uint8Array | ArrayBuffer;
+    let bytes: Uint8Array | ArrayBuffer | null = null;
     let isPng = true;
 
-    if (imageUrl.startsWith('data:image/')) {
-      const parts = imageUrl.split(',');
+    if (imageUrl.startsWith("data:image/")) {
+      const parts = imageUrl.split(",");
       const meta = parts[0];
       const base64Data = parts[1];
       if (!base64Data) return null;
-      isPng = meta.includes('png');
+      isPng = meta.includes("png");
       const binaryStr = atob(base64Data);
       const len = binaryStr.length;
       const u8 = new Uint8Array(len);
@@ -721,13 +1133,30 @@ async function loadPdfImage(pdfDoc: PDFDocument, imageUrl: string) {
       }
       bytes = u8;
     } else {
-      const readableUrl = await getS3ObjectReadUrl(imageUrl);
-      if (!readableUrl) return null;
-      const response = await fetch(readableUrl);
+      let targetFetchUrl = imageUrl;
+      if (!imageUrl.startsWith("http://") && !imageUrl.startsWith("https://")) {
+        const s3ReadUrl = await getS3ObjectReadUrl(imageUrl).catch(() => null);
+        if (s3ReadUrl) {
+          targetFetchUrl = s3ReadUrl;
+        } else if (imageUrl.startsWith("/")) {
+          const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+          targetFetchUrl = `${appUrl}${imageUrl}`;
+        }
+      } else {
+        const s3ReadUrl = await getS3ObjectReadUrl(imageUrl).catch(() => null);
+        if (s3ReadUrl) targetFetchUrl = s3ReadUrl;
+      }
+
+      const response = await fetch(targetFetchUrl);
       if (!response.ok) return null;
       bytes = await response.arrayBuffer();
-      isPng = !imageUrl.endsWith('.jpg') && !imageUrl.endsWith('.jpeg');
+      const contentType = response.headers.get("content-type") || "";
+      isPng =
+        contentType.includes("png") ||
+        (!imageUrl.endsWith(".jpg") && !imageUrl.endsWith(".jpeg") && imageUrl.endsWith(".png"));
     }
+
+    if (!bytes) return null;
 
     try {
       if (isPng) {
@@ -743,7 +1172,7 @@ async function loadPdfImage(pdfDoc: PDFDocument, imageUrl: string) {
       }
     }
   } catch (e) {
-    console.error('Error embedding image in PDF:', e);
+    console.error("Error embedding image in PDF:", e);
     return null;
   }
 }

@@ -8,12 +8,15 @@ import {
 import { db } from "@/db";
 import {
   activityLibraries,
+  activityRouteGroups,
+  activityRouteItems,
+  activityRouteTemplates,
   employees,
   masterDepartments,
   masterSections,
   sites,
 } from "@/db/schema/hero";
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { ActivityTeamLogPanel } from "@/components/activity-team-log-panel";
 import { MyDayActivityCreateTrigger } from "@/components/my-day-activity-create-trigger";
 import { Badge } from "@/components/ui/badge";
@@ -36,7 +39,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { getServerSession } from "@/lib/auth-session";
 import { getActivityPagePurpose } from "@/lib/activity-navigation";
-import { getDailyActivityEmployeeData, getDailyActivityTeamBoardData } from "@/lib/daily-activity";
+import { getDailyActivityEmployeeData, getDailyActivityTeamBoardData, type RouteFolder } from "@/lib/daily-activity";
 
 function statusBadgeClass(status: string) {
   const normalized = status.toLowerCase();
@@ -113,7 +116,18 @@ export default async function MyDayPage() {
   const session = await getServerSession();
   const userEmail = session?.user?.email ?? '';
 
-  let [data, teamData, rawEmployees, rawSites, rawSections, rawDepts, rawPresets] = await Promise.all([
+  let [
+    data,
+    teamData,
+    rawEmployees,
+    rawSites,
+    rawSections,
+    rawDepts,
+    rawPresets,
+    routeTemplateRows,
+    routeGroupRows,
+    routeItemRows,
+  ] = await Promise.all([
     getDailyActivityEmployeeData(userEmail || null),
     getDailyActivityTeamBoardData(userEmail || null),
     db
@@ -150,10 +164,47 @@ export default async function MyDayPage() {
         code: activityLibraries.activityCode,
         name: activityLibraries.activityName,
         basePoints: activityLibraries.basePoints,
+        category: activityLibraries.category,
+        requiresPhoto: activityLibraries.requiresPhoto,
+        requiresEquipmentNo: activityLibraries.requiresEquipmentNo,
+        requiresDuration: activityLibraries.requiresDuration,
+        requiresLocationGps: activityLibraries.requiresLocationGps,
+        requiresTireCount: activityLibraries.requiresTireCount,
+        requiresMaterialUsed: activityLibraries.requiresMaterialUsed,
       })
       .from(activityLibraries)
       .where(eq(activityLibraries.isActive, true))
-      .limit(60),
+      .orderBy(asc(activityLibraries.activityCode)),
+    db
+      .select({
+        id: activityRouteTemplates.id,
+        routeCode: activityRouteTemplates.routeCode,
+        routeName: activityRouteTemplates.routeName,
+      })
+      .from(activityRouteTemplates)
+      .where(eq(activityRouteTemplates.isActive, true))
+      .orderBy(asc(activityRouteTemplates.routeName)),
+    db
+      .select({
+        id: activityRouteGroups.id,
+        routeTemplateId: activityRouteGroups.routeTemplateId,
+        groupKey: activityRouteGroups.groupKey,
+        groupName: activityRouteGroups.groupName,
+        sortOrder: activityRouteGroups.sortOrder,
+      })
+      .from(activityRouteGroups)
+      .orderBy(asc(activityRouteGroups.sortOrder), asc(activityRouteGroups.id)),
+    db
+      .select({
+        id: activityRouteItems.id,
+        routeGroupId: activityRouteItems.routeGroupId,
+        libraryActivityId: activityRouteItems.libraryActivityId,
+        itemCode: activityRouteItems.itemCode,
+        itemLabel: activityRouteItems.itemLabel,
+        sortOrder: activityRouteItems.sortOrder,
+      })
+      .from(activityRouteItems)
+      .orderBy(asc(activityRouteItems.sortOrder), asc(activityRouteItems.id)),
   ]);
 
   if (!data) {
@@ -164,6 +215,33 @@ export default async function MyDayPage() {
       </div>
     );
   }
+
+  const itemsByGroupId = new Map<number, any[]>()
+  for (const item of routeItemRows || []) {
+    const list = itemsByGroupId.get(item.routeGroupId) || []
+    list.push(item)
+    itemsByGroupId.set(item.routeGroupId, list)
+  }
+
+  const groupsByTemplateId = new Map<number, any[]>()
+  for (const group of routeGroupRows || []) {
+    const list = groupsByTemplateId.get(group.routeTemplateId) || []
+    list.push({
+      id: group.id,
+      groupName: group.groupName,
+      items: itemsByGroupId.get(group.id) || [],
+    })
+    groupsByTemplateId.set(group.routeTemplateId, list)
+  }
+
+  const availableRouteFolders: RouteFolder[] = (routeTemplateRows || [])
+    .map((t) => ({
+      id: t.id,
+      routeCode: t.routeCode,
+      routeName: t.routeName,
+      groups: groupsByTemplateId.get(t.id) || [],
+    }))
+    .filter((t) => t.groups.length > 0)
 
   const sectionHeadMap: Record<string, number | null> = {}
   for (const s of rawSections || []) {
@@ -200,6 +278,13 @@ export default async function MyDayPage() {
     code: p.code || '',
     name: p.name || '',
     basePoints: Number(p.basePoints) || 0,
+    category: p.category || null,
+    requiresPhoto: Boolean(p.requiresPhoto),
+    requiresEquipmentNo: Boolean(p.requiresEquipmentNo),
+    requiresDuration: Boolean(p.requiresDuration),
+    requiresLocationGps: Boolean(p.requiresLocationGps),
+    requiresTireCount: Boolean(p.requiresTireCount),
+    requiresMaterialUsed: Boolean(p.requiresMaterialUsed),
   }))
 
   const assignmentStatuses: string[] = Array.from(new Set<string>(data.assignments.map((assignment: any) => String(assignment.statusLabel || '')))).sort();
@@ -246,6 +331,7 @@ export default async function MyDayPage() {
               employees={modalEmployees}
               sites={modalSites}
               activityPresets={modalPresets}
+              routeFolders={availableRouteFolders}
               sectionHeadMap={sectionHeadMap}
               deptHeadMap={deptHeadMap}
               currentEmployeeId={data.employee.id}

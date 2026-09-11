@@ -11,6 +11,7 @@ import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityEmployeeData } from "@/lib/daily-activity";
 import { resolveEmployeeApproverHierarchy } from "@/lib/overtime-hierarchy";
 import { getDailyActivityApprovalData } from "@/app/dashboard/activity-hub/actions";
+import { getApprovalCenterData } from "@/lib/approval-workspace";
 
 async function withDbRetry<T>(fn: () => Promise<T>, retries = 4, delayMs = 450): Promise<T> {
   let attempt = 0;
@@ -62,7 +63,7 @@ export default async function MobileActivityPage({
   const tabQuery = query.tab || (query.edit ? 'apply' : undefined);
   const editSessionId = query.edit;
 
-  const [data, rawEmployees, rawSections, rawDepartments, rawSites] = await Promise.all([
+  const [data, rawEmployees, rawSections, rawDepartments, rawSites, approvals] = await Promise.all([
     safeQuery(() => getDailyActivityEmployeeData(session.user.email, { ensureSeed: false }), null, "getDailyActivityEmployeeData"),
     safeQuery(
       () =>
@@ -91,6 +92,7 @@ export default async function MobileActivityPage({
     safeQuery(() => db.select({ id: masterSections.id, name: masterSections.name, headEmployeeId: masterSections.headEmployeeId }).from(masterSections), [], "rawSections"),
     safeQuery(() => db.select({ id: masterDepartments.id, name: masterDepartments.name, headEmployeeId: masterDepartments.headEmployeeId }).from(masterDepartments), [], "rawDepartments"),
     safeQuery(() => db.select({ id: sites.id, name: sites.name, headEmployeeId: sites.headEmployeeId }).from(sites), [], "rawSites"),
+    safeQuery(() => getApprovalCenterData(session.user.email), null, "getApprovalCenterData"),
   ]);
 
   if (!data) {
@@ -189,6 +191,7 @@ export default async function MobileActivityPage({
       submittedSpl={submittedSpl}
       tabQuery={tabQuery}
       editSessionData={editSessionData}
+      approvals={approvals}
     />
   );
 }

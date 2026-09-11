@@ -3245,7 +3245,7 @@ export async function getApprovalCenterData(email: string) {
     ),
   ])
 
-  const [allDaApprovals, allOtApprovals, allPtwApprovals, allSopWinApprovals] = await Promise.all([
+  const [allDaApprovals, allOtApprovals, allPtwApprovals, allSopWinApprovals, allOtParticipants] = await Promise.all([
     safeQuery(
       () =>
         db
@@ -3322,6 +3322,17 @@ export async function getApprovalCenterData(email: string) {
       [],
       "allSopWinApprovals"
     ),
+    safeQuery(
+      () =>
+        db
+          .select({
+            splId: overtimeCommandLetterParticipants.overtimeCommandLetterId,
+            employeeId: overtimeCommandLetterParticipants.employeeId,
+          })
+          .from(overtimeCommandLetterParticipants),
+      [],
+      "allOtParticipants"
+    ),
   ])
 
   const daApprovalsBySessionId = new Map<number, typeof allDaApprovals>()
@@ -3337,7 +3348,7 @@ export async function getApprovalCenterData(email: string) {
       (employeeEmailNorm && normalizeMatchValue(app.approverEmail) === employeeEmailNorm) ||
       (normalizedEmployeeName && normalizeMatchValue(app.approverName) === normalizedEmployeeName)
 
-    if (isUserApprover && ['approved', 'reverted', 'rejected'].includes((app.status || '').toLowerCase())) {
+    if (isUserApprover) {
       daSessionIdsWhereUserApprover.add(app.sessionId)
     }
   }
@@ -3355,8 +3366,17 @@ export async function getApprovalCenterData(email: string) {
       (employeeEmailNorm && normalizeMatchValue(app.approverEmail) === employeeEmailNorm) ||
       (normalizedEmployeeName && normalizeMatchValue(app.approverName) === normalizedEmployeeName)
 
-    if (isUserApprover && ['approved', 'reverted', 'rejected'].includes((app.status || '').toLowerCase())) {
+    if (isUserApprover) {
       otSplIdsWhereUserApprover.add(app.splId)
+    }
+  }
+
+  const otSplIdsWhereUserParticipant = new Set<number>()
+  if (currentEmployee?.id) {
+    for (const p of allOtParticipants) {
+      if (p.employeeId === currentEmployee.id && p.splId) {
+        otSplIdsWhereUserParticipant.add(p.splId)
+      }
     }
   }
 
@@ -3373,7 +3393,7 @@ export async function getApprovalCenterData(email: string) {
       (employeeEmailNorm && normalizeMatchValue(app.approverEmail) === employeeEmailNorm) ||
       (normalizedEmployeeName && normalizeMatchValue(app.approverName) === normalizedEmployeeName)
 
-    if (isUserApprover && ['approved', 'reverted', 'rejected'].includes((app.status || '').toLowerCase())) {
+    if (isUserApprover) {
       ptwIdsWhereUserApprover.add(app.permitId)
     }
   }
@@ -3391,7 +3411,7 @@ export async function getApprovalCenterData(email: string) {
       (employeeEmailNorm && normalizeMatchValue(app.approverEmail) === employeeEmailNorm) ||
       (normalizedEmployeeName && normalizeMatchValue(app.approverName) === normalizedEmployeeName)
 
-    if (isUserApprover && ['approved', 'reverted', 'rejected'].includes((app.status || '').toLowerCase())) {
+    if (isUserApprover) {
       sopReqIdsWhereUserApprover.add(app.requestId)
     }
   }
@@ -3483,7 +3503,8 @@ export async function getApprovalCenterData(email: string) {
       normalizeMatchValue(ot.requesterEmail) === normalizedEmail ||
       (employeeEmailNorm && normalizeMatchValue(ot.requesterEmail) === employeeEmailNorm) ||
       (normalizedEmployeeName && normalizeMatchValue(ot.requesterName) === normalizedEmployeeName) ||
-      otSplIdsWhereUserApprover.has(ot.id)
+      otSplIdsWhereUserApprover.has(ot.id) ||
+      otSplIdsWhereUserParticipant.has(ot.id)
 
     if (!isUserInvolved) continue
 

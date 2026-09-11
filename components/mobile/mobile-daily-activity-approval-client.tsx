@@ -595,7 +595,9 @@ export function MobileDailyActivityApprovalClient({
             <User className="size-4 text-emerald-600" /> Alur Approval Dokumen
           </h3>
           <div className="space-y-2">
-            {data.approvals.map((app, i) => (
+            {(data.approvals || [])
+              .filter((a) => Number(a.stepOrder) <= 2 && a.approverRole !== 'section_head' && a.approverRole !== 'manager')
+              .map((app, i) => (
               <div
                 key={app.id || i}
                 className="flex items-start justify-between gap-2 p-3 rounded-xl bg-gray-50 border border-gray-100 text-xs"

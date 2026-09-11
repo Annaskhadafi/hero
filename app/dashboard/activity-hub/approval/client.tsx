@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   AlertCircle,
@@ -12,13 +12,16 @@ import {
   CheckSquare,
   ChevronRight,
   Download,
+  Eye,
   FileCheck,
   FileDown,
+  FilePenLine,
   FileSpreadsheet,
   FileText,
   ImagePlus,
   Layers,
   ListFilter,
+  Move,
   PenTool,
   Plus,
   Printer,
@@ -34,6 +37,8 @@ import {
   ChevronDown,
   X,
   XCircle,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import QRCode from 'qrcode'
@@ -103,6 +108,7 @@ export type SessionApprovalRow = {
   workDate: Date | string | null
   shiftCode: string
   sessionStatus: string
+  employeeId?: number | null
   employeeName: string
   employeeSn: string
   department?: string
@@ -127,6 +133,8 @@ export type SessionApprovalRow = {
     approverRole?: string | null
     status: string
     approverName: string | null
+    approverEmail?: string | null
+    approverEmployeeId?: number | null
     signatureDataUrl?: string | null
     remarks?: string | null
     signedAt: Date | string | null
@@ -196,6 +204,11 @@ export function ApprovalListingClient({
   sectionHeadMap = {},
   deptHeadMap = {},
   initialSettings,
+  currentEmployeeId = null,
+  currentEmployeeEmail = null,
+  currentEmployeeName = '',
+  isAdmin = false,
+  accessRole = '',
 }: {
   rows?: SessionApprovalRow[]
   employees?: Array<{
@@ -229,6 +242,11 @@ export function ApprovalListingClient({
   sectionHeadMap?: Record<string, number | null>
   deptHeadMap?: Record<string, number | null>
   initialSettings?: DailyActivityWorkflowSettings
+  currentEmployeeId?: number | null
+  currentEmployeeEmail?: string | null
+  currentEmployeeName?: string | null
+  isAdmin?: boolean
+  accessRole?: string
 }) {
   const router = useRouter()
   const [rows, setRows] = useState<SessionApprovalRow[]>(() => initialRows || [])
@@ -372,6 +390,82 @@ async function uploadActivityPhoto(file: File): Promise<string> {
   const [previewTargetQrDataUrl, setPreviewTargetQrDataUrl] = useState<string | null>(null)
   const [isEvidenceModalOpen, setIsEvidenceModalOpen] = useState(false)
   const [evidenceModalSessionId, setEvidenceModalSessionId] = useState<number | null>(null)
+
+  // Zoom & Pan state for preview modal & batch viewer
+  const [viewerZoom, setViewerZoom] = useState(1.0)
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 })
+  const [isDragging, setIsDragging] = useState(false)
+  const dragStartRef = useRef<{ startX: number; startY: number; initialPanX: number; initialPanY: number } | null>(null)
+
+  useEffect(() => {
+    setViewerZoom(1.0)
+    setPanOffset({ x: 0, y: 0 })
+  }, [previewTarget?.sessionId])
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement
+    if (target.closest('button') || target.closest('a') || target.closest('input') || target.closest('select') || target.closest('textarea')) {
+      return
+    }
+    setIsDragging(true)
+    dragStartRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      initialPanX: panOffset.x,
+      initialPanY: panOffset.y,
+    }
+  }
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging || !dragStartRef.current) return
+    const dx = e.clientX - dragStartRef.current.startX
+    const dy = e.clientY - dragStartRef.current.startY
+    setPanOffset({
+      x: dragStartRef.current.initialPanX + dx,
+      y: dragStartRef.current.initialPanY + dy,
+    })
+  }
+
+  const handleMouseUp = () => {
+    setIsDragging(false)
+    dragStartRef.current = null
+  }
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const target = e.target as HTMLElement
+    if (target.closest('button') || target.closest('a') || target.closest('input') || target.closest('select') || target.closest('textarea')) {
+      return
+    }
+    if (e.touches.length === 1) {
+      setIsDragging(true)
+      dragStartRef.current = {
+        startX: e.touches[0].clientX,
+        startY: e.touches[0].clientY,
+        initialPanX: panOffset.x,
+        initialPanY: panOffset.y,
+      }
+    }
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging || !dragStartRef.current || e.touches.length !== 1) return
+    const dx = e.touches[0].clientX - dragStartRef.current.startX
+    const dy = e.touches[0].clientY - dragStartRef.current.startY
+    setPanOffset({
+      x: dragStartRef.current.initialPanX + dx,
+      y: dragStartRef.current.initialPanY + dy,
+    })
+  }
+
+  const handleTouchEnd = () => {
+    setIsDragging(false)
+    dragStartRef.current = null
+  }
+
+  const handleResetView = () => {
+    setViewerZoom(1.0)
+    setPanOffset({ x: 0, y: 0 })
+  }
 
   useEffect(() => {
     if (!previewTarget?.sessionId) {
@@ -602,15 +696,48 @@ async function uploadActivityPhoto(file: File): Promise<string> {
   const [isBatchActionRunning, setIsBatchActionRunning] = useState(false)
   const [approvalRemarks, setApprovalRemarks] = useState<Record<number, string>>({})
 
+  const isRowReviewableByCurrentUser = (row: SessionApprovalRow) => {
+    const status = (row.sessionStatus || '').toLowerCase()
+    // Dokumen selesai, ditolak, atau draft/revisi tidak bisa direview oleh approver
+    if (['approved', 'completed', 'closed', 'rejected', 'draft', 'returned', 'reverted', 'needs_revision'].includes(status)) {
+      return false
+    }
+
+    const approvals = Array.isArray(row.approvals) ? row.approvals : []
+    const activeStep = approvals.find((a) => (a.status || '').toLowerCase() === 'pending')
+    if (!activeStep) return false
+
+    const currentEmpId = currentEmployeeId ? Number(currentEmployeeId) : null
+    const currentEmpEmail = (currentEmployeeEmail || '').toLowerCase().trim()
+    const currentEmpName = (currentEmployeeName || '').toLowerCase().trim()
+
+    const matchesId = currentEmpId != null && activeStep.approverEmployeeId != null && Number(activeStep.approverEmployeeId) === currentEmpId
+    const matchesEmail = Boolean(currentEmpEmail) && Boolean(activeStep.approverEmail) && activeStep.approverEmail.toLowerCase().trim() === currentEmpEmail
+    const matchesName = Boolean(currentEmpName) && Boolean(activeStep.approverName) && activeStep.approverName.toLowerCase().trim() === currentEmpName
+
+    return Boolean(matchesId || matchesEmail || matchesName)
+  }
+
   const selectedBatchRows = useMemo(
     () => (rows || []).filter((r) => selectedIds.includes(r.sessionId)),
     [rows, selectedIds]
   )
   const currentBatchDoc = selectedBatchRows[batchReviewIndex] || selectedBatchRows[0] || null
 
+  const canBatchReview = useMemo(
+    () =>
+      selectedBatchRows.length > 0 &&
+      selectedBatchRows.every((row) => isRowReviewableByCurrentUser(row)),
+    [selectedBatchRows, currentEmployeeId, currentEmployeeEmail, currentEmployeeName]
+  )
+
   const handleOpenBatchReview = () => {
     if (selectedIds.length === 0) {
       toast.error('Pilih minimal satu aktivitas untuk direview')
+      return
+    }
+    if (!canBatchReview) {
+      toast.error('Tombol review hanya aktif jika semua dokumen yang dipilih sedang menunggu giliran tanda tangan Anda.')
       return
     }
     if (!hasRegisteredSignature) {
@@ -625,12 +752,20 @@ async function uploadActivityPhoto(file: File): Promise<string> {
     if (!currentBatchDoc) return
     setIsBatchActionRunning(true)
     try {
-      const currentRemark = approvalRemarks[currentBatchDoc.sessionId] || ''
-      const res = await singleApproveDailyActivityAction(currentBatchDoc.sessionId, currentRemark)
+      const sessId = currentBatchDoc.sessionId
+      const sessCode = currentBatchDoc.sessionCode
+      const currentRemark = approvalRemarks[sessId] || ''
+      const res = await singleApproveDailyActivityAction(sessId, currentRemark)
       if (res.success) {
-        toast.success(`Dokumen ${currentBatchDoc.sessionCode} berhasil disetujui.`)
-        if (batchReviewIndex < selectedBatchRows.length - 1) {
-          setBatchReviewIndex((prev) => prev + 1)
+        toast.success(`Dokumen ${sessCode} berhasil disetujui.`)
+        const remainingIds = selectedIds.filter((id) => id !== sessId)
+        setSelectedIds(remainingIds)
+        const remainingRows = selectedBatchRows.filter((r) => r.sessionId !== sessId)
+        if (remainingRows.length > 0) {
+          const nextIndex = Math.min(batchReviewIndex, remainingRows.length - 1)
+          setBatchReviewIndex(Math.max(0, nextIndex))
+          setIsBatchReviewOpen(true)
+          router.refresh()
         } else {
           toast.success('Semua dokumen dalam antrian telah selesai direview.')
           setIsBatchReviewOpen(false)
@@ -651,16 +786,25 @@ async function uploadActivityPhoto(file: File): Promise<string> {
 
   const handleSingleRevertCurrent = async () => {
     if (!currentBatchDoc) return
-    const customRemark = approvalRemarks[currentBatchDoc.sessionId] || prompt('Masukkan alasan pengembalian dokumen (revert) untuk revisi:')
+    const sessId = currentBatchDoc.sessionId
+    const sessCode = currentBatchDoc.sessionCode
+    const customRemark = approvalRemarks[sessId] || prompt('Masukkan alasan pengembalian dokumen (revert) untuk revisi:')
     if (customRemark === null) return
     setIsBatchActionRunning(true)
     try {
-      const res = await singleRevertDailyActivityAction(currentBatchDoc.sessionId, customRemark || 'Dokumen dikembalikan untuk revisi.')
+      const res = await singleRevertDailyActivityAction(sessId, customRemark || 'Dokumen dikembalikan untuk revisi.')
       if (res.success) {
-        toast.success(`Dokumen ${currentBatchDoc.sessionCode} dikembalikan.`)
-        if (batchReviewIndex < selectedBatchRows.length - 1) {
-          setBatchReviewIndex((prev) => prev + 1)
+        toast.success(`Dokumen ${sessCode} dikembalikan.`)
+        const remainingIds = selectedIds.filter((id) => id !== sessId)
+        setSelectedIds(remainingIds)
+        const remainingRows = selectedBatchRows.filter((r) => r.sessionId !== sessId)
+        if (remainingRows.length > 0) {
+          const nextIndex = Math.min(batchReviewIndex, remainingRows.length - 1)
+          setBatchReviewIndex(Math.max(0, nextIndex))
+          setIsBatchReviewOpen(true)
+          router.refresh()
         } else {
+          toast.success('Semua dokumen dalam antrian telah selesai direview.')
           setIsBatchReviewOpen(false)
           setSelectedIds([])
           router.refresh()
@@ -677,16 +821,25 @@ async function uploadActivityPhoto(file: File): Promise<string> {
 
   const handleSingleRejectCurrent = async () => {
     if (!currentBatchDoc) return
-    const customRemark = approvalRemarks[currentBatchDoc.sessionId] || prompt('Masukkan alasan penolakan dokumen (reject):')
+    const sessId = currentBatchDoc.sessionId
+    const sessCode = currentBatchDoc.sessionCode
+    const customRemark = approvalRemarks[sessId] || prompt('Masukkan alasan penolakan dokumen (reject):')
     if (customRemark === null) return
     setIsBatchActionRunning(true)
     try {
-      const res = await singleRejectDailyActivityAction(currentBatchDoc.sessionId, customRemark || 'Dokumen ditolak.')
+      const res = await singleRejectDailyActivityAction(sessId, customRemark || 'Dokumen ditolak.')
       if (res.success) {
-        toast.success(`Dokumen ${currentBatchDoc.sessionCode} ditolak.`)
-        if (batchReviewIndex < selectedBatchRows.length - 1) {
-          setBatchReviewIndex((prev) => prev + 1)
+        toast.success(`Dokumen ${sessCode} ditolak.`)
+        const remainingIds = selectedIds.filter((id) => id !== sessId)
+        setSelectedIds(remainingIds)
+        const remainingRows = selectedBatchRows.filter((r) => r.sessionId !== sessId)
+        if (remainingRows.length > 0) {
+          const nextIndex = Math.min(batchReviewIndex, remainingRows.length - 1)
+          setBatchReviewIndex(Math.max(0, nextIndex))
+          setIsBatchReviewOpen(true)
+          router.refresh()
         } else {
+          toast.success('Semua dokumen dalam antrian telah selesai direview.')
           setIsBatchReviewOpen(false)
           setSelectedIds([])
           router.refresh()
@@ -1119,6 +1272,12 @@ async function uploadActivityPhoto(file: File): Promise<string> {
         toast.error(msg, { duration: 5000 })
         return
       }
+      if (!createForm.customPhotoUrl?.trim() && (!createForm.customPhotos || createForm.customPhotos.length === 0)) {
+        const msg = 'Photo Evidence untuk Custom Activity wajib diunggah!'
+        setCreateError(msg)
+        toast.error(msg, { duration: 5000 })
+        return
+      }
       validItems = [
         {
           label: createForm.customName.trim(),
@@ -1133,6 +1292,12 @@ async function uploadActivityPhoto(file: File): Promise<string> {
     } else if (createForm.sourceMode === 'assigned') {
       if (!createForm.assignmentId) {
         const msg = 'Pilih Assignment terlebih dahulu'
+        setCreateError(msg)
+        toast.error(msg, { duration: 5000 })
+        return
+      }
+      if (!createForm.assignedPhotoUrl?.trim() && (!createForm.assignedPhotos || createForm.assignedPhotos.length === 0)) {
+        const msg = 'Photo Evidence untuk Assigned Activity wajib diunggah!'
         setCreateError(msg)
         toast.error(msg, { duration: 5000 })
         return
@@ -1171,6 +1336,21 @@ async function uploadActivityPhoto(file: File): Promise<string> {
       toast.error(msg, { duration: 5000 })
       return
     }
+
+    for (let idx = 0; idx < validItems.length; idx++) {
+      const it = validItems[idx]
+      const hasPhoto = Boolean((it.photoUrl && it.photoUrl.trim().length > 0) || (it.photos && it.photos.length > 0))
+      if (!hasPhoto) {
+        const itemLabel = it.label || 'Aktivitas'
+        const msg =
+          validItems.length === 1
+            ? `Photo Evidence untuk "${itemLabel}" wajib diunggah!`
+            : `Photo Evidence pada item #${idx + 1} (${itemLabel}) wajib diunggah!`
+        setCreateError(msg)
+        toast.error(msg, { duration: 5000 })
+        return
+      }
+    }
     setIsCreating(true)
     try {
       const res = await createDailyActivitySessionAction({
@@ -1185,6 +1365,8 @@ async function uploadActivityPhoto(file: File): Promise<string> {
         managerEmployeeId: createForm.managerEmployeeId ? Number(createForm.managerEmployeeId) : undefined,
         managerName: createForm.managerName || undefined,
         teamMemberEmployeeIds: isTeamLog ? selectedTeamMemberIds : [],
+        customerName: createForm.customerName?.trim() || undefined,
+        notes: createForm.customerName ? `Customer: ${createForm.customerName.trim()}` : undefined,
         items: validItems,
       })
       if (res.success && res.sessionId) {
@@ -1224,7 +1406,6 @@ async function uploadActivityPhoto(file: File): Promise<string> {
           approvals: [
             { stepOrder: 1, stepLabel: 'Karyawan Sign', approverRole: 'employee', status: 'pending', approverName: createForm.employeeName || emp?.name || 'Karyawan', signatureDataUrl: null, signedAt: null },
             { stepOrder: 2, stepLabel: 'Leader / PJO', approverRole: 'leader', status: 'waiting', approverName: createForm.leaderName || 'Leader', signatureDataUrl: null, signedAt: null },
-            { stepOrder: 3, stepLabel: 'Section Head', approverRole: 'section_head', status: 'waiting', approverName: createForm.superiorName || 'Section Head', signatureDataUrl: null, signedAt: null },
           ],
         }
         setRows((prev) => [newRow, ...prev])
@@ -1386,11 +1567,33 @@ async function uploadActivityPhoto(file: File): Promise<string> {
     setIsDownloadingPdf(true)
     toast.loading('Menyiapkan file PDF...', { id: 'act-pdf-dl' })
     try {
+      if (row.sessionId) {
+        try {
+          const res = await fetch(`/api/activity-sessions/${row.sessionId}/pdf`)
+          if (res.ok) {
+            const blob = await res.blob()
+            const url = window.URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = `DailyActivity_${row.sessionCode.replace(/[\/\\]/g, '_')}.pdf`
+            document.body.appendChild(a)
+            a.click()
+            a.remove()
+            window.URL.revokeObjectURL(url)
+            toast.success('PDF berhasil diunduh!', { id: 'act-pdf-dl' })
+            return
+          }
+        } catch (apiErr) {
+          console.warn('API PDF download failed, falling back to DOM rendering:', apiErr)
+        }
+      }
+
       const batchEl = document.getElementById('batch-activity-preview-sheet')
       const previewEl = document.getElementById('activity-preview-sheet')
       const targetEl = (batchEl && currentBatchDoc?.sessionId === row.sessionId) ? batchEl : (previewEl && previewTarget?.sessionId === row.sessionId ? previewEl : null)
       if (targetEl) {
         await downloadElementAsPdf(targetEl, `DailyActivity_${row.sessionCode.replace(/[\/\\]/g, '_')}.pdf`)
+        toast.success('PDF berhasil diunduh!', { id: 'act-pdf-dl' })
       } else {
         const contentHtml = `
           <h1 class="text-center font-bold" style="font-size: 11pt; margin-bottom: 2px; text-transform: uppercase;">PT. CHITRA PARATAMA</h1>
@@ -1452,28 +1655,44 @@ async function uploadActivityPhoto(file: File): Promise<string> {
             </tbody>
           </table>
 
-          <div style="font-weight: bold; margin-bottom: 0.25rem;">B. Signatories & Verification Matrix</div>
+          <div style="font-weight: bold; margin-bottom: 0.25rem;">B. Signatories</div>
           <table style="width: 100%; border-collapse: collapse; text-align: center;">
             <thead>
               <tr style="background: #f8fafc; font-weight: bold;">
                 <th style="border: 1px solid black; padding: 3px 5px; width: 33%;">Pemohon / Karyawan</th>
-                <th style="border: 1px solid black; padding: 3px 5px; width: 33%;">Leader / Pengawas</th>
-                <th style="border: 1px solid black; padding: 3px 5px; width: 33%;">Section Head</th>
+                <th style="border: 1px solid black; padding: 3px 5px; width: 33%;">Leader / PJO</th>
+                <th style="border: 1px solid black; padding: 3px 5px; width: 33%;">Customer</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                ${row.approvals.map((a) => `
-                  <td style="border: 1px solid black; height: 60px; vertical-align: bottom; padding: 4px;">
-                    <div style="font-size: 7.5pt; color: #059669; font-weight: bold; margin-bottom: 8px;">
-                      ${a.status === 'approved' ? 'Tanda Tangan Sah' : '<span style="color: #94a3b8; font-style: italic;">Menunggu TTD</span>'}
-                    </div>
-                    <div style="border-top: 1px solid #cbd5e1; padding-top: 2px;">
-                      <p style="font-weight: bold; font-size: 8pt;">${a.approverName || '—'}</p>
-                      <p style="font-size: 7pt; color: #64748b;">${formatTimestamp(a.signedAt)}</p>
-                    </div>
-                  </td>
-                `).join('')}
+                <td style="border: 1px solid black; height: 60px; vertical-align: bottom; padding: 4px;">
+                  <div style="font-size: 7.5pt; color: #059669; font-weight: bold; margin-bottom: 8px;">
+                    ${(row.approvals || []).find(a => a.stepOrder === 1)?.status === 'approved' ? 'Tanda Tangan Sah' : '<span style="color: #94a3b8; font-style: italic;">Menunggu TTD</span>'}
+                  </div>
+                  <div style="border-top: 1px solid #cbd5e1; padding-top: 2px;">
+                    <p style="font-weight: bold; font-size: 8pt;">${(row.approvals || []).find(a => a.stepOrder === 1)?.approverName || row.employeeName || '—'}</p>
+                    <p style="font-size: 7pt; color: #64748b;">${formatTimestamp((row.approvals || []).find(a => a.stepOrder === 1)?.signedAt)}</p>
+                  </div>
+                </td>
+                <td style="border: 1px solid black; height: 60px; vertical-align: bottom; padding: 4px;">
+                  <div style="font-size: 7.5pt; color: #059669; font-weight: bold; margin-bottom: 8px;">
+                    ${(row.approvals || []).find(a => a.stepOrder === 2)?.status === 'approved' ? 'Tanda Tangan Sah' : '<span style="color: #94a3b8; font-style: italic;">Menunggu TTD</span>'}
+                  </div>
+                  <div style="border-top: 1px solid #cbd5e1; padding-top: 2px;">
+                    <p style="font-weight: bold; font-size: 8pt;">${(row.approvals || []).find(a => a.stepOrder === 2)?.approverName || 'Leader Lapangan'}</p>
+                    <p style="font-size: 7pt; color: #64748b;">${formatTimestamp((row.approvals || []).find(a => a.stepOrder === 2)?.signedAt)}</p>
+                  </div>
+                </td>
+                <td style="border: 1px solid black; height: 60px; vertical-align: bottom; padding: 4px;">
+                  <div style="font-size: 7.5pt; color: #94a3b8; font-style: italic; margin-bottom: 8px;">
+                    Tanda Tangan Basah
+                  </div>
+                  <div style="border-top: 1px solid #cbd5e1; padding-top: 2px;">
+                    <p style="font-weight: bold; font-size: 8pt;">&nbsp;</p>
+                    <p style="font-size: 7pt; color: #64748b;">Customer</p>
+                  </div>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -1483,8 +1702,8 @@ async function uploadActivityPhoto(file: File): Promise<string> {
           </div>
         `
         await downloadHtmlAsPdf(contentHtml, `DailyActivity_${row.sessionCode.replace(/[\/\\]/g, '_')}.pdf`)
+        toast.success('PDF berhasil diunduh!', { id: 'act-pdf-dl' })
       }
-      toast.success('PDF berhasil diunduh!', { id: 'act-pdf-dl' })
     } catch (err) {
       console.error('Download error:', err)
       toast.error('Gagal mengunduh PDF', { id: 'act-pdf-dl' })
@@ -1589,28 +1808,44 @@ async function uploadActivityPhoto(file: File): Promise<string> {
           </tbody>
         </table>
 
-        <div style="font-weight: bold; margin-bottom: 0.25rem;">B. Signatories & Verification Matrix</div>
+        <div style="font-weight: bold; margin-bottom: 0.25rem;">B. Signatories</div>
         <table style="width: 100%; border-collapse: collapse; text-align: center;">
           <thead>
             <tr style="background: #f8fafc; font-weight: bold;">
               <th style="border: 1px solid black; padding: 3px 5px; width: 33%;">Pemohon / Karyawan</th>
-              <th style="border: 1px solid black; padding: 3px 5px; width: 33%;">Leader / Pengawas</th>
-              <th style="border: 1px solid black; padding: 3px 5px; width: 33%;">Section Head</th>
+              <th style="border: 1px solid black; padding: 3px 5px; width: 33%;">Leader / PJO</th>
+              <th style="border: 1px solid black; padding: 3px 5px; width: 33%;">Customer</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              ${(row.approvals || []).map((a) => `
-                <td style="border: 1px solid black; height: 60px; vertical-align: bottom; padding: 4px;">
-                  <div style="font-size: 7.5pt; color: #059669; font-weight: bold; margin-bottom: 8px;">
-                    ${a.status === 'approved' ? 'Tanda Tangan Sah' : '<span style="color: #94a3b8; font-style: italic;">Menunggu TTD</span>'}
-                  </div>
-                  <div style="border-top: 1px solid #cbd5e1; padding-top: 2px;">
-                    <p style="font-weight: bold; font-size: 8pt;">${a.approverName || '—'}</p>
-                    <p style="font-size: 7pt; color: #64748b;">${formatTimestamp(a.signedAt)}</p>
-                  </div>
-                </td>
-              `).join('')}
+              <td style="border: 1px solid black; height: 60px; vertical-align: bottom; padding: 4px;">
+                <div style="font-size: 7.5pt; color: #059669; font-weight: bold; margin-bottom: 8px;">
+                  ${(row.approvals || []).find(a => a.stepOrder === 1)?.status === 'approved' ? 'Tanda Tangan Sah' : '<span style="color: #94a3b8; font-style: italic;">Menunggu TTD</span>'}
+                </div>
+                <div style="border-top: 1px solid #cbd5e1; padding-top: 2px;">
+                  <p style="font-weight: bold; font-size: 8pt;">${(row.approvals || []).find(a => a.stepOrder === 1)?.approverName || row.employeeName || '—'}</p>
+                  <p style="font-size: 7pt; color: #64748b;">${formatTimestamp((row.approvals || []).find(a => a.stepOrder === 1)?.signedAt)}</p>
+                </div>
+              </td>
+              <td style="border: 1px solid black; height: 60px; vertical-align: bottom; padding: 4px;">
+                <div style="font-size: 7.5pt; color: #059669; font-weight: bold; margin-bottom: 8px;">
+                  ${(row.approvals || []).find(a => a.stepOrder === 2)?.status === 'approved' ? 'Tanda Tangan Sah' : '<span style="color: #94a3b8; font-style: italic;">Menunggu TTD</span>'}
+                </div>
+                <div style="border-top: 1px solid #cbd5e1; padding-top: 2px;">
+                  <p style="font-weight: bold; font-size: 8pt;">${(row.approvals || []).find(a => a.stepOrder === 2)?.approverName || 'Leader Lapangan'}</p>
+                  <p style="font-size: 7pt; color: #64748b;">${formatTimestamp((row.approvals || []).find(a => a.stepOrder === 2)?.signedAt)}</p>
+                </div>
+              </td>
+              <td style="border: 1px solid black; height: 60px; vertical-align: bottom; padding: 4px;">
+                <div style="font-size: 7.5pt; color: #94a3b8; font-style: italic; margin-bottom: 8px;">
+                  Tanda Tangan Basah
+                </div>
+                <div style="border-top: 1px solid #cbd5e1; padding-top: 2px;">
+                  <p style="font-weight: bold; font-size: 8pt;">&nbsp;</p>
+                  <p style="font-size: 7pt; color: #64748b;">Customer</p>
+                </div>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -1771,13 +2006,15 @@ async function uploadActivityPhoto(file: File): Promise<string> {
               <span>{selectedIds.length} dari {filteredRows.length} aktivitas terpilih</span>
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                onClick={handleOpenBatchReview}
-                className="h-8 rounded-lg bg-indigo-600 px-4 text-xs font-bold text-white uppercase shadow-sm hover:bg-indigo-700"
-              >
-                REVIEW
-              </Button>
+              {canBatchReview && (
+                <Button
+                  size="sm"
+                  onClick={handleOpenBatchReview}
+                  className="h-8 rounded-lg bg-indigo-600 px-4 text-xs font-bold text-white uppercase shadow-sm hover:bg-indigo-700"
+                >
+                  REVIEW
+                </Button>
+              )}
               <Button
                 size="sm"
                 variant="outline"
@@ -1895,13 +2132,75 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                     <SessionStatusBadge status={row.sessionStatus} />
                   </TableCell>
                   <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                    <EnterpriseActionButtons
-                      access={access}
-                      labels={{ view: 'Print Preview', edit: 'Edit', delete: 'Hapus' }}
-                      onView={() => setPreviewTarget(row)}
-                      onEdit={() => router.push(`/dashboard/activity-hub/document/${row.sessionId}/approval`)}
-                      onDelete={() => setDeleteTarget(row)}
-                    />
+                    {(() => {
+                      const isComplete = ['approved', 'closed', 'completed'].includes((row.sessionStatus || '').toLowerCase())
+                      const isRequester = Boolean(
+                        currentEmployeeId &&
+                          row.employeeId &&
+                          Number(row.employeeId) === Number(currentEmployeeId)
+                      )
+                      const canEdit =
+                        ['draft', 'returned', 'reverted', 'needs_revision'].includes((row.sessionStatus || '').toLowerCase()) &&
+                        isRequester
+
+                      const canDeleteThisRow = true
+                      const isDeleteDisabled = false
+
+                      return (
+                        <div className="flex min-w-max items-center justify-end gap-1">
+                          {/* Tombol Unduh PDF Dokumen Resmi */}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="denseIcon"
+                            onClick={() => handleDownloadActivityPdf(row)}
+                            disabled={isDownloadingPdf}
+                            title="Unduh PDF Dokumen Resmi"
+                            className="text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 cursor-pointer"
+                          >
+                            <Download className="size-4" />
+                          </Button>
+
+                          {/* Tombol Print / Live Preview */}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="denseIcon"
+                            onClick={() => setPreviewTarget(row)}
+                            title="Lihat Preview Dokumen"
+                            className="text-slate-600 hover:text-slate-900 cursor-pointer"
+                          >
+                            <Eye className="size-4" />
+                          </Button>
+
+                          {/* Tombol Edit Form HANYA JIKA DRAFT, REVISI, ATAU REJECT (TIDAK MUNCUL JIKA SUBMITTED / APPROVED) */}
+                          {canEdit ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="denseIcon"
+                              onClick={() => router.push(`/dashboard/activity-hub/document/${row.sessionId}/approval`)}
+                              title="Edit & Revisi Aktivitas"
+                              className="text-slate-600 hover:text-[#003461] cursor-pointer"
+                            >
+                              <FilePenLine className="size-4" />
+                            </Button>
+                          ) : null}
+
+                          {/* Tombol Hapus */}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="denseIcon"
+                            onClick={() => setDeleteTarget(row)}
+                            title="Hapus Aktivitas"
+                            className="text-slate-600 hover:text-destructive hover:bg-rose-50 cursor-pointer"
+                          >
+                            <Trash2 className="size-4 text-destructive" />
+                          </Button>
+                        </div>
+                      )
+                    })()}
                   </TableCell>
                 </TableRow>
               )
@@ -2041,7 +2340,7 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                         {currentBatchDoc.teamMembersSummary ? (
                           <tr>
                             <td colSpan={2}>
-                              <span className="font-bold">Anggota Tim:</span> {currentBatchDoc.teamMembersSummary}
+                              Anggota Tim: <span className="text-black font-normal">{currentBatchDoc.teamMembersSummary}</span>
                             </td>
                           </tr>
                         ) : null}
@@ -2056,12 +2355,11 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                       <thead>
                         <tr className="bg-slate-50 text-center font-bold">
                           <th className="w-[5%]">#</th>
-                          <th className="text-left w-[33%]">Aktivitas</th>
-                          <th className="w-[12%]">Unit</th>
-                          <th className="w-[10%]">Durasi</th>
-                          <th className="w-[8%]">Poin</th>
-                          <th className="w-[12%]">Evidence (QR)</th>
-                          <th className="text-left w-[20%]">Remark</th>
+                          <th className="text-left w-[38%]">Aktivitas</th>
+                          <th className="w-[14%]">Unit</th>
+                          <th className="w-[12%]">Durasi</th>
+                          <th className="w-[10%]">Poin</th>
+                          <th className="text-left w-[21%]">Remark</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2073,24 +2371,12 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                               <td className="text-center align-middle">{item.unitNumber || '-'}</td>
                               <td className="text-center align-middle">{item.duration || '-'}</td>
                               <td className="text-center font-semibold align-middle">{item.points}</td>
-                              <td className="text-center align-middle">
-                                <div
-                                  onClick={() => {
-                                    setSelectedEvidenceSessionId(Number(currentBatchDoc.sessionId))
-                                    setIsEvidenceModalOpen(true)
-                                  }}
-                                  className="inline-flex flex-col items-center justify-center cursor-pointer hover:opacity-80 transition-opacity p-0.5"
-                                  title="Klik untuk melihat bukti foto aktivitas"
-                                >
-                                  <DailyActivityEvidenceQr sessionId={currentBatchDoc.sessionId} size={28} />
-                                </div>
-                              </td>
                               <td className="text-left text-[7.5pt] align-middle">{item.remark || '-'}</td>
                             </tr>
                           ))
                         ) : (
                           <tr>
-                            <td colSpan={7} className="text-center text-gray-400 py-2">Belum ada item aktivitas.</td>
+                            <td colSpan={6} className="text-center text-gray-400 py-2">Belum ada item aktivitas.</td>
                           </tr>
                         )}
                       </tbody>
@@ -2121,7 +2407,7 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                               <tr key={step.stepOrder}>
                                 <td>{step.stepOrder}</td>
                                 <td className="text-left">{step.stepLabel}</td>
-                                <td className="text-left">{step.approverName || '-'}</td>
+                                <td className="text-left font-semibold">{step.approverName || '-'}</td>
                                 <td className="capitalize font-semibold">
                                   {step.stepOrder === 1 && step.status === 'approved'
                                     ? 'Signed (Diajukan)'
@@ -2147,18 +2433,21 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                         const remark1 = isStep1Active && approvalRemarks[currentBatchDoc.sessionId]
                           ? approvalRemarks[currentBatchDoc.sessionId]
                           : step1?.remarks
+                        const isApproved1 = step1?.status === 'approved' && Boolean(step1?.signatureDataUrl)
                         return (
                           <div>
                             <div className="text-[7pt] text-gray-500 mb-1">Employee Signature</div>
                             <div className="h-16 flex items-end">
-                              {step1?.signatureDataUrl && (
+                              {isApproved1 && step1?.signatureDataUrl ? (
                                 <img src={step1.signatureDataUrl} alt="TTD" className="h-14 object-contain" />
+                              ) : (
+                                <span className="text-slate-400 italic text-[7.5pt]">(Belum Disetujui)</span>
                               )}
                             </div>
-                            <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>
+                            <div className="mb-1 border-b font-bold text-[8.5pt]" style={{ width: '80%', borderColor: '#9ca3af' }}>
                               {currentBatchDoc.employeeName}
                             </div>
-                            <div className="text-[7pt]">{currentBatchDoc.jobTitle || 'Employee'}</div>
+                            <div className="text-[7pt] text-gray-600">{currentBatchDoc.jobTitle || 'Employee'}</div>
                             <div className="text-[6.5pt] text-gray-500">{formatTimestamp(step1?.signedAt)}</div>
                             {remark1 ? <div className="text-[6.5pt] italic text-slate-600 mt-0.5 max-w-[160px] leading-tight break-words whitespace-normal" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>Catatan: {remark1}</div> : null}
                           </div>
@@ -2173,49 +2462,38 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                         const remark2 = isStep2Active && approvalRemarks[currentBatchDoc.sessionId]
                           ? approvalRemarks[currentBatchDoc.sessionId]
                           : step2?.remarks
+                        const isApproved2 = step2?.status === 'approved' && Boolean(step2?.signatureDataUrl)
                         return (
                           <div>
                             <div className="text-[7pt] text-gray-500 mb-1">Leader / Supervisor Signature</div>
                             <div className="h-16 flex items-end">
-                              {step2?.signatureDataUrl && (
+                              {isApproved2 && step2?.signatureDataUrl ? (
                                 <img src={step2.signatureDataUrl} alt="TTD" className="h-14 object-contain" />
+                              ) : (
+                                <span className="text-slate-400 italic text-[7.5pt]"></span>
                               )}
                             </div>
-                            <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>
+                            <div className="mb-1 border-b font-bold text-[8.5pt]" style={{ width: '80%', borderColor: '#9ca3af' }}>
                               {step2?.approverName || 'Leader / Supervisor'}
                             </div>
-                            <div className="text-[7pt]">{step2?.stepLabel || 'Leader'}</div>
+                            <div className="text-[7pt] text-gray-600">{step2?.stepLabel || 'Leader'}</div>
                             <div className="text-[6.5pt] text-gray-500">{formatTimestamp(step2?.signedAt)}</div>
                             {remark2 ? <div className="text-[6.5pt] italic text-slate-600 mt-0.5 max-w-[160px] leading-tight break-words whitespace-normal" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>Catatan: {remark2}</div> : null}
                           </div>
                         )
                       })()}
 
-                      {/* 3. Section Head */}
-                      {(() => {
-                        const activeStep = currentBatchDoc.approvals.find(a => a.status === 'pending') || currentBatchDoc.approvals[0]
-                        const step3 = currentBatchDoc.approvals.find(a => a.stepOrder === 3)
-                        const isStep3Active = step3 && step3.status === 'pending' && step3.stepOrder === activeStep?.stepOrder
-                        const remark3 = isStep3Active && approvalRemarks[currentBatchDoc.sessionId]
-                          ? approvalRemarks[currentBatchDoc.sessionId]
-                          : step3?.remarks
-                        return (
-                          <div>
-                            <div className="text-[7pt] text-gray-500 mb-1">Section Head Signature</div>
-                            <div className="h-16 flex items-end">
-                              {step3?.signatureDataUrl && (
-                                <img src={step3.signatureDataUrl} alt="TTD" className="h-14 object-contain" />
-                              )}
-                            </div>
-                            <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>
-                              {step3?.approverName || 'Section Head'}
-                            </div>
-                            <div className="text-[7pt]">{step3?.stepLabel || 'Section Head'}</div>
-                            <div className="text-[6.5pt] text-gray-500">{formatTimestamp(step3?.signedAt)}</div>
-                            {remark3 ? <div className="text-[6.5pt] italic text-slate-600 mt-0.5 max-w-[160px] leading-tight break-words whitespace-normal" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>Catatan: {remark3}</div> : null}
-                          </div>
-                        )
-                      })()}
+                      {/* 3. Customer */}
+                      <div>
+                        <div className="text-[7pt] text-gray-500 mb-1">Customer Signature</div>
+                        <div className="h-16 flex items-end">
+                          <span className="text-slate-400 italic text-[7.5pt]"></span>
+                        </div>
+                        <div className="mb-1 border-b font-bold text-[8.5pt]" style={{ width: '80%', borderColor: '#9ca3af' }}>
+                          &nbsp;
+                        </div>
+                        <div className="text-[7pt] text-gray-600">Customer</div>
+                      </div>
                     </div>
 
                     <div className="text-right text-[7pt] text-gray-500 mt-2">
@@ -2352,270 +2630,356 @@ async function uploadActivityPhoto(file: File): Promise<string> {
         </DialogContent>
       </Dialog>
 
-      {/* PDF Quick Preview Dialog - Overtime Record Viewer Style */}
+      {/* PDF Quick Preview Dialog - Modern Zoomable & Draggable Viewer */}
       <Dialog open={Boolean(previewTarget)} onOpenChange={(open) => !open && setPreviewTarget(null)}>
-        <DialogContent showCloseButton={false} className="max-w-4xl max-h-[88vh] flex flex-col p-0 overflow-hidden bg-[#2d3238] border-slate-700 shadow-2xl rounded-xl">
+        <DialogContent showCloseButton={false} className="max-w-[96vw] xl:max-w-6xl 2xl:max-w-7xl max-h-[94vh] h-[94vh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-2xl">
           {/* Top Viewer Toolbar */}
-          <div className="bg-[#1e232a] px-4 py-2.5 flex items-center justify-between border-b border-slate-700/80 select-none text-white">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="text-sm">📄</span>
-              <span className="font-semibold text-xs text-slate-100 truncate">
-                Daily Activity Report • {previewTarget?.sessionCode}
-              </span>
+          <div className="bg-white px-4 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between border-b border-slate-200 text-slate-900 shrink-0 select-none">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="size-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
+                <FileText className="size-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-bold text-xs sm:text-sm text-slate-900 truncate">
+                  Daily Activity Report • <span className="font-mono text-indigo-600">{previewTarget?.sessionCode}</span>
+                </p>
+                <p className="text-[11px] text-slate-500 truncate hidden sm:block">
+                  {previewTarget?.employeeName} ({previewTarget?.employeeSn}) • {formatDate(previewTarget?.workDate || '')} • Shift {previewTarget?.shiftCode}
+                </p>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded bg-slate-800 text-[11px] font-mono text-slate-300 border border-slate-700">
-                1 / 1
-              </span>
+
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              {/* Zoom Controls */}
+              <div className="flex items-center bg-slate-100 rounded-xl p-0.5 border border-slate-200 shadow-xs">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setViewerZoom((z) => Math.max(0.4, Number((z - 0.15).toFixed(2))))}
+                  className="h-7 w-7 p-0 text-slate-600 hover:text-slate-900 rounded-lg"
+                  title="Zoom Out"
+                >
+                  <ZoomOut className="size-3.5" />
+                </Button>
+                <span className="text-[11px] font-mono font-semibold text-slate-700 px-1 min-w-[38px] text-center select-none">
+                  {Math.round(viewerZoom * 100)}%
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setViewerZoom((z) => Math.min(3.0, Number((z + 0.15).toFixed(2))))}
+                  className="h-7 w-7 p-0 text-slate-600 hover:text-slate-900 rounded-lg"
+                  title="Zoom In"
+                >
+                  <ZoomIn className="size-3.5" />
+                </Button>
+                {(viewerZoom !== 1.0 || panOffset.x !== 0 || panOffset.y !== 0) && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleResetView}
+                    className="h-6 px-1.5 text-[9px] font-bold text-slate-500 hover:text-slate-900 rounded-md ml-0.5"
+                  >
+                    Reset
+                  </Button>
+                )}
+              </div>
+
+              {/* Preset Buttons */}
+              <div className="hidden lg:flex items-center bg-slate-100 rounded-xl p-0.5 border border-slate-200">
+                {[
+                  { label: '60%', val: 0.6 },
+                  { label: '80%', val: 0.8 },
+                  { label: '100%', val: 1.0 },
+                  { label: '125%', val: 1.25 },
+                ].map((p) => (
+                  <button
+                    key={p.label}
+                    type="button"
+                    onClick={() => { setViewerZoom(p.val); setPanOffset({ x: 0, y: 0 }); }}
+                    className={cn(
+                      "px-2 py-1 text-[10px] font-semibold rounded-lg transition-colors",
+                      Math.abs(viewerZoom - p.val) < 0.05
+                        ? "bg-white text-indigo-700 shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    )}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+
               <Button
                 size="sm"
-                variant="secondary"
-                className="h-7 text-xs rounded font-semibold gap-1.5 bg-slate-700 hover:bg-slate-600 text-white border-0"
+                variant="outline"
+                className="h-8 text-xs rounded-xl font-medium gap-1.5 border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-xs"
                 disabled={isDownloadingPdf}
                 onClick={() => previewTarget && handleDownloadActivityPdf(previewTarget)}
               >
-                <Download className="size-3.5" /> Unduh PDF
+                <Download className="size-3.5" />
+                <span className="hidden sm:inline">Unduh PDF</span>
               </Button>
-              <Button
-                size="sm"
-                className="h-7 text-xs rounded font-bold gap-1 bg-blue-600 hover:bg-blue-500 text-white"
-                onClick={() => previewTarget && router.push(`/dashboard/activity-hub/document/${previewTarget.sessionId}/approval`)}
-              >
-                Buka Form Approval ↗
-              </Button>
+
               <button
                 type="button"
                 onClick={() => setPreviewTarget(null)}
-                className="text-slate-400 hover:text-white p-1 rounded-md transition-colors"
+                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
               >
-                <X className="size-4" />
+                <X className="size-5" />
               </button>
             </div>
           </div>
 
           {/* Viewer Canvas Area */}
-          {previewTarget && (
-            <div className="flex-1 overflow-y-auto overflow-x-auto bg-[#383d47] p-5 flex justify-center items-start">
+          {previewTarget && (() => {
+            const baseScale = 0.80
+            const effectiveScale = baseScale * viewerZoom
+            const originalHeightMm = 297
+            const marginOffsetMm = -Math.round(originalHeightMm * (1 - effectiveScale))
+
+            const step1 = previewTarget.approvals.find(a => a.stepOrder === 1)
+            const step2 = previewTarget.approvals.find(a => a.stepOrder === 2)
+            const step3 = previewTarget.approvals.find(a => a.stepOrder === 3)
+            const isSigned1 = step1?.status === 'approved' && Boolean(step1?.signatureDataUrl)
+            const isApproved2 = step2?.status === 'approved' && Boolean(step2?.signatureDataUrl)
+            const isApproved3 = step3?.status === 'approved' && Boolean(step3?.signatureDataUrl)
+
+            return (
               <div
-                id="activity-preview-sheet"
-                className="relative mx-auto w-[210mm] min-h-[297mm] shrink-0 overflow-hidden bg-white shadow-[0_10px_35px_rgba(0,0,0,0.5)] rounded-xs"
-                style={{
-                  backgroundImage: 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)',
-                  backgroundSize: '100% 100%',
-                }}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+                className={cn(
+                  "relative flex-1 flex justify-center items-start overflow-hidden p-4 sm:p-6 select-none bg-slate-200/70",
+                  isDragging ? "cursor-grabbing" : "cursor-grab"
+                )}
+                title="Klik dan tahan untuk menggeser preview dokumen"
               >
                 <div
-                  className="relative z-10 outline-none text-[8.5pt] font-sans leading-tight"
+                  id="activity-preview-sheet"
+                  className={cn(
+                    "relative mx-auto w-[210mm] min-h-[297mm] shrink-0 bg-white shadow-2xl border border-slate-200/90 rounded-sm origin-top",
+                    isDragging ? "transition-none" : "transition-transform duration-150 ease-out"
+                  )}
                   style={{
-                    color: 'black',
-                    paddingTop: '38mm',
-                    paddingBottom: '35mm',
-                    paddingLeft: '20mm',
-                    paddingRight: '20mm',
-                    minHeight: '297mm',
-                    overflow: 'hidden',
+                    backgroundImage: 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)',
+                    backgroundSize: '100% 100%',
+                    transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${effectiveScale})`,
+                    transformOrigin: 'top center',
+                    marginBottom: `${marginOffsetMm}mm`,
                   }}
                 >
-                  {/* Header Document with Scan Evidence QR */}
-                  <div className="relative mb-3">
-                    <div className="text-center">
+                  <div
+                    className="relative z-10 outline-none text-[8.5pt] font-sans leading-tight text-black"
+                    style={{
+                      paddingTop: '38mm',
+                      paddingBottom: '35mm',
+                      paddingLeft: '20mm',
+                      paddingRight: '20mm',
+                      minHeight: '297mm',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {/* Header Document */}
+                    <div className="text-center mb-3">
                       <h1 className="font-bold text-[11pt] mb-0.5 uppercase">PT. CHITRA PARATAMA</h1>
-                      <h2 className="font-bold text-[12pt] uppercase">{((previewTarget as any).splId || (previewTarget as any).spl) ? 'SURAT PERINTAH LEMBUR' : 'FORM DAILY ACTIVITY'}</h2>
+                      <h2 className="font-bold text-[12pt] uppercase tracking-wider">{((previewTarget as any).splId || (previewTarget as any).spl) ? 'SURAT PERINTAH LEMBUR' : 'DAILY ACTIVITY APPROVAL REPORT'}</h2>
                     </div>
 
-                    <div
-                      onClick={() => {
-                        setEvidenceModalSessionId(previewTarget.sessionId)
-                        setIsEvidenceModalOpen(true)
-                      }}
-                      className="absolute right-0 top-0 flex flex-col items-center justify-center p-1 bg-white border border-slate-300 rounded shadow-xs cursor-pointer hover:border-indigo-500 hover:shadow-md transition-all group select-none"
-                      title="Klik untuk membuka galeri foto bukti pekerjaan"
-                    >
-                      {previewTargetQrDataUrl ? (
-                        <img src={previewTargetQrDataUrl} alt="Evidence QR" className="w-11 h-11 object-contain" />
-                      ) : (
-                        <div className="w-11 h-11 bg-slate-100 flex items-center justify-center text-[6pt] text-slate-400">
-                          QR Code
-                        </div>
-                      )}
-                      <span className="text-[6pt] font-bold text-slate-800 mt-0.5 group-hover:text-indigo-600 leading-tight">Scan Evidence</span>
-                      <span className="text-[5pt] text-slate-500 leading-tight">Klik Bukti</span>
-                    </div>
-                  </div>
-
-                  {/* Section 1: Details */}
-                  <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8.5pt]">
-                    <tbody>
-                      <tr>
-                        <td colSpan={2} className="font-bold bg-slate-50">Details</td>
-                      </tr>
-                      <tr>
-                        <td className="w-1/2">Tanggal Kerja: {formatDate(previewTarget.workDate)}</td>
-                        <td className="w-1/2">Shift: {previewTarget.shiftCode || '—'}</td>
-                      </tr>
-                      <tr>
-                        <td>Kode Sesi: {previewTarget.sessionCode}</td>
-                        <td>Status: <span className="capitalize font-semibold">{previewTarget.sessionStatus}</span></td>
-                      </tr>
-                      <tr>
-                        <td colSpan={2} className="font-bold bg-slate-50">Employee Profile</td>
-                      </tr>
-                      <tr>
-                        <td>Nama: {previewTarget.employeeName}</td>
-                        <td>SN: {previewTarget.employeeSn}</td>
-                      </tr>
-                      <tr>
-                        <td>Job Title: {previewTarget.jobTitle || 'Serviceman'}</td>
-                        <td>Dept / Section: {[previewTarget.department, previewTarget.section].filter(Boolean).join(' / ') || '—'}</td>
-                      </tr>
-                      <tr>
-                        <td>Site: {previewTarget.siteName || '—'}</td>
-                        <td>Customer: {previewTarget.customerName || '—'}</td>
-                      </tr>
-                      {previewTarget.teamMembersSummary ? (
+                    {/* Section 1: Details */}
+                    <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8.5pt]">
+                      <tbody>
                         <tr>
-                          <td colSpan={2}>
-                            <span className="font-bold">Anggota Tim:</span> {previewTarget.teamMembersSummary}
-                          </td>
+                          <td colSpan={2} className="font-bold bg-slate-50">Details</td>
                         </tr>
-                      ) : null}
-                    </tbody>
-                  </table>
-
-                  {/* A. Daily Activity Items */}
-                  <div className="font-bold mb-1">
-                    A. Daily Activity Items (Total: {(previewTarget.items || []).length} item, {(previewTarget.items || []).reduce((s, i) => s + (Number(i?.points) || 0), 0) || previewTarget.totalPoints} poin)
-                  </div>
-                  <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8pt]">
-                    <thead>
-                      <tr className="bg-slate-50 text-center font-bold">
-                        <th className="w-[5%]">#</th>
-                        <th className="text-left w-[33%]">Aktivitas</th>
-                        <th className="w-[12%]">Unit</th>
-                        <th className="w-[10%]">Durasi</th>
-                        <th className="w-[8%]">Poin</th>
-                        <th className="w-[12%]">Evidence (QR)</th>
-                        <th className="text-left w-[20%]">Remark</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {previewTarget.items && previewTarget.items.length > 0 ? (
-                        previewTarget.items.map((item, idx) => (
-                          <tr key={item.id || idx}>
-                            <td className="text-center align-middle">{idx + 1}</td>
-                            <td className="align-middle">{item.label}</td>
-                            <td className="text-center align-middle">{item.unitNumber || '-'}</td>
-                            <td className="text-center align-middle">{item.duration || '-'}</td>
-                            <td className="text-center font-semibold align-middle">{item.points}</td>
-                            <td className="text-center align-middle">
-                              <div
-                                onClick={() => {
-                                  setEvidenceModalSessionId(previewTarget.sessionId)
-                                  setIsEvidenceModalOpen(true)
-                                }}
-                                className="inline-flex flex-col items-center justify-center cursor-pointer hover:opacity-80 transition-opacity p-0.5"
-                                title="Klik untuk melihat bukti foto aktivitas"
-                              >
-                                {previewTargetQrDataUrl ? (
-                                  <img src={previewTargetQrDataUrl} alt="QR" className="w-7 h-7 object-contain mx-auto" />
-                                ) : (
-                                  <span className="text-[7pt] text-blue-600 underline">Lihat QR</span>
-                                )}
-                              </div>
+                        <tr>
+                          <td className="w-1/2">Tanggal Kerja: <strong>{formatDate(previewTarget.workDate)}</strong></td>
+                          <td className="w-1/2">Shift: <strong>{previewTarget.shiftCode || 'ALL'}</strong></td>
+                        </tr>
+                        <tr>
+                          <td>Kode Sesi: <strong>{previewTarget.sessionCode}</strong></td>
+                          <td>Status: <span className="capitalize font-bold text-black">{previewTarget.sessionStatus}</span></td>
+                        </tr>
+                        <tr>
+                          <td colSpan={2} className="font-bold bg-slate-50">Employee Profile</td>
+                        </tr>
+                        <tr>
+                          <td>Nama: <strong>{previewTarget.employeeName}</strong></td>
+                          <td>SN: <strong>{previewTarget.employeeSn}</strong></td>
+                        </tr>
+                        <tr>
+                          <td>Job Title: <strong>{previewTarget.jobTitle || 'Serviceman'}</strong></td>
+                          <td>Dept / Section: <strong>{[previewTarget.department, previewTarget.section].filter(Boolean).join(' / ') || '—'}</strong></td>
+                        </tr>
+                        <tr>
+                          <td>Site: <strong>{previewTarget.siteName || '—'}</strong></td>
+                          <td>Customer: <strong>{previewTarget.customerName || 'Default Customer'}</strong></td>
+                        </tr>
+                        {previewTarget.teamMembersSummary ? (
+                          <tr>
+                            <td colSpan={2}>
+                              Anggota Tim: <span className="text-black font-normal">{previewTarget.teamMembersSummary}</span>
                             </td>
-                            <td className="align-middle">{item.remark || '-'}</td>
                           </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan={7} className="text-center text-gray-400 py-2">Belum ada item aktivitas.</td>
+                        ) : null}
+                      </tbody>
+                    </table>
+
+                    {/* A. Daily Activity Items */}
+                    <div className="font-bold mb-1">
+                      A. Daily Activity Items (Total: {(previewTarget.items || []).length} item, {(previewTarget.items || []).reduce((s, i) => s + (Number(i?.points) || 0), 0) || previewTarget.totalPoints} poin)
+                    </div>
+                    <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8pt]">
+                      <thead>
+                        <tr className="bg-slate-50 text-center font-bold">
+                          <th className="w-[5%]">#</th>
+                          <th className="text-left w-[46%]">Aktivitas</th>
+                          <th className="w-[14%]">Durasi</th>
+                          <th className="w-[12%]">Poin</th>
+                          <th className="text-left w-[23%]">Remark</th>
                         </tr>
-                      )}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {previewTarget.items && previewTarget.items.length > 0 ? (
+                          previewTarget.items.map((item, idx) => (
+                            <tr key={item.id || idx}>
+                              <td className="text-center align-middle">{idx + 1}</td>
+                              <td className="align-middle">{item.label}</td>
+                              <td className="text-center align-middle">{item.duration || '-'}</td>
+                              <td className="text-center font-bold align-middle">{item.points}</td>
+                              <td className="align-middle text-[7.5pt]">{item.remark || '-'}</td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={5} className="text-center text-gray-400 py-2">Belum ada item aktivitas.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
 
-                  {/* B. Approval Steps */}
-                  <div className="font-bold mb-1">B. Approval Steps</div>
-                  <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-center text-[8pt]">
-                    <thead>
-                      <tr className="bg-slate-50 font-bold">
-                        <th className="w-[8%]">#</th>
-                        <th className="text-left w-[28%]">Tahap</th>
-                        <th className="text-left w-[28%]">Approver</th>
-                        <th className="w-[16%]">Status</th>
-                        <th className="w-[20%]">Waktu</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {previewTarget.approvals.map((step) => (
-                        <tr key={step.stepOrder}>
-                          <td>{step.stepOrder}</td>
-                          <td className="text-left">{step.stepLabel}</td>
-                          <td className="text-left">{step.approverName || '-'}</td>
-                          <td className="capitalize font-semibold">
-                            {step.stepOrder === 1 && step.status === 'approved'
-                              ? 'Signed (Diajukan)'
-                              : step.status}
-                          </td>
-                          <td className="text-[7pt]">{step.signedAt ? new Date(step.signedAt).toLocaleDateString('id-ID') : '—'}</td>
+                    {/* B. Approval Steps */}
+                    <div className="font-bold mb-1">B. Approval Steps</div>
+                    <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-center text-[8pt]" style={{ tableLayout: 'fixed' }}>
+                      <thead>
+                        <tr className="bg-slate-50 font-bold">
+                          <th className="w-[6%]">#</th>
+                          <th className="text-left w-[22%]">Tahap</th>
+                          <th className="text-left w-[22%]">Approver</th>
+                          <th className="w-[14%]">Status</th>
+                          <th className="w-[16%]">Waktu</th>
+                          <th className="text-left w-[20%]">Catatan</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {previewTarget.approvals
+                          .filter((step) => (step.stepOrder ?? 0) <= 2 && step.approverRole !== 'section_head' && step.approverRole !== 'manager')
+                          .map((step) => (
+                          <tr key={step.stepOrder}>
+                            <td>{step.stepOrder}</td>
+                            <td className="text-left">{step.stepLabel}</td>
+                            <td className="text-left font-semibold">{step.approverName || '-'}</td>
+                            <td className="capitalize font-semibold">
+                              {step.stepOrder === 1 && step.status === 'approved'
+                                ? 'Signed (Diajukan)'
+                                : step.status}
+                            </td>
+                            <td className="text-[7pt] font-mono">{step.signedAt ? new Date(step.signedAt).toLocaleDateString('id-ID') : '—'}</td>
+                            <td className="text-left italic text-slate-600 text-[7.5pt] break-words whitespace-normal leading-tight" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                              {step.remarks || '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
 
-                  {/* Signatories */}
-                  <div className="font-bold mb-3">Signatories</div>
-                  <div className="grid grid-cols-3 gap-x-6 gap-y-4 mb-4">
-                    {/* 1. Karyawan */}
-                    <div>
-                      <div className="text-[7pt] text-gray-500 mb-1">Employee Signature</div>
-                      <div className="h-16 flex items-end">
-                        {previewTarget.approvals.find(a => a.stepOrder === 1)?.signatureDataUrl && (
-                          <img src={previewTarget.approvals.find(a => a.stepOrder === 1)!.signatureDataUrl!} alt="TTD" className="h-14 object-contain" />
-                        )}
+                    {/* Signatories */}
+                    <div className="font-bold mb-3">Signatories</div>
+                    <div className="grid grid-cols-3 gap-x-6 gap-y-4 mb-4">
+                      {/* 1. Karyawan */}
+                      <div>
+                        <div className="text-[7pt] text-gray-500 mb-1">Employee Signature</div>
+                        <div className="h-16 flex items-end">
+                          {isSigned1 && step1?.signatureDataUrl ? (
+                            <img src={step1.signatureDataUrl} alt="TTD" className="h-14 object-contain" />
+                          ) : (
+                            <span className="text-slate-400 italic text-[7.5pt]">(Belum Disetujui)</span>
+                          )}
+                        </div>
+                        <div className="mb-1 border-b font-bold text-[8.5pt]" style={{ width: '80%', borderColor: '#9ca3af' }}>
+                          {previewTarget.employeeName}
+                        </div>
+                        <div className="text-[7pt] text-gray-600">{previewTarget.jobTitle || 'Employee'}</div>
                       </div>
-                      <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>
-                        {previewTarget.employeeName}
+
+                      {/* 2. Leader / PJO */}
+                      <div>
+                        <div className="text-[7pt] text-gray-500 mb-1">Leader / PJO Signature</div>
+                        <div className="h-16 flex items-end">
+                          {isApproved2 && step2?.signatureDataUrl ? (
+                            <img src={step2.signatureDataUrl} alt="TTD" className="h-14 object-contain" />
+                          ) : (
+                            <span className="text-slate-400 italic text-[7.5pt]"></span>
+                          )}
+                        </div>
+                        <div className="mb-1 border-b font-bold text-[8.5pt]" style={{ width: '80%', borderColor: '#9ca3af' }}>
+                          {step2?.approverName || 'Leader / PJO'}
+                        </div>
+                        <div className="text-[7pt] text-gray-600">{step2?.stepLabel || 'Leader / PJO'}</div>
                       </div>
-                      <div className="text-[7pt]">{previewTarget.jobTitle || 'Employee'}</div>
+
+                      {/* 3. Customer (Manual Wet Signature) */}
+                      <div>
+                        <div className="text-[7pt] text-gray-500 mb-1">Customer Signature</div>
+                        <div className="h-16 flex items-end">
+                          {/* Ruang kosong untuk tanda tangan manual basah */}
+                        </div>
+                        <div className="mb-1 border-b font-bold text-[8.5pt] min-h-[14px]" style={{ width: '80%', borderColor: '#9ca3af' }}>
+                          &nbsp;
+                        </div>
+                        <div className="text-[7pt] text-gray-600">Customer</div>
+                      </div>
                     </div>
 
-                    {/* 2. Leader */}
-                    <div>
-                      <div className="text-[7pt] text-gray-500 mb-1">Leader / Supervisor Signature</div>
-                      <div className="h-16 flex items-end">
-                        {previewTarget.approvals.find(a => a.stepOrder === 2)?.signatureDataUrl && (
-                          <img src={previewTarget.approvals.find(a => a.stepOrder === 2)!.signatureDataUrl!} alt="TTD" className="h-14 object-contain" />
-                        )}
+                    {/* Evidence QR in Bottom Right Corner (Clickable to open floating modal) */}
+                    <div className="absolute right-[20mm] bottom-[18mm]">
+                      <div
+                        onClick={() => {
+                          setEvidenceModalSessionId(previewTarget.sessionId)
+                          setIsEvidenceModalOpen(true)
+                        }}
+                        className="flex flex-col items-center justify-start text-center border-l border-slate-200 pl-2 cursor-pointer group select-none transition-transform hover:scale-105 active:scale-95"
+                        title="Klik untuk membuka galeri foto bukti pekerjaan"
+                      >
+                        <div className="h-14 flex items-center justify-center">
+                          {previewTargetQrDataUrl ? (
+                            <img src={previewTargetQrDataUrl} alt="QR Evidence" className="h-12 w-12 object-contain rounded border border-slate-200 p-0.5 bg-white shadow-xs group-hover:border-indigo-500 group-hover:shadow-md transition-all" />
+                          ) : (
+                            <div className="h-12 w-12 rounded border border-dashed border-slate-300 flex items-center justify-center text-[6pt] text-slate-400">
+                              QR Code
+                            </div>
+                          )}
+                        </div>
+                        <span className="text-[6.5pt] font-bold text-slate-800 mt-0.5 group-hover:text-indigo-600 leading-tight">Scan / Klik Bukti Kerja</span>
+                        <span className="text-[5.5pt] text-slate-500 leading-tight">Validasi Dokumen Digital</span>
                       </div>
-                      <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>
-                        {previewTarget.approvals.find(a => a.stepOrder === 2)?.approverName || 'Leader / Supervisor'}
-                      </div>
-                      <div className="text-[7pt]">{previewTarget.approvals.find(a => a.stepOrder === 2)?.stepLabel || 'Leader'}</div>
                     </div>
 
-                    {/* 3. Section Head */}
-                    <div>
-                      <div className="text-[7pt] text-gray-500 mb-1">Section Head Signature</div>
-                      <div className="h-16 flex items-end">
-                        {previewTarget.approvals.find(a => a.stepOrder === 3)?.signatureDataUrl && (
-                          <img src={previewTarget.approvals.find(a => a.stepOrder === 3)!.signatureDataUrl!} alt="TTD" className="h-14 object-contain" />
-                        )}
-                      </div>
-                      <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>
-                        {previewTarget.approvals.find(a => a.stepOrder === 3)?.approverName || 'Section Head'}
-                      </div>
-                      <div className="text-[7pt]">{previewTarget.approvals.find(a => a.stepOrder === 3)?.stepLabel || 'Section Head'}</div>
+                    <div className="text-right text-[7pt] text-gray-500 mt-2">
+                      F.HC.DAR.001.01 • PT Chitra Paratama
                     </div>
-                  </div>
-
-                  <div className="text-right text-[7pt] text-gray-500 mt-2">
-                    F.HC.DAR.001.01 • PT Chitra Paratama
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            )
+          })()}
         </DialogContent>
       </Dialog>
 
@@ -3210,7 +3574,7 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                 <div className="rounded-xl border border-blue-100 bg-white p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                      <Camera className="size-3.5 text-slate-500" /> Photo Evidence
+                      <Camera className="size-3.5 text-slate-500" /> Photo Evidence <span className="text-rose-500 font-bold">*</span>
                     </span>
                     {createForm.assignedPhotoUrl || (createForm.assignedPhotos && createForm.assignedPhotos.length > 0) ? (
                       <Badge className="bg-emerald-100 text-emerald-800 border-0 text-[10px] font-bold">
@@ -3220,7 +3584,11 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                       <Badge className="bg-amber-100 text-amber-800 border-0 text-[10px] font-bold animate-pulse">
                         Mengunggah...
                       </Badge>
-                    ) : null}
+                    ) : (
+                      <Badge className="bg-rose-100 text-rose-700 border-0 text-[10px] font-bold">
+                        Wajib Diunggah
+                      </Badge>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <label className="cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50/70 hover:bg-blue-100/70 py-2 text-xs font-semibold text-blue-800 transition-colors">
@@ -3304,21 +3672,12 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">Equipment / Unit No.</Label>
-                    <Input
-                      placeholder="Contoh: DT-451 / BAY-03"
-                      className="bg-white border-slate-200 h-9 text-xs font-mono"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">Material Used</Label>
-                    <Input
-                      placeholder="Material / tools dipakai"
-                      className="bg-white border-slate-200 h-9 text-xs"
-                    />
-                  </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">Material Used</Label>
+                  <Input
+                    placeholder="Material / tools dipakai"
+                    className="bg-white border-slate-200 h-9 text-xs"
+                  />
                 </div>
 
                 <div className="space-y-1.5">
@@ -3354,7 +3713,7 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                 <div className="rounded-xl border border-sky-100 bg-white p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                      <Camera className="size-3.5 text-slate-500" /> Photo Evidence
+                      <Camera className="size-3.5 text-slate-500" /> Photo Evidence <span className="text-rose-500 font-bold">*</span>
                     </span>
                     {createForm.customPhotoUrl || (createForm.customPhotos && createForm.customPhotos.length > 0) ? (
                       <Badge className="bg-emerald-100 text-emerald-800 border-0 text-[10px] font-bold">
@@ -3364,7 +3723,11 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                       <Badge className="bg-amber-100 text-amber-800 border-0 text-[10px] font-bold animate-pulse">
                         Mengunggah...
                       </Badge>
-                    ) : null}
+                    ) : (
+                      <Badge className="bg-rose-100 text-rose-700 border-0 text-[10px] font-bold">
+                        Wajib Diunggah
+                      </Badge>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <label className="cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50/70 hover:bg-sky-100/70 py-2 text-xs font-semibold text-sky-800 transition-colors">
@@ -3459,23 +3822,12 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">Equipment / Unit No.</Label>
-                    <Input
-                      placeholder="Contoh: DT-451 / BAY-03"
-                      value={createForm.customUnit || ''}
-                      onChange={(e) => setCreateForm((p) => ({ ...p, customUnit: e.target.value }))}
-                      className="bg-white border-slate-200 h-9 text-xs font-mono"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">Material Used</Label>
-                    <Input
-                      placeholder="Material / tools dipakai"
-                      className="bg-white border-slate-200 h-9 text-xs"
-                    />
-                  </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">Material Used</Label>
+                  <Input
+                    placeholder="Material / tools dipakai"
+                    className="bg-white border-slate-200 h-9 text-xs"
+                  />
                 </div>
 
                 <div className="space-y-1.5">
@@ -3856,42 +4208,31 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                             </button>
                           </div>
 
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                          <div className="grid grid-cols-2 gap-2 text-xs">
                             <div className="space-y-1">
-                              <Label className="text-xs font-semibold text-slate-700">Equipment / Unit No.</Label>
+                              <Label className="text-xs font-semibold text-slate-700">Mulai</Label>
                               <Input
-                                placeholder="Unit / equipment number"
-                                value={item.unitNumber || ''}
-                                onChange={(e) => updateItemRow(idx, 'unitNumber', e.target.value)}
-                                className="h-8 text-xs bg-white border-slate-200 font-mono"
+                                type="time"
+                                value={(item as any).startTime || '08:00'}
+                                onChange={(e) => updateItemRow(idx, 'startTime', e.target.value)}
+                                className="h-8 text-xs bg-white border-slate-200 text-center font-mono"
                               />
                             </div>
-                            <div className="grid grid-cols-2 gap-1.5">
-                              <div className="space-y-1">
-                                <Label className="text-xs font-semibold text-slate-700">Mulai</Label>
-                                <Input
-                                  type="time"
-                                  value={(item as any).startTime || '08:00'}
-                                  onChange={(e) => updateItemRow(idx, 'startTime', e.target.value)}
-                                  className="h-8 text-xs bg-white border-slate-200 text-center"
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs font-semibold text-slate-700">Selesai</Label>
-                                <Input
-                                  type="time"
-                                  value={(item as any).endTime || '08:30'}
-                                  onChange={(e) => updateItemRow(idx, 'endTime', e.target.value)}
-                                  className="h-8 text-xs bg-white border-slate-200 text-center"
-                                />
-                              </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs font-semibold text-slate-700">Selesai</Label>
+                              <Input
+                                type="time"
+                                value={(item as any).endTime || '08:30'}
+                                onChange={(e) => updateItemRow(idx, 'endTime', e.target.value)}
+                                className="h-8 text-xs bg-white border-slate-200 text-center font-mono"
+                              />
                             </div>
                           </div>
 
                           <div className="rounded-xl border border-sky-100 bg-sky-50/40 p-3 space-y-2">
                             <div className="flex items-center justify-between">
                               <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                                <Camera className="size-3.5 text-sky-600" /> Photo Evidence
+                                <Camera className="size-3.5 text-sky-600" /> Photo Evidence <span className="text-rose-500 font-bold">*</span>
                               </span>
                               {item.photoUrl || (item.photos && item.photos.length > 0) ? (
                                 <Badge className="bg-emerald-100 text-emerald-800 border-0 text-[10px] font-bold">
@@ -3901,7 +4242,11 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                                 <Badge className="bg-amber-100 text-amber-800 border-0 text-[10px] font-bold animate-pulse">
                                   Mengunggah...
                                 </Badge>
-                              ) : null}
+                              ) : (
+                                <Badge className="bg-rose-100 text-rose-700 border-0 text-[10px] font-bold">
+                                  Wajib Diunggah
+                                </Badge>
+                              )}
                             </div>
 
                             <div className="flex items-center gap-2">
@@ -3990,51 +4335,28 @@ async function uploadActivityPhoto(file: File): Promise<string> {
               <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
                 <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
                   <span className="size-2 rounded-full bg-slate-700"></span>
-                  B. Signatories & Verification Matrix (Penandatangan Approval)
+                  B. Penandatangan Approval (Signatories)
                 </span>
-                <span className="text-[11px] font-mono text-slate-400">2-Tier Verification (Leader & Section Head)</span>
+                <span className="text-[11px] font-mono text-slate-500 font-semibold">Approval Leader / PJO</span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Leader / Supervisor</Label>
-                  <SearchableSelect
-                    label="Leader"
-                    placeholder="PILIH LEADER..."
-                    value={createForm.leaderEmployeeId}
-                    onValueChange={(val) => {
-                      const emp = employees.find((e) => String(e.id) === val)
-                      setCreateForm((p) => ({
-                        ...p,
-                        leaderEmployeeId: val,
-                        leaderName: emp?.name || '',
-                      }))
-                    }}
-                    options={employeeOptions}
-                    widthClassName="w-full"
-                  />
-                  <p className="text-[10px] text-slate-400">Verifikasi tahap 1 (Leader Lapangan / PJO)</p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Section Head</Label>
-                  <SearchableSelect
-                    label="Section Head"
-                    placeholder="PILIH SECTION HEAD..."
-                    value={createForm.superiorEmployeeId}
-                    onValueChange={(val) => {
-                      const emp = employees.find((e) => String(e.id) === val)
-                      setCreateForm((p) => ({
-                        ...p,
-                        superiorEmployeeId: val,
-                        superiorName: emp?.name || '',
-                      }))
-                    }}
-                    options={employeeOptions}
-                    widthClassName="w-full"
-                  />
-                  <p className="text-[10px] text-slate-400">Verifikasi tahap 2 (Kepala Seksi)</p>
-                </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-700">Leader / Supervisor / PJO</Label>
+                <SearchableSelect
+                  label="Leader"
+                  placeholder="PILIH LEADER / PJO..."
+                  value={createForm.leaderEmployeeId}
+                  onValueChange={(val) => {
+                    const emp = employees.find((e) => String(e.id) === val)
+                    setCreateForm((p) => ({
+                      ...p,
+                      leaderEmployeeId: val,
+                      leaderName: emp?.name || '',
+                    }))
+                  }}
+                  options={employeeOptions}
+                  widthClassName="w-full"
+                />
               </div>
             </div>
           </div>
@@ -4221,50 +4543,6 @@ async function uploadActivityPhoto(file: File): Promise<string> {
         isOpen={isEvidenceModalOpen}
         onClose={() => setIsEvidenceModalOpen(false)}
         sessionId={evidenceModalSessionId || previewTarget?.sessionId || null}
-        fallbackData={(() => {
-          if (!previewTarget) return null
-          const processedItems = (previewTarget.items || []).map((item, index) => {
-            const photoUrl = (item as any).photoUrl || null
-            return {
-              id: item.id || index + 1,
-              itemIndex: index + 1,
-              snapshotLabel: item.label,
-              snapshotGroupName: (item as any).group || null,
-              unitNumber: item.unitNumber || null,
-              remark: item.remark || null,
-              actualPoints: Number(item.points) || 0,
-              isChecked: true,
-              startedAt: (item as any).startedAt || null,
-              endedAt: (item as any).endedAt || null,
-              startLabel: '-',
-              endLabel: '-',
-              durationLabel: item.duration || '-',
-              photoUrl,
-            }
-          })
-          return {
-            header: {
-              sessionId: previewTarget.sessionId,
-              sessionCode: previewTarget.sessionCode,
-              workDate: previewTarget.workDate,
-              shiftCode: previewTarget.shiftCode,
-              status: previewTarget.sessionStatus,
-              summaryRemark: null,
-              submittedAt: null,
-              employeeId: 0,
-              employeeName: previewTarget.employeeName,
-              employeeSn: previewTarget.employeeSn,
-              employeeDepartment: previewTarget.department || null,
-              employeeSection: previewTarget.section || null,
-              employeeJobTitle: previewTarget.jobTitle || null,
-              siteId: 0,
-              siteName: previewTarget.siteName || null,
-              customerName: previewTarget.customerName || null,
-            },
-            items: processedItems,
-            teamMembers: [],
-          }
-        })()}
       />
     </AdminPageShell>
   )

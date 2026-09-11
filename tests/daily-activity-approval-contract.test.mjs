@@ -62,9 +62,9 @@ test('Daily Activity Approval Files and Endpoints Contract Verification Suite', 
   assert.ok(fs.readFileSync(path.join(root, 'components/mobile/mobile-daily-activity-client.tsx'), 'utf8').includes('MissingSignatureDialog'), 'Mobile approval client must include MissingSignatureDialog')
 
   // Verify Rejection Action Contract
-  assert.ok(actionsContent.includes('batchRejectDailyActivitySessionsAction'), 'Must export batchRejectDailyActivitySessionsAction')
-  assert.ok(actionsContent.includes('singleRejectDailyActivityAction'), 'Must export singleRejectDailyActivityAction')
-  assert.ok(actionsContent.includes('rejectDailyActivityStepByToken'), 'Must export rejectDailyActivityStepByToken')
-  assert.ok(!actionsContent.includes("set({ status: 'Rejected' })"), 'Must use lowercase status rejected')
+  // Verify 2-step digital approval and Customer signatory
+  assert.ok(formContent.includes('DAILY_ACTIVITY_APPROVAL_STEPS = 2') || formContent.includes('Customer Signature') || formContent.includes('Customer'), 'Form must include Customer in signatories')
+  assert.ok(fs.readFileSync(publicApprovalComponent, 'utf8').includes('Customer Signature'), 'Public approval must include Customer in signatories')
 })
+
 

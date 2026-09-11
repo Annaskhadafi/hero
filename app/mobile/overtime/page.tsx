@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { CheckCheck, Clock3, History, PlusCircle } from 'lucide-react'
+import { CheckCheck, History, PlusCircle } from 'lucide-react'
 
 import { db } from '@/db'
 import { employees, masterDepartments, masterSections, sites } from '@/db/schema/hero'
@@ -205,11 +205,9 @@ export default async function MobileOvertimePage({
       ? 'apply'
       : query.tab === 'approval'
         ? 'approval'
-        : query.tab === 'active'
-          ? 'active'
-          : query.tab === 'history'
-            ? 'history'
-            : 'apply'
+        : query.tab === 'history' || query.tab === 'active'
+          ? 'history'
+          : 'apply'
 
   return (
     <div className="space-y-5 pb-24">
@@ -224,7 +222,7 @@ export default async function MobileOvertimePage({
           <Badge className="border-0 bg-[#eaf4fb] text-[#003f78] font-bold text-xs">{historyRows.length} SPL</Badge>
         </div>
         <p className="text-sm leading-6 font-semibold text-[#486275]">
-          Ajukan, approve, pantau lembur aktif, dan kelola riwayat SPL tanpa membuka desktop.
+          Ajukan, approve, dan kelola riwayat SPL tanpa membuka desktop.
         </p>
       </section>
 
@@ -232,7 +230,7 @@ export default async function MobileOvertimePage({
         key={`tabs-${activeTabValue}-${editSplId || ''}-${parentSplId || ''}`}
         defaultValue={activeTabValue}
       >
-        <TabsList className="grid h-auto w-full grid-cols-4 gap-1 rounded-2xl bg-white p-1 shadow-[0_12px_30px_rgba(8,32,51,0.08)]">
+        <TabsList className="grid h-auto w-full grid-cols-3 gap-1 rounded-2xl bg-white p-1 shadow-[0_12px_30px_rgba(8,32,51,0.08)]">
           <TabsTrigger
             value="apply"
             className="min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-bold text-slate-600 transition-all data-[state=active]:bg-[#003461] data-[state=active]:text-white data-[state=active]:shadow-xs"
@@ -257,21 +255,6 @@ export default async function MobileOvertimePage({
           </TabsTrigger>
 
           <TabsTrigger
-            value="active"
-            className="min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-bold text-slate-600 transition-all data-[state=active]:bg-[#003461] data-[state=active]:text-white data-[state=active]:shadow-xs relative"
-          >
-            <div className="relative flex items-center">
-              <Clock3 className="size-4 shrink-0" />
-              {activeSplCount > 0 && (
-                <span className="absolute -top-1.5 -right-2.5 flex size-4 items-center justify-center rounded-full bg-amber-500 text-[9px] font-black text-white ring-2 ring-white">
-                  {activeSplCount}
-                </span>
-              )}
-            </div>
-            <span>SPL Aktif</span>
-          </TabsTrigger>
-
-          <TabsTrigger
             value="history"
             className="min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-bold text-slate-600 transition-all data-[state=active]:bg-[#003461] data-[state=active]:text-white data-[state=active]:shadow-xs"
           >
@@ -281,40 +264,68 @@ export default async function MobileOvertimePage({
         </TabsList>
 
         <TabsContent value="apply" className="mt-4 space-y-4">
-          <section className="rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)] border border-slate-100">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-              <div>
-                <p className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
-                  {editSplId ? 'Revisi SPL' : parentSplId ? 'Extension SPL' : 'Pengajuan Lembur'}
-                </p>
-                <h2 className="mt-0.5 text-base font-extrabold text-[#003461]">
-                  {editSplId
-                    ? `Revisi Surat Lembur (SPL) #${editSplId}`
-                    : parentSplId
-                      ? `Perpanjangan SPL #${parentSplId}`
-                      : 'Formulir Surat Lembur (SPL)'}
-                </h2>
-              </div>
-              <Badge className="border-0 bg-blue-50 text-blue-700 font-bold text-[10px]">
-                {editSplId ? 'Mode Revisi' : parentSplId ? 'Mode Extension' : 'SPL Baru'}
-              </Badge>
-            </div>
+          {(() => {
+            const isApprovedSpl =
+              (initialSplData?.status || initialSplData?.document?.status || '').toLowerCase() === 'approved' ||
+              (initialSplData?.status || initialSplData?.document?.status || '').toLowerCase() === 'closed';
 
-            <div className="mt-4">
-              <MobileOvertimeRequestForm
-                employees={sanitizedEmployees}
-                currentEmployee={{
-                  id: data.lead.id,
-                  name: data.lead.name,
-                  department: data.lead.department || undefined,
-                  directManagerId: (data.lead as any).directManagerId ?? null,
-                }}
-                parentSplId={parentSplId}
-                editSplId={editSplId}
-                initialSplData={initialSplData}
-              />
-            </div>
-          </section>
+            return (
+              <section className="rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)] border border-slate-100">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                  <div>
+                    <p className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                      {isApprovedSpl
+                        ? 'Dokumen Resmi'
+                        : editSplId
+                          ? 'Revisi SPL'
+                          : parentSplId
+                            ? 'Extension SPL'
+                            : 'Pengajuan Lembur'}
+                    </p>
+                    <h2 className="mt-0.5 text-base font-extrabold text-[#003461]">
+                      {isApprovedSpl
+                        ? `Dokumen Surat Lembur (SPL) ${initialSplData?.splNumber || initialSplData?.document?.splNumber || `#${editSplId}`}`
+                        : editSplId
+                          ? `Revisi Surat Lembur (SPL) #${editSplId}`
+                          : parentSplId
+                            ? `Perpanjangan SPL #${parentSplId}`
+                            : 'Formulir Surat Lembur (SPL)'}
+                    </h2>
+                  </div>
+                  <Badge
+                    className={
+                      isApprovedSpl
+                        ? 'border-0 bg-emerald-50 text-emerald-700 font-bold text-[10px]'
+                        : 'border-0 bg-blue-50 text-blue-700 font-bold text-[10px]'
+                    }
+                  >
+                    {isApprovedSpl
+                      ? 'Disetujui (Terkunci)'
+                      : editSplId
+                        ? 'Mode Revisi'
+                        : parentSplId
+                          ? 'Mode Extension'
+                          : 'SPL Baru'}
+                  </Badge>
+                </div>
+
+                <div className="mt-4">
+                  <MobileOvertimeRequestForm
+                    employees={sanitizedEmployees}
+                    currentEmployee={{
+                      id: data.lead.id,
+                      name: data.lead.name,
+                      department: data.lead.department || undefined,
+                      directManagerId: (data.lead as any).directManagerId ?? null,
+                    }}
+                    parentSplId={parentSplId}
+                    editSplId={editSplId}
+                    initialSplData={initialSplData}
+                  />
+                </div>
+              </section>
+            );
+          })()}
         </TabsContent>
 
         <TabsContent value="approval" className="mt-4 space-y-4">
@@ -338,26 +349,13 @@ export default async function MobileOvertimePage({
                 </Badge>
               )}
             </div>
-            <MobileApprovalCenter data={safeApprovals} categoryFilter="OVERTIME" hideHeader />
-          </div>
-        </TabsContent>
-
-        <TabsContent value="active" className="mt-4 space-y-4">
-          <div className="rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)] border border-slate-100">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3">
-              <div>
-                <p className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
-                  Monitoring Lembur
-                </p>
-                <h2 className="mt-0.5 text-base font-extrabold text-[#003461]">
-                  Daftar SPL Aktif Hari Ini
-                </h2>
-              </div>
-              <Badge className="border-0 bg-amber-50 text-amber-800 font-bold text-[10px]">
-                {activeSplCount} Berjalan
-              </Badge>
-            </div>
-            <MobileSplHistory rows={historyRows} activeOnly />
+            <MobileApprovalCenter
+              data={safeApprovals}
+              categoryFilter="OVERTIME"
+              hideHeader
+              hideScorecards
+              hideTabs
+            />
           </div>
         </TabsContent>
 

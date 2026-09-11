@@ -167,6 +167,8 @@ export default async function IzinKerjaPtwPage() {
       status: a.status || 'waiting',
       approverName: a.approverName || '',
       approverRole: a.approverRole || '',
+      approverEmail: a.approverEmail || null,
+      approverEmployeeId: a.approverEmployeeId ? Number(a.approverEmployeeId) : null,
       signatureDataUrl: a.signatureDataUrl || null,
       remarks: a.remarks || null,
       signedAt: a.signedAt ? new Date(a.signedAt).toISOString() : null,
@@ -219,5 +221,15 @@ export default async function IzinKerjaPtwPage() {
     rank: e.rank || '',
   }))
 
-  return <PtwListingClient rows={rows} employees={sanitizedEmployees} initialSettings={initialSettings} />
+  return (
+    <PtwListingClient
+      rows={rows}
+      employees={sanitizedEmployees}
+      initialSettings={initialSettings}
+      currentEmployeeId={currentEmployee?.id ?? null}
+      currentEmployeeEmail={normalizedEmail}
+      currentEmployeeName={currentEmployee?.name || ''}
+      isAdmin={isGlobalAdmin}
+    />
+  )
 }

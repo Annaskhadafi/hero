@@ -25,8 +25,11 @@ import {
   ChevronRight,
   Download,
   ImagePlus,
+  Layers,
+  ListFilter,
   Search,
   SendHorizontal,
+  Sparkles,
   Users,
   X,
 } from 'lucide-react'
@@ -68,6 +71,38 @@ import { Textarea } from '@/components/ui/textarea'
 import { EnterpriseFormGrid } from '@/components/ui/enterprise-table-kit'
 import { useSidebar } from '@/components/ui/sidebar'
 import { cn } from '@/lib/utils'
+
+type ModalPreset = {
+  id: number
+  code: string
+  name: string
+  basePoints?: number
+  category?: string
+  requiresPhoto?: boolean
+  requiresEquipmentNo?: boolean
+  requiresDuration?: boolean
+  requiresLocationGps?: boolean
+  requiresTireCount?: boolean
+  requiresMaterialUsed?: boolean
+}
+
+type RouteFolder = {
+  id: number
+  routeCode: string
+  routeName: string
+  groups: Array<{
+    id: number
+    groupName: string
+    items: Array<{
+      id: number
+      routeGroupId: number
+      libraryActivityId: number | null
+      itemCode?: string | null
+      itemLabel?: string | null
+      sortOrder?: number | null
+    }>
+  }>
+}
 
 type ApprovalStep = {
   id: number
@@ -177,7 +212,21 @@ function hasVisibleCanvasInk(canvas: HTMLCanvasElement) {
   return false
 }
 
-export function DailyActivityApprovalForm({ data, employees: employeesProp = [], orgNodes = [], masterHeadMap }: { data: ApprovalData; employees?: any[]; orgNodes?: any[]; masterHeadMap?: any }) {
+export function DailyActivityApprovalForm({
+  data,
+  employees: employeesProp = [],
+  orgNodes = [],
+  masterHeadMap,
+  activityPresets = [],
+  routeFolders = [],
+}: {
+  data: ApprovalData
+  employees?: any[]
+  orgNodes?: any[]
+  masterHeadMap?: any
+  activityPresets?: ModalPreset[]
+  routeFolders?: RouteFolder[]
+}) {
   const router = useRouter()
   let sidebarSetOpen: ((open: boolean) => void) | undefined
   try {
@@ -249,6 +298,12 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
     })
   }, [])
 
+  const isComplete = ['approved', 'closed', 'completed'].includes((data?.status || '').toLowerCase())
+  const isRejected = (data?.status || '').toLowerCase() === 'rejected'
+  const isReverted = (data?.status || '').toLowerCase() === 'reverted' || (data?.status || '').toLowerCase() === 'needs_revision'
+  const isDraftOrRevision = ['draft', 'returned', 'reverted', 'needs_revision'].includes((data?.status || '').toLowerCase())
+  const canEditItems = isDraftOrRevision && Boolean(data?.permissions?.isCurrentEmployee)
+
   const [activeStepId, setActiveStepId] = useState<number>(() => {
     const pending = (data?.approvals || []).find((a) => a?.status === 'pending')
     return pending ? pending.id : (data?.approvals?.[0]?.id ?? 1)
@@ -261,6 +316,14 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
     })
     return init
   })
+  const sanitizedInitialCustomer = useMemo(() => {
+    return (data.site?.customerName || '')
+      .replace(/\s*\|\s*\[Team:\s*[^\]]+\]/gi, '')
+      .replace(/\s*\[Team:\s*[^\]]+\]/gi, '')
+      .replace(/\s*\|\s*$/, '')
+      .trim()
+  }, [data.site?.customerName])
+
   const [profileForm, setProfileForm] = useState({
     employeeId: data.employee.id ? String(data.employee.id) : '',
     employeeName: data.employee.name,
@@ -271,7 +334,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
     workDate: formatDateInput(data.workDate) || formatDateInput(new Date()),
     shiftCode: data.shiftCode || 'ALL',
     siteName: data.site.name || '',
-    customerName: data.site.customerName || '',
+    customerName: sanitizedInitialCustomer,
   })
   const initialTeamMatch = (data.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)
   const initialTeamNames = useMemo(
@@ -326,6 +389,136 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
   const [isPickerModalOpen, setIsPickerModalOpen] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
   const [expandedPickerGroups, setExpandedPickerGroups] = useState<Set<string>>(new Set());
+
+  const normalizedPickerSearch = useMemo(() => {
+    return (pickerSearch || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+  }, [pickerSearch])
+
+  const availableLibraryMap = useMemo(() => {
+    const map = new Map<string, ModalPreset>()
+    for (const p of activityPresets || []) {
+      map.set(String(p.id), p)
+      if (p.code) map.set(p.code.toLowerCase(), p)
+    }
+    return map
+  }, [activityPresets])
+
+  const groupedLibraryIdSet = useMemo(() => {
+    const set = new Set<string>()
+    for (const folder of routeFolders || []) {
+      for (const group of folder.groups || []) {
+        for (const item of group.items || []) {
+          if (item.libraryActivityId != null) {
+            set.add(String(item.libraryActivityId))
+          }
+        }
+      }
+    }
+    return set
+  }, [routeFolders])
+
+  const matchingRouteFolders = useMemo(() => {
+    return (routeFolders || [])
+      .map((route) => {
+        const matchingGroups = (route.groups || [])
+          .map((group) => {
+            const matchingItems = (group.items || [])
+              .map((i) => (i.libraryActivityId != null ? availableLibraryMap.get(String(i.libraryActivityId)) : null))
+              .filter((lib): lib is ModalPreset => Boolean(lib))
+              .filter((lib) => {
+                if (!normalizedPickerSearch) return true
+                const nCode = (lib.code || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+                const nName = (lib.name || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+                return nCode.includes(normalizedPickerSearch) || nName.includes(normalizedPickerSearch)
+              })
+            return { ...group, matchingItems }
+          })
+          .filter((group) => (normalizedPickerSearch ? group.matchingItems.length > 0 : true))
+
+        return { ...route, matchingGroups }
+      })
+      .filter((route) => route.matchingGroups.length > 0)
+  }, [routeFolders, availableLibraryMap, normalizedPickerSearch])
+
+  const standaloneLibraries = useMemo(() => {
+    const presets = activityPresets || []
+    return presets
+      .filter((p) => !groupedLibraryIdSet.has(String(p.id)))
+      .filter((p) => {
+        if (!normalizedPickerSearch) return true
+        const nCode = (p.code || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+        const nName = (p.name || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+        return nCode.includes(normalizedPickerSearch) || nName.includes(normalizedPickerSearch)
+      })
+      .sort((a, b) => (b.basePoints || 0) - (a.basePoints || 0))
+  }, [activityPresets, groupedLibraryIdSet, normalizedPickerSearch])
+
+  const totalVisibleLibraryCount = useMemo(() => {
+    const groupCount = (matchingRouteFolders || []).reduce(
+      (sum, r) => sum + (r?.matchingGroups || []).reduce((gSum, g) => gSum + (g?.matchingItems?.length || 0), 0),
+      0
+    )
+    return groupCount + (standaloneLibraries || []).length
+  }, [matchingRouteFolders, standaloneLibraries])
+
+  const toggleGroupItems = (groupItems: ModalPreset[]) => {
+    const isAllSelected = groupItems.every((sub) =>
+      (itemsList || []).some(
+        (i) => (i?.label && sub.code && i.label.includes(sub.code)) || (i?.label && sub.name && i.label.includes(sub.name))
+      )
+    )
+
+    if (isAllSelected) {
+      setItemsList((prev) =>
+        prev.filter(
+          (i) => !groupItems.some((sub) => (i?.label && sub.code && i.label.includes(sub.code)) || (i?.label && sub.name && i.label.includes(sub.name)))
+        )
+      )
+    } else {
+      const missing = groupItems.filter(
+        (sub) => !(itemsList || []).some(
+          (i) => (i?.label && sub.code && i.label.includes(sub.code)) || (i?.label && sub.name && i.label.includes(sub.name))
+        )
+      )
+      setItemsList((prev) => [
+        ...prev,
+        ...missing.map((sub, idx) => ({
+          id: -Date.now() - Math.floor(Math.random() * 10000) - idx,
+          label: `${sub.code} - ${sub.name}`,
+          group: sub.category || 'Technical',
+          unitNumber: '',
+          duration: '30m',
+          points: sub.basePoints || 5,
+          remark: '',
+          sortOrder: prev.length + idx + 1,
+          startTime: '08:00',
+          endTime: '08:30',
+          photoUrl: null,
+        })),
+      ])
+    }
+  }
+
+  const addPresetActivity = (label: string, points = 10, category = 'Technical') => {
+    setItemsList((prev) => {
+      const exists = prev.some((i) => i.label === label)
+      if (exists) return prev
+      const newItem: SessionItem = {
+        id: -Date.now() - Math.floor(Math.random() * 1000),
+        label,
+        group: category,
+        unitNumber: '',
+        remark: '',
+        duration: '30m',
+        points,
+        sortOrder: prev.length + 1,
+        startTime: '08:00',
+        endTime: '08:30',
+        photoUrl: null,
+      }
+      return [...prev, newItem]
+    })
+  }
   
   const initialLeader = data.approvals.find((a) => a.approverRole === 'leader')
   const initialSuperior = data.approvals.find((a) => a.approverRole === 'section_head')
@@ -478,6 +671,34 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
   const allApproved = data.approvals.length > 0 && data.approvals.every((a) => a.status === 'approved')
 
   const handleSaveForm = () => {
+    // 1. Minimum items check
+    if (!itemsList || itemsList.length === 0) {
+      toast.error('Minimal harus ada 1 aktivitas dalam laporan.')
+      return
+    }
+
+    // 2. Strict evidence photo check for each activity item
+    for (let idx = 0; idx < itemsList.length; idx++) {
+      const item = itemsList[idx]
+      const itemNumber = idx + 1
+      const itemLabel = item.label?.includes(' - ')
+        ? item.label.split(' - ').slice(1).join(' - ')
+        : (item.label || `Item #${itemNumber}`)
+
+      const hasPhoto = Boolean(
+        (typeof item.photoUrl === 'string' && item.photoUrl.trim().length > 0) ||
+        (Array.isArray((item as any).photos) && (item as any).photos.length > 0) ||
+        (Array.isArray((item as any).photoUrls) && (item as any).photoUrls.length > 0)
+      )
+
+      if (!hasPhoto) {
+        toast.error(
+          `Foto bukti pekerjaan (evidence) pada item #${itemNumber} (${itemLabel}) wajib diunggah sebelum ${isReverted ? 'mengirim ulang revisi' : 'menyimpan form'}!`
+        )
+        return
+      }
+    }
+
     startTransition(async () => {
       const leaderSignatureDataUrl = (activeStepId ? signaturesByStepId[activeStepId] : undefined) || getCanvasSignatureDataUrl() || previewSig
       const selectedLeader = employeesProp.find((e) => String(e.id) === selectedLeaderId)
@@ -488,6 +709,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
         employeeId: profileForm.employeeId ? Number(profileForm.employeeId) : undefined,
         workDate: profileForm.workDate || undefined,
         shiftCode: profileForm.shiftCode || undefined,
+        customerName: profileForm.customerName?.trim() || undefined,
         items: itemsList,
         itemRemarks,
         leaderSignatureDataUrl: leaderSignatureDataUrl || undefined,
@@ -508,7 +730,8 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
         teamMemberEmployeeIds: isTeamLog ? selectedTeamMemberIds : [],
       })
       if (res.success) {
-        toast.success('Daily Activity Report berhasil disimpan!')
+        toast.success(isReverted ? 'Revisi Daily Activity berhasil dikirim ulang!' : 'Daily Activity Report berhasil disimpan!')
+        router.push('/dashboard/activity-hub/approval')
         router.refresh()
       } else {
         toast.error('Gagal menyimpan: ' + (res.error || 'Terjadi kesalahan'))
@@ -534,6 +757,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
         employeeId: profileForm.employeeId ? Number(profileForm.employeeId) : undefined,
         workDate: profileForm.workDate || undefined,
         shiftCode: profileForm.shiftCode || undefined,
+        customerName: profileForm.customerName?.trim() || undefined,
         items: itemsList,
         itemRemarks,
         leaderEmployeeId: selectedLeader ? selectedLeader.id : undefined,
@@ -561,6 +785,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
       const res = await submitDailyActivityApprovalStepAction({ status: 'idle', message: '' }, fd)
       if (res.status === 'success') {
         toast.success('Persetujuan berhasil ditandatangani!')
+        router.push('/dashboard/activity-hub/approval')
         router.refresh()
       } else {
         toast.error(res.message || 'Gagal memproses approval.')
@@ -585,6 +810,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
       const res = await submitDailyActivityApprovalStepAction({ status: 'idle', message: '' }, fd)
       if (res.status === 'success') {
         toast.success('Aktivitas ditolak.')
+        router.push('/dashboard/activity-hub/approval')
         router.refresh()
       } else {
         toast.error(res.message || 'Gagal menolak approval.')
@@ -603,6 +829,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
       const res = await submitDailyActivityApprovalStepAction({ status: 'idle', message: '' }, fd)
       if (res.status === 'success') {
         toast.success(res.message || 'Dokumen berhasil dikembalikan untuk revisi.')
+        router.push('/dashboard/activity-hub/approval')
         router.refresh()
       } else {
         toast.error(res.message || 'Gagal mengembalikan dokumen.')
@@ -639,15 +866,14 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
     }
   }
 
-  // Display approval history with preview injection (ensuring all 4 sequential steps)
+  // Display approval history with preview injection (2 sequential digital steps)
   const approvalHistoryForDisplay = useMemo(() => {
     const defaultSteps = [
       { stepOrder: 1, stepLabel: 'Karyawan Sign', approverRole: 'employee', id: 1, status: 'pending', approverName: profileForm.employeeName || data.employee.name || 'Karyawan', signatureDataUrl: null, remarks: '', signedAt: null },
-      { stepOrder: 2, stepLabel: 'Leader / Supervisor', approverRole: 'leader', id: 2, status: 'waiting', approverName: employeesProp.find((e) => String(e.id) === selectedLeaderId)?.name || 'Leader Lapangan', signatureDataUrl: null, remarks: '', signedAt: null },
-      { stepOrder: 3, stepLabel: 'Section Head', approverRole: 'section_head', id: 3, status: 'waiting', approverName: employeesProp.find((e) => String(e.id) === selectedSuperiorId)?.name || 'Section Head', signatureDataUrl: null, remarks: '', signedAt: null },
+      { stepOrder: 2, stepLabel: 'Leader / PJO', approverRole: 'leader', id: 2, status: 'waiting', approverName: employeesProp.find((e) => String(e.id) === selectedLeaderId)?.name || 'Leader Lapangan', signatureDataUrl: null, remarks: '', signedAt: null },
     ]
 
-    const filteredApprovals = (data.approvals || []).filter((a) => (a.stepOrder ?? 0) <= 3 && a.approverRole !== 'manager')
+    const filteredApprovals = (data.approvals || []).filter((a) => (a.stepOrder ?? 0) <= 2 && a.approverRole !== 'section_head' && a.approverRole !== 'manager')
 
     const merged = defaultSteps.map((def) => {
       const match = filteredApprovals.find((a) => a.stepOrder === def.stepOrder || a.approverRole === def.approverRole)
@@ -661,7 +887,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
     })
 
     return merged
-      .filter((step) => step.stepOrder <= 3 && step.approverRole !== 'manager')
+      .filter((step) => step.stepOrder <= 2)
       .map((step) => {
         const rawStatus = (step.status || '').toLowerCase()
         const isApproved = ['approved', 'signed', 'completed'].includes(rawStatus)
@@ -688,7 +914,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
           signedAt: currentSignedAt,
         }
       })
-  }, [data.approvals, data.status, data.submittedAt, data.workDate, (data as any).updatedAt, activeStepId, previewSig, previewSignedAt, stepRemarks, signaturesByStepId, profileForm.employeeName, data.employee, selectedLeaderId, selectedSuperiorId, selectedManagerId, employeesProp])
+  }, [data.approvals, data.status, data.submittedAt, data.workDate, (data as any).updatedAt, activeStepId, previewSig, previewSignedAt, stepRemarks, signaturesByStepId, profileForm.employeeName, data.employee, selectedLeaderId, employeesProp])
 
   const employeeSig = approvalHistoryForDisplay.find((a) => a.approverRole === 'employee')
   const leaderSig = approvalHistoryForDisplay.find((a) => a.approverRole === 'leader' || a.approverRole === 'pjo_or_te_initial')
@@ -718,28 +944,10 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
         minHeight: '297mm',
       }}
     >
-      {/* Header Document with Scan Evidence QR */}
-      <div className="relative mb-3">
-        <div className="text-center">
-          <h1 className="font-bold text-[11pt] text-black mb-0.5 uppercase">PT. CHITRA PARATAMA</h1>
-          <h2 className="font-bold text-[12pt] text-black uppercase">{data.spl ? 'SURAT PERINTAH LEMBUR' : 'DAILY ACTIVITY APPROVAL REPORT'}</h2>
-        </div>
-
-        <div
-          onClick={() => setIsEvidenceModalOpen(true)}
-          className="absolute right-0 top-0 flex flex-col items-center justify-center p-1 bg-white border border-slate-300 rounded shadow-xs cursor-pointer hover:border-indigo-500 hover:shadow-md transition-all group select-none"
-          title="Klik untuk membuka galeri foto bukti pekerjaan"
-        >
-          {evidenceQrDataUrl ? (
-            <img src={evidenceQrDataUrl} alt="Evidence QR" className="w-11 h-11 object-contain" />
-          ) : (
-            <div className="w-11 h-11 bg-slate-100 flex items-center justify-center text-[6pt] text-slate-400">
-              QR Code
-            </div>
-          )}
-          <span className="text-[6pt] font-bold text-slate-800 mt-0.5 group-hover:text-indigo-600 leading-tight">Scan Evidence</span>
-          <span className="text-[5pt] text-slate-500 leading-tight">Klik Bukti</span>
-        </div>
+      {/* Header Document */}
+      <div className="text-center mb-3">
+        <h1 className="font-bold text-[11pt] text-black mb-0.5 uppercase">PT. CHITRA PARATAMA</h1>
+        <h2 className="font-bold text-[12pt] text-black uppercase tracking-wider">{data.spl ? 'SURAT PERINTAH LEMBUR' : 'DAILY ACTIVITY APPROVAL REPORT'}</h2>
       </div>
 
       <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-2 [&_td]:py-1 text-[8.5pt]">
@@ -769,7 +977,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
           {currentTeamMembersSummary ? (
             <tr>
               <td colSpan={2}>
-                Anggota Tim: <strong className="text-blue-900">{currentTeamMembersSummary}</strong>
+                Anggota Tim: <span className="text-black font-normal">{currentTeamMembersSummary}</span>
               </td>
             </tr>
           ) : null}
@@ -784,11 +992,10 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
         <thead>
           <tr className="bg-gray-100 font-bold text-center">
             <th className="w-[5%]">#</th>
-            <th className="text-left w-[38%]">Aktivitas</th>
-            <th className="w-[14%]">Unit</th>
-            <th className="w-[12%]">Durasi</th>
-            <th className="w-[10%]">Poin</th>
-            <th className="text-left w-[21%]">Remark</th>
+            <th className="text-left w-[46%]">Aktivitas</th>
+            <th className="w-[14%]">Durasi</th>
+            <th className="w-[12%]">Poin</th>
+            <th className="text-left w-[23%]">Remark</th>
           </tr>
         </thead>
         <tbody>
@@ -797,7 +1004,6 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
               <tr key={item.id || idx}>
                 <td className="text-center align-middle">{idx + 1}</td>
                 <td className="align-middle">{item.label}</td>
-                <td className="text-center align-middle">{item.unitNumber || '-'}</td>
                 <td className="text-center align-middle">{item.duration}</td>
                 <td className="text-center font-bold align-middle">{item.points || 0}</td>
                 <td className="text-left text-[7.5pt] align-middle">{itemRemarks[item.id] || item.remark || '-'}</td>
@@ -805,7 +1011,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
             ))
           ) : (
             <tr>
-              <td colSpan={6} className="text-center text-gray-400 py-3">Belum ada item aktivitas.</td>
+              <td colSpan={5} className="text-center text-gray-400 py-3">Belum ada item aktivitas.</td>
             </tr>
           )}
         </tbody>
@@ -827,8 +1033,8 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
           </tr>
         </thead>
         <tbody>
-          {data.approvals.length > 0 ? (
-            data.approvals.map((step) => {
+          {approvalHistoryForDisplay.length > 0 ? (
+            approvalHistoryForDisplay.map((step) => {
               const liveRemark = stepRemarks[step.id] || step.remarks || '—'
               const isApproved = step.status === 'approved' || step.status === 'signed'
               return (
@@ -856,7 +1062,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
         </tbody>
       </table>
 
-      {/* Signatories (3 Roles: Employee, Leader/PJO, Section Head) */}
+      {/* Signatories (3 Roles: Employee, Leader/PJO, Customer) */}
       <div className="font-bold mb-2 text-[8.5pt]">Signatories</div>
       <div className="grid grid-cols-3 gap-x-6 gap-y-4 mb-3">
         {/* Karyawan */}
@@ -896,7 +1102,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
             )}
           </div>
           <div className="mb-0.5 border-b border-slate-400 font-bold text-[8.5pt]" style={{ width: '80%' }}>
-            {leaderSig?.approverName || data.employee.name}
+            {leaderSig?.approverName || 'Leader / PJO'}
           </div>
           <div className="text-[7pt] text-slate-600 font-medium">Leader / PJO</div>
           {leaderSig?.signedAt && (
@@ -907,28 +1113,16 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
           )}
         </div>
 
-        {/* Section Head */}
+        {/* Customer (Manual Wet Signature) */}
         <div>
-          <div className="text-[7pt] text-gray-500 mb-1">Section Head Signature</div>
+          <div className="text-[7pt] text-gray-500 mb-1">Customer Signature</div>
           <div className="h-14 flex items-end">
-            {sectionHeadSig?.signatureDataUrl ? (
-              <img src={sectionHeadSig.signatureDataUrl} alt="TTD" className="h-10 object-contain" />
-            ) : sectionHeadSig?.status === 'approved' ? (
-              <span className="text-emerald-700 font-serif italic font-bold text-[9pt]">{sectionHeadSig.approverName || 'Section Head'}</span>
-            ) : (
-              <span className="text-slate-400 italic text-[7.5pt]"></span>
-            )}
+            {/* Kolom tanda tangan manual basah */}
           </div>
-          <div className="mb-0.5 border-b border-slate-400 font-bold text-[8.5pt]" style={{ width: '80%' }}>
-            {sectionHeadSig?.approverName || data.employee.name}
+          <div className="mb-0.5 border-b border-slate-400 font-bold text-[8.5pt] min-h-[14px]" style={{ width: '80%' }}>
+            &nbsp;
           </div>
-          <div className="text-[7pt] text-slate-600 font-medium">Section Head</div>
-          {sectionHeadSig?.signedAt && (
-            <div className="text-[6.5pt] text-slate-500 mt-0.5">
-              {sectionHeadSig?.status === 'reverted' ? 'Waktu Revert: ' : 'Waktu TTD: '}
-              {fmtDt(sectionHeadSig.signedAt)}
-            </div>
-          )}
+          <div className="text-[7pt] text-slate-600 font-medium">Customer</div>
         </div>
       </div>
 
@@ -981,9 +1175,6 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
   const activeSignerName = isMyTurn
     ? (currentEmpName ? data.permissions.currentEmployeeName : activeStep?.approverName)
     : (activeStep?.approverName || 'Approver')
-
-  const isReverted = (data.status || '').toLowerCase() === 'reverted' || (data.status || '').toLowerCase() === 'needs_revision'
-  const isRejected = (data.status || '').toLowerCase() === 'rejected'
 
   const [activeView, setActiveView] = useState<'form' | 'preview'>('form')
 
@@ -1060,7 +1251,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
             >
               <Download className="size-4" /> {isDownloading ? 'Mengunduh...' : 'Unduh PDF'}
             </Button>
-            {!isRejected && (
+            {canEditItems && !isRejected && (
               <Button
                 className={cn(
                   'ml-auto font-bold text-white',
@@ -1098,6 +1289,8 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
                   type="date"
                   value={profileForm.workDate}
                   onChange={(e) => setProfileForm((p) => ({ ...p, workDate: e.target.value }))}
+                  disabled={!canEditItems}
+                  readOnly={!canEditItems}
                 />
               </div>
               <div className="space-y-2">
@@ -1105,6 +1298,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
                 <Select
                   value={profileForm.shiftCode}
                   onValueChange={(val) => setProfileForm((p) => ({ ...p, shiftCode: val }))}
+                  disabled={!canEditItems}
                 >
                   <SelectTrigger><SelectValue placeholder="Pilih Shift" /></SelectTrigger>
                   <SelectContent>
@@ -1122,6 +1316,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
                   label="Karyawan"
                   placeholder="Pilih Karyawan..."
                   value={profileForm.employeeId}
+                  disabled={!canEditItems}
                   onValueChange={(val) => {
                     const emp = employeesProp.find((e) => String(e.id) === val || String(e.employeeId) === val || String(e.employeeSn) === val)
                     if (emp) {
@@ -1167,6 +1362,8 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
                   value={profileForm.jobTitle}
                   onChange={(e) => setProfileForm((p) => ({ ...p, jobTitle: e.target.value }))}
                   placeholder="Job Title"
+                  disabled={!canEditItems}
+                  readOnly={!canEditItems}
                 />
               </div>
               <div className="space-y-2">
@@ -1175,6 +1372,8 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
                   value={profileForm.section ? `${profileForm.department} / ${profileForm.section}` : profileForm.department}
                   onChange={(e) => setProfileForm((p) => ({ ...p, department: e.target.value, section: '' }))}
                   placeholder="Dept / Section"
+                  disabled={!canEditItems}
+                  readOnly={!canEditItems}
                 />
               </div>
               <div className="space-y-2">
@@ -1183,6 +1382,8 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
                   value={profileForm.siteName}
                   onChange={(e) => setProfileForm((p) => ({ ...p, siteName: e.target.value }))}
                   placeholder="Nama Site"
+                  disabled={!canEditItems}
+                  readOnly={!canEditItems}
                 />
               </div>
               <div className="space-y-2">
@@ -1191,6 +1392,8 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
                   value={profileForm.customerName}
                   onChange={(e) => setProfileForm((p) => ({ ...p, customerName: e.target.value }))}
                   placeholder="Nama Customer"
+                  disabled={!canEditItems}
+                  readOnly={!canEditItems}
                 />
               </div>
             </EnterpriseFormGrid>
@@ -1212,6 +1415,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
               <input
                 type="checkbox"
                 checked={isTeamLog}
+                disabled={!canEditItems}
                 onChange={(e) => {
                   const checked = e.target.checked
                   setIsTeamLog(checked)
@@ -1231,6 +1435,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
                   <Button
                     type="button"
                     variant="outline"
+                    disabled={!canEditItems}
                     className="w-full justify-between rounded-xl bg-white text-xs font-semibold text-slate-800 h-9 border-slate-200"
                   >
                     <span className="flex items-center gap-2">
@@ -1298,7 +1503,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
                         className="text-[11px] font-medium py-1 px-2.5 flex items-center gap-1.5 bg-blue-50 text-blue-900 border border-blue-200"
                       >
                         <span>{e.name}</span>
-                        {String(e.id) !== profileForm.employeeId ? (
+                        {String(e.id) !== profileForm.employeeId && canEditItems ? (
                           <X
                             className="size-3 cursor-pointer hover:text-red-600"
                             onClick={() => setSelectedTeamMemberIds((prev) => prev.filter((id) => id !== e.id))}
@@ -1313,6 +1518,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
         </Card>
 
         {/* SOURCE MODE SELECTION */}
+        {canEditItems && (
           <Card className="rounded-[1.2rem] border border-slate-200 bg-white p-4 shadow-2xs space-y-2">
             <Label className="text-xs font-semibold text-slate-700">Source Mode *</Label>
             <select
@@ -1325,9 +1531,10 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
               <option value="custom">Custom activity</option>
             </select>
           </Card>
+        )}
 
           {/* KAMUS AKTIVITAS & LIBRARY INTEGRATION DI DESKTOP (DROPDOWN RAPI) */}
-          {sourceMode === 'self_input' && (
+          {canEditItems && sourceMode === 'self_input' && (
             <Card className="rounded-[1.2rem] border border-indigo-100 bg-indigo-50/30 p-4 shadow-2xs space-y-3">
               <div className="flex items-center justify-between">
                 <div>
@@ -1348,162 +1555,203 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
                 <Search className="size-4" /> PILIH ACTIVITY LIBRARY
               </Button>
 
-              {/* Library Selection Modal */}
+              {/* MODAL DIALOG: PILIH KAMUS AKTIVITAS (PARITY WITH CREATE MODAL) */}
               <Dialog open={isPickerModalOpen} onOpenChange={setIsPickerModalOpen}>
-                <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden rounded-2xl">
-                  <DialogHeader className="p-4 pb-3 border-b border-slate-100 bg-slate-50/50">
-                    <DialogTitle className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                      <Search className="size-4 text-indigo-600" /> Kamus Activity Library Standar
-                    </DialogTitle>
-                    <DialogDescription className="text-xs text-slate-500">
-                      Pilih aktivitas standar untuk ditambahkan ke formulir Laporan Aktivitas Harian.
-                    </DialogDescription>
-                  </DialogHeader>
+                <DialogContent className="max-w-2xl p-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+                  {/* Header Dark Minimalist */}
+                  <div className="bg-[#003f78] px-5 py-3.5 text-white flex items-center justify-between">
+                    <div>
+                      <DialogTitle className="text-base font-bold text-white">Pilih Kamus Aktivitas</DialogTitle>
+                      <p className="text-xs text-blue-100 mt-0.5">Pilih aktivitas berdasarkan route group &amp; aktivitas mandiri</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsPickerModalOpen(false)}
+                      className="text-blue-200 hover:text-white p-1 rounded-md transition-colors"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </div>
 
-                  <div className="p-4 space-y-3 flex-1 overflow-y-auto">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
-                      <Input
-                        placeholder="Cari berdasarkan kode, nama aktivitas, atau keyword..."
+                  <div className="p-4 space-y-3">
+                    {/* Search Bar */}
+                    <div className="rounded-xl bg-slate-50 px-3.5 py-2.5 flex items-center gap-2 border border-slate-200 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition">
+                      <Search className="size-4 text-slate-400" />
+                      <input
+                        type="text"
                         value={pickerSearch}
                         onChange={(e) => setPickerSearch(e.target.value)}
-                        className="pl-9 h-10 rounded-xl border-slate-200 text-xs bg-slate-50/60"
+                        placeholder="Cari kode atau nama activity..."
+                        className="w-full bg-transparent text-xs font-semibold text-slate-800 outline-none placeholder:text-slate-400"
                       />
-                      {pickerSearch && (
+                      {pickerSearch ? (
                         <button
                           type="button"
                           onClick={() => setPickerSearch('')}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                          className="text-slate-400 hover:text-slate-600"
                         >
-                          <X className="size-4" />
+                          <X className="size-3.5" />
                         </button>
-                      )}
+                      ) : null}
                     </div>
 
-                    <div className="space-y-2">
-                      {[
-                        {
-                          groupName: 'Group: Running Tire Inspection & Pressure Check',
-                          subtitle: 'GRP-Tire Inspection • ALL',
-                          items: [
-                            { code: 'SVC.STB-003', name: 'Inspection & Pressure Check', points: 10, badges: ['EQUIPMENT WAJIB', 'WAKTU WAJIB'] },
-                            { code: 'SVC.STB-004', name: 'Running Tire Depth Measurement', points: 10, badges: ['FOTO WAJIB'] },
-                          ]
-                        },
-                        {
-                          groupName: 'Group: Rotasi Tire EM',
-                          subtitle: 'GRP-Rotasi Tire EM • Earthmover',
-                          items: [
-                            { code: 'SVC.STB-005', name: 'Rotasi Tire EM Position 1 & 2', points: 15, badges: ['EQUIPMENT WAJIB', 'WAKTU WAJIB'] },
-                            { code: 'SVC.STB-006', name: 'Rotasi Tire EM Position 3 & 4', points: 15, badges: ['EQUIPMENT WAJIB'] },
-                          ]
-                        },
-                        {
-                          groupName: 'Group: Replace Tire TB',
-                          subtitle: 'GRP-Replace Tire TB • Truck & Bus',
-                          items: [
-                            { code: 'SVC.STB-007', name: 'Mounting Truck & Bus Tyre', points: 15, badges: ['EQUIPMENT WAJIB', 'WAKTU WAJIB'] },
-                            { code: 'SVC.STB-008', name: 'Dismounting Truck Tyre', points: 15, badges: ['EQUIPMENT WAJIB'] },
-                          ]
-                        },
-                        {
-                          groupName: 'Group: Rotasi Tire TB',
-                          subtitle: 'GRP-Rotasi Tire TB • Truck & Bus',
-                          items: [
-                            { code: 'SVC.STB-009', name: 'Rotasi Tire Truck & Bus', points: 15, badges: ['EQUIPMENT WAJIB'] },
-                          ]
-                        },
-                        {
-                          groupName: 'Group: Replace Tire',
-                          subtitle: 'GRP-Replace Tire • General',
-                          items: [
-                            { code: 'SVC.STB-010', name: 'Replacement Tyre OTR HD-785', points: 20, badges: ['EQUIPMENT WAJIB', 'FOTO WAJIB'] },
-                          ]
-                        },
-                        {
-                          groupName: 'Group: Safety & Housekeeping',
-                          subtitle: 'GRP-General Safety & Housekeeping',
-                          items: [
-                            { code: 'HSE.P5M-001', name: 'P5M & Briefing Keselamatan', points: 5, badges: ['WAKTU WAJIB'] },
-                            { code: 'HSE.P2H-001', name: 'P2H & Inspection Alat Kerja', points: 5, badges: ['EQUIPMENT WAJIB'] },
-                          ]
-                        },
-                      ].map((group, gIdx) => {
-                        const isExpanded = expandedPickerGroups.has(group.groupName) || Boolean(pickerSearch)
-                        const filteredGroupItems = group.items.filter(item =>
-                          !pickerSearch ||
-                          `${item.code} ${item.name}`.toLowerCase().includes(pickerSearch.toLowerCase())
-                        )
-                        if (pickerSearch && filteredGroupItems.length === 0) return null
+                    {/* Status Count Bar */}
+                    <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3.5 py-2 text-xs font-bold text-slate-600 border border-slate-200/80">
+                      <span>{totalVisibleLibraryCount} library tampil</span>
+                      <span>{(itemsList || []).filter((i) => i?.label?.trim()).length} dipilih</span>
+                    </div>
 
+                    {/* Scrollable Content */}
+                    <div className="max-h-[380px] overflow-y-auto space-y-3 pr-1">
+                      {/* 1. Dynamic Route Groups & Folders Accordion */}
+                      {matchingRouteFolders.map((route) => {
+                        const isRouteExpanded = expandedPickerGroups.has(route.routeName) || Boolean(pickerSearch)
                         return (
-                          <div key={gIdx} className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
+                          <div key={route.id} className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
                             <button
                               type="button"
                               onClick={() => {
                                 setExpandedPickerGroups((prev) => {
                                   const next = new Set(prev)
-                                  if (next.has(group.groupName)) next.delete(group.groupName)
-                                  else next.add(group.groupName)
+                                  if (next.has(route.routeName)) next.delete(route.routeName)
+                                  else next.add(route.routeName)
                                   return next
                                 })
                               }}
-                              className="w-full flex items-center justify-between bg-slate-50/80 px-3.5 py-2.5 text-left font-bold text-slate-800 text-xs hover:bg-slate-100 transition-colors"
+                              className="w-full flex items-center justify-between bg-slate-50/90 hover:bg-slate-100/90 px-3.5 py-2.5 text-left font-bold text-slate-800 text-xs transition-colors"
                             >
-                              <div className="flex items-center gap-2">
-                                <ChevronRight className={`size-4 transition-transform text-slate-500 ${isExpanded ? 'rotate-90' : ''}`} />
-                                <span>{group.groupName}</span>
+                              <div className="flex items-center gap-2 min-w-0 flex-1">
+                                <Layers className="size-4 text-[#003f78] shrink-0" />
+                                <span className="truncate">{route.routeName}</span>
                               </div>
-                              <span className="text-[11px] font-semibold text-slate-600 bg-white px-2 py-0.5 rounded-md border border-slate-200">
-                                {filteredGroupItems.length} Activity
-                              </span>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-[11px] font-semibold text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">
+                                  {(route?.matchingGroups || []).reduce((acc, g) => acc + (g?.matchingItems?.length || 0), 0)} Activity
+                                </span>
+                                <ChevronRight className={`size-4 transition-transform text-slate-500 ${isRouteExpanded ? 'rotate-90' : ''}`} />
+                              </div>
                             </button>
 
-                            {isExpanded && (
-                              <div className="p-2 space-y-1.5 bg-white border-t border-slate-100">
-                                {filteredGroupItems.map((sub, sIdx) => {
-                                  const isSelected = itemsList.some(
-                                    (i) => i.label.includes(sub.code) || i.label.includes(sub.name)
-                                  )
+                            {isRouteExpanded && (
+                              <div className="p-2 space-y-2.5 bg-slate-50/40 border-t border-slate-100">
+                                {route.matchingGroups.map((group) => {
+                                  const isAllGroupSelected =
+                                    group.matchingItems.length > 0 &&
+                                    group.matchingItems.every((sub) =>
+                                      (itemsList || []).some(
+                                        (i) => (i?.label && sub.code && i.label.includes(sub.code)) || (i?.label && sub.name && i.label.includes(sub.name))
+                                      )
+                                    )
+                                  const selectedInGroupCount = group.matchingItems.filter((sub) =>
+                                    (itemsList || []).some(
+                                      (i) => (i?.label && sub.code && i.label.includes(sub.code)) || (i?.label && sub.name && i.label.includes(sub.name))
+                                    )
+                                  ).length
+
                                   return (
-                                    <div
-                                      key={sIdx}
-                                      onClick={() => {
-                                        if (isSelected) {
-                                          setItemsList((prev) =>
-                                            prev.filter((i) => !i.label.includes(sub.code) && !i.label.includes(sub.name))
-                                          )
-                                        } else {
-                                          const newItem: SessionItem = {
-                                            id: -Date.now() - Math.floor(Math.random() * 1000),
-                                            label: `${sub.code} - ${sub.name}`,
-                                            group: 'Technical',
-                                            unitNumber: '',
-                                            remark: '',
-                                            duration: '30m',
-                                            points: sub.points,
-                                            sortOrder: itemsList.length + 1,
-                                          }
-                                          setItemsList((prev) => [...prev, newItem])
-                                        }
-                                      }}
-                                      className={`flex items-start justify-between rounded-xl p-2.5 cursor-pointer transition-all border ${
-                                        isSelected
-                                          ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
-                                          : 'bg-slate-50/50 text-slate-800 border-slate-200 hover:bg-slate-100/60'
-                                      }`}
-                                    >
-                                      <div className="space-y-0.5">
-                                        <p className="text-xs font-bold font-mono">{sub.code}</p>
-                                        <p className="text-xs font-semibold">{sub.name}</p>
-                                        <p className={`text-[11px] ${isSelected ? 'text-slate-300' : 'text-slate-500'}`}>
-                                          {sub.points} pts
-                                        </p>
+                                    <div key={group.id} className="space-y-1.5 rounded-xl border border-slate-200/80 bg-white p-2.5 shadow-2xs">
+                                      <div className="flex w-full items-center justify-between px-1 text-left text-xs font-bold text-slate-700">
+                                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                                          <span className="truncate">{group.groupName}</span>
+                                          {group.matchingItems.length > 0 && (
+                                            <span className="text-[10px] font-bold text-[#003f78] bg-[#eaf4fb] px-1.5 py-0.5 rounded-full shrink-0">
+                                              {selectedInGroupCount}/{group.matchingItems.length}
+                                            </span>
+                                          )}
+                                        </div>
+                                        {group.matchingItems.length > 0 && (
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              toggleGroupItems(group.matchingItems)
+                                            }}
+                                            className={
+                                              isAllGroupSelected
+                                                ? 'text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-lg bg-rose-100 text-rose-700 hover:bg-rose-200 active:scale-95 transition shrink-0'
+                                                : 'text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-lg bg-[#003f78] text-white hover:bg-[#002f5a] active:scale-95 transition shadow-xs shrink-0'
+                                            }
+                                          >
+                                            {isAllGroupSelected ? 'Hapus Semua' : 'Pilih Group (Semua)'}
+                                          </button>
+                                        )}
                                       </div>
-                                      <div className={`size-6 flex items-center justify-center rounded-lg text-xs font-bold ${
-                                        isSelected ? 'bg-white text-slate-900' : 'bg-slate-200 text-slate-600'
-                                      }`}>
-                                        {isSelected ? <Check className="size-3.5 stroke-[3]" /> : '+'}
+
+                                      <div className="space-y-1.5 pt-1">
+                                        {group.matchingItems.map((sub) => {
+                                          const isSelected = (itemsList || []).some(
+                                            (i) => (i?.label && sub.code && i.label.includes(sub.code)) || (i?.label && sub.name && i.label.includes(sub.name))
+                                          )
+                                          const requirementBadges = [
+                                            sub.requiresEquipmentNo ? 'Equipment' : null,
+                                            sub.requiresDuration ? 'Duration' : null,
+                                            sub.requiresTireCount ? 'Tire' : null,
+                                            sub.requiresLocationGps ? 'GPS' : null,
+                                            sub.requiresPhoto ? 'Photo' : null,
+                                          ].filter(Boolean)
+
+                                          return (
+                                            <div
+                                              key={sub.id}
+                                              onClick={() => {
+                                                if (isSelected) {
+                                                  const idxToRemove = (itemsList || []).findIndex(
+                                                    (i) => (i?.label && sub.code && i.label.includes(sub.code)) || (i?.label && sub.name && i.label.includes(sub.name))
+                                                  )
+                                                  if (idxToRemove >= 0) handleRemoveItem(idxToRemove)
+                                                } else {
+                                                  addPresetActivity(`${sub.code} - ${sub.name}`, sub.basePoints || 5, sub.category || 'Technical')
+                                                }
+                                              }}
+                                              className={`flex items-center justify-between rounded-xl p-3 cursor-pointer transition border ${
+                                                isSelected
+                                                  ? 'bg-[#003f78] text-white border-[#003f78] shadow-sm'
+                                                  : 'bg-white text-slate-800 border-slate-200/90 hover:bg-slate-50'
+                                              }`}
+                                            >
+                                              <div className="min-w-0 flex-1 pr-2 space-y-0.5">
+                                                <div className="flex items-center gap-2">
+                                                  <span className={`text-[11px] font-black tracking-wider uppercase ${isSelected ? 'text-white' : 'text-[#003f78]'}`}>
+                                                    {sub.code}
+                                                  </span>
+                                                  {(sub.basePoints || 0) > 0 ? (
+                                                    <span className={`rounded-md px-1.5 py-0.5 text-[9px] font-bold ${
+                                                      isSelected ? 'bg-white/20 text-white' : 'bg-blue-50 text-[#003f78]'
+                                                    }`}>
+                                                      +{sub.basePoints} pts
+                                                    </span>
+                                                  ) : null}
+                                                </div>
+                                                <p className={`text-xs font-semibold truncate ${isSelected ? 'text-blue-100' : 'text-slate-800'}`}>
+                                                  {sub.name}
+                                                </p>
+                                                {requirementBadges.length > 0 ? (
+                                                  <div className="flex flex-wrap gap-1 pt-0.5">
+                                                    {requirementBadges.map((badge, bIdx) => (
+                                                      <span
+                                                        key={bIdx}
+                                                        className={`rounded-md px-1.5 py-0.5 text-[8.5px] font-bold uppercase tracking-wider ${
+                                                          isSelected ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-600'
+                                                        }`}
+                                                      >
+                                                        {badge}
+                                                      </span>
+                                                    ))}
+                                                  </div>
+                                                ) : null}
+                                              </div>
+                                              <span
+                                                className={`size-6 shrink-0 flex items-center justify-center rounded-full transition ${
+                                                  isSelected
+                                                    ? 'bg-white text-[#003f78]'
+                                                    : 'bg-white border border-slate-200 text-slate-400'
+                                                }`}
+                                              >
+                                                {isSelected ? <Check className="size-3.5 stroke-[3]" /> : <ListFilter className="size-3.5" />}
+                                              </span>
+                                            </div>
+                                          )
+                                        })}
                                       </div>
                                     </div>
                                   )
@@ -1513,16 +1761,108 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
                           </div>
                         )
                       })}
-                    </div>
-                  </div>
 
-                  <div className="p-3 border-t border-slate-100 bg-slate-50/50">
+                      {/* 2. Standalone / Aktivitas Mandiri Section */}
+                      {standaloneLibraries.length > 0 && (
+                        <div className="space-y-2 pt-1">
+                          <div className="flex items-center gap-1.5 px-1 py-1 text-xs font-bold text-[#486275] uppercase tracking-wider">
+                            <Sparkles className="size-3.5 text-amber-500" />
+                            <span>Aktivitas Mandiri / Kamus Lainnya ({standaloneLibraries.length})</span>
+                          </div>
+
+                          <div className="space-y-1.5">
+                            {standaloneLibraries.map((item) => {
+                              const isSelected = (itemsList || []).some(
+                                (i) => (i?.label && item.code && i.label.includes(item.code)) || (i?.label && item.name && i.label.includes(item.name))
+                              )
+                              const requirementBadges = [
+                                item.requiresEquipmentNo ? 'Equipment' : null,
+                                item.requiresDuration ? 'Duration' : null,
+                                item.requiresTireCount ? 'Tire' : null,
+                                item.requiresLocationGps ? 'GPS' : null,
+                                item.requiresPhoto ? 'Photo' : null,
+                              ].filter(Boolean)
+
+                              return (
+                                <div
+                                  key={item.id}
+                                  onClick={() => {
+                                    if (isSelected) {
+                                      const idxToRemove = (itemsList || []).findIndex(
+                                        (i) => (i?.label && item.code && i.label.includes(item.code)) || (i?.label && item.name && i.label.includes(item.name))
+                                      )
+                                      if (idxToRemove >= 0) handleRemoveItem(idxToRemove)
+                                    } else {
+                                      addPresetActivity(`${item.code} - ${item.name}`, item.basePoints || 10, item.category || 'Technical')
+                                    }
+                                  }}
+                                  className={`flex items-center justify-between rounded-xl p-3 cursor-pointer transition border ${
+                                    isSelected
+                                      ? 'bg-[#003f78] text-white border-[#003f78] shadow-sm'
+                                      : 'bg-white text-slate-800 border-slate-200/90 hover:bg-slate-50'
+                                  }`}
+                                >
+                                  <div className="min-w-0 flex-1 pr-2 space-y-0.5">
+                                    <div className="flex items-center gap-2">
+                                      <span className={`text-[11px] font-black tracking-wider uppercase ${isSelected ? 'text-white' : 'text-[#003f78]'}`}>
+                                        {item.code}
+                                      </span>
+                                      {(item.basePoints || 0) > 0 ? (
+                                        <span className={`rounded-md px-1.5 py-0.5 text-[9px] font-bold ${
+                                          isSelected ? 'bg-white/20 text-white' : 'bg-[#eaf4fb] text-[#003f78]'
+                                        }`}>
+                                          +{item.basePoints} pts
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                    <p className={`text-xs font-semibold truncate ${isSelected ? 'text-blue-100' : 'text-slate-800'}`}>
+                                      {item.name}
+                                    </p>
+                                    {requirementBadges.length > 0 ? (
+                                      <div className="flex flex-wrap gap-1 pt-0.5">
+                                        {requirementBadges.map((b, bIdx) => (
+                                          <span
+                                            key={bIdx}
+                                            className={`rounded-md px-1.5 py-0.5 text-[8.5px] font-bold uppercase tracking-wider ${
+                                              isSelected ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-600'
+                                            }`}
+                                          >
+                                            {b}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                  <span
+                                    className={`size-6 shrink-0 flex items-center justify-center rounded-full transition ${
+                                      isSelected
+                                        ? 'bg-white text-[#003f78]'
+                                        : 'bg-white border border-slate-200 text-slate-400'
+                                    }`}
+                                  >
+                                    {isSelected ? <Check className="size-3.5 stroke-[3]" /> : <ListFilter className="size-3.5" />}
+                                  </span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {totalVisibleLibraryCount === 0 && (
+                        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 p-6 text-center text-xs font-semibold text-slate-500">
+                          Tidak ada kamus aktivitas yang cocok dengan pencarian &quot;{pickerSearch}&quot;.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Bottom Submit Button */}
                     <Button
                       type="button"
                       onClick={() => setIsPickerModalOpen(false)}
-                      className="h-10 w-full rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs"
+                      className="h-10 w-full rounded-xl bg-[#003f78] hover:bg-[#00315c] text-white font-bold text-xs shadow-xs mt-2"
                     >
-                      PAKAI {itemsList.length} ACTIVITY
+                      PAKAI {(itemsList || []).filter((i) => i?.label?.trim()).length} ACTIVITY
                     </Button>
                   </div>
                 </DialogContent>
@@ -1542,7 +1882,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
             </Card>
           )}
 
-          {/* A. Daily Activity Items — Inline Editable Table (PDF Matched) */}
+          {/* A. Daily Activity Items — Table (PDF Matched) */}
           <Card className="rounded-[1.2rem] shadow-sm ring-1 ring-slate-200/70 overflow-hidden">
             <CardHeader className="pb-3 border-b border-slate-100 bg-slate-50/50">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1556,50 +1896,54 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
                   <Badge variant="secondary" className="text-xs font-semibold bg-blue-50 text-blue-700 border-blue-200">
                     {itemsList.length} Item • {itemsList.reduce((s, i) => s + (Number(i.points) || 0), 0)} Poin
                   </Badge>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={handleAddItem}
-                    className="h-8 text-xs font-semibold gap-1.5 bg-white border-slate-300 hover:bg-slate-50 shadow-2xs"
-                  >
-                    <Plus className="size-3.5" /> Tambah Baris
-                  </Button>
+                  {canEditItems ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={handleAddItem}
+                      className="h-8 text-xs font-semibold gap-1.5 bg-white border-slate-300 hover:bg-slate-50 shadow-2xs"
+                    >
+                      <Plus className="size-3.5" /> Tambah Baris
+                    </Button>
+                  ) : null}
                 </div>
               </div>
 
               {/* Quick Presets */}
-              <div className="flex flex-wrap items-center gap-1.5 pt-2.5 mt-2 border-t border-slate-100">
-                <span className="text-[11px] text-slate-500 font-semibold mr-1">Preset Cepat:</span>
-                {[
-                  { name: 'P5M & Safety Briefing Awal Shift', pts: 5 },
-                  { name: 'P2H & Pemeriksaan Alat Kerja', pts: 5 },
-                  { name: 'Inspeksi Tekanan & Kondisi Tyre Unit HD', pts: 10 },
-                  { name: 'Pemasangan & Dismounting Tyre OTR', pts: 15 },
-                  { name: 'Housekeeping & 5R Area Workshop', pts: 5 },
-                ].map((preset, pIdx) => (
-                  <button
-                    key={pIdx}
-                    type="button"
-                    onClick={() => {
-                      const newItem: SessionItem = {
-                        id: -Date.now(),
-                        label: preset.name,
-                        group: 'Technical',
-                        unitNumber: '',
-                        remark: '',
-                        duration: '30m',
-                        points: preset.pts,
-                        sortOrder: itemsList.length + 1,
-                      }
-                      setItemsList((prev) => [...prev, newItem])
-                    }}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-white border border-slate-200 text-slate-700 hover:bg-teal-50 hover:border-teal-300 hover:text-teal-900 transition-colors shadow-2xs"
-                  >
-                    <Plus className="size-3 text-teal-600" /> {preset.name}
-                  </button>
-                ))}
-              </div>
+              {canEditItems ? (
+                <div className="flex flex-wrap items-center gap-1.5 pt-2.5 mt-2 border-t border-slate-100">
+                  <span className="text-[11px] text-slate-500 font-semibold mr-1">Preset Cepat:</span>
+                  {[
+                    { name: 'P5M & Safety Briefing Awal Shift', pts: 5 },
+                    { name: 'P2H & Pemeriksaan Alat Kerja', pts: 5 },
+                    { name: 'Inspeksi Tekanan & Kondisi Tyre Unit HD', pts: 10 },
+                    { name: 'Pemasangan & Dismounting Tyre OTR', pts: 15 },
+                    { name: 'Housekeeping & 5R Area Workshop', pts: 5 },
+                  ].map((preset, pIdx) => (
+                    <button
+                      key={pIdx}
+                      type="button"
+                      onClick={() => {
+                        const newItem: SessionItem = {
+                          id: -Date.now(),
+                          label: preset.name,
+                          group: 'Technical',
+                          unitNumber: '',
+                          remark: '',
+                          duration: '30m',
+                          points: preset.pts,
+                          sortOrder: itemsList.length + 1,
+                        }
+                        setItemsList((prev) => [...prev, newItem])
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-white border border-slate-200 text-slate-700 hover:bg-teal-50 hover:border-teal-300 hover:text-teal-900 transition-colors shadow-2xs"
+                    >
+                      <Plus className="size-3 text-teal-600" /> {preset.name}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </CardHeader>
             <CardContent className="p-3.5 space-y-3">
               {itemsList.length > 0 ? (
@@ -1615,45 +1959,38 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
                             {item.label.includes(' - ') ? item.label.split(' - ').slice(1).join(' - ') : item.label}
                           </h6>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveItem(idx)}
-                          className="size-6 flex items-center justify-center rounded-full bg-slate-100 hover:bg-rose-100 hover:text-rose-600 text-slate-500 transition-colors text-xs font-bold"
-                          title="Hapus activity"
-                        >
-                          <X className="size-3.5" />
-                        </button>
+                        {canEditItems ? (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveItem(idx)}
+                            className="size-6 flex items-center justify-center rounded-full bg-slate-100 hover:bg-rose-100 hover:text-rose-600 text-slate-500 transition-colors text-xs font-bold cursor-pointer"
+                            title="Hapus activity"
+                          >
+                            <X className="size-3.5" />
+                          </button>
+                        ) : null}
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-xs">
+                      <div className="grid grid-cols-2 gap-2 text-xs">
                         <div className="space-y-1">
-                          <Label className="text-xs font-semibold text-slate-700">Equipment / Unit No.</Label>
+                          <Label className="text-xs font-semibold text-slate-700">Mulai</Label>
                           <Input
-                            placeholder="Unit / equipment number"
-                            value={item.unitNumber || ''}
-                            onChange={(e) => handleUpdateItem(idx, 'unitNumber', e.target.value)}
-                            className="h-8.5 text-xs bg-white border-slate-200 font-mono"
+                            type="time"
+                            disabled={!canEditItems}
+                            value={(item as any).startTime || '08:00'}
+                            onChange={(e) => handleUpdateItem(idx, 'startTime', e.target.value)}
+                            className="h-8.5 text-xs bg-white border-slate-200 text-center font-mono disabled:opacity-80 disabled:bg-slate-50"
                           />
                         </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="space-y-1">
-                            <Label className="text-xs font-semibold text-slate-700">Mulai</Label>
-                            <Input
-                              type="time"
-                              value={(item as any).startTime || '08:00'}
-                              onChange={(e) => handleUpdateItem(idx, 'startTime', e.target.value)}
-                              className="h-8.5 text-xs bg-white border-slate-200 text-center font-mono"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs font-semibold text-slate-700">Selesai</Label>
-                            <Input
-                              type="time"
-                              value={(item as any).endTime || '08:30'}
-                              onChange={(e) => handleUpdateItem(idx, 'endTime', e.target.value)}
-                              className="h-8.5 text-xs bg-white border-slate-200 text-center font-mono"
-                            />
-                          </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-700">Selesai</Label>
+                          <Input
+                            type="time"
+                            disabled={!canEditItems}
+                            value={(item as any).endTime || '08:30'}
+                            onChange={(e) => handleUpdateItem(idx, 'endTime', e.target.value)}
+                            className="h-8.5 text-xs bg-white border-slate-200 text-center font-mono disabled:opacity-80 disabled:bg-slate-50"
+                          />
                         </div>
                       </div>
 
@@ -1682,35 +2019,37 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
                                     <p className="text-xs font-bold text-slate-800 truncate">Foto Bukti Terlampir</p>
                                     <p className="text-[10px] text-slate-400 truncate">Klik gambar untuk melihat ukuran penuh</p>
                                   </div>
-                                  <div className="flex items-center gap-1.5 shrink-0">
-                                    <label className="cursor-pointer inline-flex items-center gap-1 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-700 transition-colors">
-                                      <RotateCcw className="size-3 text-slate-500" /> Ganti
-                                      <input
-                                        type="file"
-                                        accept="image/*"
-                                        className="hidden"
-                                        onChange={(e) => {
-                                          const file = e.target.files?.[0]
-                                          if (file) handleItemPhotoUpload(idx, file)
-                                          e.target.value = ''
+                                  {canEditItems ? (
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <label className="cursor-pointer inline-flex items-center gap-1 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-700 transition-colors">
+                                        <RotateCcw className="size-3 text-slate-500" /> Ganti
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          className="hidden"
+                                          onChange={(e) => {
+                                            const file = e.target.files?.[0]
+                                            if (file) handleItemPhotoUpload(idx, file)
+                                            e.target.value = ''
+                                          }}
+                                        />
+                                      </label>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => {
+                                          handleUpdateItem(idx, 'photoUrl', null)
+                                          handleUpdateItem(idx, 'photos', [])
                                         }}
-                                      />
-                                    </label>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => {
-                                        handleUpdateItem(idx, 'photoUrl', null)
-                                        handleUpdateItem(idx, 'photos', [])
-                                      }}
-                                      className="h-7 px-2 text-[11px] text-rose-600 hover:bg-rose-50 hover:text-rose-700 rounded-lg cursor-pointer"
-                                    >
-                                      <Trash2 className="size-3 mr-0.5" /> Hapus
-                                    </Button>
-                                  </div>
+                                        className="h-7 px-2 text-[11px] text-rose-600 hover:bg-rose-50 hover:text-rose-700 rounded-lg cursor-pointer"
+                                      >
+                                        <Trash2 className="size-3 mr-0.5" /> Hapus
+                                      </Button>
+                                    </div>
+                                  ) : null}
                                 </div>
-                              ) : (
+                              ) : canEditItems ? (
                                 <div className="flex flex-wrap items-center gap-2">
                                   <label className={cn(
                                     "cursor-pointer inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-2xs transition-all",
@@ -1755,6 +2094,8 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
                                     />
                                   </label>
                                 </div>
+                              ) : (
+                                <p className="text-xs text-slate-400 italic">Tidak ada lampiran foto</p>
                               )}
                             </div>
                           </div>
@@ -1765,6 +2106,8 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
                         <Label className="text-xs font-semibold text-slate-700">Catatan Item</Label>
                         <Input
                           placeholder="Hasil kerja, temuan, atau catatan singkat."
+                          readOnly={!canEditItems}
+                          disabled={!canEditItems}
                           value={itemRemarks[item.id] !== undefined ? itemRemarks[item.id] : (item.remark || '')}
                           onChange={(e) => {
                             const val = e.target.value
@@ -1773,7 +2116,7 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
                               setItemRemarks((prev) => ({ ...prev, [item.id]: val }))
                             }
                           }}
-                          className="h-8.5 text-xs bg-white border-slate-200"
+                          className="h-8.5 text-xs bg-white border-slate-200 disabled:opacity-85 disabled:bg-slate-50"
                         />
                       </div>
                     </div>
@@ -1858,10 +2201,9 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Row 1: Leader */}
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <Label className="text-xs font-semibold text-slate-700">Leader Name</Label>
+                    <Label className="text-xs font-semibold text-slate-700">Leader / PJO Name</Label>
                     {initialLeader?.status === 'approved' ? (
                       <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
                         SUDAH DISETUJUI (TERKUNCI)
@@ -1869,13 +2211,13 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
                     ) : null}
                   </div>
                   <SearchableSelect
-                    label="Leader"
-                    placeholder="PILIH LEADER..."
+                    label="Leader / PJO"
+                    placeholder="PILIH LEADER / PJO..."
                     value={selectedLeaderId}
                     onValueChange={handleLeaderChange}
                     options={employeesProp.map((emp) => ({
                       value: String(emp.id),
-                      label: `${emp.name} - ${emp.rank || emp.position || 'Employee'}`,
+                      label: `${emp.name} - ${emp.rank || emp.position || emp.jobTitle || 'Staff'}`,
                     }))}
                     widthClassName="w-full"
                     disabled={initialLeader?.status === 'approved'}
@@ -1886,43 +2228,18 @@ export function DailyActivityApprovalForm({ data, employees: employeesProp = [],
                   <Input
                     value={leaderTitle}
                     onChange={(e) => setLeaderTitle(e.target.value)}
-                    placeholder="Leader Title"
+                    placeholder="Leader Title / PJO Title"
                     className="h-10 bg-slate-50/60 border-slate-200 text-xs"
                     disabled={initialLeader?.status === 'approved'}
                   />
                 </div>
-
-                {/* Row 2: Superior */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs font-semibold text-slate-700">Superior Name</Label>
-                    {initialSuperior?.status === 'approved' ? (
-                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                        SUDAH DISETUJUI (TERKUNCI)
-                      </span>
-                    ) : null}
-                  </div>
-                  <SearchableSelect
-                    label="Superior"
-                    placeholder="PILIH SUPERIOR..."
-                    value={selectedSuperiorId}
-                    onValueChange={handleSuperiorChange}
-                    options={employeesProp.map((emp) => ({
-                      value: String(emp.id),
-                      label: `${emp.name} - ${emp.rank || emp.position || 'Employee'}`,
-                    }))}
-                    widthClassName="w-full"
-                    disabled={initialSuperior?.status === 'approved'}
-                  />
-                </div>
-                <div className="space-y-1.5">
+                {/* Superior Title Support */}
+                <div className="space-y-1.5 hidden">
                   <Label className="text-xs font-semibold text-slate-700">Superior Title</Label>
                   <Input
                     value={superiorTitle}
                     onChange={(e) => setSuperiorTitle(e.target.value)}
                     placeholder="Superior Title"
-                    className="h-10 bg-slate-50/60 border-slate-200 text-xs"
-                    disabled={initialSuperior?.status === 'approved'}
                   />
                 </div>
               </div>

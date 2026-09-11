@@ -378,7 +378,7 @@ export function DailyActivityPublicApproval({
   }
 
   const shouldShowCurrentPreview = done || Boolean(previewSignatureDataUrl || remarks.trim())
-  const approvalHistoryForDisplay = shouldShowCurrentPreview
+  const rawApprovalHistory = shouldShowCurrentPreview
     ? approvalHistory.map((step: any) =>
         step.id === approval.id
           ? {
@@ -392,10 +392,16 @@ export function DailyActivityPublicApproval({
       )
     : approvalHistory
 
+  const approvalHistoryForDisplay = (rawApprovalHistory || []).filter(
+    (s: any) =>
+      Number(s.stepOrder) <= 2 &&
+      s.approverRole !== 'section_head' &&
+      s.approverRole !== 'section_head_confirmation' &&
+      s.approverRole !== 'manager'
+  )
+
   const employeeSig = getSignatureStep(approvalHistoryForDisplay, 'employee')
   const leaderSig = getSignatureStep(approvalHistoryForDisplay, 'leader', 'pjo_or_te_initial')
-  const sectionHeadSig = getSignatureStep(approvalHistoryForDisplay, 'section_head', 'section_head_confirmation')
-  const managerSig = getSignatureStep(approvalHistoryForDisplay, 'manager', 'central_service_manager', 'hr')
 
   function renderApprovalMeta(step: any) {
     if (!step?.signedAt && !step?.remarks) return null
@@ -473,28 +479,10 @@ export function DailyActivityPublicApproval({
         boxSizing: 'border-box',
       }}
     >
-      {/* Header Document with Scan Evidence QR */}
-      <div className="relative mb-3">
-        <div className="text-center">
-          <h1 className="font-bold text-[11pt] text-black mb-0.5 uppercase">PT. CHITRA PARATAMA</h1>
-          <h2 className="font-bold text-[12pt] text-black uppercase">{session.splNumber ? 'SURAT PERINTAH LEMBUR' : 'DAILY ACTIVITY APPROVAL REPORT'}</h2>
-        </div>
-
-        <div
-          onClick={() => setIsEvidenceModalOpen(true)}
-          className="absolute right-0 top-0 flex flex-col items-center justify-center p-1 bg-white border border-slate-300 rounded shadow-xs cursor-pointer hover:border-indigo-500 hover:shadow-md transition-all group select-none"
-          title="Klik untuk membuka galeri foto bukti pekerjaan"
-        >
-          {evidenceQrDataUrl ? (
-            <img src={evidenceQrDataUrl} alt="Evidence QR" className="w-11 h-11 object-contain" />
-          ) : (
-            <div className="w-11 h-11 bg-slate-100 flex items-center justify-center text-[6pt] text-slate-400">
-              QR Code
-            </div>
-          )}
-          <span className="text-[6pt] font-bold text-slate-800 mt-0.5 group-hover:text-indigo-600 leading-tight">Scan Evidence</span>
-          <span className="text-[5pt] text-slate-500 leading-tight">Klik Bukti</span>
-        </div>
+      {/* Header Document */}
+      <div className="text-center mb-3">
+        <h1 className="font-bold text-[11pt] text-black mb-0.5 uppercase">PT. CHITRA PARATAMA</h1>
+        <h2 className="font-bold text-[12pt] text-black uppercase tracking-wider">{session.splNumber ? 'SURAT PERINTAH LEMBUR' : 'DAILY ACTIVITY APPROVAL REPORT'}</h2>
       </div>
 
       {/* Details & Profile Box */}
@@ -525,7 +513,7 @@ export function DailyActivityPublicApproval({
           {session.teamMembersSummary ? (
             <tr>
               <td colSpan={2}>
-                Anggota Tim: <strong className="text-blue-900">{session.teamMembersSummary}</strong>
+                Anggota Tim: <span className="text-black font-normal">{session.teamMembersSummary}</span>
               </td>
             </tr>
           ) : null}
@@ -540,11 +528,10 @@ export function DailyActivityPublicApproval({
         <thead>
           <tr className="bg-gray-100 font-bold text-center">
             <th className="w-[5%]">#</th>
-            <th className="text-left w-[38%]">Aktivitas</th>
-            <th className="w-[14%]">Unit</th>
-            <th className="w-[12%]">Durasi</th>
-            <th className="w-[10%]">Poin</th>
-            <th className="text-left w-[21%]">Remark</th>
+            <th className="text-left w-[46%]">Aktivitas</th>
+            <th className="w-[14%]">Durasi</th>
+            <th className="w-[12%]">Poin</th>
+            <th className="text-left w-[23%]">Remark</th>
           </tr>
         </thead>
         <tbody>
@@ -553,7 +540,6 @@ export function DailyActivityPublicApproval({
               <tr key={item.id || idx}>
                 <td className="text-center align-middle">{idx + 1}</td>
                 <td className="align-middle">{item.label}</td>
-                <td className="text-center align-middle">{item.unitNumber || '-'}</td>
                 <td className="text-center align-middle">{item.duration}</td>
                 <td className="text-center font-bold align-middle">{item.points || 0}</td>
                 <td className="text-left text-[7.5pt] align-middle">{item.remark || '-'}</td>
@@ -561,7 +547,7 @@ export function DailyActivityPublicApproval({
             ))
           ) : (
             <tr>
-              <td colSpan={6} className="text-center text-gray-400 py-3">Belum ada item aktivitas.</td>
+              <td colSpan={5} className="text-center text-gray-400 py-3">Belum ada item aktivitas.</td>
             </tr>
           )}
         </tbody>
@@ -656,23 +642,16 @@ export function DailyActivityPublicApproval({
           {renderApprovalMeta(leaderSig)}
         </div>
 
-        {/* Section Head */}
+        {/* Customer */}
         <div>
-          <div className="text-[7pt] text-gray-500 mb-1">Section Head Signature</div>
+          <div className="text-[7pt] text-gray-500 mb-1">Customer Signature</div>
           <div className="h-14 flex items-end">
-            {sectionHeadSig?.signatureDataUrl ? (
-              <img src={sectionHeadSig.signatureDataUrl} alt="TTD" className="h-10 object-contain" />
-            ) : sectionHeadSig?.status === 'approved' ? (
-              <span className="text-emerald-700 font-serif italic font-bold text-[9pt]">{sectionHeadSig.approverName || 'Section Head'}</span>
-            ) : (
-              <span className="text-slate-400 italic text-[7.5pt]"></span>
-            )}
+            <span className="text-slate-400 italic text-[7.5pt]"></span>
           </div>
           <div className="mb-0.5 border-b border-slate-400 font-bold text-[8.5pt]" style={{ width: '80%' }}>
-            {sectionHeadSig?.approverName || 'Section Head'}
+            &nbsp;
           </div>
-          <div className="text-[7pt] text-slate-600 font-medium">{sectionHeadSig?.stepLabel || 'Section Head'}</div>
-          {renderApprovalMeta(sectionHeadSig)}
+          <div className="text-[7pt] text-slate-600 font-medium">Customer</div>
         </div>
       </div>
 

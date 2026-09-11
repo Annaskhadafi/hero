@@ -289,6 +289,8 @@ export default async function DailyActivityApprovalListPage() {
           approverRole: a.approverRole || '',
           status: a.status || 'waiting',
           approverName: a.approverName || '',
+          approverEmail: a.approverEmail || null,
+          approverEmployeeId: a.approverEmployeeId ? Number(a.approverEmployeeId) : null,
           signatureDataUrl: a.signatureDataUrl || null,
           signedAt: a.signedAt ? new Date(a.signedAt).toISOString() : null,
         })
@@ -490,6 +492,7 @@ export default async function DailyActivityApprovalListPage() {
         workDate: s.workDate ? new Date(s.workDate).toISOString() : null,
         shiftCode: s.shiftCode || 'ALL',
         sessionStatus: s.sessionStatus || 'Draft',
+        employeeId: s.employeeId ? Number(s.employeeId) : null,
         employeeName: s.employeeName || 'Karyawan',
         employeeSn: s.employeeSn || '-',
         department: s.department || 'Operasional',
@@ -551,6 +554,11 @@ export default async function DailyActivityApprovalListPage() {
         sectionHeadMap={sectionHeadMap}
         deptHeadMap={deptHeadMap}
         initialSettings={initialSettings}
+        currentEmployeeId={currentEmployee?.id ? Number(currentEmployee.id) : null}
+        currentEmployeeEmail={normalizedEmail}
+        currentEmployeeName={currentEmployee?.name || ''}
+        isAdmin={isAdmin}
+        accessRole={accessRole}
       />
     )
   } catch (err) {
@@ -565,6 +573,11 @@ export default async function DailyActivityApprovalListPage() {
         sectionHeadMap={{}}
         deptHeadMap={{}}
         initialSettings={DEFAULT_DAILY_ACTIVITY_SETTINGS}
+        currentEmployeeId={null}
+        currentEmployeeEmail={null}
+        currentEmployeeName={null}
+        isAdmin={false}
+        accessRole=""
       />
     )
   }

@@ -127,6 +127,8 @@ export type PtwListingRow = {
     status: string
     approverName: string
     approverRole?: string
+    approverEmail?: string | null
+    approverEmployeeId?: number | null
     signatureDataUrl?: string | null
     signedAt: Date | string | null
     remarks?: string | null
@@ -598,10 +600,18 @@ export function PtwListingClient({
   rows,
   employees = [],
   initialSettings,
+  currentEmployeeId = null,
+  currentEmployeeEmail = null,
+  currentEmployeeName = '',
+  isAdmin = false,
 }: {
   rows: PtwListingRow[]
   employees?: Array<{ id: number; name: string; position?: string; rank?: string; email?: string }>
   initialSettings?: PtwWorkflowSettings
+  currentEmployeeId?: number | null
+  currentEmployeeEmail?: string | null
+  currentEmployeeName?: string | null
+  isAdmin?: boolean
 }) {
   const router = useRouter()
   const access: TableRbacAccess = { canView: true, canEdit: true, canDelete: true }
@@ -914,9 +924,50 @@ export function PtwListingClient({
   const [batchReviewIndex, setBatchReviewIndex] = useState(0)
   const [isBatchActionRunning, setIsBatchActionRunning] = useState(false)
 
+  const isRowReviewableByCurrentUser = (row: PtwListingRow) => {
+    const status = (row.status || '').toLowerCase()
+    if (['approved', 'completed', 'closed', 'rejected', 'draft', 'returned', 'reverted', 'needs_revision'].includes(status)) {
+      return false
+    }
+
+    const approvals = Array.isArray(row.approvals) ? row.approvals : []
+    const activeStep = approvals.find((a) => (a.status || '').toLowerCase() === 'pending' || (a.status || '').toLowerCase() === 'waiting')
+    if (!activeStep) return false
+
+    const currentEmpId = currentEmployeeId ? Number(currentEmployeeId) : null
+    const currentEmpEmail = (currentEmployeeEmail || '').toLowerCase().trim()
+    const currentEmpName = (currentEmployeeName || '').toLowerCase().trim()
+
+    const matchesId = currentEmpId != null && activeStep.approverEmployeeId != null && Number(activeStep.approverEmployeeId) === currentEmpId
+    const matchesEmail = Boolean(currentEmpEmail) && Boolean(activeStep.approverEmail) && activeStep.approverEmail.toLowerCase().trim() === currentEmpEmail
+    const matchesName = Boolean(currentEmpName) && Boolean(activeStep.approverName) && activeStep.approverName.toLowerCase().trim() === currentEmpName
+
+    return Boolean(matchesId || matchesEmail || matchesName)
+  }
+
   const selectedBatchRows = useMemo(() => {
     return rows.filter((r) => selectedIds.includes(r.id))
   }, [rows, selectedIds])
+
+  const canBatchReview = useMemo(
+    () =>
+      selectedBatchRows.length > 0 &&
+      selectedBatchRows.every((row) => isRowReviewableByCurrentUser(row)),
+    [selectedBatchRows, currentEmployeeId, currentEmployeeEmail, currentEmployeeName]
+  )
+
+  const handleOpenBatchReview = () => {
+    if (selectedIds.length === 0) {
+      toast.error('Pilih minimal satu Izin Kerja PTW untuk direview')
+      return
+    }
+    if (!canBatchReview) {
+      toast.error('Tombol review hanya aktif jika semua dokumen yang dipilih sedang menunggu giliran tanda tangan Anda.')
+      return
+    }
+    setBatchReviewIndex(0)
+    setIsBatchReviewOpen(true)
+  }
 
   const currentBatchDoc = selectedBatchRows[batchReviewIndex] || selectedBatchRows[0] || null
 
@@ -924,17 +975,26 @@ export function PtwListingClient({
     if (!currentBatchDoc) return
     setIsBatchActionRunning(true)
     try {
-      const remarks = approvalRemarks[currentBatchDoc.id]
-      const res = await singleApprovePtwPermitAction(currentBatchDoc.id, remarks)
+      const docId = currentBatchDoc.id
+      const ptwNum = currentBatchDoc.permitNumber
+      const remarks = approvalRemarks[docId]
+      const res = await singleApprovePtwPermitAction(docId, remarks)
       if (res.success) {
-        toast.success(`Izin Kerja ${currentBatchDoc.permitNumber} berhasil disetujui!`)
-        if (batchReviewIndex < selectedBatchRows.length - 1) {
-          setBatchReviewIndex((prev) => prev + 1)
+        toast.success(`Izin Kerja ${ptwNum} berhasil disetujui!`)
+        const remainingIds = selectedIds.filter((id) => id !== docId)
+        setSelectedIds(remainingIds)
+        const remainingRows = selectedBatchRows.filter((r) => r.id !== docId)
+        if (remainingRows.length > 0) {
+          const nextIndex = Math.min(batchReviewIndex, remainingRows.length - 1)
+          setBatchReviewIndex(Math.max(0, nextIndex))
+          setIsBatchReviewOpen(true)
+          router.refresh()
         } else {
+          toast.success('Semua dokumen dalam antrian telah selesai direview.')
           setIsBatchReviewOpen(false)
           setSelectedIds([])
+          router.refresh()
         }
-        router.refresh()
       } else {
         toast.error(res.error || 'Gagal menyetujui dokumen.')
       }
@@ -947,20 +1007,29 @@ export function PtwListingClient({
 
   const handleSingleRevertCurrent = async () => {
     if (!currentBatchDoc) return
-    const reason = approvalRemarks[currentBatchDoc.id] || prompt('Masukkan alasan pengembalian dokumen PTW untuk revisi:')
+    const docId = currentBatchDoc.id
+    const ptwNum = currentBatchDoc.permitNumber
+    const reason = approvalRemarks[docId] || prompt('Masukkan alasan pengembalian dokumen PTW untuk revisi:')
     if (reason === null) return
     setIsBatchActionRunning(true)
     try {
-      const res = await singleRevertPtwPermitAction(currentBatchDoc.id, reason)
+      const res = await singleRevertPtwPermitAction(docId, reason)
       if (res.success) {
-        toast.success(`Izin Kerja ${currentBatchDoc.permitNumber} berhasil dikembalikan untuk revisi.`)
-        if (batchReviewIndex < selectedBatchRows.length - 1) {
-          setBatchReviewIndex((prev) => prev + 1)
+        toast.success(`Izin Kerja ${ptwNum} berhasil dikembalikan untuk revisi.`)
+        const remainingIds = selectedIds.filter((id) => id !== docId)
+        setSelectedIds(remainingIds)
+        const remainingRows = selectedBatchRows.filter((r) => r.id !== docId)
+        if (remainingRows.length > 0) {
+          const nextIndex = Math.min(batchReviewIndex, remainingRows.length - 1)
+          setBatchReviewIndex(Math.max(0, nextIndex))
+          setIsBatchReviewOpen(true)
+          router.refresh()
         } else {
+          toast.success('Semua dokumen dalam antrian telah selesai direview.')
           setIsBatchReviewOpen(false)
           setSelectedIds([])
+          router.refresh()
         }
-        router.refresh()
       } else {
         toast.error(res.error || 'Gagal mengembalikan dokumen.')
       }
@@ -973,20 +1042,29 @@ export function PtwListingClient({
 
   const handleSingleRejectCurrent = async () => {
     if (!currentBatchDoc) return
-    const reason = approvalRemarks[currentBatchDoc.id]
-    if (!confirm(`Apakah Anda yakin ingin menolak Izin Kerja PTW ${currentBatchDoc.permitNumber}?`)) return
+    const docId = currentBatchDoc.id
+    const ptwNum = currentBatchDoc.permitNumber
+    const reason = approvalRemarks[docId]
+    if (!confirm(`Apakah Anda yakin ingin menolak Izin Kerja PTW ${ptwNum}?`)) return
     setIsBatchActionRunning(true)
     try {
-      const res = await singleRejectPtwPermitAction(currentBatchDoc.id, reason)
+      const res = await singleRejectPtwPermitAction(docId, reason)
       if (res.success) {
-        toast.success(`Izin Kerja ${currentBatchDoc.permitNumber} berhasil ditolak.`)
-        if (batchReviewIndex < selectedBatchRows.length - 1) {
-          setBatchReviewIndex((prev) => prev + 1)
+        toast.success(`Izin Kerja ${ptwNum} berhasil ditolak.`)
+        const remainingIds = selectedIds.filter((id) => id !== docId)
+        setSelectedIds(remainingIds)
+        const remainingRows = selectedBatchRows.filter((r) => r.id !== docId)
+        if (remainingRows.length > 0) {
+          const nextIndex = Math.min(batchReviewIndex, remainingRows.length - 1)
+          setBatchReviewIndex(Math.max(0, nextIndex))
+          setIsBatchReviewOpen(true)
+          router.refresh()
         } else {
+          toast.success('Semua dokumen dalam antrian telah selesai direview.')
           setIsBatchReviewOpen(false)
           setSelectedIds([])
+          router.refresh()
         }
-        router.refresh()
       } else {
         toast.error(res.error || 'Gagal menolak dokumen.')
       }
@@ -1640,16 +1718,15 @@ export function PtwListingClient({
               {selectedIds.length} dari {filteredRows.length} Izin Kerja PTW terpilih
             </span>
             <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                onClick={() => {
-                  setBatchReviewIndex(0)
-                  setIsBatchReviewOpen(true)
-                }}
-                className="h-8 rounded-lg bg-indigo-600 px-4 text-xs font-bold text-white uppercase shadow-sm hover:bg-indigo-700"
-              >
-                REVIEW
-              </Button>
+              {canBatchReview && (
+                <Button
+                  size="sm"
+                  onClick={handleOpenBatchReview}
+                  className="h-8 rounded-lg bg-indigo-600 px-4 text-xs font-bold text-white uppercase shadow-sm hover:bg-indigo-700"
+                >
+                  REVIEW
+                </Button>
+              )}
               <Button
                 size="sm"
                 variant="outline"
@@ -2068,13 +2145,6 @@ export function PtwListingClient({
                 onClick={() => previewPtwTarget && handleDownloadPtwPdf(previewPtwTarget)}
               >
                 <Download className="size-3.5" /> Unduh PDF
-              </Button>
-              <Button
-                size="sm"
-                className="h-8 text-xs rounded-xl font-bold gap-1 bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
-                onClick={() => previewPtwTarget && router.push(`/dashboard/hse/izin-kerja-ptw/${previewPtwTarget.id}/approval`)}
-              >
-                Buka Form Approval ↗
               </Button>
               <button
                 type="button"

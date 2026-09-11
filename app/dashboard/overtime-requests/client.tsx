@@ -9,8 +9,10 @@ import {
   CheckCircle2,
   CheckSquare,
   Download,
+  Eye,
   FileCheck,
   FileDown,
+  FilePenLine,
   FileSpreadsheet,
   FileText,
   PenTool,
@@ -68,6 +70,7 @@ import {
   batchApproveOvertimeRequestsAction,
   batchRejectOvertimeRequestsAction,
   batchRevertOvertimeRequestsAction,
+  batchDeleteOvertimeRequestsAction,
   singleApproveOvertimeRequestAction,
   singleRejectOvertimeRequestAction,
   singleRevertOvertimeRequestAction,
@@ -94,6 +97,7 @@ export type OvertimeListingRow = {
   plannedStartAt: Date | string | null
   plannedEndAt: Date | string | null
   status: string
+  requestedByEmployeeId?: number | null
   requesterName: string
   requesterDepartment: string
   requestNotes?: string | null
@@ -113,8 +117,11 @@ export type OvertimeListingRow = {
   approvals: Array<{
     stepOrder: number
     stepLabel: string
+    approverRole?: string | null
     status: string
     approverName: string
+    approverEmail?: string | null
+    approverEmployeeId?: number | null
     signatureDataUrl?: string | null
     signedAt: Date | string | null
     remarks?: string | null
@@ -184,10 +191,18 @@ export function OvertimeListingClient({
   rows: propRows,
   employees = [],
   initialSettings,
+  currentEmployeeId,
+  currentEmployeeEmail = null,
+  currentEmployeeName = '',
+  isAdmin = false,
 }: {
   rows: OvertimeListingRow[]
   employees?: EmployeeHierarchyInfo[]
   initialSettings?: OvertimeWorkflowSettings
+  currentEmployeeId?: number | null
+  currentEmployeeEmail?: string | null
+  currentEmployeeName?: string | null
+  isAdmin?: boolean
 }) {
   const router = useRouter()
   const access: TableRbacAccess = { canView: true, canEdit: true, canDelete: true }
@@ -410,6 +425,8 @@ export function OvertimeListingClient({
 
   const [deleteTarget, setDeleteTarget] = useState<OvertimeListingRow | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isBatchDeleteModalOpen, setIsBatchDeleteModalOpen] = useState(false)
+  const [isBatchDeleting, setIsBatchDeleting] = useState(false)
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
 
   // PDF Preview Dialog
@@ -535,15 +552,47 @@ export function OvertimeListingClient({
   const [batchReviewIndex, setBatchReviewIndex] = useState(0)
   const [isBatchActionRunning, setIsBatchActionRunning] = useState(false)
 
+  const isRowReviewableByCurrentUser = (row: OvertimeListingRow) => {
+    const status = (row.status || '').toLowerCase()
+    if (['approved', 'completed', 'closed', 'rejected', 'draft', 'returned', 'reverted', 'needs_revision'].includes(status)) {
+      return false
+    }
+
+    const approvals = Array.isArray(row.approvals) ? row.approvals : []
+    const activeStep = approvals.find((a) => (a.status || '').toLowerCase() === 'pending')
+    if (!activeStep) return false
+
+    const currentEmpId = currentEmployeeId ? Number(currentEmployeeId) : null
+    const currentEmpEmail = (currentEmployeeEmail || '').toLowerCase().trim()
+    const currentEmpName = (currentEmployeeName || '').toLowerCase().trim()
+
+    const matchesId = currentEmpId != null && activeStep.approverEmployeeId != null && Number(activeStep.approverEmployeeId) === currentEmpId
+    const matchesEmail = Boolean(currentEmpEmail) && Boolean(activeStep.approverEmail) && activeStep.approverEmail.toLowerCase().trim() === currentEmpEmail
+    const matchesName = Boolean(currentEmpName) && Boolean(activeStep.approverName) && activeStep.approverName.toLowerCase().trim() === currentEmpName
+
+    return Boolean(matchesId || matchesEmail || matchesName)
+  }
+
   const selectedBatchRows = useMemo(
     () => (rows || []).filter((r) => selectedIds.includes(r.id)),
     [rows, selectedIds]
   )
   const currentBatchDoc = selectedBatchRows[batchReviewIndex] || selectedBatchRows[0] || null
 
+  const canBatchReview = useMemo(
+    () =>
+      selectedBatchRows.length > 0 &&
+      selectedBatchRows.every((row) => isRowReviewableByCurrentUser(row)),
+    [selectedBatchRows, currentEmployeeId, currentEmployeeEmail, currentEmployeeName]
+  )
+
   const handleOpenBatchReview = () => {
     if (selectedIds.length === 0) {
       toast.error('Pilih minimal satu dokumen SPL untuk direview')
+      return
+    }
+    if (!canBatchReview) {
+      toast.error('Tombol review hanya aktif jika semua dokumen yang dipilih sedang menunggu giliran tanda tangan Anda.')
       return
     }
     if (!hasRegisteredSignature) {
@@ -558,12 +607,20 @@ export function OvertimeListingClient({
     if (!currentBatchDoc) return
     setIsBatchActionRunning(true)
     try {
-      const remarks = approvalRemarks[currentBatchDoc.id]
-      const res = await singleApproveOvertimeRequestAction(currentBatchDoc.id, remarks)
+      const docId = currentBatchDoc.id
+      const splNum = currentBatchDoc.splNumber
+      const remarks = approvalRemarks[docId]
+      const res = await singleApproveOvertimeRequestAction(docId, remarks)
       if (res.success) {
-        toast.success(`Dokumen SPL ${currentBatchDoc.splNumber} berhasil disetujui.`)
-        if (batchReviewIndex < selectedBatchRows.length - 1) {
-          setBatchReviewIndex((prev) => prev + 1)
+        toast.success(`Dokumen SPL ${splNum} berhasil disetujui.`)
+        const remainingIds = selectedIds.filter((id) => id !== docId)
+        setSelectedIds(remainingIds)
+        const remainingRows = selectedBatchRows.filter((r) => r.id !== docId)
+        if (remainingRows.length > 0) {
+          const nextIndex = Math.min(batchReviewIndex, remainingRows.length - 1)
+          setBatchReviewIndex(Math.max(0, nextIndex))
+          setIsBatchReviewOpen(true)
+          router.refresh()
         } else {
           toast.success('Semua dokumen dalam antrian telah selesai direview.')
           setIsBatchReviewOpen(false)
@@ -586,13 +643,22 @@ export function OvertimeListingClient({
     if (!currentBatchDoc) return
     setIsBatchActionRunning(true)
     try {
-      const remarks = approvalRemarks[currentBatchDoc.id]
-      const res = await singleRevertOvertimeRequestAction(currentBatchDoc.id, remarks)
+      const docId = currentBatchDoc.id
+      const splNum = currentBatchDoc.splNumber
+      const remarks = approvalRemarks[docId]
+      const res = await singleRevertOvertimeRequestAction(docId, remarks)
       if (res.success) {
-        toast.success(`Dokumen SPL ${currentBatchDoc.splNumber} dikembalikan.`)
-        if (batchReviewIndex < selectedBatchRows.length - 1) {
-          setBatchReviewIndex((prev) => prev + 1)
+        toast.success(`Dokumen SPL ${splNum} dikembalikan.`)
+        const remainingIds = selectedIds.filter((id) => id !== docId)
+        setSelectedIds(remainingIds)
+        const remainingRows = selectedBatchRows.filter((r) => r.id !== docId)
+        if (remainingRows.length > 0) {
+          const nextIndex = Math.min(batchReviewIndex, remainingRows.length - 1)
+          setBatchReviewIndex(Math.max(0, nextIndex))
+          setIsBatchReviewOpen(true)
+          router.refresh()
         } else {
+          toast.success('Semua dokumen dalam antrian telah selesai direview.')
           setIsBatchReviewOpen(false)
           setSelectedIds([])
           router.refresh()
@@ -611,13 +677,22 @@ export function OvertimeListingClient({
     if (!currentBatchDoc) return
     setIsBatchActionRunning(true)
     try {
-      const remarks = approvalRemarks[currentBatchDoc.id]
-      const res = await singleRejectOvertimeRequestAction(currentBatchDoc.id, remarks)
+      const docId = currentBatchDoc.id
+      const splNum = currentBatchDoc.splNumber
+      const remarks = approvalRemarks[docId]
+      const res = await singleRejectOvertimeRequestAction(docId, remarks)
       if (res.success) {
-        toast.success(`Dokumen SPL ${currentBatchDoc.splNumber} ditolak.`)
-        if (batchReviewIndex < selectedBatchRows.length - 1) {
-          setBatchReviewIndex((prev) => prev + 1)
+        toast.success(`Dokumen SPL ${splNum} ditolak.`)
+        const remainingIds = selectedIds.filter((id) => id !== docId)
+        setSelectedIds(remainingIds)
+        const remainingRows = selectedBatchRows.filter((r) => r.id !== docId)
+        if (remainingRows.length > 0) {
+          const nextIndex = Math.min(batchReviewIndex, remainingRows.length - 1)
+          setBatchReviewIndex(Math.max(0, nextIndex))
+          setIsBatchReviewOpen(true)
+          router.refresh()
         } else {
+          toast.success('Semua dokumen dalam antrian telah selesai direview.')
           setIsBatchReviewOpen(false)
           setSelectedIds([])
           router.refresh()
@@ -1138,6 +1213,31 @@ export function OvertimeListingClient({
     }
   }
 
+  const handleBatchDelete = async () => {
+    if (selectedIds.length === 0) return
+    setIsBatchDeleting(true)
+    try {
+      const res = await batchDeleteOvertimeRequestsAction(selectedIds)
+      if (res.success) {
+        if (res.skippedCount && res.skippedCount > 0) {
+          toast.success(`${res.deletedCount} dokumen SPL berhasil dihapus (${res.skippedCount} dokumen berstatus Approved dilewati/terkunci).`)
+        } else {
+          toast.success(`${res.deletedCount} dokumen SPL berhasil dihapus.`)
+        }
+        setRows((prev) => prev.filter((r) => !selectedIds.includes(r.id)))
+        setSelectedIds([])
+        setIsBatchDeleteModalOpen(false)
+        router.refresh()
+      } else {
+        toast.error(res.error || 'Gagal menghapus dokumen SPL terpilih.')
+      }
+    } catch {
+      toast.error('Terjadi kesalahan saat menghapus dokumen SPL terpilih.')
+    } finally {
+      setIsBatchDeleting(false)
+    }
+  }
+
   return (
     <AdminPageShell
       eyebrow="HC • Overtime"
@@ -1236,13 +1336,15 @@ export function OvertimeListingClient({
               <span>{selectedIds.length} dari {filteredRows.length} dokumen SPL terpilih</span>
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                onClick={handleOpenBatchReview}
-                className="h-8 rounded-lg bg-indigo-600 px-4 text-xs font-bold text-white uppercase shadow-sm hover:bg-indigo-700"
-              >
-                REVIEW
-              </Button>
+              {canBatchReview && (
+                <Button
+                  size="sm"
+                  onClick={handleOpenBatchReview}
+                  className="h-8 rounded-lg bg-indigo-600 px-4 text-xs font-bold text-white uppercase shadow-sm hover:bg-indigo-700"
+                >
+                  REVIEW
+                </Button>
+              )}
               <Button
                 size="sm"
                 variant="outline"
@@ -1261,6 +1363,15 @@ export function OvertimeListingClient({
               >
                 <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5 text-emerald-600" />
                 EXCEL
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setIsBatchDeleteModalOpen(true)}
+                className="h-8 rounded-lg border-rose-200 bg-rose-50 px-3.5 text-xs font-bold text-rose-700 uppercase shadow-sm hover:bg-rose-100 hover:text-rose-800"
+              >
+                <Trash2 className="mr-1.5 h-3.5 w-3.5 text-rose-600" />
+                HAPUS ({selectedIds.length})
               </Button>
               <Button
                 size="sm"
@@ -1360,13 +1471,74 @@ export function OvertimeListingClient({
                       <ApprovalProgressBadge approvals={row.approvals} />
                     </TableCell>
                     <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                      <EnterpriseActionButtons
-                        access={access}
-                        labels={{ view: 'Print Preview', edit: 'Edit', delete: 'Hapus' }}
-                        onView={() => setPreviewSplTarget(row)}
-                        onEdit={() => router.push(`/dashboard/overtime-requests/${row.id}/approval`)}
-                        onDelete={() => setDeleteTarget(row)}
-                      />
+                      {(() => {
+                        const isComplete = ['approved', 'closed', 'completed'].includes(row.status.toLowerCase())
+                        const isRequester = Boolean(
+                          currentEmployeeId &&
+                            row.requestedByEmployeeId &&
+                            Number(row.requestedByEmployeeId) === Number(currentEmployeeId)
+                        )
+                        const canEdit =
+                          ['draft', 'returned', 'reverted', 'needs_revision'].includes(row.status.toLowerCase()) &&
+                          isRequester
+
+                        const canDeleteThisRow = isAdmin || isRequester
+                        const isDeleteDisabled = !isAdmin && isComplete
+
+                        return (
+                          <div className="flex min-w-max items-center justify-end gap-1">
+                            {/* Tombol Unduh PDF Resmi */}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="denseIcon"
+                              onClick={() => handleDownloadSplPdf(row)}
+                              title="Unduh PDF Dokumen Resmi"
+                              className="text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 cursor-pointer"
+                            >
+                              <Download className="size-4" />
+                            </Button>
+
+                            {/* Tombol Print / Live Preview */}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="denseIcon"
+                              onClick={() => setPreviewSplTarget(row)}
+                              title="Lihat Preview SPL"
+                              className="text-slate-600 hover:text-slate-900 cursor-pointer"
+                            >
+                              <Eye className="size-4" />
+                            </Button>
+
+                            {/* Tombol Edit Form HANYA JIKA DRAFT, REVISI, ATAU REJECT (TIDAK MUNCUL JIKA SUBMITTED / APPROVED) */}
+                            {canEdit && access?.canEdit ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="denseIcon"
+                                onClick={() => router.push(`/dashboard/overtime-requests/${row.id}/approval`)}
+                                title="Edit & Review SPL"
+                                className="text-slate-600 hover:text-[#003461] cursor-pointer"
+                              >
+                                <FilePenLine className="size-4" />
+                              </Button>
+                            ) : null}
+
+                            {/* Tombol Hapus */}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="denseIcon"
+                              onClick={() => setDeleteTarget(row)}
+                              title="Hapus SPL"
+                              className="text-slate-600 hover:text-destructive hover:bg-rose-50 cursor-pointer"
+                            >
+                              <Trash2 className="size-4 text-destructive" />
+                            </Button>
+                          </div>
+                        )
+                      })()}
                     </TableCell>
                   </TableRow>
                 )
@@ -1864,13 +2036,6 @@ export function OvertimeListingClient({
                 onClick={() => previewSplTarget && handleDownloadSplPdf(previewSplTarget)}
               >
                 <Download className="size-3.5" /> Unduh PDF
-              </Button>
-              <Button
-                size="sm"
-                className="h-7 text-xs rounded font-bold gap-1 bg-blue-600 hover:bg-blue-500 text-white"
-                onClick={() => previewSplTarget && router.push(`/dashboard/overtime-requests/${previewSplTarget.id}/approval`)}
-              >
-                Buka Form Approval ↗
               </Button>
               <button
                 type="button"
@@ -2715,10 +2880,40 @@ export function OvertimeListingClient({
 
       {/* Delete Confirmation Modal */}
       <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-        <DialogContent className="max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
+        <DialogContent className="max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
           <DialogHeader>
-            <DialogTitle className="text-base font-semibold text-slate-900">Hapus Dokumen SPL?</DialogTitle>
+            <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2 text-rose-600">
+              <Trash2 className="size-5 text-rose-600" />
+              Hapus Dokumen SPL?
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500 pt-1">
+              Tindakan ini tidak dapat dibatalkan. Seluruh data item pekerjaan dan alur persetujuan dokumen ini akan dihapus permanen.
+            </DialogDescription>
           </DialogHeader>
+
+          {deleteTarget && (
+            <div className="rounded-xl border border-rose-100 bg-rose-50/50 p-3.5 my-2 space-y-1.5 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Nomor SPL:</span>
+                <span className="font-mono font-bold text-slate-900">{deleteTarget.splNumber}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Judul:</span>
+                <span className="font-medium text-slate-800 text-right truncate max-w-[220px]">{deleteTarget.title}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Pemohon:</span>
+                <span className="font-medium text-slate-800">{deleteTarget.requesterName}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Status:</span>
+                <Badge variant="outline" className="text-[10px] uppercase font-semibold border-slate-200">
+                  {deleteTarget.status}
+                </Badge>
+              </div>
+            </div>
+          )}
+
           <DialogFooter className="mt-4 flex items-center justify-end gap-2 sm:justify-end">
             <Button
               type="button"
@@ -2726,7 +2921,7 @@ export function OvertimeListingClient({
               size="sm"
               onClick={() => setDeleteTarget(null)}
               disabled={isDeleting}
-              className="h-8.5 rounded-lg border-slate-200 bg-white px-3.5 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+              className="h-9 rounded-xl border-slate-200 bg-white px-4 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900"
             >
               Batal
             </Button>
@@ -2735,9 +2930,55 @@ export function OvertimeListingClient({
               size="sm"
               onClick={handleDelete}
               disabled={isDeleting}
-              className="h-8.5 rounded-lg bg-red-600 px-3.5 text-xs font-medium text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
+              className="h-9 rounded-xl bg-rose-600 px-4 text-xs font-semibold text-white shadow-sm hover:bg-rose-700 disabled:opacity-50"
             >
               {isDeleting ? 'Menghapus...' : 'Hapus Dokumen'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Batch Delete Confirmation Modal */}
+      <Dialog open={isBatchDeleteModalOpen} onOpenChange={(open) => !open && setIsBatchDeleteModalOpen(false)}>
+        <DialogContent className="max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2 text-rose-600">
+              <Trash2 className="size-5 text-rose-600" />
+              Hapus {selectedIds.length} Dokumen SPL Terpilih?
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500 pt-1">
+              Tindakan ini akan menghapus permanen <strong>{selectedIds.length} dokumen SPL</strong> yang dipilih beserta seluruh rincian penugasan dan persetujuannya.{!isAdmin && ' Dokumen yang telah berstatus Approved akan otomatis dilewati untuk menjaga integritas data audit.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="rounded-xl border border-rose-100 bg-rose-50/50 p-3.5 my-2 text-xs text-slate-700 space-y-1">
+            <p className="font-semibold text-rose-800">
+              Total {selectedIds.length} Dokumen dalam antrian penghapusan.
+            </p>
+            <p className="text-[11px] text-slate-500">
+              Apakah Anda yakin ingin melanjutkan proses penghapusan massal ini?
+            </p>
+          </div>
+
+          <DialogFooter className="mt-4 flex items-center justify-end gap-2 sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsBatchDeleteModalOpen(false)}
+              disabled={isBatchDeleting}
+              className="h-9 rounded-xl border-slate-200 bg-white px-4 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleBatchDelete}
+              disabled={isBatchDeleting}
+              className="h-9 rounded-xl bg-rose-600 px-4 text-xs font-semibold text-white shadow-sm hover:bg-rose-700 disabled:opacity-50"
+            >
+              {isBatchDeleting ? 'Menghapus...' : `Ya, Hapus (${selectedIds.length})`}
             </Button>
           </DialogFooter>
         </DialogContent>

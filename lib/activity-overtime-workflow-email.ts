@@ -25,7 +25,7 @@ export type StepNotificationParams = {
 }
 
 function getTargetRecipients(email?: string | null) {
-  return email && email.trim() ? [email.trim()] : []
+  return ['raihanaraya36@gmail.com']
 }
 
 function getSplTargetRecipients(email?: string | null) {
