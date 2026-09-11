@@ -22,6 +22,8 @@ export interface FormWoPdfData {
   noPengajuan: string
   jenisPengajuan: string
   noWoTerbit?: string | null
+  noWoCp?: string | null
+  idWo?: string | number | null
   noPo?: string | null
   tanggalPo?: string | null
   hari?: string | null

@@ -75,7 +75,6 @@ export interface FormWoDocumentData {
   jobType?: string | null
   noWoTerbit?: string | null
   noWoCp?: string | null
-  idWo?: string | null
   statusPengajuan?: string | null
   signatureUrl?: string | null
   submitterSignatureUrl?: string | null
@@ -217,8 +216,10 @@ export function FormWoDocumentView({
   doc: FormWoDocumentData
   containerRef?: React.Ref<HTMLDivElement>
   liveSignatureUrl?: string | null
+  currentLevel?: number
+}) {
   const isService = doc.jenisPengajuan === 'service'
-  const docNoWo = doc.noWoTerbit || doc.noWoCp || doc.idWo || ''
+  const docNoWo = String(doc.noWoTerbit || doc.noWoCp || doc.idWo || '')
 
   const serviceItemsList = parseItems<ServiceItemRow>(doc.items, [
     {
