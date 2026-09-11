@@ -55,6 +55,10 @@ test('Daily Activity PDF & Evidence QR verification', () => {
   assert.ok(publicContent.includes('DAILY ACTIVITY APPROVAL REPORT'), 'Public approval uses DAILY ACTIVITY APPROVAL REPORT title')
   assert.ok(publicContent.includes('B. Approval Steps'), 'Public approval includes B. Approval Steps table')
 
+  assert.ok(pdfContent.includes('drawApprovalStepsTable'), 'PDF route includes drawApprovalStepsTable')
+  assert.ok(pdfContent.includes('Signatories'), 'PDF route includes Signatories title')
+  assert.ok(!pdfContent.includes('{ title: "Unit"'), 'PDF table does not include Unit column')
+
   const mobileFormPath = path.join(process.cwd(), 'components/mobile/mobile-daily-activity-form.tsx')
   assert.ok(fs.existsSync(mobileFormPath), 'Mobile form exists')
   const mobileFormContent = fs.readFileSync(mobileFormPath, 'utf8')

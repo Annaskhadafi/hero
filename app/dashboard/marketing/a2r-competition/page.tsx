@@ -1,5 +1,7 @@
 import { getA2RCompetitionData, getA2RCompetitionFilterOptions } from "@/app/actions/a2r-competition"
 import { A2RCompetitionClient } from "./_components/a2r-competition-client"
+import { getCurrentMenuPermission } from "@/lib/hero-access"
+import { redirect } from "next/navigation"
 
 export const metadata = {
     title: "A2R Competition | One Chitra",
@@ -16,6 +18,9 @@ function getDefaultYear(years: number[]) {
 }
 
 export default async function A2RCompetitionPage() {
+    const permission = await getCurrentMenuPermission('marketing_a2r_competition')
+    if (!permission.canView) redirect('/dashboard')
+
     const filterOptions = await getA2RCompetitionFilterOptions()
     const years = filterOptions.success ? filterOptions.data.years : []
     const monthsByYear = filterOptions.success ? filterOptions.data.monthsByYear : {}

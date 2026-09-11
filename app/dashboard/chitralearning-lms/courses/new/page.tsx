@@ -13,7 +13,7 @@ export default async function NewCoursePage() {
 
   const { getCurrentMenuPermission } = await import('@/lib/hero-access')
   if (!(await getCurrentMenuPermission('chitralearning_lms_builder')).canEdit) {
-    redirect('/403')
+    redirect('/dashboard')
   }
 
   const [categories, allEmployees] = await Promise.all([

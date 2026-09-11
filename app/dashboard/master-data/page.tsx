@@ -1,6 +1,7 @@
 import { getMasterDataPageData } from "@/lib/master-data";
 import { getCurrentMenuPermission } from "@/lib/hero-access";
 import { MasterDataManagement } from "@/components/master-data-management";
+import { redirect } from "next/navigation";
 
 export default async function MasterDataPage({
   searchParams,
@@ -11,6 +12,11 @@ export default async function MasterDataPage({
     getMasterDataPageData(),
     getCurrentMenuPermission("master_data"),
   ]);
+
+  if (!permission.canView) {
+    redirect("/dashboard");
+  }
+
   const tab = (await searchParams)?.tab;
 
   return (

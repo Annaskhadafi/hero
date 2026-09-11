@@ -287,6 +287,15 @@ export async function saveEmailSmtpSettingsAction(
   _state: EmailSettingsActionState = INITIAL_STATE,
   formData: FormData,
 ): Promise<EmailSettingsActionState> {
+  const { getCurrentMenuPermission } = await import("@/lib/hero-access");
+  const access = await getCurrentMenuPermission("settings_email");
+  if (!access.canEdit) {
+    return {
+      status: "error",
+      message: "Akses ditolak: Anda tidak memiliki izin mengubah konfigurasi email.",
+    };
+  }
+
   const parsed = smtpSettingsSchema.safeParse(Object.fromEntries(formData.entries()));
 
   if (!parsed.success) {

@@ -110,11 +110,17 @@ export async function getOvertimeRequestWorkspaceData(email?: string | null) {
     .map((employeeId) => employeeById.get(employeeId))
     .filter((employee): employee is NonNullable<typeof employee> => employee != null);
   const managedEmployeeIds = new Set(currentManagedIds);
+  const userName = currentEmployee.name?.toLowerCase().trim() || '';
+  const userEmail = currentEmployee.email?.toLowerCase().trim() || '';
   const visibleSplDocuments = canManageSettings(currentEmployee.accessRole)
     ? teamBoardData.splDocuments
     : teamBoardData.splDocuments.filter(
         (document) =>
           document.requestedByEmployeeId === currentEmployee.id ||
+          (document as any).approverEmployeeIds?.includes(currentEmployee.id) ||
+          ((document as any).approverNames && (document as any).approverNames.includes(userName)) ||
+          (userEmail && (document as any).approverEmails && (document as any).approverEmails.includes(userEmail)) ||
+          (document as any).participants?.some((p: any) => p.employeeId === currentEmployee.id) ||
           document.workers.some(
             (worker) => worker.employeeId === currentEmployee.id || managedEmployeeIds.has(worker.employeeId),
           ),

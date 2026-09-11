@@ -14,13 +14,17 @@ import {
   Clock,
   Download,
   ExternalLink,
+  Eye,
   FileCheck,
   FileDown,
   FileSignature,
   FileSpreadsheet,
   FileText,
+  Hand,
   HardHat,
+  Loader2,
   MapPin,
+  Move,
   PenTool,
   RotateCcw,
   Search,
@@ -43,6 +47,7 @@ import { approveApprovalGroupAction, reviewApprovalAction } from '@/app/dashboar
 // User signature action for approval workspace signoffs
 import { getUserSignatureAction } from '@/app/actions/user-signature'
 import {
+  getDailyActivityApprovalData,
   singleApproveDailyActivityAction,
   singleRejectDailyActivityAction,
   singleRevertDailyActivityAction,
@@ -51,6 +56,7 @@ import {
   batchRejectDailyActivitySessionsAction,
 } from '@/app/dashboard/activity-hub/actions'
 import {
+  getOvertimeApprovalData,
   singleApproveOvertimeRequestAction,
   singleRejectOvertimeRequestAction,
   singleRevertOvertimeRequestAction,
@@ -112,6 +118,7 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { downloadElementAsPdf, downloadFilesAsZip } from '@/lib/pdf-download'
 import { cn } from '@/lib/utils'
@@ -338,10 +345,84 @@ export function InboxTab({
   const [isBatchReviewOpen, setIsBatchReviewOpen] = useState(false)
   const [batchReviewIndex, setBatchReviewIndex] = useState(0)
   const [viewerZoom, setViewerZoom] = useState(1.0)
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 })
+  const [isDragging, setIsDragging] = useState(false)
+  const dragStartRef = useRef<{ startX: number; startY: number; initialPanX: number; initialPanY: number } | null>(null)
   const [approvalRemarks, setApprovalRemarks] = useState<Record<string, string>>({})
   const [isBatchActionRunning, setIsBatchActionRunning] = useState(false)
   const [processedBatchIds, setProcessedBatchIds] = useState<Set<string>>(new Set())
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
+
+  // Reset pan and zoom when active document changes or modal opens
+  useEffect(() => {
+    setPanOffset({ x: 0, y: 0 })
+  }, [batchReviewIndex, isBatchReviewOpen])
+
+  // Mouse & touch drag handlers for panning the PDF document
+  const handleMouseDown = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement
+    if (target.closest('button') || target.closest('a') || target.closest('input') || target.closest('select') || target.closest('textarea')) {
+      return
+    }
+    setIsDragging(true)
+    dragStartRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      initialPanX: panOffset.x,
+      initialPanY: panOffset.y,
+    }
+  }
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging || !dragStartRef.current) return
+    const dx = e.clientX - dragStartRef.current.startX
+    const dy = e.clientY - dragStartRef.current.startY
+    setPanOffset({
+      x: dragStartRef.current.initialPanX + dx,
+      y: dragStartRef.current.initialPanY + dy,
+    })
+  }
+
+  const handleMouseUp = () => {
+    setIsDragging(false)
+    dragStartRef.current = null
+  }
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const target = e.target as HTMLElement
+    if (target.closest('button') || target.closest('a') || target.closest('input') || target.closest('select') || target.closest('textarea')) {
+      return
+    }
+    if (e.touches.length === 1) {
+      setIsDragging(true)
+      dragStartRef.current = {
+        startX: e.touches[0].clientX,
+        startY: e.touches[0].clientY,
+        initialPanX: panOffset.x,
+        initialPanY: panOffset.y,
+      }
+    }
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging || !dragStartRef.current || e.touches.length !== 1) return
+    const dx = e.touches[0].clientX - dragStartRef.current.startX
+    const dy = e.touches[0].clientY - dragStartRef.current.startY
+    setPanOffset({
+      x: dragStartRef.current.initialPanX + dx,
+      y: dragStartRef.current.initialPanY + dy,
+    })
+  }
+
+  const handleTouchEnd = () => {
+    setIsDragging(false)
+    dragStartRef.current = null
+  }
+
+  const handleResetView = () => {
+    setViewerZoom(1.0)
+    setPanOffset({ x: 0, y: 0 })
+  }
 
   // Confirmation dialogs & validation state
   const [confirmActionType, setConfirmActionType] = useState<'approve' | 'revert' | 'reject' | null>(null)
@@ -664,7 +745,7 @@ export function InboxTab({
           title: `Work Order: ${(woData.jenisPengajuan || 'WO').toUpperCase()} - ${woData.customer || g.siteName || 'Customer'}`,
           employeeName: woData.pemohon || g.requesterName,
           siteName: woData.site || g.siteName,
-          workDate: woData.tanggalPengajuan ? new Date(woData.tanggalPengajuan) : (formWoItem.submittedAt ? new Date(formWoItem.submittedAt) : g.workDate),
+          workDate: (woData as any).tanggalPengajuan ? new Date((woData as any).tanggalPengajuan) : (formWoItem.submittedAt ? new Date(formWoItem.submittedAt) : g.workDate),
           stepLabel: formWoItem?.currentStepLabel || 'Menunggu Approval',
           dueState: formWoItem?.dueState || (g.overdueCount > 0 ? 'overdue' : g.dueSoonCount > 0 ? 'due_soon' : 'open'),
           dueAt: formWoItem?.dueAt || g.items[0]?.dueAt || new Date(),
@@ -674,9 +755,9 @@ export function InboxTab({
           level: formWoItem?.level || g.items[0]?.level || 1,
           repairFormWo: woData,
           customerName: woData.customer,
-          totalAmount: woData.totalAmount,
+          totalAmount: woData.totalAmount ?? undefined,
           signatureUrl: woData.submitterSignatureUrl,
-          approverName: formWoItem?.approverName || g.items[0]?.approverName || null,
+          approverName: (formWoItem as any)?.approverName || (g.items[0] as any)?.approverName || null,
           rawFormWo: {
             ...woData,
             steps:
@@ -770,9 +851,9 @@ export function InboxTab({
           submittedAt: nonFormWoItems[0]?.submittedAt || new Date(),
           url: isApd ? (isSummary ? `/print/summary/${apdItem?.activityId}` : `/print/apd/${apdItem?.activityId}`) : '#',
           activityType: isSummary ? 'Summary APD' : (apdItem?.activityType || (isApd ? (isMaterial ? 'Request Material' : isTools ? 'Request Tools' : 'Request APD') : 'Form Activity')),
-          activityId: apdItem?.activityId || g.id,
+          activityId: apdItem?.activityId ?? Number(g.id),
           approvalId: apdItem?.approvalId || nonFormWoItems[0]?.approvalId,
-          approverName: nonFormWoItems[0]?.approverName || null,
+          approverName: (nonFormWoItems[0] as any)?.approverName || null,
           rawGeneralGroup: {
             ...g,
             items: nonFormWoItems,
@@ -1091,15 +1172,18 @@ export function InboxTab({
       }
 
       setProcessedBatchIds((prev) => new Set([...prev, docId]))
-      setSelectedIds((prev) => {
-        const next = new Set(prev)
-        next.delete(docId)
-        return next
-      })
 
-      // Auto advance to next item
-      if (batchReviewIndex < selectedItems.length - 1) {
-        setBatchReviewIndex((prev) => prev + 1)
+      const remainingSelectedIds = new Set(selectedIds)
+      remainingSelectedIds.delete(docId)
+      setSelectedIds(remainingSelectedIds)
+
+      const remainingItems = selectedItems.filter((it) => it.id !== docId)
+
+      // Auto advance to next item in the remaining queue
+      if (remainingItems.length > 0) {
+        const nextIndex = Math.min(batchReviewIndex, remainingItems.length - 1)
+        setBatchReviewIndex(Math.max(0, nextIndex))
+        setIsBatchReviewOpen(true)
         router.refresh()
       } else {
         toast.success('Semua dokumen yang dipilih telah selesai diproses.')
@@ -2087,43 +2171,6 @@ export function InboxTab({
                       </div>
                     )}
 
-                    {/* Zoom Controls */}
-                    <div className="flex items-center gap-1 bg-slate-50 rounded-xl px-1.5 py-1 border border-slate-200">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setViewerZoom((z) => Math.max(0.4, Number((z - 0.15).toFixed(2))))}
-                        className="h-6 w-6 p-0 text-slate-700 hover:text-slate-900 rounded-lg text-xs font-bold"
-                        title="Zoom Out"
-                      >
-                        -
-                      </Button>
-                      <span className="text-[10px] font-mono font-bold text-slate-600 px-1 min-w-7 text-center">
-                        {Math.round(viewerZoom * 100)}%
-                      </span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setViewerZoom((z) => Math.min(3.0, Number((z + 0.15).toFixed(2))))}
-                        className="h-6 w-6 p-0 text-slate-700 hover:text-slate-900 rounded-lg text-xs font-bold"
-                        title="Zoom In"
-                      >
-                        +
-                      </Button>
-                      {viewerZoom !== 1.0 && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setViewerZoom(1.0)}
-                          className="h-6 px-1.5 text-[9px] font-bold text-slate-500 hover:text-slate-900 rounded-md"
-                        >
-                          Reset
-                        </Button>
-                      )}
-                    </div>
                     <Button
                       size="sm"
                       variant="outline"
@@ -2164,68 +2211,92 @@ export function InboxTab({
                         : "w-full lg:flex-1 p-2 sm:p-4 bg-slate-200/70 overflow-x-hidden shrink-0 lg:shrink"
                     )}
                   >
-                    {/* Zoom Action Bar */}
-                    <div className="flex items-center justify-between px-3 py-1.5 bg-white/90 backdrop-blur-xs rounded-xl border border-slate-200 shadow-2xs max-w-lg w-full mb-2 mx-auto">
-                      <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
-                        <FileText className="size-3.5 text-[#003461]" /> Preview Dokumen Surat / PDF
-                      </span>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setViewerZoom((z) => Math.max(0.4, Number((z - 0.15).toFixed(2))))}
-                          className="h-7 w-7 p-0 text-xs font-extrabold text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
-                          title="Zoom Out"
-                        >
-                          -
-                        </Button>
-                        <span className="text-[11px] font-mono font-bold text-slate-600 px-1 min-w-10 text-center">
-                          {Math.round(viewerZoom * 100)}%
+                    {/* Zoom & Navigation Action Bar */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-white/95 backdrop-blur-xs rounded-xl border border-slate-200 shadow-xs w-full mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
+                          <FileText className="size-3.5 text-[#003461]" /> Preview Dokumen Surat / PDF
                         </span>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setViewerZoom((z) => Math.min(3.0, Number((z + 0.1).toFixed(2))))}
-                          className="h-7 w-7 p-0 text-xs font-extrabold text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
-                          title="Zoom In"
-                        >
-                          +
-                        </Button>
-                        {viewerZoom !== 1.0 && (
+                      </div>
+
+                      <div className="flex items-center gap-1 sm:gap-1.5 ml-auto">
+                        {/* Zoom - / + */}
+                        <div className="flex items-center gap-0.5 bg-slate-100/90 rounded-lg p-0.5 border border-slate-200/80">
                           <Button
                             type="button"
                             variant="ghost"
                             size="sm"
-                            onClick={() => setViewerZoom(1.0)}
-                            className="h-7 px-2 text-[10px] font-bold text-slate-500 hover:text-slate-900 rounded-lg cursor-pointer"
+                            onClick={() => setViewerZoom((z) => Math.max(0.4, Number((z - 0.15).toFixed(2))))}
+                            className="h-6 w-6 p-0 text-xs font-extrabold text-slate-700 rounded hover:bg-white cursor-pointer"
+                            title="Zoom Out"
                           >
-                            Reset
+                            -
+                          </Button>
+                          <span className="text-[11px] font-mono font-bold text-slate-700 px-1 min-w-8 text-center">
+                            {Math.round(viewerZoom * 100)}%
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setViewerZoom((z) => Math.min(3.0, Number((z + 0.15).toFixed(2))))}
+                            className="h-6 w-6 p-0 text-xs font-extrabold text-slate-700 rounded hover:bg-white cursor-pointer"
+                            title="Zoom In"
+                          >
+                            +
+                          </Button>
+                        </div>
+
+                        {/* Reset / Fit View Button */}
+                        {(viewerZoom !== 1.0 || panOffset.x !== 0 || panOffset.y !== 0) && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleResetView}
+                            className="h-7 px-2 text-[10px] font-bold text-slate-600 hover:text-slate-900 rounded-lg border-slate-200 bg-slate-50 hover:bg-white cursor-pointer gap-1"
+                            title="Reset Zoom & Posisi"
+                          >
+                            <RotateCcw className="size-2.5" />
+                            <span>Reset</span>
                           </Button>
                         )}
                       </div>
                     </div>
 
-                    {/* 1. PDF Letterhead Document Preview Container */}
+                    {/* 1. PDF Letterhead Document Preview Container (Draggable & Scalable) */}
                     {currentBatchDoc && (() => {
-                      const baseScale = isLandscapeDoc ? 0.31 : (viewMode === 'mobile' ? 0.44 : 0.46)
+                      const baseScale = isLandscapeDoc ? 0.58 : (viewMode === 'mobile' ? 0.48 : 0.80)
                       const effectiveScale = baseScale * viewerZoom
                       const originalHeightMm = isLandscapeDoc ? 210 : 297
                       const marginOffsetMm = -Math.round(originalHeightMm * (1 - effectiveScale))
 
                       return (
-                        <div className="flex justify-center items-start overflow-hidden p-1 w-full max-w-full">
+                        <div
+                          onMouseDown={handleMouseDown}
+                          onMouseMove={handleMouseMove}
+                          onMouseUp={handleMouseUp}
+                          onMouseLeave={handleMouseUp}
+                          onTouchStart={handleTouchStart}
+                          onTouchMove={handleTouchMove}
+                          onTouchEnd={handleTouchEnd}
+                          className={cn(
+                            "relative flex justify-center items-start overflow-hidden p-3 sm:p-4 w-full min-h-[560px] select-none rounded-2xl border border-slate-300/80 bg-slate-300/50 shadow-inner",
+                            isDragging ? "cursor-grabbing" : "cursor-grab"
+                          )}
+                          title="Klik dan tahan untuk menggeser preview dokumen"
+                        >
                           <div
                             id="unified-batch-preview-sheet"
                             className={cn(
-                              "relative mx-auto shrink-0 bg-white shadow-md border border-slate-200 rounded-sm origin-top transition-transform duration-200",
+                              "relative mx-auto shrink-0 bg-white shadow-xl border border-slate-200 rounded-sm origin-top",
+                              isDragging ? "transition-none" : "transition-transform duration-150 ease-out",
                               isLandscapeDoc ? "w-[297mm] min-h-[210mm]" : "w-[210mm] min-h-[297mm]"
                             )}
                             style={{
                               backgroundImage: isCleanCustomDoc ? 'none' : 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)',
                               backgroundSize: '100% 100%',
-                              transform: `scale(${effectiveScale})`,
+                              transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${effectiveScale})`,
                               transformOrigin: 'top center',
                               marginBottom: `${marginOffsetMm}mm`,
                             }}
@@ -2250,35 +2321,38 @@ export function InboxTab({
                             </h2>
                           </div>
 
-                          <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-2 [&_td]:py-1 text-[8.5pt]">
+                          {/* 4-column Details & Request Profile */}
+                          <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8pt]">
                             <tbody>
-                              <tr><td colSpan={2} className="font-bold bg-white text-black py-0.5">Details</td></tr>
                               <tr>
-                                <td className="w-1/2">Tanggal Kerja: <strong>{formatDate(currentBatchDoc.workDate)}</strong></td>
-                                <td className="w-1/2">Shift: <strong>{currentBatchDoc.shiftCode || 'ALL'}</strong></td>
+                                <td colSpan={4} className="font-bold bg-slate-50 text-black py-0.5">Details &amp; Request Profile</td>
                               </tr>
                               <tr>
-                                <td>Kode Sesi: <strong>{currentBatchDoc.documentNumber}</strong></td>
-                                <td>Status: <span className={cn("capitalize font-bold", currentBatchDoc.isReverted ? "text-amber-700 font-extrabold" : "text-black")}>{currentBatchDoc.isReverted ? 'Reverted' : 'Submitted'}</span></td>
-                              </tr>
-                              <tr><td colSpan={2} className="font-bold bg-white text-black py-0.5">Employee Profile</td></tr>
-                              <tr>
-                                <td>Nama: <strong>{currentBatchDoc.employeeName}</strong></td>
-                                <td>SN: <strong>{(currentBatchDoc.rawDaily as any).employeeSn || '-'}</strong></td>
+                                <td className="w-1/4 font-bold bg-slate-50 text-black">Kode Sesi / Dokumen</td>
+                                <td className="w-1/4 font-mono font-semibold text-black">{currentBatchDoc.documentNumber || 'DAR'}</td>
+                                <td className="w-1/4 font-bold bg-slate-50 text-black">Tanggal Kerja</td>
+                                <td className="w-1/4 font-semibold text-black">{formatDate(currentBatchDoc.workDate)}</td>
                               </tr>
                               <tr>
-                                <td>Job Title: <strong>{(currentBatchDoc.rawDaily as any).jobTitle || (currentBatchDoc as any).position || 'Staff'}</strong></td>
-                                <td>Dept / Section: <strong>{[currentBatchDoc.department, currentBatchDoc.section].filter(Boolean).join(' / ') || '—'}</strong></td>
+                                <td className="font-bold bg-slate-50 text-black">Status / Shift</td>
+                                <td className="capitalize font-semibold text-black">
+                                  <span className={cn(currentBatchDoc.isReverted ? "text-amber-700 font-extrabold" : "text-black")}>
+                                    {currentBatchDoc.isReverted ? 'Reverted' : 'Submitted'}
+                                  </span> • Shift {currentBatchDoc.shiftCode || 'ALL'}
+                                </td>
+                                <td className="font-bold bg-slate-50 text-black">Customer / Site</td>
+                                <td className="text-black font-semibold">{(currentBatchDoc.rawDaily as any)?.customerName || (currentBatchDoc as any)?.customerName || (currentBatchDoc.rawDaily as any)?.site?.customerName || 'Default Customer'} ({currentBatchDoc.siteName || (currentBatchDoc.rawDaily as any)?.siteName || 'Balikpapan'})</td>
                               </tr>
                               <tr>
-                                <td>Site: <strong>{currentBatchDoc.siteName || (currentBatchDoc.rawDaily as any)?.siteName || '—'}</strong></td>
-                                <td>Customer: <strong>{(currentBatchDoc.rawDaily as any)?.customerName || (currentBatchDoc as any)?.customerName || (currentBatchDoc.rawDaily as any)?.site?.customerName || 'Default Customer'}</strong></td>
+                                <td className="font-bold bg-slate-50 text-black">Nama Pemohon</td>
+                                <td className="text-black font-semibold">{currentBatchDoc.employeeName} (SN: {(currentBatchDoc.rawDaily as any).employeeSn || '-'})</td>
+                                <td className="font-bold bg-slate-50 text-black">Dept / Section</td>
+                                <td className="text-black">{[currentBatchDoc.department, currentBatchDoc.section].filter(Boolean).join(' / ') || 'Central Services'}</td>
                               </tr>
                               {((currentBatchDoc.rawDaily as any)?.teamMembersSummary || (currentBatchDoc as any)?.teamMembersSummary || ((currentBatchDoc.rawDaily as any)?.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1] || ((currentBatchDoc as any)?.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1]) ? (
                                 <tr>
-                                  <td colSpan={2}>
-                                    Anggota Tim: <strong className="text-blue-900">{(currentBatchDoc.rawDaily as any)?.teamMembersSummary || (currentBatchDoc as any)?.teamMembersSummary || ((currentBatchDoc.rawDaily as any)?.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1] || ((currentBatchDoc as any)?.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1]}</strong>
-                                  </td>
+                                  <td className="font-bold bg-slate-50 text-black">Anggota Tim</td>
+                                  <td colSpan={3} className="text-black font-normal">{(currentBatchDoc.rawDaily as any)?.teamMembersSummary || (currentBatchDoc as any)?.teamMembersSummary || ((currentBatchDoc.rawDaily as any)?.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1] || ((currentBatchDoc as any)?.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1]}</td>
                                 </tr>
                               ) : null}
                             </tbody>
@@ -2296,11 +2370,10 @@ export function InboxTab({
                                   <thead>
                                     <tr className="bg-gray-100 font-bold text-center">
                                       <th className="w-[5%]">#</th>
-                                      <th className="text-left w-[38%]">Aktivitas</th>
-                                      <th className="w-[14%]">Unit</th>
-                                      <th className="w-[12%]">Durasi</th>
-                                      <th className="w-[10%]">Poin</th>
-                                      <th className="text-left w-[21%]">Remark</th>
+                                      <th className="text-left w-[46%]">Aktivitas</th>
+                                      <th className="w-[14%]">Durasi</th>
+                                      <th className="w-[12%]">Poin</th>
+                                      <th className="text-left w-[23%]">Remark</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -2310,7 +2383,6 @@ export function InboxTab({
                                           <tr key={it.id || idx}>
                                             <td className="text-center align-middle">{idx + 1}</td>
                                             <td className="align-middle">{it.label || it.snapshotLabel || 'Aktivitas'}</td>
-                                            <td className="text-center align-middle">{it.unitNumber || '-'}</td>
                                             <td className="text-center align-middle">{it.duration || '-'}</td>
                                             <td className="text-center font-bold align-middle">{it.points || it.actualPoints || 0}</td>
                                             <td className="text-left text-[7.5pt] align-middle">{it.remark || it.remarks || '-'}</td>
@@ -2319,7 +2391,7 @@ export function InboxTab({
                                       })
                                     ) : (
                                       <tr>
-                                        <td colSpan={6} className="text-center text-slate-400 py-3">Belum ada item aktivitas.</td>
+                                        <td colSpan={5} className="text-center text-slate-400 py-3">Belum ada item aktivitas.</td>
                                       </tr>
                                     )}
                                   </tbody>
@@ -2330,18 +2402,21 @@ export function InboxTab({
 
                           {/* B. Approval Steps Table & Signatories */}
                           {(() => {
-                            const approvals = (currentBatchDoc.rawDaily as any).approvals || []
+                            const rawApprovals = (currentBatchDoc.rawDaily as any).approvals || []
+                            const approvals = rawApprovals.filter(
+                              (s: any) =>
+                                Number(s.stepOrder) <= 2 &&
+                                s.approverRole !== 'section_head' &&
+                                s.approverRole !== 'section_head_confirmation' &&
+                                s.approverRole !== 'manager'
+                            )
                             const step1 = approvals.find((s: any) => s.stepOrder === 1)
                             const step2 = approvals.find((s: any) => s.stepOrder === 2)
-                            const step3 = approvals.find((s: any) => s.stepOrder === 3)
-                            const isSigned1 = step1?.status === 'approved' || step1?.status === 'signed' || step1?.status === 'completed' || Boolean(step1?.signatureDataUrl || step1?.signatureUrl)
-                            const isApproved2 = step2?.status === 'approved'
-                            const isApproved3 = step3?.status === 'approved'
+                            const isSigned1 = (step1?.status === 'approved' || step1?.status === 'signed' || step1?.status === 'completed') && Boolean(step1?.signedAt || step1?.signatureDataUrl)
+                            const isApproved2 = step2?.status === 'approved' || Boolean(step2?.signedAt)
                             const isReverted2 = step2?.status === 'reverted'
-                            const isReverted3 = step3?.status === 'reverted'
-                            const currentSig = step1?.signatureDataUrl || step1?.signatureUrl || (currentBatchDoc.rawDaily as any).employee?.signatureDataUrl || null
-                            const sig2 = step2?.signatureDataUrl || step2?.signatureUrl || null
-                            const sig3 = step3?.signatureDataUrl || step3?.signatureUrl || null
+                            const currentSig = isSigned1 ? (step1?.signatureDataUrl || step1?.signatureUrl || null) : null
+                            const sig2 = isApproved2 ? (step2?.signatureDataUrl || step2?.signatureUrl || null) : null
 
                             const rawSessionId = (currentBatchDoc.rawDaily as any)?.sessionId || (currentBatchDoc.rawDaily as any)?.id || currentBatchDoc.id
                             const sessionId = typeof rawSessionId === 'string' ? rawSessionId.replace(/^daily-activity-/, '') : rawSessionId
@@ -2377,9 +2452,7 @@ export function InboxTab({
                                             <td className="text-left">{step.stepLabel}</td>
                                             <td className="text-left font-semibold">{step.approverName || '-'}</td>
                                             <td className={cn("capitalize font-semibold", isApproved ? "text-emerald-700 font-bold" : "")}>
-                                              {step.stepOrder === 1 && isApproved
-                                                ? 'Approved'
-                                                : step.status}
+                                              {step.status}
                                             </td>
                                             <td className="text-[7pt] font-mono">{formatTimestamp(step.signedAt)}</td>
                                             <td className="text-left italic text-slate-600 text-[7.5pt] break-words whitespace-normal leading-tight" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
@@ -2406,8 +2479,10 @@ export function InboxTab({
                                         <img src={currentSig} alt="TTD" className="h-10 object-contain" />
                                       ) : isSigned1 ? (
                                         <span className="text-emerald-700 font-serif italic font-bold text-[9pt]">{currentBatchDoc.employeeName}</span>
+                                      ) : step1?.status === 'reverted' ? (
+                                        <span className="text-amber-600 font-semibold italic text-[7pt]">(Perlu Revisi)</span>
                                       ) : (
-                                        <span className="text-slate-400 italic text-[7.5pt]"></span>
+                                        <span className="text-slate-400 italic text-[7.5pt]">(Belum Disetujui)</span>
                                       )}
                                     </div>
                                     <div className="mb-0.5 border-b border-slate-400 font-bold text-[8.5pt]" style={{ width: '80%' }}>
@@ -2448,30 +2523,16 @@ export function InboxTab({
                                     )}
                                   </div>
 
-                                  {/* Section Head */}
+                                  {/* Customer */}
                                   <div>
-                                    <div className="text-[7pt] text-slate-500 mb-1">Section Head Signature</div>
+                                    <div className="text-[7pt] text-slate-500 mb-1">Customer Signature</div>
                                     <div className="h-14 flex items-end">
-                                      {sig3 ? (
-                                        <img src={sig3} alt="TTD" className="h-10 object-contain" />
-                                      ) : isApproved3 ? (
-                                        <div className="flex flex-col items-center justify-center text-center">
-                                          <span className="text-[6.5pt] font-bold text-emerald-600">✓ Approved ({formatTimestamp(step3?.signedAt)})</span>
-                                        </div>
-                                      ) : (
-                                        <span className="text-slate-400 italic text-[7.5pt]"></span>
-                                      )}
+                                      <span className="text-slate-400 italic text-[7.5pt]"></span>
                                     </div>
                                     <div className="mb-0.5 border-b border-slate-400 font-bold text-[8.5pt]" style={{ width: '80%' }}>
-                                      {step3?.approverName || currentBatchDoc.employeeName}
+                                      &nbsp;
                                     </div>
-                                    <div className="text-[7pt] text-slate-600 font-medium">Section Head</div>
-                                    {step3?.signedAt && (
-                                      <div className="text-[6.5pt] text-slate-500 mt-0.5">
-                                        {isReverted3 ? 'Waktu Revert: ' : 'Waktu TTD: '}
-                                        {formatTimestamp(step3.signedAt)}
-                                      </div>
-                                    )}
+                                    <div className="text-[7pt] text-slate-600 font-medium">Customer</div>
                                   </div>
                                 </div>
 
@@ -3888,6 +3949,49 @@ export function InboxTab({
   )
 }
 
+function getHistoryItemLinks(item: any) {
+  const actId = String(item.activityId || '')
+  const actType = String(item.activityType || '').toLowerCase()
+  const title = String(item.title || '').toLowerCase()
+
+  let rawId = ''
+  let viewUrl = '/dashboard/activity-hub'
+  let downloadUrl: string | null = null
+
+  if (
+    actId.startsWith('overtime-') ||
+    actType.includes('lembur') ||
+    actType.includes('overtime') ||
+    actType.includes('spl') ||
+    title.includes('spl')
+  ) {
+    rawId = actId.replace('overtime-', '').replace(/[^0-9]/g, '')
+    viewUrl = `/mobile/overtime?edit=${rawId}`
+    downloadUrl = null
+  } else if (actId.startsWith('daily-') || actType.includes('daily') || title.includes('daily') || title.includes('dar')) {
+    rawId = actId.replace('daily-', '').replace(/[^0-9]/g, '')
+    viewUrl = `/mobile/activity?edit=${rawId}`
+    downloadUrl = `/api/activity-sessions/${rawId}/pdf`
+  } else if (actId.startsWith('ptw-') || actType.includes('ptw') || title.includes('izin kerja')) {
+    rawId = actId.replace('ptw-', '').replace(/[^0-9]/g, '')
+    viewUrl = `/mobile/hse/ptw`
+    downloadUrl = `/dashboard/hse/izin-kerja-ptw/${rawId}`
+  } else if (actId.startsWith('sop-') || actType.includes('sop') || actType.includes('win')) {
+    rawId = actId.replace('sop-', '').replace(/[^0-9]/g, '')
+    viewUrl = `/mobile/sop-win`
+    downloadUrl = `/api/sop-win/watermarked-pdf?requestId=${rawId}`
+  } else if (actId.startsWith('cr-') || actType.includes('contract')) {
+    rawId = actId.replace('cr-', '').replace(/[^0-9]/g, '')
+    viewUrl = `/dashboard/human-capital`
+  } else if (actId.startsWith('rfr-') || actType.includes('rfr')) {
+    rawId = actId.replace('rfr-', '').replace(/[^0-9]/g, '')
+    viewUrl = `/dashboard/human-capital`
+    downloadUrl = `/api/hc/rfr/${rawId}/pdf`
+  }
+
+  return { viewUrl, downloadUrl, rawId }
+}
+
 export function HistoryTab({
   groups,
   filterCategory,
@@ -3897,6 +4001,193 @@ export function HistoryTab({
   filterCategory?: string
   viewMode?: 'desktop' | 'mobile'
 }) {
+  const [selectedHistoryDoc, setSelectedHistoryDoc] = useState<any | null>(null)
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false)
+  const [isLoadingHistoryDoc, setIsLoadingHistoryDoc] = useState(false)
+  const [historyDocType, setHistoryDocType] = useState<'spl' | 'daily' | null>(null)
+  const [previewZoom, setPreviewZoom] = useState(1.0)
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
+  const [mobileSearchQuery, setMobileSearchQuery] = useState('')
+  const [mobileCategoryFilter, setMobileCategoryFilter] = useState('ALL')
+  const [mobileStatusFilter, setMobileStatusFilter] = useState('ALL')
+  const pdfRef = useRef<HTMLDivElement | null>(null)
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 })
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!scrollContainerRef.current) return
+    setIsDragging(true)
+    setDragStart({
+      x: e.pageX - scrollContainerRef.current.offsetLeft,
+      y: e.pageY - scrollContainerRef.current.offsetTop,
+      scrollLeft: scrollContainerRef.current.scrollLeft,
+      scrollTop: scrollContainerRef.current.scrollTop,
+    })
+  }
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging || !scrollContainerRef.current) return
+    e.preventDefault()
+    const x = e.pageX - scrollContainerRef.current.offsetLeft
+    const y = e.pageY - scrollContainerRef.current.offsetTop
+    const walkX = (x - dragStart.x) * 1.3
+    const walkY = (y - dragStart.y) * 1.3
+    scrollContainerRef.current.scrollLeft = dragStart.scrollLeft - walkX
+    scrollContainerRef.current.scrollTop = dragStart.scrollTop - walkY
+  }
+
+  const handleMouseUpOrLeave = () => {
+    setIsDragging(false)
+  }
+
+  const handleOpenHistoryPreview = async (item: any) => {
+    const actId = String(item.activityId || '')
+    const actType = String(item.activityType || '').toLowerCase()
+    const title = String(item.title || '').toLowerCase()
+    const isSpl =
+      actId.startsWith('overtime-') ||
+      actType.includes('lembur') ||
+      actType.includes('overtime') ||
+      actType.includes('spl') ||
+      title.includes('spl')
+    const isDaily =
+      actId.startsWith('daily-') ||
+      actType.includes('daily') ||
+      title.includes('daily') ||
+      title.includes('dar')
+
+    if (isSpl) {
+      const rawId = actId.replace('overtime-', '').replace(/[^0-9]/g, '')
+      if (!rawId) return
+      setIsHistoryModalOpen(true)
+      setIsLoadingHistoryDoc(true)
+      setHistoryDocType('spl')
+      setSelectedHistoryDoc(null)
+      setPreviewZoom(1.0)
+      try {
+        const data = await getOvertimeApprovalData(Number(rawId))
+        if (!data) {
+          toast.error('Data dokumen SPL tidak ditemukan.')
+          setIsHistoryModalOpen(false)
+          return
+        }
+        setSelectedHistoryDoc(data)
+      } catch (err: any) {
+        toast.error(err?.message || 'Gagal memuat dokumen SPL.')
+        setIsHistoryModalOpen(false)
+      } finally {
+        setIsLoadingHistoryDoc(false)
+      }
+    } else if (isDaily) {
+      const rawId = actId.replace('daily-', '').replace(/[^0-9]/g, '')
+      if (!rawId) return
+      setIsHistoryModalOpen(true)
+      setIsLoadingHistoryDoc(true)
+      setHistoryDocType('daily')
+      setSelectedHistoryDoc(null)
+      setPreviewZoom(1.0)
+      try {
+        const data = await getDailyActivityApprovalData(Number(rawId))
+        if (!data) {
+          toast.error('Data dokumen Daily Activity tidak ditemukan.')
+          setIsHistoryModalOpen(false)
+          return
+        }
+        setSelectedHistoryDoc(data)
+      } catch (err: any) {
+        toast.error(err?.message || 'Gagal memuat dokumen Daily Activity.')
+        setIsHistoryModalOpen(false)
+      } finally {
+        setIsLoadingHistoryDoc(false)
+      }
+    } else {
+      const { downloadUrl, viewUrl } = getHistoryItemLinks(item)
+      if (downloadUrl) {
+        window.open(downloadUrl, '_blank')
+      } else if (typeof window !== 'undefined') {
+        window.open(viewUrl, '_blank')
+      }
+    }
+  }
+
+  const handleDirectDownload = async (item: any) => {
+    const actId = String(item.activityId || '')
+    const actType = String(item.activityType || '').toLowerCase()
+    const title = String(item.title || '').toLowerCase()
+    const isSpl =
+      actId.startsWith('overtime-') ||
+      actType.includes('lembur') ||
+      actType.includes('overtime') ||
+      actType.includes('spl') ||
+      title.includes('spl')
+    const isDaily =
+      actId.startsWith('daily-') ||
+      actType.includes('daily') ||
+      title.includes('daily') ||
+      title.includes('dar')
+
+    if (isDaily) {
+      const rawId = actId.replace('daily-', '').replace(/[^0-9]/g, '')
+      if (rawId) {
+        window.open(`/api/activity-sessions/${rawId}/pdf`, '_blank')
+        return
+      }
+    }
+
+    if (isSpl) {
+      const rawId = actId.replace('overtime-', '').replace(/[^0-9]/g, '')
+      if (!rawId) return
+      toast.loading('Menyiapkan file PDF SPL...', { id: 'pdf-spl-dl' })
+      try {
+        const data = await getOvertimeApprovalData(Number(rawId))
+        if (!data) {
+          toast.error('Data dokumen SPL tidak ditemukan.', { id: 'pdf-spl-dl' })
+          return
+        }
+        setSelectedHistoryDoc(data)
+        setHistoryDocType('spl')
+        setIsHistoryModalOpen(true)
+        setTimeout(async () => {
+          if (pdfRef.current) {
+            const filename = `${data.document?.splNumber || data.splNumber || 'SPL'}-Document.pdf`
+            await downloadElementAsPdf(pdfRef.current, filename)
+            toast.success('PDF SPL berhasil diunduh.', { id: 'pdf-spl-dl' })
+          } else {
+            toast.dismiss('pdf-spl-dl')
+          }
+        }, 350)
+      } catch (err: any) {
+        toast.error(err?.message || 'Gagal mengunduh PDF SPL.', { id: 'pdf-spl-dl' })
+      }
+      return
+    }
+
+    const { downloadUrl } = getHistoryItemLinks(item)
+    if (downloadUrl) {
+      window.open(downloadUrl, '_blank')
+    } else {
+      handleOpenHistoryPreview(item)
+    }
+  }
+
+  const handleDownloadPdf = async () => {
+    if (!pdfRef.current || !selectedHistoryDoc) return
+    setIsDownloadingPdf(true)
+    try {
+      const filename =
+        historyDocType === 'spl'
+          ? `${selectedHistoryDoc?.document?.splNumber || selectedHistoryDoc?.splNumber || 'SPL'}-Document.pdf`
+          : `DAR-${selectedHistoryDoc?.sessionCode || selectedHistoryDoc?.sessionId || 'Document'}.pdf`
+      await downloadElementAsPdf(pdfRef.current, filename)
+      toast.success('PDF berhasil diunduh.')
+    } catch (err: any) {
+      toast.error(err?.message || 'Gagal mengunduh PDF.')
+    } finally {
+      setIsDownloadingPdf(false)
+    }
+  }
+
   const safeGroups = useMemo(() => {
     const arr = Array.isArray(groups) ? groups : []
     if (!filterCategory) return arr
@@ -3911,6 +4202,22 @@ export function HistoryTab({
               item.activityType?.toLowerCase().includes('spl') ||
               item.title?.toLowerCase().includes('lembur') ||
               item.title?.toLowerCase().includes('spl')
+          ),
+        }))
+        .filter((group) => group.items.length > 0)
+    }
+    if (filterCategory === 'DAILY_ACTIVITY') {
+      return arr
+        .map((group) => ({
+          ...group,
+          items: (group.items || []).filter(
+            (item: any) =>
+              item.activityType?.toLowerCase().includes('daily') ||
+              item.activityType?.toLowerCase().includes('aktivitas') ||
+              item.activityType?.toLowerCase().includes('dar') ||
+              item.title?.toLowerCase().includes('daily') ||
+              item.title?.toLowerCase().includes('dar') ||
+              item.category === 'DAILY_ACTIVITY'
           ),
         }))
         .filter((group) => group.items.length > 0)
@@ -3948,213 +4255,1070 @@ export function HistoryTab({
     (group?.items || []).map((item) => ({ ...item, workDateLabel: group.workDateLabel }))
   )
 
-  if (viewMode === 'mobile') {
-    return (
-      <div className="space-y-3">
-        {allHistoryItems.map((item) => (
-          <div
-            key={item.activityId}
-            className="rounded-2xl bg-white p-4 shadow-sm border border-slate-100/90 space-y-3"
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0 flex-1 space-y-1">
-                <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
-                  <FileText className="size-3" />
-                  {item.activityType || 'Dokumen'}
+  const filteredMobileHistoryItems = useMemo(() => {
+    return allHistoryItems.filter((item) => {
+      // 1. Search filter
+      if (mobileSearchQuery.trim()) {
+        const q = mobileSearchQuery.trim().toLowerCase()
+        const titleMatch = item.title?.toLowerCase().includes(q)
+        const typeMatch = item.activityType?.toLowerCase().includes(q)
+        const siteMatch = item.siteName?.toLowerCase().includes(q)
+        const statusMatch = item.status?.toLowerCase().includes(q)
+        const docNumMatch = (item as any).documentNumber?.toLowerCase().includes(q) || (item as any).sessionCode?.toLowerCase().includes(q)
+        const reqMatch = (item as any).employeeName?.toLowerCase().includes(q) || (item as any).requesterName?.toLowerCase().includes(q)
+        if (!titleMatch && !typeMatch && !siteMatch && !statusMatch && !docNumMatch && !reqMatch) {
+          return false
+        }
+      }
+
+      // 2. Category filter
+      if (mobileCategoryFilter !== 'ALL') {
+        const actType = (item.activityType || '').toLowerCase()
+        const title = (item.title || '').toLowerCase()
+        const cat = ((item as any).category || '').toUpperCase()
+
+        if (mobileCategoryFilter === 'DAILY') {
+          const isDaily = cat === 'DAILY_ACTIVITY' || actType.includes('daily') || actType.includes('dar') || actType.includes('aktivitas') || title.includes('daily') || title.includes('dar')
+          if (!isDaily) return false
+        } else if (mobileCategoryFilter === 'OVERTIME') {
+          const isOvertime = cat === 'OVERTIME' || actType.includes('lembur') || actType.includes('overtime') || actType.includes('spl') || title.includes('spl') || title.includes('lembur')
+          if (!isOvertime) return false
+        } else if (mobileCategoryFilter === 'PTW') {
+          const isPtw = cat === 'PTW' || actType.includes('ptw') || actType.includes('ijin') || actType.includes('izin') || title.includes('ptw')
+          if (!isPtw) return false
+        } else if (mobileCategoryFilter === '5R') {
+          const is5r = cat === 'QUALITY_5R' || actType.includes('5r') || title.includes('5r')
+          if (!is5r) return false
+        } else if (mobileCategoryFilter === 'SOP') {
+          const isSop = cat === 'SOP_WIN' || actType.includes('sop') || actType.includes('win') || title.includes('sop') || title.includes('win')
+          if (!isSop) return false
+        } else if (mobileCategoryFilter === 'CONTRACT') {
+          const isContract = cat === 'CONTRACT_REVIEW' || actType.includes('contract') || title.includes('contract')
+          if (!isContract) return false
+        }
+      }
+
+      // 3. Status filter
+      if (mobileStatusFilter !== 'ALL') {
+        const statusNorm = (item.status || '').toLowerCase()
+        if (mobileStatusFilter === 'APPROVED') {
+          if (!['approved', 'completed', 'disetujui', 'closed'].includes(statusNorm)) return false
+        } else if (mobileStatusFilter === 'REVERTED') {
+          if (!['reverted', 'needs_revision', 'dikembalikan', 'revisi'].includes(statusNorm)) return false
+        } else if (mobileStatusFilter === 'REJECTED') {
+          if (!['rejected', 'ditolak'].includes(statusNorm)) return false
+        } else if (mobileStatusFilter === 'PENDING') {
+          if (!['pending', 'waiting', 'open', 'in_review', 'menunggu'].includes(statusNorm)) return false
+        }
+      }
+
+      return true
+    })
+  }, [allHistoryItems, mobileSearchQuery, mobileCategoryFilter, mobileStatusFilter])
+
+  const previewModalContent = (
+    <Dialog open={isHistoryModalOpen} onOpenChange={setIsHistoryModalOpen}>
+      <DialogContent
+        showCloseButton={false}
+        className={cn(
+          viewMode === 'mobile'
+            ? "max-w-[430px] w-full sm:max-w-[430px] mx-auto h-[92dvh] sm:h-[86dvh] max-h-[92dvh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-t-2xl sm:rounded-2xl z-50"
+            : "max-w-4xl max-h-[92vh] h-[92vh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-2xl z-50"
+        )}
+      >
+        {/* Header Bar */}
+        <div className="bg-white px-3 sm:px-4 py-2.5 flex items-center justify-between border-b border-slate-200 text-slate-900 shrink-0 select-none gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="size-8 rounded-lg bg-blue-50 text-[#003461] border border-blue-100 flex items-center justify-center shrink-0">
+              <FileText className="size-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-bold text-xs text-slate-900 truncate">
+                Dokumen {historyDocType === 'spl' ? 'Surat Perintah Lembur' : 'Daily Activity Report'} •{' '}
+                <span className="text-[#003461]">
+                  {historyDocType === 'spl'
+                    ? selectedHistoryDoc?.document?.splNumber || selectedHistoryDoc?.splNumber || 'SPL'
+                    : selectedHistoryDoc?.sessionCode || 'DAR'}
                 </span>
-                <p className="text-sm font-bold text-slate-900 leading-snug">
-                  {item.title}
-                </p>
-                <p className="text-xs text-slate-500 font-medium">
-                  {item.workDateLabel} • {item.siteName}
-                </p>
-              </div>
-
-              <div className="shrink-0">
-                <AdminStatusBadge value={item.status} />
-              </div>
+              </p>
+              <p className="text-[10px] text-slate-500 truncate">
+                {historyDocType === 'spl'
+                  ? `${selectedHistoryDoc?.requester?.name || 'Karyawan'} • ${formatDate(selectedHistoryDoc?.document?.workDate || selectedHistoryDoc?.workDate)}`
+                  : `${selectedHistoryDoc?.employee?.name || 'Karyawan'} • ${formatDate(selectedHistoryDoc?.workDate)} • Shift ${selectedHistoryDoc?.shiftCode || 'ALL'}`}
+              </p>
             </div>
+          </div>
 
-            <div className="space-y-1 rounded-xl bg-slate-50/80 p-2.5 text-xs">
-              <div className="flex items-center justify-between">
-                 <span className="text-slate-500 font-medium">Posisi Terakhir:</span>
-                 <span className="font-bold text-slate-700">{(item as any).currentStage || 'Selesai'}</span>
-               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500 font-medium">Diajukan:</span>
-                <span className="font-semibold text-slate-600">{formatDate(item.submittedAt)}</span>
-              </div>
-            </div>
-
+          <div className="flex items-center gap-1.5 shrink-0">
             <Button
               size="sm"
-              asChild
-              className="w-full h-10 text-xs font-bold bg-[#003461] hover:bg-[#00274a] text-white rounded-xl shadow-xs flex items-center justify-center gap-2"
+              variant="outline"
+              disabled={isDownloadingPdf || isLoadingHistoryDoc}
+              className="h-7 px-2 text-[10px] font-semibold gap-1 rounded-lg bg-[#e2e8f0] border-slate-200 text-slate-800 cursor-pointer"
+              onClick={handleDownloadPdf}
             >
-              <a
-                href={
-                  item.activityType?.toLowerCase().includes('lembur') ||
-                  item.activityType?.toLowerCase().includes('overtime') ||
-                  item.activityType?.toLowerCase().includes('spl') ||
-                  item.title?.toLowerCase().includes('lembur') ||
-                  item.title?.toLowerCase().includes('spl')
-                    ? `/mobile/overtime?tab=history`
-                    : `/mobile/activity?tab=history`
-                }
-              >
-                Lihat Detail ↗
-              </a>
+              <Download className="size-3" />
+              <span>{isDownloadingPdf ? 'Unduh...' : 'UNDUH PDF'}</span>
             </Button>
+
+            <button
+              type="button"
+              onClick={() => setIsHistoryModalOpen(false)}
+              className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 cursor-pointer"
+              aria-label="Tutup Preview"
+            >
+              <X className="size-5" />
+            </button>
           </div>
-        ))}
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden p-2 sm:p-4 bg-slate-100 gap-2">
+          {isLoadingHistoryDoc ? (
+            <div className="py-24 flex flex-col items-center justify-center gap-3 text-slate-400">
+              <Loader2 className="size-8 animate-spin text-[#003461]" />
+              <p className="font-semibold text-xs text-slate-600">Memuat dokumen surat resmi...</p>
+            </div>
+          ) : !selectedHistoryDoc ? (
+            <div className="py-20 text-center text-slate-500 text-xs">
+              Data dokumen tidak ditemukan.
+            </div>
+          ) : (
+            <>
+              {/* Zoom Bar */}
+              <div className="shrink-0 flex items-center justify-between px-3 py-1.5 bg-white/95 backdrop-blur-xs rounded-xl border border-slate-200 shadow-2xs max-w-lg mx-auto w-full">
+                <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                  <FileText className="size-3.5 text-[#003461]" /> Preview Dokumen Surat / PDF
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPreviewZoom((z) => Math.max(0.6, Number((z - 0.15).toFixed(2))))}
+                    className="h-7 w-7 p-0 text-xs font-extrabold text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
+                    title="Zoom Out"
+                  >
+                    -
+                  </Button>
+                  <span className="text-[11px] font-mono font-bold text-slate-600 px-1 min-w-10 text-center">
+                    {Math.round(previewZoom * 100)}%
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPreviewZoom((z) => Math.min(3.5, Number((z + 0.15).toFixed(2))))}
+                    className="h-7 w-7 p-0 text-xs font-extrabold text-slate-700 rounded-lg hover:bg-slate-100 cursor-pointer"
+                    title="Zoom In"
+                  >
+                    +
+                  </Button>
+                  {previewZoom !== 1.0 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setPreviewZoom(1.0)}
+                      className="h-7 px-2 text-[10px] font-bold text-slate-500 hover:text-slate-900 rounded-lg cursor-pointer"
+                    >
+                      Reset
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* PDF Letterhead Container with Drag-to-Pan & Fluid Zoom */}
+              <div
+                ref={scrollContainerRef}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUpOrLeave}
+                onMouseLeave={handleMouseUpOrLeave}
+                className={cn(
+                  "flex-1 min-h-0 w-full flex justify-center items-start overflow-auto p-2 sm:p-4 rounded-xl select-none touch-pan-x touch-pan-y [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 hover:[&::-webkit-scrollbar-thumb]:bg-slate-400 [&::-webkit-scrollbar-track]:bg-transparent",
+                  isDragging ? "cursor-grabbing" : "cursor-grab"
+                )}
+              >
+                <div
+                  ref={pdfRef}
+                  id="history-preview-letterhead-sheet"
+                  className="relative mx-auto shrink-0 bg-white shadow-lg border border-slate-200 rounded-sm origin-top transition-transform duration-100 w-[210mm] min-h-[297mm]"
+                  style={{
+                    backgroundImage: 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)',
+                    backgroundSize: '100% 100%',
+                    transform: `scale(${0.44 * previewZoom})`,
+                    transformOrigin: 'top center',
+                    marginBottom: `${Math.max(0, (previewZoom - 1.0) * 160)}mm`,
+                  }}
+                >
+                  <div
+                    className="relative z-10 text-[8pt] sm:text-[8.5pt] font-sans leading-tight text-black"
+                    style={{
+                      paddingTop: '38mm',
+                      paddingBottom: '35mm',
+                      paddingLeft: '20mm',
+                      paddingRight: '20mm',
+                      minHeight: '297mm',
+                    }}
+                  >
+                    {/* Render SPL Document */}
+                    {historyDocType === 'spl' && (() => {
+                      const doc = selectedHistoryDoc.document || selectedHistoryDoc
+                      const requester = selectedHistoryDoc.requester || doc.requester
+                      const requesterName = selectedHistoryDoc.requesterName || doc.requesterName || requester?.name || '—'
+                      const requesterDept = selectedHistoryDoc.requesterDepartment || doc.requesterDepartment || requester?.department || 'Central Services'
+                      const requesterJob = selectedHistoryDoc.requesterJobTitle || doc.requesterJobTitle || requester?.jobTitle || 'Serviceman'
+                      const participants = selectedHistoryDoc.participants || selectedHistoryDoc.workers || doc.participants || doc.workers || []
+                      const lineItems = selectedHistoryDoc.lineItems || doc.lineItems || []
+                      const approvals = selectedHistoryDoc.approvals || doc.approvals || []
+
+                      return (
+                        <div>
+                          <div className="text-center mb-3">
+                            <h1 className="font-bold text-[11pt] uppercase text-black leading-tight">
+                              SURAT PERINTAH LEMBUR (SPL)
+                            </h1>
+                            <p className="font-semibold text-[8pt] text-slate-700 uppercase tracking-wide">
+                              PT CHITRA PARATAMA • HUMAN CAPITAL
+                            </p>
+                          </div>
+
+                          <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8pt]">
+                            <tbody>
+                              <tr>
+                                <td colSpan={4} className="font-bold bg-slate-50 text-black py-0.5">Details &amp; Request Profile</td>
+                              </tr>
+                              <tr>
+                                <td className="w-1/4 font-bold bg-slate-50 text-black">SPL Number</td>
+                                <td className="w-1/4 font-mono font-semibold text-black">{doc.splNumber || `SPL-#${doc.id || doc.documentId}`}</td>
+                                <td className="w-1/4 font-bold bg-slate-50 text-black">Work Date</td>
+                                <td className="w-1/4 font-semibold text-black">{formatDate(doc.workDate)}</td>
+                              </tr>
+                              <tr>
+                                <td className="font-bold bg-slate-50 text-black">Title / Keperluan</td>
+                                <td colSpan={3} className="font-semibold text-black">{doc.title || '—'}</td>
+                              </tr>
+                              <tr>
+                                <td className="font-bold bg-slate-50 text-black">Requester Name</td>
+                                <td className="text-black font-medium">{requesterName}</td>
+                                <td className="font-bold bg-slate-50 text-black">Department</td>
+                                <td className="text-black font-medium">{requesterDept}</td>
+                              </tr>
+                              <tr>
+                                <td className="font-bold bg-slate-50 text-black">Planned Schedule</td>
+                                <td colSpan={3} className="text-black">
+                                  {doc.plannedStartAt
+                                    ? `${formatDate(doc.plannedStartAt)} (${formatTime(new Date(doc.plannedStartAt))} s.d. ${doc.plannedEndAt ? formatTime(new Date(doc.plannedEndAt)) : '--:--'})`
+                                    : formatDate(doc.workDate)}
+                                </td>
+                              </tr>
+                              {Boolean(doc.requestNotes || (doc as any).notes) && (
+                                <tr>
+                                  <td className="font-bold bg-slate-50 text-black">Request Notes</td>
+                                  <td colSpan={3} className="text-black">{doc.requestNotes || (doc as any).notes}</td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+
+                          <div className="font-bold mb-1 text-[8pt] text-black">
+                            A. Workers ({participants.length} Orang)
+                          </div>
+                          <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-center text-[7.5pt] sm:text-[8pt]">
+                            <thead>
+                              <tr className="bg-slate-50 font-bold text-black">
+                                <th className="w-[8%]">#</th>
+                                <th className="text-left w-[42%]">Name</th>
+                                <th className="w-[15%]">Shift</th>
+                                <th className="w-[15%]">Roster</th>
+                                <th className="w-[20%]">Category</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {participants.length === 0 ? (
+                                <tr>
+                                  <td colSpan={5} className="py-2 text-slate-400 italic">Belum ada peserta lembur.</td>
+                                </tr>
+                              ) : (
+                                participants.map((w: any, idx: number) => (
+                                  <tr key={idx}>
+                                    <td>{idx + 1}</td>
+                                    <td className="text-left font-semibold text-black">{w.employeeName || w.name || `#${w.employeeId}`}</td>
+                                    <td>{w.shiftCode || 'DS'}</td>
+                                    <td>{w.rosterType || w.roster || '5:2'}</td>
+                                    <td className="capitalize text-[7.5pt] text-slate-800">{(w.category || '').replace(/_/g, ' ')}</td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+
+                          <div className="font-bold mb-1 text-[8pt] text-black">
+                            B. Line Items (Aktivitas Pekerjaan)
+                          </div>
+                          <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[7.5pt] sm:text-[8pt]">
+                            <thead>
+                              <tr className="bg-slate-50 text-center font-bold text-black">
+                                <th className="w-[8%]">#</th>
+                                <th className="text-left w-[44%]">Line Label / Task</th>
+                                <th className="w-[20%]">Target Unit</th>
+                                <th className="w-[14%]">Est. Min</th>
+                                <th className="w-[14%]">Points</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {lineItems.length === 0 ? (
+                                <tr>
+                                  <td colSpan={5} className="py-2 text-slate-400 italic text-center">Belum ada rincian aktivitas.</td>
+                                </tr>
+                              ) : (
+                                lineItems.map((it: any, idx: number) => (
+                                  <tr key={idx}>
+                                    <td className="text-center">{idx + 1}</td>
+                                    <td className="font-medium text-black">{it.lineLabel}</td>
+                                    <td className="text-center text-black">{it.targetUnit || '—'}</td>
+                                    <td className="text-center text-black">{it.estimatedMinutes || 0}m</td>
+                                    <td className="text-center font-bold text-black">{it.plannedPoints || 0}</td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+
+                          <div className="font-bold mb-1 text-[8pt] text-black">
+                            C. Approval Steps
+                          </div>
+                          <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-center text-[7.5pt] sm:text-[8pt]">
+                            <thead>
+                              <tr className="bg-slate-50 font-bold text-black">
+                                <th className="w-[6%]">#</th>
+                                <th className="text-left w-[20%]">Tahap</th>
+                                <th className="text-left w-[22%]">Approver</th>
+                                <th className="w-[14%]">Status</th>
+                                <th className="w-[16%]">Waktu</th>
+                                <th className="text-left w-[22%]">Catatan</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {approvals.length === 0 ? (
+                                <tr>
+                                  <td colSpan={6} className="py-2 text-slate-400 italic">Belum ada jejak approval.</td>
+                                </tr>
+                              ) : (
+                                approvals.map((ap: any, idx: number) => (
+                                  <tr key={idx}>
+                                    <td>{ap.stepOrder || idx + 1}</td>
+                                    <td className="text-left font-medium capitalize">{ap.stepLabel || ap.approverRole?.replace(/_/g, ' ') || 'Approver'}</td>
+                                    <td className="text-left font-semibold text-black">{ap.approverName || (ap.stepOrder === 1 ? requesterName : '—')}</td>
+                                    <td className="capitalize font-semibold text-black">{ap.status || 'Pending'}</td>
+                                    <td className="text-[7pt]">{ap.signedAt ? formatTimestamp(ap.signedAt) : '—'}</td>
+                                    <td className="text-left text-[7pt] text-slate-600">{ap.remarks || '—'}</td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+
+                          <div className="font-bold mb-2 text-[8pt] text-black">Signatories ({approvals.length > 0 ? approvals.length : 2} Tahap)</div>
+                          <div
+                            className="grid gap-2 mb-3 text-center"
+                            style={{ gridTemplateColumns: `repeat(${Math.max(approvals.length, 2)}, minmax(0, 1fr))` }}
+                          >
+                            {approvals.length === 0 ? (
+                              <>
+                                <div className="flex flex-col items-center text-center border border-slate-200 rounded-lg p-1.5 bg-slate-50/50">
+                                  <div className="text-[7pt] text-slate-700 font-bold mb-0.5">Karyawan / Pemohon</div>
+                                  <div className="h-12 w-full flex items-center justify-center my-0.5">
+                                    <span className="text-slate-400 italic text-[7pt]">(Belum Disetujui)</span>
+                                  </div>
+                                  <div className="mt-0.5 border-b border-slate-400 pb-0.5 font-bold text-[7.5pt] text-slate-900 w-[90%] truncate">{requesterName}</div>
+                                  <div className="text-[6.5pt] text-slate-500 font-medium">{requesterJob}</div>
+                                </div>
+                                <div className="flex flex-col items-center text-center border border-slate-200 rounded-lg p-1.5 bg-slate-50/50">
+                                  <div className="text-[7pt] text-slate-700 font-bold mb-0.5">Leader / Supervisor</div>
+                                  <div className="h-12 w-full flex items-center justify-center my-0.5">
+                                    <span className="text-slate-400 italic text-[7pt]">(Belum Disetujui)</span>
+                                  </div>
+                                  <div className="mt-0.5 border-b border-slate-400 pb-0.5 font-bold text-[7.5pt] text-slate-900 w-[90%] truncate">—</div>
+                                  <div className="text-[6.5pt] text-slate-500 font-medium">Leader / Supervisor</div>
+                                </div>
+                              </>
+                            ) : (
+                              approvals.map((ap: any, idx: number) => {
+                                const isSigned = ['approved', 'completed', 'signed'].includes((ap.status || '').toLowerCase())
+                                const isRejected = (ap.status || '').toLowerCase().includes('reject') || (ap.status || '').toLowerCase().includes('tolak')
+                                const isReverted = (ap.status || '').toLowerCase().includes('revert') || (ap.status || '').toLowerCase().includes('revisi')
+                                const roleTitle = ap.stepLabel || ap.approverRole?.replace(/_/g, ' ') || (idx === 0 ? 'Pemohon' : `Approver ${idx}`)
+                                const name = ap.approverName || (idx === 0 ? requesterName : '—')
+
+                                return (
+                                  <div key={ap.id || idx} className="flex flex-col items-center text-center border border-slate-200 rounded-lg p-1.5 bg-slate-50/50">
+                                    <div className="text-[7pt] text-slate-700 font-bold mb-0.5 truncate max-w-full capitalize">{roleTitle}</div>
+                                    <div className="h-12 w-full flex items-center justify-center my-0.5">
+                                      {ap.signatureDataUrl ? (
+                                        <img src={ap.signatureDataUrl} alt={`TTD ${roleTitle}`} className="max-h-12 max-w-full object-contain" />
+                                      ) : isSigned ? (
+                                        <div className="flex flex-col items-center justify-center">
+                                          <span className="font-bold text-emerald-700 text-[7.5pt]">✓ APPROVED</span>
+                                          {ap.signedAt && <span className="text-[6pt] text-slate-400">{formatDate(ap.signedAt)}</span>}
+                                        </div>
+                                      ) : isRejected ? (
+                                        <span className="text-rose-600 font-bold text-[7.5pt]">✕ DITOLAK</span>
+                                      ) : isReverted ? (
+                                        <span className="text-amber-600 font-bold text-[7.5pt]">↺ REVISI</span>
+                                      ) : (
+                                        <span className="text-slate-400 italic text-[7pt]">(Belum Disetujui)</span>
+                                      )}
+                                    </div>
+                                    <div className="mt-0.5 border-b border-slate-400 pb-0.5 font-bold text-[7.5pt] text-slate-900 w-[90%] truncate">
+                                      {name}
+                                    </div>
+                                    <div className="text-[6.5pt] text-slate-500 font-medium truncate max-w-full">
+                                      {ap.approverRole ? ap.approverRole.replace(/_/g, ' ') : (idx === 0 ? requesterJob : 'Approver')}
+                                    </div>
+                                    {ap.signedAt && isSigned && (
+                                      <div className="text-[6pt] text-slate-400 mt-0.5">
+                                        {formatTimestamp(ap.signedAt)}
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })()}
+
+                    {/* Render Daily Activity (DAR) Document */}
+                    {historyDocType === 'daily' && (() => {
+                      const items = selectedHistoryDoc.items || selectedHistoryDoc.sessionItems || []
+                      const approvals = selectedHistoryDoc.approvals || []
+                      const step1 = approvals.find((s: any) => s.stepOrder === 1)
+                      const step2 = approvals.find((s: any) => s.stepOrder === 2)
+                      const isSigned1 = ['approved', 'completed', 'signed'].includes((step1?.status || '').toLowerCase())
+                      const isApproved2 = ['approved', 'completed', 'signed'].includes((step2?.status || '').toLowerCase())
+                      const isReverted1 = (step1?.status || '').toLowerCase().includes('revert')
+                      const isReverted2 = (step2?.status || '').toLowerCase().includes('revert')
+                      const sig1 = isSigned1 ? (step1?.signatureDataUrl || step1?.signatureUrl || selectedHistoryDoc.employee?.signatureDataUrl || null) : null
+                      const sig2 = isApproved2 ? (step2?.signatureDataUrl || step2?.signatureUrl || null) : null
+                      const totalPoints = items.reduce((sum: number, it: any) => sum + (Number(it.points || it.actualPoints) || 0), 0)
+                      const sessionId = selectedHistoryDoc.sessionId || selectedHistoryDoc.id
+
+                      return (
+                        <div>
+                          {/* Header */}
+                          <div className="text-center mb-3">
+                            <h1 className="font-bold text-[11pt] uppercase text-black leading-tight">
+                              LAPORAN AKTIVITAS HARIAN (DAR)
+                            </h1>
+                            <p className="font-semibold text-[8pt] text-slate-700 uppercase tracking-wide">
+                              PT CHITRA PARATAMA • OPERATION &amp; SERVICES
+                            </p>
+                          </div>
+
+                          {/* 4-column Details & Request Profile */}
+                          <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8pt]">
+                            <tbody>
+                              <tr>
+                                <td colSpan={4} className="font-bold bg-slate-50 text-black py-0.5">Details &amp; Request Profile</td>
+                              </tr>
+                              <tr>
+                                <td className="w-1/4 font-bold bg-slate-50 text-black">Kode Sesi / Dokumen</td>
+                                <td className="w-1/4 font-mono font-semibold text-black">{selectedHistoryDoc.sessionCode || 'DAR'}</td>
+                                <td className="w-1/4 font-bold bg-slate-50 text-black">Tanggal Kerja</td>
+                                <td className="w-1/4 font-semibold text-black">{formatDate(selectedHistoryDoc.workDate)}</td>
+                              </tr>
+                              <tr>
+                                <td className="font-bold bg-slate-50 text-black">Status / Shift</td>
+                                <td className="capitalize font-semibold text-black">{selectedHistoryDoc.status || 'Submitted'} • Shift {selectedHistoryDoc.shiftCode || 'ALL'}</td>
+                                <td className="font-bold bg-slate-50 text-black">Customer / Site</td>
+                                <td className="text-black font-semibold">{selectedHistoryDoc.customerName || selectedHistoryDoc.site?.customerName || 'Default Customer'} ({selectedHistoryDoc.site?.name || selectedHistoryDoc.siteName || 'Balikpapan'})</td>
+                              </tr>
+                              <tr>
+                                <td className="font-bold bg-slate-50 text-black">Nama Pemohon</td>
+                                <td className="text-black font-semibold">{selectedHistoryDoc.employee?.name || '—'} (SN: {selectedHistoryDoc.employee?.employeeSn || selectedHistoryDoc.employee?.sn || '—'})</td>
+                                <td className="font-bold bg-slate-50 text-black">Dept / Section</td>
+                                <td className="text-black">{[selectedHistoryDoc.employee?.department, selectedHistoryDoc.employee?.section].filter(Boolean).join(' / ') || 'Central Services'}</td>
+                              </tr>
+                              {selectedHistoryDoc.teamMembersSummary ? (
+                                <tr>
+                                  <td className="font-bold bg-slate-50 text-black">Anggota Tim</td>
+                                  <td colSpan={3} className="text-black font-normal">{selectedHistoryDoc.teamMembersSummary}</td>
+                                </tr>
+                              ) : null}
+                              {selectedHistoryDoc.notes || selectedHistoryDoc.summaryRemark ? (
+                                <tr>
+                                  <td className="font-bold bg-slate-50 text-black">Catatan Aktivitas</td>
+                                  <td colSpan={3} className="text-black">{selectedHistoryDoc.notes || selectedHistoryDoc.summaryRemark}</td>
+                                </tr>
+                              ) : null}
+                            </tbody>
+                          </table>
+
+                          {/* Section A: Daily Activity Items */}
+                          <div className="font-bold mb-1 text-[8pt] text-black">
+                            A. Daily Activity Items ({items.length} Item • Total {totalPoints} Poin)
+                          </div>
+                          <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-center text-[7.5pt] sm:text-[8pt]">
+                            <thead>
+                              <tr className="bg-slate-50 font-bold text-black text-center">
+                                <th className="w-[6%]">#</th>
+                                <th className="text-left w-[46%]">Aktivitas</th>
+                                <th className="w-[16%]">Durasi</th>
+                                <th className="w-[12%]">Poin</th>
+                                <th className="text-left w-[20%]">Remark</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {items.length === 0 ? (
+                                <tr>
+                                  <td colSpan={5} className="py-2 text-slate-400 italic text-center">Belum ada item aktivitas.</td>
+                                </tr>
+                              ) : (
+                                items.map((it: any, idx: number) => (
+                                  <tr key={it.id || idx}>
+                                    <td className="text-center font-mono">{idx + 1}</td>
+                                    <td className="text-left font-medium text-black">{it.snapshotLabel || it.label || it.activityLabel || it.activityName || 'Aktivitas'}</td>
+                                    <td className="text-center font-mono text-black">{it.duration || (it.actualDurationMinutes ? `${it.actualDurationMinutes}m` : '60m')}</td>
+                                    <td className="text-center font-bold font-mono text-black">{it.points || it.actualPoints || 0} pts</td>
+                                    <td className="text-left text-[7pt] text-slate-600">{it.remark || it.remarks || '—'}</td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+
+                          {/* Section B: Approval Steps */}
+                          <div className="font-bold mb-1 text-[8pt] text-black">
+                            B. Approval Steps
+                          </div>
+                          <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-center text-[7.5pt] sm:text-[8pt]" style={{ tableLayout: 'fixed' }}>
+                            <thead>
+                              <tr className="bg-slate-50 font-bold text-black">
+                                <th style={{ width: '6%' }}>#</th>
+                                <th className="text-left" style={{ width: '20%' }}>Tahap</th>
+                                <th className="text-left" style={{ width: '22%' }}>Approver</th>
+                                <th style={{ width: '14%' }}>Status</th>
+                                <th style={{ width: '16%' }}>Waktu</th>
+                                <th className="text-left" style={{ width: '22%' }}>Catatan</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {/* 1. Pemohon / Karyawan */}
+                              <tr>
+                                <td>1</td>
+                                <td className="text-left">Karyawan Sign</td>
+                                <td className="text-left font-semibold">{step1?.approverName || selectedHistoryDoc.employee?.name || '—'}</td>
+                                <td className={cn("capitalize font-bold", isSigned1 ? "text-emerald-700" : "text-slate-500")}>
+                                  {isSigned1 ? "Approved" : "Draft"}
+                                </td>
+                                <td className="text-[7pt] font-mono">{step1?.signedAt ? formatTimestamp(step1.signedAt) : (selectedHistoryDoc.submittedAt ? formatTimestamp(selectedHistoryDoc.submittedAt) : '—')}</td>
+                                <td className="text-left italic text-slate-500 text-[7pt]">{step1?.remarks || '—'}</td>
+                              </tr>
+                              {/* 2. Leader / PJO */}
+                              <tr className={isReverted2 ? 'bg-amber-50/70' : undefined}>
+                                <td>2</td>
+                                <td className="text-left">{step2?.stepLabel || 'Leader / PJO'}</td>
+                                <td className="text-left font-semibold">{step2?.approverName || 'Leader / Supervisor'}</td>
+                                <td className={cn("capitalize font-bold", isApproved2 ? "text-emerald-700" : isReverted2 ? "text-amber-700" : "text-slate-600")}>
+                                  {isReverted2 ? 'Reverted' : isApproved2 ? 'Approved' : 'Waiting'}
+                                </td>
+                                <td className="text-[7pt] font-mono">{step2?.signedAt ? formatTimestamp(step2.signedAt) : '—'}</td>
+                                <td className="text-left italic text-slate-600 text-[7pt] break-words whitespace-normal leading-tight font-medium" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                                  {step2?.remarks || '—'}
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+
+                          {/* Section C: Signatories (3 Kolom: Employee, Leader / PJO, Customer) */}
+                          <div className="font-bold mb-2 text-[8pt] text-black">Signatories</div>
+                          <div className="grid grid-cols-3 gap-3 mb-3 text-center">
+                            {/* 1. Pemohon / Serviceman */}
+                            <div className="flex flex-col items-center text-center">
+                              <div className="text-[7pt] text-slate-500 font-semibold mb-1">Employee Signature</div>
+                              <div className="h-14 w-full flex items-center justify-center my-1">
+                                {sig1 ? (
+                                  <img
+                                    src={sig1}
+                                    alt="TTD Pemohon"
+                                    className="max-h-12 max-w-full object-contain"
+                                  />
+                                ) : isSigned1 ? (
+                                  <div className="flex flex-col items-center justify-center text-center">
+                                    <span className="text-[6.5pt] font-bold text-emerald-600">✓ Digitally Signed</span>
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-400 italic text-[7pt]">(Draft)</span>
+                                )}
+                              </div>
+                              <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
+                                {selectedHistoryDoc.employee?.name || '—'}
+                              </div>
+                              <div className="text-[7pt] text-slate-600 font-medium">{selectedHistoryDoc.employee?.jobTitle || 'Serviceman / Pemohon'}</div>
+                              <div className="text-[6.5pt] text-slate-400 mt-0.5">
+                                {step1?.signedAt ? `Waktu TTD: ${formatTimestamp(step1.signedAt)}` : 'Waktu Pengajuan: —'}
+                              </div>
+                            </div>
+
+                            {/* 2. Leader / Supervisor / PJO */}
+                            <div className="flex flex-col items-center text-center">
+                              <div className="text-[7pt] text-slate-500 font-semibold mb-1">Leader / PJO Signature</div>
+                              <div className="h-14 w-full flex items-center justify-center my-1">
+                                {sig2 ? (
+                                  <img
+                                    src={sig2}
+                                    alt="TTD Leader"
+                                    className="max-h-12 max-w-full object-contain"
+                                  />
+                                ) : isApproved2 ? (
+                                  <div className="flex flex-col items-center justify-center text-center">
+                                    <span className="text-[6.5pt] font-bold text-emerald-600">✓ Approved</span>
+                                  </div>
+                                ) : isReverted2 ? (
+                                  <span className="text-amber-600 font-semibold italic text-[7pt]">(Dikembalikan)</span>
+                                ) : (
+                                  <span className="text-slate-400 italic text-[7pt]">(Belum Disetujui)</span>
+                                )}
+                              </div>
+                              <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
+                                {step2?.approverName || 'Leader / Supervisor'}
+                              </div>
+                              <div className="text-[7pt] text-slate-600 font-medium">{step2?.stepLabel || 'Leader / PJO'}</div>
+                              <div className="text-[6.5pt] text-slate-400 mt-0.5">
+                                {step2?.signedAt ? `Waktu TTD: ${formatTimestamp(step2.signedAt)}` : '—'}
+                              </div>
+                            </div>
+
+                            {/* 3. Customer (Manual / Fisik) */}
+                            <div className="flex flex-col items-center text-center">
+                              <div className="text-[7pt] text-slate-500 font-semibold mb-1">Customer Signature</div>
+                              <div className="h-14 w-full flex items-center justify-center my-1">
+                                <span className="text-slate-400 italic text-[7pt]"></span>
+                              </div>
+                              <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
+                                &nbsp;
+                              </div>
+                              <div className="text-[7pt] text-slate-600 font-medium">Customer</div>
+                            </div>
+                          </div>
+
+                          {/* Evidence QR in Bottom Right Corner (Clickable to open floating modal) */}
+                          <div className="absolute right-[20mm] bottom-[18mm]">
+                            <DailyActivityEvidenceQr sessionId={sessionId} />
+                          </div>
+
+                          <div className="text-right text-[7pt] text-slate-500 mt-2 font-mono">
+                            F.OP.DAR.001.01 • PT Chitra Paratama
+                          </div>
+                        </div>
+                      )
+                    })()}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+
+  if (viewMode === 'mobile') {
+    const categoryOptions = [
+      { id: 'ALL', label: 'Semua' },
+      { id: 'DAILY', label: 'Daily Activity' },
+      { id: 'OVERTIME', label: 'SPL Lembur' },
+      { id: 'PTW', label: 'Izin PTW' },
+      { id: '5R', label: '5R Audit' },
+      { id: 'WO', label: 'Form WO' },
+      { id: 'SOP', label: 'SOP / WIN' },
+      { id: 'CONTRACT', label: 'Contract' },
+    ]
+
+    const statusOptions = [
+      { id: 'ALL', label: 'Semua Status' },
+      { id: 'APPROVED', label: 'Disetujui' },
+      { id: 'REVERTED', label: 'Revisi' },
+      { id: 'REJECTED', label: 'Ditolak' },
+      { id: 'PENDING', label: 'Menunggu' },
+    ]
+
+    const isFiltered = mobileSearchQuery !== '' || mobileCategoryFilter !== 'ALL' || mobileStatusFilter !== 'ALL'
+
+    return (
+      <div className="space-y-3.5">
+        {/* Mobile Filter Controls Bar */}
+        <div className="bg-white rounded-2xl p-3.5 border border-slate-200/90 shadow-xs space-y-3">
+          {/* Search Bar */}
+          <div className="relative">
+            <Search className="size-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <Input
+              value={mobileSearchQuery}
+              onChange={(e) => setMobileSearchQuery(e.target.value)}
+              placeholder="Cari judul, kode sesi, requester, site..."
+              className="pl-9 pr-8 h-9 text-xs rounded-xl bg-slate-50/90 border-slate-200 focus:bg-white transition-all text-slate-800"
+            />
+            {mobileSearchQuery && (
+              <button
+                type="button"
+                onClick={() => setMobileSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 rounded cursor-pointer"
+                title="Hapus pencarian"
+              >
+                <X className="size-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Category Chips (Horizontal Scroll) */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
+            {categoryOptions.map((cat) => {
+              const active = mobileCategoryFilter === cat.id
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setMobileCategoryFilter(cat.id)}
+                  className={cn(
+                    "shrink-0 px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer",
+                    active
+                      ? "bg-[#003461] text-white shadow-xs"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  )}
+                >
+                  {cat.label}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Status Filter Row */}
+          <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
+            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+              {statusOptions.map((st) => {
+                const active = mobileStatusFilter === st.id
+                return (
+                  <button
+                    key={st.id}
+                    type="button"
+                    onClick={() => setMobileStatusFilter(st.id)}
+                    className={cn(
+                      "shrink-0 px-2 py-0.5 rounded-md font-semibold text-[10px] transition-colors cursor-pointer",
+                      active
+                        ? "bg-sky-100 text-sky-900 font-bold border border-sky-300"
+                        : "text-slate-500 hover:text-slate-900 bg-slate-50"
+                    )}
+                  >
+                    {st.label}
+                  </button>
+                )
+              })}
+            </div>
+
+            {isFiltered && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileSearchQuery('')
+                  setMobileCategoryFilter('ALL')
+                  setMobileStatusFilter('ALL')
+                }}
+                className="shrink-0 text-[10px] font-bold text-rose-600 hover:text-rose-800 flex items-center gap-0.5 cursor-pointer"
+              >
+                <RotateCcw className="size-2.5" />
+                Reset
+              </button>
+            )}
+          </div>
+
+          {/* Filter summary status */}
+          <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5">
+            <span>
+              Menampilkan <strong className="text-slate-800">{filteredMobileHistoryItems.length}</strong> dari {allHistoryItems.length} riwayat
+            </span>
+            {isFiltered && (
+              <span className="text-[10px] bg-amber-50 text-amber-800 px-1.5 py-0.5 rounded font-bold border border-amber-200">
+                Filter Aktif
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* List of Filtered Items */}
+        {filteredMobileHistoryItems.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center space-y-2">
+            <FileText className="size-8 text-slate-300 mx-auto" />
+            <p className="text-xs font-bold text-slate-700">Tidak ada riwayat yang cocok</p>
+            <p className="text-[11px] text-slate-400">Coba ubah kata kunci atau filter status/kategori yang dipilih.</p>
+            {isFiltered && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setMobileSearchQuery('')
+                  setMobileCategoryFilter('ALL')
+                  setMobileStatusFilter('ALL')
+                }}
+                className="mt-2 text-xs font-bold rounded-xl h-8"
+              >
+                <RotateCcw className="size-3 mr-1" />
+                Reset Semua Filter
+              </Button>
+            )}
+          </div>
+        ) : (
+          filteredMobileHistoryItems.map((item) => {
+            return (
+              <div
+                key={item.activityId}
+                className="rounded-2xl bg-white p-4 shadow-sm border border-slate-100/90 space-y-3"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
+                      <FileText className="size-3" />
+                      {item.activityType || 'Dokumen'}
+                    </span>
+                    <p className="text-sm font-bold text-slate-900 leading-snug">
+                      {item.title}
+                    </p>
+                    <p className="text-xs text-slate-500 font-medium">
+                      {item.workDateLabel} • {item.siteName}
+                    </p>
+                  </div>
+
+                  <div className="shrink-0">
+                    <AdminStatusBadge value={item.status} />
+                  </div>
+                </div>
+
+                <div className="space-y-1 rounded-xl bg-slate-50/80 p-2.5 text-xs">
+                  <div className="flex items-center justify-between">
+                     <span className="text-slate-500 font-medium">Posisi Terakhir:</span>
+                     <span className="font-bold text-slate-700">{(item as any).currentStage || 'Selesai'}</span>
+                   </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 font-medium">Diajukan:</span>
+                    <span className="font-semibold text-slate-600">{formatDate(item.submittedAt)}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    type="button"
+                    onClick={() => handleDirectDownload(item)}
+                    className="h-9 text-xs font-semibold rounded-xl border-slate-200 flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Download className="size-3.5" />
+                    Unduh
+                  </Button>
+                  <Button
+                    size="sm"
+                    type="button"
+                    onClick={() => handleOpenHistoryPreview(item)}
+                    className="h-9 text-xs font-bold bg-[#003461] hover:bg-[#00274a] text-white rounded-xl flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <Eye className="size-3.5" />
+                    Lihat Detail
+                  </Button>
+                </div>
+              </div>
+            )
+          })
+        )}
+
+        {previewModalContent}
       </div>
     )
   }
 
   return (
-    <Card className="bg-surface-container-lowest rounded-[1.4rem] border-0 shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
-      <CardContent className="pt-6">
-        <MinimalTableShell
-          title="Riwayat"
-          description="Seluruh jejak persetujuan dan riwayat dokumen operasional dapat dipantau dari sini."
-          label="approval history"
-          fileName="approval-history"
-          searchPlaceholder="Cari riwayat pengajuan, requester, unit, atau status..."
-          dateFilter
-          filters={
-            <ApprovalFilterBar
-              sites={sites}
-              priorities={priorities}
-              statusOptions={statuses}
-            />
-          }
-        >
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Pengajuan</TableHead>
-                <TableHead>Site</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Posisi Terakhir</TableHead>
-                <TableHead>Workflow</TableHead>
-                <TableHead>Aksi</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {safeGroups.flatMap((group) =>
-                (group?.items || []).map((item) => (
-                  <TableRow
-                    key={item.activityId}
-                    data-date-value={item.submittedAt ? new Date(item.submittedAt).toISOString() : new Date().toISOString()}
-                    data-filter-site={item.siteName || ''}
-                    data-filter-priority={item.priority || 'normal'}
-                    data-filter-status={item.status || 'open'}
-                  >
-                    <TableCell className="align-top">
-                      <div className="space-y-1">
-                        <p className="text-foreground font-semibold">{item.title}</p>
-                        <p className="text-muted-foreground text-xs">
-                          {item.activityType} • {item.unitNumber}{(item as any).tireCount ? ` • ${(item as any).tireCount} Tire` : ''} • {group.workDateLabel}
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          <AdminStatusBadge value={item.priority} />
+    <>
+      <Card className="bg-surface-container-lowest rounded-[1.4rem] border-0 shadow-[0_18px_34px_rgba(0,52,97,0.08)]">
+        <CardContent className="pt-6">
+          <MinimalTableShell
+            title="Riwayat"
+            description="Seluruh jejak persetujuan dan riwayat dokumen operasional dapat dipantau dari sini."
+            label="approval history"
+            fileName="approval-history"
+            searchPlaceholder="Cari riwayat pengajuan, requester, unit, atau status..."
+            dateFilter
+            filters={
+              <ApprovalFilterBar
+                sites={sites}
+                priorities={priorities}
+                statusOptions={statuses}
+              />
+            }
+          >
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Pengajuan</TableHead>
+                  <TableHead>Site</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Posisi Terakhir</TableHead>
+                  <TableHead>Workflow</TableHead>
+                  <TableHead className="text-center">Aksi</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {safeGroups.flatMap((group) =>
+                  (group?.items || []).map((item) => (
+                    <TableRow
+                      key={item.activityId}
+                      data-date-value={item.submittedAt ? new Date(item.submittedAt).toISOString() : new Date().toISOString()}
+                      data-filter-site={item.siteName || ''}
+                      data-filter-priority={item.priority || 'normal'}
+                      data-filter-status={item.status || 'open'}
+                    >
+                      <TableCell className="align-top">
+                        <div className="space-y-1">
+                          <p className="text-foreground font-semibold">{item.title}</p>
+                          <p className="text-muted-foreground text-xs">
+                            {item.activityType} • {item.unitNumber}{(item as any).tireCount ? ` • ${(item as any).tireCount} Tire` : ''} • {group.workDateLabel}
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            <AdminStatusBadge value={item.priority} />
+                          </div>
                         </div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-foreground align-top text-sm">
-                      {item.siteName}
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <div className="space-y-2">
-                        <AdminStatusBadge value={item.status} />
-                        <p className="text-muted-foreground text-xs">{item.lastDecision}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <div className="space-y-1 text-sm">
-                        <p className="text-foreground">{item.pendingWith}</p>
-                        <p className="text-muted-foreground text-xs">
-                          Tahap {item.currentStepLabel}
-                        </p>
-                      </div>
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <div className="space-y-1 text-sm">
-                        <p className="text-foreground">{item.workflowLabel}</p>
-                        <p className="text-muted-foreground text-xs">
-                          {item.shiftLabel} • {item.timeRange}
-                        </p>
-                      </div>
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <AdminDetailDrawer
-                        title={`Trail ${item.title}`}
-                        description={`${item.siteName} • ${item.workflowLabel}`}
-                        width="wide"
-                        trigger={
-                          <Button type="button" variant="outline" size="dense">
-                            Trail
+                      </TableCell>
+                      <TableCell className="text-foreground align-top text-sm">
+                        {item.siteName}
+                      </TableCell>
+                      <TableCell className="align-top">
+                        <div className="space-y-2">
+                          <AdminStatusBadge value={item.status} />
+                          <p className="text-muted-foreground text-xs">{item.lastDecision}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="align-top">
+                        <div className="space-y-1 text-sm">
+                          <p className="text-foreground">{item.pendingWith}</p>
+                          <p className="text-muted-foreground text-xs">
+                            Tahap {item.currentStepLabel}
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="align-top">
+                        <div className="space-y-1 text-sm">
+                          <p className="text-foreground">{item.workflowLabel}</p>
+                          <p className="text-muted-foreground text-xs">
+                            {item.shiftLabel} • {item.timeRange}
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="align-top" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-center gap-1.5">
+                          {/* Tombol Unduh */}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="denseIcon"
+                            onClick={() => handleDirectDownload(item)}
+                            title="Unduh PDF Dokumen"
+                            className="text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 cursor-pointer h-8 w-8"
+                          >
+                            <Download className="size-4" />
                           </Button>
-                        }
-                      >
-                        <div className="space-y-3">
-                          <div className="bg-surface-container-low rounded-lg p-3">
-                            <p className="text-foreground text-sm font-semibold">Jejak approval</p>
-                            <div className="mt-2 space-y-2">
-                              {(item.notes || []).map((note) => (
-                                <div
-                                  key={note.id}
-                                  className="bg-surface-container-lowest rounded-lg px-3 py-3 shadow-[inset_0_0_0_1px_var(--outline-ghost)]"
-                                >
-                                  <div className="flex flex-wrap items-center justify-between gap-2">
-                                    <p className="text-foreground text-sm font-medium">
-                                      {note.actor}
-                                    </p>
-                                    <AdminStatusBadge value={note.kind} />
-                                  </div>
-                                  <p className="text-foreground mt-2 text-sm">{note.message}</p>
-                                  <p className="text-muted-foreground mt-1 text-xs">
-                                    {note.at ? new Date(note.at).toLocaleString('id-ID') : '-'}
-                                  </p>
+
+                          {/* Tombol Lihat / Preview */}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="denseIcon"
+                            onClick={() => handleOpenHistoryPreview(item)}
+                            title="Lihat Dokumen"
+                            className="text-slate-600 hover:text-[#003461] hover:bg-blue-50 cursor-pointer h-8 w-8"
+                          >
+                            <Eye className="size-4" />
+                          </Button>
+
+                          {/* Tombol Trail Jejak Approval */}
+                          <AdminDetailDrawer
+                            title={`Trail ${item.title}`}
+                            description={`${item.siteName} • ${item.workflowLabel}`}
+                            width="wide"
+                            trigger={
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="denseIcon"
+                                title="Jejak Audit Trail"
+                                className="text-slate-500 hover:text-slate-800 hover:bg-slate-100 cursor-pointer h-8 w-8"
+                              >
+                                <RotateCcw className="size-4" />
+                              </Button>
+                            }
+                          >
+                            <div className="space-y-3">
+                              <div className="bg-surface-container-low rounded-lg p-3">
+                                <p className="text-foreground text-sm font-semibold">Jejak approval</p>
+                                <div className="mt-2 space-y-2">
+                                  {(item.notes || []).map((note) => (
+                                    <div
+                                      key={note.id}
+                                      className="bg-surface-container-lowest rounded-lg px-3 py-3 shadow-[inset_0_0_0_1px_var(--outline-ghost)]"
+                                    >
+                                      <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <p className="text-foreground text-sm font-medium">
+                                          {note.actor}
+                                        </p>
+                                        <AdminStatusBadge value={note.kind} />
+                                      </div>
+                                      <p className="text-foreground mt-2 text-sm">{note.message}</p>
+                                      <p className="text-muted-foreground mt-1 text-xs">
+                                        {note.at ? new Date(note.at).toLocaleString('id-ID') : '-'}
+                                      </p>
+                                    </div>
+                                  ))}
                                 </div>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="bg-surface-container-low rounded-lg p-3">
-                            <p className="text-foreground text-sm font-semibold">Status per step</p>
-                            <div className="mt-2 space-y-2">
-                              {(item.steps || []).map((step) => (
-                                <div
-                                  key={step.approvalId}
-                                  className="bg-surface-container-lowest rounded-lg px-3 py-3 shadow-[inset_0_0_0_1px_var(--outline-ghost)]"
-                                >
-                                  <div className="flex flex-wrap items-center justify-between gap-2">
-                                    <p className="text-foreground text-sm font-medium">
-                                      L{step.level} • {step.label}
-                                    </p>
-                                    <AdminStatusBadge value={step.status} />
-                                  </div>
-                                  <p className="text-muted-foreground mt-1 text-xs">
-                                    {step.approverName} •{' '}
-                                    {step.reviewedAt
-                                      ? new Date(step.reviewedAt).toLocaleString('id-ID')
-                                      : 'Belum diputuskan'}
-                                  </p>
+                              </div>
+                              <div className="bg-surface-container-low rounded-lg p-3">
+                                <p className="text-foreground text-sm font-semibold">Status per step</p>
+                                <div className="mt-2 space-y-2">
+                                  {(item.steps || []).map((step) => (
+                                    <div
+                                      key={step.approvalId}
+                                      className="bg-surface-container-lowest rounded-lg px-3 py-3 shadow-[inset_0_0_0_1px_var(--outline-ghost)]"
+                                    >
+                                      <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <p className="text-foreground text-sm font-medium">
+                                          L{step.level} • {step.label}
+                                        </p>
+                                        <AdminStatusBadge value={step.status} />
+                                      </div>
+                                      <p className="text-muted-foreground mt-1 text-xs">
+                                        {step.approverName} •{' '}
+                                        {step.reviewedAt
+                                          ? new Date(step.reviewedAt).toLocaleString('id-ID')
+                                          : 'Belum diputuskan'}
+                                      </p>
+                                    </div>
+                                  ))}
                                 </div>
-                              ))}
+                              </div>
                             </div>
-                          </div>
+                          </AdminDetailDrawer>
                         </div>
-                      </AdminDetailDrawer>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </MinimalTableShell>
-      </CardContent>
-    </Card>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </MinimalTableShell>
+        </CardContent>
+      </Card>
+
+      {previewModalContent}
+    </>
   )
 }
 

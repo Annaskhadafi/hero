@@ -11,10 +11,15 @@ import { EditItemDialog } from "./edit-item-dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { LabourTab } from "./labour-tab"
 import { RateSettingsTab } from "./rate-settings-tab"
+import { getCurrentMenuPermission } from "@/lib/hero-access"
+import { redirect } from "next/navigation"
 
 export const dynamic = 'force-dynamic'
 
 export default async function ItemsPage() {
+  const permission = await getCurrentMenuPermission('service360_items')
+  if (!permission.canView) redirect('/dashboard')
+
   const items = await getItems()
   const siteList = await db.select().from(sites)
   const employeeLabours = await getEmployeeLabours()

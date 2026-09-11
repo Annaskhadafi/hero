@@ -39,6 +39,11 @@ export default async function DailyActivityLibraryPage({
     getDailyActivityLibraryData(session.user.email),
     getCurrentMenuPermission("activity_library"),
   ]);
+
+  if (!permission.canView) {
+    redirect("/dashboard");
+  }
+
   await searchParams;
   const filteredRows = data.rows;
   const pagePurpose = getActivityPagePurpose("library");

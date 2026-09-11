@@ -5,6 +5,7 @@ import { employees as heroEmployees, sites as heroSites } from '@/db/schema/hero
 import { getServerSession } from '@/lib/auth-session'
 import { isNonLocalEmployee } from '@/lib/timesheet/employee-benefit-policy'
 import { and, desc, eq, ilike, or, sql } from 'drizzle-orm'
+import { getCurrentMenuPermission } from '@/lib/hero-access'
 
 async function requireCentralServiceAccess() {
   const session = await getServerSession()
@@ -13,18 +14,12 @@ async function requireCentralServiceAccess() {
     return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   }
 
-  const [employee] = await db
-    .select({ accessRole: heroEmployees.accessRole })
-    .from(heroEmployees)
-    .where(eq(heroEmployees.email, session.user.email.trim().toLowerCase()))
-    .limit(1)
-
-  const allowedRoles = new Set(['Super Admin', 'Admin', 'HC Admin', 'HR Admin', 'Site Admin'])
-  if (!employee?.accessRole || !allowedRoles.has(employee.accessRole)) {
+  const permission = await getCurrentMenuPermission('central_service')
+  if (!permission.canView) {
     return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   }
 
-  return { session }
+  return { session, permission }
 }
 
 /**
@@ -195,7 +190,8 @@ export async function GET(request: NextRequest) {
 
       return {
         ...row,
-        email: row.email || row.enrichEmail || null,
+        // hero_employees (User Management) is single source of truth for email
+        email: row.enrichEmail || row.email || null,
         section: row.enrichSection || row.section || '',
         gender: row.enrichGender ?? '',
         religion: row.enrichReligion ?? '',

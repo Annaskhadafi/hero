@@ -42,6 +42,7 @@ import { parseApprovalNoteEntries } from '@/lib/approval-notes'
 import { ensureHeroSeedData } from '@/lib/hero-admin'
 import { resolveUploadUrl } from '@/lib/s3-storage'
 import { user as authUser } from '@/db/schema/auth'
+import { isSuperAdminRole } from '@/lib/hero-access'
 
 type ApprovalRecordRow = {
   approvalId: number
@@ -1445,6 +1446,13 @@ async function fetchApprovalRowsForUser(
   const normalizedEmployeeName = normalizeMatchValue(currentEmployee?.name)
 
   const rows = await fetchApprovalRows()
+
+  // Cek apakah user adalah Super Admin atau memiliki permission global pada approval_inbox
+  const isSuperAdmin = isSuperAdminRole(currentEmployee?.accessRole)
+
+  if (isSuperAdmin) {
+    return rows.slice(0, 500)
+  }
 
   return rows
     .filter((row) => {
@@ -3370,7 +3378,7 @@ export async function getApprovalCenterData(email: string) {
     ),
   ])
 
-  const [allDaApprovals, allOtApprovals, allPtwApprovals, allSopWinApprovals] = await Promise.all([
+  const [allDaApprovals, allOtApprovals, allPtwApprovals, allSopWinApprovals, allOtParticipants] = await Promise.all([
     safeQuery(
       () =>
         db
@@ -3447,6 +3455,17 @@ export async function getApprovalCenterData(email: string) {
       [],
       "allSopWinApprovals"
     ),
+    safeQuery(
+      () =>
+        db
+          .select({
+            splId: overtimeCommandLetterParticipants.overtimeCommandLetterId,
+            employeeId: overtimeCommandLetterParticipants.employeeId,
+          })
+          .from(overtimeCommandLetterParticipants),
+      [],
+      "allOtParticipants"
+    ),
   ])
 
   const daApprovalsBySessionId = new Map<number, typeof allDaApprovals>()
@@ -3462,7 +3481,7 @@ export async function getApprovalCenterData(email: string) {
       (employeeEmailNorm && normalizeMatchValue(app.approverEmail) === employeeEmailNorm) ||
       (normalizedEmployeeName && normalizeMatchValue(app.approverName) === normalizedEmployeeName)
 
-    if (isUserApprover && ['approved', 'reverted', 'rejected'].includes((app.status || '').toLowerCase())) {
+    if (isUserApprover) {
       daSessionIdsWhereUserApprover.add(app.sessionId)
     }
   }
@@ -3480,8 +3499,17 @@ export async function getApprovalCenterData(email: string) {
       (employeeEmailNorm && normalizeMatchValue(app.approverEmail) === employeeEmailNorm) ||
       (normalizedEmployeeName && normalizeMatchValue(app.approverName) === normalizedEmployeeName)
 
-    if (isUserApprover && ['approved', 'reverted', 'rejected'].includes((app.status || '').toLowerCase())) {
+    if (isUserApprover) {
       otSplIdsWhereUserApprover.add(app.splId)
+    }
+  }
+
+  const otSplIdsWhereUserParticipant = new Set<number>()
+  if (currentEmployee?.id) {
+    for (const p of allOtParticipants) {
+      if (p.employeeId === currentEmployee.id && p.splId) {
+        otSplIdsWhereUserParticipant.add(p.splId)
+      }
     }
   }
 
@@ -3498,7 +3526,7 @@ export async function getApprovalCenterData(email: string) {
       (employeeEmailNorm && normalizeMatchValue(app.approverEmail) === employeeEmailNorm) ||
       (normalizedEmployeeName && normalizeMatchValue(app.approverName) === normalizedEmployeeName)
 
-    if (isUserApprover && ['approved', 'reverted', 'rejected'].includes((app.status || '').toLowerCase())) {
+    if (isUserApprover) {
       ptwIdsWhereUserApprover.add(app.permitId)
     }
   }
@@ -3516,7 +3544,7 @@ export async function getApprovalCenterData(email: string) {
       (employeeEmailNorm && normalizeMatchValue(app.approverEmail) === employeeEmailNorm) ||
       (normalizedEmployeeName && normalizeMatchValue(app.approverName) === normalizedEmployeeName)
 
-    if (isUserApprover && ['approved', 'reverted', 'rejected'].includes((app.status || '').toLowerCase())) {
+    if (isUserApprover) {
       sopReqIdsWhereUserApprover.add(app.requestId)
     }
   }
@@ -3608,7 +3636,8 @@ export async function getApprovalCenterData(email: string) {
       normalizeMatchValue(ot.requesterEmail) === normalizedEmail ||
       (employeeEmailNorm && normalizeMatchValue(ot.requesterEmail) === employeeEmailNorm) ||
       (normalizedEmployeeName && normalizeMatchValue(ot.requesterName) === normalizedEmployeeName) ||
-      otSplIdsWhereUserApprover.has(ot.id)
+      otSplIdsWhereUserApprover.has(ot.id) ||
+      otSplIdsWhereUserParticipant.has(ot.id)
 
     if (!isUserInvolved) continue
 
@@ -3979,6 +4008,14 @@ export async function getApprovalCenterData(email: string) {
 export async function getRequestCenterData(email?: string) {
   await ensureHeroSeedData()
 
+  let isGlobal = false
+  if (email) {
+    const currentEmp = await getEmployeeByEmail(email)
+    if (isSuperAdminRole(currentEmp?.accessRole)) {
+      isGlobal = true
+    }
+  }
+
   const activitiesRows = await db
     .select({
       id: activities.id,
@@ -4004,9 +4041,11 @@ export async function getRequestCenterData(email?: string) {
     .orderBy(desc(activities.createdAt), desc(activities.id))
 
   const approvalRows = (await fetchApprovalRows()).map((row) => enrichApprovalRow(row, new Date()))
-  const filteredActivities = email
+  const filteredActivities = isGlobal
+    ? activitiesRows
+    : email
     ? activitiesRows.filter(
-        (row) => row.requesterEmail.toLowerCase() === email.trim().toLowerCase()
+        (row) => row.requesterEmail?.toLowerCase() === email.trim().toLowerCase()
       )
     : activitiesRows
 
@@ -4074,9 +4113,11 @@ export async function getRequestCenterData(email?: string) {
     .where(isNull(formSubmissions.legacyActivityId))
     .orderBy(desc(formSubmissions.updatedAt), desc(formSubmissions.id))
 
-  const filteredDraftRows = email
-    ? draftRows.filter((row) => row.requesterEmail.toLowerCase() === email.trim().toLowerCase())
-    : draftRows
+  const filteredDraftRows = isGlobal
+    ? draftRows
+    : email
+    ? draftRows.filter((row) => row.requesterEmail?.toLowerCase() === email.trim().toLowerCase())
+    : []
 
   const draftRequests = filteredDraftRows.map((row) => {
     const payload = JSON.parse(row.payloadSnapshot || '{}') as Record<string, string>

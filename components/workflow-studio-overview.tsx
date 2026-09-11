@@ -1353,8 +1353,8 @@ function WorkflowBuilderDialog({
         }
         if (sa.departmentHeadId != null && labelToStepId['department'] && !values[labelToStepId['department']]) values[labelToStepId['department']] = String(sa.departmentHeadId)
 
-        if ((sa as any).customRoles) {
-          for (const [roleKey, empId] of Object.entries((sa as any).customRoles)) {
+        if ((sa as any)?.customRoles) {
+          for (const [roleKey, empId] of Object.entries((sa as any)?.customRoles || {})) {
             const cleanKey = roleKey.replace(/[^a-z0-9]/g, '')
             const stepId =
               labelToStepId[roleKey] ??

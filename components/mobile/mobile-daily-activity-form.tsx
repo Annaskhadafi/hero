@@ -13,6 +13,7 @@ import {
   FileSignature,
   FileText,
   ImagePlus,
+  Layers,
   ListFilter,
   Navigation,
   Plus,
@@ -561,9 +562,12 @@ export function MobileDailyActivityForm({
   const searchParams = useSearchParams()
   const queuedDraftKey = searchParams.get('draft')?.trim() || ''
 
+  const rawSession = initialSessionData?.data || initialSessionData?.session || initialSessionData
+  const rawItems = (rawSession?.sessionItems || rawSession?.items || []) as any[]
+
   const [workDate, setWorkDate] = useState<string>(() => {
-    if (initialSessionData?.workDate) {
-      const d = new Date(initialSessionData.workDate)
+    if (rawSession?.workDate) {
+      const d = new Date(rawSession.workDate)
       if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10)
     }
     return new Date().toISOString().slice(0, 10)
@@ -573,37 +577,48 @@ export function MobileDailyActivityForm({
   const [isEvidenceModalOpen, setIsEvidenceModalOpen] = useState(false)
 
   useEffect(() => {
-    const targetSessionId = initialSessionData?.sessionId || initialSessionData?.id || revisionSessionId
+    const targetSessionId = rawSession?.sessionId || rawSession?.id || revisionSessionId
     if (!targetSessionId) return
     const origin = typeof window !== 'undefined' ? window.location.origin : ''
     QRCode.toDataURL(`${origin}/activity-evidence/${targetSessionId}`, { margin: 1, width: 140, errorCorrectionLevel: 'M' })
       .then(setEvidenceQrDataUrl)
       .catch((e) => console.error('Failed to generate evidence QR in mobile form:', e))
-  }, [initialSessionData?.sessionId, initialSessionData?.id, revisionSessionId])
+  }, [rawSession?.sessionId, rawSession?.id, revisionSessionId])
+
   const [shiftCode, setShiftCode] = useState<string>(
-    initialSessionData?.shiftCode || routeChecklist?.shiftCode || 'ALL'
+    rawSession?.shiftCode || routeChecklist?.shiftCode || 'ALL'
   )
-  const [sourceMode, setSourceMode] = useState<'assigned' | 'self_input' | 'custom'>('self_input')
+  const [sourceMode, setSourceMode] = useState<'assigned' | 'self_input' | 'custom'>(() => {
+    if (rawSession?.submissionSource === 'custom' || rawSession?.submissionSource === 'assigned' || rawSession?.submissionSource === 'self_input') {
+      return rawSession.submissionSource
+    }
+    if (rawSession?.routeTemplateId || rawSession?.overtimeCommandLetterId) {
+      return 'assigned'
+    }
+    return 'self_input'
+  })
   const [assignmentId, setAssignmentId] = useState('')
   const [selectedLibraryIds, setSelectedLibraryIds] = useState<string[]>(() => {
-    if (initialSessionData?.sessionItems && initialSessionData.sessionItems.length > 0) {
+    if (rawItems && rawItems.length > 0) {
       const ids: string[] = []
-      for (const item of initialSessionData.sessionItems) {
+      for (const item of rawItems) {
         const idStr = String(item.libraryActivityId || item.id || '')
         if (idStr) {
           ids.push(idStr)
         }
       }
-      return ids
+      return Array.from(new Set(ids))
     }
     return []
   })
+
   const [libraryPickerOpen, setLibraryPickerOpen] = useState(false)
   const [librarySearch, setLibrarySearch] = useState('')
+
   const [selfInputEntries, setSelfInputEntries] = useState<Record<string, SelfInputEntryState>>(() => {
-    if (initialSessionData?.sessionItems && initialSessionData.sessionItems.length > 0) {
+    if (rawItems && rawItems.length > 0) {
       const entries: Record<string, SelfInputEntryState> = {}
-      for (const item of initialSessionData.sessionItems) {
+      for (const item of rawItems) {
         const idStr = String(item.libraryActivityId || item.id || '')
         if (idStr) {
           const startVal = item.startedAt
@@ -624,8 +639,8 @@ export function MobileDailyActivityForm({
             startTime: startVal,
             endTime: endVal,
             materialUsed: item.materialUsed || '',
-            tireCount: 1,
-            notes: item.remark || '',
+            tireCount: item.tireCount || 1,
+            notes: item.remark || item.notes || '',
             photoFiles: [],
             photoName: existingUrls.length > 0 ? `${existingUrls.length} foto terlampir` : '',
             previewUrls: existingUrls,
@@ -645,29 +660,29 @@ export function MobileDailyActivityForm({
     return {}
   })
 
-  const initialCustomItem = initialSessionData?.sessionItems?.find((i: any) => !i.libraryActivityId)
+  const initialCustomItem = rawItems?.find((i: any) => !i.libraryActivityId)
   const initialCustomUrls: string[] = initialCustomItem ? extractItemPhotos(initialCustomItem) : []
 
-  const [customActivityName, setCustomActivityName] = useState(initialCustomItem?.label || '')
-  const [customActivityDescription, setCustomActivityDescription] = useState('')
+  const [customActivityName, setCustomActivityName] = useState(initialCustomItem?.label || initialCustomItem?.snapshotLabel || '')
+  const [customActivityDescription, setCustomActivityDescription] = useState(initialCustomItem?.remark || '')
   const [equipmentNo, setEquipmentNo] = useState(initialCustomItem?.unitNumber || '')
   const [startTime, setStartTime] = useState(initialCustomItem?.startedAt ? toDateTimeLocalValue(initialCustomItem.startedAt) : defaultStartTime)
   const [endTime, setEndTime] = useState(initialCustomItem?.endedAt ? toDateTimeLocalValue(initialCustomItem.endedAt) : defaultEndTime)
   const [materialUsed, setMaterialUsed] = useState(initialCustomItem?.materialUsed || '')
-  const [notes, setNotes] = useState(initialSessionData?.summaryRemark || initialSessionData?.notes || '')
+  const [notes, setNotes] = useState(rawSession?.summaryRemark || rawSession?.notes || '')
   const [manualLocation, setManualLocation] = useState('')
   const initialCustomerName =
-    initialSessionData?.customerName ||
-    initialSessionData?.site?.customerName ||
+    rawSession?.customerName ||
+    rawSession?.site?.customerName ||
     (site?.customerName && site.customerName !== 'Default Customer' ? site.customerName : '')
   const [customerName, setCustomerName] = useState(initialCustomerName)
 
   const existingLeaderApproval =
-    initialSessionData?.approvals?.find((a: any) => a.approverRole === 'leader' || a.stepOrder === 2) ||
-    initialSessionData?.approvals?.find((a: any) => a.stepOrder === 1)
+    rawSession?.approvals?.find((a: any) => a.approverRole === 'leader' || a.stepOrder === 2) ||
+    rawSession?.approvals?.find((a: any) => a.stepOrder === 1)
   const existingSuperiorApproval =
-    initialSessionData?.approvals?.find((a: any) => a.approverRole === 'section_head' || a.stepOrder === 3) ||
-    initialSessionData?.approvals?.find((a: any) => a.stepOrder === 2)
+    rawSession?.approvals?.find((a: any) => a.approverRole === 'section_head' || a.stepOrder === 3) ||
+    rawSession?.approvals?.find((a: any) => a.stepOrder === 2)
 
   const [leaderEmployeeId, setLeaderEmployeeId] = useState<string>(() => {
     if (existingLeaderApproval?.approverEmployeeId) return String(existingLeaderApproval.approverEmployeeId)
@@ -679,30 +694,38 @@ export function MobileDailyActivityForm({
   })
 
   const initializedSessionIdRef = useRef<number | string | null>(null)
-  const currentSessionKey = initialSessionData?.sessionId || initialSessionData?.id || revisionSessionId || null
+  const currentSessionKey = rawSession?.sessionId || rawSession?.id || revisionSessionId || null
 
   useEffect(() => {
-    if (!initialSessionData) return
+    if (!rawSession) return
 
-    // Only synchronize from initialSessionData once per session to avoid overwriting user edits on re-render
+    // Only synchronize from rawSession once per session to avoid overwriting user edits on re-render
     if (initializedSessionIdRef.current === currentSessionKey) {
       return
     }
     initializedSessionIdRef.current = currentSessionKey
 
     const cust =
-      initialSessionData.customerName ||
-      initialSessionData.site?.customerName ||
+      rawSession.customerName ||
+      rawSession.site?.customerName ||
       (site?.customerName && site.customerName !== 'Default Customer' ? site.customerName : '')
     if (cust) {
       setCustomerName(cust)
     }
-    if (initialSessionData.shiftCode) {
-      setShiftCode(initialSessionData.shiftCode)
+    if (rawSession.shiftCode) {
+      setShiftCode(rawSession.shiftCode)
     }
-    if (initialSessionData.summaryRemark || initialSessionData.notes) {
-      setNotes(initialSessionData.summaryRemark || initialSessionData.notes)
-      const teamMatch = (initialSessionData.summaryRemark || initialSessionData.notes || '').match(/\[Team:\s*([^\]]+)\]/i)
+    if (rawSession.submissionSource === 'custom' || rawSession.submissionSource === 'assigned' || rawSession.submissionSource === 'self_input') {
+      setSourceMode(rawSession.submissionSource)
+    } else if (rawSession.routeTemplateId || rawSession.overtimeCommandLetterId) {
+      setSourceMode('assigned')
+    } else if (rawItems.length > 0) {
+      setSourceMode('self_input')
+    }
+
+    if (rawSession.summaryRemark || rawSession.notes) {
+      setNotes(rawSession.summaryRemark || rawSession.notes)
+      const teamMatch = (rawSession.summaryRemark || rawSession.notes || '').match(/\[Team:\s*([^\]]+)\]/i)
       if (teamMatch && teamMembers && teamMembers.length > 0) {
         const memberNames = teamMatch[1].split(',').map((s: string) => s.trim().toLowerCase())
         const matchedIds = teamMembers
@@ -714,33 +737,33 @@ export function MobileDailyActivityForm({
         }
       }
     }
-    if (initialSessionData.workDate) {
+    if (rawSession.workDate) {
       try {
-        const d = new Date(initialSessionData.workDate)
+        const d = new Date(rawSession.workDate)
         if (!isNaN(d.getTime())) {
           setWorkDate(d.toISOString().slice(0, 10))
         }
       } catch {}
     }
     const leaderApp =
-      initialSessionData.approvals?.find((a: any) => a.approverRole === 'leader' || a.stepOrder === 2) ||
-      initialSessionData.approvals?.find((a: any) => a.stepOrder === 1)
+      rawSession.approvals?.find((a: any) => a.approverRole === 'leader' || a.stepOrder === 2) ||
+      rawSession.approvals?.find((a: any) => a.stepOrder === 1)
     if (leaderApp?.approverEmployeeId) {
       setLeaderEmployeeId(String(leaderApp.approverEmployeeId))
     }
     const superiorApp =
-      initialSessionData.approvals?.find((a: any) => a.approverRole === 'section_head' || a.stepOrder === 3) ||
-      initialSessionData.approvals?.find((a: any) => a.stepOrder === 2)
+      rawSession.approvals?.find((a: any) => a.approverRole === 'section_head' || a.stepOrder === 3) ||
+      rawSession.approvals?.find((a: any) => a.stepOrder === 2)
     if (superiorApp?.approverEmployeeId) {
       setSuperiorEmployeeId(String(superiorApp.approverEmployeeId))
     }
 
     // Sync sessionItems into selfInputEntries and selectedLibraryIds
-    if (initialSessionData.sessionItems && initialSessionData.sessionItems.length > 0) {
+    if (rawItems && rawItems.length > 0) {
       const ids: string[] = []
       const entries: Record<string, SelfInputEntryState> = {}
 
-      for (const item of initialSessionData.sessionItems) {
+      for (const item of rawItems) {
         const idStr = String(item.libraryActivityId || item.id || '')
         if (idStr) {
           ids.push(idStr)
@@ -762,8 +785,8 @@ export function MobileDailyActivityForm({
             startTime: startVal,
             endTime: endVal,
             materialUsed: item.materialUsed || '',
-            tireCount: 1,
-            notes: item.remark || '',
+            tireCount: item.tireCount || 1,
+            notes: item.remark || item.notes || '',
             photoFiles: [],
             photoName: existingUrls.length > 0 ? `${existingUrls.length} foto terlampir` : '',
             previewUrls: existingUrls,
@@ -779,11 +802,18 @@ export function MobileDailyActivityForm({
         }
       }
 
-      setSelectedLibraryIds(ids)
-      setSelfInputEntries(entries)
+      setSelectedLibraryIds(Array.from(new Set(ids)))
+      setSelfInputEntries((prev) => ({ ...prev, ...entries }))
 
-      const customItem = initialSessionData.sessionItems.find((i: any) => !i.libraryActivityId)
+      const customItem = rawItems.find((i: any) => !i.libraryActivityId)
       if (customItem) {
+        setCustomActivityName(customItem.label || customItem.snapshotLabel || '')
+        setCustomActivityDescription(customItem.remark || '')
+        setEquipmentNo(customItem.unitNumber || '')
+        if (customItem.startedAt) setStartTime(toDateTimeLocalValue(customItem.startedAt))
+        if (customItem.endedAt) setEndTime(toDateTimeLocalValue(customItem.endedAt))
+        if (customItem.materialUsed) setMaterialUsed(customItem.materialUsed)
+
         const customUrls = extractItemPhotos(customItem)
         if (customUrls.length > 0) {
           setPhotoPreviewUrls(customUrls)
@@ -791,7 +821,7 @@ export function MobileDailyActivityForm({
         }
       }
     }
-  }, [initialSessionData, currentSessionKey, site?.customerName, defaultStartTime, defaultEndTime])
+  }, [rawSession, currentSessionKey, site?.customerName, defaultStartTime, defaultEndTime, rawItems, teamMembers])
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [photoFiles, setPhotoFiles] = useState<File[]>([])
   const [photoName, setPhotoName] = useState(initialCustomUrls.length > 0 ? `${initialCustomUrls.length} foto terlampir` : '')
@@ -918,8 +948,102 @@ export function MobileDailyActivityForm({
 
   const pdfPreviewRef = useRef<HTMLDivElement>(null)
   const [isPdfOpen, setIsPdfOpen] = useState(false)
-  const [zoomScale, setZoomScale] = useState(1)
+  const [previewZoom, setPreviewZoom] = useState<number>(1.0)
+  const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const [isDragging, setIsDragging] = useState(false)
+  const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
+  const initialPinchDistRef = useRef<number | null>(null)
+  const initialZoomRef = useRef<number>(1.0)
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
+
+  function resetZoomAndPan() {
+    setPreviewZoom(1.0)
+    setPanOffset({ x: 0, y: 0 })
+    setIsDragging(false)
+  }
+
+  useEffect(() => {
+    if (!isPdfOpen) {
+      resetZoomAndPan()
+    }
+  }, [isPdfOpen])
+
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return
+    setIsDragging(true)
+    dragStartRef.current = {
+      x: e.clientX - panOffset.x,
+      y: e.clientY - panOffset.y,
+    }
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    } catch {}
+  }
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDragging) return
+    setPanOffset({
+      x: e.clientX - dragStartRef.current.x,
+      y: e.clientY - dragStartRef.current.y,
+    })
+  }
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isDragging) {
+      setIsDragging(false)
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+      } catch {}
+    }
+  }
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length === 2) {
+      const t1 = e.touches[0]
+      const t2 = e.touches[1]
+      const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY)
+      initialPinchDistRef.current = dist
+      initialZoomRef.current = previewZoom
+    } else if (e.touches.length === 1) {
+      const t = e.touches[0]
+      setIsDragging(true)
+      dragStartRef.current = {
+        x: t.clientX - panOffset.x,
+        y: t.clientY - panOffset.y,
+      }
+    }
+  }
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length === 2 && initialPinchDistRef.current !== null) {
+      const t1 = e.touches[0]
+      const t2 = e.touches[1]
+      const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY)
+      const scaleFactor = dist / initialPinchDistRef.current
+      const newZoom = Math.min(3.5, Math.max(0.6, Number((initialZoomRef.current * scaleFactor).toFixed(2))))
+      setPreviewZoom(newZoom)
+    } else if (e.touches.length === 1 && isDragging) {
+      const t = e.touches[0]
+      setPanOffset({
+        x: t.clientX - dragStartRef.current.x,
+        y: t.clientY - dragStartRef.current.y,
+      })
+    }
+  }
+
+  const handleTouchEnd = () => {
+    setIsDragging(false)
+    initialPinchDistRef.current = null
+  }
+
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault()
+      const delta = e.deltaY < 0 ? 0.1 : -0.1
+      setPreviewZoom((prev) => Math.min(3.5, Math.max(0.6, Number((prev + delta).toFixed(2)))))
+    }
+  }
 
   async function handleDownloadPdf() {
     if (!pdfPreviewRef.current) return
@@ -953,6 +1077,20 @@ export function MobileDailyActivityForm({
   const [memberSearch, setMemberSearch] = useState('')
   const [memberPickerOpen, setMemberPickerOpen] = useState(false)
 
+  // Safeguard: auto-recover document.body pointer-events if frozen by Radix scroll-lock
+  useEffect(() => {
+    const cleanupBodyPointer = () => {
+      if (typeof document !== 'undefined' && document.body.style.pointerEvents === 'none') {
+        if (!libraryPickerOpen && !isPdfOpen && !memberPickerOpen) {
+          document.body.style.pointerEvents = ''
+        }
+      }
+    }
+    cleanupBodyPointer()
+    const timer = setInterval(cleanupBodyPointer, 400)
+    return () => clearInterval(timer)
+  }, [libraryPickerOpen, isPdfOpen, memberPickerOpen])
+
   const filteredTeamMembers = useMemo(() => {
     const q = memberSearch.trim().toLowerCase()
     const pool = (teamMembers || []).filter((m) => m.id !== employeeId)
@@ -964,8 +1102,8 @@ export function MobileDailyActivityForm({
     const list = [...(availableLibrary || [])]
     const existingIds = new Set(list.map((item) => `${item.id}`))
 
-    if (initialSessionData?.sessionItems && initialSessionData.sessionItems.length > 0) {
-      for (const item of initialSessionData.sessionItems) {
+    if (rawItems && rawItems.length > 0) {
+      for (const item of rawItems) {
         const idStr = String(item.libraryActivityId || item.id || '')
         if (idStr && !existingIds.has(idStr)) {
           const rawLabel = String(item.label || item.snapshotLabel || 'Aktivitas')
@@ -981,7 +1119,7 @@ export function MobileDailyActivityForm({
             activityName: name,
             basePoints: Number(item.points || item.actualPoints) || 5,
             requiresPhoto: Boolean(item.photos?.length || item.photoUrl || extractItemPhotos(item).length > 0),
-            requiresEquipmentNo: Boolean(item.unitNumber),
+            requiresEquipmentNo: false,
             requiresDuration: true,
             requiresMaterialUsed: Boolean(item.materialUsed),
             requiresLocationGps: false,
@@ -996,7 +1134,7 @@ export function MobileDailyActivityForm({
       }
     }
     return list
-  }, [availableLibrary, initialSessionData])
+  }, [availableLibrary, rawItems])
 
   const availableLibraryMap = useMemo(
     () => new Map(safeAvailableLibrary.map((item) => [`${item.id}`, item])),
@@ -1300,6 +1438,11 @@ export function MobileDailyActivityForm({
   const needsGps = selfInputNeedsGps || assignmentNeedsGps || checkedChecklistNeedsGps
 
   useEffect(() => {
+    // If we are editing/revising an existing document and no explicit draft key was specified, do not clobber with old draft
+    if (!queuedDraftKey && (rawSession || revisionSessionId)) {
+      return
+    }
+
     const draft = queuedDraftKey
       ? readDraft<ActivitySyncPayload>(queuedDraftKey)
       : readDraft<ActivitySyncPayload>(ACTIVITY_DRAFT_STORAGE_KEY)
@@ -1412,7 +1555,7 @@ export function MobileDailyActivityForm({
       setSelectedMemberIds(draft.teamMemberEmployeeIds)
       setIsTeamLog(true)
     }
-  }, [checklistContext, defaultEndTime, defaultStartTime, queuedDraftKey])
+  }, [checklistContext, defaultEndTime, defaultStartTime, queuedDraftKey, rawSession, revisionSessionId])
 
   useEffect(() => {
     if (!checklistContext) {
@@ -1425,23 +1568,54 @@ export function MobileDailyActivityForm({
         return current
       }
 
+      const matchMap = new Map<number, any>()
+      rawItems.forEach((si: any) => {
+        if (si.routeItemId) matchMap.set(Number(si.routeItemId), si)
+        if (si.overtimeCommandLetterItemId) matchMap.set(Number(si.overtimeCommandLetterItemId), si)
+        if (si.libraryActivityId) matchMap.set(Number(si.libraryActivityId), si)
+        if (si.id) matchMap.set(Number(si.id), si)
+      })
+
       return Object.fromEntries(
         checklistContext.groups.flatMap((group) =>
-          group.items.map((item) => [
-            item.id,
-            {
-              isChecked: item.isChecked,
-              unitNumber: item.unitNumber,
-              remark: item.remark,
-              startedAt: toDateTimeLocalValue(item.startedAt),
-              endedAt: toDateTimeLocalValue(item.endedAt),
-              actualPoints: `${item.actualPoints || item.pointOverride || item.libraryPoints || 0}`,
-            },
-          ])
+          group.items.map((item) => {
+            const matched =
+              matchMap.get(item.id) ||
+              (item.routeItemId ? matchMap.get(item.routeItemId) : null) ||
+              (item.overtimeCommandLetterItemId ? matchMap.get(item.overtimeCommandLetterItemId) : null)
+            const matchedPhotos = matched ? extractItemPhotos(matched) : []
+
+            return [
+              item.id,
+              {
+                isChecked: matched ? true : item.isChecked,
+                unitNumber: matched?.unitNumber ?? item.unitNumber ?? '',
+                remark: matched?.remark ?? item.remark ?? '',
+                startedAt: matched?.startedAt
+                  ? toDateTimeLocalValue(matched.startedAt)
+                  : toDateTimeLocalValue(item.startedAt),
+                endedAt: matched?.endedAt
+                  ? toDateTimeLocalValue(matched.endedAt)
+                  : toDateTimeLocalValue(item.endedAt),
+                actualPoints: `${
+                  matched?.actualPoints ??
+                  matched?.points ??
+                  item.actualPoints ??
+                  item.pointOverride ??
+                  item.libraryPoints ??
+                  0
+                }`,
+                tireCount: matched?.tireCount ?? 1,
+                materialUsed: matched?.materialUsed ?? '',
+                photoName: matchedPhotos.length > 0 ? `${matchedPhotos.length} foto terlampir` : '',
+                previewUrls: matchedPhotos,
+              },
+            ]
+          })
         )
       ) as Record<number, RouteItemState>
     })
-  }, [checklistContext])
+  }, [checklistContext, rawItems])
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -1694,6 +1868,31 @@ export function MobileDailyActivityForm({
   }, [draftPayload])
 
   function validatePayload() {
+    // 1. Validasi Header & Profil Pengajuan
+    if (!workDate) {
+      return 'Tanggal kerja wajib diisi.'
+    }
+
+    if (!shiftCode) {
+      return 'Shift kerja wajib dipilih.'
+    }
+
+    if (!customerName?.trim()) {
+      return 'Nama Customer / Pelanggan wajib diisi.'
+    }
+
+    if (!leaderEmployeeId) {
+      return 'Pilih Leader / Supervisor / PJO untuk persetujuan dokumen.'
+    }
+
+    if (superiorOptions.length > 0 && !superiorEmployeeId) {
+      return 'Pilih Section Head / Superior untuk persetujuan dokumen.'
+    }
+
+    if (isTeamLog && selectedMemberIds.length === 0) {
+      return 'Pilih minimal satu anggota tim untuk aktivitas kelompok / tim.'
+    }
+
     if (
       sourceMode !== 'self_input' &&
       checklistContext?.overtimeCommandLetterId &&
@@ -1715,9 +1914,10 @@ export function MobileDailyActivityForm({
         : 'Centang minimal satu item checklist route.'
     }
 
+    // 2. Validasi Mode Assigned
     if (sourceMode === 'assigned') {
       if (!assignmentId) {
-        return 'Pilih assignment dulu.'
+        return 'Pilih assignment terlebih dahulu.'
       }
 
       if (!startTime || !endTime) {
@@ -1735,35 +1935,14 @@ export function MobileDailyActivityForm({
         Boolean(photoPreviewUrls && photoPreviewUrls.length > 0) ||
         Boolean(photoName) ||
         initialCustomUrls.length > 0
-      if (selectedAssignment?.requiresPhoto && !hasAssignedPhoto) {
-        return 'Foto wajib diupload karena assignment yang dipilih butuh image evidence.'
-      }
-      if (checklistContext) {
-        let missingChecklistPhoto = false
-        checklistContext.groups.forEach((group) =>
-          group.items.forEach((item) => {
-            const state = routeItemState[item.id]
-            const hasChecklistPhoto =
-              Boolean(state?.photoFile) ||
-              Boolean(state?.photoFiles && state.photoFiles.length > 0) ||
-              Boolean(state?.restoredPhotoPayload) ||
-              Boolean(state?.previewUrls && state.previewUrls.length > 0) ||
-              Boolean(state?.photoName)
-            if (
-              state?.isChecked &&
-              item.requiresPhoto &&
-              !hasChecklistPhoto
-            )
-              missingChecklistPhoto = true
-          })
-        )
-        if (missingChecklistPhoto)
-          return 'Foto wajib diupload karena checklist yang dipilih butuh image evidence.'
+      if (!hasAssignedPhoto) {
+        return 'Foto bukti pekerjaan (evidence) wajib diunggah untuk assignment ini.'
       }
 
       return ''
     }
 
+    // 3. Validasi Mode Custom
     if (sourceMode === 'custom') {
       if (!customActivityName.trim()) {
         return 'Nama custom activity wajib diisi.'
@@ -1784,42 +1963,27 @@ export function MobileDailyActivityForm({
         Boolean(photoPreviewUrls && photoPreviewUrls.length > 0) ||
         Boolean(photoName) ||
         initialCustomUrls.length > 0
-
-      if (checklistContext) {
-        let missingChecklistPhoto = false
-        checklistContext.groups.forEach((group) =>
-          group.items.forEach((item) => {
-            const state = routeItemState[item.id]
-            const hasChecklistPhoto =
-              state?.photoFile ||
-              (state?.photoFiles && state.photoFiles.length > 0) ||
-              state?.restoredPhotoPayload ||
-              (state?.previewUrls && state.previewUrls.length > 0)
-            if (
-              state?.isChecked &&
-              item.requiresPhoto &&
-              !hasChecklistPhoto
-            )
-              missingChecklistPhoto = true
-          })
-        )
-        if (missingChecklistPhoto)
-          return 'Foto wajib diupload karena checklist yang dipilih butuh image evidence.'
+      if (!hasCustomPhoto) {
+        return 'Foto bukti pekerjaan (evidence) wajib diunggah untuk aktivitas custom.'
       }
 
       return ''
     }
 
+    // 4. Validasi Mode Kamus Aktivitas (Self Input) & Checklist
     if (selectedLibraries.length === 0 && !hasCheckedChecklist) {
-      return 'Pilih minimal satu activity library.'
+      return 'Pilih minimal satu aktivitas dari Kamus Aktivitas sebelum submit.'
     }
 
-    let missingLibraryPhoto = false
-    selectedLibraries.forEach((lib) => {
-      const libId = `${lib.id}`
-      const entry = selfInputEntries[libId] || selfInputEntries[String(lib.id)]
+    // Validasi setiap aktivitas terpilih: field wajib dan foto evidence
+    for (const [index, library] of (selectedLibraries || []).entries()) {
+      const libraryId = `${library.id}`
+      const entry =
+        selfInputEntries[libraryId] ??
+        buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
+
       const matchingSessionItem = initialSessionData?.sessionItems?.find(
-        (it: any) => String(it.libraryActivityId) === libId || String(it.id) === libId
+        (it: any) => String(it.libraryActivityId) === libraryId || String(it.id) === libraryId
       )
       const sessionPhotos = matchingSessionItem ? extractItemPhotos(matchingSessionItem) : []
       const hasPhoto = Boolean(
@@ -1830,90 +1994,91 @@ export function MobileDailyActivityForm({
         entry?.photoName ||
         sessionPhotos.length > 0
       )
-      if (lib.requiresPhoto && !hasPhoto)
-        missingLibraryPhoto = true
-    })
-    if (missingLibraryPhoto)
-      return 'Foto wajib diupload karena activity yang dipilih butuh image evidence.'
 
-    if (checklistContext && hasCheckedChecklist) {
-      let missingChecklistPhoto = false
-      let missingChecklistTire = false
-      let missingChecklistMaterial = false
-      checklistContext.groups.forEach((group) =>
-        group.items.forEach((item) => {
-          const state = routeItemState[item.id]
-          const hasChecklistPhoto =
-            state?.photoFile ||
-            (state?.photoFiles && state.photoFiles.length > 0) ||
-            state?.restoredPhotoPayload ||
-            (state?.previewUrls && state.previewUrls.length > 0)
-          if (
-            state?.isChecked &&
-            item.requiresPhoto &&
-            !hasChecklistPhoto
-          )
-            missingChecklistPhoto = true
+      if (!hasPhoto) {
+        return `Foto bukti pekerjaan (evidence) wajib diunggah untuk aktivitas "${library.activityCode} - ${library.activityName}".`
+      }
 
-          if (
-            state?.isChecked &&
-            item.requiresTireCount &&
-            (!state?.tireCount || state?.tireCount <= 0)
-          )
-            missingChecklistTire = true
-
-          if (
-            state?.isChecked &&
-            item.requiresMaterialUsed &&
-            !state?.materialUsed?.trim()
-          )
-            missingChecklistMaterial = true
-        })
-      )
-      if (missingChecklistPhoto)
-        return 'Foto wajib diupload karena checklist yang dipilih butuh image evidence.'
-      if (missingChecklistTire)
-        return 'Jumlah tire wajib diisi untuk item checklist yang dipilih.'
-      if (missingChecklistMaterial)
-        return 'Material / tools wajib diisi untuk item checklist yang dipilih.'
-    }
-
-    const ranges: Array<{ code: string; start: Date; end: Date }> = []
-
-    for (const [index, library] of selectedLibraries.entries()) {
-      const libraryId = `${library.id}`
-      const entry =
-        selfInputEntries[libraryId] ??
-        buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
+      if (!entry.notes?.trim()) {
+        return `Catatan item wajib diisi untuk aktivitas "${library.activityCode} - ${library.activityName}".`
+      }
 
       if (library.requiresEquipmentNo && !entry.equipmentNo.trim()) {
-        return `${library.activityCode} wajib isi nomor equipment / unit.`
+        return `Nomor Unit / Equipment wajib diisi untuk aktivitas ${library.activityCode}.`
       }
 
       if (library.requiresMaterialUsed && !entry.materialUsed.trim()) {
-        return `${library.activityCode} wajib isi material / tools.`
+        return `Material / tools wajib diisi untuk aktivitas ${library.activityCode}.`
       }
 
       if (library.requiresTireCount && (!entry.tireCount || entry.tireCount <= 0)) {
-        return `${library.activityCode} wajib isi jumlah tire yang dikerjakan.`
+        return `Jumlah tire wajib diisi untuk aktivitas ${library.activityCode}.`
       }
 
       if (!entry.startTime || !entry.endTime) {
-        return `${library.activityCode} wajib isi waktu mulai dan selesai.`
+        return `Waktu mulai dan selesai wajib diisi untuk aktivitas ${library.activityCode}.`
       }
 
       const start = new Date(entry.startTime)
       const end = new Date(entry.endTime)
 
       if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-        return `${library.activityCode} punya format waktu tidak valid.`
+        return `Format waktu tidak valid pada aktivitas ${library.activityCode}.`
       }
 
       if (end <= start) {
-        return `${library.activityCode} punya waktu selesai lebih kecil dari mulai.`
+        return `Waktu selesai harus setelah waktu mulai pada aktivitas ${library.activityCode}.`
       }
+    }
 
-      ranges.push({ code: library.activityCode, start, end })
+    // Validasi Checklist jika ada yang dicentang
+    if (checklistContext && hasCheckedChecklist) {
+      for (const group of checklistContext.groups) {
+        for (const item of group.items) {
+          const state = routeItemState[item.id]
+          if (state?.isChecked) {
+            const hasChecklistPhoto = Boolean(
+              state?.photoFile ||
+              (state?.photoFiles && state.photoFiles.length > 0) ||
+              state?.restoredPhotoPayload ||
+              (state?.previewUrls && state.previewUrls.length > 0) ||
+              state?.photoName
+            )
+            if (!hasChecklistPhoto) {
+              return `Foto bukti pekerjaan wajib diunggah untuk item checklist "${item.label || item.activityName || 'Checklist'}".`
+            }
+
+            if (item.requiresEquipmentNo && !state?.unitNumber?.trim()) {
+              return `Nomor unit/equipment wajib diisi untuk item checklist "${item.label || item.activityName || 'Checklist'}".`
+            }
+
+            if (item.requiresTireCount && (!state?.tireCount || state?.tireCount <= 0)) {
+              return `Jumlah tire wajib diisi untuk item checklist "${item.label || item.activityName || 'Checklist'}".`
+            }
+
+            if (item.requiresMaterialUsed && !state?.materialUsed?.trim()) {
+              return `Material / tools wajib diisi untuk item checklist "${item.label || item.activityName || 'Checklist'}".`
+            }
+          }
+        }
+      }
+    }
+
+    // Validasi rentang waktu bentrok antar aktivitas
+    const ranges: Array<{ code: string; start: Date; end: Date }> = []
+    for (const [index, library] of (selectedLibraries || []).entries()) {
+      const libraryId = `${library.id}`
+      const entry =
+        selfInputEntries[libraryId] ??
+        buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
+
+      if (entry.startTime && entry.endTime) {
+        const start = new Date(entry.startTime)
+        const end = new Date(entry.endTime)
+        if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end > start) {
+          ranges.push({ code: library.activityCode, start, end })
+        }
+      }
     }
 
     const sortedRanges = [...ranges].sort(
@@ -1924,7 +2089,7 @@ export function MobileDailyActivityForm({
       const current = sortedRanges[index]
 
       if (current.start < previous.end) {
-        return `Waktu ${current.code} bentrok dengan ${previous.code}.`
+        return `Waktu aktivitas ${current.code} bentrok dengan ${previous.code}.`
       }
     }
 
@@ -2249,31 +2414,58 @@ export function MobileDailyActivityForm({
   return (
     <>
       <Dialog open={libraryPickerOpen} onOpenChange={setLibraryPickerOpen}>
-        <DialogContent className="max-h-[calc(100vh-1rem)] max-w-[calc(100vw-1rem)] gap-0 overflow-hidden rounded-[1.6rem] border-0 bg-white p-0 shadow-[0_28px_80px_rgba(8,32,51,0.22)] sm:max-w-xl">
-          <DialogHeader className="bg-[linear-gradient(135deg,rgba(0,52,97,0.96),rgba(0,75,135,0.92))] px-5 py-5 text-left text-white">
-            <DialogTitle className="text-xl font-black">Pilih Kamus Aktivitas</DialogTitle>
-            <DialogDescription className="text-white/80"></DialogDescription>
+        <DialogContent
+          showCloseButton={false}
+          className="max-h-[88dvh] max-w-[min(420px,94vw)] sm:max-w-[420px] w-full gap-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl flex flex-col z-50"
+        >
+          <DialogHeader className="bg-[linear-gradient(135deg,#003461,#004b87)] px-4 py-3 text-left text-white flex flex-row items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <Layers className="size-4 text-sky-200" />
+              <DialogTitle className="text-sm sm:text-base font-extrabold text-white">
+                Pilih Kamus Aktivitas
+              </DialogTitle>
+            </div>
+            <button
+              type="button"
+              onClick={() => setLibraryPickerOpen(false)}
+              className="text-white/80 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+              aria-label="Tutup"
+            >
+              <X className="size-4" />
+            </button>
+            <DialogDescription className="sr-only">Pilih aktivitas dari kamus</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 px-4 py-4">
-            <div className="rounded-[1.05rem] bg-[#e9f6fd] px-4 py-3 shadow-[inset_0_0_0_1px_rgba(0,52,97,0.04)]">
-              <div className="flex items-center gap-3">
-                <Search className="size-4 text-[#486275]" />
+          <div className="flex-1 flex flex-col min-h-0 p-3 space-y-2.5 overflow-hidden">
+            <div className="rounded-xl bg-slate-100/90 px-3 py-2 shadow-2xs shrink-0 border border-slate-200/60">
+              <div className="flex items-center gap-2">
+                <Search className="size-3.5 text-slate-400 shrink-0" />
                 <input
                   value={librarySearch}
                   onChange={(event) => setLibrarySearch(event.target.value)}
-                  placeholder="Cari kode atau nama activity..."
-                  className="w-full bg-transparent text-sm font-semibold text-[#082033] outline-none placeholder:text-[#6c8799]"
+                  placeholder="Cari kode atau nama aktivitas..."
+                  className="w-full bg-transparent text-xs font-semibold text-slate-900 outline-none placeholder:text-slate-400"
                 />
+                {librarySearch && (
+                  <button
+                    type="button"
+                    onClick={() => setLibrarySearch('')}
+                    className="text-slate-400 hover:text-slate-600 p-0.5 rounded"
+                  >
+                    <X className="size-3" />
+                  </button>
+                )}
               </div>
             </div>
 
-            <div className="flex items-center justify-between rounded-[1rem] bg-[#f6fbff] px-4 py-3 text-xs font-semibold text-[#486275]">
-              <span>{filteredLibraries.length} library tampil</span>
-              <span>{selectedLibraryIds.length} dipilih</span>
+            <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-500 shrink-0 border border-slate-100">
+              <span>{filteredLibraries.length} library tersedia</span>
+              <span className="font-bold text-[#003461] bg-sky-50 px-2 py-0.5 rounded-full border border-sky-100">
+                {selectedLibraryIds.length} dipilih
+              </span>
             </div>
 
-            <div className="max-h-[58vh] space-y-2 overflow-y-auto pr-1">
+            <div className="flex-1 max-h-[50dvh] sm:max-h-[55dvh] space-y-2 overflow-y-auto pr-0.5">
               <RouteFolderTree
                 routeFolders={availableRouteFolders || []}
                 availableLibraryMap={availableLibraryMap}
@@ -2284,13 +2476,15 @@ export function MobileDailyActivityForm({
               />
             </div>
 
-            <Button
-              type="button"
-              className="h-12 w-full rounded-2xl bg-[#003f78] text-white shadow-[0_14px_30px_rgba(0,63,120,0.22)]"
-              onClick={() => setLibraryPickerOpen(false)}
-            >
-              Pakai {selectedLibraryIds.length} Activity
-            </Button>
+            <div className="pt-1 shrink-0">
+              <Button
+                type="button"
+                className="h-10 sm:h-11 w-full rounded-xl bg-[#003461] hover:bg-[#00274a] text-xs font-bold text-white shadow-xs cursor-pointer"
+                onClick={() => setLibraryPickerOpen(false)}
+              >
+                Pakai {selectedLibraryIds.length} Activity
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -2604,8 +2798,13 @@ export function MobileDailyActivityForm({
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-12 w-full justify-between rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
-                  onClick={() => setLibraryPickerOpen(true)}
+                  className="h-12 w-full justify-between rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033] cursor-pointer touch-manipulation select-none active:scale-[0.99] transition-transform"
+                  onClick={() => {
+                    if (typeof document !== 'undefined') {
+                      document.body.style.pointerEvents = ''
+                    }
+                    setLibraryPickerOpen(true)
+                  }}
                 >
                   <span className="truncate text-left">
                     {selectedLibraries.length > 0
@@ -2646,7 +2845,46 @@ export function MobileDailyActivityForm({
                     className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
                   />
                 </Label>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Label className="block space-y-2">
+                    <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                      Mulai
+                    </span>
+                    <Input
+                      type="datetime-local"
+                      value={startTime}
+                      onChange={(event) => setStartTime(event.target.value)}
+                      className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
+                    />
+                  </Label>
+                  <Label className="block space-y-2">
+                    <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                      Selesai
+                    </span>
+                    <Input
+                      type="datetime-local"
+                      value={endTime}
+                      onChange={(event) => setEndTime(event.target.value)}
+                      className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
+                    />
+                  </Label>
+                </div>
+
+                <Label className="block space-y-2">
+                  <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                    Material used
+                  </span>
+                  <Input
+                    value={materialUsed}
+                    onChange={(event) => setMaterialUsed(event.target.value)}
+                    placeholder="Material / tools dipakai"
+                    className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
+                  />
+                </Label>
+
                 {renderPhotoWidget('single', false, photoName, photoPreviewUrls)}
+
                 <Label className="block space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
@@ -2743,22 +2981,6 @@ export function MobileDailyActivityForm({
                       ) : null}
 
                       <div className="mt-4 grid gap-3">
-                        {library.requiresEquipmentNo ? (
-                          <Label className="block space-y-2">
-                            <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
-                              Equipment / unit no.
-                            </span>
-                            <Input
-                              value={entry.equipmentNo}
-                              onChange={(event) =>
-                                updateSelfInputEntry(libraryId, { equipmentNo: event.target.value })
-                              }
-                              placeholder="Unit / equipment number"
-                              className="h-12 rounded-2xl border-0 bg-white px-4 text-sm font-semibold text-[#082033]"
-                            />
-                          </Label>
-                        ) : null}
-
                         <div className="grid gap-3 sm:grid-cols-2">
                           <Label className="block space-y-2">
                             <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
@@ -2835,7 +3057,7 @@ export function MobileDailyActivityForm({
                         <Label className="block space-y-2">
                           <div className="flex items-center justify-between">
                             <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
-                              Catatan item
+                              Catatan item *
                             </span>
                             <SpeechInputButton
                               onFinalTranscript={(text) =>
@@ -2852,7 +3074,7 @@ export function MobileDailyActivityForm({
                             onChange={(event) =>
                               updateSelfInputEntry(libraryId, { notes: event.target.value })
                             }
-                            placeholder="Hasil kerja, temuan, atau catatan singkat."
+                            placeholder="Wajib diisi: Hasil kerja, temuan, atau catatan singkat."
                             className="rounded-2xl border-0 bg-white px-4 py-3 text-sm font-semibold text-[#082033]"
                           />
                         </Label>
@@ -2961,22 +3183,6 @@ export function MobileDailyActivityForm({
 
                           {itemState.isChecked ? (
                             <div className="mt-3 grid gap-3">
-                              {item.requiresUnit ? (
-                                <Label className="block space-y-2">
-                                  <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
-                                    Unit
-                                  </span>
-                                  <Input
-                                    value={itemState.unitNumber}
-                                    onChange={(event) =>
-                                      updateRouteItem(item.id, { unitNumber: event.target.value })
-                                    }
-                                    placeholder="Unit number"
-                                    className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
-                                  />
-                                </Label>
-                              ) : null}
-
                               {item.requiresMaterialUsed ? (
                                 <Label className="block space-y-2">
                                   <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
@@ -3190,7 +3396,7 @@ export function MobileDailyActivityForm({
               </h2>
             </div>
             <span className="rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-amber-800">
-              2-TIER VERIFICATION
+              LEADER / PJO APPROVAL
             </span>
           </div>
 
@@ -3199,7 +3405,7 @@ export function MobileDailyActivityForm({
             <div className="space-y-1">
               <div className="flex items-center justify-between">
                 <label className="block text-xs font-semibold text-slate-700">
-                  Leader / Supervisor (Tahap 1)
+                  Leader / Supervisor / PJO
                 </label>
                 {existingLeaderApproval?.status === 'approved' ? (
                   <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
@@ -3212,32 +3418,9 @@ export function MobileDailyActivityForm({
                 value={leaderEmployeeId}
                 onValueChange={(val) => setLeaderEmployeeId(val)}
                 options={leaderOptions}
-                placeholder="-- PILIH LEADER / SUPERVISOR --"
+                placeholder="-- PILIH LEADER / PJO --"
                 widthClassName="w-full"
                 disabled={existingLeaderApproval?.status === 'approved'}
-              />
-            </div>
-
-            {/* Superior / Section Head (Tahap 2) */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <label className="block text-xs font-semibold text-slate-700">
-                  Superior / Section Head (Tahap 2)
-                </label>
-                {existingSuperiorApproval?.status === 'approved' ? (
-                  <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                    SUDAH DISETUJUI (TERKUNCI)
-                  </span>
-                ) : null}
-              </div>
-              <SearchableSelect
-                label="Superior / Section Head"
-                value={superiorEmployeeId}
-                onValueChange={(val) => setSuperiorEmployeeId(val)}
-                options={superiorOptions}
-                placeholder="-- PILIH SUPERIOR / SECTION HEAD --"
-                widthClassName="w-full"
-                disabled={existingSuperiorApproval?.status === 'approved'}
               />
             </div>
           </div>
@@ -3332,12 +3515,15 @@ export function MobileDailyActivityForm({
           onChange={handlePhotoChange}
         />
 
-        {/* ── Zoomable Formal PDF Preview Modal Dialog ── */}
+        {/* ── Zoomable Formal PDF Preview Modal Dialog (SPL & DAR Standard) ── */}
         <Dialog open={isPdfOpen} onOpenChange={setIsPdfOpen}>
-          <DialogContent className="max-w-2xl w-[96vw] max-h-[92vh] p-0 rounded-2xl overflow-hidden flex flex-col bg-slate-900/95 border-slate-700 text-white shadow-2xl">
-            <DialogHeader className="p-3 bg-slate-800 border-b border-slate-700 flex flex-row items-center justify-between space-y-0">
-              <DialogTitle className="text-xs font-bold text-white flex items-center gap-1.5">
-                <FileText className="size-4 text-amber-400" />
+          <DialogContent
+            showCloseButton={false}
+            className="max-w-4xl w-[96vw] max-h-[92vh] p-0 rounded-2xl overflow-hidden flex flex-col bg-white border border-slate-200 text-slate-900 shadow-2xl z-50"
+          >
+            <DialogHeader className="p-3 bg-[linear-gradient(135deg,#003461,#004b87)] border-b border-blue-900 flex flex-row items-center justify-between space-y-0 shrink-0 text-white">
+              <DialogTitle className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
+                <FileText className="size-4 text-sky-200" />
                 Preview Dokumen Daily Activity {initialSessionData?.sessionCode ? `(#${initialSessionData.sessionCode})` : ''}
               </DialogTitle>
               <div className="flex items-center gap-1">
@@ -3345,8 +3531,8 @@ export function MobileDailyActivityForm({
                   type="button"
                   size="sm"
                   variant="outline"
-                  onClick={() => setZoomScale((prev) => Math.max(0.6, Number((prev - 0.15).toFixed(2))))}
-                  className="h-7 w-7 p-0 bg-slate-700 border-slate-600 text-white hover:bg-slate-600"
+                  onClick={() => setPreviewZoom((prev) => Math.max(0.6, Number((prev - 0.15).toFixed(2))))}
+                  className="h-7 w-7 p-0 bg-white/10 border-white/20 text-white hover:bg-white/20 cursor-pointer"
                   title="Zoom Out"
                 >
                   <ZoomOut className="size-3.5" />
@@ -3355,18 +3541,18 @@ export function MobileDailyActivityForm({
                   type="button"
                   size="sm"
                   variant="outline"
-                  onClick={() => setZoomScale(1)}
-                  className="h-7 px-2 text-[10px] font-bold bg-slate-700 border-slate-600 text-white hover:bg-slate-600"
-                  title="Reset Zoom"
+                  onClick={resetZoomAndPan}
+                  className="h-7 px-2 text-[10px] font-bold bg-white/10 border-white/20 text-white hover:bg-white/20 cursor-pointer"
+                  title="Reset Zoom & Pan"
                 >
-                  {Math.round(zoomScale * 100)}%
+                  {Math.round(previewZoom * 100)}%
                 </Button>
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
-                  onClick={() => setZoomScale((prev) => Math.min(2.0, Number((prev + 0.15).toFixed(2))))}
-                  className="h-7 w-7 p-0 bg-slate-700 border-slate-600 text-white hover:bg-slate-600"
+                  onClick={() => setPreviewZoom((prev) => Math.min(3.0, Number((prev + 0.15).toFixed(2))))}
+                  className="h-7 w-7 p-0 bg-white/10 border-white/20 text-white hover:bg-white/20 cursor-pointer"
                   title="Zoom In"
                 >
                   <ZoomIn className="size-3.5" />
@@ -3376,15 +3562,37 @@ export function MobileDailyActivityForm({
                   size="sm"
                   disabled={isDownloadingPdf}
                   onClick={handleDownloadPdf}
-                  className="h-7 px-2.5 text-[10px] font-bold bg-amber-600 hover:bg-amber-700 text-white ml-1 flex items-center gap-1"
+                  className="h-7 px-2.5 text-[10px] font-bold bg-white text-[#003461] hover:bg-sky-50 shadow-2xs ml-1 flex items-center gap-1 cursor-pointer border-0"
                 >
                   <Download className="size-3" />
                   {isDownloadingPdf ? 'Unduh...' : 'Unduh PDF'}
                 </Button>
+                <button
+                  type="button"
+                  onClick={() => setIsPdfOpen(false)}
+                  className="p-1 rounded-md text-sky-200 hover:text-white hover:bg-white/10 ml-1 cursor-pointer transition-colors"
+                  aria-label="Tutup Preview"
+                >
+                  <X className="size-4" />
+                </button>
               </div>
             </DialogHeader>
 
-            <div className="flex-1 overflow-auto p-4 bg-slate-950 flex justify-center items-start">
+            <div
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerUp}
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+              onTouchCancel={handleTouchEnd}
+              onWheel={handleWheel}
+              className={cn(
+                "flex-1 overflow-hidden p-2 sm:p-4 bg-slate-100 flex justify-center items-start touch-none select-none relative",
+                isDragging ? "cursor-grabbing" : "cursor-grab"
+              )}
+            >
               {(() => {
                 const previewItemsList = selectedLibraries.length > 0
                   ? selectedLibraries.map((lib, idx) => {
@@ -3422,267 +3630,262 @@ export function MobileDailyActivityForm({
                   existingSuperiorApproval?.approverName ||
                   'Section Head'
 
-                const previewApprovalsList = [
-                  {
-                    stepOrder: 1,
-                    stepLabel: 'Karyawan Sign',
-                    approverRole: 'employee',
-                    approverName: employee?.name || initialSessionData?.employee?.name || 'Karyawan',
-                    status: 'approved',
-                    signedAt: initialSessionData?.submittedAt || initialSessionData?.workDate || new Date(),
-                    signatureDataUrl: (employee as any)?.signatureDataUrl || (initialSessionData?.employee as any)?.signatureDataUrl || null,
-                    remarks: '',
-                  },
-                  {
-                    stepOrder: 2,
-                    stepLabel: 'Leader / PJO',
-                    approverRole: 'leader',
-                    approverName: leaderName,
-                    status: existingLeaderApproval?.status || 'waiting',
-                    signedAt: existingLeaderApproval?.signedAt || (existingLeaderApproval?.status === 'reverted' ? initialSessionData?.approvedAt || initialSessionData?.submittedAt || new Date() : null),
-                    signatureDataUrl: existingLeaderApproval?.signatureDataUrl || null,
-                    remarks: existingLeaderApproval?.remarks || '',
-                  },
-                  {
-                    stepOrder: 3,
-                    stepLabel: 'Section Head',
-                    approverRole: 'section_head',
-                    approverName: superiorName,
-                    status: existingSuperiorApproval?.status || 'waiting',
-                    signedAt: existingSuperiorApproval?.signedAt || (existingSuperiorApproval?.status === 'reverted' ? initialSessionData?.approvedAt || initialSessionData?.submittedAt || new Date() : null),
-                    signatureDataUrl: existingSuperiorApproval?.signatureDataUrl || null,
-                    remarks: existingSuperiorApproval?.remarks || '',
-                  },
-                ]
-
-                const previewEmployeeSig = previewApprovalsList.find((a) => a.approverRole === 'employee')
-                const previewLeaderSig = previewApprovalsList.find((a) => a.approverRole === 'leader')
-                const previewSectionHeadSig = previewApprovalsList.find((a) => a.approverRole === 'section_head')
-
                 const totalPts = previewItemsList.reduce((s: number, i: any) => s + (i.points || 0), 0)
                 const fallbackTeamMatch = (initialSessionData?.summaryRemark || initialSessionData?.notes || '').match(/\[Team:\s*([^\]]+)\]/i)
                 const teamSummary = (isTeamLog && selectedMemberIds.length > 0)
                   ? teamMembers?.filter((m) => selectedMemberIds.includes(m.id)).map((m) => m.name).join(', ') || (fallbackTeamMatch ? fallbackTeamMatch[1].trim() : '')
                   : (fallbackTeamMatch ? fallbackTeamMatch[1].trim() : '')
 
+                const isSplDoc = Boolean(initialSessionData?.splId || initialSessionData?.splNumber)
+                const isSubmittedDoc = Boolean(
+                  initialSessionData?.submittedAt ||
+                  (initialSessionData?.status && !['draft'].includes(String(initialSessionData.status).toLowerCase()))
+                )
+
                 return (
                   <div
                     ref={pdfPreviewRef}
+                    id="mobile-daily-activity-preview-sheet"
+                    className="relative mx-auto shrink-0 bg-white shadow-lg border border-slate-300 rounded-sm origin-top transition-transform duration-100 w-[210mm] min-h-[297mm] will-change-transform"
                     style={{
-                      transform: `scale(${zoomScale})`,
-                      transformOrigin: 'top center',
-                      transition: 'transform 0.15s ease-out',
+                      backgroundImage: 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)',
+                      backgroundSize: '100% 100%',
+                      transform: `translate3d(${panOffset.x}px, ${panOffset.y}px, 0) scale(${0.44 * previewZoom})`,
+                      marginBottom: `${-160 + (previewZoom - 1.0) * 125}mm`,
                     }}
-                    className="relative w-full max-w-[680px] bg-white text-black shadow-2xl p-6 sm:p-8 rounded-sm text-[8.5pt] font-sans leading-tight border border-slate-200 pb-28 min-h-[850px]"
                   >
-                    <h1 className="text-center font-bold text-[11pt] text-black mb-0.5 uppercase">PT. CHITRA PARATAMA</h1>
-                    <h2 className="text-center font-bold text-[12pt] text-black mb-3 uppercase">{initialSessionData?.splId || initialSessionData?.splNumber ? 'SURAT PERINTAH LEMBUR' : 'DAILY ACTIVITY APPROVAL REPORT'}</h2>
+                    <div
+                      className="relative z-10 text-[8pt] sm:text-[8.5pt] font-sans leading-tight text-slate-900"
+                      style={{
+                        color: '#0f172a',
+                        paddingTop: '38mm',
+                        paddingBottom: '35mm',
+                        paddingLeft: '20mm',
+                        paddingRight: '20mm',
+                        minHeight: '297mm',
+                      }}
+                    >
+                      {/* Header Document */}
+                      <div className="text-center mb-3">
+                        <h1 className="font-bold text-[11pt] uppercase text-slate-900 leading-tight">
+                          {isSplDoc ? 'SURAT PERINTAH LEMBUR (SPL)' : 'LAPORAN AKTIVITAS HARIAN (DAR)'}
+                        </h1>
+                        <p className="font-semibold text-[8pt] text-slate-700 uppercase tracking-wide">
+                          {isSplDoc ? 'PT CHITRA PARATAMA • HUMAN CAPITAL' : 'PT CHITRA PARATAMA • OPERATION & SERVICES'}
+                        </p>
+                      </div>
 
-                    <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-2 [&_td]:py-1 text-[8.5pt]">
-                      <tbody>
-                        <tr><td colSpan={2} className="font-bold bg-white text-black py-0.5">Details</td></tr>
-                        <tr>
-                          <td className="w-1/2">Tanggal Kerja: <strong>{workDate ? fmtDate(workDate) : '—'}</strong></td>
-                          <td className="w-1/2">Shift: <strong>{shiftCode || 'ALL'}</strong></td>
-                        </tr>
-                        <tr>
-                          <td>Kode Sesi: <strong>{initialSessionData?.sessionCode || 'ACT-DRAFT-REVISI'}</strong></td>
-                          <td>Status: <span className="capitalize font-bold text-black">{initialSessionData?.status || 'Draft'}</span></td>
-                        </tr>
-                        <tr><td colSpan={2} className="font-bold bg-white text-black py-0.5">Employee Profile</td></tr>
-                        <tr>
-                          <td>Nama: <strong>{employee?.name || initialSessionData?.employee?.name || '—'}</strong></td>
-                          <td>SN: <strong>{employee?.employeeSn || (initialSessionData?.employee as any)?.sn || employeeId || '—'}</strong></td>
-                        </tr>
-                        <tr>
-                          <td>Job Title: <strong>{employee?.jobTitle || initialSessionData?.employee?.jobTitle || 'Staff'}</strong></td>
-                          <td>Dept / Section: <strong>{[employee?.department || initialSessionData?.employee?.department, employee?.section || initialSessionData?.employee?.section].filter(Boolean).join(' / ') || '—'}</strong></td>
-                        </tr>
-                        <tr>
-                          <td>Site: <strong>{site?.name || initialSessionData?.site?.name || '—'}</strong></td>
-                          <td>Customer: <strong>{customerName || site?.customerName || initialSessionData?.customerName || 'Default Customer'}</strong></td>
-                        </tr>
-                        {teamSummary ? (
+                      {/* Section 1: Details & Request Profile (4 columns table matching SPL format) */}
+                      <table className="w-full border-collapse border border-slate-400 mb-3 [&_td]:border [&_td]:border-slate-400 [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-slate-400 [&_th]:px-1.5 [&_th]:py-1 text-[8pt]">
+                        <tbody>
                           <tr>
-                            <td colSpan={2}>
-                              Anggota Tim: <strong className="text-blue-900">{teamSummary}</strong>
+                            <td colSpan={4} className="font-bold bg-slate-100 text-slate-900 py-0.5">Details &amp; Request Profile</td>
+                          </tr>
+                          <tr>
+                            <td className="w-1/4 font-bold bg-slate-100 text-slate-900">Kode Sesi / Dokumen</td>
+                            <td className="w-1/4 font-mono font-semibold text-slate-900">{initialSessionData?.sessionCode || (initialSessionData?.id ? 'ACT-DRAFT-REVISI' : 'ACT-DRAFT')}</td>
+                            <td className="w-1/4 font-bold bg-slate-100 text-slate-900">Tanggal Kerja</td>
+                            <td className="w-1/4 font-semibold text-slate-900">{workDate ? fmtDate(workDate) : '—'}</td>
+                          </tr>
+                          <tr>
+                            <td className="font-bold bg-slate-100 text-slate-900">Status / Shift</td>
+                            <td className="capitalize font-semibold text-slate-900">{initialSessionData?.status || 'Draft'} • Shift {shiftCode || 'ALL'}</td>
+                            <td className="font-bold bg-slate-100 text-slate-900">Customer / Site</td>
+                            <td className="text-slate-900 font-semibold">{customerName || site?.customerName || initialSessionData?.customerName || 'Default Customer'} ({site?.name || initialSessionData?.site?.name || '—'})</td>
+                          </tr>
+                          <tr>
+                            <td className="font-bold bg-slate-100 text-slate-900">Nama Pemohon</td>
+                            <td className="text-slate-900 font-semibold">{employee?.name || initialSessionData?.employee?.name || '—'} (SN: {employee?.employeeSn || (initialSessionData?.employee as any)?.sn || employeeId || '—'})</td>
+                            <td className="font-bold bg-slate-100 text-slate-900">Dept / Section</td>
+                            <td className="text-slate-900">{[employee?.department || initialSessionData?.employee?.department, employee?.section || initialSessionData?.employee?.section].filter(Boolean).join(' / ') || 'Central Services'}</td>
+                          </tr>
+                          {teamSummary ? (
+                            <tr>
+                              <td className="font-bold bg-slate-100 text-slate-900">Anggota Tim</td>
+                              <td colSpan={3} className="text-slate-900 font-normal">{teamSummary}</td>
+                            </tr>
+                          ) : null}
+                          {notes ? (
+                            <tr>
+                              <td className="font-bold bg-slate-100 text-slate-900">Catatan Aktivitas</td>
+                              <td colSpan={3} className="text-slate-900">{notes}</td>
+                            </tr>
+                          ) : null}
+                        </tbody>
+                      </table>
+
+                      {/* Section A: Daily Activity Items */}
+                      <div className="font-bold mb-1 text-[8pt] text-slate-900">
+                        A. Daily Activity Items ({previewItemsList.length} Item • Total {totalPts} Poin)
+                      </div>
+                      <table className="w-full border-collapse border border-slate-400 mb-3 [&_td]:border [&_td]:border-slate-400 [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-slate-400 [&_th]:px-1.5 [&_th]:py-1 text-[7.5pt] sm:text-[8pt]">
+                        <thead>
+                          <tr className="bg-slate-100 text-center font-bold text-slate-900">
+                            <th className="w-[6%]">#</th>
+                            <th className="text-left w-[42%]">Aktivitas</th>
+                            <th className="w-[14%]">Unit</th>
+                            <th className="w-[14%]">Durasi</th>
+                            <th className="w-[10%]">Poin</th>
+                            <th className="text-left w-[14%]">Remark</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {previewItemsList.length > 0 ? (
+                            previewItemsList.map((item: any, idx: number) => (
+                              <tr key={item.id || idx}>
+                                <td className="text-center font-mono">{idx + 1}</td>
+                                <td className="text-left font-medium text-slate-900">{item.label}</td>
+                                <td className="text-center font-mono text-slate-900">{item.unitNumber || '—'}</td>
+                                <td className="text-center font-mono text-slate-900">{item.duration}</td>
+                                <td className="text-center font-bold font-mono text-slate-900">{item.points || 0} pts</td>
+                                <td className="text-left text-[7pt] text-slate-600">{item.remark || '—'}</td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan={6} className="text-center text-slate-400 py-2 italic">Belum ada item aktivitas.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+
+                      {/* Section B: Approval Steps (2 Tahap: Pemohon -> Leader / PJO) */}
+                      <div className="font-bold mb-1 text-[8pt] text-slate-900">
+                        B. Approval Steps
+                      </div>
+                      <table className="w-full border-collapse border border-slate-400 mb-3 [&_td]:border [&_td]:border-slate-400 [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-slate-400 [&_th]:px-1.5 [&_th]:py-1 text-center text-[7.5pt] sm:text-[8pt]" style={{ tableLayout: 'fixed' }}>
+                        <thead>
+                          <tr className="bg-slate-100 font-bold text-slate-900">
+                            <th style={{ width: '6%' }}>#</th>
+                            <th className="text-left" style={{ width: '20%' }}>Tahap</th>
+                            <th className="text-left" style={{ width: '22%' }}>Approver</th>
+                            <th style={{ width: '14%' }}>Status</th>
+                            <th style={{ width: '16%' }}>Waktu</th>
+                            <th className="text-left" style={{ width: '22%' }}>Catatan</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {/* 1. Pemohon / Karyawan */}
+                          <tr>
+                            <td>1</td>
+                            <td className="text-left">Karyawan Sign</td>
+                            <td className="text-left font-semibold">{employee?.name || initialSessionData?.employee?.name || '—'}</td>
+                            <td className={cn("capitalize font-bold", isSubmittedDoc ? "text-emerald-700" : "text-slate-500")}>
+                              {isSubmittedDoc ? "Approved" : "Draft"}
+                            </td>
+                            <td className="text-[7pt] font-mono">{initialSessionData?.submittedAt ? fmtDt(initialSessionData.submittedAt) : '—'}</td>
+                            <td className="text-left italic text-slate-500 text-[7pt]">—</td>
+                          </tr>
+                          {/* 2. Leader / Supervisor / PJO */}
+                          <tr className={existingLeaderApproval?.status === 'reverted' ? 'bg-amber-50/70' : undefined}>
+                            <td>2</td>
+                            <td className="text-left">Leader / PJO</td>
+                            <td className="text-left font-semibold">{leaderName || '—'}</td>
+                            <td className={cn("capitalize font-bold", existingLeaderApproval?.status === 'approved' || existingLeaderApproval?.status === 'signed' ? "text-emerald-700" : existingLeaderApproval?.status === 'reverted' ? "text-amber-700" : "text-slate-600")}>
+                              {existingLeaderApproval?.status === 'reverted' ? 'Reverted' : existingLeaderApproval?.status === 'approved' || existingLeaderApproval?.status === 'signed' ? 'Approved' : 'Waiting'}
+                            </td>
+                            <td className="text-[7pt] font-mono">{existingLeaderApproval?.signedAt ? fmtDt(existingLeaderApproval.signedAt) : '—'}</td>
+                            <td className="text-left italic text-slate-600 text-[7pt] break-words whitespace-normal leading-tight font-medium" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                              {existingLeaderApproval?.remarks || '—'}
                             </td>
                           </tr>
-                        ) : null}
-                      </tbody>
-                    </table>
+                        </tbody>
+                      </table>
 
-                    {/* A. Daily Activity Items */}
-                    <div className="font-bold mb-1 text-[8.5pt]">
-                      A. Daily Activity Items (Total: {previewItemsList.length} item)
-                    </div>
-                    <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8pt]">
-                      <thead>
-                        <tr className="bg-gray-100 font-bold text-center">
-                          <th className="w-[5%]">#</th>
-                          <th className="text-left w-[38%]">Aktivitas</th>
-                          <th className="w-[14%]">Unit</th>
-                          <th className="w-[12%]">Durasi</th>
-                          <th className="w-[10%]">Poin</th>
-                          <th className="text-left w-[21%]">Remark</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {previewItemsList.length > 0 ? (
-                          previewItemsList.map((item: any, idx: number) => (
-                            <tr key={item.id || idx}>
-                              <td className="text-center align-middle">{idx + 1}</td>
-                              <td className="align-middle">{item.label}</td>
-                              <td className="text-center align-middle">{item.unitNumber || '-'}</td>
-                              <td className="text-center align-middle">{item.duration}</td>
-                              <td className="text-center font-bold align-middle">{item.points || 0}</td>
-                              <td className="text-left text-[7.5pt] align-middle">{item.remark || '-'}</td>
-                            </tr>
-                          ))
-                        ) : (
-                          <tr>
-                            <td colSpan={6} className="text-center text-gray-400 py-3">Belum ada item aktivitas.</td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
+                      {/* Section C: Signatories (3 Kolom: Employee, Leader / PJO, Customer) */}
+                      <div className="font-bold mb-2 text-[8pt] text-slate-900">Signatories</div>
+                      <div className="grid grid-cols-3 gap-3 mb-3 text-center">
+                        {/* 1. Pemohon / Serviceman */}
+                        <div className="flex flex-col items-center text-center">
+                          <div className="text-[7pt] text-slate-500 font-semibold mb-1">Employee Signature</div>
+                          <div className="h-14 w-full flex items-center justify-center my-1">
+                            {isSubmittedDoc && ((employee as any)?.signatureDataUrl || (initialSessionData?.employee as any)?.signatureDataUrl) ? (
+                              <img
+                                src={(employee as any)?.signatureDataUrl || (initialSessionData?.employee as any)?.signatureDataUrl}
+                                alt="TTD Pemohon"
+                                className="max-h-12 max-w-full object-contain"
+                              />
+                            ) : isSubmittedDoc ? (
+                              <div className="flex flex-col items-center justify-center text-center">
+                                <span className="text-[6.5pt] font-bold text-emerald-600">✓ Digitally Signed</span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 italic text-[7pt]">(Draft)</span>
+                            )}
+                          </div>
+                          <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
+                            {employee?.name || initialSessionData?.employee?.name || '—'}
+                          </div>
+                          <div className="text-[7pt] text-slate-600 font-medium">{employee?.jobTitle || initialSessionData?.employee?.jobTitle || 'Serviceman / Pemohon'}</div>
+                          <div className="text-[6.5pt] text-slate-400 mt-0.5">
+                            {initialSessionData?.submittedAt ? `Waktu Pengajuan: ${fmtDt(initialSessionData.submittedAt)}` : 'Waktu Pengajuan: —'}
+                          </div>
+                        </div>
 
-                    {/* B. Approval Steps */}
-                    <div className="font-bold mb-1 text-[8.5pt]">
-                      B. Approval Steps
-                    </div>
-                    <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-center text-[8pt]" style={{ tableLayout: 'fixed' }}>
-                      <thead>
-                        <tr className="bg-gray-100 font-bold">
-                          <th style={{ width: '6%' }}>#</th>
-                          <th className="text-left" style={{ width: '22%' }}>Tahap</th>
-                          <th className="text-left" style={{ width: '22%' }}>Approver</th>
-                          <th style={{ width: '14%' }}>Status</th>
-                          <th style={{ width: '16%' }}>Waktu</th>
-                          <th className="text-left" style={{ width: '20%' }}>Catatan</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(initialSessionData?.approvals || []).length > 0 ? (
-                          (initialSessionData?.approvals || []).map((step: any) => {
-                            const isApproved = step.status === 'approved' || step.status === 'signed'
-                            return (
-                              <tr key={step.stepOrder || step.id}>
-                                <td>{step.stepOrder}</td>
-                                <td className="text-left">{step.stepLabel}</td>
-                                <td className="text-left font-semibold">{step.approverName || '-'}</td>
-                                <td className={cn("capitalize font-semibold", isApproved ? "text-emerald-700 font-bold" : "")}>
-                                  {step.stepOrder === 1 && isApproved
-                                    ? 'Approved'
-                                    : step.status}
-                                </td>
-                                <td className="text-[7pt] font-mono">{fmtDt(step.signedAt)}</td>
-                                <td className="text-left italic text-slate-600 text-[7.5pt] break-words whitespace-normal leading-tight" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
-                                  {step.remarks || '—'}
-                                </td>
-                              </tr>
-                            )
-                          })
-                        ) : (
-                          <tr>
-                            <td colSpan={6} className="text-center text-slate-400 py-2">Belum ada riwayat persetujuan.</td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
+                        {/* 2. Leader / Supervisor / PJO */}
+                        <div className="flex flex-col items-center text-center">
+                          <div className="text-[7pt] text-slate-500 font-semibold mb-1">Leader / PJO Signature</div>
+                          <div className="h-14 w-full flex items-center justify-center my-1">
+                            {existingLeaderApproval?.signatureDataUrl ? (
+                              <img
+                                src={existingLeaderApproval.signatureDataUrl}
+                                alt="TTD Leader"
+                                className="max-h-12 max-w-full object-contain"
+                              />
+                            ) : existingLeaderApproval?.status === 'approved' || existingLeaderApproval?.status === 'signed' ? (
+                              <div className="flex flex-col items-center justify-center text-center">
+                                <span className="text-[6.5pt] font-bold text-emerald-600">✓ Approved</span>
+                              </div>
+                            ) : existingLeaderApproval?.status === 'reverted' ? (
+                              <span className="text-amber-600 font-semibold italic text-[7pt]">(Dikembalikan)</span>
+                            ) : (
+                              <span className="text-slate-400 italic text-[7pt]">(Belum Disetujui)</span>
+                            )}
+                          </div>
+                          <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
+                            {leaderName || '—'}
+                          </div>
+                          <div className="text-[7pt] text-slate-600 font-medium">Leader / PJO</div>
+                          <div className="text-[6.5pt] text-slate-400 mt-0.5">
+                            {existingLeaderApproval?.signedAt ? `Waktu TTD: ${fmtDt(existingLeaderApproval.signedAt)}` : '—'}
+                          </div>
+                        </div>
 
-                    <div className="font-bold mb-2 text-[8.5pt]">Signatories</div>
-                    <div className="grid grid-cols-3 gap-x-6 gap-y-4 mb-3">
-                      {/* Karyawan */}
-                      <div>
-                        <div className="text-[7pt] text-gray-500 mb-1">Employee Signature</div>
-                        <div className="h-14 flex items-end">
-                          {previewEmployeeSig?.signatureDataUrl ? (
-                            <img src={previewEmployeeSig.signatureDataUrl} alt="TTD" className="h-10 object-contain" />
-                          ) : previewEmployeeSig?.status === 'approved' ? (
-                            <span className="text-emerald-700 font-serif italic font-bold text-[9pt]">{employee?.name || initialSessionData?.employee?.name}</span>
+                        {/* 3. Customer (Manual / Fisik) */}
+                        <div className="flex flex-col items-center text-center">
+                          <div className="text-[7pt] text-slate-500 font-semibold mb-1">Customer Signature</div>
+                          <div className="h-14 w-full flex items-center justify-center my-1">
+                            <span className="text-slate-400 italic text-[7pt]"></span>
+                          </div>
+                          <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
+                            &nbsp;
+                          </div>
+                          <div className="text-[7pt] text-slate-600 font-medium">Customer</div>
+                        </div>
+                      </div>
+
+                      {/* Evidence QR in Bottom Right Corner (Clickable to open floating modal) */}
+                      <div
+                        onClick={() => setIsEvidenceModalOpen(true)}
+                        className="absolute right-[20mm] bottom-[18mm] flex flex-col items-center text-center cursor-pointer group select-none transition-transform hover:scale-105 active:scale-95"
+                        title="Klik untuk membuka galeri foto bukti pekerjaan"
+                      >
+                        <div className="p-1 bg-white border border-slate-300 rounded shadow-2xs group-hover:border-indigo-500 group-hover:shadow-md transition-all">
+                          {evidenceQrDataUrl ? (
+                            <img src={evidenceQrDataUrl} alt="QR Evidence" className="h-14 w-14 object-contain" />
                           ) : (
-                            <span className="text-slate-400 italic text-[7.5pt]"></span>
+                            <div className="h-14 w-14 flex items-center justify-center text-[6pt] text-slate-400 border border-dashed border-slate-200">
+                              QR Code
+                            </div>
                           )}
                         </div>
-                        <div className="mb-0.5 border-b border-slate-400 font-bold text-[8.5pt]" style={{ width: '80%' }}>
-                          {employee?.name || initialSessionData?.employee?.name || '—'}
-                        </div>
-                        <div className="text-[7pt] text-slate-600 font-medium">{employee?.jobTitle || initialSessionData?.employee?.jobTitle || 'Staff'}</div>
-                        {previewEmployeeSig?.signedAt && (
-                          <div className="text-[6.5pt] text-slate-500 mt-0.5">
-                            {previewEmployeeSig?.status === 'reverted' ? 'Waktu Revert: ' : 'Waktu TTD: '}
-                            {fmtDt(previewEmployeeSig.signedAt)}
-                          </div>
-                        )}
+                        <div className="text-[6.5pt] font-bold text-slate-700 mt-0.5 group-hover:text-indigo-600 transition-colors">Scan / Klik Bukti Kerja</div>
+                        <div className="text-[6pt] text-gray-400 mt-0.5">PT Chitra Paratama • HERO Platform</div>
                       </div>
 
-                      {/* Leader / PJO */}
-                      <div>
-                        <div className="text-[7pt] text-gray-500 mb-1">Leader / PJO Signature</div>
-                        <div className="h-14 flex items-end">
-                          {previewLeaderSig?.signatureDataUrl ? (
-                            <img src={previewLeaderSig.signatureDataUrl} alt="TTD" className="h-10 object-contain" />
-                          ) : previewLeaderSig?.status === 'approved' ? (
-                            <span className="text-emerald-700 font-serif italic font-bold text-[9pt]">{previewLeaderSig.approverName || 'Leader / PJO'}</span>
-                          ) : (
-                            <span className="text-slate-400 italic text-[7.5pt]"></span>
-                          )}
-                        </div>
-                        <div className="mb-0.5 border-b border-slate-400 font-bold text-[8.5pt]" style={{ width: '80%' }}>
-                          {previewLeaderSig?.approverName || employee?.name || initialSessionData?.employee?.name || '—'}
-                        </div>
-                        <div className="text-[7pt] text-slate-600 font-medium">Leader / PJO</div>
-                        {previewLeaderSig?.signedAt && (
-                          <div className="text-[6.5pt] text-slate-500 mt-0.5">
-                            {previewLeaderSig?.status === 'reverted' ? 'Waktu Revert: ' : 'Waktu TTD: '}
-                            {fmtDt(previewLeaderSig.signedAt)}
-                          </div>
-                        )}
+                      <div className="text-right text-[7pt] text-slate-500 mt-2 font-mono">
+                        {isSplDoc ? 'F.HC.SPL.001.01 • PT Chitra Paratama' : 'F.OP.DAR.001.01 • PT Chitra Paratama'}
                       </div>
-
-                      {/* Section Head */}
-                      <div>
-                        <div className="text-[7pt] text-gray-500 mb-1">Section Head Signature</div>
-                        <div className="h-14 flex items-end">
-                          {previewSectionHeadSig?.signatureDataUrl ? (
-                            <img src={previewSectionHeadSig.signatureDataUrl} alt="TTD" className="h-10 object-contain" />
-                          ) : previewSectionHeadSig?.status === 'approved' ? (
-                            <span className="text-emerald-700 font-serif italic font-bold text-[9pt]">{previewSectionHeadSig.approverName || 'Section Head'}</span>
-                          ) : (
-                            <span className="text-slate-400 italic text-[7.5pt]"></span>
-                          )}
-                        </div>
-                        <div className="mb-0.5 border-b border-slate-400 font-bold text-[8.5pt]" style={{ width: '80%' }}>
-                          {previewSectionHeadSig?.approverName || employee?.name || initialSessionData?.employee?.name || '—'}
-                        </div>
-                        <div className="text-[7pt] text-slate-600 font-medium">Section Head</div>
-                        {previewSectionHeadSig?.signedAt && (
-                          <div className="text-[6.5pt] text-slate-500 mt-0.5">
-                            {previewSectionHeadSig?.status === 'reverted' ? 'Waktu Revert: ' : 'Waktu TTD: '}
-                            {fmtDt(previewSectionHeadSig.signedAt)}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Evidence QR in Bottom Right Corner (Clickable to open floating modal) */}
-                    <div
-                      onClick={() => setIsEvidenceModalOpen(true)}
-                      className="absolute right-6 bottom-6 flex flex-col items-center text-center cursor-pointer group select-none transition-transform hover:scale-105 active:scale-95"
-                      title="Klik untuk membuka galeri foto bukti pekerjaan"
-                    >
-                      <div className="p-1 bg-white border border-slate-300 rounded shadow-2xs group-hover:border-indigo-500 group-hover:shadow-md transition-all">
-                        {evidenceQrDataUrl ? (
-                          <img src={evidenceQrDataUrl} alt="QR Evidence" className="h-14 w-14 object-contain" />
-                        ) : (
-                          <div className="h-14 w-14 flex items-center justify-center text-[6pt] text-slate-400 border border-dashed border-slate-200">
-                            QR Code
-                          </div>
-                        )}
-                      </div>
-                      <div className="text-[6.5pt] font-bold text-slate-700 mt-0.5 group-hover:text-indigo-600 transition-colors">Scan / Klik Bukti Kerja</div>
-                      <div className="text-[6pt] text-gray-400 mt-0.5">PT Chitra Paratama • HERO Platform</div>
                     </div>
                   </div>
                 )

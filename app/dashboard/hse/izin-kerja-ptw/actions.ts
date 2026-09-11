@@ -641,7 +641,7 @@ export async function savePtwApprovalForm(params: {
     )
 
     if (params.stepRemarks && typeof params.stepRemarks === 'object') {
-      for (const [stepIdStr, remark] of Object.entries(params.stepRemarks)) {
+      for (const [stepIdStr, remark] of Object.entries(params.stepRemarks || {})) {
         const stepId = Number(stepIdStr)
         if (stepId && remark !== undefined) {
           await db

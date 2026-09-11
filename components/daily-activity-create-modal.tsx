@@ -8,8 +8,10 @@ import {
   ChevronDown,
   ChevronRight,
   ImagePlus,
+  Layers,
   ListFilter,
   Search,
+  Sparkles,
   Users,
   X,
 } from 'lucide-react'
@@ -32,6 +34,7 @@ import { SearchableSelect } from '@/components/ui/searchable-select'
 import { createDailyActivitySessionAction } from '@/app/dashboard/activity-hub/actions'
 import { uploadFile } from '@/app/actions/upload'
 import { cn } from '@/lib/utils'
+import type { RouteFolder } from '@/lib/daily-activity'
 
 export type ModalEmployee = {
   id: number
@@ -57,7 +60,14 @@ export type ModalPreset = {
   id: number
   code: string
   name: string
-  basePoints: number
+  basePoints?: number | null
+  category?: string | null
+  requiresPhoto?: boolean
+  requiresEquipmentNo?: boolean
+  requiresDuration?: boolean
+  requiresLocationGps?: boolean
+  requiresTireCount?: boolean
+  requiresMaterialUsed?: boolean
 }
 
 interface DailyActivityCreateModalProps {
@@ -66,6 +76,7 @@ interface DailyActivityCreateModalProps {
   employees: ModalEmployee[]
   sites: ModalSite[]
   activityPresets?: ModalPreset[]
+  routeFolders?: RouteFolder[]
   sectionHeadMap?: Record<string, number | null>
   deptHeadMap?: Record<string, number | null>
   defaultEmployeeId?: number | string
@@ -78,6 +89,7 @@ export function DailyActivityCreateModal({
   employees,
   sites,
   activityPresets = [],
+  routeFolders = [],
   sectionHeadMap = {},
   deptHeadMap = {},
   defaultEmployeeId,
@@ -95,9 +107,7 @@ export function DailyActivityCreateModal({
   // Kamus Aktivitas modal & tree picker
   const [isPickerModalOpen, setIsPickerModalOpen] = useState(false)
   const [pickerSearch, setPickerSearch] = useState('')
-  const [expandedPickerGroups, setExpandedPickerGroups] = useState<Set<string>>(
-    new Set(['Group: Support Customer', 'Group: Running Tire Inspection & Pressure Check'])
-  )
+  const [expandedPickerGroups, setExpandedPickerGroups] = useState<Set<string>>(new Set())
 
   const [isUploadingPhoto, setIsUploadingPhoto] = useState<Record<number | string, boolean>>({})
 
@@ -239,6 +249,117 @@ export function DailyActivityCreateModal({
         (e.jobTitle && e.jobTitle.toLowerCase().includes(q))
     )
   }, [employees, createForm.employeeId, createForm.siteId, teamMemberSearchQuery])
+
+  const normalizedPickerSearch = useMemo(() => {
+    return (pickerSearch || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+  }, [pickerSearch])
+
+  const availableLibraryMap = useMemo(() => {
+    const map = new Map<string, ModalPreset>()
+    for (const p of activityPresets || []) {
+      map.set(String(p.id), p)
+      if (p.code) map.set(p.code.toLowerCase(), p)
+    }
+    return map
+  }, [activityPresets])
+
+  const groupedLibraryIdSet = useMemo(() => {
+    const set = new Set<string>()
+    for (const folder of routeFolders || []) {
+      for (const group of folder.groups || []) {
+        for (const item of group.items || []) {
+          if (item.libraryActivityId != null) {
+            set.add(String(item.libraryActivityId))
+          }
+        }
+      }
+    }
+    return set
+  }, [routeFolders])
+
+  const matchingRouteFolders = useMemo(() => {
+    return (routeFolders || [])
+      .map((route) => {
+        const matchingGroups = (route.groups || [])
+          .map((group) => {
+            const matchingItems = (group.items || [])
+              .map((i) => (i.libraryActivityId != null ? availableLibraryMap.get(String(i.libraryActivityId)) : null))
+              .filter((lib): lib is ModalPreset => Boolean(lib))
+              .filter((lib) => {
+                if (!normalizedPickerSearch) return true
+                const nCode = (lib.code || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+                const nName = (lib.name || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+                return nCode.includes(normalizedPickerSearch) || nName.includes(normalizedPickerSearch)
+              })
+            return { ...group, matchingItems }
+          })
+          .filter((group) => (normalizedPickerSearch ? group.matchingItems.length > 0 : true))
+
+        return { ...route, matchingGroups }
+      })
+      .filter((route) => route.matchingGroups.length > 0)
+  }, [routeFolders, availableLibraryMap, normalizedPickerSearch])
+
+  const standaloneLibraries = useMemo(() => {
+    const presets = activityPresets || []
+    return presets
+      .filter((p) => !groupedLibraryIdSet.has(String(p.id)))
+      .filter((p) => {
+        if (!normalizedPickerSearch) return true
+        const nCode = (p.code || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+        const nName = (p.name || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+        return nCode.includes(normalizedPickerSearch) || nName.includes(normalizedPickerSearch)
+      })
+      .sort((a, b) => (b.basePoints || 0) - (a.basePoints || 0))
+  }, [activityPresets, groupedLibraryIdSet, normalizedPickerSearch])
+
+  const totalVisibleLibraryCount = useMemo(() => {
+    const groupCount = (matchingRouteFolders || []).reduce(
+      (sum, r) => sum + (r?.matchingGroups || []).reduce((gSum, g) => gSum + (g?.matchingItems?.length || 0), 0),
+      0
+    )
+    return groupCount + (standaloneLibraries || []).length
+  }, [matchingRouteFolders, standaloneLibraries])
+
+  const toggleGroupItems = (items: ModalPreset[]) => {
+    const isAllSelected = items.every((sub) =>
+      (createForm.items || []).some(
+        (i) => i?.label?.includes(sub.code) || i?.label?.includes(sub.name)
+      )
+    )
+
+    if (isAllSelected) {
+      setCreateForm((p) => ({
+        ...p,
+        items: p.items.filter(
+          (i) => !items.some((sub) => i?.label?.includes(sub.code) || i?.label?.includes(sub.name))
+        ),
+      }))
+    } else {
+      const missing = items.filter(
+        (sub) => !(createForm.items || []).some(
+          (i) => i?.label?.includes(sub.code) || i?.label?.includes(sub.name)
+        )
+      )
+      setCreateForm((p) => ({
+        ...p,
+        items: [
+          ...p.items,
+          ...missing.map((sub) => ({
+            label: `${sub.code} - ${sub.name}`,
+            unitNumber: '',
+            duration: '60m',
+            points: sub.basePoints || 5,
+            remark: '',
+            startTime: '08:00',
+            endTime: '08:30',
+            photoUrl: null,
+            photos: [],
+          })),
+        ],
+      }))
+    }
+  }
 
   const addPresetActivity = (label: string, points = 10) => {
     setCreateForm((p) => {
@@ -408,12 +529,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
 
     // 2. Signatories Validations
     if (!createForm.leaderEmployeeId?.trim()) {
-      toast.error('Leader / Supervisor (Verifikasi tahap 1) wajib dipilih!')
-      return
-    }
-
-    if (!createForm.superiorEmployeeId?.trim()) {
-      toast.error('Section Head (Verifikasi tahap 2) wajib dipilih!')
+      toast.error('Leader / Supervisor (Verifikasi PJO) wajib dipilih!')
       return
     }
 
@@ -441,10 +557,6 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
         toast.error('End Time Custom Activity wajib diisi!')
         return
       }
-      if (!createForm.customUnit?.trim()) {
-        toast.error('Equipment / Unit No. Custom Activity wajib diisi!')
-        return
-      }
       if (!createForm.customMaterialUsed?.trim()) {
         toast.error('Material Used Custom Activity wajib diisi!')
         return
@@ -457,7 +569,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
       validItems = [
         {
           label: createForm.customName.trim(),
-          unitNumber: createForm.customUnit.trim(),
+          unitNumber: '',
           remark: `${createForm.customDescription.trim()} - ${createForm.customNotes.trim()}`,
           startedAt: `${createForm.workDate}T${createForm.customStartTime || '08:00'}:00`,
           endedAt: `${createForm.workDate}T${createForm.customEndTime || '17:00'}:00`,
@@ -485,10 +597,6 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
         toast.error('End Time Assigned Activity wajib diisi!')
         return
       }
-      if (!createForm.assignedUnitNumber?.trim()) {
-        toast.error('Equipment / Unit No. Assigned Activity wajib diisi!')
-        return
-      }
       if (!createForm.assignedMaterialUsed?.trim()) {
         toast.error('Material Used Assigned Activity wajib diisi!')
         return
@@ -501,7 +609,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
       validItems = [
         {
           label: `Assignment #${createForm.assignmentId}`,
-          unitNumber: createForm.assignedUnitNumber.trim(),
+          unitNumber: '',
           remark: createForm.assignedNotes.trim(),
           startedAt: `${createForm.workDate}T${createForm.assignedStartTime || '08:00'}:00`,
           endedAt: `${createForm.workDate}T${createForm.assignedEndTime || '17:00'}:00`,
@@ -523,11 +631,6 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
         const item = validItems[idx]
         const itemNumber = idx + 1
         const itemLabel = item.label.split(' - ')[1] || item.label
-
-        if (!item.unitNumber?.trim()) {
-          toast.error(`Equipment / Unit No. pada item #${itemNumber} (${itemLabel}) wajib diisi!`)
-          return
-        }
 
         if (!item.startTime?.trim()) {
           toast.error(`Waktu Mulai pada item #${itemNumber} (${itemLabel}) wajib diisi!`)
@@ -566,7 +669,8 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
           managerEmployeeId: createForm.managerEmployeeId ? Number(createForm.managerEmployeeId) : undefined,
           managerName: createForm.managerName || undefined,
           teamMemberEmployeeIds: isTeamLog ? selectedTeamMemberIds : [],
-          notes: createForm.customerName ? `Customer: ${createForm.customerName}` : undefined,
+          customerName: createForm.customerName?.trim() || undefined,
+          notes: createForm.customerName ? `Customer: ${createForm.customerName.trim()}` : undefined,
           items: validItems.map((it) => ({
             label: it.label,
             unitNumber: it.unitNumber,
@@ -1029,25 +1133,14 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">Equipment / Unit No. *</Label>
-                    <Input
-                      placeholder="Contoh: DT-451 / BAY-03"
-                      value={createForm.assignedUnitNumber || ''}
-                      onChange={(e) => setCreateForm((p) => ({ ...p, assignedUnitNumber: e.target.value }))}
-                      className="bg-white border-slate-200 h-9 text-xs font-mono"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">Material Used *</Label>
-                    <Input
-                      placeholder="Material / tools dipakai"
-                      value={createForm.assignedMaterialUsed || ''}
-                      onChange={(e) => setCreateForm((p) => ({ ...p, assignedMaterialUsed: e.target.value }))}
-                      className="bg-white border-slate-200 h-9 text-xs"
-                    />
-                  </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">Material Used *</Label>
+                  <Input
+                    placeholder="Material / tools dipakai"
+                    value={createForm.assignedMaterialUsed || ''}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, assignedMaterialUsed: e.target.value }))}
+                    className="bg-white border-slate-200 h-9 text-xs"
+                  />
                 </div>
 
                 <div className="space-y-1.5">
@@ -1184,25 +1277,14 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">Equipment / Unit No. *</Label>
-                    <Input
-                      placeholder="Contoh: DT-451 / BAY-03"
-                      value={createForm.customUnit || ''}
-                      onChange={(e) => setCreateForm((p) => ({ ...p, customUnit: e.target.value }))}
-                      className="bg-white border-slate-200 h-9 text-xs font-mono"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">Material Used *</Label>
-                    <Input
-                      placeholder="Material / tools dipakai"
-                      value={createForm.customMaterialUsed || ''}
-                      onChange={(e) => setCreateForm((p) => ({ ...p, customMaterialUsed: e.target.value }))}
-                      className="bg-white border-slate-200 h-9 text-xs"
-                    />
-                  </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">Material Used *</Label>
+                  <Input
+                    placeholder="Material / tools dipakai"
+                    value={createForm.customMaterialUsed || ''}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, customMaterialUsed: e.target.value }))}
+                    className="bg-white border-slate-200 h-9 text-xs"
+                  />
                 </div>
 
                 <div className="space-y-1.5">
@@ -1274,39 +1356,31 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                               </button>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                            <div className="grid grid-cols-2 gap-2 text-xs">
                               <div className="space-y-1">
-                                <Label className="text-xs font-semibold text-slate-700">Equipment / Unit No. <span className="text-red-500 font-bold">*</span></Label>
+                                <Label className="text-xs font-semibold text-slate-700">Mulai <span className="text-red-500 font-bold">*</span></Label>
                                 <Input
-                                  placeholder="Unit / equipment number"
-                                  value={item.unitNumber || ''}
-                                  onChange={(e) => updateItemRow(idx, 'unitNumber', e.target.value)}
-                                  className="h-8 text-xs bg-white border-slate-200 font-mono"
+                                  type="time"
+                                  value={(item as any).startTime || '08:00'}
+                                  onChange={(e) => updateItemRow(idx, 'startTime', e.target.value)}
+                                  className="h-8 text-xs bg-white border-slate-200 text-center font-mono"
                                 />
                               </div>
-                              <div className="grid grid-cols-2 gap-1.5">
-                                <div className="space-y-1">
-                                  <Label className="text-xs font-semibold text-slate-700">Mulai <span className="text-red-500 font-bold">*</span></Label>
-                                  <Input
-                                    type="time"
-                                    value={(item as any).startTime || '08:00'}
-                                    onChange={(e) => updateItemRow(idx, 'startTime', e.target.value)}
-                                    className="h-8 text-xs bg-white border-slate-200 text-center"
-                                  />
-                                </div>
-                                <div className="space-y-1">
-                                  <Label className="text-xs font-semibold text-slate-700">Selesai <span className="text-red-500 font-bold">*</span></Label>
-                                  <Input
-                                    type="time"
-                                    value={(item as any).endTime || '08:30'}
-                                    onChange={(e) => updateItemRow(idx, 'endTime', e.target.value)}
-                                    className="h-8 text-xs bg-white border-slate-200 text-center"
-                                  />
-                                </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs font-semibold text-slate-700">Selesai <span className="text-red-500 font-bold">*</span></Label>
+                                <Input
+                                  type="time"
+                                  value={(item as any).endTime || '08:30'}
+                                  onChange={(e) => updateItemRow(idx, 'endTime', e.target.value)}
+                                  className="h-8 text-xs bg-white border-slate-200 text-center font-mono"
+                                />
                               </div>
                             </div>
 
-                            <div className="rounded-lg border border-slate-200 bg-white p-2.5 space-y-2">
+                            <div className={cn(
+                              "rounded-lg border p-2.5 space-y-2 bg-white",
+                              !item.photoUrl && (!item.photos || item.photos.length === 0) ? "border-amber-200 bg-amber-50/20" : "border-slate-200"
+                            )}>
                               <div className="flex items-center justify-between">
                                 <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
                                   <Camera className="size-3.5 text-slate-500" /> Photo Evidence <span className="text-red-500 font-bold">*</span>
@@ -1316,7 +1390,9 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                                     Foto Terunggah
                                   </Badge>
                                 ) : (
-                                  <span className="text-[10px] text-rose-500 font-bold">Wajib diunggah</span>
+                                  <span className="text-[10px] text-rose-600 font-bold bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">
+                                    Wajib diunggah
+                                  </span>
                                 )}
                               </div>
 
@@ -1383,12 +1459,22 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                             </div>
 
                             <div className="space-y-1">
-                              <Label className="text-xs font-semibold text-slate-700">Catatan Item <span className="text-red-500 font-bold">*</span></Label>
+                              <div className="flex items-center justify-between">
+                                <Label className="text-xs font-semibold text-slate-700">Catatan Item <span className="text-red-500 font-bold">*</span></Label>
+                                {!item.remark?.trim() && (
+                                  <span className="text-[10px] text-rose-600 font-bold bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">
+                                    Wajib diisi
+                                  </span>
+                                )}
+                              </div>
                               <Input
-                                placeholder="Hasil kerja, temuan, atau catatan singkat."
+                                placeholder="Hasil kerja, temuan, atau catatan singkat (wajib diisi)..."
                                 value={item.remark || ''}
                                 onChange={(e) => updateItemRow(idx, 'remark', e.target.value)}
-                                className="h-8 text-xs bg-white border-slate-200"
+                                className={cn(
+                                  "h-8 text-xs bg-white border-slate-200",
+                                  !item.remark?.trim() && "border-amber-300 focus:border-rose-500"
+                                )}
                               />
                             </div>
                           </div>
@@ -1404,51 +1490,28 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
               <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
                 <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
                   <span className="size-2 rounded-full bg-slate-700"></span>
-                  R. Signatories & Verification Matrix (Penandatangan Approval)
+                  R. Penandatangan Approval (Signatories)
                 </span>
-                <span className="text-[11px] font-mono text-slate-400">2-Tier Verification (Leader & Section Head)</span>
+                <span className="text-[11px] font-mono text-slate-500 font-semibold">Approval Leader / PJO</span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Leader / Supervisor *</Label>
-                  <SearchableSelect
-                    label="Leader"
-                    placeholder="PILIH LEADER..."
-                    value={createForm.leaderEmployeeId}
-                    onValueChange={(val) => {
-                      const emp = employees.find((e) => String(e.id) === val)
-                      setCreateForm((p) => ({
-                        ...p,
-                        leaderEmployeeId: val,
-                        leaderName: emp?.name || '',
-                      }))
-                    }}
-                    options={employeeOptions}
-                    widthClassName="w-full"
-                  />
-                  <p className="text-[10px] text-slate-400">Verifikasi tahap 1 (Leader Lapangan / PJO)</p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Section Head *</Label>
-                  <SearchableSelect
-                    label="Section Head"
-                    placeholder="PILIH SECTION HEAD..."
-                    value={createForm.superiorEmployeeId}
-                    onValueChange={(val) => {
-                      const emp = employees.find((e) => String(e.id) === val)
-                      setCreateForm((p) => ({
-                        ...p,
-                        superiorEmployeeId: val,
-                        superiorName: emp?.name || '',
-                      }))
-                    }}
-                    options={employeeOptions}
-                    widthClassName="w-full"
-                  />
-                  <p className="text-[10px] text-slate-400">Verifikasi tahap 2 (Kepala Seksi)</p>
-                </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-700">Leader / Supervisor / PJO *</Label>
+                <SearchableSelect
+                  label="Leader"
+                  placeholder="PILIH LEADER / PJO..."
+                  value={createForm.leaderEmployeeId}
+                  onValueChange={(val) => {
+                    const emp = employees.find((e) => String(e.id) === val)
+                    setCreateForm((p) => ({
+                      ...p,
+                      leaderEmployeeId: val,
+                      leaderName: emp?.name || '',
+                    }))
+                  }}
+                  options={employeeOptions}
+                  widthClassName="w-full"
+                />
               </div>
             </div>
           </div>
@@ -1468,173 +1531,203 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
         </DialogContent>
       </Dialog>
 
-      {/* MODAL DIALOG: PILIH KAMUS AKTIVITAS */}
+      {/* MODAL DIALOG: PILIH KAMUS AKTIVITAS (PARITY WITH APPROVAL WORKFLOW) */}
       <Dialog open={isPickerModalOpen} onOpenChange={setIsPickerModalOpen}>
-        <DialogContent className="max-w-2xl p-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
-          <div className="bg-slate-900 px-5 py-3.5 text-white flex items-center justify-between">
+        <DialogContent className="max-w-2xl p-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+          {/* Header Dark Minimalist */}
+          <div className="bg-[#003f78] px-5 py-3.5 text-white flex items-center justify-between">
             <div>
               <DialogTitle className="text-base font-bold text-white">Pilih Kamus Aktivitas</DialogTitle>
-              <p className="text-xs text-slate-300 mt-0.5">Pilih aktivitas berdasarkan route group & kategori pekerjaan</p>
+              <p className="text-xs text-blue-100 mt-0.5">Pilih aktivitas berdasarkan route group &amp; aktivitas mandiri</p>
             </div>
             <button
               type="button"
               onClick={() => setIsPickerModalOpen(false)}
-              className="text-slate-400 hover:text-white p-1 rounded-md transition-colors"
+              className="text-blue-200 hover:text-white p-1 rounded-md transition-colors"
             >
               <X className="size-4" />
             </button>
           </div>
 
           <div className="p-4 space-y-3">
-            <div className="rounded-lg bg-slate-100 px-3.5 py-2 flex items-center gap-2 border border-slate-200">
-              <Search className="size-4 text-slate-500" />
+            {/* Search Bar */}
+            <div className="rounded-xl bg-slate-50 px-3.5 py-2.5 flex items-center gap-2 border border-slate-200 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition">
+              <Search className="size-4 text-slate-400" />
               <input
                 type="text"
                 value={pickerSearch}
                 onChange={(e) => setPickerSearch(e.target.value)}
                 placeholder="Cari kode atau nama activity..."
-                className="w-full bg-transparent text-xs font-medium text-slate-900 outline-none placeholder:text-slate-400"
+                className="w-full bg-transparent text-xs font-semibold text-slate-800 outline-none placeholder:text-slate-400"
               />
+              {pickerSearch ? (
+                <button
+                  type="button"
+                  onClick={() => setPickerSearch('')}
+                  className="text-slate-400 hover:text-slate-600"
+                >
+                  <X className="size-3.5" />
+                </button>
+              ) : null}
             </div>
 
-            <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 border border-slate-200">
-              <span>Library aktif</span>
+            {/* Status Count Bar */}
+            <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3.5 py-2 text-xs font-bold text-slate-600 border border-slate-200/80">
+              <span>{totalVisibleLibraryCount} library tampil</span>
               <span>{(createForm.items || []).filter((i) => i?.label?.trim()).length} dipilih</span>
             </div>
 
-            <div className="max-h-80 overflow-y-auto space-y-2 pr-1">
-              {[
-                {
-                  groupName: 'Group: Support Customer',
-                  subtitle: 'GRP-Support Customer • ALL',
-                  items: [
-                    { code: 'SVC.STB-001', name: 'Support Operator', points: 10, badges: ['FOTO WAJIB', '10 PTS'] },
-                    { code: 'SVC.STB-002', name: 'Support Technical Liaison', points: 10, badges: ['EQUIPMENT WAJIB'] },
-                  ],
-                },
-                {
-                  groupName: 'Group: Running Tire Inspection & Pressure Check',
-                  subtitle: 'GRP-Tire Inspection • ALL',
-                  items: [
-                    { code: 'SVC.STB-003', name: 'Inspection & Pressure Check', points: 10, badges: ['EQUIPMENT WAJIB', 'WAKTU WAJIB'] },
-                    { code: 'SVC.STB-004', name: 'Running Tire Depth Measurement', points: 10, badges: ['FOTO WAJIB'] },
-                  ],
-                },
-                {
-                  groupName: 'Group: Rotasi Tire EM',
-                  subtitle: 'GRP-Rotasi Tire EM • Earthmover',
-                  items: [
-                    { code: 'SVC.STB-005', name: 'Rotasi Tire EM Position 1 & 2', points: 15, badges: ['EQUIPMENT WAJIB', 'WAKTU WAJIB'] },
-                    { code: 'SVC.STB-006', name: 'Rotasi Tire EM Position 3 & 4', points: 15, badges: ['EQUIPMENT WAJIB'] },
-                  ],
-                },
-                {
-                  groupName: 'Group: Replace Tire TB',
-                  subtitle: 'GRP-Replace Tire TB • Truck & Bus',
-                  items: [
-                    { code: 'SVC.STB-007', name: 'Mounting Truck & Bus Tyre', points: 15, badges: ['EQUIPMENT WAJIB', 'WAKTU WAJIB'] },
-                    { code: 'SVC.STB-008', name: 'Dismounting Truck Tyre', points: 15, badges: ['EQUIPMENT WAJIB'] },
-                  ],
-                },
-                {
-                  groupName: 'Group: Rotasi Tire TB',
-                  subtitle: 'GRP-Rotasi Tire TB • Truck & Bus',
-                  items: [
-                    { code: 'SVC.STB-009', name: 'Rotasi Tire Truck & Bus', points: 15, badges: ['EQUIPMENT WAJIB'] },
-                  ],
-                },
-                {
-                  groupName: 'Group: Replace Tire',
-                  subtitle: 'GRP-Replace Tire • General',
-                  items: [
-                    { code: 'SVC.STB-010', name: 'Replacement Tyre OTR HD-785', points: 20, badges: ['EQUIPMENT WAJIB', 'FOTO WAJIB'] },
-                  ],
-                },
-                {
-                  groupName: 'Group: Rotasi Tire',
-                  subtitle: 'GRP-General Safety & Housekeeping',
-                  items: [
-                    { code: 'HSE.P5M-001', name: 'P5M & Briefing Keselamatan', points: 5, badges: ['WAKTU WAJIB'] },
-                    { code: 'HSE.P2H-001', name: 'P2H & Inspection Alat Kerja', points: 5, badges: ['EQUIPMENT WAJIB'] },
-                  ],
-                },
-              ].map((group, gIdx) => {
-                const isExpanded = expandedPickerGroups.has(group.groupName) || Boolean(pickerSearch)
+            {/* Scrollable Content */}
+            <div className="max-h-[380px] overflow-y-auto space-y-3 pr-1">
+              {/* 1. Dynamic Route Groups & Folders Accordion */}
+              {matchingRouteFolders.map((route) => {
+                const isRouteExpanded = expandedPickerGroups.has(route.routeName) || Boolean(pickerSearch)
                 return (
-                  <div key={gIdx} className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+                  <div key={route.id} className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
                     <button
                       type="button"
                       onClick={() => {
                         setExpandedPickerGroups((prev) => {
                           const next = new Set(prev)
-                          if (next.has(group.groupName)) next.delete(group.groupName)
-                          else next.add(group.groupName)
+                          if (next.has(route.routeName)) next.delete(route.routeName)
+                          else next.add(route.routeName)
                           return next
                         })
                       }}
-                      className="w-full flex items-center justify-between bg-slate-50 px-3.5 py-2.5 text-left font-bold text-slate-800 text-xs hover:bg-slate-100 transition-colors"
+                      className="w-full flex items-center justify-between bg-slate-50/90 hover:bg-slate-100/90 px-3.5 py-2.5 text-left font-bold text-slate-800 text-xs transition-colors"
                     >
-                      <div className="flex items-center gap-2">
-                        <ChevronRight className={`size-4 transition-transform text-slate-500 ${isExpanded ? 'rotate-90' : ''}`} />
-                        <span>{group.groupName}</span>
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <Layers className="size-4 text-[#003f78] shrink-0" />
+                        <span className="truncate">{route.routeName}</span>
                       </div>
-                      <span className="text-xs font-semibold text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">
-                        {group.items.length} Activity
-                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-[11px] font-semibold text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">
+                          {(route?.matchingGroups || []).reduce((acc, g) => acc + (g?.matchingItems?.length || 0), 0)} Activity
+                        </span>
+                        <ChevronRight className={`size-4 transition-transform text-slate-500 ${isRouteExpanded ? 'rotate-90' : ''}`} />
+                      </div>
                     </button>
 
-                    {isExpanded && (
-                      <div className="p-2 space-y-1.5 bg-white">
-                        {group.items.map((sub, sIdx) => {
-                          const isSelected = (createForm.items || []).some(
-                            (i) => i?.label?.includes(sub.code) || i?.label?.includes(sub.name)
-                          )
+                    {isRouteExpanded && (
+                      <div className="p-2 space-y-2.5 bg-slate-50/40 border-t border-slate-100">
+                        {route.matchingGroups.map((group) => {
+                          const isAllGroupSelected =
+                            group.matchingItems.length > 0 &&
+                            group.matchingItems.every((sub) =>
+                              (createForm.items || []).some(
+                                (i) => i?.label?.includes(sub.code) || i?.label?.includes(sub.name)
+                              )
+                            )
+                          const selectedInGroupCount = group.matchingItems.filter((sub) =>
+                            (createForm.items || []).some(
+                              (i) => i?.label?.includes(sub.code) || i?.label?.includes(sub.name)
+                            )
+                          ).length
+
                           return (
-                            <div
-                              key={sIdx}
-                              onClick={() => {
-                                if (isSelected) {
-                                  const idxToRemove = (createForm.items || []).findIndex(
+                            <div key={group.id} className="space-y-1.5 rounded-xl border border-slate-200/80 bg-white p-2.5 shadow-2xs">
+                              <div className="flex w-full items-center justify-between px-1 text-left text-xs font-bold text-slate-700">
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                  <span className="truncate">{group.groupName}</span>
+                                  {group.matchingItems.length > 0 && (
+                                    <span className="text-[10px] font-bold text-[#003f78] bg-[#eaf4fb] px-1.5 py-0.5 rounded-full shrink-0">
+                                      {selectedInGroupCount}/{group.matchingItems.length}
+                                    </span>
+                                  )}
+                                </div>
+                                {group.matchingItems.length > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      toggleGroupItems(group.matchingItems)
+                                    }}
+                                    className={
+                                      isAllGroupSelected
+                                        ? 'text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-lg bg-rose-100 text-rose-700 hover:bg-rose-200 active:scale-95 transition shrink-0'
+                                        : 'text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-lg bg-[#003f78] text-white hover:bg-[#002f5a] active:scale-95 transition shadow-xs shrink-0'
+                                    }
+                                  >
+                                    {isAllGroupSelected ? 'Hapus Semua' : 'Pilih Group (Semua)'}
+                                  </button>
+                                )}
+                              </div>
+
+                              <div className="space-y-1.5 pt-1">
+                                {group.matchingItems.map((sub) => {
+                                  const isSelected = (createForm.items || []).some(
                                     (i) => i?.label?.includes(sub.code) || i?.label?.includes(sub.name)
                                   )
-                                  if (idxToRemove >= 0) removeItemRow(idxToRemove)
-                                } else {
-                                  addPresetActivity(`${sub.code} - ${sub.name}`, sub.points)
-                                }
-                              }}
-                              className={`flex items-start justify-between rounded-lg p-2.5 cursor-pointer transition-all border ${
-                                isSelected
-                                  ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
-                                  : 'bg-slate-50/50 text-slate-800 border-slate-200 hover:bg-slate-100/60'
-                              }`}
-                            >
-                              <div className="space-y-0.5">
-                                <p className="text-xs font-bold font-mono">{sub.code}</p>
-                                <p className="text-xs font-semibold">{sub.name}</p>
-                                <p className={`text-xs ${isSelected ? 'text-slate-300' : 'text-slate-500'}`}>
-                                  {sub.points} pts • max 12 pts / hari
-                                </p>
-                                <div className="flex flex-wrap gap-1 mt-1">
-                                  {sub.badges.map((b, bIdx) => (
-                                    <span
-                                      key={bIdx}
-                                      className={`rounded px-1.5 py-0.5 text-[11px] font-bold tracking-wider uppercase ${
+                                  const requirementBadges = [
+                                    sub.requiresEquipmentNo ? 'Equipment' : null,
+                                    sub.requiresDuration ? 'Duration' : null,
+                                    sub.requiresTireCount ? 'Tire' : null,
+                                    sub.requiresLocationGps ? 'GPS' : null,
+                                    sub.requiresPhoto ? 'Photo' : null,
+                                  ].filter(Boolean)
+
+                                  return (
+                                    <div
+                                      key={sub.id}
+                                      onClick={() => {
+                                        if (isSelected) {
+                                          const idxToRemove = (createForm.items || []).findIndex(
+                                            (i) => i?.label?.includes(sub.code) || i?.label?.includes(sub.name)
+                                          )
+                                          if (idxToRemove >= 0) removeItemRow(idxToRemove)
+                                        } else {
+                                          addPresetActivity(`${sub.code} - ${sub.name}`, sub.basePoints || 5)
+                                        }
+                                      }}
+                                      className={`flex items-center justify-between rounded-xl p-3 cursor-pointer transition border ${
                                         isSelected
-                                          ? 'bg-white/15 text-white'
-                                          : 'bg-slate-200/80 text-slate-700'
+                                          ? 'bg-[#003f78] text-white border-[#003f78] shadow-sm'
+                                          : 'bg-white text-slate-800 border-slate-200/90 hover:bg-slate-50'
                                       }`}
                                     >
-                                      {b}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                              <div
-                                className={`size-5 flex items-center justify-center rounded text-xs font-bold ${
-                                  isSelected ? 'bg-white text-slate-900' : 'bg-slate-200 text-slate-600'
-                                }`}
-                              >
-                                {isSelected ? <Check className="size-3.5 stroke-[3]" /> : '+'}
+                                      <div className="min-w-0 flex-1 pr-2 space-y-0.5">
+                                        <div className="flex items-center gap-2">
+                                          <span className={`text-[11px] font-black tracking-wider uppercase ${isSelected ? 'text-white' : 'text-[#003f78]'}`}>
+                                            {sub.code}
+                                          </span>
+                                          {(sub.basePoints || 0) > 0 ? (
+                                            <span className={`rounded-md px-1.5 py-0.5 text-[9px] font-bold ${
+                                              isSelected ? 'bg-white/20 text-white' : 'bg-blue-50 text-[#003f78]'
+                                            }`}>
+                                              +{sub.basePoints} pts
+                                            </span>
+                                          ) : null}
+                                        </div>
+                                        <p className={`text-xs font-semibold truncate ${isSelected ? 'text-blue-100' : 'text-slate-800'}`}>
+                                          {sub.name}
+                                        </p>
+                                        {requirementBadges.length > 0 ? (
+                                          <div className="flex flex-wrap gap-1 pt-0.5">
+                                            {requirementBadges.map((badge, bIdx) => (
+                                              <span
+                                                key={bIdx}
+                                                className={`rounded-md px-1.5 py-0.5 text-[8.5px] font-bold uppercase tracking-wider ${
+                                                  isSelected ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-600'
+                                                }`}
+                                              >
+                                                {badge}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                      <span
+                                        className={`size-6 shrink-0 flex items-center justify-center rounded-full transition ${
+                                          isSelected
+                                            ? 'bg-white text-[#003f78]'
+                                            : 'bg-white border border-slate-200 text-slate-400'
+                                        }`}
+                                      >
+                                        {isSelected ? <Check className="size-3.5 stroke-[3]" /> : <ListFilter className="size-3.5" />}
+                                      </span>
+                                    </div>
+                                  )
+                                })}
                               </div>
                             </div>
                           )
@@ -1644,12 +1737,106 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                   </div>
                 )
               })}
+
+              {/* 2. Standalone / Aktivitas Mandiri Section */}
+              {standaloneLibraries.length > 0 && (
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center gap-1.5 px-1 py-1 text-xs font-bold text-[#486275] uppercase tracking-wider">
+                    <Sparkles className="size-3.5 text-amber-500" />
+                    <span>Aktivitas Mandiri / Kamus Lainnya ({standaloneLibraries.length})</span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    {standaloneLibraries.map((item) => {
+                      const isSelected = (createForm.items || []).some(
+                        (i) => i?.label?.includes(item.code) || i?.label?.includes(item.name)
+                      )
+                      const requirementBadges = [
+                        item.requiresEquipmentNo ? 'Equipment' : null,
+                        item.requiresDuration ? 'Duration' : null,
+                        item.requiresTireCount ? 'Tire' : null,
+                        item.requiresLocationGps ? 'GPS' : null,
+                        item.requiresPhoto ? 'Photo' : null,
+                      ].filter(Boolean)
+
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => {
+                            if (isSelected) {
+                              const idxToRemove = (createForm.items || []).findIndex(
+                                (i) => i?.label?.includes(item.code) || i?.label?.includes(item.name)
+                              )
+                              if (idxToRemove >= 0) removeItemRow(idxToRemove)
+                            } else {
+                              addPresetActivity(`${item.code} - ${item.name}`, item.basePoints || 10)
+                            }
+                          }}
+                          className={`flex items-center justify-between rounded-xl p-3 cursor-pointer transition border ${
+                            isSelected
+                              ? 'bg-[#003f78] text-white border-[#003f78] shadow-sm'
+                              : 'bg-white text-slate-800 border-slate-200/90 hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1 pr-2 space-y-0.5">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-[11px] font-black tracking-wider uppercase ${isSelected ? 'text-white' : 'text-[#003f78]'}`}>
+                                {item.code}
+                              </span>
+                              {(item.basePoints || 0) > 0 ? (
+                                <span className={`rounded-md px-1.5 py-0.5 text-[9px] font-bold ${
+                                  isSelected ? 'bg-white/20 text-white' : 'bg-[#eaf4fb] text-[#003f78]'
+                                }`}>
+                                  +{item.basePoints} pts
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className={`text-xs font-semibold truncate ${isSelected ? 'text-blue-100' : 'text-slate-800'}`}>
+                              {item.name}
+                            </p>
+                            {requirementBadges.length > 0 ? (
+                              <div className="flex flex-wrap gap-1 pt-0.5">
+                                {requirementBadges.map((b, bIdx) => (
+                                  <span
+                                    key={bIdx}
+                                    className={`rounded-md px-1.5 py-0.5 text-[8.5px] font-bold uppercase tracking-wider ${
+                                      isSelected ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-600'
+                                    }`}
+                                  >
+                                    {b}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                          <span
+                            className={`size-6 shrink-0 flex items-center justify-center rounded-full transition ${
+                              isSelected
+                                ? 'bg-white text-[#003f78]'
+                                : 'bg-white border border-slate-200 text-slate-400'
+                            }`}
+                          >
+                            {isSelected ? <Check className="size-3.5 stroke-[3]" /> : <ListFilter className="size-3.5" />}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {totalVisibleLibraryCount === 0 && (
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 p-6 text-center text-xs font-semibold text-slate-500">
+                  Tidak ada kamus aktivitas yang cocok dengan pencarian &quot;{pickerSearch}&quot;.
+                </div>
+              )}
             </div>
 
+            {/* Bottom Submit Button */}
             <Button
               type="button"
               onClick={() => setIsPickerModalOpen(false)}
-              className="h-10 w-full rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs mt-2"
+              className="h-10 w-full rounded-xl bg-[#003f78] hover:bg-[#00315c] text-white font-bold text-xs shadow-xs mt-2"
             >
               PAKAI {(createForm.items || []).filter((i) => i?.label?.trim()).length} ACTIVITY
             </Button>

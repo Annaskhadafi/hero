@@ -51,6 +51,7 @@ export interface FormWoApprovalStepData {
 
 export interface FormWoDocumentData {
   id?: number
+  idWo?: string | number | null
   noPengajuan?: string | null
   jenisPengajuan?: string | null
   hari?: string | null
@@ -216,8 +217,6 @@ export function FormWoDocumentView({
   doc: FormWoDocumentData
   containerRef?: React.Ref<HTMLDivElement>
   liveSignatureUrl?: string | null
-  currentLevel?: number
-}) {
   const isService = doc.jenisPengajuan === 'service'
   const docNoWo = doc.noWoTerbit || doc.noWoCp || doc.idWo || ''
 

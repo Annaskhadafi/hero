@@ -640,8 +640,15 @@ export function SopWinApprovalWorkspace({
 
       if (res.success) {
         toast.success(`Permohonan ${currentBatchDoc.requestNumber} berhasil disetujui.`);
-        if (batchReviewIndex < selectedBatchRows.length - 1) {
-          setBatchReviewIndex((prev) => prev + 1);
+        const docId = currentBatchDoc.id;
+        const remainingIds = selectedIds.filter((id) => id !== docId);
+        setSelectedIds(remainingIds);
+        const remainingRows = selectedBatchRows.filter((r) => r.id !== docId);
+        if (remainingRows.length > 0) {
+          const nextIndex = Math.min(batchReviewIndex, remainingRows.length - 1);
+          setBatchReviewIndex(Math.max(0, nextIndex));
+          setIsBatchReviewOpen(true);
+          await refreshData();
         } else {
           toast.success("Semua permohonan dalam antrian batch telah selesai direview.");
           setIsBatchReviewOpen(false);

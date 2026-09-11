@@ -10,22 +10,29 @@ export interface SpeechTextareaProps extends React.TextareaHTMLAttributes<HTMLTe
 export const SpeechTextarea = React.forwardRef<HTMLTextAreaElement, SpeechTextareaProps>(
   ({ className, value, onChange, ...props }, ref) => {
     
-    const handleTranscript = (text: string) => {
-      const currentValue = typeof value === "string" ? value : "";
+    const valueRef = React.useRef(value);
+    const onChangeRef = React.useRef(onChange);
+
+    React.useEffect(() => {
+      valueRef.current = value;
+      onChangeRef.current = onChange;
+    });
+
+    const handleTranscript = React.useCallback((text: string) => {
+      const currentValue = typeof valueRef.current === "string" ? valueRef.current : "";
       const newValue = currentValue ? currentValue + " " + text : text;
-      
-      if (onChange) {
-        // Create a synthetic event
+
+      if (onChangeRef.current) {
         const e = {
           target: { value: newValue },
           currentTarget: { value: newValue },
           preventDefault: () => {},
           stopPropagation: () => {},
         } as React.ChangeEvent<HTMLTextAreaElement>;
-        
-        onChange(e);
+
+        onChangeRef.current(e);
       }
-    };
+    }, []);
 
     return (
       <div className="relative w-full">

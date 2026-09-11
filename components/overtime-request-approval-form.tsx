@@ -451,7 +451,8 @@ export function OvertimeRequestApprovalForm({
       })
 
       if (res.success) {
-        toast.success('Surat Perintah Lembur (SPL) berhasil disimpan!')
+        toast.success(isReverted ? 'Revisi SPL berhasil dikirim ulang!' : 'Surat Perintah Lembur (SPL) berhasil disimpan!')
+        router.push('/dashboard/overtime-requests')
         router.refresh()
       } else {
         toast.error('Gagal menyimpan: ' + (res.error || 'Terjadi kesalahan'))
@@ -494,6 +495,7 @@ export function OvertimeRequestApprovalForm({
       const res = await submitOvertimeApprovalStepAction({ status: 'idle', message: '' }, fd)
       if (res.status === 'success') {
         toast.success('Approval SPL berhasil disetujui & ditandatangani!')
+        router.push('/dashboard/overtime-requests')
         router.refresh()
       } else {
         toast.error(res.message || 'Gagal memproses approval.')
@@ -521,6 +523,7 @@ export function OvertimeRequestApprovalForm({
       const res = await submitOvertimeApprovalStepAction({ status: 'idle', message: '' }, fd)
       if (res.status === 'success') {
         toast.success('SPL ditolak.')
+        router.push('/dashboard/overtime-requests')
         router.refresh()
       } else {
         toast.error(res.message || 'Gagal menolak approval.')
@@ -542,6 +545,7 @@ export function OvertimeRequestApprovalForm({
       const res = await submitOvertimeApprovalStepAction({ status: 'idle', message: '' }, fd)
       if (res.status === 'success') {
         toast.success(res.message || 'SPL berhasil dikembalikan untuk revisi.')
+        router.push('/dashboard/overtime-requests')
         router.refresh()
       } else {
         toast.error(res.message || 'Gagal mengembalikan SPL.')

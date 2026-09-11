@@ -14,10 +14,18 @@ interface SpeechInputButtonProps {
 export function SpeechInputButton({ onFinalTranscript, onPartialTranscript, className }: SpeechInputButtonProps) {
   const [isRecording, setIsRecording] = useState(false);
   const recognitionRef = useRef<any>(null);
+  const isMountedRef = useRef(true);
+  const onFinalTranscriptRef = useRef(onFinalTranscript);
+  const onPartialTranscriptRef = useRef(onPartialTranscript);
 
   useEffect(() => {
-    // Check if browser supports SpeechRecognition
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    onFinalTranscriptRef.current = onFinalTranscript;
+    onPartialTranscriptRef.current = onPartialTranscript;
+  });
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    const SpeechRecognition = typeof window !== 'undefined' ? ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition) : null;
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
       recognition.continuous = true;
@@ -36,23 +44,24 @@ export function SpeechInputButton({ onFinalTranscript, onPartialTranscript, clas
           }
         }
 
-        if (finalTranscript) {
-          onFinalTranscript(finalTranscript + " ");
+        if (finalTranscript && onFinalTranscriptRef.current) {
+          onFinalTranscriptRef.current(finalTranscript + " ");
         }
-        if (onPartialTranscript) {
-          onPartialTranscript(interimTranscript);
+        if (onPartialTranscriptRef.current) {
+          onPartialTranscriptRef.current(interimTranscript);
         }
       };
 
       recognition.onerror = (event: any) => {
         const err = event.error || 'unknown';
-        if (err === 'no-speech' || err === 'aborted') {
+        if (isMountedRef.current) {
           setIsRecording(false);
+        }
+        if (err === 'no-speech' || err === 'aborted') {
           return;
         }
 
         console.warn('Speech recognition warning:', err);
-        setIsRecording(false);
 
         if (err === 'not-allowed' || err === 'service-not-allowed') {
           toast.error('Izin mikrofon diblokir. Silakan aktifkan izin mikrofon pada browser Anda.');
@@ -66,24 +75,28 @@ export function SpeechInputButton({ onFinalTranscript, onPartialTranscript, clas
       };
 
       recognition.onend = () => {
-        // Automatically set state to false when it stops recording natively (e.g., timeout or user stopped)
-        setIsRecording(false);
+        if (isMountedRef.current) {
+          setIsRecording(false);
+        }
       };
 
       recognitionRef.current = recognition;
     }
 
     return () => {
+      isMountedRef.current = false;
       if (recognitionRef.current) {
         try { recognitionRef.current.stop(); } catch(e){}
       }
     };
-  }, [onFinalTranscript, onPartialTranscript]);
+  }, []);
 
   const toggleRecording = () => {
     if (isRecording) {
       try { recognitionRef.current?.stop(); } catch(e){}
-      setIsRecording(false);
+      if (isMountedRef.current) {
+        setIsRecording(false);
+      }
       return;
     }
 
@@ -94,14 +107,20 @@ export function SpeechInputButton({ onFinalTranscript, onPartialTranscript, clas
 
     try {
       recognitionRef.current.start();
-      setIsRecording(true);
+      if (isMountedRef.current) {
+        setIsRecording(true);
+      }
     } catch (err: any) {
       if (err?.name === 'InvalidStateError') {
-        setIsRecording(true);
+        if (isMountedRef.current) {
+          setIsRecording(true);
+        }
       } else {
         console.warn('Speech recognition start error:', err);
         toast.error('Gagal memulai mikrofon. Pastikan izin mikrofon telah diberikan.');
-        setIsRecording(false);
+        if (isMountedRef.current) {
+          setIsRecording(false);
+        }
       }
     }
   };

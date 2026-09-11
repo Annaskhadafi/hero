@@ -185,25 +185,25 @@ export async function getDailyActivitySessionDocumentData(
         parsedPayload = JSON.parse(item.snapshotPayload || '{}')
       } catch (e) {}
       
-      const cleanPhotoUrl = (u: any) => {
-        const str = typeof u === 'string' ? u : u?.url || u?.dataUrl || ''
+      const cleanPhotoUrl = (u: any): string | null => {
+        if (!u) return null
+        const str = typeof u === 'string' ? u : u?.url || u?.dataUrl || u?.preview || ''
         if (!str || typeof str !== 'string') return null
         const trimmed = str.trim()
-        if (trimmed.includes('is3.cloudhost.id') && (trimmed.includes('X-Amz-') || trimmed.includes('?'))) {
-          return trimmed.split('?')[0]
-        }
-        return trimmed
+        return trimmed.length > 0 ? trimmed : null
       }
 
-      const rawPhotoUrl =
-        (typeof parsedPayload?.photoUrls?.[0] === 'string' ? parsedPayload.photoUrls[0] : parsedPayload?.photoUrls?.[0]?.url) ||
-        (typeof parsedPayload?.photos?.[0] === 'string' ? parsedPayload.photos[0] : parsedPayload?.photos?.[0]?.url || parsedPayload?.photos?.[0]?.dataUrl) ||
-        (typeof parsedPayload?.photo === 'string' ? parsedPayload.photo : parsedPayload?.photo?.url || parsedPayload?.photo?.dataUrl) ||
-        parsedPayload?.photoUrl ||
-        parsedPayload?.evidencePhotoUrl ||
+      const photoUrl =
+        cleanPhotoUrl(parsedPayload?.photoUrl) ||
+        cleanPhotoUrl(parsedPayload?.evidencePhotoUrl) ||
+        cleanPhotoUrl(parsedPayload?.evidenceUrl) ||
+        cleanPhotoUrl(parsedPayload?.photoUrls?.[0]) ||
+        cleanPhotoUrl(parsedPayload?.photos?.[0]) ||
+        cleanPhotoUrl(parsedPayload?.photo) ||
+        cleanPhotoUrl(parsedPayload?.image) ||
+        cleanPhotoUrl(parsedPayload?.images?.[0]) ||
+        cleanPhotoUrl((item as any).photoUrl) ||
         null
-
-      const photoUrl = cleanPhotoUrl(rawPhotoUrl)
 
       return {
         ...item,
@@ -251,7 +251,23 @@ export async function getDailyActivitySessionDocumentData(
     },
     site: {
       name: header.siteName,
-      customerName: header.customerName,
+      customerName:
+        (
+          (header.summaryRemark || '')
+            .replace(/\s*\|\s*\[Team:\s*[^\]]+\]/gi, '')
+            .replace(/\s*\[Team:\s*[^\]]+\]/gi, '')
+            .match(/\[Customer:\s*([^\]]+)\]/i)?.[1] ||
+          (header.summaryRemark || '')
+            .replace(/\s*\|\s*\[Team:\s*[^\]]+\]/gi, '')
+            .replace(/\s*\[Team:\s*[^\]]+\]/gi, '')
+            .match(/Customer:\s*([^\n;]+)/i)?.[1] ||
+          header.customerName ||
+          ''
+        )
+          .replace(/\s*\|\s*\[Team:\s*[^\]]+\]/gi, '')
+          .replace(/\s*\[Team:\s*[^\]]+\]/gi, '')
+          .replace(/\s*\|\s*$/, '')
+          .trim(),
       contractNumber: header.contractNumber,
     },
     spl:
@@ -370,12 +386,24 @@ export async function getPublicDailyActivityEvidenceData(sessionId: number) {
       parsedPayload = JSON.parse(item.snapshotPayload || '{}')
     } catch (e) {}
 
+    const cleanPhotoUrl = (u: any): string | null => {
+      if (!u) return null
+      const str = typeof u === 'string' ? u : u?.url || u?.dataUrl || u?.preview || ''
+      if (!str || typeof str !== 'string') return null
+      const trimmed = str.trim()
+      return trimmed.length > 0 ? trimmed : null
+    }
+
     const photoUrl =
-      (typeof parsedPayload?.photoUrls?.[0] === 'string' ? parsedPayload.photoUrls[0] : parsedPayload?.photoUrls?.[0]?.url) ||
-      (typeof parsedPayload?.photos?.[0] === 'string' ? parsedPayload.photos[0] : parsedPayload?.photos?.[0]?.url || parsedPayload?.photos?.[0]?.dataUrl) ||
-      (typeof parsedPayload?.photo === 'string' ? parsedPayload.photo : parsedPayload?.photo?.url || parsedPayload?.photo?.dataUrl) ||
-      parsedPayload?.photoUrl ||
-      parsedPayload?.evidencePhotoUrl ||
+      cleanPhotoUrl(parsedPayload?.photoUrl) ||
+      cleanPhotoUrl(parsedPayload?.evidencePhotoUrl) ||
+      cleanPhotoUrl(parsedPayload?.evidenceUrl) ||
+      cleanPhotoUrl(parsedPayload?.photoUrls?.[0]) ||
+      cleanPhotoUrl(parsedPayload?.photos?.[0]) ||
+      cleanPhotoUrl(parsedPayload?.photo) ||
+      cleanPhotoUrl(parsedPayload?.image) ||
+      cleanPhotoUrl(parsedPayload?.images?.[0]) ||
+      cleanPhotoUrl((item as any).photoUrl) ||
       null
     const durationMinutes = minutesBetween(item.startedAt, item.endedAt)
 
@@ -403,9 +431,29 @@ export async function getPublicDailyActivityEvidenceData(sessionId: number) {
   })
 
   const evidenceItems = processedItems.filter((item) => Boolean(item.photoUrl))
+  const resolvedCustomerName =
+    (
+      (header.summaryRemark || '')
+        .replace(/\s*\|\s*\[Team:\s*[^\]]+\]/gi, '')
+        .replace(/\s*\[Team:\s*[^\]]+\]/gi, '')
+        .match(/\[Customer:\s*([^\]]+)\]/i)?.[1] ||
+      (header.summaryRemark || '')
+        .replace(/\s*\|\s*\[Team:\s*[^\]]+\]/gi, '')
+        .replace(/\s*\[Team:\s*[^\]]+\]/gi, '')
+        .match(/Customer:\s*([^\n;]+)/i)?.[1] ||
+      header.customerName ||
+      ''
+    )
+      .replace(/\s*\|\s*\[Team:\s*[^\]]+\]/gi, '')
+      .replace(/\s*\[Team:\s*[^\]]+\]/gi, '')
+      .replace(/\s*\|\s*$/, '')
+      .trim()
 
   return {
-    header,
+    header: {
+      ...header,
+      customerName: resolvedCustomerName,
+    },
     allItems: processedItems,
     evidenceItems,
     approvals: approvalsRows,

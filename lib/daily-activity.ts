@@ -12,6 +12,7 @@ import {
   activityRouteTemplates,
   activitySectionPointOverrides,
   approvals,
+  dailyActivityApprovals,
   dailyActivityConfigs,
   dailyActivitySessionItems,
   dailyActivitySessions,
@@ -20,6 +21,7 @@ import {
   masterDepartments,
   masterPositions,
   masterSections,
+  overtimeApprovals,
   overtimeCommandLetterItems,
   overtimeCommandLetterParticipants,
   overtimeCommandLetters,
@@ -2283,6 +2285,28 @@ export async function getDailyActivityEmployeeData(
   const dayStart = startOfDay()
   const dayEnd = endOfDay()
 
+  const approverSessionRows = await db
+    .select({ sessionId: dailyActivityApprovals.sessionId })
+    .from(dailyActivityApprovals)
+    .where(
+      or(
+        eq(dailyActivityApprovals.approverEmployeeId, employee.id),
+        employee.email ? sql`LOWER(TRIM(${dailyActivityApprovals.approverEmail})) = ${employee.email.trim().toLowerCase()}` : undefined,
+        employee.name ? sql`LOWER(TRIM(${dailyActivityApprovals.approverName})) = ${employee.name.trim().toLowerCase()}` : undefined
+      )
+    )
+  const approverSessionIds = Array.from(new Set(approverSessionRows.map((r) => r.sessionId).filter((id): id is number => Boolean(id))))
+
+  const isAdmin = ['Super Admin', 'Site Admin', 'HC Manager', 'Admin'].includes(employee.accessRole || '')
+
+  const sessionWhereConditions = [
+    eq(dailyActivitySessions.employeeId, employee.id),
+    employee.name ? sql`${dailyActivitySessions.summaryRemark} ILIKE ${'%' + employee.name.trim() + '%'}` : undefined,
+  ]
+  if (approverSessionIds.length > 0) {
+    sessionWhereConditions.push(inArray(dailyActivitySessions.id, approverSessionIds))
+  }
+
   const [
     assignmentRows,
     activityRows,
@@ -2376,23 +2400,18 @@ export async function getDailyActivityEmployeeData(
           submittedAt: dailyActivitySessions.submittedAt,
           approvedAt: dailyActivitySessions.approvedAt,
           createdAt: dailyActivitySessions.createdAt,
+          employeeId: dailyActivitySessions.employeeId,
+          employeeName: employees.name,
         })
         .from(dailyActivitySessions)
+        .leftJoin(employees, eq(dailyActivitySessions.employeeId, employees.id))
         .where(
-          and(
-            or(
-              eq(dailyActivitySessions.employeeId, employee.id),
-              sql`${dailyActivitySessions.summaryRemark} ILIKE ${'%' + (employee.name || '').trim() + '%'}`
-            ),
-            or(
-              inArray(dailyActivitySessions.status, ['submitted', 'pending', 'reverted', 'needs_revision', 'draft', 'Draft', 'Submitted', 'pending l1', 'pending approval']),
-              and(gte(dailyActivitySessions.workDate, dayStart), lte(dailyActivitySessions.workDate, dayEnd)),
-              and(gte(dailyActivitySessions.submittedAt, dayStart), lte(dailyActivitySessions.submittedAt, dayEnd)),
-              and(gte(dailyActivitySessions.createdAt, dayStart), lte(dailyActivitySessions.createdAt, dayEnd))
-            )
-          )
+          isAdmin
+            ? undefined
+            : or(...sessionWhereConditions.filter(Boolean))
         )
-        .orderBy(desc(dailyActivitySessions.createdAt), desc(dailyActivitySessions.id)),
+        .orderBy(desc(dailyActivitySessions.createdAt), desc(dailyActivitySessions.id))
+        .limit(100),
       db
         .select({
           id: pointEvents.id,
@@ -2437,45 +2456,10 @@ export async function getDailyActivityEmployeeData(
           siteIds: activityLibraries.siteIds,
           siteName: sites.name,
           basePoints: activityLibraries.basePoints,
-          complexityLevel: activityLibraries.complexityLevel,
-          requiresPhoto: activityLibraries.requiresPhoto,
-          requiresEquipmentNo: activityLibraries.requiresEquipmentNo,
-          requiresDuration: activityLibraries.requiresDuration,
-          requiresMaterialUsed: activityLibraries.requiresMaterialUsed,
-          requiresLocationGps: activityLibraries.requiresLocationGps,
-          requiresTireCount: activityLibraries.requiresTireCount,
-          maxDailyCount: activityLibraries.maxDailyCount,
-          maxPointsPerDay: activityLibraries.maxPointsPerDay,
-          departmentId: activityLibraries.departmentId,
-          departmentIds: activityLibraries.departmentIds,
-          sectionId: activityLibraries.sectionId,
-          sectionIds: activityLibraries.sectionIds,
-          slaHours: activityLibraries.slaHours,
         })
         .from(activityLibraries)
         .leftJoin(sites, eq(activityLibraries.siteId, sites.id))
-        .where(
-          and(
-            eq(activityLibraries.isActive, true),
-            eq(activityLibraries.isSelfInput, true),
-            librarySiteMatches(
-              activityLibraries.siteId,
-              activityLibraries.siteIds,
-              employee.siteId ?? null
-            ),
-            // ponytail: upgrade path → split dept & section to separate permission tables
-            libraryDeptMatches(
-              activityLibraries.departmentId,
-              activityLibraries.departmentIds,
-              employee.departmentId ?? null
-            ),
-            librarySectionMatches(
-              activityLibraries.sectionId,
-              activityLibraries.sectionIds,
-              employee.sectionId ?? null
-            )
-          )
-        )
+        .where(eq(activityLibraries.isActive, true))
         .orderBy(desc(activityLibraries.basePoints), asc(activityLibraries.activityName)),
       db
         .select()
@@ -2496,9 +2480,9 @@ export async function getDailyActivityEmployeeData(
       : null
 
   const sessionIds = sessionRows.map((s) => s.id)
-  const sessionItemRows =
+  const [sessionItemRows, sessionApprovalRows] = await Promise.all([
     sessionIds.length > 0
-      ? await db
+      ? db
           .select({
             id: dailyActivitySessionItems.id,
             sessionId: dailyActivitySessionItems.sessionId,
@@ -2514,7 +2498,23 @@ export async function getDailyActivityEmployeeData(
           .from(dailyActivitySessionItems)
           .where(inArray(dailyActivitySessionItems.sessionId, sessionIds))
           .orderBy(asc(dailyActivitySessionItems.sortOrder), asc(dailyActivitySessionItems.id))
-      : []
+      : Promise.resolve([]),
+    sessionIds.length > 0
+      ? db
+          .select({
+            id: dailyActivityApprovals.id,
+            sessionId: dailyActivityApprovals.sessionId,
+            stepOrder: dailyActivityApprovals.stepOrder,
+            stepLabel: dailyActivityApprovals.stepLabel,
+            status: dailyActivityApprovals.status,
+            approverName: dailyActivityApprovals.approverName,
+            signedAt: dailyActivityApprovals.signedAt,
+          })
+          .from(dailyActivityApprovals)
+          .where(inArray(dailyActivityApprovals.sessionId, sessionIds))
+          .orderBy(asc(dailyActivityApprovals.stepOrder))
+      : Promise.resolve([]),
+  ])
 
   const itemsBySessionId = new Map<number, typeof sessionItemRows>()
   for (const item of sessionItemRows) {
@@ -2523,8 +2523,17 @@ export async function getDailyActivityEmployeeData(
     itemsBySessionId.set(item.sessionId, list)
   }
 
+  const approvalsBySessionId = new Map<number, typeof sessionApprovalRows>()
+  for (const app of sessionApprovalRows) {
+    const list = approvalsBySessionId.get(app.sessionId) ?? []
+    list.push(app)
+    approvalsBySessionId.set(app.sessionId, list)
+  }
+
   const mappedSessionActivities = sessionRows.map((s) => {
     const items = itemsBySessionId.get(s.id) ?? []
+    const approvals = approvalsBySessionId.get(s.id) ?? []
+    const pendingApp = approvals.find((a) => (a.status || '').toLowerCase() === 'pending')
     const firstItem = items[0]
     const label =
       items.map((i) => i.snapshotLabel).filter(Boolean).join(' • ') ||
@@ -2538,6 +2547,9 @@ export async function getDailyActivityEmployeeData(
     return {
       id: s.id,
       sessionId: s.id,
+      sessionCode: s.sessionCode || `DAS-${s.id}`,
+      workDate: s.workDate,
+      shiftCode: s.shiftCode || '1',
       activityCode: s.sessionCode || 'DAR-DOC',
       activityType: 'Daily Activity Document',
       title: label,
@@ -2568,6 +2580,13 @@ export async function getDailyActivityEmployeeData(
       statusLabel: s.status,
       itemCount: items.length,
       items,
+      approvals,
+      pendingApproverName: pendingApp?.approverName ?? (s.status === 'submitted' ? 'Approver L1' : null),
+      authorEmployeeId: s.employeeId,
+      employeeName: s.employeeName || 'Karyawan',
+      isAuthor: s.employeeId === employee.id,
+      isApprover: approverSessionIds.includes(s.id),
+      isTeamMember: Boolean(s.summaryRemark && employee.name && s.summaryRemark.toLowerCase().includes(employee.name.toLowerCase().trim())),
     }
   })
 
@@ -2729,6 +2748,27 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
   const dayStart = startOfDay()
   const dayEnd = endOfDay()
 
+  const [approverSplIds, participantSplIds] = await Promise.all([
+    db
+      .select({ overtimeCommandLetterId: overtimeApprovals.overtimeCommandLetterId })
+      .from(overtimeApprovals)
+      .where(
+        or(
+          eq(overtimeApprovals.approverEmployeeId, currentEmployee.id),
+          currentEmployee.email ? sql`LOWER(TRIM(${overtimeApprovals.approverEmail})) = ${currentEmployee.email.trim().toLowerCase()}` : undefined,
+          currentEmployee.name ? sql`LOWER(TRIM(${overtimeApprovals.approverName})) = ${currentEmployee.name.trim().toLowerCase()}` : undefined
+        )
+      )
+      .then((rows) => rows.map((r) => r.overtimeCommandLetterId)),
+    db
+      .select({ overtimeCommandLetterId: overtimeCommandLetterParticipants.overtimeCommandLetterId })
+      .from(overtimeCommandLetterParticipants)
+      .where(eq(overtimeCommandLetterParticipants.employeeId, currentEmployee.id))
+      .then((rows) => rows.map((r) => r.overtimeCommandLetterId)),
+  ])
+
+  const relevantSplIds = Array.from(new Set([...approverSplIds, ...participantSplIds])).filter(Boolean)
+
   const [
     assignmentRows,
     activityRows,
@@ -2758,10 +2798,11 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
           .where(
             and(
               inArray(jobAssignments.assignedToEmployeeId, teamIds),
-              gte(jobAssignments.assignedDate, dayStart),
-              lte(jobAssignments.assignedDate, dayEnd)
+              gte(jobAssignments.deadline, dayStart),
+              lte(jobAssignments.deadline, dayEnd)
             )
-          ),
+          )
+          .orderBy(desc(jobAssignments.priority), asc(jobAssignments.deadline)),
     teamIds.length === 0
       ? []
       : db
@@ -2771,11 +2812,9 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
             activityCode: activities.activityCode,
             title: activities.title,
             status: activities.status,
-            priority: activities.priority,
-            sourceMode: activities.sourceMode,
-            unitNumber: activities.unitNumber,
             startTime: activities.startTime,
             endTime: activities.endTime,
+            durationMinutes: activities.durationMinutes,
             submissionTime: activities.submissionTime,
             pointsAwarded: activities.pointsAwarded,
             penaltyDeducted: activities.penaltyDeducted,
@@ -2860,9 +2899,15 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
           eq(approvals.status, 'pending')
         )
       )
-      .where(eq(overtimeCommandLetters.siteId, currentEmployee.siteId))
+      .where(
+        or(
+          currentEmployee.siteId ? eq(overtimeCommandLetters.siteId, currentEmployee.siteId) : undefined,
+          eq(overtimeCommandLetters.requestedByEmployeeId, currentEmployee.id),
+          relevantSplIds.length > 0 ? inArray(overtimeCommandLetters.id, relevantSplIds) : undefined
+        )
+      )
       .orderBy(desc(overtimeCommandLetters.workDate), desc(overtimeCommandLetters.id))
-      .limit(20),
+      .limit(100),
     db
       .select({
         id: overtimeCommandLetterItems.id,
@@ -2920,7 +2965,13 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
         eq(overtimeCommandLetterParticipants.overtimeCommandLetterId, overtimeCommandLetters.id)
       )
       .innerJoin(employees, eq(overtimeCommandLetterParticipants.employeeId, employees.id))
-      .where(eq(overtimeCommandLetters.siteId, currentEmployee.siteId)),
+      .where(
+        or(
+          currentEmployee.siteId ? eq(overtimeCommandLetters.siteId, currentEmployee.siteId) : undefined,
+          eq(overtimeCommandLetters.requestedByEmployeeId, currentEmployee.id),
+          relevantSplIds.length > 0 ? inArray(overtimeCommandLetters.id, relevantSplIds) : undefined
+        )
+      ),
     db
       .select({
         id: activityRouteTemplates.id,
@@ -2988,9 +3039,9 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
   ])
 
   const splIds = splRows.map((row) => row.id)
-  const [splSessionRows, splSessionItemRows] =
+  const [splSessionRows, splSessionItemRows, splApprovalRows] =
     splIds.length === 0
-      ? [[], []]
+      ? [[], [], []]
       : await Promise.all([
           db
             .select({
@@ -3032,6 +3083,15 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
                 inArray(dailyActivitySessions.overtimeCommandLetterId, splIds)
               )
             ),
+          db
+            .select({
+              overtimeCommandLetterId: overtimeApprovals.overtimeCommandLetterId,
+              approverEmployeeId: overtimeApprovals.approverEmployeeId,
+              approverName: overtimeApprovals.approverName,
+              approverEmail: overtimeApprovals.approverEmail,
+            })
+            .from(overtimeApprovals)
+            .where(inArray(overtimeApprovals.overtimeCommandLetterId, splIds)),
         ])
 
   const splLinesByHeaderId = new Map<number, typeof splLineRows>()
@@ -3059,6 +3119,13 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
     splParticipantsByHeaderId.set(participant.overtimeCommandLetterId, list)
   }
 
+  const splApprovalsByHeaderId = new Map<number, typeof splApprovalRows>()
+  for (const approval of splApprovalRows) {
+    const list = splApprovalsByHeaderId.get(approval.overtimeCommandLetterId) ?? []
+    list.push(approval)
+    splApprovalsByHeaderId.set(approval.overtimeCommandLetterId, list)
+  }
+
   const splSessionItemsByHeaderId = new Map<number, typeof splSessionItemRows>()
   for (const sessionItem of splSessionItemRows) {
     if (sessionItem.overtimeCommandLetterId == null) {
@@ -3075,6 +3142,16 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
     const sessions = splSessionsByHeaderId.get(row.id) ?? []
     const sessionItems = splSessionItemsByHeaderId.get(row.id) ?? []
     const participants = splParticipantsByHeaderId.get(row.id) ?? []
+    const headerApprovals = splApprovalsByHeaderId.get(row.id) ?? []
+    const approverEmployeeIds = headerApprovals
+      .map((a) => a.approverEmployeeId)
+      .filter((id): id is number => id != null)
+    const approverNames = headerApprovals
+      .map((a) => a.approverName?.toLowerCase().trim())
+      .filter((name): name is string => Boolean(name))
+    const approverEmails = headerApprovals
+      .map((a) => a.approverEmail?.toLowerCase().trim())
+      .filter((email): email is string => Boolean(email))
     const checkedLineIds = new Set(
       sessionItems
         .filter((item) => item.isChecked && item.overtimeCommandLetterItemId != null)
@@ -3114,6 +3191,9 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
         isCheckedOnRoute: checkedLineIds.has(item.id),
       })),
       participants,
+      approverEmployeeIds,
+      approverNames,
+      approverEmails,
       workers,
       workerCount: workers.length,
       checkedLineCount: checkedLineIds.size,

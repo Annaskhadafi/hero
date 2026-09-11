@@ -185,6 +185,7 @@ import {
   ensureHeroGovernanceSeedData,
   ensureHeroSeedData,
   evaluatePointThresholdBadges,
+  syncMenuPermissionsMatrix,
 } from '@/lib/hero-admin'
 import { createNotificationEventForEmployee, sendPushNotification } from '@/lib/push-notifications'
 import { splDateKey } from '@/lib/spl-data'
@@ -3379,6 +3380,7 @@ const manageSecurityRoleSchema = z.object({
     'save-menu-permissions',
     'assign-user-role',
     'remove-user-role',
+    'sync-permissions',
   ]),
   roleId: optionalFormString,
   roleName: optionalFormString,
@@ -4341,29 +4343,20 @@ async function applyApprovalDecision(params: {
   signatureUrl?: string
   noWoTerbit?: string
 }) {
-  let actor = await getCurrentEmployeeAccessContext()
+  const actor = await getCurrentEmployeeAccessContext()
   const approvalPermission = await getCurrentMenuPermission('approval_inbox')
-  if (!actor) {
-    const fallbackEmp = await db
-      .select({
-        employeeId: employees.id,
-        siteId: employees.siteId,
-        sectionId: employees.sectionId,
-        roleName: employees.accessRole,
-      })
-      .from(employees)
-      .where(eq(employees.id, 5))
-      .limit(1)
-      .then((r) => r[0])
-    if (fallbackEmp) {
-      actor = fallbackEmp
-    }
-  }
   if (!actor) {
     throw new Error('Authenticated employee profile is required.')
   }
   const [actorEmployee] = await db
-    .select({ name: employees.name, signatureDataUrl: employees.signatureDataUrl })
+    .select({
+      name: employees.name,
+      signatureDataUrl: employees.signatureDataUrl,
+      section: employees.section,
+      department: employees.department,
+      jobTitle: employees.jobTitle,
+      email: employees.email,
+    })
     .from(employees)
     .where(eq(employees.id, actor.employeeId))
     .limit(1)
@@ -4440,10 +4433,10 @@ async function applyApprovalDecision(params: {
       approval.approverName &&
       (approval.approverName.toLowerCase().includes('billing') ||
         approval.approverName.toLowerCase().includes('biling')) &&
-      ((actor.section && (actor.section.toLowerCase().includes('billing') || actor.section.toLowerCase().includes('biling'))) ||
-        (actor.department && (actor.department.toLowerCase().includes('billing') || actor.department.toLowerCase().includes('biling'))) ||
-        (actor.jobTitle && (actor.jobTitle.toLowerCase().includes('billing') || actor.jobTitle.toLowerCase().includes('biling'))) ||
-        (actor.email && (actor.email.toLowerCase().includes('billing') || actor.email.toLowerCase().includes('biling')))))
+      ((actorEmployee?.section && (actorEmployee.section.toLowerCase().includes('billing') || actorEmployee.section.toLowerCase().includes('biling'))) ||
+        (actorEmployee?.department && (actorEmployee.department.toLowerCase().includes('billing') || actorEmployee.department.toLowerCase().includes('biling'))) ||
+        (actorEmployee?.jobTitle && (actorEmployee.jobTitle.toLowerCase().includes('billing') || actorEmployee.jobTitle.toLowerCase().includes('biling'))) ||
+        (actorEmployee?.email && (actorEmployee.email.toLowerCase().includes('billing') || actorEmployee.email.toLowerCase().includes('biling')))))
   const hasAdminReviewAccess =
     approvalPermission.canEdit &&
     (hasGlobalDataAccess(approvalPermission) ||
@@ -4705,7 +4698,7 @@ async function applyApprovalDecision(params: {
             notifyWorkflowBellRecipients({
               recipientEmails: [nextEmpEmail],
               eventType: 'form_wo_review',
-              category: 'approval',
+              category: 'approval_requests',
               title: 'Review Form WO',
               body: `${reqInfo.pemohon || 'Karyawan Site'} mengajukan Form WO (${reqInfo.noPengajuan}) yang membutuhkan persetujuan Anda (${nextApproverName}).`,
               url: `/dashboard/approval`,
@@ -8790,6 +8783,26 @@ export async function manageSecurityRoleAction(
       return {
         status: 'success',
         message: `${employee.name} berhasil dihapus dari role. Dikembalikan ke ${defaultRole}.`,
+      }
+    }
+
+    if (payload.intent === 'sync-permissions') {
+      const { insertedMenus, insertedPermissions } = await syncMenuPermissionsMatrix()
+
+      const actorEmail = await getCurrentActorEmail()
+      await logAuditEvent({
+        actorEmail,
+        action: 'role.permissions_synced',
+        entityType: 'role_matrix',
+        entityLabel: 'RBAC Matrix Sync',
+        description: `Sinkronisasi matriks permission RBAC berhasil. Menambah ${insertedMenus} menu baru dan ${insertedPermissions} entri permission role.`,
+        severity: 'info',
+      })
+
+      revalidateAdminSurfaces()
+      return {
+        status: 'success',
+        message: `Sinkronisasi berhasil! ${insertedMenus} menu baru dan ${insertedPermissions} entri permission role telah disinkronkan ke database.`,
       }
     }
 
