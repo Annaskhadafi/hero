@@ -51,6 +51,7 @@ export interface FormWoApprovalStepData {
 
 export interface FormWoDocumentData {
   id?: number
+  idWo?: string | number | null
   noPengajuan?: string | null
   jenisPengajuan?: string | null
   hari?: string | null
@@ -217,6 +218,23 @@ export function FormWoDocumentView({
   currentLevel?: number
 }) {
   const isService = doc.jenisPengajuan === 'service'
+  const repairItemsList = parseItems<RepairItemRow>(doc.items, [
+    {
+      id: '1',
+      description: doc.tireSn || doc.deskripsiPekerjaan || '',
+      noUnit: doc.storeLoc || '',
+      brand: doc.brand || '',
+      pos: doc.pattern || '',
+      size: doc.size || '',
+      site: doc.site || '',
+      customer: doc.customer || '',
+      category: 'R1',
+      noPo: doc.noPo || '',
+      tanggalPo: doc.tanggalPo || '',
+      price: doc.totalAmount || '',
+      noWoCp: doc.noWoTerbit || '',
+    },
+  ])
   const isCk =
     !isService &&
     (isCiptaKridatamaCustomer(doc.customer) ||
@@ -237,23 +255,6 @@ export function FormWoDocumentView({
     },
   ])
 
-  const repairItemsList = parseItems<RepairItemRow>(doc.items, [
-    {
-      id: '1',
-      description: doc.tireSn || doc.deskripsiPekerjaan || '',
-      noUnit: doc.storeLoc || '',
-      brand: doc.brand || '',
-      pos: doc.pattern || '',
-      size: doc.size || '',
-      site: doc.site || '',
-      customer: doc.customer || '',
-      category: 'R1',
-      noPo: doc.noPo || '',
-      tanggalPo: doc.tanggalPo || '',
-      price: doc.totalAmount || '',
-      noWoCp: doc.noWoTerbit || '',
-    },
-  ])
 
   const serviceTotal = serviceItemsList.reduce(
     (sum, r) => sum + (parseFloat((r.price || '').replace(/[^0-9.-]+/g, '')) || 0),

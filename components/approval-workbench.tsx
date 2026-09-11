@@ -664,7 +664,7 @@ export function InboxTab({
           title: `Work Order: ${(woData.jenisPengajuan || 'WO').toUpperCase()} - ${woData.customer || g.siteName || 'Customer'}`,
           employeeName: woData.pemohon || g.requesterName,
           siteName: woData.site || g.siteName,
-          workDate: woData.tanggalPengajuan ? new Date(woData.tanggalPengajuan) : (formWoItem.submittedAt ? new Date(formWoItem.submittedAt) : g.workDate),
+          workDate: (woData as any).tanggalPengajuan ? new Date((woData as any).tanggalPengajuan) : (formWoItem.submittedAt ? new Date(formWoItem.submittedAt) : g.workDate),
           stepLabel: formWoItem?.currentStepLabel || 'Menunggu Approval',
           dueState: formWoItem?.dueState || (g.overdueCount > 0 ? 'overdue' : g.dueSoonCount > 0 ? 'due_soon' : 'open'),
           dueAt: formWoItem?.dueAt || g.items[0]?.dueAt || new Date(),
@@ -674,9 +674,9 @@ export function InboxTab({
           level: formWoItem?.level || g.items[0]?.level || 1,
           repairFormWo: woData,
           customerName: woData.customer,
-          totalAmount: woData.totalAmount,
+          totalAmount: woData.totalAmount ?? undefined,
           signatureUrl: woData.submitterSignatureUrl,
-          approverName: formWoItem?.approverName || g.items[0]?.approverName || null,
+          approverName: (formWoItem as any)?.approverName || (g.items[0] as any)?.approverName || null,
           rawFormWo: {
             ...woData,
             steps:
@@ -768,9 +768,9 @@ export function InboxTab({
           submittedAt: nonFormWoItems[0]?.submittedAt || new Date(),
           url: isApd ? (isSummary ? `/print/summary/${apdItem?.activityId}` : `/print/apd/${apdItem?.activityId}`) : '#',
           activityType: isSummary ? 'Summary APD' : (apdItem?.activityType || (isApd ? (isMaterial ? 'Request Material' : isTools ? 'Request Tools' : 'Request APD') : 'Form Activity')),
-          activityId: apdItem?.activityId || g.id,
+          activityId: apdItem?.activityId ?? Number(g.id),
           approvalId: apdItem?.approvalId || nonFormWoItems[0]?.approvalId,
-          approverName: nonFormWoItems[0]?.approverName || null,
+          approverName: (nonFormWoItems[0] as any)?.approverName || null,
           rawGeneralGroup: {
             ...g,
             items: nonFormWoItems,

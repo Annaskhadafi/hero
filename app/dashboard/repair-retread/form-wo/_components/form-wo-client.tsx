@@ -1746,8 +1746,8 @@ function CreateOrEditWoDialog({
                             site={item.site}
                             size={item.size}
                             category={item.category}
-                            jenisPengajuan={jenisPengajuan}
-                            masterPrices={masterPrices}
+                            jenisWo={jenisPengajuan}
+                            masterPriceList={masterPriceList}
                           />
                         </TableCell>
 

@@ -13,9 +13,8 @@ export default async function DashboardPage() {
   const allUrls: string[] = []
   for (const item of allItems) {
     if (item.url && item.url !== '/dashboard') allUrls.push(item.url)
-    // @ts-ignore — sub-items may exist
-    if (item.items?.length) {
-      for (const sub of item.items as { url?: string }[]) {
+    if ('items' in item && Array.isArray(item.items)) {
+      for (const sub of item.items) {
         if (sub.url && sub.url !== '/dashboard') allUrls.push(sub.url)
       }
     }

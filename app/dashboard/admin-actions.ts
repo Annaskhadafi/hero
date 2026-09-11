@@ -85,7 +85,7 @@ async function notifyDailyReportDelivery(input: {
   })
 }
 
-import { and, asc, desc, eq, inArray, isNull, isNotNull, lt, ne, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, inArray, isNull, isNotNull, lt, ne, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { hashPassword } from 'better-auth/crypto'
@@ -4348,7 +4348,14 @@ async function applyApprovalDecision(params: {
     throw new Error('Authenticated employee profile is required.')
   }
   const [actorEmployee] = await db
-    .select({ name: employees.name, signatureDataUrl: employees.signatureDataUrl })
+    .select({
+      name: employees.name,
+      signatureDataUrl: employees.signatureDataUrl,
+      section: employees.section,
+      department: employees.department,
+      jobTitle: employees.jobTitle,
+      email: employees.email,
+    })
     .from(employees)
     .where(eq(employees.id, actor.employeeId))
     .limit(1)
@@ -4425,10 +4432,10 @@ async function applyApprovalDecision(params: {
       approval.approverName &&
       (approval.approverName.toLowerCase().includes('billing') ||
         approval.approverName.toLowerCase().includes('biling')) &&
-      ((actor.section && (actor.section.toLowerCase().includes('billing') || actor.section.toLowerCase().includes('biling'))) ||
-        (actor.department && (actor.department.toLowerCase().includes('billing') || actor.department.toLowerCase().includes('biling'))) ||
-        (actor.jobTitle && (actor.jobTitle.toLowerCase().includes('billing') || actor.jobTitle.toLowerCase().includes('biling'))) ||
-        (actor.email && (actor.email.toLowerCase().includes('billing') || actor.email.toLowerCase().includes('biling')))))
+      ((actorEmployee?.section && (actorEmployee.section.toLowerCase().includes('billing') || actorEmployee.section.toLowerCase().includes('biling'))) ||
+        (actorEmployee?.department && (actorEmployee.department.toLowerCase().includes('billing') || actorEmployee.department.toLowerCase().includes('biling'))) ||
+        (actorEmployee?.jobTitle && (actorEmployee.jobTitle.toLowerCase().includes('billing') || actorEmployee.jobTitle.toLowerCase().includes('biling'))) ||
+        (actorEmployee?.email && (actorEmployee.email.toLowerCase().includes('billing') || actorEmployee.email.toLowerCase().includes('biling')))))
   const hasAdminReviewAccess =
     approvalPermission.canEdit &&
     (hasGlobalDataAccess(approvalPermission) ||
@@ -4659,7 +4666,7 @@ async function applyApprovalDecision(params: {
             notifyWorkflowBellRecipients({
               recipientEmails: [nextEmpEmail],
               eventType: 'form_wo_review',
-              category: 'approval',
+              category: 'approval_requests',
               title: 'Review Form WO',
               body: `${reqInfo.pemohon || 'Karyawan Site'} mengajukan Form WO (${reqInfo.noPengajuan}) yang membutuhkan persetujuan Anda (${nextApproverName}).`,
               url: `/dashboard/approval`,

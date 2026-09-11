@@ -42,6 +42,7 @@ import { parseApprovalNoteEntries } from '@/lib/approval-notes'
 import { ensureHeroSeedData } from '@/lib/hero-admin'
 import { resolveUploadUrl } from '@/lib/s3-storage'
 import { user as authUser } from '@/db/schema/auth'
+import { isSuperAdminRole } from '@/lib/hero-access'
 
 type ApprovalRecordRow = {
   approvalId: number
@@ -1397,8 +1398,7 @@ async function fetchApprovalRowsForUser(
   const rows = await fetchApprovalRows()
 
   // Cek apakah user adalah Super Admin atau memiliki permission global pada approval_inbox
-  const isSuperAdmin = currentEmployee?.roleName?.toLowerCase().includes('super admin') ||
-    currentEmployee?.roleName?.toLowerCase() === 'system administrator'
+  const isSuperAdmin = isSuperAdminRole(currentEmployee?.accessRole)
 
   if (isSuperAdmin) {
     return rows.slice(0, 500)
@@ -2878,6 +2878,10 @@ export async function getApprovalCenterData(email: string) {
   try {
     const now = new Date()
     const currentEmployee = await safeQuery(() => getEmployeeByEmail(email), null, "getEmployeeByEmail")
+    const normalizedEmail = normalizeMatchValue(email)
+    const employeeEmailNorm = normalizeMatchValue(currentEmployee?.email)
+    const normalizedEmployeeName = normalizeMatchValue(currentEmployee?.name)
+    const isAdmin = checkIsAdmin(email, currentEmployee)
     const [
       approvalRows,
       contractReviewInboxItems,
@@ -3925,10 +3929,7 @@ export async function getRequestCenterData(email?: string) {
   let isGlobal = false
   if (email) {
     const currentEmp = await getEmployeeByEmail(email)
-    if (
-      currentEmp?.roleName?.toLowerCase().includes('super admin') ||
-      currentEmp?.roleName?.toLowerCase() === 'system administrator'
-    ) {
+    if (isSuperAdminRole(currentEmp?.accessRole)) {
       isGlobal = true
     }
   }

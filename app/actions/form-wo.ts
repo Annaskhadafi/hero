@@ -10,6 +10,7 @@ import { resolveApprovalRouteForActivity } from '@/lib/approval-engine'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import { repairFormWo, repairWipPo } from '@/db/schema/form-wo'
 import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { getCurrentMenuPermission } from '@/lib/hero-access'
 import {
   sendFormWoApprovalRequestEmail,
   sendFormWoStatusApprovedEmail,
@@ -521,7 +522,7 @@ export async function createFormWo(data: z.infer<typeof formWoCreateSchema>) {
           notifyWorkflowBellRecipients({
             recipientEmails: [approverEmail],
             eventType: 'form_wo_review',
-            category: 'approval',
+            category: 'approval_requests',
             title: 'Review Form WO',
             body: `${finalPemohon} mengajukan Form WO baru (${noPengajuan}) yang membutuhkan persetujuan Anda (${activePendingStep.label}).`,
             url: `/dashboard/approval`,

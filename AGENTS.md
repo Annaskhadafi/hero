@@ -86,6 +86,9 @@
 
 - Dilarang melakukan `git commit` dan `git push` tanpa perintah eksplisit dari user.
 - Selalu minta konfirmasi sebelum setiap `git commit` atau `git push`, meskipun user pernah menyetujui di sesi/percakapan sebelumnya.
+- Sebelum pemeriksaan apa pun (`git diff --check`, test, lint, atau type-check), wajib `git fetch origin` lalu sinkronkan branch lokal dengan `origin/main`. Jika worktree kotor, simpan perubahan lokal secara reversible terlebih dahulu; jangan menimpa perubahan lokal atau data terbaru dari remote, dan selesaikan konflik sebelum melanjutkan.
+- Sebelum `git add`, `git commit`, atau `git push`, wajib jalankan `npm test`, lint, dan type-check yang tersedia di repository. Jika ada kegagalan, perbaiki terlebih dahulu lalu ulangi seluruh pemeriksaan sampai lulus.
+- Urutan wajib: `git fetch origin` → sinkronisasi dengan `origin/main` → `npm test` → lint → type-check → perbaiki semua error bila ada → `git add` → `git commit` → `git push`.
 - Operasi git read-only seperti `git status`, `git diff`, `git log`, `git branch` boleh dilakukan tanpa konfirmasi.
 
 ## graphify

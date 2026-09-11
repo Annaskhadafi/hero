@@ -355,14 +355,16 @@ function SubmitButton({
   children,
   variant = 'default',
   size = 'default',
+  title,
 }: {
   children: React.ReactNode
   variant?: 'default' | 'outline' | 'destructive'
   size?: 'default' | 'sm' | 'lg' | 'icon'
+  title?: string
 }) {
   const { pending } = useFormStatus()
   return (
-    <Button type="submit" variant={variant} size={size} disabled={pending}>
+    <Button type="submit" variant={variant} size={size} title={title} disabled={pending}>
       {pending ? 'Memproses...' : children}
     </Button>
   )
