@@ -1,6 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useMemo, useState, useTransition, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   AlertCircle,
   AlertTriangle,
@@ -1746,8 +1747,8 @@ function CreateOrEditWoDialog({
                             site={item.site}
                             size={item.size}
                             category={item.category}
-                            jenisPengajuan={jenisPengajuan}
-                            masterPrices={masterPrices}
+                            jenisWo={jenisPengajuan}
+                            masterPriceList={masterPriceList}
                           />
                         </TableCell>
 
@@ -2768,6 +2769,7 @@ function DaftarPengajuanTab({
   canEdit?: boolean
   canDelete?: boolean
 }) {
+  const router = useRouter()
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState(ALL_FILTER)
   const [jenisFilter, setJenisFilter] = useState(initialJenisFilter)
@@ -2863,18 +2865,77 @@ function DaftarPengajuanTab({
     id: number,
     status: 'pending' | 'diproses' | 'approved' | 'rejected'
   ) {
+    const item = data.find((d) => d.id === id)
+    if (item) {
+      item.statusPengajuan = status
+    }
     const res = await updateFormWoStatus(id, status)
     if (res.success) {
       toast.success(`Status pengajuan diperbarui ke ${STATUS_CONFIG[status]?.label || status}`)
+      router.refresh()
     } else {
       toast.error(res.error || 'Gagal memperbarui status')
     }
   }
 
   async function handleInlineNoWoTerbit(id: number, noWoTerbit: string) {
-    const res = await updateFormWo(id, { noWoTerbit })
+    const item = data.find((d) => d.id === id)
+    let parsed: any[] = []
+    if (item?.items) {
+      try {
+        const p = typeof item.items === 'string' ? JSON.parse(item.items) : item.items
+        if (Array.isArray(p)) parsed = p
+      } catch {}
+    }
+    if (parsed.length === 0 && item) {
+      parsed = [
+        item.jenisPengajuan === 'service'
+          ? {
+              id: '1',
+              description: item.deskripsiPekerjaan || 'Labour Service',
+              job: item.jobType || '',
+              serialNo: item.tireSn || '',
+              customer: item.customer || '',
+              site: item.site || '',
+              noPo: item.noPo || '',
+              tanggalPo: item.tanggalPo || '',
+              noWoCp: noWoTerbit,
+              price: item.totalAmount || '',
+            }
+          : {
+              id: '1',
+              description: item.deskripsiPekerjaan || item.tireSn || '',
+              tireSn: item.tireSn || '',
+              noUnit: item.storeLoc || '',
+              brand: item.brand || '',
+              pos: item.pattern || '',
+              customer: item.customer || '',
+              site: item.site || '',
+              size: item.size || '',
+              category: 'R1',
+              noPo: item.noPo || '',
+              tanggalPo: item.tanggalPo || '',
+              noWoCp: noWoTerbit,
+              price: item.totalAmount || '',
+            },
+      ]
+    } else {
+      parsed = parsed.map((r) => ({ ...r, noWoCp: noWoTerbit }))
+    }
+
+    const updatedItemsJson = JSON.stringify(parsed)
+    if (item) {
+      item.noWoTerbit = noWoTerbit
+      item.items = updatedItemsJson
+    }
+
+    const res = await updateFormWo(id, {
+      noWoTerbit,
+      items: updatedItemsJson,
+    })
     if (res.success) {
-      toast.success('No WO Terbit berhasil diperbarui')
+      toast.success('No WO Terbit berhasil disimpan & masuk ke dokumen')
+      router.refresh()
     } else {
       toast.error(res.error || 'Gagal memperbarui No WO Terbit')
     }
@@ -2887,34 +2948,139 @@ function DaftarPengajuanTab({
     val: string
   ) {
     let parsed: any[] = []
-    try {
-      parsed = typeof item.items === 'string' ? JSON.parse(item.items) : item.items || []
-    } catch {}
+    if (item.items) {
+      try {
+        const p = typeof item.items === 'string' ? JSON.parse(item.items) : item.items
+        if (Array.isArray(p)) parsed = p
+      } catch {}
+    }
 
-    if (!parsed[subIdx]) return
+    if (parsed.length === 0) {
+      parsed = [
+        item.jenisPengajuan === 'service'
+          ? {
+              id: '1',
+              description: item.deskripsiPekerjaan || 'Labour Service',
+              job: item.jobType || '',
+              serialNo: item.tireSn || '',
+              customer: item.customer || '',
+              site: item.site || '',
+              noPo: item.noPo || '',
+              tanggalPo: item.tanggalPo || '',
+              noWoCp: item.noWoTerbit || item.idWo || '',
+              price: item.totalAmount || '',
+            }
+          : {
+              id: '1',
+              description: item.deskripsiPekerjaan || item.tireSn || '',
+              tireSn: item.tireSn || '',
+              noUnit: item.storeLoc || '',
+              brand: item.brand || '',
+              pos: item.pattern || '',
+              customer: item.customer || '',
+              site: item.site || '',
+              size: item.size || '',
+              category: 'R1',
+              noPo: item.noPo || '',
+              tanggalPo: item.tanggalPo || '',
+              noWoCp: item.noWoTerbit || item.idWo || '',
+              price: item.totalAmount || '',
+            },
+      ]
+    }
+
+    if (!parsed[subIdx]) {
+      parsed[subIdx] = {
+        id: String(subIdx + 1),
+        customer: item.customer || '',
+        site: item.site || '',
+      }
+    }
     parsed[subIdx][field] = val
 
     let newTotal = 0
+    let hasPrice = false
     parsed.forEach((r: any) => {
-      if (r.price) {
-        const clean = String(r.price).replace(/,/g, '')
+      if (r.price !== undefined && r.price !== null && r.price !== '') {
+        const clean = String(r.price).replace(/[^0-9.-]+/g, '')
         const num = parseFloat(clean)
-        if (!isNaN(num)) newTotal += num
+        if (!isNaN(num)) {
+          newTotal += num
+          hasPrice = true
+        }
       }
     })
 
     const firstSub = parsed[0]
-    const res = await updateFormWo(item.id, {
-      totalAmount: newTotal > 0 ? String(newTotal) : (item.totalAmount ?? undefined),
+    const updatedItemsJson = JSON.stringify(parsed)
+
+    // Update in-place locally so any dialog or view reflects immediately
+    item.items = updatedItemsJson
+    if (field === 'noWoCp') {
+      item.noWoTerbit = val
+    }
+    if (field === 'noPo') {
+      item.noPo = val
+    }
+    if (field === 'tanggalPo') {
+      item.tanggalPo = val
+    }
+    if (field === 'brand') {
+      item.brand = val
+    }
+    if (field === 'description') {
+      item.deskripsiPekerjaan = val
+      if (item.jenisPengajuan !== 'service') item.tireSn = val
+    }
+    if (field === 'serialNo') {
+      item.tireSn = val
+    }
+    if (field === 'job') {
+      item.jobType = val
+    }
+    if (field === 'noUnit') {
+      item.storeLoc = val
+    }
+    if (field === 'pos') {
+      item.pattern = val
+    }
+    if (field === 'size') {
+      item.size = val
+    }
+    if (hasPrice) {
+      item.totalAmount = String(newTotal)
+    }
+
+    const payload: any = {
+      items: updatedItemsJson,
+      totalAmount: hasPrice ? String(newTotal) : (item.totalAmount ?? undefined),
       noPo: field === 'noPo' ? val : (firstSub?.noPo || item.noPo || undefined),
       tanggalPo: field === 'tanggalPo' ? val : (firstSub?.tanggalPo || item.tanggalPo || undefined),
       brand: field === 'brand' ? val : (firstSub?.brand || item.brand || undefined),
-    })
+      noWoTerbit: field === 'noWoCp' ? val : (firstSub?.noWoCp || item.noWoTerbit || undefined),
+    }
+
+    if (item.jenisPengajuan === 'service') {
+      if (field === 'description') payload.deskripsiPekerjaan = val
+      if (field === 'job') payload.jobType = val
+      if (field === 'serialNo') payload.tireSn = val
+    } else {
+      if (field === 'description') {
+        payload.tireSn = val
+        payload.deskripsiPekerjaan = val
+      }
+      if (field === 'noUnit') payload.storeLoc = val
+      if (field === 'pos') payload.pattern = val
+      if (field === 'size') payload.size = val
+    }
+
+    const res = await updateFormWo(item.id, payload)
 
     if (res.success) {
-      toast.success('Item berhasil diperbarui')
+      toast.success('Data item berhasil disimpan & masuk ke dokumen')
+      router.refresh()
     } else {
-      toast.error('Gagal memperbarui item')
+      toast.error(res.error || 'Gagal memperbarui item')
     }
   }
 
@@ -3119,8 +3285,41 @@ function DaftarPengajuanTab({
                       if (Array.isArray(p)) parsedItems = p
                     } catch {}
                   }
+                  if (parsedItems.length === 0) {
+                    parsedItems = [
+                      item.jenisPengajuan === 'service'
+                        ? {
+                            id: '1',
+                            description: item.deskripsiPekerjaan || 'Labour Service',
+                            job: item.jobType || '',
+                            serialNo: item.tireSn || '',
+                            customer: item.customer || '',
+                            site: item.site || '',
+                            noPo: item.noPo || '',
+                            tanggalPo: item.tanggalPo || '',
+                            noWoCp: item.noWoTerbit || item.idWo || '',
+                            price: item.totalAmount || '',
+                          }
+                        : {
+                            id: '1',
+                            description: item.deskripsiPekerjaan || item.tireSn || '',
+                            tireSn: item.tireSn || '',
+                            noUnit: item.storeLoc || '',
+                            brand: item.brand || '',
+                            pos: item.pattern || '',
+                            customer: item.customer || '',
+                            site: item.site || '',
+                            size: item.size || '',
+                            category: 'R1',
+                            noPo: item.noPo || '',
+                            tanggalPo: item.tanggalPo || '',
+                            noWoCp: item.noWoTerbit || item.idWo || '',
+                            price: item.totalAmount || '',
+                          },
+                    ]
+                  }
 
-                  const itemQty = parsedItems.length > 0 ? parsedItems.length : 1
+                  const itemQty = parsedItems.length
 
                   return (
                     <Fragment key={item.id}>
@@ -3405,6 +3604,7 @@ function DaftarPengajuanTab({
                                               <TableCell className="px-2 font-sans font-medium text-slate-900">
                                                 <Input
                                                   defaultValue={sub.description || ''}
+                                                  placeholder="Description"
                                                   onBlur={(e) => {
                                                     const val = e.target.value.trim()
                                                     if (val !== (sub.description || '')) {
@@ -3416,15 +3616,41 @@ function DaftarPengajuanTab({
                                                       )
                                                     }
                                                   }}
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                      ;(e.target as HTMLInputElement).blur()
+                                                    }
+                                                  }}
                                                   className="h-7 w-36 border-slate-200 bg-white font-sans text-xs font-medium"
                                                 />
                                               </TableCell>
                                               <TableCell className="px-2 font-sans text-slate-600">
-                                                {sub.job || '-'}
+                                                <Input
+                                                  defaultValue={sub.job || item.jobType || ''}
+                                                  placeholder="Job"
+                                                  onBlur={(e) => {
+                                                    const val = e.target.value.trim()
+                                                    if (val !== (sub.job || '')) {
+                                                      void handleInlineSubItemUpdate(
+                                                        item,
+                                                        subIdx,
+                                                        'job',
+                                                        val
+                                                      )
+                                                    }
+                                                  }}
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                      ;(e.target as HTMLInputElement).blur()
+                                                    }
+                                                  }}
+                                                  className="h-7 w-28 border-slate-200 bg-white font-sans text-xs"
+                                                />
                                               </TableCell>
                                               <TableCell className="px-2 font-mono font-bold text-indigo-700">
                                                 <Input
-                                                  defaultValue={sub.serialNo || ''}
+                                                  defaultValue={sub.serialNo || item.tireSn || ''}
+                                                  placeholder="Serial No"
                                                   onBlur={(e) => {
                                                     const val = e.target.value.trim()
                                                     if (val !== (sub.serialNo || '')) {
@@ -3436,12 +3662,17 @@ function DaftarPengajuanTab({
                                                       )
                                                     }
                                                   }}
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                      ;(e.target as HTMLInputElement).blur()
+                                                    }
+                                                  }}
                                                   className="h-7 w-32 border-slate-200 bg-white font-mono text-xs font-bold text-indigo-700"
                                                 />
                                               </TableCell>
                                               <TableCell className="px-2 font-sans text-slate-700">
                                                 {sub.customer || item.customer}{' '}
-                                                {sub.site ? `(${sub.site})` : ''}
+                                                {sub.site || item.site ? `(${sub.site || item.site})` : ''}
                                               </TableCell>
                                               <TableCell className="px-2 font-mono text-slate-600">
                                                 <Input
@@ -3456,6 +3687,11 @@ function DaftarPengajuanTab({
                                                         'noPo',
                                                         val
                                                       )
+                                                    }
+                                                  }}
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                      ;(e.target as HTMLInputElement).blur()
                                                     }
                                                   }}
                                                   className="h-7 w-28 border-slate-200 bg-white font-mono text-xs"
@@ -3476,6 +3712,11 @@ function DaftarPengajuanTab({
                                                         'tanggalPo',
                                                         val
                                                       )
+                                                    }
+                                                  }}
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                      ;(e.target as HTMLInputElement).blur()
                                                     }
                                                   }}
                                                   className="h-7 w-32 border-slate-200 bg-white font-mono text-xs"
@@ -3501,11 +3742,36 @@ function DaftarPengajuanTab({
                                                       )
                                                     }
                                                   }}
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                      ;(e.target as HTMLInputElement).blur()
+                                                    }
+                                                  }}
                                                   className="h-7 w-28 border-slate-200 bg-white font-mono text-xs"
                                                 />
                                               </TableCell>
                                               <TableCell className="px-2 text-right font-mono font-bold whitespace-nowrap text-slate-900">
-                                                {sub.price ? formatCurrency(sub.price) : '-'}
+                                                <Input
+                                                  defaultValue={sub.price ? String(sub.price) : ''}
+                                                  placeholder="Price"
+                                                  onBlur={(e) => {
+                                                    const val = e.target.value.trim()
+                                                    if (val !== String(sub.price || '')) {
+                                                      void handleInlineSubItemUpdate(
+                                                        item,
+                                                        subIdx,
+                                                        'price',
+                                                        val
+                                                      )
+                                                    }
+                                                  }}
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                      ;(e.target as HTMLInputElement).blur()
+                                                    }
+                                                  }}
+                                                  className="h-7 w-28 border-slate-200 bg-white text-right font-mono text-xs font-bold text-slate-900"
+                                                />
                                               </TableCell>
                                             </>
                                           ) : (
@@ -3516,6 +3782,7 @@ function DaftarPengajuanTab({
                                                   defaultValue={
                                                     sub.description || item.tireSn || ''
                                                   }
+                                                  placeholder="Tire SN"
                                                   onBlur={(e) => {
                                                     const val = e.target.value.trim()
                                                     if (val !== (sub.description || '')) {
@@ -3527,6 +3794,11 @@ function DaftarPengajuanTab({
                                                       )
                                                     }
                                                   }}
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                      ;(e.target as HTMLInputElement).blur()
+                                                    }
+                                                  }}
                                                   className="h-7 w-36 border-slate-200 bg-white font-mono text-xs font-bold text-indigo-700"
                                                 />
                                               </TableCell>
@@ -3536,7 +3808,7 @@ function DaftarPengajuanTab({
                                                 )) && (
                                                 <TableCell className="px-2 font-sans text-slate-700">
                                                   <Input
-                                                    defaultValue={sub.noUnit || ''}
+                                                    defaultValue={sub.noUnit || item.storeLoc || ''}
                                                     placeholder="Unit"
                                                     onBlur={(e) => {
                                                       const val = e.target.value.trim()
@@ -3549,13 +3821,18 @@ function DaftarPengajuanTab({
                                                         )
                                                       }
                                                     }}
+                                                    onKeyDown={(e) => {
+                                                      if (e.key === 'Enter') {
+                                                        ;(e.target as HTMLInputElement).blur()
+                                                      }
+                                                    }}
                                                     className="h-7 w-20 border-slate-200 bg-white font-sans text-xs"
                                                   />
                                                 </TableCell>
                                               )}
                                               <TableCell className="px-2 font-sans text-slate-700">
                                                 <Input
-                                                  defaultValue={sub.brand || ''}
+                                                  defaultValue={sub.brand || item.brand || ''}
                                                   placeholder="Brand"
                                                   onBlur={(e) => {
                                                     const val = e.target.value.trim()
@@ -3568,12 +3845,17 @@ function DaftarPengajuanTab({
                                                       )
                                                     }
                                                   }}
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                      ;(e.target as HTMLInputElement).blur()
+                                                    }
+                                                  }}
                                                   className="h-7 w-24 border-slate-200 bg-white font-sans text-xs"
                                                 />
                                               </TableCell>
                                               <TableCell className="px-2 font-sans text-slate-700">
                                                 <Input
-                                                  defaultValue={sub.pos || ''}
+                                                  defaultValue={sub.pos || item.pattern || ''}
                                                   placeholder="POS"
                                                   onBlur={(e) => {
                                                     const val = e.target.value.trim()
@@ -3586,15 +3868,40 @@ function DaftarPengajuanTab({
                                                       )
                                                     }
                                                   }}
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                      ;(e.target as HTMLInputElement).blur()
+                                                    }
+                                                  }}
                                                   className="h-7 w-14 border-slate-200 bg-white text-center font-sans text-xs"
                                                 />
                                               </TableCell>
                                               <TableCell className="px-2 font-sans text-slate-700">
                                                 {sub.customer || item.customer}{' '}
-                                                {sub.site ? `(${sub.site})` : ''}
+                                                {sub.site || item.site ? `(${sub.site || item.site})` : ''}
                                               </TableCell>
                                               <TableCell className="px-2 font-mono font-semibold text-slate-800">
-                                                {sub.size || '-'}
+                                                <Input
+                                                  defaultValue={sub.size || item.size || ''}
+                                                  placeholder="Size"
+                                                  onBlur={(e) => {
+                                                    const val = e.target.value.trim()
+                                                    if (val !== (sub.size || '')) {
+                                                      void handleInlineSubItemUpdate(
+                                                        item,
+                                                        subIdx,
+                                                        'size',
+                                                        val
+                                                      )
+                                                    }
+                                                  }}
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                      ;(e.target as HTMLInputElement).blur()
+                                                    }
+                                                  }}
+                                                  className="h-7 w-24 border-slate-200 bg-white font-mono text-xs font-semibold text-slate-800"
+                                                />
                                               </TableCell>
                                               <TableCell className="px-2">
                                                 <Badge
@@ -3619,6 +3926,11 @@ function DaftarPengajuanTab({
                                                       )
                                                     }
                                                   }}
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                      ;(e.target as HTMLInputElement).blur()
+                                                    }
+                                                  }}
                                                   className="h-7 w-28 border-slate-200 bg-white font-mono text-xs"
                                                 />
                                               </TableCell>
@@ -3637,6 +3949,11 @@ function DaftarPengajuanTab({
                                                         'tanggalPo',
                                                         val
                                                       )
+                                                    }
+                                                  }}
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                      ;(e.target as HTMLInputElement).blur()
                                                     }
                                                   }}
                                                   className="h-7 w-32 border-slate-200 bg-white font-mono text-xs"
@@ -3662,11 +3979,36 @@ function DaftarPengajuanTab({
                                                       )
                                                     }
                                                   }}
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                      ;(e.target as HTMLInputElement).blur()
+                                                    }
+                                                  }}
                                                   className="h-7 w-28 border-slate-200 bg-white font-mono text-xs"
                                                 />
                                               </TableCell>
                                               <TableCell className="px-2 text-right font-mono font-bold whitespace-nowrap text-emerald-700">
-                                                {sub.price ? formatCurrency(sub.price) : '-'}
+                                                <Input
+                                                  defaultValue={sub.price ? String(sub.price) : ''}
+                                                  placeholder="Price"
+                                                  onBlur={(e) => {
+                                                    const val = e.target.value.trim()
+                                                    if (val !== String(sub.price || '')) {
+                                                      void handleInlineSubItemUpdate(
+                                                        item,
+                                                        subIdx,
+                                                        'price',
+                                                        val
+                                                      )
+                                                    }
+                                                  }}
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                      ;(e.target as HTMLInputElement).blur()
+                                                    }
+                                                  }}
+                                                  className="h-7 w-28 border-slate-200 bg-white text-right font-mono text-xs font-bold text-emerald-700"
+                                                />
                                               </TableCell>
                                             </>
                                           )}

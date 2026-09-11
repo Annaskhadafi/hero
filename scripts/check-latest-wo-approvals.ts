@@ -1,33 +1,27 @@
 import { db } from '../db'
-import { approvals, employees } from '../db/schema/hero'
+import { approvals } from '../db/schema/hero'
 import { repairFormWo } from '../db/schema/form-wo'
-import { eq, desc } from 'drizzle-orm'
+import { desc, eq } from 'drizzle-orm'
 
 async function run() {
-  const latestWo = await db
-    .select()
-    .from(repairFormWo)
-    .orderBy(desc(repairFormWo.id))
-    .limit(1)
-    .then((r) => r[0])
-
-  if (!latestWo) {
-    console.log('No Form WO found')
-    return
+  const latestApproved = await db.select().from(approvals).where(eq(approvals.status, 'approved')).orderBy(desc(approvals.reviewedAt)).limit(10)
+  console.log('LATEST APPROVED STEPS:')
+  for (const a of latestApproved) {
+    console.log(`ID: ${a.id} | WO: ${a.repairFormWoId} | Level: ${a.level} | Name: ${a.approverName} | EmpId: ${a.approverEmployeeId} | ReviewedAt: ${a.reviewedAt?.toISOString()}`)
   }
-
-  console.log(`Latest Form WO: #${latestWo.id} - ${latestWo.noPengajuan} (Status: ${latestWo.statusPengajuan})`)
-
-  const apprs = await db
-    .select()
-    .from(approvals)
-    .where(eq(approvals.repairFormWoId, latestWo.id))
-    .orderBy(approvals.level)
-
-  console.log('Approvals:')
-  for (const a of apprs) {
-    console.log(`  Level ${a.level} | ID: ${a.id} | Approver: ${a.approverName} (Emp: ${a.approverEmployeeId}) | Status: ${a.status} | ReviewedAt: ${a.reviewedAt?.toISOString() || '-'}`)
+  if (latestApproved.length > 0) {
+    const woId = latestApproved[0].repairFormWoId
+    if (woId) {
+      const wo = await db.select().from(repairFormWo).where(eq(repairFormWo.id, woId)).limit(1).then(r => r[0])
+      console.log(`\nWO #${woId}: ${wo?.noPengajuan} (${wo?.jenisPengajuan})`)
+      const allApprs = await db.select().from(approvals).where(eq(approvals.repairFormWoId, woId)).orderBy(approvals.level)
+      console.log('ALL STEPS:')
+      for (const a of allApprs) {
+        console.log(`  Level ${a.level} | Name: ${a.approverName} (Emp: ${a.approverEmployeeId}) | RouteSnapshot: ${a.routeSnapshot}`)
+      }
+    }
   }
 }
 
-run().catch(console.error)
+run().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); })
+

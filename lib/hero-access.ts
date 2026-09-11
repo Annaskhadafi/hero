@@ -132,6 +132,20 @@ export async function getCurrentMenuPermission(resource: string) {
 
 export async function getDashboardRoutePermission(pathname: string) {
   const cleanPath = pathname.split('?')[0].replace(/\/$/, '') || '/dashboard'
+
+  // Dashboard home or empty path is accessible to all authenticated users
+  if (cleanPath === '/dashboard') {
+    const roleName = await getCurrentEmployeeAccessRole()
+    return {
+      roleName,
+      canView: true,
+      canEdit: true,
+      canDelete: true,
+      canSelectAll: true,
+      dataScope: 'own',
+    }
+  }
+
   const menuItems = await db
     .select({ url: navbarMenuItems.url, resource: navbarMenuItems.resource })
     .from(navbarMenuItems)
@@ -143,9 +157,23 @@ export async function getDashboardRoutePermission(pathname: string) {
     })
     .sort((left, right) => right.url.length - left.url.length)[0]
 
-  return matchingMenu
-    ? getCurrentMenuPermission(matchingMenu.resource)
-    : getMenuPermissionForRole(null, '')
+  if (matchingMenu) {
+    return getCurrentMenuPermission(matchingMenu.resource)
+  }
+
+  const roleName = await getCurrentEmployeeAccessRole()
+  if (isSuperAdminRole(roleName)) {
+    return {
+      roleName,
+      canView: true,
+      canEdit: true,
+      canDelete: true,
+      canSelectAll: true,
+      dataScope: 'global',
+    }
+  }
+
+  return null
 }
 
 export async function getCurrentEmployeeAccessContext(): Promise<HeroEmployeeAccessContext | null> {

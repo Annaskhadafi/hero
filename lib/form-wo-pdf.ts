@@ -259,8 +259,9 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
     color: rgb(0.3, 0.35, 0.45),
   })
 
-  if (data.noWoTerbit) {
-    const noWoTerbitText = `No. WO Terbit: ${data.noWoTerbit}`
+  const docNoWo = data.noWoTerbit || (data as any).noWoCp || data.idWo || ''
+  if (docNoWo) {
+    const noWoTerbitText = `No. WO Terbit: ${docNoWo}`
     const noWoTerbitWidth = fontBold.widthOfTextAtSize(noWoTerbitText, 9)
     page.drawText(noWoTerbitText, {
       x: width - 36 - noWoTerbitWidth,
@@ -623,7 +624,7 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
   let totalAmountCalculated = 0
   const renderRows =
     itemsList.length > 0
-      ? itemsList.slice(0, 8)
+      ? itemsList.slice(0, 8).map((r) => ({ ...r, noWoCp: r.noWoCp || docNoWo || '-' }))
       : [
           {
             customer: data.customer || '-',
@@ -636,7 +637,7 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
             brand: '-',
             category: isService ? 'Service' : 'R1',
             price: data.totalAmount || 0,
-            noWoCp: data.noWoTerbit || '-',
+            noWoCp: docNoWo || '-',
             noPo: data.noPo || '-',
             tanggalPo: data.tanggalPo || '-',
             pos: '-',
@@ -673,7 +674,7 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
           row.serialNo || '-',
           row.refNo || '-',
           row.noPo || data.noPo || '-',
-          row.noWoCp || data.noWoTerbit || '-',
+          row.noWoCp || docNoWo || '-',
           priceNum > 0 ? formatCurrency(priceNum) : '-',
         ]
       : isCk
@@ -688,7 +689,7 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
             row.customer || data.customer || '-',
             row.category || 'R1',
             row.noPo || data.noPo || '-',
-            row.noWoCp || data.noWoTerbit || '-',
+            row.noWoCp || docNoWo || '-',
             priceNum > 0 ? formatCurrency(priceNum) : '-',
           ]
         : [
@@ -701,7 +702,7 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
             row.customer || data.customer || '-',
             row.category || 'R1',
             row.noPo || data.noPo || '-',
-            row.noWoCp || data.noWoTerbit || '-',
+            row.noWoCp || docNoWo || '-',
             priceNum > 0 ? formatCurrency(priceNum) : '-',
           ]
 
@@ -816,21 +817,41 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
   }> = []
 
   if (steps.length > 0) {
-    approverCols = steps.map((s, idx) => {
+    const sortedSteps = [...steps].sort((a, b) => (a.level ?? 0) - (b.level ?? 0))
+    approverCols = sortedSteps.map((s, idx) => {
+      const stepLevel = s.level ?? idx + 1
       let header = 'DISETUJUI OLEH'
+      let defaultRoleName = 'Approver'
+
       if (isService) {
-        if (s.level === 1) header = 'DISETUJUI OLEH'
-        else if (s.level === 2) header = 'DIPERIKSA OLEH'
-        else if (s.level === 3) header = 'DISETUJUI OLEH'
+        if (stepLevel === 1) {
+          header = 'DISETUJUI OLEH'
+          defaultRoleName = 'Service Operation Others Coord. SPV'
+        } else if (stepLevel === 2) {
+          header = 'DIPERIKSA OLEH'
+          defaultRoleName = 'Team Billing'
+        } else if (stepLevel === 3) {
+          header = 'DISETUJUI OLEH'
+          defaultRoleName = 'Inventory & Warehouse Management SPV'
+        }
       } else {
-        if (s.level === 1) header = 'DIKETAHUI OLEH'
-        else if (s.level === 2) header = 'DISETUJUI OLEH'
-        else if (s.level === 3) header = 'DIPERIKSA OLEH'
-        else if (s.level === 4) header = 'DISETUJUI OLEH'
+        if (stepLevel === 1) {
+          header = 'DIKETAHUI OLEH'
+          defaultRoleName = 'QC / Leader'
+        } else if (stepLevel === 2) {
+          header = 'DISETUJUI OLEH'
+          defaultRoleName = 'Repair / Retread Operation SPV'
+        } else if (stepLevel === 3) {
+          header = 'DIPERIKSA OLEH'
+          defaultRoleName = 'Team Billing'
+        } else if (stepLevel === 4) {
+          header = 'DISETUJUI OLEH'
+          defaultRoleName = 'Inventory & Warehouse Management SPV'
+        }
       }
 
-      const name = s.approverName || s.jobTitle || 'Approver'
-      const jobTitle = s.jobTitle || 'Approver'
+      const name = s.approverName || s.jobTitle || defaultRoleName
+      const jobTitle = s.jobTitle && s.jobTitle !== 'Approver' ? s.jobTitle : defaultRoleName
       const sigUrl = s.signatureUrl || null
       const date = s.reviewedAt ? formatIndoDateTime(s.reviewedAt) : '-'
       const note = s.decisionNote || null

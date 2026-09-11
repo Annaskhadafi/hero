@@ -303,6 +303,7 @@ export async function sendFormWoReadyForWoNumberEmail(params: {
   jobType?: string
   totalAmount?: string
   inputWoLink?: string
+  ccEmails?: string[]
 }) {
   const baseUrl = getPublicAppUrl()
   const targetLink =
@@ -315,8 +316,13 @@ export async function sendFormWoReadyForWoNumberEmail(params: {
 
   if (recipients.length === 0) return { success: false, message: 'No recipient email' }
 
+  const validCcEmails = params.ccEmails && params.ccEmails.length > 0
+    ? Array.from(new Set(params.ccEmails.filter(Boolean)))
+    : undefined
+
   return sendWorkflowEmail({
     to: recipients,
+    cc: validCcEmails,
     templateCode: "form_wo_ready_for_wo_number",
     variables: {
       noPengajuan: params.noPengajuan,

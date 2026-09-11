@@ -175,6 +175,8 @@ const formWoCreateSchema = z.object({
   items: z.string().optional(),
   noPo: z.string().optional(),
   tanggalPo: z.string().optional(),
+  noWoTerbit: z.string().optional(),
+  noWoCp: z.string().optional(),
   submitterSignatureUrl: z.string().optional(),
 })
 
@@ -202,6 +204,7 @@ const formWoUpdateSchema = z.object({
     .enum(['pending', 'approved', 'rejected', 'diproses', 'revisi', 'needs_correction'])
     .optional(),
   noWoTerbit: z.string().optional(),
+  noWoCp: z.string().optional(),
   hari: z.string().optional(),
   tanggal: z.string().optional(),
   totalAmount: z.string().optional(),
@@ -417,10 +420,31 @@ export async function createFormWo(data: z.infer<typeof formWoCreateSchema>) {
         ? parsed.pemohon.trim()
         : employee.name
 
+    let initialNoWo = parsed.noWoTerbit || parsed.noWoCp || parsed.idWo || undefined
+    let initialItems = parsed.items
+    if (!initialNoWo && initialItems) {
+      try {
+        const p = JSON.parse(initialItems)
+        if (Array.isArray(p) && p[0]?.noWoCp) {
+          initialNoWo = p[0].noWoCp
+        }
+      } catch {}
+    }
+    if (initialNoWo && initialItems) {
+      try {
+        const p = JSON.parse(initialItems)
+        if (Array.isArray(p)) {
+          initialItems = JSON.stringify(p.map((r) => ({ ...r, noWoCp: r.noWoCp || initialNoWo })))
+        }
+      } catch {}
+    }
+
     const [newFormWo] = await db
       .insert(repairFormWo)
       .values({
         ...parsed,
+        items: initialItems ?? parsed.items,
+        noWoTerbit: initialNoWo ?? parsed.noWoTerbit,
         pemohon: finalPemohon,
         hari: finalHari,
         noPengajuan,
@@ -591,10 +615,30 @@ export async function updateFormWo(id: number, data: z.infer<typeof formWoUpdate
         ? 'pending'
         : (parsed.statusPengajuan ?? existing?.statusPengajuan ?? 'pending')
 
+    const cleanNoWo = parsed.noWoTerbit || parsed.noWoCp || undefined
+    let nextItems = parsed.items
+    if (cleanNoWo && nextItems) {
+      try {
+        const p = JSON.parse(nextItems)
+        if (Array.isArray(p)) {
+          nextItems = JSON.stringify(p.map((r) => ({ ...r, noWoCp: r.noWoCp || cleanNoWo })))
+        }
+      } catch {}
+    } else if (cleanNoWo && !nextItems && existing?.items) {
+      try {
+        const p = JSON.parse(existing.items)
+        if (Array.isArray(p)) {
+          nextItems = JSON.stringify(p.map((r) => ({ ...r, noWoCp: r.noWoCp || cleanNoWo })))
+        }
+      } catch {}
+    }
+
     await db
       .update(repairFormWo)
       .set({
         ...parsed,
+        items: nextItems ?? parsed.items,
+        noWoTerbit: cleanNoWo ?? parsed.noWoTerbit ?? existing?.noWoTerbit,
         statusPengajuan: nextStatus,
         updatedAt: new Date(),
       })

@@ -85,7 +85,7 @@ async function notifyDailyReportDelivery(input: {
   })
 }
 
-import { and, asc, desc, eq, inArray, isNull, isNotNull, lt, ne, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, inArray, isNull, isNotNull, lt, ne, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { hashPassword } from 'better-auth/crypto'
@@ -4339,6 +4339,7 @@ async function applyApprovalDecision(params: {
   decision: 'approved' | 'rejected' | 'needs_correction'
   note: string
   signatureUrl?: string
+  noWoTerbit?: string
 }) {
   let actor = await getCurrentEmployeeAccessContext()
   const approvalPermission = await getCurrentMenuPermission('approval_inbox')
@@ -4565,15 +4566,46 @@ async function applyApprovalDecision(params: {
           )
       }
 
-      await tx
-        .update(repairFormWo)
-        .set({ statusPengajuan: requestStatus, updatedAt: now })
-        .where(eq(repairFormWo.id, approval.repairFormWoId!))
+      const cleanNoWo = params.noWoTerbit?.trim() || undefined
+      if (cleanNoWo) {
+        const existingWo = await tx
+          .select({ items: repairFormWo.items })
+          .from(repairFormWo)
+          .where(eq(repairFormWo.id, approval.repairFormWoId!))
+          .limit(1)
+          .then((r) => r[0])
+
+        let updatedItems = existingWo?.items
+        if (updatedItems) {
+          try {
+            const p = JSON.parse(updatedItems)
+            if (Array.isArray(p)) {
+              updatedItems = JSON.stringify(p.map((r) => ({ ...r, noWoCp: r.noWoCp || cleanNoWo })))
+            }
+          } catch {}
+        }
+
+        await tx
+          .update(repairFormWo)
+          .set({
+            statusPengajuan: requestStatus,
+            noWoTerbit: cleanNoWo,
+            items: updatedItems,
+            updatedAt: now,
+          })
+          .where(eq(repairFormWo.id, approval.repairFormWoId!))
+      } else {
+        await tx
+          .update(repairFormWo)
+          .set({ statusPengajuan: requestStatus, updatedAt: now })
+          .where(eq(repairFormWo.id, approval.repairFormWoId!))
+      }
 
       const reqInfo = await tx
         .select({
           pemohon: repairFormWo.pemohon,
           noPengajuan: repairFormWo.noPengajuan,
+          jenisPengajuan: repairFormWo.jenisPengajuan,
           customer: repairFormWo.customer,
           site: repairFormWo.site,
           jobType: repairFormWo.jobType,
@@ -4710,26 +4742,42 @@ async function applyApprovalDecision(params: {
         }
       }
 
-      // Ketika Step 5 (Inventory & Warehouse SPV / Final Step) approve -> Notifikasi ke Billing Team untuk isi Nomor WO
+      // Ketika Step Final (Inventory & Warehouse SPV) approve -> Notifikasi ke Billing Team untuk isi Nomor WO
       if (decisionStatus === 'approved' && !hasNextStep) {
         if (reqInfo) {
-          // Find Team Billing approver email (Dinamis untuk Service & Repair WO)
+          const isServiceWo =
+            reqInfo.jenisPengajuan?.toLowerCase() === 'service' ||
+            (reqInfo.noPengajuan && reqInfo.noPengajuan.includes('SVC')) ||
+            (reqInfo.jobType && reqInfo.jobType.toLowerCase().includes('service'))
+
+          // Find Team Billing approver email (Dinamis untuk Service [L2] & Repair [L3] WO)
           const allFormApprovals = await tx
             .select({
               approverEmployeeId: approvals.approverEmployeeId,
               approverName: approvals.approverName,
               level: approvals.level,
+              routeSnapshot: approvals.routeSnapshot,
             })
             .from(approvals)
             .where(eq(approvals.repairFormWoId, approval.repairFormWoId!))
+            .orderBy(asc(approvals.level))
 
           const billingApproval =
-            allFormApprovals.find(
-              (a) =>
-                a.approverName &&
-                (a.approverName.toLowerCase().includes('billing') ||
-                  a.approverName.toLowerCase().includes('biling'))
-            ) ?? allFormApprovals.find((a) => a.level === 2 || a.level === 3 || a.level === 4)
+            allFormApprovals.find((a) => {
+              const nameLower = (a.approverName || '').toLowerCase()
+              const snapLower = (a.routeSnapshot || '').toLowerCase()
+              return (
+                nameLower.includes('billing') ||
+                nameLower.includes('biling') ||
+                snapLower.includes('billing') ||
+                snapLower.includes('biling') ||
+                snapLower.includes('team_billing')
+              )
+            }) ??
+            (isServiceWo
+              ? allFormApprovals.find((a) => a.level === 2)
+              : allFormApprovals.find((a) => a.level === 3)) ??
+            allFormApprovals.find((a) => a.level === 2 || a.level === 3)
 
           let billingEmail: string | undefined
           const billingEmpId = billingApproval?.approverEmployeeId
@@ -4744,31 +4792,38 @@ async function applyApprovalDecision(params: {
             }
           }
 
-          if (!billingEmail) {
-            const [billingEmp] = await tx
-              .select({ email: employees.email })
-              .from(employees)
-              .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
-              .where(
-                and(
-                  eq(employees.isActive, true),
-                  or(
-                    ilike(masterSections.name, '%Billing%'),
-                    ilike(employees.section, '%Billing%'),
-                    ilike(employees.jobTitle, '%Billing%')
-                  )
+          // Fetch all active Billing team members for CC / fallback
+          const allBillingEmps = await tx
+            .select({ email: employees.email })
+            .from(employees)
+            .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+            .where(
+              and(
+                eq(employees.isActive, true),
+                or(
+                  ilike(masterSections.name, '%Billing%'),
+                  ilike(employees.section, '%Billing%'),
+                  ilike(employees.jobTitle, '%Billing%')
                 )
               )
-              .limit(1)
-            if (billingEmp?.email) {
-              billingEmail = billingEmp.email
-            }
+            )
+            .orderBy(asc(employees.id))
+
+          const billingEmails = Array.from(
+            new Set(allBillingEmps.map((e) => e.email).filter(Boolean) as string[])
+          )
+
+          if (!billingEmail && billingEmails.length > 0) {
+            billingEmail = billingEmails[0]
           }
+
+          const billingCcEmails = billingEmails.filter((e) => e !== billingEmail)
 
           if (billingEmail) {
             const { sendFormWoReadyForWoNumberEmail } = await import('@/lib/form-wo-email')
             sendFormWoReadyForWoNumberEmail({
               billingEmail,
+              ccEmails: billingCcEmails.length > 0 ? billingCcEmails : undefined,
               noPengajuan: reqInfo.noPengajuan || '',
               pemohon: reqInfo.pemohon || 'Pemohon',
               customer: reqInfo.customer || '-',
@@ -4780,7 +4835,7 @@ async function applyApprovalDecision(params: {
             const { notifyWorkflowBellRecipients } =
               await import('@/lib/workflow-notification-center')
             notifyWorkflowBellRecipients({
-              recipientEmails: [billingEmail],
+              recipientEmails: [billingEmail, ...billingCcEmails],
               eventType: 'form_wo_ready_for_wo_number',
               category: 'approval_requests',
               title: 'Form WO Siap Terbit (Isi No. WO)',
@@ -6681,11 +6736,14 @@ export async function reviewApprovalAction(formData: FormData) {
     await db.update(approvals).set({ signatureUrl }).where(eq(approvals.id, payload.approvalId))
   }
 
+  const rawNoWoTerbit = ((formData.get('noWoTerbit') || formData.get('noWoCp')) as string | null)?.trim()
+
   await applyApprovalDecision({
     approvalId: payload.approvalId,
     decision: payload.decision,
     note: payload.note,
     signatureUrl,
+    noWoTerbit: rawNoWoTerbit || undefined,
   })
 
   revalidateAdminSurfaces()
@@ -6710,6 +6768,7 @@ export async function approveApprovalGroupAction(formData: FormData) {
   const note = (formData.get('note') || formData.get('notes') || '') as string
   const decision = ((formData.get('decision') as string) || 'approved') as any
   const signatureUrl = (formData.get('signatureUrl') as string) || undefined
+  const rawNoWoTerbit = ((formData.get('noWoTerbit') || formData.get('noWoCp')) as string | null)?.trim()
 
   if (approvalIds.length === 0) {
     throw new Error('Tidak ada ID approval yang valid untuk diproses.')
@@ -6721,6 +6780,7 @@ export async function approveApprovalGroupAction(formData: FormData) {
       decision,
       note,
       signatureUrl,
+      noWoTerbit: rawNoWoTerbit || undefined,
     })
   }
 

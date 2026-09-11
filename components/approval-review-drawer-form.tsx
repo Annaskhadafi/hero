@@ -3,6 +3,7 @@
 import React, { useState, useTransition, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { SignaturePad } from '@/components/signature-pad'
 import {
@@ -181,9 +182,11 @@ export function ApprovalReviewDrawerForm({ item, group }: ApprovalReviewDrawerFo
   )
 
   const wo = item.repairFormWo
+  const [liveNoWoCp, setLiveNoWoCp] = useState(wo?.noWoTerbit || (wo as any)?.noWoCp || '')
 
   const resolvedWoDoc = useMemo(() => {
     if (!wo) return null
+    const currentNoWo = (liveNoWoCp || wo.noWoTerbit || (wo as any).noWoCp || (wo as any).idWo || '') || null
     return {
       ...wo,
       id: wo.id,
@@ -208,21 +211,29 @@ export function ApprovalReviewDrawerForm({ item, group }: ApprovalReviewDrawerFo
       pattern: wo.pattern || null,
       size: wo.size || null,
       jobType: wo.jobType || null,
-      noWoTerbit: wo.noWoTerbit || null,
+      noWoTerbit: currentNoWo,
+      noWoCp: currentNoWo,
       statusPengajuan: (wo as any).statusPengajuan || (item as any).status || 'pending',
       submitterSignatureUrl: (wo as any).submitterSignatureUrl || (item as any).signatureUrl || null,
-      steps: (wo as any).steps || (item as any).rawFormWo?.steps || (item as any).steps?.map((s: any) => ({
-        level: s.level,
-        approverName: s.approverName,
-        jobTitle: s.label,
-        status: s.status,
-        decision: s.status,
-        reviewedAt: s.reviewedAt,
-        signatureUrl: (s as any).signatureUrl || null,
-        decisionNote: (s as any).decisionNote || null,
-      })) || [],
+      steps:
+        (wo as any)?.steps?.length > 0
+          ? (wo as any).steps
+          : (item as any)?.rawFormWo?.steps?.length > 0
+          ? (item as any).rawFormWo.steps
+          : (item as any)?.repairFormWo?.steps?.length > 0
+          ? (item as any).repairFormWo.steps
+          : (item as any)?.steps?.map((s: any) => ({
+              level: s.level,
+              approverName: s.approverName,
+              jobTitle: s.label || s.jobTitle,
+              status: s.status,
+              decision: s.status,
+              reviewedAt: s.reviewedAt,
+              signatureUrl: (s as any).signatureUrl || null,
+              decisionNote: (s as any).decisionNote || null,
+            })) || [],
     }
-  }, [wo, item, group])
+  }, [wo, item, group, liveNoWoCp])
 
   const [pendingDecision, setPendingDecision] = useState<'approved' | 'needs_correction' | 'rejected' | null>(null)
 
@@ -271,6 +282,10 @@ export function ApprovalReviewDrawerForm({ item, group }: ApprovalReviewDrawerFo
         formData.append('note', note.trim())
 
         if (decision === 'approved') {
+          if (liveNoWoCp && liveNoWoCp.trim().length > 0) {
+            formData.append('noWoTerbit', liveNoWoCp.trim())
+            formData.append('noWoCp', liveNoWoCp.trim())
+          }
           if (sigToUse) {
             formData.append('signatureDataUrl', sigToUse)
             try {
@@ -481,6 +496,32 @@ export function ApprovalReviewDrawerForm({ item, group }: ApprovalReviewDrawerFo
           </div>
         )}
       </div>
+
+      {/* 2b. KHUSUS FORM WO: INPUT NOMOR WO CP / WO TERBIT (LIVE SYNC KE DOKUMEN) */}
+      {isFormWo && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+              <FileText className="h-4 w-4 text-emerald-600 shrink-0" />
+              <span>Nomor WO CP / Nomor WO Terbit</span>
+            </label>
+            {liveNoWoCp ? (
+              <span className="rounded bg-emerald-200/80 px-2 py-0.5 font-mono text-[10px] font-bold text-emerald-900 animate-in fade-in">
+                ✓ Live di Dokumen
+              </span>
+            ) : null}
+          </div>
+          <Input
+            value={liveNoWoCp}
+            onChange={(e) => setLiveNoWoCp(e.target.value)}
+            placeholder="Ketik No. WO CP resmi (e.g. WO-CP-2026-001)..."
+            className="h-9 rounded-lg border-emerald-300 bg-white font-mono text-xs font-bold text-emerald-950 placeholder:font-sans placeholder:font-normal placeholder:text-slate-400 focus-visible:ring-emerald-500"
+          />
+          <p className="text-[10px] text-emerald-800/80">
+            Nomor WO CP yang Anda ketik langsung otomatis muncul secara live di tabel rincian pekerjaan dan kop lembar kerja Form WO di atas.
+          </p>
+        </div>
+      )}
 
       {/* 3. BAGIAN BAWAH: TEMPAT CATATAN */}
       <div className="space-y-1">
