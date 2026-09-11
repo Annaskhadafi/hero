@@ -74,6 +74,7 @@ export interface FormWoDocumentData {
   size?: string | null
   jobType?: string | null
   noWoTerbit?: string | null
+  noWoCp?: string | null
   statusPengajuan?: string | null
   signatureUrl?: string | null
   submitterSignatureUrl?: string | null
@@ -218,6 +219,27 @@ export function FormWoDocumentView({
   currentLevel?: number
 }) {
   const isService = doc.jenisPengajuan === 'service'
+  const docNoWo = String(doc.noWoTerbit || doc.noWoCp || doc.idWo || '')
+
+  const serviceItemsList = parseItems<ServiceItemRow>(doc.items, [
+    {
+      id: '1',
+      description: doc.deskripsiPekerjaan || 'Labour Service',
+      job: doc.jobType || '',
+      customer: doc.customer || '',
+      site: doc.site || '',
+      serialNo: doc.tireSn || '',
+      refNo: doc.storeLoc || '',
+      noPo: doc.noPo || '',
+      tanggalPo: doc.tanggalPo || '',
+      noWoCp: docNoWo,
+      price: doc.totalAmount || '',
+    },
+  ]).map((r) => ({
+    ...r,
+    noWoCp: r.noWoCp || docNoWo || '',
+  }))
+
   const repairItemsList = parseItems<RepairItemRow>(doc.items, [
     {
       id: '1',
@@ -232,29 +254,17 @@ export function FormWoDocumentView({
       noPo: doc.noPo || '',
       tanggalPo: doc.tanggalPo || '',
       price: doc.totalAmount || '',
-      noWoCp: doc.noWoTerbit || '',
+      noWoCp: docNoWo,
     },
-  ])
+  ]).map((r) => ({
+    ...r,
+    noWoCp: r.noWoCp || docNoWo || '',
+  }))
+
   const isCk =
     !isService &&
     (isCiptaKridatamaCustomer(doc.customer) ||
       repairItemsList.some((r) => isCiptaKridatamaCustomer(r.customer)))
-  const serviceItemsList = parseItems<ServiceItemRow>(doc.items, [
-    {
-      id: '1',
-      description: doc.deskripsiPekerjaan || 'Labour Service',
-      job: doc.jobType || '',
-      customer: doc.customer || '',
-      site: doc.site || '',
-      serialNo: doc.tireSn || '',
-      refNo: doc.storeLoc || '',
-      noPo: doc.noPo || '',
-      tanggalPo: doc.tanggalPo || '',
-      noWoCp: doc.noWoTerbit || '',
-      price: doc.totalAmount || '',
-    },
-  ])
-
 
   const serviceTotal = serviceItemsList.reduce(
     (sum, r) => sum + (parseFloat((r.price || '').replace(/[^0-9.-]+/g, '')) || 0),
@@ -312,25 +322,46 @@ export function FormWoDocumentView({
   }> = []
 
   if (steps.length > 0) {
-    approverCols = steps.map((s, idx) => {
+    const sortedSteps = [...steps].sort((a, b) => (a.level ?? 0) - (b.level ?? 0))
+    approverCols = sortedSteps.map((s, idx) => {
+      const stepLevel = s.level ?? idx + 1
       let header = 'DISETUJUI OLEH'
+      let defaultRoleName = 'Approver'
+
       if (isService) {
-        if (s.level === 1) header = 'DISETUJUI OLEH'
-        else if (s.level === 2) header = 'DIPERIKSA OLEH'
-        else if (s.level === 3) header = 'DISETUJUI OLEH'
+        if (stepLevel === 1) {
+          header = 'DISETUJUI OLEH'
+          defaultRoleName = 'Service Operation Others Coord. SPV'
+        } else if (stepLevel === 2) {
+          header = 'DIPERIKSA OLEH'
+          defaultRoleName = 'Team Billing'
+        } else if (stepLevel === 3) {
+          header = 'DISETUJUI OLEH'
+          defaultRoleName = 'Inventory & Warehouse Management SPV'
+        }
       } else {
-        if (s.level === 1) header = 'DIKETAHUI OLEH'
-        else if (s.level === 2) header = 'DISETUJUI OLEH'
-        else if (s.level === 3) header = 'DIPERIKSA OLEH'
-        else if (s.level === 4) header = 'DISETUJUI OLEH'
+        if (stepLevel === 1) {
+          header = 'DIKETAHUI OLEH'
+          defaultRoleName = 'QC / Leader'
+        } else if (stepLevel === 2) {
+          header = 'DISETUJUI OLEH'
+          defaultRoleName = 'Repair / Retread Operation SPV'
+        } else if (stepLevel === 3) {
+          header = 'DIPERIKSA OLEH'
+          defaultRoleName = 'Team Billing'
+        } else if (stepLevel === 4) {
+          header = 'DISETUJUI OLEH'
+          defaultRoleName = 'Inventory & Warehouse Management SPV'
+        }
       }
 
-      const stepLevel = s.level || idx + 1
-      const isCurrentActiveStep =
-        s.status === 'pending' || (currentLevel === stepLevel && s.status !== 'approved')
+      // Live signature only attaches to the exact step being reviewed by the current user
+      const isCurrentActiveStep = Boolean(
+        currentLevel && currentLevel > 0 && currentLevel === stepLevel && s.status !== 'approved'
+      )
 
-      const signerName = s.approverName || s.jobTitle || 'Approver'
-      const jobTitle = s.jobTitle || (s as any).label || 'Approver'
+      const signerName = s.approverName || s.jobTitle || defaultRoleName
+      const jobTitle = s.jobTitle && s.jobTitle !== 'Approver' ? s.jobTitle : defaultRoleName
 
       const sigUrl =
         s.status === 'approved' && s.signatureUrl
@@ -365,23 +396,17 @@ export function FormWoDocumentView({
     if (isService) {
       approverCols = [
         {
-          key: 'col-2',
+          key: 'col-1',
           header: 'DISETUJUI OLEH',
           signerName: 'Service Operation Others Coord. SPV',
           jobTitle: 'Service Operation Others Coord. SPV',
-          signatureUrl:
-            (currentLevel === 1 || currentLevel === 0) && liveSignatureUrl
-              ? liveSignatureUrl
-              : null,
-          isApproved: (currentLevel === 1 || currentLevel === 0) && Boolean(liveSignatureUrl),
-          dateTime:
-            (currentLevel === 1 || currentLevel === 0) && liveSignatureUrl
-              ? formatIndoDateTime(new Date())
-              : null,
+          signatureUrl: currentLevel === 1 && liveSignatureUrl ? liveSignatureUrl : null,
+          isApproved: currentLevel === 1 && Boolean(liveSignatureUrl),
+          dateTime: currentLevel === 1 && liveSignatureUrl ? formatIndoDateTime(new Date()) : null,
           note: null,
         },
         {
-          key: 'col-3',
+          key: 'col-2',
           header: 'DIPERIKSA OLEH',
           signerName: 'Team Billing',
           jobTitle: 'Team Billing',
@@ -391,7 +416,7 @@ export function FormWoDocumentView({
           note: null,
         },
         {
-          key: 'col-4',
+          key: 'col-3',
           header: 'DISETUJUI OLEH',
           signerName: 'Inventory & Warehouse Management SPV',
           jobTitle: 'Inventory & Warehouse Management SPV',
@@ -404,23 +429,17 @@ export function FormWoDocumentView({
     } else {
       approverCols = [
         {
-          key: 'col-2',
+          key: 'col-1',
           header: 'DIKETAHUI OLEH',
           signerName: 'QC / Leader',
           jobTitle: 'QC / Leader',
-          signatureUrl:
-            (currentLevel === 1 || currentLevel === 0) && liveSignatureUrl
-              ? liveSignatureUrl
-              : null,
-          isApproved: (currentLevel === 1 || currentLevel === 0) && Boolean(liveSignatureUrl),
-          dateTime:
-            (currentLevel === 1 || currentLevel === 0) && liveSignatureUrl
-              ? formatIndoDateTime(new Date())
-              : null,
+          signatureUrl: currentLevel === 1 && liveSignatureUrl ? liveSignatureUrl : null,
+          isApproved: currentLevel === 1 && Boolean(liveSignatureUrl),
+          dateTime: currentLevel === 1 && liveSignatureUrl ? formatIndoDateTime(new Date()) : null,
           note: null,
         },
         {
-          key: 'col-3',
+          key: 'col-2',
           header: 'DISETUJUI OLEH',
           signerName: 'Repair / Retread Operation SPV',
           jobTitle: 'Repair / Retread Operation SPV',
@@ -430,7 +449,7 @@ export function FormWoDocumentView({
           note: null,
         },
         {
-          key: 'col-4',
+          key: 'col-3',
           header: 'DIPERIKSA OLEH',
           signerName: 'Team Billing',
           jobTitle: 'Team Billing',
@@ -440,7 +459,7 @@ export function FormWoDocumentView({
           note: null,
         },
         {
-          key: 'col-5',
+          key: 'col-4',
           header: 'DISETUJUI OLEH',
           signerName: 'Inventory & Warehouse Management SPV',
           jobTitle: 'Inventory & Warehouse Management SPV',
@@ -490,11 +509,11 @@ export function FormWoDocumentView({
               <p className="text-slate-600">
                 No. Pengajuan: <strong className="text-slate-900">{doc.noPengajuan || '-'}</strong>
               </p>
-              {doc.noWoTerbit ? (
+              {docNoWo || serviceItemsList.some((s) => s.noWoCp) || repairItemsList.some((r) => r.noWoCp) ? (
                 <p className="font-bold text-emerald-700">
                   No. WO Terbit:{' '}
                   <strong className="rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-emerald-950">
-                    {doc.noWoTerbit}
+                    {docNoWo || serviceItemsList.find((s) => s.noWoCp)?.noWoCp || repairItemsList.find((r) => r.noWoCp)?.noWoCp}
                   </strong>
                 </p>
               ) : null}
@@ -581,7 +600,7 @@ export function FormWoDocumentView({
                       <td className="px-2.5 py-1.5">{row.refNo || '-'}</td>
                       <td className="px-2.5 py-1.5 font-mono">{row.noPo || doc.noPo || '-'}</td>
                       <td className="px-2.5 py-1.5 font-mono">
-                        {row.noWoCp || doc.noWoTerbit || doc.idWo || '-'}
+                        {row.noWoCp || docNoWo || '-'}
                       </td>
                       <td className="px-2.5 py-1.5 text-right font-medium">
                         {formatCurrency(row.price)}
@@ -628,7 +647,7 @@ export function FormWoDocumentView({
                       <td className="px-2.5 py-1.5 font-semibold">{row.category || '-'}</td>
                       <td className="px-2.5 py-1.5 font-mono">{row.noPo || doc.noPo || '-'}</td>
                       <td className="px-2.5 py-1.5 font-mono">
-                        {row.noWoCp || doc.noWoTerbit || doc.idWo || '-'}
+                        {row.noWoCp || docNoWo || '-'}
                       </td>
                       <td className="px-2.5 py-1.5 text-right font-medium">
                         {formatCurrency(row.price)}

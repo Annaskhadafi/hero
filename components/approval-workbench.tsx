@@ -761,15 +761,17 @@ export function InboxTab({
           rawFormWo: {
             ...woData,
             steps:
-              formWoItem?.steps?.map((s: any) => ({
-                level: s.level,
-                approverName: s.approverName,
-                jobTitle: s.label || s.jobTitle,
-                status: s.status,
-                decision: s.status,
-                reviewedAt: s.reviewedAt,
-                signatureUrl: s.signatureUrl || null,
-              })) || ((woData as any).steps || []),
+              (woData as any)?.steps?.length > 0
+                ? (woData as any).steps
+                : formWoItem?.steps?.map((s: any) => ({
+                    level: s.level,
+                    approverName: s.approverName,
+                    jobTitle: s.label || s.jobTitle,
+                    status: s.status,
+                    decision: s.status,
+                    reviewedAt: s.reviewedAt,
+                    signatureUrl: s.signatureUrl || null,
+                  })) || [],
           },
           rawGeneralGroup: {
             ...g,
@@ -3470,6 +3472,7 @@ export function InboxTab({
                                 steps: (currentBatchDoc as any).rawFormWo?.steps || formWoRaw.steps || [],
                               }}
                               liveSignatureUrl={signatureDataUrl}
+                              currentLevel={(currentBatchDoc as any).level || (currentBatchDoc as any).currentApprovalLevel || (currentBatchDoc as any).stepOrder}
                             />
                           </div>
                         )

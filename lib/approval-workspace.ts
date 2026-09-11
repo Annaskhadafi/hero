@@ -446,6 +446,22 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
         } catch {}
       }
 
+      const parentWo = repairWoRows.find((r) => r.id === a.repairFormWoId)
+      const isService = parentWo?.jenisPengajuan === 'service'
+      const defaultRoleName = isService
+        ? a.level === 1
+          ? 'Service Operation Others Coord. SPV'
+          : a.level === 2
+            ? 'Team Billing'
+            : 'Inventory & Warehouse Management SPV'
+        : a.level === 1
+          ? 'QC / Leader'
+          : a.level === 2
+            ? 'Repair / Retread Operation SPV'
+            : a.level === 3
+              ? 'Team Billing'
+              : 'Inventory & Warehouse Management SPV'
+
       // Prioritas jabatan:
       // 1. Label dari Step Matrix di Approval Workflow Builder (misal: "Section Head Retread")
       // 2. Role / Label dari Org Node di Approval Workflow Builder (misal: "Section Head" / "Dept Head Central Service")
@@ -458,15 +474,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
         node?.label?.trim() ||
         snapshotLabel?.trim() ||
         (emp?.jobTitle && emp.jobTitle !== 'Staff' ? emp.jobTitle : null) ||
-        (a.level === 1
-          ? 'Admin CP Site'
-          : a.level === 2
-            ? 'QC / Leader'
-            : a.level === 3
-              ? 'Repair / Retread Operation SPV'
-              : a.level === 4
-                ? 'Team Billing'
-                : 'Inventory & Warehouse Management SPV')
+        defaultRoleName
 
       const noteEntries = a.decisionNote
         ? parseApprovalNoteEntries(a.decisionNote, a.approverName || 'Approver')
@@ -1358,28 +1366,70 @@ function isRoleOrSectionMatching(
   const empRole = normalizeMatchValue(currentEmployee.role)
 
   const apprNameNorm = normalizeMatchValue(approverName)
-  const snapshotNorm = normalizeMatchValue(routeSnapshot)
 
-  const targetTokens = [apprNameNorm, snapshotNorm].filter(Boolean)
+  // Extract step label from routeSnapshot if it's JSON (do not treat the whole workflow title as a token)
+  let stepLabelNorm = ''
+  if (routeSnapshot) {
+    try {
+      const parsed = JSON.parse(routeSnapshot)
+      stepLabelNorm = normalizeMatchValue(parsed.label || parsed.nodeLabel || parsed.name)
+    } catch {
+      const norm = normalizeMatchValue(routeSnapshot)
+      if (!norm.includes('work order') && !norm.includes('pengajuan') && !norm.includes('daily activity')) {
+        stepLabelNorm = norm
+      }
+    }
+  }
+
+  const targetTokens = [apprNameNorm, stepLabelNorm].filter(Boolean)
+  if (targetTokens.length === 0) return false
+
   const empTokens = [empSection, empDept, empJob, empRole].filter(Boolean)
 
-  const keyRoles = [
-    'billing',
-    'biling',
-    'finance',
-    'accounting',
-    'warehouse',
-    'logistic',
-    'logistik',
-    'repair',
-    'retread',
-    'service',
-    'qc',
+  // Check supervisory hierarchy level if target specifies SPV / Head / Manager / Leader
+  const isTargetSpvOrHead = targetTokens.some((t) =>
+    t.includes('spv') || t.includes('supervisor') || t.includes('head') || t.includes('manager')
+  )
+  const isTargetLeaderOrQc = targetTokens.some((t) =>
+    t.includes('qc') || t.includes('leader') || t.includes('quality')
+  )
+
+  if (isTargetSpvOrHead) {
+    const empIsSpvOrHead = empTokens.some((e) =>
+      e.includes('spv') || e.includes('supervisor') || e.includes('head') || e.includes('manager') || e.includes('coord')
+    )
+    if (!empIsSpvOrHead) {
+      return false
+    }
+  }
+
+  if (isTargetLeaderOrQc && !isTargetSpvOrHead) {
+    const empIsQcOrLeader = empTokens.some((e) =>
+      e.includes('qc') || e.includes('quality') || e.includes('leader') || e.includes('repairman')
+    )
+    if (!empIsQcOrLeader) {
+      return false
+    }
+  }
+
+  const roleCategories = [
+    { keys: ['billing', 'biling', 'finance', 'accounting', 'invoice', 'invoicing'], name: 'billing' },
+    { keys: ['warehouse', 'logistic', 'logistik', 'inventory', 'gudang'], name: 'warehouse' },
+    { keys: ['retread operation', 'repair operation', 'repair / retread', 'retread', 'repair'], name: 'repair' },
+    { keys: ['qc', 'quality control', 'quality management'], name: 'qc' },
+    { keys: ['service operation', 'field service', 'cpi'], name: 'service' },
   ]
-  for (const key of keyRoles) {
-    const empHasKey = empTokens.some((t) => t.includes(key))
-    const targetHasKey = targetTokens.some((t) => t.includes(key))
-    if (empHasKey && targetHasKey) {
+
+  for (const cat of roleCategories) {
+    const targetMatchesCategory = targetTokens.some((t) => cat.keys.some((k) => t.includes(k)))
+    if (targetMatchesCategory) {
+      const empMatchesCategory = empTokens.some((t) => cat.keys.some((k) => t.includes(k)))
+      return empMatchesCategory
+    }
+  }
+
+  for (const t of targetTokens) {
+    if (empTokens.some((e) => e.includes(t) || t.includes(e))) {
       return true
     }
   }
@@ -1416,11 +1466,16 @@ async function fetchApprovalRowsForUser(
       const requesterMatches =
         (normalizedEmail && normalizeMatchValue(row.requesterEmail) === normalizedEmail) ||
         (employeeEmailNorm && normalizeMatchValue(row.requesterEmail) === employeeEmailNorm)
-      const roleSectionMatches = isRoleOrSectionMatching(
-        currentEmployee,
-        row.approverName,
-        row.routeSnapshot
-      )
+
+      const hasSpecificAssignedApprover =
+        row.approverEmployeeId != null &&
+        row.approverEmployeeId > 0 &&
+        currentEmployee?.id != null &&
+        row.approverEmployeeId !== currentEmployee.id
+
+      const roleSectionMatches =
+        !hasSpecificAssignedApprover &&
+        isRoleOrSectionMatching(currentEmployee, row.approverName, row.routeSnapshot)
 
       return emailMatches || employeeMatches || nameMatches || requesterMatches || roleSectionMatches
     })
@@ -2881,7 +2936,8 @@ export async function getApprovalCenterData(email: string) {
     const normalizedEmail = normalizeMatchValue(email)
     const employeeEmailNorm = normalizeMatchValue(currentEmployee?.email)
     const normalizedEmployeeName = normalizeMatchValue(currentEmployee?.name)
-    const isAdmin = checkIsAdmin(email, currentEmployee)
+    const isAdmin = checkIsAdmin(email, currentEmployee as any)
+
     const [
       approvalRows,
       contractReviewInboxItems,
@@ -2918,11 +2974,16 @@ export async function getApprovalCenterData(email: string) {
         currentEmployee?.id != null && item.approverEmployeeId === currentEmployee.id
       const nameMatches =
         normalizedEmployeeName && normalizeMatchValue(item.approverName) === normalizedEmployeeName
-      const roleSectionMatches = isRoleOrSectionMatching(
-        currentEmployee,
-        item.approverName,
-        item.routeSnapshot
-      )
+
+      const hasSpecificAssignedApprover =
+        item.approverEmployeeId != null &&
+        item.approverEmployeeId > 0 &&
+        currentEmployee?.id != null &&
+        item.approverEmployeeId !== currentEmployee.id
+
+      const roleSectionMatches =
+        !hasSpecificAssignedApprover &&
+        isRoleOrSectionMatching(currentEmployee, item.approverName, item.routeSnapshot)
 
       return emailMatches || employeeMatches || nameMatches || roleSectionMatches
     }

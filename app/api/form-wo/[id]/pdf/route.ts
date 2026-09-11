@@ -45,15 +45,37 @@ export async function GET(
       .where(eq(approvals.repairFormWoId, formWoId))
       .orderBy(asc(approvals.level))
 
-    const steps = stepRows.map((s) => ({
-      level: s.level,
-      approverName: s.approverName,
-      jobTitle: s.routeSnapshot ? JSON.parse(s.routeSnapshot)?.label : 'Approver',
-      signatureUrl: s.signatureUrl,
-      status: s.status,
-      reviewedAt: s.reviewedAt,
-      decisionNote: s.decisionNote,
-    }))
+    const steps = stepRows.map((s) => {
+      let defaultRoleName = 'Approver'
+      if (doc.jenisPengajuan === 'service') {
+        if (s.level === 1) defaultRoleName = 'Service Operation Others Coord. SPV'
+        else if (s.level === 2) defaultRoleName = 'Team Billing'
+        else if (s.level === 3) defaultRoleName = 'Inventory & Warehouse Management SPV'
+      } else {
+        if (s.level === 1) defaultRoleName = 'QC / Leader'
+        else if (s.level === 2) defaultRoleName = 'Repair / Retread Operation SPV'
+        else if (s.level === 3) defaultRoleName = 'Team Billing'
+        else if (s.level === 4) defaultRoleName = 'Inventory & Warehouse Management SPV'
+      }
+
+      let parsedLabel = null
+      if (s.routeSnapshot) {
+        try {
+          const parsed = JSON.parse(s.routeSnapshot)
+          parsedLabel = parsed?.label || parsed?.nodeLabel || null
+        } catch {}
+      }
+
+      return {
+        level: s.level,
+        approverName: s.approverName,
+        jobTitle: parsedLabel || defaultRoleName,
+        signatureUrl: s.signatureUrl,
+        status: s.status,
+        reviewedAt: s.reviewedAt,
+        decisionNote: s.decisionNote,
+      }
+    })
 
     const pdfBuffer = await generateFormWoPdf({
       id: doc.id,
