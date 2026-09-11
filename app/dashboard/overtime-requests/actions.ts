@@ -1796,7 +1796,7 @@ export async function createOvertimeCommandLetterAction(payload: {
           target: [overtimeApprovals.overtimeCommandLetterId, overtimeApprovals.stepOrder],
         })
 
-      const targetEmail = requesterEmp?.email || currentEmp?.email || 'raihanaraya36@gmail.com'
+      const targetEmail = requesterEmp?.email || currentEmp?.email || ''
       try {
         await sendOvertimeStepApprovalEmail({
           documentId: inserted.id,

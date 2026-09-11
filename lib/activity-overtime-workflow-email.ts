@@ -25,11 +25,13 @@ export type StepNotificationParams = {
 }
 
 function getTargetRecipients(email?: string | null) {
-  return ['raihanaraya36@gmail.com']
+  if (!email || !email.includes('@')) return []
+  return [email.trim()]
 }
 
 function getSplTargetRecipients(email?: string | null) {
-  return ['raihanaraya36@gmail.com']
+  if (!email || !email.includes('@')) return []
+  return [email.trim()]
 }
 
 export async function publishInAppApprovalNotification(params: {
