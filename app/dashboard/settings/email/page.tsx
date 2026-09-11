@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+import { getCurrentMenuPermission } from "@/lib/hero-access";
 import {
   BarChart3,
   Bell,
@@ -118,6 +120,11 @@ function CompactMetric({
 }
 
 export default async function EmailSettingsPage() {
+  const access = await getCurrentMenuPermission("settings_email");
+  if (!access.canView) {
+    redirect("/dashboard");
+  }
+
   const [logs, notifications, smtpSettings, templates, pwaPushSettings, hseSafetyConfig, humanCapitalConfig, csForecastConfig, apdConfig, formWoConfig, employees, session] = await Promise.all([
     getEmailDeliveryLogsData(),
     getNotificationCenterData(),

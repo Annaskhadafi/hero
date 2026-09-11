@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getServerSession } from "@/lib/auth-session";
+import { getCurrentMenuPermission } from "@/lib/hero-access";
 import { db } from "@/db";
 import { employees as dbEmployees } from "@/db/schema/hero";
 import { eq } from "drizzle-orm";
@@ -16,6 +17,11 @@ export const metadata = {
 };
 
 export default async function LeaderPerformancePage() {
+  const access = await getCurrentMenuPermission("hc_leader_performance");
+  if (!access.canView) {
+    redirect("/dashboard");
+  }
+
   const session = await getServerSession();
 
   if (!session?.user?.email) {

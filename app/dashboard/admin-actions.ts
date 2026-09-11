@@ -185,6 +185,7 @@ import {
   ensureHeroGovernanceSeedData,
   ensureHeroSeedData,
   evaluatePointThresholdBadges,
+  syncMenuPermissionsMatrix,
 } from '@/lib/hero-admin'
 import { createNotificationEventForEmployee, sendPushNotification } from '@/lib/push-notifications'
 import { splDateKey } from '@/lib/spl-data'
@@ -3379,6 +3380,7 @@ const manageSecurityRoleSchema = z.object({
     'save-menu-permissions',
     'assign-user-role',
     'remove-user-role',
+    'sync-permissions',
   ]),
   roleId: optionalFormString,
   roleName: optionalFormString,
@@ -4340,24 +4342,8 @@ async function applyApprovalDecision(params: {
   note: string
   signatureUrl?: string
 }) {
-  let actor = await getCurrentEmployeeAccessContext()
+  const actor = await getCurrentEmployeeAccessContext()
   const approvalPermission = await getCurrentMenuPermission('approval_inbox')
-  if (!actor) {
-    const fallbackEmp = await db
-      .select({
-        employeeId: employees.id,
-        siteId: employees.siteId,
-        sectionId: employees.sectionId,
-        roleName: employees.accessRole,
-      })
-      .from(employees)
-      .where(eq(employees.id, 5))
-      .limit(1)
-      .then((r) => r[0])
-    if (fallbackEmp) {
-      actor = fallbackEmp
-    }
-  }
   if (!actor) {
     throw new Error('Authenticated employee profile is required.')
   }
@@ -8730,6 +8716,26 @@ export async function manageSecurityRoleAction(
       return {
         status: 'success',
         message: `${employee.name} berhasil dihapus dari role. Dikembalikan ke ${defaultRole}.`,
+      }
+    }
+
+    if (payload.intent === 'sync-permissions') {
+      const { insertedMenus, insertedPermissions } = await syncMenuPermissionsMatrix()
+
+      const actorEmail = await getCurrentActorEmail()
+      await logAuditEvent({
+        actorEmail,
+        action: 'role.permissions_synced',
+        entityType: 'role_matrix',
+        entityLabel: 'RBAC Matrix Sync',
+        description: `Sinkronisasi matriks permission RBAC berhasil. Menambah ${insertedMenus} menu baru dan ${insertedPermissions} entri permission role.`,
+        severity: 'info',
+      })
+
+      revalidateAdminSurfaces()
+      return {
+        status: 'success',
+        message: `Sinkronisasi berhasil! ${insertedMenus} menu baru dan ${insertedPermissions} entri permission role telah disinkronkan ke database.`,
       }
     }
 

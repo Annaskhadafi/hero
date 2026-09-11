@@ -626,6 +626,11 @@ export default async function DailyActivityRoutesPage() {
     getDailyActivityRouteBuilderData(session.user.email),
     getCurrentMenuPermission("activity_routes"),
   ]);
+
+  if (!permission.canView) {
+    redirect("/dashboard");
+  }
+
   const pagePurpose = getActivityPagePurpose("routes");
 
   return (

@@ -496,7 +496,19 @@ Aturan di bawah ini adalah sumber kebenaran implementasi RBAC HERO. Jika aturan 
 - Setelah role/permission berubah, cache sidebar, permission, page, dan session yang relevan harus di-revalidate/invalidate. Request berikutnya wajib membaca konfigurasi terbaru.
 - Perubahan Role Management tidak boleh memberi caller jalur privilege escalation: izin mengelola user tidak otomatis memberi izin mengubah role/permission atau menetapkan Super Admin.
 
-##### 8. Regression check wajib
+##### 9. Strict Enforcement: Tidak Ada Bypasses, Hardcoded Fallbacks, atau Hardcoded Filters
+
+- **Dilarang Keras Hardcoded Fallback Actor:** Tidak boleh menggunakan fallback statis ke ID karyawan manapun (misal ID 5 atau karyawan aktif pertama). Jika session/context null, wajib tolak dengan `Unauthorized`.
+- **Dilarang Keras Hardcoded Filter Departemen/Scope:** Halaman data umum (seperti Master Employee) dilarang memfilter secara hardcoded ke satu departemen saja (misal `e.departmentName === 'Central Services'`) tanpa alasan bisnis yang disetujui. Super Admin & role Global wajib dapat melihat seluruh departemen.
+- **Wajib Guard di Setiap Page:** Setiap file `page.tsx` wajib memiliki blok penolakan dini sebelum me-render UI atau melakukan query berat:
+  ```typescript
+  const access = await getCurrentMenuPermission('<resource_name>')
+  if (!access.canView) redirect('/dashboard')
+  ```
+- **Wajib Proteksi Mutasi:** Setiap server action mutasi (create/update/delete) wajib memeriksa session dan permission (`canEdit` atau `canDelete`) sebelum mengeksekusi operasi database.
+- **Konsistensi Scope Data:** Setiap query yang menampilkan data transaksi wajib menyaring berdasarkan context session jika `dataScope` bukan global (`own` -> `employeeId`, `site` -> `siteId`).
+
+##### 10. Regression check wajib
 
 Untuk setiap perubahan RBAC, tambahkan atau jalankan smoke/regression check minimum yang membuktikan:
 

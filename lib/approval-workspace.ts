@@ -1396,6 +1396,14 @@ async function fetchApprovalRowsForUser(
 
   const rows = await fetchApprovalRows()
 
+  // Cek apakah user adalah Super Admin atau memiliki permission global pada approval_inbox
+  const isSuperAdmin = currentEmployee?.roleName?.toLowerCase().includes('super admin') ||
+    currentEmployee?.roleName?.toLowerCase() === 'system administrator'
+
+  if (isSuperAdmin) {
+    return rows.slice(0, 500)
+  }
+
   return rows
     .filter((row) => {
       const emailMatches =
@@ -3914,6 +3922,17 @@ export async function getApprovalCenterData(email: string) {
 export async function getRequestCenterData(email?: string) {
   await ensureHeroSeedData()
 
+  let isGlobal = false
+  if (email) {
+    const currentEmp = await getEmployeeByEmail(email)
+    if (
+      currentEmp?.roleName?.toLowerCase().includes('super admin') ||
+      currentEmp?.roleName?.toLowerCase() === 'system administrator'
+    ) {
+      isGlobal = true
+    }
+  }
+
   const activitiesRows = await db
     .select({
       id: activities.id,
@@ -3939,9 +3958,11 @@ export async function getRequestCenterData(email?: string) {
     .orderBy(desc(activities.createdAt), desc(activities.id))
 
   const approvalRows = (await fetchApprovalRows()).map((row) => enrichApprovalRow(row, new Date()))
-  const filteredActivities = email
+  const filteredActivities = isGlobal
+    ? activitiesRows
+    : email
     ? activitiesRows.filter(
-        (row) => row.requesterEmail.toLowerCase() === email.trim().toLowerCase()
+        (row) => row.requesterEmail?.toLowerCase() === email.trim().toLowerCase()
       )
     : activitiesRows
 
@@ -4009,9 +4030,11 @@ export async function getRequestCenterData(email?: string) {
     .where(isNull(formSubmissions.legacyActivityId))
     .orderBy(desc(formSubmissions.updatedAt), desc(formSubmissions.id))
 
-  const filteredDraftRows = email
-    ? draftRows.filter((row) => row.requesterEmail.toLowerCase() === email.trim().toLowerCase())
-    : draftRows
+  const filteredDraftRows = isGlobal
+    ? draftRows
+    : email
+    ? draftRows.filter((row) => row.requesterEmail?.toLowerCase() === email.trim().toLowerCase())
+    : []
 
   const draftRequests = filteredDraftRows.map((row) => {
     const payload = JSON.parse(row.payloadSnapshot || '{}') as Record<string, string>

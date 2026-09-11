@@ -2,6 +2,7 @@ import { ClipboardList, MapPin, Wrench } from "lucide-react"
 
 import { getRepairMasterData } from "@/app/actions/repair-master"
 import { getCurrentMenuPermission } from "@/lib/hero-access"
+import { redirect } from "next/navigation"
 import { RepairMasterClient } from "./_components/repair-master-client"
 
 export default async function MasterBarangRepairPage() {
@@ -9,6 +10,10 @@ export default async function MasterBarangRepairPage() {
     getRepairMasterData(),
     getCurrentMenuPermission("master_barang_repair"),
   ])
+
+  if (!permission.canView) {
+    redirect("/dashboard")
+  }
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-8 lg:p-10">

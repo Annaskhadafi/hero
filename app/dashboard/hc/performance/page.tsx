@@ -10,7 +10,15 @@ export const metadata = {
   title: "Performance Management - HC",
 };
 
+import { redirect } from "next/navigation";
+import { getCurrentMenuPermission } from "@/lib/hero-access";
+
 export default async function PerformancePage() {
+  const access = await getCurrentMenuPermission("hc_performance");
+  if (!access.canView) {
+    redirect("/dashboard");
+  }
+
   const [cycles, reviews, stats, employees] = await Promise.all([
     getPerformanceCycles(),
     getPerformanceReviews(),

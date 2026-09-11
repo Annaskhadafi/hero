@@ -42,10 +42,11 @@ import { Textarea } from "@/components/ui/textarea"
 
 type Mode = "overview" | "items" | "types" | "units" | "inbound" | "outbound" | "stock-report" | "inbound-report" | "outbound-report"
 type Row = Record<string, any>
-type Props = { mode: Mode; data: { items: Row[]; types: Row[]; units: Row[]; inbound: Row[]; outbound: Row[]; metrics?: Record<string, number> } }
+type Props = { mode: Mode; data: { items: Row[]; types: Row[]; units: Row[]; inbound: Row[]; outbound: Row[]; metrics?: Record<string, number> }; access?: TableRbacAccess }
 type ActionResult = { success: boolean; error?: string }
 
-const access: TableRbacAccess = { canView: true, canEdit: true, canDelete: true, canSelectAll: false }
+let defaultAccess: TableRbacAccess = { canView: true, canEdit: false, canDelete: false, canSelectAll: false }
+const access: TableRbacAccess = defaultAccess
 const itemColumns = ["Kode", "Material Desc", "Nama Barang", "Category/Jenis", "Satuan/UOM", "S-Loc", "S-Loc Desc", "Stok/Qty", "Minimum", "Status", "Aksi"]
 const itemReportColumns = itemColumns.slice(0, -1)
 const masterColumns = ["Kode", "Nama", "Status", "Aksi"]

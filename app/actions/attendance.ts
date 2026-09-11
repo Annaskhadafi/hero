@@ -1123,6 +1123,10 @@ export async function getTodayAttendanceLogs() {
   }
 
   const access = await getCurrentMenuPermission('attendance_records')
+  if (!access.canView) {
+    return { success: false, employee, logs: [] }
+  }
+
   const attendanceWindow = getAttendanceQueryWindow()
 
   const conditions = [

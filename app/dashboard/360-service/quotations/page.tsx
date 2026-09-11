@@ -3,8 +3,13 @@ import { Button } from '@/components/ui/button'
 import { calculateQuotationTotal } from '@/lib/service360-quotation-total'
 import Link from 'next/link'
 import { QuotationsSummaryTable } from './quotations-summary-table'
+import { getCurrentMenuPermission } from '@/lib/hero-access'
+import { redirect } from 'next/navigation'
 
 export default async function QuotationsPage() {
+  const permission = await getCurrentMenuPermission('service360_quotations')
+  if (!permission.canView) redirect('/dashboard')
+
   const quotations = await getQuotations()
   const rows = quotations.map(({ quotation, customer }) => {
     const subTotalBeforeDiscount = Number(quotation.subTotal)

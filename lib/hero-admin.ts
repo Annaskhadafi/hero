@@ -5566,6 +5566,59 @@ export async function ensureHeroGovernanceSeedData() {
   return globalThis.heroGovernanceSeedDataPromise
 }
 
+export async function syncMenuPermissionsMatrix(): Promise<{
+  insertedMenus: number
+  insertedPermissions: number
+}> {
+  // 1. Check missing sidebar menu seeds in navbarMenuItems
+  const refreshedMenuItems = await db
+    .select()
+    .from(navbarMenuItems)
+    .orderBy(navbarMenuItems.sortOrder, navbarMenuItems.id)
+
+  const existingMenuResources = new Set<string>(refreshedMenuItems.map((item) => item.resource))
+  const missingMenuItems = SIDEBAR_MENU_SEEDS.filter(
+    (item) => !existingMenuResources.has(item.resource)
+  )
+
+  let insertedMenus = 0
+  if (missingMenuItems.length > 0) {
+    await db.insert(navbarMenuItems).values(missingMenuItems)
+    insertedMenus = missingMenuItems.length
+  }
+
+  // 2. Fetch updated menus and roles
+  const [rolesForMenu, menuItemsForRole, existingRoleMenuPermissions] = await Promise.all([
+    db.select().from(securityRoles),
+    db.select().from(navbarMenuItems),
+    db.select().from(roleMenuPermissions),
+  ])
+
+  const existingRoleMenuPairs = new Set(
+    existingRoleMenuPermissions.map(
+      (permission) => `${permission.roleId}:${permission.menuItemId}`
+    )
+  )
+
+  const missingRoleMenuPermissions = rolesForMenu.flatMap((role) =>
+    menuItemsForRole
+      .filter((menuItem) => !existingRoleMenuPairs.has(`${role.id}:${menuItem.id}`))
+      .map((menuItem) => ({
+        roleId: role.id,
+        menuItemId: menuItem.id,
+        ...getDefaultMenuPermission(role.name, menuItem.resource),
+      }))
+  )
+
+  let insertedPermissions = 0
+  if (missingRoleMenuPermissions.length > 0) {
+    await db.insert(roleMenuPermissions).values(missingRoleMenuPermissions)
+    insertedPermissions = missingRoleMenuPermissions.length
+  }
+
+  return { insertedMenus, insertedPermissions }
+}
+
 export async function getDashboardOverview() {
   await ensureHeroSeedData()
 
@@ -7159,11 +7212,11 @@ export async function getSchedulingTimesheetOverviewOptions() {
 }
 
 export async function getSchedulingTimesheetSetupOptions() {
-  return getSchedulingTimesheetOptions()
+  return getSchedulingTimesheetOptions('scheduling_timesheet_setup')
 }
 
 export async function getSchedulingTimesheetScheduleOptions() {
-  return getSchedulingTimesheetOptions()
+  return getSchedulingTimesheetOptions('scheduling_timesheet')
 }
 
 export async function getSchedulingTimesheetScheduleV2Options() {
@@ -7180,7 +7233,7 @@ export async function getSchedulingTimesheetAttendanceOptions() {
 }
 
 export async function getSchedulingTimesheetFieldBreakOptions() {
-  const options = await getSchedulingTimesheetOptions()
+  const options = await getSchedulingTimesheetOptions('scheduling_timesheet_field_break')
   return {
     ...options,
     fieldBreakRosterPlans: [

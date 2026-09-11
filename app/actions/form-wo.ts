@@ -379,22 +379,8 @@ export async function createFormWo(data: z.infer<typeof formWoCreateSchema>) {
     const parsed = formWoCreateSchema.parse(data)
     const noPengajuan = await generateNoPengajuan()
 
-    let employee = null
-    try {
-      employee = await getCurrentEmployee()
-    } catch {
-      const annas = await db.select().from(employees).where(eq(employees.id, 5)).limit(1)
-      employee = annas[0] ?? null
-    }
-    if (!employee) {
-      const firstActive = await db
-        .select()
-        .from(employees)
-        .where(eq(employees.isActive, true))
-        .limit(1)
-      employee = firstActive[0] ?? null
-    }
-    if (!employee) throw new Error('Unauthorized')
+    const employee = await getCurrentEmployee()
+    if (!employee) throw new Error('Unauthorized: Sesi karyawan tidak ditemukan')
 
     // Wajib tanda tangan digital pemohon sebelum submit
     if (!parsed.submitterSignatureUrl || !parsed.submitterSignatureUrl.trim()) {
@@ -999,6 +985,14 @@ export async function updateFormWoStatus(
 
 export async function deleteFormWo(id: number) {
   try {
+    const employee = await getCurrentEmployee()
+    if (!employee) {
+      return { success: false, error: 'Unauthorized: Silakan login terlebih dahulu' }
+    }
+    const permission = await getCurrentMenuPermission('repair_form_wo')
+    if (!permission.canDelete) {
+      return { success: false, error: 'Akses ditolak: Anda tidak memiliki izin menghapus Form WO' }
+    }
     await ensureFormWoTable()
     await db.delete(repairFormWo).where(eq(repairFormWo.id, id))
     safeRevalidatePath(FORM_WO_PATH)

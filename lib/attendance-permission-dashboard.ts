@@ -91,7 +91,29 @@ export type IzinDashboardFilters = {
 export async function getAttendancePermissionDashboardData(filters: IzinDashboardFilters = {}) {
   await ensureSchedulingTimesheetTables()
 
+  const { getCurrentMenuPermission, getCurrentEmployeeAccessContext, hasGlobalDataAccess } = await import('@/lib/hero-access')
+  const [access, context] = await Promise.all([
+    getCurrentMenuPermission('hc_attendance_permission'),
+    getCurrentEmployeeAccessContext(),
+  ])
+
   const requestConditions = []
+  const overrideConditions = [
+    inArray(timesheetAttendanceRealOverrides.status, ['sick', 'leave']),
+    sql`${timesheetAttendanceRealOverrides.note} ilike 'Izin %'`,
+  ]
+
+  if (!hasGlobalDataAccess(access)) {
+    if (access.dataScope === 'site') {
+      requestConditions.push(eq(attendancePermissionRequests.siteId, context?.siteId ?? -1))
+      overrideConditions.push(eq(timesheetAttendanceRealOverrides.siteId, context?.siteId ?? -1))
+    } else {
+      // own
+      requestConditions.push(eq(attendancePermissionRequests.employeeId, context?.employeeId ?? -1))
+      overrideConditions.push(eq(timesheetAttendanceRealOverrides.employeeId, context?.employeeId ?? -1))
+    }
+  }
+
   if (filters.dateFrom) requestConditions.push(gte(attendancePermissionRequests.startDate, filters.dateFrom))
   if (filters.dateTo) requestConditions.push(lte(attendancePermissionRequests.startDate, filters.dateTo))
   if (filters.siteId) requestConditions.push(eq(attendancePermissionRequests.siteId, Number(filters.siteId)))
@@ -120,10 +142,6 @@ export async function getAttendancePermissionDashboardData(filters: IzinDashboar
     .where(requestConditions.length ? and(...requestConditions) : undefined)
     .orderBy(desc(attendancePermissionRequests.createdAt))
 
-  const overrideConditions = [
-    inArray(timesheetAttendanceRealOverrides.status, ['sick', 'leave']),
-    sql`${timesheetAttendanceRealOverrides.note} ilike 'Izin %'`,
-  ]
   if (filters.dateFrom) overrideConditions.push(sql`${timesheetAttendanceRealOverrides.period} || '-' || LPAD(${timesheetAttendanceRealOverrides.day}::text, 2, '0') >= ${filters.dateFrom}`)
   if (filters.dateTo) overrideConditions.push(sql`${timesheetAttendanceRealOverrides.period} || '-' || LPAD(${timesheetAttendanceRealOverrides.day}::text, 2, '0') <= ${filters.dateTo}`)
   if (filters.siteId) overrideConditions.push(eq(timesheetAttendanceRealOverrides.siteId, Number(filters.siteId)))

@@ -26,12 +26,12 @@ export default async function EmployeePage() {
     getCurrentEmployeeAccessContext(),
   ])
 
-  // Terapkan filter default department: Central Services
-  let scopedEmployees = allEmployees.filter((e) => e.departmentName === 'Central Services')
-
   // Integrasi Role Management / Data Scope:
-  // Jika bukan global (misal 'site' atau 'own')
+  let scopedEmployees = allEmployees
   let allowedLocations = filterOptions.locations
+  let allowedDepartments = filterOptions.departments
+  let allowedSections = filterOptions.sections
+
   if (!hasGlobalDataAccess(fullAccess)) {
     if (fullAccess.dataScope === 'site') {
       const userSiteIds = accessContext?.employeeId
@@ -53,15 +53,9 @@ export default async function EmployeePage() {
     }
   }
 
-  const csDeptId = filterOptions.departments.find((d) => d.name === 'Central Services')?.id
-
   const filteredOptions = {
-    departments: csDeptId
-      ? filterOptions.departments.filter((d) => d.id === csDeptId)
-      : filterOptions.departments,
-    sections: csDeptId
-      ? filterOptions.sections.filter((s) => s.departmentId === csDeptId)
-      : filterOptions.sections,
+    departments: allowedDepartments,
+    sections: allowedSections,
     locations: allowedLocations,
     positions: filterOptions.positions,
     leaders: filterOptions.leaders || [],

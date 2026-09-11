@@ -1,12 +1,19 @@
 import { ApprovalWorkbench } from "@/components/approval-workbench";
 import { getServerSession } from "@/lib/auth-session";
 import { getApprovalCenterData } from "@/lib/approval-workspace";
+import { getCurrentMenuPermission } from "@/lib/hero-access";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 // Central Approval Inbox Page
 export default async function ApprovalPage() {
+  const access = await getCurrentMenuPermission("approval_inbox");
+  if (!access.canView) {
+    redirect("/dashboard");
+  }
+
   const session = await getServerSession();
   const email = session?.user?.email || "chitra.operation.hero@gmail.com";
   let data = null;
