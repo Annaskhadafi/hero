@@ -1399,18 +1399,21 @@ export async function createCandidate(data: CandidateData) {
     }
   }
 
-  // Check for duplicate candidate (global email check)
+  // A candidate may apply to multiple public vacancies, but not twice to one vacancy.
+  const candidateEmail = data.email.trim().toLowerCase();
   const existingCandidate = await db
     .select({ id: hcCandidates.id, recruitmentId: hcCandidates.recruitmentId })
     .from(hcCandidates)
-    .where(eq(hcCandidates.email, data.email))
+    .where(
+      and(
+        sql`lower(trim(${hcCandidates.email})) = ${candidateEmail}`,
+        eq(hcCandidates.recruitmentId, data.recruitmentId),
+      ),
+    )
     .limit(1);
 
   if (existingCandidate.length > 0) {
-    if (existingCandidate[0].recruitmentId === data.recruitmentId) {
-      throw new Error("Anda sudah melamar untuk lowongan ini sebelumnya.");
-    }
-    throw new Error(`Email ${data.email} sudah terdaftar sebagai kandidat di lowongan lain.`);
+    throw new Error("Anda sudah melamar untuk lowongan ini sebelumnya.");
   }
 
   const [created] = await db
@@ -1418,7 +1421,7 @@ export async function createCandidate(data: CandidateData) {
     .values({
       recruitmentId: data.recruitmentId,
       fullName: data.fullName,
-      email: data.email || "",
+      email: candidateEmail,
       phone: data.phone || "",
       dateOfBirth: parsedDateOfBirth,
       address: data.address || "",
