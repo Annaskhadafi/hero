@@ -144,6 +144,7 @@ export default function CareerApplicationPage() {
         }
         const form = new FormData();
         form.append("file", cvFile);
+        form.append("uploadTarget", "public-career-cv");
         const uploadResult = await uploadFile(form);
         if (!uploadResult.success) {
           toast.warning("CV gagal diunggah: " + (uploadResult.error || "Kendala teknis") + ". Data Anda tetap akan dikirim tanpa CV.");

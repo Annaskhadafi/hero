@@ -51,8 +51,12 @@ async function requireUploadSession() {
 
 export async function uploadFile(formData: FormData) {
   try {
-    const access = await requireUploadSession();
-    if (!access.success) return access;
+    const uploadTarget = (formData.get("uploadTarget") as string | null)?.trim();
+    const isPublicCareerCv = uploadTarget === "public-career-cv";
+    if (!isPublicCareerCv) {
+      const access = await requireUploadSession();
+      if (!access.success) return access;
+    }
 
     const file = formData.get("file") as File;
     if (!file) return { success: false, error: "No file provided" };
@@ -64,6 +68,9 @@ export async function uploadFile(formData: FormData) {
 
     const isImage = file.type.startsWith("image/") && file.type !== "image/svg+xml";
     const isPdf = file.type === "application/pdf";
+    if (isPublicCareerCv && !isPdf) {
+      return { success: false, error: "CV harus berformat PDF." };
+    }
     const isVideo = file.type.startsWith("video/");
     const isOffice = OFFICE_MIME_TYPES.has(file.type) || OFFICE_EXTENSIONS.has(fileExt);
 
@@ -82,8 +89,6 @@ export async function uploadFile(formData: FormData) {
     if (isOffice && file.size > MAX_DOC_FILE_SIZE) {
       return { success: false, error: "Document size max 10MB." };
     }
-    const uploadTarget = (formData.get("uploadTarget") as string | null)?.trim();
-
     if (isS3UploadConfigured()) {
       const result =
         uploadTarget === "attendance"
