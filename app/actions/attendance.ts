@@ -5,6 +5,9 @@ import { attendanceRecords, employees, masterAttendanceShifts, sites } from '@/d
 import {
   attendancePermissionRequests,
   timesheetAttendanceRealOverrides,
+  timesheetFieldBreakPlans,
+  timesheetSchedulingPlans,
+  timesheetSchedulingPlansV2,
 } from '@/db/schema/timesheet'
 import { uploadFile } from '@/app/actions/upload'
 import { auth } from '@/lib/auth'
@@ -40,6 +43,8 @@ import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
 import { eq, and, gte, lte, desc, sql, asc, inArray, not } from 'drizzle-orm'
 import { endOfDay, startOfDay, subHours } from 'date-fns'
+import { addMonths, format, getDaysInMonth } from 'date-fns'
+import { getTimezoneDateParts } from '@/lib/indonesia-timezone'
 
 async function ensureEmployeeSite<
   T extends {
@@ -525,6 +530,104 @@ async function getMobileAttendanceShiftOptions(siteId?: number) {
   })
 }
 
+export type MobileRosterDay = {
+  date: string
+  code: string
+  fieldBreak: boolean
+}
+
+async function getMobileRosterCalendar(employeeId: number, siteId: number | null) {
+  if (!siteId) return { days: [], timezone: 'WITA' }
+
+  const config = await getSiteAttendanceClockConfig(siteId).catch(() => ({ timezone: 'WITA' }))
+  const localToday = getTimezoneDateParts(new Date(), config.timezone)
+  const monthAnchor = new Date(Date.UTC(localToday.year, localToday.month - 1, 1))
+  const periods = Array.from({ length: 6 }, (_, index) =>
+    format(addMonths(monthAnchor, index - 2), 'yyyy-MM')
+  )
+
+  const [v2Plans, legacyPlans, fieldBreakPlans] = await Promise.all([
+    db
+      .select({
+        period: timesheetSchedulingPlansV2.period,
+        status: timesheetSchedulingPlansV2.status,
+        activeSchedule: timesheetSchedulingPlansV2.activeSchedule,
+      })
+      .from(timesheetSchedulingPlansV2)
+      .where(
+        and(
+          eq(timesheetSchedulingPlansV2.siteId, siteId),
+          inArray(timesheetSchedulingPlansV2.period, periods)
+        )
+      )
+      .catch(() => []),
+    db
+      .select({
+        period: timesheetSchedulingPlans.period,
+        fixedSchedule: timesheetSchedulingPlans.fixedSchedule,
+      })
+      .from(timesheetSchedulingPlans)
+      .where(
+        and(
+          eq(timesheetSchedulingPlans.siteId, siteId),
+          inArray(timesheetSchedulingPlans.period, periods)
+        )
+      )
+      .catch(() => []),
+    db
+      .select({
+        fieldBreakDate: timesheetFieldBreakPlans.fieldBreakDate,
+        fieldBreakEndDate: timesheetFieldBreakPlans.fieldBreakEndDate,
+      })
+      .from(timesheetFieldBreakPlans)
+      .where(
+        and(
+          eq(timesheetFieldBreakPlans.siteId, siteId),
+          eq(timesheetFieldBreakPlans.employeeId, employeeId)
+        )
+      )
+      .catch(() => []),
+  ])
+
+  const activeByPeriod = new Map(
+    v2Plans.map((plan) => [
+      plan.period,
+      plan.status === 'active'
+        ? (plan.activeSchedule as Array<{ employeeId: number; schedule: string[] }>)
+        : [],
+    ])
+  )
+  const legacyByPeriod = new Map(
+    legacyPlans.map((plan) => [
+      plan.period,
+      plan.fixedSchedule as Array<{ employeeId: number; schedule: string[] }>,
+    ])
+  )
+  const fieldBreakRanges = fieldBreakPlans
+    .filter((plan) => plan.fieldBreakDate)
+    .map((plan) => ({
+      start: String(plan.fieldBreakDate),
+      end: String(plan.fieldBreakEndDate || plan.fieldBreakDate),
+    }))
+
+  const days: MobileRosterDay[] = []
+  for (const period of periods) {
+    const [year, month] = period.split('-').map(Number)
+    const row =
+      (activeByPeriod.get(period) ?? []).find((item) => item.employeeId === employeeId) ??
+      (legacyByPeriod.get(period) ?? []).find((item) => item.employeeId === employeeId)
+    for (let day = 1; day <= getDaysInMonth(new Date(Date.UTC(year, month - 1, 1))); day += 1) {
+      const date = `${period}-${String(day).padStart(2, '0')}`
+      const code = row?.schedule?.[day - 1]?.trim().toUpperCase() || ''
+      const fieldBreak =
+        code === 'FB' || fieldBreakRanges.some((range) => date >= range.start && date <= range.end)
+      days.push({ date, code: fieldBreak && !code ? 'FB' : code, fieldBreak })
+    }
+  }
+
+  return { days, timezone: config.timezone }
+}
+
 export async function getAttendancePageData() {
   const employee = await getCurrentEmployee()
   const shiftOptions = await getMobileAttendanceShiftOptions(employee?.siteId)
@@ -540,23 +643,27 @@ export async function getAttendancePageData() {
 
   const attendanceWindow = getAttendanceQueryWindow()
 
-  const logs = await db
-    .select()
-    .from(attendanceRecords)
-    .where(
-      and(
-        eq(attendanceRecords.employeeId, employee.id),
-        gte(attendanceRecords.eventTime, attendanceWindow.start),
-        lte(attendanceRecords.eventTime, attendanceWindow.end)
+  const [logs, rosterCalendar] = await Promise.all([
+    db
+      .select()
+      .from(attendanceRecords)
+      .where(
+        and(
+          eq(attendanceRecords.employeeId, employee.id),
+          gte(attendanceRecords.eventTime, attendanceWindow.start),
+          lte(attendanceRecords.eventTime, attendanceWindow.end)
+        )
       )
-    )
-    .orderBy(desc(attendanceRecords.eventTime))
+      .orderBy(desc(attendanceRecords.eventTime)),
+    getMobileRosterCalendar(employee.id, employee.siteId),
+  ])
 
   return {
     success: true,
     employee,
     logs,
     shiftOptions,
+    rosterCalendar,
   }
 }
 
@@ -1181,7 +1288,6 @@ export async function getTodayAttendanceLogs() {
 
   return { success: true, employee, logs: logsWithPhotoPreview }
 }
-
 
 export async function getLiveAttendanceMapData(dateStr?: string) {
   const [employee, access] = await Promise.all([

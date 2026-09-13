@@ -1,7 +1,7 @@
 import { db } from '@/db'
 import { attendanceRecords, sites } from '@/db/schema/hero'
 import { timesheetAttendanceRealOverrides, timesheetSchedulingConfigs } from '@/db/schema/timesheet'
-import { and, eq, gte, lt } from 'drizzle-orm'
+import { and, eq, gte, lt, ne } from 'drizzle-orm'
 import { ensureSchedulingTimesheetTables } from '@/lib/timesheet/scheduling-infrastructure'
 import {
   derivePeriodAndDayInTimezone,
@@ -70,11 +70,17 @@ export function wibParts(date: Date, timezone = 'WIB') {
   return { year, month, day, hours, minutes }
 }
 
-export function wibDayBoundaries(date: Date, timezone = 'WIB'): { startOfDay: Date; startOfNextDay: Date } {
+export function wibDayBoundaries(
+  date: Date,
+  timezone = 'WIB'
+): { startOfDay: Date; startOfNextDay: Date } {
   return getTimezoneDayBoundaries(date, timezone)
 }
 
-export function derivePeriodAndDay(eventTime: Date, timezone = 'WIB'): { period: string; day: number } {
+export function derivePeriodAndDay(
+  eventTime: Date,
+  timezone = 'WIB'
+): { period: string; day: number } {
   return derivePeriodAndDayInTimezone(eventTime, timezone)
 }
 
@@ -155,7 +161,7 @@ export async function syncFaceAttendanceToTimesheet(
   const consumedPunchIds = new Set<number>()
 
   // 1. Check if yesterday (Day T-1) had a Night Shift that was waiting for today's early morning checkout
-  const previousDayDate = new Date(startOfDay.getTime() - 12 * 60 * 60 * 1000)
+  const previousDayDate = new Date(startOfDay.getTime() - 24 * 60 * 60 * 1000)
   const prevBoundaries = getTimezoneDayBoundaries(previousDayDate, tzInfo.code)
   const prevRecords = await db
     .select()
@@ -242,6 +248,7 @@ export async function syncFaceAttendanceToTimesheet(
               workMinutes: prevWorkMinutes,
               updatedAt: new Date(),
             },
+            where: ne(timesheetAttendanceRealOverrides.source, 'manual'),
           })
 
         console.log(
@@ -351,24 +358,19 @@ export async function syncFaceAttendanceToTimesheet(
           )
       }
     } else {
-      // Check same-evening punch at least 2 hours apart
-      const sameDayPunches = todayOwnPunches.filter(
-        (r) => r.eventTime.getTime() - firstPunch.eventTime.getTime() >= 2 * 60 * 60 * 1000
-      )
-      if (sameDayPunches.length > 0) {
+      // Only an explicit checkout closes the shift; repeated check-ins must not become clock-out.
+      const sameDayCheckouts = todayOwnPunches.filter((r) => isCheckOutEvent(r.eventType))
+      if (sameDayCheckouts.length > 0) {
         clockOut = formatTimeHHMMInTimezone(
-          sameDayPunches[sameDayPunches.length - 1].eventTime,
+          sameDayCheckouts[sameDayCheckouts.length - 1].eventTime,
           tzInfo.code
         )
       }
     }
   } else {
     // Day Shift handling
-    const checkOutPunches = todayOwnPunches.filter(
-      (r) =>
-        isCheckOutEvent(r.eventType) ||
-        r.eventTime.getTime() - firstPunch.eventTime.getTime() >= 2 * 60 * 60 * 1000
-    )
+    // Keep the earliest punch as clock-in and the latest explicit checkout as clock-out.
+    const checkOutPunches = todayOwnPunches.filter((r) => isCheckOutEvent(r.eventType))
     if (checkOutPunches.length > 0) {
       clockOut = formatTimeHHMMInTimezone(
         checkOutPunches[checkOutPunches.length - 1].eventTime,
@@ -433,6 +435,7 @@ export async function syncFaceAttendanceToTimesheet(
         workMinutes,
         updatedAt: new Date(),
       },
+      where: ne(timesheetAttendanceRealOverrides.source, 'manual'),
     })
 
   console.log(

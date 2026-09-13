@@ -15,31 +15,92 @@ assert(timezoneCode.includes("'aceh barat'"), "WIB keywords must include 'aceh b
 const faceSyncPath = path.resolve('lib/timesheet/face-attendance-sync.ts')
 const faceSyncCode = fs.readFileSync(faceSyncPath, 'utf8')
 
-assert(faceSyncCode.includes('inferTimezoneFromLocation(row?.siteName)'), 'getSiteTimezone must infer from siteName')
-assert(faceSyncCode.includes('consumedPunchIds'), 'syncFaceAttendanceToTimesheet must track consumedPunchIds from yesterday night shift')
-assert(faceSyncCode.includes('prevNightPunch'), 'syncFaceAttendanceToTimesheet must check yesterday night checkin')
-assert(faceSyncCode.includes('todayOwnPunches'), 'syncFaceAttendanceToTimesheet must isolate today own punches')
+assert(
+  faceSyncCode.includes('inferTimezoneFromLocation(row?.siteName)'),
+  'getSiteTimezone must infer from siteName'
+)
+assert(
+  faceSyncCode.includes('consumedPunchIds'),
+  'syncFaceAttendanceToTimesheet must track consumedPunchIds from yesterday night shift'
+)
+assert(
+  faceSyncCode.includes('prevNightPunch'),
+  'syncFaceAttendanceToTimesheet must check yesterday night checkin'
+)
+assert(
+  faceSyncCode.includes('todayOwnPunches'),
+  'syncFaceAttendanceToTimesheet must isolate today own punches'
+)
+assert(
+  faceSyncCode.includes("import { and, eq, gte, lt, ne } from 'drizzle-orm'"),
+  'face sync must use a conflict predicate'
+)
+assert.equal(
+  (faceSyncCode.match(/where: ne\(timesheetAttendanceRealOverrides\.source, 'manual'\)/g) || [])
+    .length,
+  2,
+  'face sync must preserve manual overrides on both upserts'
+)
+assert(
+  faceSyncCode.includes('startOfDay.getTime() - 24 * 60 * 60 * 1000'),
+  'previous day must use the preceding local calendar day'
+)
+assert(
+  faceSyncCode.includes('todayOwnPunches.filter((r) => isCheckOutEvent(r.eventType))'),
+  'repeated check-ins must not be promoted to clock-out'
+)
 
 // 3. Verify Attendance Import Logic
 const importPath = path.resolve('lib/timesheet/attendance-import.ts')
 const importCode = fs.readFileSync(importPath, 'utf8')
 
-assert(importCode.includes('curInHour !== null && (curInHour >= 15 || curInHour < 5)'), 'attendance-import must handle night shift checkin preservation')
+assert(
+  importCode.includes('curInHour !== null && (curInHour >= 15 || curInHour < 5)'),
+  'attendance-import must handle night shift checkin preservation'
+)
 
 // 4. Verify Attendance Actions & Route Integration
 const actionPath = path.resolve('app/actions/face-attendance-actions.ts')
 const actionCode = fs.readFileSync(actionPath, 'utf8')
-assert(actionCode.includes('syncFaceAttendanceToTimesheet'), 'face-attendance-actions must call syncFaceAttendanceToTimesheet')
+assert(
+  actionCode.includes('syncFaceAttendanceToTimesheet'),
+  'face-attendance-actions must call syncFaceAttendanceToTimesheet'
+)
 
 const attActionPath = path.resolve('app/actions/attendance.ts')
 const attActionCode = fs.readFileSync(attActionPath, 'utf8')
-assert(attActionCode.includes('syncFaceAttendanceToTimesheet'), 'attendance.ts submitAttendance must call syncFaceAttendanceToTimesheet')
+assert(
+  attActionCode.includes('syncFaceAttendanceToTimesheet'),
+  'attendance.ts submitAttendance must call syncFaceAttendanceToTimesheet'
+)
 
 const multiAttPath = path.resolve('app/api/multi-attendance/recognize/route.ts')
 const multiAttCode = fs.readFileSync(multiAttPath, 'utf8')
-assert(multiAttCode.includes('syncFaceAttendanceToTimesheet'), 'multi-attendance recognize must call syncFaceAttendanceToTimesheet')
+assert(
+  multiAttCode.includes('syncFaceAttendanceToTimesheet'),
+  'multi-attendance recognize must call syncFaceAttendanceToTimesheet'
+)
 
-// 5. Test Night Shift Attribution Algorithm (Simulation matching lib/timesheet/attendance-import.ts)
+// 5. Mobile attendance: only explicit Check In / Check Out actions are exposed.
+const mobileFacePath = path.resolve('app/mobile/attendance/face-v2/face-v2-client.tsx')
+const mobileFaceCode = fs.readFileSync(mobileFacePath, 'utf8')
+assert(
+  !mobileFaceCode.includes("onClick={() => startFlow('auto')}"),
+  'mobile UI must not expose auto attendance'
+)
+assert(
+  mobileFaceCode.includes("onClick={() => startFlow('checked-in')}") &&
+    mobileFaceCode.includes("onClick={() => startFlow('checked-out')}"),
+  'mobile UI must keep explicit Check In and Check Out actions'
+)
+
+const faceRoutePath = path.resolve('app/api/mobile/v2/face-recognition/route.ts')
+const faceRouteCode = fs.readFileSync(faceRoutePath, 'utf8')
+assert(faceRouteCode.includes('validateSiteBoundary'), 'face route must validate site GPS boundary')
+assert(faceRouteCode.includes('[gps-inside]'), 'inside-radius attendance must be marked')
+assert(faceRouteCode.includes('[gps-outside]'), 'outside-radius attendance must remain auditable')
+
+// 6. Test Night Shift Attribution Algorithm (Simulation matching lib/timesheet/attendance-import.ts)
 function simulateNightShiftPreprocessing(rows) {
   const adjustedRows = rows.map((row) => ({ ...row }))
   for (let i = 0; i < adjustedRows.length; i++) {

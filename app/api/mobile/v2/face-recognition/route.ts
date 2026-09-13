@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { db } from '@/db'
-import { attendanceRecords, employees } from '@/db/schema/hero'
+import { attendanceRecords, employees, sites } from '@/db/schema/hero'
 import { eq, desc } from 'drizzle-orm'
 import { authenticateMobileRequest } from '@/lib/mobile-auth'
 import { rarayVerifyFace, rarayCheckAntiSpoofUniFaceV2 } from '@/lib/raray-vision/client'
 import { syncFaceAttendanceToTimesheet } from '@/lib/timesheet/face-attendance-sync'
 import { resolveSiteAttendancePunctuality } from '@/lib/timesheet/site-attendance-punctuality'
+import { validateSiteBoundary } from '@/lib/location'
 import { uploadAttendancePhotoToS3, isS3UploadConfigured } from '@/lib/s3-storage'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
-
 
 // --- Constants ---
 const ALLOWED_EVENT_TYPES = ['checked-in', 'checked-out', 'auto'] as const
@@ -74,9 +74,11 @@ export async function POST(request: NextRequest) {
     } = body as Record<string, unknown>
 
     // 2. Required field validation
-    if (!employeeId) return errorResponse(400, 'VALIDATION_ERROR', 'employeeId is required.', 'employeeId')
+    if (!employeeId)
+      return errorResponse(400, 'VALIDATION_ERROR', 'employeeId is required.', 'employeeId')
     if (!siteId) return errorResponse(400, 'VALIDATION_ERROR', 'siteId is required.', 'siteId')
-    if (!rawEventType) return errorResponse(400, 'VALIDATION_ERROR', 'eventType is required.', 'eventType')
+    if (!rawEventType)
+      return errorResponse(400, 'VALIDATION_ERROR', 'eventType is required.', 'eventType')
     if (!imageDataUrl || typeof imageDataUrl !== 'string')
       return errorResponse(400, 'VALIDATION_ERROR', 'imageDataUrl is required.', 'imageDataUrl')
     if (latitude === undefined || latitude === null)
@@ -84,12 +86,22 @@ export async function POST(request: NextRequest) {
     if (longitude === undefined || longitude === null)
       return errorResponse(400, 'VALIDATION_ERROR', 'longitude is required.', 'longitude')
     if (!clientRequestId || typeof clientRequestId !== 'string')
-      return errorResponse(400, 'VALIDATION_ERROR', 'clientRequestId is required.', 'clientRequestId')
+      return errorResponse(
+        400,
+        'VALIDATION_ERROR',
+        'clientRequestId is required.',
+        'clientRequestId'
+      )
 
     // 3. Type coercion & range validation
     const empId = Number(employeeId)
     if (!Number.isFinite(empId) || empId <= 0 || !Number.isInteger(empId))
-      return errorResponse(400, 'VALIDATION_ERROR', 'employeeId must be a positive integer.', 'employeeId')
+      return errorResponse(
+        400,
+        'VALIDATION_ERROR',
+        'employeeId must be a positive integer.',
+        'employeeId'
+      )
 
     const sId = Number(siteId)
     if (!Number.isFinite(sId) || sId <= 0 || !Number.isInteger(sId))
@@ -97,11 +109,21 @@ export async function POST(request: NextRequest) {
 
     const lat = Number(latitude)
     if (!Number.isFinite(lat) || lat < -90 || lat > 90)
-      return errorResponse(400, 'VALIDATION_ERROR', 'latitude must be between -90 and 90.', 'latitude')
+      return errorResponse(
+        400,
+        'VALIDATION_ERROR',
+        'latitude must be between -90 and 90.',
+        'latitude'
+      )
 
     const lng = Number(longitude)
     if (!Number.isFinite(lng) || lng < -180 || lng > 180)
-      return errorResponse(400, 'VALIDATION_ERROR', 'longitude must be between -180 and 180.', 'longitude')
+      return errorResponse(
+        400,
+        'VALIDATION_ERROR',
+        'longitude must be between -180 and 180.',
+        'longitude'
+      )
 
     const accuracyMeters = accuracy === undefined || accuracy === null ? null : Number(accuracy)
 
@@ -111,10 +133,36 @@ export async function POST(request: NextRequest) {
       return errorResponse(authResult.status, authResult.code, authResult.message)
     }
 
+    const [site] = await db
+      .select({
+        id: sites.id,
+        geoLatitude: sites.geoLatitude,
+        geoLongitude: sites.geoLongitude,
+        geoRadiusMeters: sites.geoRadiusMeters,
+      })
+      .from(sites)
+      .where(eq(sites.id, sId))
+      .limit(1)
+
+    if (!site)
+      return errorResponse(404, 'SITE_NOT_FOUND', 'Site absensi tidak ditemukan.', 'siteId')
+
+    // GPS is a validation signal, not a hard blocker: outside-radius punches remain auditable.
+    const boundary = validateSiteBoundary(
+      site,
+      lat === 0 && lng === 0 ? null : lat,
+      lat === 0 && lng === 0 ? null : lng
+    )
+
     // 5. Parse image
     const matches = (imageDataUrl as string).match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/)
     if (!matches) {
-      return errorResponse(400, 'INVALID_IMAGE', 'imageDataUrl must be a valid base64 image data URL.', 'imageDataUrl')
+      return errorResponse(
+        400,
+        'INVALID_IMAGE',
+        'imageDataUrl must be a valid base64 image data URL.',
+        'imageDataUrl'
+      )
     }
     const [, mimeType, base64Data] = matches
     const imageBuffer = Buffer.from(base64Data, 'base64')
@@ -209,8 +257,16 @@ export async function POST(request: NextRequest) {
       mimeType,
     }).catch(() => null)
 
-    if (antiSpoofRes && antiSpoofRes.status === 'spoof_detected' && (antiSpoofRes.confidence ?? 0) > 0.85) {
-      console.warn('[face-recognition-v2] Anti-Spoofing detected spoof attempt:', antiSpoofRes.verdict, antiSpoofRes.confidence)
+    if (
+      antiSpoofRes &&
+      antiSpoofRes.status === 'spoof_detected' &&
+      (antiSpoofRes.confidence ?? 0) > 0.85
+    ) {
+      console.warn(
+        '[face-recognition-v2] Anti-Spoofing detected spoof attempt:',
+        antiSpoofRes.verdict,
+        antiSpoofRes.confidence
+      )
       return NextResponse.json(
         {
           success: false,
@@ -219,7 +275,9 @@ export async function POST(request: NextRequest) {
           resolvedEventType,
           error: {
             code: 'SPOOFING_DETECTED',
-            message: antiSpoofRes.message || '🚨 Terdeteksi foto/layar HP (Anti-Spoofing Gagal). Harap gunakan wajah asli secara langsung.',
+            message:
+              antiSpoofRes.message ||
+              '🚨 Terdeteksi foto/layar HP (Anti-Spoofing Gagal). Harap gunakan wajah asli secara langsung.',
           },
         },
         { status: 200 }
@@ -237,7 +295,11 @@ export async function POST(request: NextRequest) {
 
     if (rvResult.status === 'error') {
       console.error('[face-recognition-v2] Raray Vision error:', rvResult.message)
-      return errorResponse(502, 'RARAY_VISION_ERROR', rvResult.message || 'Face recognition service error.')
+      return errorResponse(
+        502,
+        'RARAY_VISION_ERROR',
+        rvResult.message || 'Face recognition service error.'
+      )
     }
 
     if (rvResult.status === 'spoofing_detected' || rvResult.is_live === false) {
@@ -249,7 +311,9 @@ export async function POST(request: NextRequest) {
           resolvedEventType,
           error: {
             code: 'SPOOFING_DETECTED',
-            message: rvResult.message || 'Terdeteksi foto/layar HP. Harap gunakan wajah asli secara langsung (Anti-Spoofing Gagal).',
+            message:
+              rvResult.message ||
+              'Terdeteksi foto/layar HP. Harap gunakan wajah asli secara langsung (Anti-Spoofing Gagal).',
           },
         },
         { status: 200 }
@@ -288,7 +352,8 @@ export async function POST(request: NextRequest) {
     // 11. Build attendance record
     const eventTime = new Date()
     const gpsFlag = lat === 0 && lng === 0 ? '[gps-unavailable] ' : ''
-    const accuracyNote = accuracyMeters === null ? '' : ` | GPS ${Math.round(accuracyMeters)}m accuracy`
+    const accuracyNote =
+      accuracyMeters === null ? '' : ` | GPS ${Math.round(accuracyMeters)}m accuracy`
     const punctuality = await resolveSiteAttendancePunctuality({
       siteId: sId,
       eventType: resolvedEventType,
@@ -297,6 +362,11 @@ export async function POST(request: NextRequest) {
     })
     const locationNote = [
       `${gpsFlag}face-v2-raray${accuracyNote}`,
+      boundary.status === 'inside'
+        ? `[gps-inside] ${boundary.distanceMeters}m/${boundary.radiusMeters}m`
+        : boundary.status === 'outside'
+          ? `[gps-outside] ${boundary.distanceMeters}m/${boundary.radiusMeters}m`
+          : '[gps-unavailable]',
       punctuality
         ? `Shift: ${punctuality.shiftCode.toUpperCase()} (masuk ${punctuality.scheduledClockIn})`
         : null,
@@ -334,28 +404,30 @@ export async function POST(request: NextRequest) {
       console.warn('[face-recognition-v2] Path revalidation warning:', e)
     }
 
-    // 13. Background photo upload & timesheet sync (non-blocking for ultra-fast response)
-    void (async () => {
-      try {
-        const photoUrl = await saveAttendancePhoto(imageBuffer, mimeType, clientRequestId.trim())
-        if (photoUrl) {
-          await db
-            .update(attendanceRecords)
-            .set({ photoUrl })
-            .where(eq(attendanceRecords.id, insertedRecord.id))
-        }
-      } catch (err) {
-        console.error('[face-recognition-v2] Background photo upload failed:', err)
+    // Keep the raw record and the Grid projection consistent before reporting success.
+    try {
+      const photoUrl = await saveAttendancePhoto(imageBuffer, mimeType, clientRequestId.trim())
+      if (photoUrl) {
+        await db
+          .update(attendanceRecords)
+          .set({ photoUrl })
+          .where(eq(attendanceRecords.id, insertedRecord.id))
       }
+      await syncFaceAttendanceToTimesheet(empId, sId, eventTime)
+      revalidatePath('/dashboard/scheduling-timesheet/attendance')
+    } catch (syncError) {
+      console.error('[face-recognition-v2] Attendance projection failed:', syncError)
+      return NextResponse.json(
+        {
+          success: false,
+          verified: true,
+          error: 'Attendance tersimpan tetapi belum tersinkron ke Grid. Silakan ulangi.',
+        },
+        { status: 503 }
+      )
+    }
 
-      try {
-        await syncFaceAttendanceToTimesheet(empId, sId, eventTime)
-      } catch (syncError) {
-        console.error('[face-recognition-v2] Timesheet sync failed:', syncError)
-      }
-    })()
-
-    // 14. Return response INSTANTLY with employee & punctuality details!
+    // Return only after the Grid projection is synchronized.
     return NextResponse.json(
       {
         success: true,

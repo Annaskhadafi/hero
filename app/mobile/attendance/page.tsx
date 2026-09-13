@@ -43,6 +43,7 @@ export default async function MobileAttendancePage() {
       lastEventTime={lastEventTime}
       shiftOptions={data.shiftOptions || []}
       todayLogs={logs}
+      rosterCalendar={data.rosterCalendar}
     />
   )
 }

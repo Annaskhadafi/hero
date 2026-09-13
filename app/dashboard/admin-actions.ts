@@ -2241,6 +2241,7 @@ export async function applyAttendanceImportPreviewAction(
             savedByUserId,
             updatedAt: now,
           },
+          where: ne(timesheetAttendanceRealOverrides.source, 'manual'),
         })
     }
     await tx

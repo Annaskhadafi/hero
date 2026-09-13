@@ -22,6 +22,8 @@ import {
   Wifi,
   X,
   Calendar,
+  ChevronLeft,
+  ChevronRight,
   Briefcase,
   ShieldCheck,
 } from 'lucide-react'
@@ -62,6 +64,12 @@ export interface TodayLog {
   punctualityNote?: string | null
 }
 
+export interface MobileRosterDay {
+  date: string
+  code: string
+  fieldBreak: boolean
+}
+
 interface Props {
   employeeId: number
   employeeName: string
@@ -75,6 +83,7 @@ interface Props {
   lastEventTime: string | null
   shiftOptions?: ShiftOption[]
   todayLogs?: TodayLog[]
+  rosterCalendar?: { days: MobileRosterDay[]; timezone: string }
 }
 
 const MAX_AUTO_RETRY = 8
@@ -152,6 +161,7 @@ export function FaceAttendanceV2Client({
   lastEventTime,
   shiftOptions = [],
   todayLogs = [],
+  rosterCalendar = { days: [], timezone: 'WITA' },
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -166,7 +176,11 @@ export function FaceAttendanceV2Client({
   const [selectedEventType, setSelectedEventType] = useState<EventType>('auto')
   const [errorMessage, setErrorMessage] = useState('')
   const [successRecord, setSuccessRecord] = useState<TodayLog | null>(null)
-  const [successEmployee, setSuccessEmployee] = useState<{ id: number; name: string; employeeSn: string } | null>(null)
+  const [successEmployee, setSuccessEmployee] = useState<{
+    id: number
+    name: string
+    employeeSn: string
+  } | null>(null)
   const [successPunctuality, setSuccessPunctuality] = useState<{
     shiftCode: string
     scheduledClockIn: string
@@ -177,31 +191,42 @@ export function FaceAttendanceV2Client({
   const [retryCount, setRetryCount] = useState(0)
   const [gps, setGps] = useState<GpsPosition | null>(null)
   const [gpsLoading, setGpsLoading] = useState(false)
-  const [resolvedEventType, setResolvedEventType] = useState<'checked-in' | 'checked-out' | null>(null)
+  const [calendarMonth, setCalendarMonth] = useState(
+    () => new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+  )
+  const [selectedRosterDate, setSelectedRosterDate] = useState('')
+  const [resolvedEventType, setResolvedEventType] = useState<'checked-in' | 'checked-out' | null>(
+    null
+  )
   const [now, setNow] = useState<Date | null>(null)
   const [showHistoryModal, setShowHistoryModal] = useState(false)
 
   // Default shift options if none provided
-  const activeShifts: ShiftOption[] = shiftOptions.length > 0 ? shiftOptions : [
-    {
-      value: 'day',
-      label: 'Day Shift (DS)',
-      window: '08:00 - 17:00 WITA (08:00 AM - 05:00 PM)',
-      helper: 'Regular Day Shift (08:00 - 17:00).',
-    },
-    {
-      value: 'night',
-      label: 'Night Shift (NS)',
-      window: '18:00 - 06:00 WITA (06:00 PM - 06:00 AM)',
-      helper: 'Overnight Night Shift (18:00 - 06:00).',
-    },
-  ]
+  const activeShifts: ShiftOption[] =
+    shiftOptions.length > 0
+      ? shiftOptions
+      : [
+          {
+            value: 'day',
+            label: 'Day Shift (DS)',
+            window: '08:00 - 17:00 WITA (08:00 AM - 05:00 PM)',
+            helper: 'Regular Day Shift (08:00 - 17:00).',
+          },
+          {
+            value: 'night',
+            label: 'Night Shift (NS)',
+            window: '18:00 - 06:00 WITA (06:00 PM - 06:00 AM)',
+            helper: 'Overnight Night Shift (18:00 - 06:00).',
+          },
+        ]
 
   const [selectedShift, setSelectedShift] = useState<string>(() => {
     const currentHour = new Date().getHours()
     const isNight = currentHour >= 15 || currentHour < 7
     if (isNight) {
-      const nightOption = activeShifts.find((s) => s.value === 'night' || s.value.toLowerCase().includes('night') || s.value === 'NS')
+      const nightOption = activeShifts.find(
+        (s) => s.value === 'night' || s.value.toLowerCase().includes('night') || s.value === 'NS'
+      )
       if (nightOption) return nightOption.value
     }
     return activeShifts[0]?.value ?? 'day'
@@ -341,7 +366,9 @@ export function FaceAttendanceV2Client({
 
   const motionHistoryRef = useRef<number[]>([])
   const prevFrameSampleRef = useRef<Uint8ClampedArray | null>(null)
-  const [livenessStatus, setLivenessStatus] = useState<'analyzing' | 'live-confirmed' | 'photo-detected'>('analyzing')
+  const [livenessStatus, setLivenessStatus] = useState<
+    'analyzing' | 'live-confirmed' | 'photo-detected'
+  >('analyzing')
 
   // Background motion sampler: measures pixel variance across video frames every 100ms
   useEffect(() => {
@@ -437,7 +464,7 @@ export function FaceAttendanceV2Client({
     const avgDelta = history.reduce((a, b) => a + b, 0) / history.length
 
     // Anti-spoofing check: static photo / paper / phone screen image
-    if (avgDelta < 0.20 && livenessStatus === 'photo-detected') {
+    if (avgDelta < 0.2 && livenessStatus === 'photo-detected') {
       stopCamera()
       setFlowState('failed')
       setErrorMessage(
@@ -481,7 +508,9 @@ export function FaceAttendanceV2Client({
         if (code === 'NO_FACE_REGISTRATION_V2') {
           stopCamera()
           setFlowState('not-registered')
-          setErrorMessage('Wajah belum terdaftar di sistem biometrik V2. Silakan registrasi terlebih dahulu.')
+          setErrorMessage(
+            'Wajah belum terdaftar di sistem biometrik V2. Silakan registrasi terlebih dahulu.'
+          )
           return
         }
         const newCount = retryCountRef.current + 1
@@ -517,7 +546,10 @@ export function FaceAttendanceV2Client({
       if (data.error?.code === 'SPOOFING_DETECTED') {
         stopCamera()
         setFlowState('failed')
-        setErrorMessage(data.error.message || '🚨 Terdeteksi Foto / Layar (Anti-Spoofing Gagal). Harap gunakan wajah asli secara langsung.')
+        setErrorMessage(
+          data.error.message ||
+            '🚨 Terdeteksi Foto / Layar (Anti-Spoofing Gagal). Harap gunakan wajah asli secara langsung.'
+        )
         return
       }
 
@@ -528,7 +560,9 @@ export function FaceAttendanceV2Client({
       if (newCount >= MAX_AUTO_RETRY) {
         stopCamera()
         setFlowState('failed')
-        setErrorMessage('Wajah tidak teridentifikasi. Pastikan posisi wajah tegak dan cahaya cukup.')
+        setErrorMessage(
+          'Wajah tidak teridentifikasi. Pastikan posisi wajah tegak dan cahaya cukup.'
+        )
         return
       }
 
@@ -546,11 +580,24 @@ export function FaceAttendanceV2Client({
     } finally {
       isSendingRef.current = false
     }
-  }, [captureFrame, employeeId, siteId, selectedEventType, selectedShift, flowState, getCurrentGps, stopCamera])
+  }, [
+    captureFrame,
+    employeeId,
+    siteId,
+    selectedEventType,
+    selectedShift,
+    flowState,
+    getCurrentGps,
+    stopCamera,
+  ])
 
   // Ensure video element receives camera stream as soon as it mounts to DOM
   useEffect(() => {
-    if ((flowState === 'scanning' || flowState === 'verifying') && streamRef.current && videoRef.current) {
+    if (
+      (flowState === 'scanning' || flowState === 'verifying') &&
+      streamRef.current &&
+      videoRef.current
+    ) {
       const video = videoRef.current
       if (video.srcObject !== streamRef.current) {
         video.srcObject = streamRef.current
@@ -608,53 +655,86 @@ export function FaceAttendanceV2Client({
     left: `${Math.max(10, Math.min(90, mapPinLng))}%`,
     top: `${Math.max(10, Math.min(90, mapPinLat))}%`,
   }
+  const calendarYear = calendarMonth.getFullYear()
+  const calendarMonthIndex = calendarMonth.getMonth()
+  const calendarDaysInMonth = new Date(calendarYear, calendarMonthIndex + 1, 0).getDate()
+  const calendarStartOffset = new Date(calendarYear, calendarMonthIndex, 1).getDay()
+  const rosterByDate = new Map(rosterCalendar.days.map((day) => [day.date, day]))
+  const todayKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`
+  const visibleRosterDate = selectedRosterDate || todayKey
+  const selectedRosterDay = rosterByDate.get(visibleRosterDate)
+  const calendarCells = Array.from(
+    { length: Math.ceil((calendarStartOffset + calendarDaysInMonth) / 7) * 7 },
+    (_, index) => {
+      const dayNumber = index - calendarStartOffset + 1
+      if (dayNumber < 1 || dayNumber > calendarDaysInMonth) return null
+      const date = `${calendarYear}-${String(calendarMonthIndex + 1).padStart(2, '0')}-${String(dayNumber).padStart(2, '0')}`
+      return { dayNumber, date, roster: rosterByDate.get(date) }
+    }
+  )
+
+  const rosterLabel = (code: string) => {
+    if (code === 'DS') return 'DS'
+    if (code === 'NS') return 'NS'
+    if (code === 'ST') return 'ST'
+    if (code === 'FB') return 'FB'
+    if (code === 'OFF' || code === 'LIBUR') return 'Libur'
+    return 'Tanpa shift'
+  }
+
+  const rosterTone = (code: string) => {
+    if (code === 'DS') return 'bg-sky-100 text-sky-800'
+    if (code === 'NS') return 'bg-slate-800 text-white'
+    if (code === 'ST') return 'bg-violet-100 text-violet-800'
+    if (code === 'FB') return 'bg-amber-100 text-amber-800'
+    if (code === 'OFF' || code === 'LIBUR') return 'bg-slate-100 text-slate-500'
+    return 'bg-slate-50 text-slate-400'
+  }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-md flex-col bg-slate-50 text-slate-900 font-sans pb-10">
-      {/* ─── APP BAR / HEADER ─── */}
-      <header className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-200/80 bg-white/90 px-4 py-3 backdrop-blur-md">
+    <div className="mx-auto flex min-h-screen max-w-md flex-col bg-slate-50 pb-10 font-sans text-slate-900">
+      <header className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
         <Link
           href="/mobile"
-          className="flex size-9 items-center justify-center rounded-xl bg-slate-100 text-slate-700 active:scale-95 transition-transform"
+          className="flex size-9 items-center justify-center rounded-xl bg-slate-100 text-slate-700 transition-transform active:scale-95"
         >
           <ArrowLeft className="size-5" />
         </Link>
 
         <div className="text-center">
-          <h1 className="text-sm font-black text-slate-900 flex items-center justify-center gap-1.5 uppercase tracking-wider">
+          <h1 className="flex items-center justify-center gap-1.5 text-sm font-bold text-slate-900">
             <ScanFace className="size-4 text-[#005bb5]" />
-            Face Recog by Afi
+            Absensi
           </h1>
-          <p className="text-[10px] text-sky-600 font-bold">Fast Auto-Biometrics System</p>
+          <p className="text-[10px] font-medium text-slate-500">Verifikasi wajah & lokasi</p>
         </div>
 
-        <span className="flex items-center gap-1 text-[10px] font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-          <span className="size-1.5 rounded-full bg-emerald-500 animate-ping" /> Online
+        <span className="flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-black text-emerald-600">
+          <span className="size-1.5 rounded-full bg-emerald-500" /> Online
         </span>
       </header>
 
-      <main className="flex flex-1 flex-col px-4 py-4 space-y-4">
-        {/* ─── EMPLOYEE IDENTITY CARD ─── */}
-        <section className="overflow-hidden rounded-2xl bg-[#031b33] p-4 text-white shadow-xl border border-[#003461] space-y-3">
+      <main className="flex flex-1 flex-col space-y-4 px-4 py-4">
+        <section className="space-y-3 overflow-hidden rounded-2xl bg-[#031b33] p-4 text-white shadow-sm">
           <div className="flex items-center justify-between border-b border-white/10 pb-3">
             <div className="flex items-center gap-3">
-              <div className="size-10 rounded-full bg-[#004280] flex items-center justify-center border border-white/20 text-sky-200 shadow-md">
+              <div className="flex size-10 items-center justify-center rounded-full border border-white/20 bg-[#004280] text-sky-200 shadow-md">
                 <UserCheck className="size-5" />
               </div>
               <div>
-                <p className="text-sm font-black text-white">{employeeName}</p>
-                <p className="text-[11px] font-bold text-sky-300 font-mono">SN: {employeeSn}</p>
+                <p className="text-sm font-bold text-white">{employeeName}</p>
+                <p className="font-mono text-[11px] text-sky-300">SN {employeeSn}</p>
               </div>
             </div>
 
             <div>
               {isRegistered ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/25 border border-emerald-400/50 px-2.5 py-1 text-[10px] font-bold text-emerald-200">
-                  ✓ Wajah Terdaftar
+                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/50 bg-emerald-500/25 px-2.5 py-1 text-[10px] font-bold text-emerald-200">
+                  Wajah terdaftar
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/25 border border-amber-400/50 px-2.5 py-1 text-[10px] font-bold text-amber-200">
-                  ⚠️ Belum Terdaftar
+                <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/50 bg-amber-500/25 px-2.5 py-1 text-[10px] font-bold text-amber-200">
+                  Wajah belum terdaftar
                 </span>
               )}
             </div>
@@ -668,9 +748,9 @@ export function FaceAttendanceV2Client({
             <button
               type="button"
               onClick={() => setShowHistoryModal(true)}
-              className="flex items-center gap-1 text-[11px] font-black text-sky-300 hover:text-white underline"
+              className="flex items-center gap-1 text-[11px] font-black text-sky-300 underline hover:text-white"
             >
-              <History className="size-3" /> History Registrasi
+              <History className="size-3" /> Riwayat wajah
             </button>
           </div>
         </section>
@@ -678,27 +758,25 @@ export function FaceAttendanceV2Client({
         {/* ─── IDLE STATE MAIN DASHBOARD ─── */}
         {flowState === 'idle' && (
           <>
-            {/* ─── SCHEDULE & ROSTER CONFIG CARD ─── */}
-            <section className="rounded-2xl bg-white p-4 shadow-sm border border-slate-200/80 space-y-3">
+            <section className="order-2 space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between border-b pb-2.5">
                 <div className="flex items-center gap-2">
                   <Briefcase className="size-4 text-[#005bb5]" />
-                  <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                    Schedule & Roster Setting
-                  </span>
+                  <span className="text-sm font-bold text-slate-800">Jadwal hari ini</span>
                 </div>
-                <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-[10px] font-black text-[#005bb5] uppercase">
-                  ● Roster Active
+                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700">
+                  Roster aktif
                 </span>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">Pilih Shift Schedule</span>
+                  <span className="text-[10px] font-semibold text-slate-500">Shift attendance</span>
                   <select
                     value={selectedShift}
                     onChange={(e) => setSelectedShift(e.target.value)}
-                    className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-800 shadow-sm focus:border-[#005bb5] focus:outline-none"
+                    aria-label="Pilih shift attendance"
+                    className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-800 focus:border-[#005bb5] focus:outline-none"
                   >
                     {activeShifts.map((s) => (
                       <option key={s.value} value={s.value}>
@@ -709,58 +787,60 @@ export function FaceAttendanceV2Client({
                 </div>
 
                 <div className="space-y-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">Status Roster</span>
-                  <div className="flex min-h-10 items-center justify-between rounded-xl bg-slate-50 px-3 border border-slate-200 text-xs font-bold text-slate-700">
-                    <span>Working Day</span>
+                  <span className="text-[10px] font-semibold text-slate-500">Status roster</span>
+                  <div className="flex min-h-10 items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700">
+                    <span>Hari kerja</span>
                     <span className="size-2 rounded-full bg-emerald-500" />
                   </div>
                 </div>
               </div>
 
-              <div className="rounded-xl bg-sky-50/80 p-2.5 border border-sky-100 flex items-center justify-between text-xs">
-                <span className="font-bold text-sky-900">Jam Shift: {currentShiftObj?.window}</span>
-                <span className="font-black text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded text-[10px] uppercase">
-                  Eligible Overtime
+              <div className="flex items-center justify-between rounded-xl border border-sky-100 bg-sky-50 p-2.5 text-xs">
+                <span className="font-semibold text-sky-900">
+                  Jam kerja: {currentShiftObj?.window}
+                </span>
+                <span className="rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                  Lembur tersedia
                 </span>
               </div>
             </section>
 
-            {/* ─── REALTIME CLOCK & MINI MAP LOCATION WIDGET ─── */}
-            <section className="rounded-2xl bg-white p-4 shadow-sm border border-slate-200/80 space-y-3">
+            <section className="order-3 space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase">Current Attempt Time</p>
-                  <p className="text-2xl font-black text-[#003461] font-mono tracking-tight">
+                  <p className="text-[10px] font-semibold text-slate-500">Waktu perangkat</p>
+                  <p className="font-mono text-2xl font-bold tracking-tight text-[#003461]">
                     {now ? formatClock(now) : '--.--.--'}
-                    <span className="ml-1 text-xs text-slate-500 font-bold">WITA</span>
                   </p>
-                  <p className="text-[11px] font-bold text-slate-500 mt-0.5">
+                  <p className="mt-0.5 text-[11px] font-medium text-slate-500">
                     {now ? formatDate(now) : 'Sinkronisasi waktu...'}
                   </p>
                 </div>
 
-                <div className="flex size-12 items-center justify-center rounded-2xl bg-blue-50 text-[#005bb5] shadow-inner">
+                <div className="flex size-11 items-center justify-center rounded-xl bg-blue-50 text-[#005bb5]">
                   <Clock3 className="size-6" />
                 </div>
               </div>
 
               {/* Location Data & Coordinates */}
-              <div className="rounded-xl bg-slate-50 p-3 border border-slate-100 space-y-1.5 text-xs">
+              <div className="space-y-1.5 rounded-xl border border-slate-100 bg-slate-50 p-3 text-xs">
                 <div className="flex items-start justify-between gap-2">
-                  <span className="font-bold text-slate-500 shrink-0">Nama Lokasi:</span>
-                  <span className="font-bold text-[#003461] text-right font-sans">
+                  <span className="shrink-0 font-semibold text-slate-500">Lokasi:</span>
+                  <span className="text-right font-semibold text-[#003461]">
                     {locationName || siteName}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-500">Koordinat GPS:</span>
-                  <span className="font-mono font-bold text-slate-800">
-                    {gps ? `${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)}` : 'Memuat GPS...'}
+                  <span className="font-semibold text-slate-500">Koordinat:</span>
+                  <span className="font-mono text-[11px] font-semibold text-slate-800">
+                    {gps
+                      ? `${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)}`
+                      : 'Memuat GPS...'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-500">Status Akurasi:</span>
-                  <span className="font-bold text-emerald-600">
+                  <span className="font-semibold text-slate-500">Akurasi lokasi:</span>
+                  <span className="font-semibold text-emerald-600">
                     {gps ? `± ${gps.accuracy} meter (Akurat)` : 'Mencari sinyal GPS...'}
                   </span>
                 </div>
@@ -768,7 +848,7 @@ export function FaceAttendanceV2Client({
 
               {/* ─── REAL OPENSTREETMAP MINI MAP WIDGET ─── */}
               {gps ? (
-                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 relative h-60 w-full shadow-md">
+                <div className="relative h-32 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
                   <iframe
                     title="Real OpenStreetMap Mini Map"
                     width="100%"
@@ -778,28 +858,42 @@ export function FaceAttendanceV2Client({
                     marginHeight={0}
                     marginWidth={0}
                     src={`https://www.openstreetmap.org/export/embed.html?bbox=${(gps.longitude - 0.0025).toFixed(5)},${(gps.latitude - 0.0025).toFixed(5)},${(gps.longitude + 0.0025).toFixed(5)},${(gps.latitude + 0.0025).toFixed(5)}&layer=mapnik&marker=${gps.latitude.toFixed(5)},${gps.longitude.toFixed(5)}`}
-                    className="h-full w-full filter contrast-105"
+                    className="h-full w-full contrast-105 filter"
                   />
-                  <div className="absolute top-2 left-2 rounded-xl bg-slate-900/90 px-3 py-1.5 text-[11px] font-black text-white backdrop-blur-md shadow-lg flex items-center gap-2 border border-white/20">
-                    <span className="size-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
-                    <span className="truncate max-w-[210px]">📍 {locationName || siteName}</span>
+                  <div className="absolute top-2 left-2 flex items-center gap-2 rounded-lg border border-white/20 bg-slate-900/90 px-3 py-1.5 text-[11px] font-semibold text-white shadow-lg">
+                    <span className="size-2 shrink-0 rounded-full bg-emerald-400" />
+                    <span className="max-w-[210px] truncate">📍 {locationName || siteName}</span>
                   </div>
                 </div>
               ) : (
-                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 relative h-60 flex flex-col items-center justify-center text-slate-400 text-xs font-bold gap-2">
+                <div className="relative flex h-32 flex-col items-center justify-center gap-2 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 text-xs font-semibold text-slate-400">
                   <Loader2 className="size-6 animate-spin text-[#005bb5]" />
                   <span>Memuat Peta Lokasi GPS...</span>
                 </div>
               )}
             </section>
 
-            {/* ─── ATTENDANCE ACTION BUTTONS ─── */}
-            <section className="space-y-3">
+            <section className="order-1 space-y-3">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <p className="text-sm font-bold text-slate-900">
+                  {lastEventType === 'checked-in'
+                    ? 'Anda sudah check-in'
+                    : 'Siap melakukan absensi'}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {lastEventType === 'checked-in'
+                    ? 'Gunakan Check out saat selesai bekerja.'
+                    : 'Pilih Check in untuk mulai bekerja atau Auto absensi.'}
+                </p>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
                   onClick={() => startFlow('checked-in')}
-                  className="flex items-center justify-center gap-2 min-h-14 rounded-2xl bg-gradient-to-r from-emerald-600 to-green-600 text-xs font-black text-white uppercase shadow-lg shadow-emerald-900/20 active:scale-[0.98] transition-all hover:brightness-110"
+                  className={cn(
+                    'flex min-h-14 items-center justify-center gap-2 rounded-xl text-xs font-bold text-white shadow-sm transition-transform active:scale-[0.98]',
+                    suggestedEventType === 'checked-in' ? 'bg-emerald-600' : 'bg-emerald-500'
+                  )}
                 >
                   <LogIn className="size-4" /> Check In
                 </button>
@@ -807,39 +901,30 @@ export function FaceAttendanceV2Client({
                 <button
                   type="button"
                   onClick={() => startFlow('checked-out')}
-                  className="flex items-center justify-center gap-2 min-h-14 rounded-2xl bg-gradient-to-r from-rose-600 to-red-600 text-xs font-black text-white uppercase shadow-lg shadow-rose-900/20 active:scale-[0.98] transition-all hover:brightness-110"
+                  className={cn(
+                    'flex min-h-14 items-center justify-center gap-2 rounded-xl text-xs font-bold text-white shadow-sm transition-transform active:scale-[0.98]',
+                    suggestedEventType === 'checked-out' ? 'bg-rose-600' : 'bg-rose-500'
+                  )}
                 >
                   <LogOut className="size-4" /> Check Out
                 </button>
               </div>
 
-              <button
-                type="button"
-                onClick={() => startFlow('auto')}
-                className="flex min-h-14 w-full items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-r from-[#005bb5] via-[#006bd6] to-[#0077e6] px-5 text-xs font-black text-white uppercase tracking-wider shadow-xl shadow-blue-950/40 active:scale-[0.98] transition-all hover:brightness-110"
-              >
-                <Zap className="size-5 animate-pulse text-amber-300" />
-                Auto Absensi (Kamera Realtime)
-              </button>
-
               <Link
                 href="/mobile/attendance/permission"
-                className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-white border border-slate-200 px-4 text-xs font-black text-[#003461] uppercase shadow-sm active:scale-[0.98] transition-all hover:bg-slate-50"
+                className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-[#003461] transition-transform hover:bg-slate-50 active:scale-[0.98]"
               >
-                <Upload className="size-4" /> Form Pengajuan Izin / Sakit
+                <Upload className="size-4" /> Ajukan izin atau sakit
               </Link>
             </section>
 
-            {/* ─── TODAY ATTENDANCE HISTORY WIDGET ─── */}
-            <section className="rounded-2xl bg-white p-4 shadow-sm border border-slate-200/80 space-y-3">
+            <section className="order-4 space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between border-b pb-2">
-                <p className="flex items-center gap-2 text-xs font-black text-slate-800 uppercase tracking-wider">
+                <p className="flex items-center gap-2 text-sm font-bold text-slate-800">
                   <History className="size-4 text-[#005bb5]" />
-                  Today Attendance Record
+                  Riwayat absensi hari ini
                 </p>
-                <span className="text-[10px] font-bold text-slate-400">
-                  {logs.length} Log Hari Ini
-                </span>
+                <span className="text-[10px] font-bold text-slate-400">{logs.length} catatan</span>
               </div>
 
               {logs.length > 0 ? (
@@ -847,13 +932,13 @@ export function FaceAttendanceV2Client({
                   {logs.slice(0, 4).map((log) => (
                     <article
                       key={log.id}
-                      className="rounded-xl bg-slate-50 p-3 border border-slate-100 flex items-center justify-between"
+                      className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 p-3"
                     >
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-2">
                           <span
                             className={cn(
-                              'text-[10px] font-black px-2 py-0.5 rounded-full uppercase',
+                              'rounded-full px-2 py-0.5 text-[10px] font-bold',
                               log.eventType === 'checked-in'
                                 ? 'bg-emerald-100 text-emerald-800'
                                 : 'bg-rose-100 text-rose-800'
@@ -861,39 +946,144 @@ export function FaceAttendanceV2Client({
                           >
                             {getEventLabel(log.eventType)}
                           </span>
-                          <span className="text-xs font-black text-slate-900 font-mono">
+                          <span className="font-mono text-xs font-bold text-slate-900">
                             {new Date(log.eventTime).toLocaleTimeString('id-ID', {
                               hour: '2-digit',
                               minute: '2-digit',
                               second: '2-digit',
                             })}{' '}
-                            WITA
                           </span>
                         </div>
                         {log.locationNote && (
-                          <p className="text-[11px] font-medium text-slate-500 truncate max-w-[200px]">
+                          <p className="max-w-[200px] truncate text-[11px] font-medium text-slate-500">
                             📍 {log.locationNote}
                           </p>
                         )}
                       </div>
 
                       {log.punctualityNote ? (
-                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-1 rounded border border-amber-200">
+                        <span className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700">
                           {log.punctualityNote}
                         </span>
                       ) : (
-                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded border border-emerald-200">
-                          ✓ Tepat Waktu
+                        <span className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700">
+                          Sesuai jadwal
                         </span>
                       )}
                     </article>
                   ))}
                 </div>
               ) : (
-                <p className="text-center py-4 text-xs font-bold text-slate-400">
+                <p className="py-4 text-center text-xs font-bold text-slate-400">
                   Belum ada catatan absensi hari ini.
                 </p>
               )}
+            </section>
+
+            <section className="order-5 space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="flex items-center gap-2 text-sm font-bold text-slate-800">
+                    <Calendar className="size-4 text-[#005bb5]" /> Jadwal roster saya
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    {rosterCalendar.timezone} · pilih tanggal untuk detail
+                  </p>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    aria-label="Bulan sebelumnya"
+                    onClick={() =>
+                      setCalendarMonth(
+                        (current) => new Date(current.getFullYear(), current.getMonth() - 1, 1)
+                      )
+                    }
+                    className="flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+                  >
+                    <ChevronLeft className="size-4" />
+                  </button>
+                  <span className="min-w-28 text-center text-xs font-bold text-slate-800 capitalize">
+                    {calendarMonth.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Bulan berikutnya"
+                    onClick={() =>
+                      setCalendarMonth(
+                        (current) => new Date(current.getFullYear(), current.getMonth() + 1, 1)
+                      )
+                    }
+                    className="flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+                  >
+                    <ChevronRight className="size-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-semibold text-slate-400">
+                {['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'].map((day) => (
+                  <span key={day}>{day}</span>
+                ))}
+              </div>
+              <div className="grid grid-cols-7 gap-1">
+                {calendarCells.map((cell, index) =>
+                  cell ? (
+                    <button
+                      key={cell.date}
+                      type="button"
+                      onClick={() => setSelectedRosterDate(cell.date)}
+                      className={cn(
+                        'min-h-12 rounded-lg border p-1 text-left transition-transform active:scale-95',
+                        cell.date === visibleRosterDate
+                          ? 'border-[#005bb5] ring-1 ring-[#005bb5]'
+                          : 'border-slate-100',
+                        cell.date === todayKey && cell.date !== visibleRosterDate
+                          ? 'bg-blue-50'
+                          : 'bg-white'
+                      )}
+                    >
+                      <span className="block text-[10px] font-bold text-slate-700">
+                        {cell.dayNumber}
+                      </span>
+                      <span
+                        className={cn(
+                          'mt-1 block truncate rounded px-1 py-0.5 text-[9px] font-bold',
+                          rosterTone(cell.roster?.code || '')
+                        )}
+                      >
+                        {rosterLabel(cell.roster?.code || '')}
+                      </span>
+                    </button>
+                  ) : (
+                    <span key={`empty-${index}`} className="min-h-12" />
+                  )
+                )}
+              </div>
+
+              <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                <p className="text-xs font-bold text-slate-800">
+                  {new Date(`${visibleRosterDate}T00:00:00`).toLocaleDateString('id-ID', {
+                    weekday: 'long',
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric',
+                  })}
+                </p>
+                <p className="mt-1 text-xs text-slate-600">
+                  {selectedRosterDay?.code === 'DS'
+                    ? 'Day Shift · 08:00–17:00'
+                    : selectedRosterDay?.code === 'NS'
+                      ? 'Night Shift · 18:00–06:00'
+                      : selectedRosterDay?.code === 'ST'
+                        ? 'Standby / On-call'
+                        : selectedRosterDay?.code === 'FB' || selectedRosterDay?.fieldBreak
+                          ? 'Field Break'
+                          : selectedRosterDay?.code === 'OFF' || selectedRosterDay?.code === 'LIBUR'
+                            ? 'Libur · tidak ada shift'
+                            : 'Belum ada roster'}
+                </p>
+              </div>
             </section>
           </>
         )}
@@ -910,12 +1100,14 @@ export function FaceAttendanceV2Client({
         {(flowState === 'scanning' || flowState === 'verifying') && (
           <div className="flex flex-1 flex-col items-center gap-4">
             {/* Mode banner */}
-            <div className={cn(
-              'w-full rounded-2xl px-4 py-2.5 text-center text-xs font-black uppercase tracking-wider shadow-sm',
-              flowState === 'verifying'
-                ? 'bg-violet-100 text-violet-800 border border-violet-200'
-                : 'bg-blue-50 text-[#005bb5] border border-blue-100'
-            )}>
+            <div
+              className={cn(
+                'w-full rounded-2xl px-4 py-2.5 text-center text-xs font-black tracking-wider uppercase shadow-sm',
+                flowState === 'verifying'
+                  ? 'border border-violet-200 bg-violet-100 text-violet-800'
+                  : 'border border-blue-100 bg-blue-50 text-[#005bb5]'
+              )}
+            >
               {flowState === 'verifying'
                 ? '⚡ Memverifikasi Wajah via Face Recog by Afi...'
                 : `🎯 Arahkan wajah ke kamera · Mode: ${selectedEventType === 'auto' ? 'Auto Absensi' : selectedEventType === 'checked-in' ? 'Check In' : 'Check Out'}`}
@@ -923,14 +1115,14 @@ export function FaceAttendanceV2Client({
 
             {/* Retry progress */}
             {retryCount > 0 && (
-              <div className="flex items-center gap-2 text-xs text-amber-700 font-bold bg-amber-50 px-3 py-1 rounded-full border border-amber-200">
+              <div className="flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">
                 <RefreshCw className="size-3.5 animate-spin" />
                 Percobaan {retryCount}/{MAX_AUTO_RETRY}...
               </div>
             )}
 
             {/* ─── LARGE CAMERA PREVIEW DISPLAY ─── */}
-            <div className="relative w-full max-w-md aspect-[3/4] min-h-[380px] overflow-hidden rounded-3xl bg-slate-950 shadow-2xl border-2 border-[#005bb5]">
+            <div className="relative aspect-[3/4] min-h-[380px] w-full max-w-md overflow-hidden rounded-3xl border-2 border-[#005bb5] bg-slate-950 shadow-2xl">
               <video
                 ref={(el) => {
                   videoRef.current = el
@@ -939,7 +1131,7 @@ export function FaceAttendanceV2Client({
                     el.play().catch(() => {})
                   }
                 }}
-                className="h-full w-full object-cover scale-x-[-1]"
+                className="h-full w-full scale-x-[-1] object-cover"
                 playsInline
                 muted
                 autoPlay
@@ -951,12 +1143,12 @@ export function FaceAttendanceV2Client({
               {/* Anti-Spoofing & Dynamic Liveness Status Badge */}
               <div
                 className={cn(
-                  'absolute top-3 left-3 rounded-full px-3 py-1 text-[10px] font-black backdrop-blur-md border flex items-center gap-1.5 shadow-lg transition-colors',
+                  'absolute top-3 left-3 flex items-center gap-1.5 rounded-full border px-3 py-1 text-[10px] font-black shadow-lg backdrop-blur-md transition-colors',
                   livenessStatus === 'photo-detected'
-                    ? 'bg-rose-950/90 text-rose-300 border-rose-500/50'
+                    ? 'border-rose-500/50 bg-rose-950/90 text-rose-300'
                     : livenessStatus === 'live-confirmed'
-                      ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500/50'
-                      : 'bg-amber-950/90 text-amber-300 border-amber-500/50'
+                      ? 'border-emerald-500/50 bg-emerald-950/90 text-emerald-300'
+                      : 'border-amber-500/50 bg-amber-950/90 text-amber-300'
                 )}
               >
                 <ShieldCheck
@@ -965,8 +1157,8 @@ export function FaceAttendanceV2Client({
                     livenessStatus === 'photo-detected'
                       ? 'text-rose-400'
                       : livenessStatus === 'live-confirmed'
-                        ? 'text-emerald-400 animate-pulse'
-                        : 'text-amber-400 animate-spin'
+                        ? 'animate-pulse text-emerald-400'
+                        : 'animate-spin text-amber-400'
                   )}
                 />
                 <span>
@@ -980,20 +1172,24 @@ export function FaceAttendanceV2Client({
 
               {/* Large Oval Target Guide */}
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                <div className={cn(
-                  'h-[65%] w-[60%] rounded-[50%] border-4 border-dashed transition-colors duration-300',
-                  flowState === 'verifying'
-                    ? 'border-violet-400 shadow-[0_0_30px_rgba(139,92,246,0.6)]'
-                    : 'border-sky-400/90 shadow-[0_0_30px_rgba(0,149,255,0.4)] animate-pulse'
-                )} />
+                <div
+                  className={cn(
+                    'h-[65%] w-[60%] rounded-[50%] border-4 border-dashed transition-colors duration-300',
+                    flowState === 'verifying'
+                      ? 'border-violet-400 shadow-[0_0_30px_rgba(139,92,246,0.6)]'
+                      : 'animate-pulse border-sky-400/90 shadow-[0_0_30px_rgba(0,149,255,0.4)]'
+                  )}
+                />
               </div>
 
               {/* Verifying overlay */}
               {flowState === 'verifying' && (
-                <div className="absolute inset-0 bg-violet-900/30 backdrop-blur-[2px] flex items-center justify-center">
-                  <div className="bg-white/95 rounded-2xl px-5 py-3.5 flex items-center gap-3 shadow-2xl">
+                <div className="absolute inset-0 flex items-center justify-center bg-violet-900/30 backdrop-blur-[2px]">
+                  <div className="flex items-center gap-3 rounded-2xl bg-white/95 px-5 py-3.5 shadow-2xl">
                     <Loader2 className="size-5 animate-spin text-[#005bb5]" />
-                    <span className="text-xs font-black text-[#003461]">Mencocokkan Biometrik...</span>
+                    <span className="text-xs font-black text-[#003461]">
+                      Mencocokkan Biometrik...
+                    </span>
                   </div>
                 </div>
               )}
@@ -1007,7 +1203,7 @@ export function FaceAttendanceV2Client({
               type="button"
               onClick={runRecognitionLoop}
               disabled={flowState === 'verifying'}
-              className="flex min-h-14 w-full max-w-md items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-r from-[#005bb5] via-[#006bd6] to-[#0077e6] px-5 text-sm font-black text-white uppercase tracking-wider shadow-xl shadow-blue-900/30 active:scale-[0.98] transition-all hover:brightness-110 disabled:opacity-75"
+              className="flex min-h-14 w-full max-w-md items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-r from-[#005bb5] via-[#006bd6] to-[#0077e6] px-5 text-sm font-black tracking-wider text-white uppercase shadow-xl shadow-blue-900/30 transition-all hover:brightness-110 active:scale-[0.98] disabled:opacity-75"
             >
               {flowState === 'verifying' ? (
                 <>
@@ -1016,7 +1212,7 @@ export function FaceAttendanceV2Client({
                 </>
               ) : (
                 <>
-                  <ScanFace className="size-5 text-sky-200 animate-pulse" />
+                  <ScanFace className="size-5 animate-pulse text-sky-200" />
                   Verifikasi Wajah Sekarang
                 </>
               )}
@@ -1037,10 +1233,10 @@ export function FaceAttendanceV2Client({
         {flowState === 'success' && successRecord && (
           <div className="flex flex-1 flex-col items-center justify-center gap-4 py-8 text-center">
             <div className="relative">
-              <div className="size-20 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 shadow-lg">
+              <div className="flex size-20 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 shadow-lg">
                 <CheckCircle2 className="size-12" />
               </div>
-              <div className="absolute -bottom-1 -right-1 size-8 rounded-full bg-[#005bb5] flex items-center justify-center text-white shadow-md">
+              <div className="absolute -right-1 -bottom-1 flex size-8 items-center justify-center rounded-full bg-[#005bb5] text-white shadow-md">
                 <Zap className="size-4" />
               </div>
             </div>
@@ -1049,25 +1245,32 @@ export function FaceAttendanceV2Client({
               <h2 className="text-xl font-black text-slate-900">
                 Selamat Datang, {successEmployee?.name || employeeName}!
               </h2>
-              <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider">
+              <p className="text-xs font-bold tracking-wider text-emerald-600 uppercase">
                 ✓ Absensi {getEventLabel(resolvedEventType || successRecord.eventType)} Berhasil
               </p>
             </div>
 
-            <div className="w-full max-w-sm rounded-2xl bg-white p-4 shadow-sm border border-slate-200 space-y-2 text-xs text-left">
+            <div className="w-full max-w-sm space-y-2 rounded-2xl border border-slate-200 bg-white p-4 text-left text-xs shadow-sm">
               <div className="flex items-center justify-between border-b pb-2">
                 <span className="font-bold text-slate-400">SN Karyawan</span>
-                <span className="font-mono font-black text-slate-800">{successEmployee?.employeeSn || employeeSn}</span>
+                <span className="font-mono font-black text-slate-800">
+                  {successEmployee?.employeeSn || employeeSn}
+                </span>
               </div>
               <div className="flex items-center justify-between border-b pb-2">
                 <span className="font-bold text-slate-400">Waktu Absensi</span>
                 <span className="font-mono font-black text-slate-800">
-                  {new Date(successRecord.eventTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} WITA
+                  {new Date(successRecord.eventTime).toLocaleTimeString('id-ID', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                  })}{' '}
+                  WITA
                 </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="font-bold text-slate-400">Status Kehadiran</span>
-                <span className="font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                <span className="rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-black text-emerald-700">
                   {successPunctuality?.note || '✓ Tepat Waktu (Sesuai Roster)'}
                 </span>
               </div>
@@ -1086,16 +1289,18 @@ export function FaceAttendanceV2Client({
         {/* ─── FAILED / ERROR STATE ─── */}
         {(flowState === 'failed' || flowState === 'error' || flowState === 'not-registered') && (
           <div className="flex flex-1 flex-col items-center justify-center gap-4 py-8 text-center">
-            <div className="size-16 rounded-full bg-rose-100 flex items-center justify-center text-rose-600">
+            <div className="flex size-16 items-center justify-center rounded-full bg-rose-100 text-rose-600">
               <AlertCircle className="size-9" />
             </div>
 
             <div className="space-y-1">
-              <h2 className="text-base font-black text-slate-900">Verifikasi Wajah Belum Berhasil</h2>
-              <p className="text-xs font-medium text-slate-600 max-w-xs mx-auto">{errorMessage}</p>
+              <h2 className="text-base font-black text-slate-900">
+                Verifikasi Wajah Belum Berhasil
+              </h2>
+              <p className="mx-auto max-w-xs text-xs font-medium text-slate-600">{errorMessage}</p>
             </div>
 
-            <div className="flex flex-col gap-2.5 w-full max-w-sm">
+            <div className="flex w-full max-w-sm flex-col gap-2.5">
               <button
                 type="button"
                 onClick={() => startFlow(selectedEventType)}
@@ -1118,7 +1323,7 @@ export function FaceAttendanceV2Client({
       {/* ─── HISTORY REGISTRASI MODAL POPUP ─── */}
       {showHistoryModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl space-y-4">
+          <div className="w-full max-w-sm space-y-4 rounded-2xl bg-white p-5 shadow-2xl">
             <div className="flex items-center justify-between border-b pb-3">
               <div className="flex items-center gap-2">
                 <History className="size-5 text-[#005bb5]" />
@@ -1127,27 +1332,29 @@ export function FaceAttendanceV2Client({
               <button
                 type="button"
                 onClick={() => setShowHistoryModal(false)}
-                className="size-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
+                className="flex size-7 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
               >
                 <X className="size-4" />
               </button>
             </div>
 
             <div className="space-y-2.5 text-xs">
-              <div className="rounded-xl bg-slate-50 p-3 border space-y-1">
+              <div className="space-y-1 rounded-xl border bg-slate-50 p-3">
                 <p className="text-[10px] font-bold text-slate-400 uppercase">Informasi Karyawan</p>
                 <p className="font-bold text-slate-900">{employeeName}</p>
-                <p className="text-slate-500 font-mono">SN: {employeeSn}</p>
+                <p className="font-mono text-slate-500">SN: {employeeSn}</p>
               </div>
 
-              <div className="rounded-xl bg-slate-50 p-3 border space-y-1">
+              <div className="space-y-1 rounded-xl border bg-slate-50 p-3">
                 <p className="text-[10px] font-bold text-slate-400 uppercase">Engine Biometrik</p>
                 <p className="font-bold text-[#005bb5]">Face Recog by Afi (ArcFace V2)</p>
-                <p className="text-slate-500 font-mono text-[11px]">Face ID: emp-{employeeSn}</p>
+                <p className="font-mono text-[11px] text-slate-500">Face ID: emp-{employeeSn}</p>
               </div>
 
-              <div className="rounded-xl bg-slate-50 p-3 border space-y-1">
-                <p className="text-[10px] font-bold text-slate-400 uppercase">Status & Tanggal Registrasi</p>
+              <div className="space-y-1 rounded-xl border bg-slate-50 p-3">
+                <p className="text-[10px] font-bold text-slate-400 uppercase">
+                  Status & Tanggal Registrasi
+                </p>
                 {isRegistered ? (
                   <div className="flex items-center gap-1.5 font-bold text-emerald-700">
                     <CheckCircle2 className="size-4" />

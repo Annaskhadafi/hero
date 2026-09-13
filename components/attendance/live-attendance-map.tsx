@@ -23,11 +23,17 @@ import { getLiveAttendanceMapData, getSitesForMap } from '@/app/actions/attendan
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
-const LiveAttendanceLeaflet = dynamic(() => import('./live-attendance-leaflet'), { 
+const LiveAttendanceLeaflet = dynamic(() => import('./live-attendance-leaflet'), {
   ssr: false,
-  loading: () => <div className="size-full animate-pulse bg-[#dceae6]" />
+  loading: () => <div className="size-full animate-pulse bg-[#dceae6]" />,
 })
 
 type LiveAttendanceRecord = {
@@ -70,7 +76,7 @@ type MapCenter = { latitude: number; longitude: number }
 
 function formatTime(value: string) {
   return new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit' }).format(
-    new Date(value),
+    new Date(value)
   )
 }
 
@@ -125,10 +131,9 @@ function latestByEmployee(records: LiveAttendanceRecord[]) {
 }
 
 function getRadiusInfo(record: LiveAttendanceRecord) {
-  const accuracyMatch = record.locationNote.match(/(\d+)\s*m\s*accuracy/i)
   return {
-    meters: accuracyMatch ? Number(accuracyMatch[1]) : record.siteRadiusMeters,
-    label: accuracyMatch ? 'Akurasi GPS' : 'Radius validasi site',
+    meters: record.siteRadiusMeters,
+    label: 'Radius validasi site',
   }
 }
 
@@ -181,28 +186,34 @@ export function LiveAttendanceMap({ initialData }: Props) {
   const handleAddManualSite = (siteIdStr: string) => {
     const siteId = Number(siteIdStr)
     const existingMapSites = data.success && (data as any).sites ? (data as any).sites : []
-    
-    if (manualSites.some(s => s.id === siteId) || existingMapSites.some((s: any) => s.id === siteId)) {
+
+    if (
+      manualSites.some((s) => s.id === siteId) ||
+      existingMapSites.some((s: any) => s.id === siteId)
+    ) {
       return // Already on map
     }
-    
-    const site = allSites.find(s => s.id === siteId)
+
+    const site = allSites.find((s) => s.id === siteId)
     if (site) {
-      setManualSites(prev => [...prev, {
-        id: site.id,
-        name: site.name,
-        latitude: Number(site.geoLatitude) || -2.5,
-        longitude: Number(site.geoLongitude) || 118,
-        radiusMeters: site.geoRadiusMeters || 500,
-      }])
+      setManualSites((prev) => [
+        ...prev,
+        {
+          id: site.id,
+          name: site.name,
+          latitude: Number(site.geoLatitude) || -2.5,
+          longitude: Number(site.geoLongitude) || 118,
+          radiusMeters: site.geoRadiusMeters || 500,
+        },
+      ])
     }
   }
 
   const mergedSites = useMemo(() => {
     const mapSites = data.success && (data as any).sites ? (data as any).sites : []
     const combined = [...mapSites]
-    manualSites.forEach(ms => {
-      if (!combined.some(cs => cs.id === ms.id)) {
+    manualSites.forEach((ms) => {
+      if (!combined.some((cs) => cs.id === ms.id)) {
         combined.push(ms)
       }
     })
@@ -224,7 +235,8 @@ export function LiveAttendanceMap({ initialData }: Props) {
       return matchesQuery && matchesStatus
     })
   }, [latestRecords, query, statusFilter])
-  const selected = visibleRecords.find((record) => record.employeeId === selectedId) ?? visibleRecords[0]
+  const selected =
+    visibleRecords.find((record) => record.employeeId === selectedId) ?? visibleRecords[0]
   const liveCount = latestRecords.filter(statusIsLive).length
   const locationsCount = latestRecords.filter(hasValidCoordinates).length
   const scopeLabel = data.success && data.scope === 'global' ? 'Semua site' : 'Site Anda'
@@ -234,7 +246,7 @@ export function LiveAttendanceMap({ initialData }: Props) {
       <section className="overflow-hidden rounded-[1.25rem] border border-[#cfe3df] bg-[#f5fbf9]">
         <div className="flex flex-col gap-4 p-5 lg:flex-row lg:items-end lg:justify-between lg:p-7">
           <div>
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#16736d]">
+            <div className="flex items-center gap-2 text-xs font-semibold tracking-[0.18em] text-[#16736d] uppercase">
               <span className="inline-flex size-2 rounded-full bg-[#25b88f] shadow-[0_0_0_5px_rgba(37,184,143,0.14)]" />
               Live Operations
             </div>
@@ -242,11 +254,11 @@ export function LiveAttendanceMap({ initialData }: Props) {
               Live Map Attendance
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[#557b7b]">
-              Pantau aktivitas attendance berbasis GPS dari user yang sedang bekerja di site.
-              Data diperbarui otomatis setiap 30 detik.
+              Pantau aktivitas attendance berbasis GPS dari user yang sedang bekerja di site. Data
+              diperbarui otomatis setiap 30 detik.
             </p>
           </div>
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
             <div className="flex items-center gap-2">
               <Badge className="h-9 rounded-full border border-[#b7e3d4] bg-[#e8faf3] px-3 text-[#0e7b66]">
                 <Wifi className="mr-1.5 size-3.5" /> Live {scopeLabel}
@@ -261,12 +273,12 @@ export function LiveAttendanceMap({ initialData }: Props) {
                 Refresh
               </Button>
             </div>
-            
+
             <div className="flex items-center gap-1 rounded-full border border-[#cfe3df] bg-white p-1 shadow-sm">
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-7 rounded-full hover:bg-[#edf6f3] text-[#0a4f51]"
+                className="size-7 rounded-full text-[#0a4f51] hover:bg-[#edf6f3]"
                 onClick={handlePrevDay}
                 disabled={refreshing}
               >
@@ -275,15 +287,15 @@ export function LiveAttendanceMap({ initialData }: Props) {
               <div className="flex items-center gap-2 px-3 text-sm font-semibold text-[#0a4f51]">
                 <Calendar className="size-4 text-[#6b8d8d]" />
                 <span className="min-w-[120px] text-center">
-                  {isSameDay(targetDate, new Date()) 
-                    ? 'Hari Ini' 
+                  {isSameDay(targetDate, new Date())
+                    ? 'Hari Ini'
                     : format(targetDate, 'dd MMM yyyy', { locale: id })}
                 </span>
               </div>
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-7 rounded-full hover:bg-[#edf6f3] text-[#0a4f51]"
+                className="size-7 rounded-full text-[#0a4f51] hover:bg-[#edf6f3]"
                 onClick={handleNextDay}
                 disabled={refreshing || isSameDay(targetDate, new Date())}
               >
@@ -295,14 +307,26 @@ export function LiveAttendanceMap({ initialData }: Props) {
         <div className="grid border-t border-[#d8ebe7] sm:grid-cols-3">
           {[
             { label: 'Aktif sekarang', value: liveCount, icon: Activity, tone: 'text-[#087f63]' },
-            { label: 'User terpantau', value: latestRecords.length, icon: Users, tone: 'text-[#2563a6]' },
+            {
+              label: 'User terpantau',
+              value: latestRecords.length,
+              icon: Users,
+              tone: 'text-[#2563a6]',
+            },
             { label: 'Lokasi GPS', value: locationsCount, icon: MapPin, tone: 'text-[#c57916]' },
           ].map((item) => (
-            <div key={item.label} className="flex items-center gap-3 border-[#d8ebe7] px-5 py-4 sm:border-r last:border-r-0">
+            <div
+              key={item.label}
+              className="flex items-center gap-3 border-[#d8ebe7] px-5 py-4 last:border-r-0 sm:border-r"
+            >
               <item.icon className={`size-5 ${item.tone}`} />
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#6b8d8d]">{item.label}</p>
-                <p className="mt-0.5 text-2xl font-semibold tracking-tight text-[#0a4f51]">{item.value}</p>
+                <p className="text-[11px] font-semibold tracking-[0.16em] text-[#6b8d8d] uppercase">
+                  {item.label}
+                </p>
+                <p className="mt-0.5 text-2xl font-semibold tracking-tight text-[#0a4f51]">
+                  {item.value}
+                </p>
               </div>
             </div>
           ))}
@@ -312,7 +336,9 @@ export function LiveAttendanceMap({ initialData }: Props) {
       {!data.success ? (
         <section className="rounded-[1.25rem] border border-amber-200 bg-amber-50 p-8 text-center">
           <ShieldCheck className="mx-auto size-8 text-amber-700" />
-          <h2 className="mt-3 text-lg font-semibold text-amber-950">Akses Live Map belum tersedia</h2>
+          <h2 className="mt-3 text-lg font-semibold text-amber-950">
+            Akses Live Map belum tersedia
+          </h2>
           <p className="mx-auto mt-1 max-w-md text-sm text-amber-800">
             Hubungi administrator untuk mengaktifkan permission Live Map Attendance.
           </p>
@@ -323,7 +349,9 @@ export function LiveAttendanceMap({ initialData }: Props) {
             <div className="flex flex-col gap-3 border-b border-[#d8ebe7] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-sm font-semibold text-[#0a4f51]">Peta Indonesia</p>
-                <p className="mt-0.5 text-xs text-[#6b8d8d]">Marker menunjukkan aktivitas terbaru setiap user.</p>
+                <p className="mt-0.5 text-xs text-[#6b8d8d]">
+                  Marker menunjukkan aktivitas terbaru setiap user.
+                </p>
               </div>
               <div className="flex items-center gap-2 text-xs text-[#6b8d8d]">
                 <Select onOpenChange={loadAllSites} onValueChange={handleAddManualSite}>
@@ -332,9 +360,11 @@ export function LiveAttendanceMap({ initialData }: Props) {
                   </SelectTrigger>
                   <SelectContent>
                     {allSites.length === 0 ? (
-                      <div className="p-2 text-center text-xs text-muted-foreground">Memuat site...</div>
+                      <div className="text-muted-foreground p-2 text-center text-xs">
+                        Memuat site...
+                      </div>
                     ) : (
-                      allSites.map(site => (
+                      allSites.map((site) => (
                         <SelectItem key={site.id} value={site.id.toString()}>
                           {site.name}
                         </SelectItem>
@@ -342,9 +372,9 @@ export function LiveAttendanceMap({ initialData }: Props) {
                     )}
                   </SelectContent>
                 </Select>
-                
                 <span className="ml-2 inline-flex size-2 rounded-full bg-[#25b88f]" /> Aktif
-                <span className="ml-2 inline-flex size-2 rounded-full bg-[#95a9b2]" /> Selesai / offline
+                <span className="ml-2 inline-flex size-2 rounded-full bg-[#95a9b2]" /> Selesai /
+                offline
               </div>
             </div>
             <div className="relative aspect-[1.55] min-h-[420px] overflow-hidden bg-[#dceae6]">
@@ -353,7 +383,6 @@ export function LiveAttendanceMap({ initialData }: Props) {
                 selectedId={selectedId}
                 setSelectedId={setSelectedId}
                 statusIsLive={statusIsLive}
-                getRadiusInfo={getRadiusInfo}
                 formatTime={formatTime}
                 sites={mergedSites}
                 refresh={refresh}
@@ -395,13 +424,17 @@ export function LiveAttendanceMap({ initialData }: Props) {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-semibold text-[#0a4f51]">Aktivitas terbaru</p>
-                  <p className="mt-0.5 text-xs text-[#6b8d8d]">{visibleRecords.length} user dalam tampilan</p>
+                  <p className="mt-0.5 text-xs text-[#6b8d8d]">
+                    {visibleRecords.length} user dalam tampilan
+                  </p>
                 </div>
                 <Crosshair className="size-5 text-[#10a77f]" />
               </div>
               <div className="mt-3 max-h-[430px] space-y-2 overflow-y-auto pr-1">
                 {visibleRecords.length === 0 ? (
-                  <div className="rounded-lg bg-[#f7fbfa] p-5 text-center text-sm text-[#6b8d8d]">Belum ada aktivitas GPS.</div>
+                  <div className="rounded-lg bg-[#f7fbfa] p-5 text-center text-sm text-[#6b8d8d]">
+                    Belum ada aktivitas GPS.
+                  </div>
                 ) : (
                   visibleRecords.map((record) => {
                     const active = statusIsLive(record)
@@ -414,10 +447,16 @@ export function LiveAttendanceMap({ initialData }: Props) {
                         onClick={() => setSelectedId(record.employeeId)}
                       >
                         <div className="flex items-start gap-3">
-                          <span className={`mt-1 size-2.5 shrink-0 rounded-full ${active ? 'bg-[#10a77f]' : 'bg-[#95a9b2]'}`} />
+                          <span
+                            className={`mt-1 size-2.5 shrink-0 rounded-full ${active ? 'bg-[#10a77f]' : 'bg-[#95a9b2]'}`}
+                          />
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-semibold text-[#0a4f51]">{record.employeeName}</span>
-                            <span className="mt-0.5 block truncate text-xs text-[#6b8d8d]">{record.siteName} · {record.employeeJobTitle || 'Employee'}</span>
+                            <span className="block truncate text-sm font-semibold text-[#0a4f51]">
+                              {record.employeeName}
+                            </span>
+                            <span className="mt-0.5 block truncate text-xs text-[#6b8d8d]">
+                              {record.siteName} · {record.employeeJobTitle || 'Employee'}
+                            </span>
                           </span>
                           <span className="flex items-center gap-1 text-[11px] font-semibold text-[#6b8d8d]">
                             <Clock3 className="size-3.5" /> {formatTime(record.eventTime)}
@@ -434,20 +473,50 @@ export function LiveAttendanceMap({ initialData }: Props) {
               <div className="rounded-[1.25rem] border border-[#b7e3d4] bg-[#eaf9f3] p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#19846d]">Detail marker</p>
-                    <p className="mt-1 text-base font-semibold text-[#0a4f51]">{selected.employeeName}</p>
-                    <p className="text-xs text-[#557b7b]">{selected.employeeJobTitle || 'Employee'} · {selected.siteName}</p>
+                    <p className="text-[11px] font-semibold tracking-[0.16em] text-[#19846d] uppercase">
+                      Detail marker
+                    </p>
+                    <p className="mt-1 text-base font-semibold text-[#0a4f51]">
+                      {selected.employeeName}
+                    </p>
+                    <p className="text-xs text-[#557b7b]">
+                      {selected.employeeJobTitle || 'Employee'} · {selected.siteName}
+                    </p>
                   </div>
-                  <Badge className={statusIsLive(selected) ? 'bg-[#10a77f] text-white' : 'bg-[#dbe6e8] text-[#557078]'}>
+                  <Badge
+                    className={
+                      statusIsLive(selected)
+                        ? 'bg-[#10a77f] text-white'
+                        : 'bg-[#dbe6e8] text-[#557078]'
+                    }
+                  >
                     {statusIsLive(selected) ? 'Aktif' : 'Selesai'}
                   </Badge>
                 </div>
                 <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
-                  <div className="rounded-lg bg-white/70 p-3"><span className="block text-[#6b8d8d]">Event terakhir</span><strong className="mt-1 block text-[#0a4f51]">{formatDate(selected.eventTime)}</strong></div>
-                  <div className="rounded-lg bg-white/70 p-3"><span className="block text-[#6b8d8d]">{getRadiusInfo(selected).label}</span><strong className="mt-1 block text-[#0a4f51]">{getRadiusInfo(selected).meters} m</strong></div>
+                  <div className="rounded-lg bg-white/70 p-3">
+                    <span className="block text-[#6b8d8d]">Event terakhir</span>
+                    <strong className="mt-1 block text-[#0a4f51]">
+                      {formatDate(selected.eventTime)}
+                    </strong>
+                  </div>
+                  <div className="rounded-lg bg-white/70 p-3">
+                    <span className="block text-[#6b8d8d]">{getRadiusInfo(selected).label}</span>
+                    <strong className="mt-1 block text-[#0a4f51]">
+                      {getRadiusInfo(selected).meters} m
+                    </strong>
+                  </div>
                 </div>
-                <p className="mt-3 flex items-start gap-2 text-xs leading-5 text-[#557b7b]"><MapPin className="mt-0.5 size-3.5 shrink-0 text-[#10a77f]" />{hasValidCoordinates(selected) ? `${selected.latitude}, ${selected.longitude}` : 'Koordinat GPS belum valid'}</p>
-                <p className="mt-1 flex items-start gap-2 text-xs leading-5 text-[#557b7b]"><ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-[#10a77f]" />{selected.locationNote || selected.siteLocation || 'Lokasi attendance tersimpan.'}</p>
+                <p className="mt-3 flex items-start gap-2 text-xs leading-5 text-[#557b7b]">
+                  <MapPin className="mt-0.5 size-3.5 shrink-0 text-[#10a77f]" />
+                  {hasValidCoordinates(selected)
+                    ? `${selected.latitude}, ${selected.longitude}`
+                    : 'Koordinat GPS belum valid'}
+                </p>
+                <p className="mt-1 flex items-start gap-2 text-xs leading-5 text-[#557b7b]">
+                  <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-[#10a77f]" />
+                  {selected.locationNote || selected.siteLocation || 'Lokasi attendance tersimpan.'}
+                </p>
               </div>
             ) : null}
           </div>

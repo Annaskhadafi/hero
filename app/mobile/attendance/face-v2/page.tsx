@@ -37,6 +37,7 @@ export default async function FaceAttendanceV2Page() {
       lastEventTime={lastEventTime}
       shiftOptions={data.shiftOptions || []}
       todayLogs={logs}
+      rosterCalendar={data.rosterCalendar}
     />
   )
 }
