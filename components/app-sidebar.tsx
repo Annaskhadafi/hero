@@ -356,7 +356,7 @@ export function AppSidebar({
     >
       <SidebarHeader className="px-3 pb-3 pt-4 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-2">
         <div className="rounded-2xl border border-sidebar-border/80 bg-white px-3 py-3 shadow-sm group-data-[collapsible=icon]:px-2">
-          <Link href="/" aria-label="HERO" className="flex w-full items-center gap-3 group-data-[collapsible=icon]:justify-center">
+          <Link href="/dashboard/analytics" aria-label="HERO" className="flex w-full items-center gap-3 group-data-[collapsible=icon]:justify-center">
             <Image
               src="/logo-hero.png"
               alt="HERO"

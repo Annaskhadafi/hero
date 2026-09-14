@@ -597,6 +597,12 @@ const saveScheduleV2Schema = scheduleV2KeySchema.extend({
   rows: z.array(scheduleV2RowSchema),
 })
 
+const updateScheduleV2CellSchema = scheduleV2KeySchema.extend({
+  employeeId: z.number().int().positive(),
+  day: z.number().int().positive(),
+  code: scheduleV2CodeSchema,
+})
+
 async function getActiveScheduleEmployees(siteId: number) {
   const rows = await db
     .select({ id: employees.id, section: employees.section, role: employees.role })
@@ -952,6 +958,80 @@ export async function saveSchedulingTimesheetPlanV2DraftAction(
     entityType: 'timesheet_scheduling_v2',
     entityLabel: `${payload.siteId}:${payload.period}`,
     description: `Saved manual scheduling V2 draft (${draftRows.length} rows).`,
+  })
+  revalidateSchedulingV2Paths()
+  return { ok: true, updatedAt: now.toISOString() }
+}
+
+export async function updateSchedulingTimesheetPlanV2CellAction(
+  input: z.infer<typeof updateScheduleV2CellSchema>
+) {
+  const payload = updateScheduleV2CellSchema.parse(input)
+  await assertSchedulingSiteScope(payload.siteId, 'edit', 'scheduling_timesheet_attendance')
+  await ensureSchedulingTimesheetTables()
+  await assertSchedulingPeriodOpen(payload.siteId, payload.period)
+  const actorEmail = await getCurrentActorEmail()
+  const actorUserId = await getCurrentActorUserId(actorEmail)
+  const now = new Date()
+
+  await db.transaction(async (tx) => {
+    const [plan] = await tx
+      .select({
+        status: timesheetSchedulingPlansV2.status,
+        draftSchedule: timesheetSchedulingPlansV2.draftSchedule,
+        activeSchedule: timesheetSchedulingPlansV2.activeSchedule,
+      })
+      .from(timesheetSchedulingPlansV2)
+      .where(
+        and(
+          eq(timesheetSchedulingPlansV2.siteId, payload.siteId),
+          eq(timesheetSchedulingPlansV2.period, payload.period)
+        )
+      )
+      .limit(1)
+    if (!plan) throw new Error('Schedule V2 tidak ditemukan.')
+    if (payload.day > getScheduleV2DayCount(payload.period)) {
+      throw new Error('Tanggal roster di luar periode.')
+    }
+
+    const updateRows = (rows: ScheduleV2Row[]) =>
+      rows.map((row) =>
+        row.employeeId === payload.employeeId
+          ? {
+              ...row,
+              schedule: row.schedule.map((code, index) =>
+                index + 1 === payload.day ? payload.code : code
+              ),
+            }
+          : row
+      )
+    const draftSchedule = updateRows((plan.draftSchedule ?? []) as ScheduleV2Row[])
+    const activeSchedule = updateRows((plan.activeSchedule ?? []) as ScheduleV2Row[])
+    if (!draftSchedule.some((row) => row.employeeId === payload.employeeId)) {
+      throw new Error('Employee tidak ditemukan pada roster periode ini.')
+    }
+    await tx
+      .update(timesheetSchedulingPlansV2)
+      .set({
+        draftSchedule,
+        ...(plan.status === 'active' ? { activeSchedule } : {}),
+        updatedByUserId: actorUserId,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(timesheetSchedulingPlansV2.siteId, payload.siteId),
+          eq(timesheetSchedulingPlansV2.period, payload.period)
+        )
+      )
+  })
+
+  await logAuditEvent({
+    actorEmail,
+    action: 'timesheet.schedule_v2_cell_updated',
+    entityType: 'timesheet_scheduling_v2',
+    entityLabel: `${payload.siteId}:${payload.period}:${payload.employeeId}:${payload.day}`,
+    description: `Updated roster cell for employee ${payload.employeeId}, day ${payload.day} to ${payload.code || 'EMPTY'}.`,
   })
   revalidateSchedulingV2Paths()
   return { ok: true, updatedAt: now.toISOString() }

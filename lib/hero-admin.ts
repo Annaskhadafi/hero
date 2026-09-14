@@ -7906,13 +7906,21 @@ export const getSidebarDataForUser = cache(async function getSidebarDataForUser(
 })
 
 export const getEmployeeDisplayDataByEmail = cache(async function getEmployeeDisplayDataByEmail(
-  email: string
+  email: string,
+  authUserId?: string | null
 ) {
   try {
     return await withDbRetry(async () => {
       await ensureHeroGovernanceSeedData()
 
       const normalizedEmail = (email || '').trim().toLowerCase()
+      const identityPriority = authUserId
+        ? sql`case when ${employees.authUserId} = ${authUserId} then 2 else 0 end`
+        : sql`0`
+      const exactEmailPriority = sql`case
+        when lower(${employees.email}) = ${normalizedEmail}
+          or lower(${authUser.email}) = ${normalizedEmail}
+        then 1 else 0 end`
       const [employee] = await db
         .select({
           id: employees.id,
@@ -7936,6 +7944,13 @@ export const getEmployeeDisplayDataByEmail = cache(async function getEmployeeDis
             sql`lower(${authUser.email}) = ${normalizedEmail}`,
             sql`lower(${employees.name}) ILIKE ${'%' + normalizedEmail.split('@')[0] + '%'}`
           )
+        )
+        .orderBy(
+          desc(identityPriority),
+          desc(exactEmailPriority),
+          desc(employees.isActive),
+          desc(sql`case when lower(${employees.employmentStatus}) = 'active' then 1 else 0 end`),
+          asc(employees.id)
         )
         .limit(1)
 

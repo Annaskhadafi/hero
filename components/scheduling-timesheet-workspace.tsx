@@ -38,11 +38,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -79,6 +75,7 @@ import {
   logClientActionAction,
   saveSchedulingConfigAction,
   saveSchedulingTimesheetPlanAction,
+  updateSchedulingTimesheetPlanV2CellAction,
   saveTimesheetFieldBreakPlansAction,
   saveTimesheetPayrollSnapshotAction,
   submitSchedulingPeriodForReviewAction,
@@ -575,7 +572,17 @@ const defaultSiteConfig: SiteSchedulingConfig = {
   employeeBenefitConfig: DEFAULT_EMPLOYEE_BENEFIT_CONFIG,
   quotationBillingConfig: DEFAULT_QUOTATION_BILLING_STATUS_CONFIG,
   overtimeConfig: normalizeSiteOvertimeConfig(null),
-  pdfConfig: { preparedBy: '', pjoLeader: '', pjoLeaderCk: '', approvedBy: '', hrName: '', externalPreparedBy: '', externalApprovedBy: '', customSigners: [], logoUrl: '' },
+  pdfConfig: {
+    preparedBy: '',
+    pjoLeader: '',
+    pjoLeaderCk: '',
+    approvedBy: '',
+    hrName: '',
+    externalPreparedBy: '',
+    externalApprovedBy: '',
+    customSigners: [],
+    logoUrl: '',
+  },
 }
 
 function serializeSiteConfig(config: SiteSchedulingConfig) {
@@ -741,8 +748,7 @@ function buildSiteSchedulingConfig(
           (fieldBreakConfig.defaultClockOut as string | undefined) ??
           '17:00',
         nightShiftClockIn: (fieldBreakConfig.nightShiftClockIn as string | undefined) ?? '18:00',
-        nightShiftClockOut:
-          (fieldBreakConfig.nightShiftClockOut as string | undefined) ?? '06:00',
+        nightShiftClockOut: (fieldBreakConfig.nightShiftClockOut as string | undefined) ?? '06:00',
         day6WorkingTimeEnabled: Boolean(fieldBreakConfig.day6WorkingTimeEnabled ?? false),
         day6DayShiftClockIn:
           (fieldBreakConfig.day6DayShiftClockIn as string | undefined) ?? '08:00',
@@ -763,8 +769,7 @@ function buildSiteSchedulingConfig(
           (fieldBreakConfig.day7NightShiftClockOut as string | undefined) ?? '02:00',
         defaultEarlyOvertimeHours:
           (fieldBreakConfig.defaultEarlyOvertimeHours as number | undefined) ?? 1,
-        defaultOvertimeEnd:
-          (fieldBreakConfig.defaultOvertimeEnd as string | undefined) ?? '19:00',
+        defaultOvertimeEnd: (fieldBreakConfig.defaultOvertimeEnd as string | undefined) ?? '19:00',
         lokasiKhususRate:
           Number(
             fieldBreakConfig.lokasiKhususRate ??
@@ -774,25 +779,19 @@ function buildSiteSchedulingConfig(
           ) || 0,
         lokasiKhususRateStaff:
           Number(
-            fieldBreakConfig.lokasiKhususRateStaff ??
-              fieldBreakConfig.lokasiKhususRate ??
-              35000
+            fieldBreakConfig.lokasiKhususRateStaff ?? fieldBreakConfig.lokasiKhususRate ?? 35000
           ) || 0,
         lokasiKhususRateNonStaff:
           Number(
-            fieldBreakConfig.lokasiKhususRateNonStaff ??
-              fieldBreakConfig.lokasiKhususRate ??
-              35000
+            fieldBreakConfig.lokasiKhususRateNonStaff ?? fieldBreakConfig.lokasiKhususRate ?? 35000
           ) || 0,
         lokasiKhususEnabled: Boolean(fieldBreakConfig.lokasiKhususEnabled ?? false),
         fieldBreakWorkMonths:
-          savedRosterType === '13:1' &&
-          (!hasWeekBasedFieldBreak || hasIncorrectThirteenOneDefaults)
+          savedRosterType === '13:1' && (!hasWeekBasedFieldBreak || hasIncorrectThirteenOneDefaults)
             ? 12
             : Number(fieldBreakConfig.fieldBreakWorkMonths ?? 3) || 3,
         fieldBreakBreakDays:
-          savedRosterType === '13:1' &&
-          (!hasWeekBasedFieldBreak || hasIncorrectThirteenOneDefaults)
+          savedRosterType === '13:1' && (!hasWeekBasedFieldBreak || hasIncorrectThirteenOneDefaults)
             ? 2
             : Number(fieldBreakConfig.fieldBreakBreakDays ?? 14) || 14,
         employeeBenefitConfig: normalizeEmployeeBenefitConfig(
@@ -1680,6 +1679,8 @@ export function SchedulingTimesheetWorkspace({
     clockOut: string
     note: string
   } | null>(null)
+  const [rosterEditCode, setRosterEditCode] = useState<ScheduleCode>('IN')
+  
 
   useEffect(() => {
     if (selectedAttendanceCell) {
@@ -1690,6 +1691,8 @@ export function SchedulingTimesheetWorkspace({
         clockOut: cell.clockOut,
         note: cell.note || '',
       })
+      const row = rows.find((item) => item.employee.id === selectedAttendanceCell.employeeId)
+      setRosterEditCode((row?.schedule[selectedAttendanceCell.day - 1] as ScheduleCode) || 'IN')
       setDraftOvertimeHours(
         cell.overtimeHours !== undefined && cell.overtimeHours !== null
           ? String(cell.overtimeHours)
@@ -1781,7 +1784,14 @@ export function SchedulingTimesheetWorkspace({
       nightShiftClockIn: siteConfig.nightShiftClockIn || clockConfig.nightShiftClockIn,
       timezone: siteConfig.timezone || clockConfig.timezone,
     }
-  }, [site, schedulingConfigs, siteId, siteConfig.dayShiftClockIn, siteConfig.nightShiftClockIn, siteConfig.timezone])
+  }, [
+    site,
+    schedulingConfigs,
+    siteId,
+    siteConfig.dayShiftClockIn,
+    siteConfig.nightShiftClockIn,
+    siteConfig.timezone,
+  ])
   const siteApprovalSections = useMemo(
     () => approvalSections.filter((row) => row.siteId == null || String(row.siteId) === siteId),
     [approvalSections, siteId]
@@ -1852,15 +1862,18 @@ export function SchedulingTimesheetWorkspace({
     }
 
     // Match the most common department to an approval section
-    const matchedSection = siteApprovalSections.find((s) => {
-      const sDept = (s.departmentName || '').trim()
-      const empDept = mostCommonDept.toLowerCase()
-      return sDept && empDept && (
-        sDept.toLowerCase() === empDept ||
-        empDept.includes(sDept.toLowerCase()) ||
-        sDept.toLowerCase().includes(empDept)
-      )
-    }) || siteApprovalSections[0]
+    const matchedSection =
+      siteApprovalSections.find((s) => {
+        const sDept = (s.departmentName || '').trim()
+        const empDept = mostCommonDept.toLowerCase()
+        return (
+          sDept &&
+          empDept &&
+          (sDept.toLowerCase() === empDept ||
+            empDept.includes(sDept.toLowerCase()) ||
+            sDept.toLowerCase().includes(empDept))
+        )
+      }) || siteApprovalSections[0]
 
     // Koordinator: section head dari matched section
     const defaultCoordinator = matchedSection?.sectionHeadName || ''
@@ -1872,12 +1885,9 @@ export function SchedulingTimesheetWorkspace({
 
     // Manager: department head dari matched section, fallback ke site head
     const defaultManager = matchedSection?.departmentHeadName || ''
-    const siteHeadName = employees.find((employee) => employee.id === site?.headEmployeeId)?.name || ''
-    const approvedByName =
-      cfg.approvedBy ||
-      defaultManager ||
-      siteHeadName ||
-      ''
+    const siteHeadName =
+      employees.find((employee) => employee.id === site?.headEmployeeId)?.name || ''
+    const approvedByName = cfg.approvedBy || defaultManager || siteHeadName || ''
 
     // HR: cari employee dengan role/department HR di site yang sama
     const hrKeywords = ['hr', 'hrd', 'human resource', 'human capital']
@@ -1890,7 +1900,8 @@ export function SchedulingTimesheetWorkspace({
       siteEmployees.find((e) => {
         const role = (e.role || '').toLowerCase()
         return role.includes('admin') || role.includes('gm') || role.includes('general manager')
-      })?.name || ''
+      })?.name ||
+      ''
 
     return {
       preparedBy: cfg.preparedBy || currentEmployeeName,
@@ -2245,7 +2256,8 @@ export function SchedulingTimesheetWorkspace({
     setSelectedAttendanceKeys([])
     // Reset conflict dismissed state for new site/period
     const dismissKey = `conflicts-dismissed:${siteId}:${period}`
-    const isDismissed = typeof window !== 'undefined' && sessionStorage.getItem(dismissKey) === 'true'
+    const isDismissed =
+      typeof window !== 'undefined' && sessionStorage.getItem(dismissKey) === 'true'
     setConflictsDismissedState(isDismissed)
     void refreshAttendanceImportHistory()
   }, [attendanceOverrides, employees, period, siteId])
@@ -2350,7 +2362,8 @@ export function SchedulingTimesheetWorkspace({
       if (String(rec.siteId) === siteId) siteAttendanceEmployeeIds.add(rec.employeeId)
     }
     for (const ov of attendanceOverrides) {
-      if (String(ov.siteId) === siteId && ov.period === period) siteAttendanceEmployeeIds.add(ov.employeeId)
+      if (String(ov.siteId) === siteId && ov.period === period)
+        siteAttendanceEmployeeIds.add(ov.employeeId)
     }
 
     const filtered = employees.filter((employee) => {
@@ -2366,7 +2379,16 @@ export function SchedulingTimesheetWorkspace({
     })
 
     return filtered
-  }, [attendanceOverrides, attendanceRecords, employees, mode, period, savedPlan, selectedSite, siteId])
+  }, [
+    attendanceOverrides,
+    attendanceRecords,
+    employees,
+    mode,
+    period,
+    savedPlan,
+    selectedSite,
+    siteId,
+  ])
 
   const rosterSectionByEmployee = useMemo(
     () =>
@@ -2434,7 +2456,7 @@ export function SchedulingTimesheetWorkspace({
         const schedule = days.map((day) => {
           // Priority 1: Exact schedule from configured Schedule V2 / Roster Plan
           if (persistedSchedule && persistedSchedule[day - 1]) {
-            return (persistedSchedule[day - 1] as ScheduleCode)
+            return persistedSchedule[day - 1] as ScheduleCode
           }
 
           // Priority 2: Manual cell override
@@ -2443,13 +2465,8 @@ export function SchedulingTimesheetWorkspace({
           }
 
           const date = dateKey(period, day)
-          const isFieldBreak = (fieldBreakPlansByEmployee.get(employee.id) ?? []).some(
-            (plan) =>
-              isDateInRange(
-                date,
-                plan.fieldBreakDate,
-                plan.fieldBreakEndDate || plan.fieldBreakDate
-              )
+          const isFieldBreak = (fieldBreakPlansByEmployee.get(employee.id) ?? []).some((plan) =>
+            isDateInRange(date, plan.fieldBreakDate, plan.fieldBreakEndDate || plan.fieldBreakDate)
           )
           if (isFieldBreak) return 'FB' as ScheduleCode
 
@@ -3246,6 +3263,68 @@ export function SchedulingTimesheetWorkspace({
     })
   }
 
+  function saveRosterEditFromAttendance(code: ScheduleCode) {
+    if (!guardOpenPeriod('Edit roster')) return
+    if (!selectedAttendanceCell) return
+    const numericSiteId = Number(siteId)
+    if (!Number.isFinite(numericSiteId) || numericSiteId <= 0 || isFinalized) return
+    const { employeeId, day } = selectedAttendanceCell
+    const nextRows = rows.map((row) =>
+      row.employee.id === employeeId
+        ? {
+            ...row,
+            schedule: row.schedule.map((current, index) => (index + 1 === day ? code : current)),
+          }
+        : row
+    )
+    setOverrides((current) => ({ ...current, [`${employeeId}-${day}`]: code }))
+    startSavingSchedule(async () => {
+      try {
+        if (savedPlan?.sourceVersion === 'v2') {
+          await updateSchedulingTimesheetPlanV2CellAction({
+            siteId: numericSiteId,
+            period,
+            employeeId,
+            day,
+            code: (['IN', 'Libur', 'Sakit', 'Emergency'].includes(code) ? '' : code) as
+              | ''
+              | 'OFF'
+              | 'DS'
+              | 'NS'
+              | 'FB'
+              | 'ST',
+          })
+        } else {
+          await saveSchedulingTimesheetPlanAction({
+            siteId: numericSiteId,
+            period,
+            siteScheduleType: siteScheduleTypes[siteId] ?? 'office',
+            draftSchedule: nextRows.map((row) => ({
+              employeeId: row.employee.id,
+              schedule: row.schedule,
+            })),
+            fixedSchedule: nextRows.map((row) => ({
+              employeeId: row.employee.id,
+              schedule: row.schedule,
+            })),
+            employeeProfiles: nextRows.map(
+              (row) => employeeProfiles[row.employee.id] ?? row.profile
+            ),
+            fieldBreakConfig: null,
+          })
+        }
+        setRosterEditCode(code)
+        setScheduleSavedAt(new Date().toLocaleString('id-ID'))
+        router.refresh()
+        toast.success('Roster tanggal diperbarui')
+      } catch (error) {
+        toast.error('Edit roster gagal', {
+          description: error instanceof Error ? error.message : 'Unknown error',
+        })
+      }
+    })
+  }
+
   function syncHolidays() {
     const year = Number(period.slice(0, 4))
     startSyncingHolidays(async () => {
@@ -3793,8 +3872,7 @@ export function SchedulingTimesheetWorkspace({
           e.name.toLowerCase().includes('fathurrahman')
       )?.name ?? 'Fathurrahman Sufi'
     const andiSafari =
-      employees.find((e) => e.name.toLowerCase().includes('andi safari'))?.name ??
-      'Andi Safari'
+      employees.find((e) => e.name.toLowerCase().includes('andi safari'))?.name ?? 'Andi Safari'
     const rendra =
       employees.find((e) => e.name.toLowerCase().includes('rendra rachman'))?.name ??
       'Rendra Rachman'
@@ -4325,7 +4403,13 @@ export function SchedulingTimesheetWorkspace({
           }
         >
           {iconOnly ? <FileText className="size-4" /> : <Download className="mr-2 size-4" />}
-          {iconOnly ? <span className="sr-only">Export PDF</span> : (isIndonesian ? 'Ekspor PDF' : 'Export PDF')}
+          {iconOnly ? (
+            <span className="sr-only">Export PDF</span>
+          ) : isIndonesian ? (
+            'Ekspor PDF'
+          ) : (
+            'Export PDF'
+          )}
         </Button>
         <Button
           size={iconOnly ? 'icon' : 'sm'}
@@ -4347,9 +4431,15 @@ export function SchedulingTimesheetWorkspace({
           {iconOnly ? (
             <span className="sr-only">Export {excelInsteadOfCsv ? 'Excel' : 'CSV'}</span>
           ) : excelInsteadOfCsv ? (
-            (isIndonesian ? 'Ekspor Excel' : 'Export Excel')
+            isIndonesian ? (
+              'Ekspor Excel'
+            ) : (
+              'Export Excel'
+            )
+          ) : isIndonesian ? (
+            'Ekspor CSV'
           ) : (
-            (isIndonesian ? 'Ekspor CSV' : 'Export CSV')
+            'Export CSV'
           )}
         </Button>
       </div>
@@ -4435,7 +4525,8 @@ export function SchedulingTimesheetWorkspace({
     const key = attendanceKey(employeeId, day)
     const manual = manualAttendance[key]
     const real = attendanceByCell.get(key)
-    const rowCode = scheduleCode ?? rows.find((r) => r.employee.id === employeeId)?.schedule[day - 1]
+    const rowCode =
+      scheduleCode ?? rows.find((r) => r.employee.id === employeeId)?.schedule[day - 1]
 
     let cellClockConfig = effectiveSiteClockConfig
     if (siteId === 'all') {
@@ -4517,9 +4608,10 @@ export function SchedulingTimesheetWorkspace({
 
     const isLatePending = effectiveStatus === 'present' && punctuality.isLate
     const lateMinutes = effectiveStatus === 'present' ? punctuality.lateMinutes : null
-    const note = effectiveStatus === 'present' && punctuality.punctualityNote
-      ? updatePunctualityInNote(rawNote, punctuality.punctualityNote)
-      : rawNote
+    const note =
+      effectiveStatus === 'present' && punctuality.punctualityNote
+        ? updatePunctualityInNote(rawNote, punctuality.punctualityNote)
+        : rawNote
 
     return {
       ...(manual ?? {}),
@@ -4527,7 +4619,7 @@ export function SchedulingTimesheetWorkspace({
       clockIn,
       clockOut,
       note,
-      source: isManual ? (manual.source || 'manual') : 'attendance',
+      source: isManual ? manual.source || 'manual' : 'attendance',
       lateMinutes,
       isLatePending,
       scheduledClockIn: punctuality.scheduledClockIn,
@@ -4763,10 +4855,15 @@ export function SchedulingTimesheetWorkspace({
         // following a Night Shift on the previous day.
         const prevDayKey = row.day > 1 ? attendanceKey(matchedEmployee.id, row.day - 1) : null
         const prevCell = prevDayKey ? cellUpdates[prevDayKey] : undefined
-        const prevScheduleCode = row.day > 1 ? rows.find((r) => r.employee.id === matchedEmployee.id)?.schedule[row.day - 2] : undefined
+        const prevScheduleCode =
+          row.day > 1
+            ? rows.find((r) => r.employee.id === matchedEmployee.id)?.schedule[row.day - 2]
+            : undefined
         const isPrevNightShift =
           (prevCell && prevCell.clockIn && Number(prevCell.clockIn.split(':')[0]) >= 15) ||
-          ['NS', 'NG', 'NIGHT', 'NIGHTSHIFT', 'MALAM', 'SHIFT2'].includes((prevScheduleCode || '').toUpperCase())
+          ['NS', 'NG', 'NIGHT', 'NIGHTSHIFT', 'MALAM', 'SHIFT2'].includes(
+            (prevScheduleCode || '').toUpperCase()
+          )
 
         const isEarlyMorningOnly =
           row.clockOut &&
@@ -4784,7 +4881,11 @@ export function SchedulingTimesheetWorkspace({
           continue
         }
 
-        const status: 'present' | 'empty' = row.clockIn ? 'present' : row.clockOut && !isEarlyMorningOnly ? 'present' : 'empty'
+        const status: 'present' | 'empty' = row.clockIn
+          ? 'present'
+          : row.clockOut && !isEarlyMorningOnly
+            ? 'present'
+            : 'empty'
         const key = attendanceKey(matchedEmployee.id, row.day)
         cellUpdates[key] = {
           status,
@@ -4982,7 +5083,9 @@ export function SchedulingTimesheetWorkspace({
           removeWorkspace: false,
         })
         setManualAttendance((current) =>
-          Object.fromEntries(Object.entries(current || {}).filter(([, cell]) => cell && cell.source !== 'excel'))
+          Object.fromEntries(
+            Object.entries(current || {}).filter(([, cell]) => cell && cell.source !== 'excel')
+          )
         )
         setAttendanceImportPreview(null)
         setClearExcelImportDialogOpen(false)
@@ -5004,7 +5107,9 @@ export function SchedulingTimesheetWorkspace({
       try {
         await rollbackAttendanceImportPreviewAction({ previewId })
         setManualAttendance((current) =>
-          Object.fromEntries(Object.entries(current || {}).filter(([, cell]) => cell && cell.source !== 'excel'))
+          Object.fromEntries(
+            Object.entries(current || {}).filter(([, cell]) => cell && cell.source !== 'excel')
+          )
         )
         setAttendanceSavedAt(new Date().toISOString())
         await refreshAttendanceImportHistory()
@@ -5058,36 +5163,34 @@ export function SchedulingTimesheetWorkspace({
 
   const attendanceConflicts =
     mode === 'attendance'
-      ? rows.flatMap(
-          (row) => {
-            const staff = isStaffRole(row.employee.role)
-            return row.schedule
-              .map((code, index) => {
-                const day = index + 1
-                const cell = getAttendanceCell(row.employee.id, day)
-                // Non-staff are allowed to attend on OFF/Libur days (5:2 roster / overtime)
-                const isDisallowedConflict = staff
-                  ? ['OFF', 'FB', 'Sakit', 'Libur'].includes(code)
-                  : ['Sakit'].includes(code)
-                return cell.status === 'present' && isDisallowedConflict
-                  ? {
-                      employeeId: row.employee.id,
-                      employeeName: row.employee.name,
-                      day,
-                      scheduleCode: code,
-                      currentCell: cell,
-                    }
-                  : null
-              })
-              .filter(Boolean) as Array<{
-              employeeId: number
-              employeeName: string
-              day: number
-              scheduleCode: string
-              currentCell: ManualAttendanceCell
-            }>
-          }
-        )
+      ? rows.flatMap((row) => {
+          const staff = isStaffRole(row.employee.role)
+          return row.schedule
+            .map((code, index) => {
+              const day = index + 1
+              const cell = getAttendanceCell(row.employee.id, day)
+              // Non-staff are allowed to attend on OFF/Libur days (5:2 roster / overtime)
+              const isDisallowedConflict = staff
+                ? ['OFF', 'FB', 'Sakit', 'Libur'].includes(code)
+                : ['Sakit'].includes(code)
+              return cell.status === 'present' && isDisallowedConflict
+                ? {
+                    employeeId: row.employee.id,
+                    employeeName: row.employee.name,
+                    day,
+                    scheduleCode: code,
+                    currentCell: cell,
+                  }
+                : null
+            })
+            .filter(Boolean) as Array<{
+            employeeId: number
+            employeeName: string
+            day: number
+            scheduleCode: string
+            currentCell: ManualAttendanceCell
+          }>
+        })
       : []
 
   function clearAttendanceConflict(employeeId: number, day: number) {
@@ -5152,8 +5255,7 @@ export function SchedulingTimesheetWorkspace({
         if (attendanceStatusFilter === 'sick') return cells.some((c) => c.status === 'sick')
         if (attendanceStatusFilter === 'leave') return cells.some((c) => c.status === 'leave')
         if (attendanceStatusFilter === 'absent') return cells.some((c) => c.status === 'absent')
-        if (attendanceStatusFilter === 'off')
-          return cells.some((c) => c.status === 'off')
+        if (attendanceStatusFilter === 'off') return cells.some((c) => c.status === 'off')
         if (attendanceStatusFilter === 'gb')
           return (
             cells.some((c) => c.status === 'field_break') ||
@@ -5240,13 +5342,9 @@ export function SchedulingTimesheetWorkspace({
     role?: string | null
     department?: string | null
   }): 'Repair' | 'Services' | 'Technical' | 'HSE' | 'Lainnya' {
-    const s = (
-      employee?.section ||
-      employee?.role ||
-      employee?.department ||
-      ''
-    ).toLowerCase()
-    if (s.includes('hse') || s.includes('safety') || s.includes('k3') || s.includes('lingkungan')) return 'HSE'
+    const s = (employee?.section || employee?.role || employee?.department || '').toLowerCase()
+    if (s.includes('hse') || s.includes('safety') || s.includes('k3') || s.includes('lingkungan'))
+      return 'HSE'
     if (s.includes('repair') || s.includes('retread')) return 'Repair'
     if (s.includes('service') || s.includes('servis')) return 'Services'
     if (s.includes('tech') || s.includes('teknis')) return 'Technical'
@@ -5311,8 +5409,7 @@ export function SchedulingTimesheetWorkspace({
           e.name.toLowerCase().includes('fathurrahman')
       )?.name ?? 'Fathurrahman Sufi'
     const andiSafari =
-      employees.find((e) => e.name.toLowerCase().includes('andi safari'))?.name ??
-      'Andi Safari'
+      employees.find((e) => e.name.toLowerCase().includes('andi safari'))?.name ?? 'Andi Safari'
     const rendra =
       employees.find((e) => e.name.toLowerCase().includes('rendra rachman'))?.name ??
       'Rendra Rachman'
@@ -5324,7 +5421,9 @@ export function SchedulingTimesheetWorkspace({
 
     const cfgPreparedBy = cfg.preparedBy?.trim() || ''
     const cfgPjo = cfg.pjoLeader?.trim() || ''
-    const cfgApprovedBy = !isPlaceholderApprovedBy(cfg.approvedBy) ? (cfg.approvedBy?.trim() || '') : ''
+    const cfgApprovedBy = !isPlaceholderApprovedBy(cfg.approvedBy)
+      ? cfg.approvedBy?.trim() || ''
+      : ''
     const cfgHr = cfg.hrName?.trim() || ''
 
     if (
@@ -5383,7 +5482,13 @@ export function SchedulingTimesheetWorkspace({
   }
 
   function getMajoritySectionSignatures(
-    employeesList: Array<{ section?: string | null; role?: string | null; department?: string | null; id?: number; name?: string }>,
+    employeesList: Array<{
+      section?: string | null
+      role?: string | null
+      department?: string | null
+      id?: number
+      name?: string
+    }>,
     customSignatures?: typeof pdfSignatures
   ): typeof pdfSignatures {
     const counts = { Repair: 0, Services: 0, Technical: 0, HSE: 0 }
@@ -5397,20 +5502,26 @@ export function SchedulingTimesheetWorkspace({
 
     let majorityCategory: 'Repair' | 'Services' | 'Technical' | 'HSE' = 'Services'
     let maxCount = -1
-    for (const [cat, count] of Object.entries(counts) as Array<['Repair' | 'Services' | 'Technical' | 'HSE', number]>) {
+    for (const [cat, count] of Object.entries(counts) as Array<
+      ['Repair' | 'Services' | 'Technical' | 'HSE', number]
+    >) {
       if (count > maxCount) {
         maxCount = count
         majorityCategory = cat
       }
     }
 
-    const firstEmpOfMajority = employeesList.find((e) => getEmployeeSectionCategory(e) === majorityCategory)
-    return getSectionSignatures(majorityCategory, firstEmpOfMajority as EmployeeOption, customSignatures)
+    const firstEmpOfMajority = employeesList.find(
+      (e) => getEmployeeSectionCategory(e) === majorityCategory
+    )
+    return getSectionSignatures(
+      majorityCategory,
+      firstEmpOfMajority as EmployeeOption,
+      customSignatures
+    )
   }
 
-  function getSummaryPdfSignatures(
-    baseSignatures: typeof pdfSignatures
-  ): PdfSignatureNames {
+  function getSummaryPdfSignatures(baseSignatures: typeof pdfSignatures): PdfSignatureNames {
     const cfg = siteConfig.pdfConfig
     if (pdfUseExternalSignatures) {
       const extPrep =
@@ -5518,14 +5629,8 @@ export function SchedulingTimesheetWorkspace({
 
       return {
         ...day,
-        workingTimeFrom:
-          day.isHoliday || isOffsiteOrAbsent
-            ? ''
-            : defaultWorkFrom,
-        workingTimeTo:
-          day.isHoliday || isOffsiteOrAbsent
-            ? ''
-            : defaultWorkTo,
+        workingTimeFrom: day.isHoliday || isOffsiteOrAbsent ? '' : defaultWorkFrom,
+        workingTimeTo: day.isHoliday || isOffsiteOrAbsent ? '' : defaultWorkTo,
         configuredOvertimeIntervals:
           isOffsiteOrAbsent && !hasManualClockIn && !hasManualClockOut
             ? []
@@ -5574,8 +5679,7 @@ export function SchedulingTimesheetWorkspace({
       // Tunjangan Khusus -> TU, MSA -> MSA, Meals -> MLS, selain itu -> Overtime Record.
       if (attendanceView === 'msa' || attendanceView === 'meals' || attendanceView === 'lokasi') {
         const pdf = await buildEmployeeAllowanceRecordPdf(employee, attendanceView)
-        const label =
-          attendanceView === 'msa' ? 'MSA' : attendanceView === 'meals' ? 'MLS' : 'TU'
+        const label = attendanceView === 'msa' ? 'MSA' : attendanceView === 'meals' ? 'MLS' : 'TU'
         const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
@@ -5668,10 +5772,7 @@ export function SchedulingTimesheetWorkspace({
             const isAbsent =
               cell.status === 'leave' || cell.status === 'sick' || cell.status === 'absent'
             const isEmptyWorkDay =
-              !isRosterOff &&
-              !isHolidayDay &&
-              code !== 'ST' &&
-              cell.status === 'empty'
+              !isRosterOff && !isHolidayDay && code !== 'ST' && cell.status === 'empty'
             const noAllowance = isAbsent || isEmptyWorkDay || code === 'FB'
             const absentLabel =
               cell.status === 'leave'
@@ -5688,7 +5789,11 @@ export function SchedulingTimesheetWorkspace({
                 return ['OFF', 'FB', 'Libur', 'Sakit', 'ST'].includes(code) ? code : ''
               }
               // Prioritize manually saved overtime hours (from attendance override)
-              if (cell.overtimeHours !== undefined && cell.overtimeHours !== null && cell.overtimeHours > 0) {
+              if (
+                cell.overtimeHours !== undefined &&
+                cell.overtimeHours !== null &&
+                cell.overtimeHours > 0
+              ) {
                 return String(roundOvertimeHours(cell.overtimeHours as number))
               }
               const overtime = calculateDayOvertime(
@@ -5718,9 +5823,7 @@ export function SchedulingTimesheetWorkspace({
             if (!allowance.rule.specialAllowance) return '-'
             if (isFieldBreakDay && cell.status !== 'present') return 'FB'
             if (noAllowance) return absentLabel
-            return allowance.specialAllowanceAmount
-              ? String(allowance.specialAllowanceAmount)
-              : '-'
+            return allowance.specialAllowanceAmount ? String(allowance.specialAllowanceAmount) : '-'
           })
           // Total — samakan dengan kolom Total di layar
           let total = 0
@@ -5785,8 +5888,7 @@ export function SchedulingTimesheetWorkspace({
     employeeIds?: number[],
     customSignatures?: typeof pdfSignatures
   ) {
-    const { generateSummaryTablePdf } =
-      await import('@/lib/timesheet/generate-attendance-pdf')
+    const { generateSummaryTablePdf } = await import('@/lib/timesheet/generate-attendance-pdf')
     const finalSignatures = getSummaryPdfSignatures(customSignatures ?? pdfSignatures)
     return generateSummaryTablePdf({
       view: view === 'ovt' ? 'ot' : view,
@@ -5802,7 +5904,13 @@ export function SchedulingTimesheetWorkspace({
 
   async function downloadSummaryPdf(view: SummaryView) {
     try {
-      if (availableSiteSectionCategories.size > 1 && !pdfIncludeRepair && !pdfIncludeServices && !pdfIncludeTechnical && !pdfIncludeHse) {
+      if (
+        availableSiteSectionCategories.size > 1 &&
+        !pdfIncludeRepair &&
+        !pdfIncludeServices &&
+        !pdfIncludeTechnical &&
+        !pdfIncludeHse
+      ) {
         toast.error('Pilih minimal satu section yang tersedia.')
         return
       }
@@ -5834,13 +5942,7 @@ export function SchedulingTimesheetWorkspace({
       a.href = url
       const sitePart = (site?.name || 'Semua Site').replace(/\s+/g, '_')
       const label =
-        view === 'ovt'
-          ? 'Overtime'
-          : view === 'msa'
-            ? 'MSA'
-            : view === 'meals'
-              ? 'MLS'
-              : 'TU'
+        view === 'ovt' ? 'Overtime' : view === 'msa' ? 'MSA' : view === 'meals' ? 'MLS' : 'TU'
       const activeSections = [
         pdfIncludeRepair ? 'Repair' : '',
         pdfIncludeServices ? 'Services' : '',
@@ -5889,7 +5991,13 @@ export function SchedulingTimesheetWorkspace({
       toast.error('Pilih minimal satu karyawan untuk download PDF.')
       return
     }
-    if (availableSiteSectionCategories.size > 1 && !pdfIncludeRepair && !pdfIncludeServices && !pdfIncludeTechnical && !pdfIncludeHse) {
+    if (
+      availableSiteSectionCategories.size > 1 &&
+      !pdfIncludeRepair &&
+      !pdfIncludeServices &&
+      !pdfIncludeTechnical &&
+      !pdfIncludeHse
+    ) {
       toast.error('Pilih minimal satu section yang tersedia.')
       return
     }
@@ -6018,8 +6126,7 @@ export function SchedulingTimesheetWorkspace({
   }
 
   async function buildEmployeeAllowanceDayData(employee: EmployeeOption) {
-    const { buildAttendanceDayData } =
-      await import('@/lib/timesheet/generate-attendance-pdf')
+    const { buildAttendanceDayData } = await import('@/lib/timesheet/generate-attendance-pdf')
     const employeeRow = rows.find((row) => row.employee.id === employee.id)
     if (!employeeRow) throw new Error('Data schedule karyawan tidak ditemukan.')
     return buildAttendanceDayData({
@@ -6043,8 +6150,7 @@ export function SchedulingTimesheetWorkspace({
   }
 
   async function buildEmployeeAllowancePdf(employee: EmployeeOption) {
-    const { generateSiteAllowancePdf } =
-      await import('@/lib/timesheet/generate-attendance-pdf')
+    const { generateSiteAllowancePdf } = await import('@/lib/timesheet/generate-attendance-pdf')
     const dayData = await buildEmployeeAllowanceDayData(employee)
     const secSigs = getSectionSignatures(employee.section, employee)
     return generateSiteAllowancePdf({
@@ -6063,8 +6169,7 @@ export function SchedulingTimesheetWorkspace({
     try {
       if (attendanceView === 'msa' || attendanceView === 'meals' || attendanceView === 'lokasi') {
         const pdf = await buildEmployeeAllowanceRecordPdf(employee, attendanceView)
-        const label =
-          attendanceView === 'msa' ? 'MSA' : attendanceView === 'meals' ? 'MLS' : 'TU'
+        const label = attendanceView === 'msa' ? 'MSA' : attendanceView === 'meals' ? 'MLS' : 'TU'
         openPdfPreview(pdf, `${label} Record • ${employee.name} • ${period}`)
       } else {
         await previewEmployeeOvertimePdf(employee)
@@ -6162,7 +6267,13 @@ export function SchedulingTimesheetWorkspace({
       toast.error('Tidak ada karyawan untuk site ini.')
       return
     }
-    if (availableSiteSectionCategories.size > 1 && !pdfIncludeRepair && !pdfIncludeServices && !pdfIncludeTechnical && !pdfIncludeHse) {
+    if (
+      availableSiteSectionCategories.size > 1 &&
+      !pdfIncludeRepair &&
+      !pdfIncludeServices &&
+      !pdfIncludeTechnical &&
+      !pdfIncludeHse
+    ) {
       toast.error('Pilih minimal satu section yang tersedia.')
       return
     }
@@ -7599,12 +7710,15 @@ export function SchedulingTimesheetWorkspace({
                               className="grid grid-cols-[minmax(340px,1.4fr)_minmax(160px,1fr)_minmax(160px,1fr)_minmax(160px,1fr)] items-start gap-3 px-4 py-3"
                             >
                               <div className="min-w-0">
-                                <p className="break-words text-sm font-semibold leading-tight">
+                                <p className="text-sm leading-tight font-semibold break-words">
                                   {row.sectionName}
-                                  <span className="text-muted-foreground text-xs font-normal"> ({row.departmentName})</span>
+                                  <span className="text-muted-foreground text-xs font-normal">
+                                    {' '}
+                                    ({row.departmentName})
+                                  </span>
                                 </p>
                                 <Badge
-                                  className="mt-1 !whitespace-normal !overflow-visible"
+                                  className="mt-1 !overflow-visible !whitespace-normal"
                                   variant={row.matrixId ? 'secondary' : 'outline'}
                                 >
                                   {row.matrixName || 'Belum sync'}
@@ -7679,11 +7793,13 @@ export function SchedulingTimesheetWorkspace({
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="h-8 gap-1.5 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
+                        className="h-8 gap-1.5 border-blue-200 text-xs text-blue-600 hover:bg-blue-50 hover:text-blue-700"
                         onClick={() => {
                           const detected = inferTimezoneFromLocation(site.location || site.name)
                           updateSiteConfig('timezone', detected)
-                          toast.info(`Zonasi waktu otomatis disesuaikan ke ${detected} berdasarkan lokasi ${site.name}.`)
+                          toast.info(
+                            `Zonasi waktu otomatis disesuaikan ke ${detected} berdasarkan lokasi ${site.name}.`
+                          )
                         }}
                       >
                         <RefreshCw className="size-3.5" />
@@ -7692,21 +7808,24 @@ export function SchedulingTimesheetWorkspace({
                     )}
                   </div>
 
-                  <div className="mb-4 rounded-lg bg-blue-50/70 p-3 border border-blue-100">
+                  <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50/70 p-3">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="space-y-0.5">
                         <Label className="text-xs font-semibold text-blue-950">
                           Zonasi Waktu Site (Timezone)
                         </Label>
                         <p className="text-[11px] text-blue-700">
-                          Presensi, toleransi keterlambatan, dan jam shift otomatis sinkron dengan zona ini.
+                          Presensi, toleransi keterlambatan, dan jam shift otomatis sinkron dengan
+                          zona ini.
                         </p>
                       </div>
                       <div className="w-full sm:w-56">
                         <select
-                          className="h-9 w-full rounded-md border border-blue-200 bg-white px-3 py-1 text-sm font-medium text-blue-950 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                          className="h-9 w-full rounded-md border border-blue-200 bg-white px-3 py-1 text-sm font-medium text-blue-950 shadow-sm focus:ring-2 focus:ring-blue-400 focus:outline-none"
                           value={siteConfig.timezone || 'WITA'}
-                          onChange={(e) => updateSiteConfig('timezone', e.target.value as IndonesiaTimezoneCode)}
+                          onChange={(e) =>
+                            updateSiteConfig('timezone', e.target.value as IndonesiaTimezoneCode)
+                          }
                         >
                           {Object.values(INDONESIA_TIMEZONES).map((tz) => (
                             <option key={tz.code} value={tz.code}>
@@ -8294,7 +8413,7 @@ export function SchedulingTimesheetWorkspace({
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase whitespace-nowrap">
+                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-wider whitespace-nowrap uppercase">
                         Preset TTD:
                       </Label>
                       <Select
@@ -8309,20 +8428,26 @@ export function SchedulingTimesheetWorkspace({
                           }
                         }}
                       >
-                        <SelectTrigger className="h-8.5 min-w-[190px] border border-border/70 bg-white px-3 text-xs font-medium shadow-none">
+                        <SelectTrigger className="border-border/70 h-8.5 min-w-[190px] border bg-white px-3 text-xs font-medium shadow-none">
                           <SelectValue placeholder="Pilih Preset TTD..." />
                         </SelectTrigger>
                         <SelectContent className="z-50 bg-white shadow-md">
-                          <SelectItem value="repair" className="text-xs font-medium cursor-pointer">
+                          <SelectItem value="repair" className="cursor-pointer text-xs font-medium">
                             Repair TTD
                           </SelectItem>
-                          <SelectItem value="services" className="text-xs font-medium cursor-pointer">
+                          <SelectItem
+                            value="services"
+                            className="cursor-pointer text-xs font-medium"
+                          >
                             Services TTD
                           </SelectItem>
-                          <SelectItem value="technical" className="text-xs font-medium cursor-pointer">
+                          <SelectItem
+                            value="technical"
+                            className="cursor-pointer text-xs font-medium"
+                          >
                             Technical TTD
                           </SelectItem>
-                          <SelectItem value="hse" className="text-xs font-medium cursor-pointer">
+                          <SelectItem value="hse" className="cursor-pointer text-xs font-medium">
                             HSE TTD
                           </SelectItem>
                         </SelectContent>
@@ -8332,7 +8457,7 @@ export function SchedulingTimesheetWorkspace({
                   {/* Alur Tanda Tangan Internal */}
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
-                      <span className="inline-flex items-center gap-1 rounded-md bg-indigo-50 border border-indigo-200 px-2 py-0.5 text-[10px] font-bold uppercase text-indigo-700">
+                      <span className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700 uppercase">
                         Internal
                       </span>
                       <span className="text-xs font-semibold text-slate-700">
@@ -8412,9 +8537,9 @@ export function SchedulingTimesheetWorkspace({
                   </div>
 
                   {/* Alur Tanda Tangan Eksternal */}
-                  <div className="mt-4 pt-3.5 border-t border-border/40 space-y-2">
+                  <div className="border-border/40 mt-4 space-y-2 border-t pt-3.5">
                     <div className="flex items-center gap-2">
-                      <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-700">
+                      <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 uppercase">
                         Eksternal
                       </span>
                       <span className="text-xs font-semibold text-slate-700">
@@ -8440,9 +8565,11 @@ export function SchedulingTimesheetWorkspace({
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase flex items-center justify-between">
+                        <Label className="text-muted-foreground flex items-center justify-between text-[11px] font-semibold tracking-[0.14em] uppercase">
                           <span>2. Approved by</span>
-                          <span className="text-[10px] font-normal text-muted-foreground lowercase italic">(nama spv)</span>
+                          <span className="text-muted-foreground text-[10px] font-normal lowercase italic">
+                            (nama spv)
+                          </span>
                         </Label>
                         <SearchableSelect
                           label="Approved by (Nama SPV)"
@@ -8554,13 +8681,14 @@ export function SchedulingTimesheetWorkspace({
                       ) : null}
                     </div>
                   </div>
-                  <div className="mt-5 flex items-center justify-end gap-3 border-t border-border/40 pt-3">
+                  <div className="border-border/40 mt-5 flex items-center justify-end gap-3 border-t pt-3">
                     <Button
                       size="sm"
                       onClick={() => void saveSiteConfig()}
-                      className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+                      className="gap-2 bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
                     >
-                      <Save className="size-4" /> {isIndonesian ? 'Simpan Konfigurasi TTD' : 'Save Signature Config'}
+                      <Save className="size-4" />{' '}
+                      {isIndonesian ? 'Simpan Konfigurasi TTD' : 'Save Signature Config'}
                     </Button>
                   </div>
                 </div>
@@ -8600,25 +8728,43 @@ export function SchedulingTimesheetWorkspace({
               <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
                 <div>
                   <p className="font-display text-foreground text-base font-semibold">
-                    {isIndonesian ? 'List Konfigurasi Roster per Site' : 'Roster Configuration List per Site'}
+                    {isIndonesian
+                      ? 'List Konfigurasi Roster per Site'
+                      : 'Roster Configuration List per Site'}
                   </p>
                   <p className="text-muted-foreground text-xs">
-                    {isIndonesian ? 'Pilih site/lokasi, lalu atur konfigurasi di popup.' : 'Select site/location, then adjust configuration in modal.'}
+                    {isIndonesian
+                      ? 'Pilih site/lokasi, lalu atur konfigurasi di popup.'
+                      : 'Select site/location, then adjust configuration in modal.'}
                   </p>
                 </div>
-                <Badge variant="outline">{siteSettingRows.length} {isIndonesian ? 'site' : 'sites'}</Badge>
+                <Badge variant="outline">
+                  {siteSettingRows.length} {isIndonesian ? 'site' : 'sites'}
+                </Badge>
               </div>
               <div className="overflow-auto">
                 <table className="w-full min-w-[920px] text-sm">
                   <thead>
                     <tr className="bg-surface-container-low text-muted-foreground text-left text-[11px] tracking-[0.12em] uppercase">
                       <th className="px-4 py-3 font-medium">{isIndonesian ? 'Site' : 'Site'}</th>
-                      <th className="px-4 py-3 font-medium">{isIndonesian ? 'Lokasi' : 'Location'}</th>
-                      <th className="px-4 py-3 font-medium">{isIndonesian ? 'Karyawan' : 'Employees'}</th>
-                      <th className="px-4 py-3 font-medium">{isIndonesian ? 'Tipe Shift' : 'Shift Type'}</th>
-                      <th className="px-4 py-3 font-medium">{isIndonesian ? 'Roster' : 'Roster'}</th>
-                      <th className="px-4 py-3 font-medium">{isIndonesian ? 'Status Config' : 'Config Status'}</th>
-                      <th className="px-4 py-3 text-right font-medium">{isIndonesian ? 'Aksi' : 'Action'}</th>
+                      <th className="px-4 py-3 font-medium">
+                        {isIndonesian ? 'Lokasi' : 'Location'}
+                      </th>
+                      <th className="px-4 py-3 font-medium">
+                        {isIndonesian ? 'Karyawan' : 'Employees'}
+                      </th>
+                      <th className="px-4 py-3 font-medium">
+                        {isIndonesian ? 'Tipe Shift' : 'Shift Type'}
+                      </th>
+                      <th className="px-4 py-3 font-medium">
+                        {isIndonesian ? 'Roster' : 'Roster'}
+                      </th>
+                      <th className="px-4 py-3 font-medium">
+                        {isIndonesian ? 'Status Config' : 'Config Status'}
+                      </th>
+                      <th className="px-4 py-3 text-right font-medium">
+                        {isIndonesian ? 'Aksi' : 'Action'}
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -8635,8 +8781,12 @@ export function SchedulingTimesheetWorkspace({
                         <td className="px-4 py-3">
                           <Badge variant={row.hasConfig ? 'default' : 'secondary'}>
                             {row.hasConfig
-                              ? (isIndonesian ? 'Sudah setting' : 'Configured')
-                              : (isIndonesian ? 'Belum setting' : 'Not configured')}
+                              ? isIndonesian
+                                ? 'Sudah setting'
+                                : 'Configured'
+                              : isIndonesian
+                                ? 'Belum setting'
+                                : 'Not configured'}
                           </Badge>
                         </td>
                         <td className="px-4 py-3 text-right">
@@ -8649,8 +8799,12 @@ export function SchedulingTimesheetWorkspace({
                             }}
                           >
                             {row.hasConfig
-                              ? (isIndonesian ? 'Edit Config' : 'Edit Config')
-                              : (isIndonesian ? 'Tambah Config' : 'Add Config')}
+                              ? isIndonesian
+                                ? 'Edit Config'
+                                : 'Edit Config'
+                              : isIndonesian
+                                ? 'Tambah Config'
+                                : 'Add Config'}
                           </Button>
                         </td>
                       </tr>
@@ -8937,7 +9091,10 @@ export function SchedulingTimesheetWorkspace({
                       <Badge variant="outline">Roster: {siteConfig.rosterType}</Badge>
                       <Badge variant="outline">OT: {siteConfig.overtimeType}</Badge>
                       <Badge variant="outline">MSA: {siteConfig.msaType}</Badge>
-                      <Badge variant="outline" className="bg-blue-50/80 font-medium text-blue-700 border-blue-200">
+                      <Badge
+                        variant="outline"
+                        className="border-blue-200 bg-blue-50/80 font-medium text-blue-700"
+                      >
                         Zona: {siteConfig.timezone || 'WITA'}
                       </Badge>
                     </div>
@@ -9107,17 +9264,23 @@ export function SchedulingTimesheetWorkspace({
                       </div>
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="font-display text-lg font-bold tracking-tight text-foreground">
+                          <h2 className="font-display text-foreground text-lg font-bold tracking-tight">
                             Attendance · {site?.name ?? 'Site'}
                           </h2>
-                          <Badge variant="outline" className="bg-slate-50 font-mono text-xs font-semibold text-slate-700">
+                          <Badge
+                            variant="outline"
+                            className="bg-slate-50 font-mono text-xs font-semibold text-slate-700"
+                          >
                             {formatMonthPeriod(period)}
                           </Badge>
-                          <Badge variant="outline" className="bg-blue-50 font-mono text-xs font-semibold text-blue-700 border-blue-200">
+                          <Badge
+                            variant="outline"
+                            className="border-blue-200 bg-blue-50 font-mono text-xs font-semibold text-blue-700"
+                          >
                             {siteConfig.timezone || site?.timezone || 'WITA'}
                           </Badge>
                         </div>
-                        <p className="mt-0.5 text-xs text-muted-foreground">
+                        <p className="text-muted-foreground mt-0.5 text-xs">
                           Kelola data kehadiran karyawan untuk site dan bulan yang dipilih.
                         </p>
                       </div>
@@ -9151,20 +9314,25 @@ export function SchedulingTimesheetWorkspace({
                         size="sm"
                         variant="ghost"
                         onClick={() => setAttendanceWorkspaceOpen(false)}
-                        className="h-9 px-3 text-xs font-medium text-muted-foreground hover:text-foreground"
+                        className="text-muted-foreground hover:text-foreground h-9 px-3 text-xs font-medium"
                       >
                         <ChevronLeft className="mr-1 size-4" /> Kembali ke list
                       </Button>
-                      <div className="hidden h-4 w-px bg-border/60 sm:block" />
+                      <div className="bg-border/60 hidden h-4 w-px sm:block" />
                       {canEdit && (
                         <Button
                           size="sm"
-                          disabled={!isAttendanceDirty || isSavingAttendance || siteId === 'all' || isFinalized}
+                          disabled={
+                            !isAttendanceDirty ||
+                            isSavingAttendance ||
+                            siteId === 'all' ||
+                            isFinalized
+                          }
                           onClick={saveAttendanceReal}
                           className={cn(
                             'h-9 px-4 text-xs font-semibold shadow-xs transition-all',
                             isAttendanceDirty
-                              ? 'bg-emerald-600 text-white hover:bg-emerald-700 animate-pulse'
+                              ? 'animate-pulse bg-emerald-600 text-white hover:bg-emerald-700'
                               : 'bg-slate-900 text-white hover:bg-slate-800'
                           )}
                         >
@@ -9175,7 +9343,7 @@ export function SchedulingTimesheetWorkspace({
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/40 bg-surface-container-low/60 px-5 py-3">
+                  <div className="border-border/40 bg-surface-container-low/60 flex flex-wrap items-center justify-between gap-3 border-b px-5 py-3">
                     <div className="flex flex-wrap items-center gap-2">
                       {canEdit && (
                         <Button
@@ -9185,7 +9353,9 @@ export function SchedulingTimesheetWorkspace({
                           onClick={() => attendanceFileInputRef.current?.click()}
                           className={cn(
                             'h-8.5 rounded-lg text-xs font-medium',
-                            lastImportSuccess ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-white'
+                            lastImportSuccess
+                              ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                              : 'bg-white'
                           )}
                         >
                           {isImportingExcel ? (
@@ -9194,7 +9364,8 @@ export function SchedulingTimesheetWorkspace({
                             </>
                           ) : lastImportSuccess ? (
                             <>
-                              <Check className="mr-1.5 size-3.5" /> Berhasil ({lastImportSuccess.matched} matched)
+                              <Check className="mr-1.5 size-3.5" /> Berhasil (
+                              {lastImportSuccess.matched} matched)
                             </>
                           ) : (
                             <>
@@ -9239,24 +9410,30 @@ export function SchedulingTimesheetWorkspace({
                         variant="outline"
                         onClick={() => setImportHistoryOpen((v) => !v)}
                         className={cn(
-                          'h-8.5 rounded-lg text-xs font-medium bg-white',
+                          'h-8.5 rounded-lg bg-white text-xs font-medium',
                           importHistoryOpen && 'border-primary bg-primary/5 text-primary'
                         )}
                       >
                         <History className="mr-1.5 size-3.5" />
-                        Import History {attendanceImportHistory.length ? `(${attendanceImportHistory.length})` : ''}
+                        Import History{' '}
+                        {attendanceImportHistory.length
+                          ? `(${attendanceImportHistory.length})`
+                          : ''}
                       </Button>
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => setOvertimePdfOpen((v) => !v)}
                         className={cn(
-                          'h-8.5 rounded-lg text-xs font-medium bg-white',
+                          'h-8.5 rounded-lg bg-white text-xs font-medium',
                           overtimePdfOpen && 'border-primary bg-primary/5 text-primary'
                         )}
                       >
                         <Eye className="mr-1.5 size-3.5 text-slate-500" />
-                        Preview & Export PDF {selectedOvertimeEmployeeIds.length ? `(${selectedOvertimeEmployeeIds.length})` : ''}
+                        Preview & Export PDF{' '}
+                        {selectedOvertimeEmployeeIds.length
+                          ? `(${selectedOvertimeEmployeeIds.length})`
+                          : ''}
                       </Button>
                       <TabExportActions
                         tabTitle="Attendance"
@@ -9293,18 +9470,21 @@ export function SchedulingTimesheetWorkspace({
 
                 {/* 2. Overtime & Benefit PDF Download Panel (Collapsible) */}
                 {overtimePdfOpen ? (
-                  <Card className="surface-module-card rounded-xl border border-border/60 bg-white p-4 shadow-xs">
+                  <Card className="surface-module-card border-border/60 rounded-xl border bg-white p-4 shadow-xs">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
-                        <p className="font-display text-sm font-semibold text-foreground">
+                        <p className="font-display text-foreground text-sm font-semibold">
                           Bulk Download Overtime & Benefit PDF
                         </p>
-                        <p className="text-xs text-muted-foreground">
-                          <span className="font-semibold text-foreground">{selectedOvertimeEmployeeIds.length} karyawan dipilih</span> untuk generate dokumen PDF.
+                        <p className="text-muted-foreground text-xs">
+                          <span className="text-foreground font-semibold">
+                            {selectedOvertimeEmployeeIds.length} karyawan dipilih
+                          </span>{' '}
+                          untuk generate dokumen PDF.
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2.5">
-                        <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-white px-2.5 py-1 text-xs shadow-2xs">
+                        <div className="border-border/70 flex items-center gap-2 rounded-lg border bg-white px-2.5 py-1 text-xs shadow-2xs">
                           <Switch
                             id="toggle-total-overtime-bulk"
                             checked={includeTotalOvertime}
@@ -9320,7 +9500,7 @@ export function SchedulingTimesheetWorkspace({
                         {availableSiteSectionCategories.size > 1 && (
                           <>
                             {availableSiteSectionCategories.has('Repair') && (
-                              <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-white px-2.5 py-1 text-xs shadow-2xs">
+                              <div className="border-border/70 flex items-center gap-2 rounded-lg border bg-white px-2.5 py-1 text-xs shadow-2xs">
                                 <Switch
                                   id="toggle-repair-pdf"
                                   checked={pdfIncludeRepair}
@@ -9336,7 +9516,7 @@ export function SchedulingTimesheetWorkspace({
                               </div>
                             )}
                             {availableSiteSectionCategories.has('Services') && (
-                              <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-white px-2.5 py-1 text-xs shadow-2xs">
+                              <div className="border-border/70 flex items-center gap-2 rounded-lg border bg-white px-2.5 py-1 text-xs shadow-2xs">
                                 <Switch
                                   id="toggle-services-pdf"
                                   checked={pdfIncludeServices}
@@ -9352,7 +9532,7 @@ export function SchedulingTimesheetWorkspace({
                               </div>
                             )}
                             {availableSiteSectionCategories.has('Technical') && (
-                              <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-white px-2.5 py-1 text-xs shadow-2xs">
+                              <div className="border-border/70 flex items-center gap-2 rounded-lg border bg-white px-2.5 py-1 text-xs shadow-2xs">
                                 <Switch
                                   id="toggle-technical-pdf"
                                   checked={pdfIncludeTechnical}
@@ -9368,7 +9548,7 @@ export function SchedulingTimesheetWorkspace({
                               </div>
                             )}
                             {availableSiteSectionCategories.has('HSE') && (
-                              <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-white px-2.5 py-1 text-xs shadow-2xs">
+                              <div className="border-border/70 flex items-center gap-2 rounded-lg border bg-white px-2.5 py-1 text-xs shadow-2xs">
                                 <Switch
                                   id="toggle-hse-pdf"
                                   checked={pdfIncludeHse}
@@ -9386,7 +9566,7 @@ export function SchedulingTimesheetWorkspace({
                           </>
                         )}
 
-                        <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-white px-2.5 py-1 text-xs shadow-2xs">
+                        <div className="border-border/70 flex items-center gap-2 rounded-lg border bg-white px-2.5 py-1 text-xs shadow-2xs">
                           <Switch
                             id="toggle-external-pdf-bulk"
                             checked={pdfUseExternalSignatures}
@@ -9402,12 +9582,15 @@ export function SchedulingTimesheetWorkspace({
                         </div>
 
                         {/* Multi-select Dropdown Pilihan Dokumen PDF */}
-                        <Popover open={pdfDocTypesPickerOpen} onOpenChange={setPdfDocTypesPickerOpen}>
+                        <Popover
+                          open={pdfDocTypesPickerOpen}
+                          onOpenChange={setPdfDocTypesPickerOpen}
+                        >
                           <PopoverTrigger asChild>
                             <Button
                               size="sm"
                               variant="outline"
-                              className="h-8 rounded-lg bg-white px-2.5 text-xs font-semibold text-slate-800 border-border/70 shadow-2xs hover:bg-slate-50"
+                              className="border-border/70 h-8 rounded-lg bg-white px-2.5 text-xs font-semibold text-slate-800 shadow-2xs hover:bg-slate-50"
                               title="Pilih jenis dokumen PDF yang ingin di-download"
                             >
                               <FileText className="mr-1.5 size-3.5 text-indigo-600" />
@@ -9415,17 +9598,26 @@ export function SchedulingTimesheetWorkspace({
                               <ChevronDown className="ml-1.5 size-3 text-slate-400" />
                             </Button>
                           </PopoverTrigger>
-                          <PopoverContent className="w-80 p-3 bg-white shadow-xl rounded-xl border border-slate-200" align="end">
-                            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                          <PopoverContent
+                            className="w-80 rounded-xl border border-slate-200 bg-white p-3 shadow-xl"
+                            align="end"
+                          >
+                            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                               <div>
-                                <p className="text-xs font-bold text-slate-800">Pilih Dokumen PDF</p>
-                                <p className="text-[10px] text-slate-500">Pilih format lembar yang akan diunduh</p>
+                                <p className="text-xs font-bold text-slate-800">
+                                  Pilih Dokumen PDF
+                                </p>
+                                <p className="text-[10px] text-slate-500">
+                                  Pilih format lembar yang akan diunduh
+                                </p>
                               </div>
                               <div className="flex items-center gap-1">
                                 <button
                                   type="button"
-                                  onClick={() => setSelectedPdfDocTypes(ATTENDANCE_PDF_OPTIONS.map((o) => o.id))}
-                                  className="text-[10px] text-indigo-600 font-semibold hover:underline"
+                                  onClick={() =>
+                                    setSelectedPdfDocTypes(ATTENDANCE_PDF_OPTIONS.map((o) => o.id))
+                                  }
+                                  className="text-[10px] font-semibold text-indigo-600 hover:underline"
                                 >
                                   Pilih Semua
                                 </button>
@@ -9433,7 +9625,7 @@ export function SchedulingTimesheetWorkspace({
                                 <button
                                   type="button"
                                   onClick={() => setSelectedPdfDocTypes([])}
-                                  className="text-[10px] text-slate-500 hover:text-red-600 font-semibold hover:underline"
+                                  className="text-[10px] font-semibold text-slate-500 hover:text-red-600 hover:underline"
                                 >
                                   Reset
                                 </button>
@@ -9446,8 +9638,10 @@ export function SchedulingTimesheetWorkspace({
                                   <label
                                     key={opt.id}
                                     className={cn(
-                                      'flex items-start gap-2.5 p-2 rounded-lg cursor-pointer transition-colors text-xs select-none',
-                                      isSelected ? 'bg-indigo-50/70 text-slate-900' : 'hover:bg-slate-50 text-slate-700'
+                                      'flex cursor-pointer items-start gap-2.5 rounded-lg p-2 text-xs transition-colors select-none',
+                                      isSelected
+                                        ? 'bg-indigo-50/70 text-slate-900'
+                                        : 'text-slate-700 hover:bg-slate-50'
                                     )}
                                   >
                                     <input
@@ -9457,17 +9651,23 @@ export function SchedulingTimesheetWorkspace({
                                         if (e.target.checked) {
                                           setSelectedPdfDocTypes((prev) => [...prev, opt.id])
                                         } else {
-                                          setSelectedPdfDocTypes((prev) => prev.filter((id) => id !== opt.id))
+                                          setSelectedPdfDocTypes((prev) =>
+                                            prev.filter((id) => id !== opt.id)
+                                          )
                                         }
                                       }}
-                                      className="mt-0.5 size-4 accent-indigo-600 rounded cursor-pointer"
+                                      className="mt-0.5 size-4 cursor-pointer rounded accent-indigo-600"
                                     />
-                                    <div className="flex-1 min-w-0">
+                                    <div className="min-w-0 flex-1">
                                       <div className="flex items-center gap-1.5 font-semibold">
-                                        <span className="text-indigo-600 font-mono text-[11px]">{opt.number}.</span>
+                                        <span className="font-mono text-[11px] text-indigo-600">
+                                          {opt.number}.
+                                        </span>
                                         <span>{opt.label}</span>
                                       </div>
-                                      <p className="text-[10px] text-slate-500 leading-tight mt-0.5">{opt.description}</p>
+                                      <p className="mt-0.5 text-[10px] leading-tight text-slate-500">
+                                        {opt.description}
+                                      </p>
                                     </div>
                                   </label>
                                 )
@@ -9479,7 +9679,11 @@ export function SchedulingTimesheetWorkspace({
                         <Button
                           size="sm"
                           variant="outline"
-                          disabled={rows.length === 0 || siteId === 'all' || selectedPdfDocTypes.length === 0}
+                          disabled={
+                            rows.length === 0 ||
+                            siteId === 'all' ||
+                            selectedPdfDocTypes.length === 0
+                          }
                           onClick={() => void previewAllSiteOvertimePdf()}
                           className="h-8 rounded-lg text-xs"
                           title={
@@ -9488,14 +9692,18 @@ export function SchedulingTimesheetWorkspace({
                               : `Preview PDF (${selectedPdfDocTypes.length} dokumen) untuk semua karyawan site ${site?.name ?? ''}`
                           }
                         >
-                          <Eye className="mr-1.5 size-3.5" /> Preview PDF ({selectedPdfDocTypes.length})
+                          <Eye className="mr-1.5 size-3.5" /> Preview PDF (
+                          {selectedPdfDocTypes.length})
                         </Button>
                         <Button
                           size="sm"
                           variant="default"
-                          disabled={selectedOvertimeEmployeeIds.length === 0 || selectedPdfDocTypes.length === 0}
+                          disabled={
+                            selectedOvertimeEmployeeIds.length === 0 ||
+                            selectedPdfDocTypes.length === 0
+                          }
                           onClick={() => void bulkDownloadOvertimePdf(includeTotalOvertime)}
-                          className="h-8 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
+                          className="h-8 rounded-lg bg-indigo-600 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700"
                           title={
                             selectedOvertimeEmployeeIds.length === 0
                               ? 'Pilih minimal satu karyawan'
@@ -9504,7 +9712,10 @@ export function SchedulingTimesheetWorkspace({
                                 : `Download PDF (${selectedPdfDocTypes.length} jenis dokumen, ${selectedOvertimeEmployeeIds.length} karyawan)`
                           }
                         >
-                          <Download className="mr-1.5 size-3.5" /> Download PDF Terpilih {selectedOvertimeEmployeeIds.length > 0 ? `(${selectedOvertimeEmployeeIds.length})` : ''}
+                          <Download className="mr-1.5 size-3.5" /> Download PDF Terpilih{' '}
+                          {selectedOvertimeEmployeeIds.length > 0
+                            ? `(${selectedOvertimeEmployeeIds.length})`
+                            : ''}
                         </Button>
                       </div>
                     </div>
@@ -9513,14 +9724,15 @@ export function SchedulingTimesheetWorkspace({
 
                 {/* 3. Import History Panel (Collapsible) */}
                 {importHistoryOpen ? (
-                  <Card className="surface-module-card overflow-hidden rounded-xl border border-border/60 bg-white p-0 shadow-xs">
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/40 bg-surface-container-low px-4 py-3">
+                  <Card className="surface-module-card border-border/60 overflow-hidden rounded-xl border bg-white p-0 shadow-xs">
+                    <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
                       <div>
-                        <p className="font-display text-xs font-bold uppercase tracking-wider text-foreground">
+                        <p className="font-display text-foreground text-xs font-bold tracking-wider uppercase">
                           <History className="mr-1.5 inline size-4" /> Import History
                         </p>
-                        <p className="text-xs text-muted-foreground">
-                          Rollback hapus batch tertentu; Delete Excel Import hapus semua Excel bulan ini.
+                        <p className="text-muted-foreground text-xs">
+                          Rollback hapus batch tertentu; Delete Excel Import hapus semua Excel bulan
+                          ini.
                         </p>
                       </div>
                       <Button
@@ -9532,28 +9744,33 @@ export function SchedulingTimesheetWorkspace({
                         Refresh
                       </Button>
                     </div>
-                    <div className="divide-y divide-border/30 p-2">
+                    <div className="divide-border/30 divide-y p-2">
                       {attendanceImportHistory.slice(0, 5).map((item) => (
                         <div
                           key={item.id}
                           className="flex flex-wrap items-center justify-between gap-2 rounded-lg p-2.5 hover:bg-slate-50"
                         >
                           <div>
-                            <p className="text-xs font-semibold text-foreground">{item.filename}</p>
-                            <p className="text-[11px] text-muted-foreground">
+                            <p className="text-foreground text-xs font-semibold">{item.filename}</p>
+                            <p className="text-muted-foreground text-[11px]">
                               {item.templateKind} · {item.sheetName || 'auto'} ·{' '}
                               {new Date(item.createdAt).toLocaleString('id-ID')}
                             </p>
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <Badge variant="outline" className="text-[10px]">{item.status}</Badge>
-                            <span className="text-xs text-muted-foreground">
-                              {item.matchedCount} matched · {item.unmatchedCount} fix · {item.conflictCount} conflict
+                            <Badge variant="outline" className="text-[10px]">
+                              {item.status}
+                            </Badge>
+                            <span className="text-muted-foreground text-xs">
+                              {item.matchedCount} matched · {item.unmatchedCount} fix ·{' '}
+                              {item.conflictCount} conflict
                             </span>
                             <Button
                               size="sm"
                               variant="outline"
-                              disabled={isSavingAttendance || isFinalized || item.status !== 'applied'}
+                              disabled={
+                                isSavingAttendance || isFinalized || item.status !== 'applied'
+                              }
                               onClick={() => rollbackAttendanceImport(item.id)}
                               className="h-7 rounded-lg text-xs"
                             >
@@ -9563,7 +9780,7 @@ export function SchedulingTimesheetWorkspace({
                         </div>
                       ))}
                       {!attendanceImportHistory.length ? (
-                        <div className="px-4 py-6 text-center text-xs text-muted-foreground">
+                        <div className="text-muted-foreground px-4 py-6 text-center text-xs">
                           Belum ada import history.
                         </div>
                       ) : null}
@@ -9584,7 +9801,8 @@ export function SchedulingTimesheetWorkspace({
                         </p>
                         <p className="text-[11px] text-emerald-700">
                           {lastImportSuccess.filename}
-                          {lastImportSuccess.unmatchedNames && lastImportSuccess.unmatchedNames.length > 0
+                          {lastImportSuccess.unmatchedNames &&
+                          lastImportSuccess.unmatchedNames.length > 0
                             ? ` · ${lastImportSuccess.unmatchedNames.length} karyawan tidak cocok`
                             : ' · Semua karyawan teridentifikasi'}
                         </p>
@@ -9597,10 +9815,12 @@ export function SchedulingTimesheetWorkspace({
                         ✕
                       </button>
                     </div>
-                    {lastImportSuccess.unmatchedNames && lastImportSuccess.unmatchedNames.length > 0 ? (
+                    {lastImportSuccess.unmatchedNames &&
+                    lastImportSuccess.unmatchedNames.length > 0 ? (
                       <div className="border-t border-amber-200 bg-amber-50 px-4 py-3 text-xs">
                         <p className="mb-2 font-semibold text-amber-900">
-                          {lastImportSuccess.unmatchedNames.length} nama dari Excel tidak ditemukan di sistem:
+                          {lastImportSuccess.unmatchedNames.length} nama dari Excel tidak ditemukan
+                          di sistem:
                         </p>
                         <div className="flex flex-wrap gap-1.5">
                           {lastImportSuccess.unmatchedNames.map((name) => (
@@ -9620,12 +9840,12 @@ export function SchedulingTimesheetWorkspace({
                 {/* Holiday Badges */}
                 {holidays.length ? (
                   <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-amber-200/80 bg-amber-50/50 p-2.5 text-xs">
-                    <span className="font-semibold text-amber-900 mr-1">Hari Libur Nasional:</span>
+                    <span className="mr-1 font-semibold text-amber-900">Hari Libur Nasional:</span>
                     {holidays.map((holiday) => (
                       <Badge
                         key={`attendance-${holiday.date}`}
                         variant="secondary"
-                        className="bg-amber-100/80 text-amber-900 border-amber-300/60"
+                        className="border-amber-300/60 bg-amber-100/80 text-amber-900"
                         title={holiday.localName || holiday.name}
                       >
                         {holiday.day}: {holiday.localName || holiday.name}
@@ -9636,7 +9856,7 @@ export function SchedulingTimesheetWorkspace({
 
                 {/* Unsaved & Save status strip */}
                 {attendanceImportPreview || attendanceSavedAt || isAttendanceDirty ? (
-                  <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/50 bg-white px-3.5 py-2 text-xs">
+                  <div className="border-border/50 flex flex-wrap items-center gap-2 rounded-xl border bg-white px-3.5 py-2 text-xs">
                     {isAttendanceDirty ? (
                       <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-0.5 font-semibold text-amber-800 ring-1 ring-amber-200 ring-inset">
                         Belum tersimpan
@@ -9695,7 +9915,7 @@ export function SchedulingTimesheetWorkspace({
                           size="sm"
                           disabled={isFinalized}
                           onClick={markAllConflictSchedulesWorking}
-                          className="h-8 rounded-lg text-xs bg-amber-600 text-white hover:bg-amber-700"
+                          className="h-8 rounded-lg bg-amber-600 text-xs text-white hover:bg-amber-700"
                         >
                           Pakai attendance (mark working)
                         </Button>
@@ -9760,21 +9980,25 @@ export function SchedulingTimesheetWorkspace({
                   ].map((item) => (
                     <Card
                       key={item.label}
-                      className="surface-module-card border-border/60 flex flex-col justify-between rounded-xl border bg-white p-3.5 shadow-xs transition-all hover:border-border"
+                      className="surface-module-card border-border/60 hover:border-border flex flex-col justify-between rounded-xl border bg-white p-3.5 shadow-xs transition-all"
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] font-bold tracking-wider text-muted-foreground uppercase">
+                        <span className="text-muted-foreground text-[11px] font-bold tracking-wider uppercase">
                           {item.label}
                         </span>
-                        <span className={`grid size-7 place-items-center rounded-lg border ${item.tone}`}>
+                        <span
+                          className={`grid size-7 place-items-center rounded-lg border ${item.tone}`}
+                        >
                           <item.icon className="size-3.5" />
                         </span>
                       </div>
                       <div className="mt-2">
-                        <p className="font-display text-2xl font-bold tracking-tight text-foreground tabular-nums">
+                        <p className="font-display text-foreground text-2xl font-bold tracking-tight tabular-nums">
                           {item.val}
                         </p>
-                        <p className="mt-0.5 text-[11px] font-medium text-muted-foreground">{item.sub}</p>
+                        <p className="text-muted-foreground mt-0.5 text-[11px] font-medium">
+                          {item.sub}
+                        </p>
                       </div>
                     </Card>
                   ))}
@@ -9819,17 +10043,17 @@ export function SchedulingTimesheetWorkspace({
                     {/* Search & Status Filter Pills */}
                     <div className="flex flex-wrap items-center gap-2">
                       <div className="relative min-w-[180px] flex-1 sm:w-[220px]">
-                        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                        <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
                         <Input
                           placeholder="Cari nama karyawan..."
                           value={attendanceSearch}
                           onChange={(e) => setAttendanceSearch(e.target.value)}
-                          className="h-8.5 rounded-lg border-border/60 bg-white pl-8.5 text-xs"
+                          className="border-border/60 h-8.5 rounded-lg bg-white pl-8.5 text-xs"
                         />
                         {attendanceSearch ? (
                           <button
                             onClick={() => setAttendanceSearch('')}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                            className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2 -translate-y-1/2"
                           >
                             <X className="size-3.5" />
                           </button>
@@ -9837,7 +10061,7 @@ export function SchedulingTimesheetWorkspace({
                       </div>
 
                       <div className="flex items-center gap-1 overflow-x-auto py-0.5">
-                        <span className="mr-1 hidden text-[11px] font-semibold text-muted-foreground sm:inline">
+                        <span className="text-muted-foreground mr-1 hidden text-[11px] font-semibold sm:inline">
                           Status:
                         </span>
                         {[
@@ -9853,7 +10077,7 @@ export function SchedulingTimesheetWorkspace({
                             key={f.key}
                             onClick={() => setAttendanceStatusFilter(f.key as any)}
                             className={cn(
-                              'h-7.5 whitespace-nowrap rounded-lg border px-2.5 text-[11px] font-semibold transition-all',
+                              'h-7.5 rounded-lg border px-2.5 text-[11px] font-semibold whitespace-nowrap transition-all',
                               attendanceStatusFilter === f.key
                                 ? 'border-slate-900 bg-slate-900 text-white shadow-xs'
                                 : 'border-border/60 bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
@@ -9894,18 +10118,18 @@ export function SchedulingTimesheetWorkspace({
                   {isImportingExcel ? (
                     <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-white">
                       <RefreshCw className="text-primary size-8 animate-spin" />
-                      <p className="text-sm font-semibold text-foreground">
+                      <p className="text-foreground text-sm font-semibold">
                         Memproses file Excel...
                       </p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-muted-foreground text-xs">
                         Mencocokkan nama karyawan dengan Fuse.js
                       </p>
                     </div>
                   ) : null}
                   {/* View title */}
                   {attendanceView !== 'attendance' ? (
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/40 bg-surface-container-low px-4 py-2.5">
-                      <p className="text-xs font-bold tracking-[0.14em] uppercase text-foreground">
+                    <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2.5">
+                      <p className="text-foreground text-xs font-bold tracking-[0.14em] uppercase">
                         {attendanceView === 'msa' &&
                           `MSA SUMMARY — Rate: Staff Rp ${rate.msaStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.msaNonStaff.toLocaleString('id-ID')}`}
                         {attendanceView === 'lokasi' &&
@@ -9919,7 +10143,7 @@ export function SchedulingTimesheetWorkspace({
                       attendanceView === 'meals' ||
                       attendanceView === 'lokasi' ? (
                         <div className="flex items-center gap-2.5">
-                          <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-white px-2.5 py-1 text-xs shadow-2xs">
+                          <div className="border-border/70 flex items-center gap-2 rounded-lg border bg-white px-2.5 py-1 text-xs shadow-2xs">
                             <Switch
                               id="toggle-external-pdf-summary"
                               checked={pdfUseExternalSignatures}
@@ -9949,8 +10173,8 @@ export function SchedulingTimesheetWorkspace({
                   <div className="max-w-full overflow-x-auto overflow-y-visible">
                     <table className="w-max min-w-[1400px] table-fixed border-separate border-spacing-0 text-xs">
                       <thead>
-                        <tr className="bg-surface-container-low text-left tracking-[0.12em] uppercase text-muted-foreground">
-                          <th className="sticky left-0 z-30 w-[260px] min-w-[260px] bg-surface-container-low px-3 py-3 shadow-[8px_0_16px_-14px_rgba(15,23,42,0.55)]">
+                        <tr className="bg-surface-container-low text-muted-foreground text-left tracking-[0.12em] uppercase">
+                          <th className="bg-surface-container-low sticky left-0 z-30 w-[260px] min-w-[260px] px-3 py-3 shadow-[8px_0_16px_-14px_rgba(15,23,42,0.55)]">
                             <label className="flex items-center gap-2 font-semibold">
                               <input
                                 type="checkbox"
@@ -10018,7 +10242,7 @@ export function SchedulingTimesheetWorkspace({
                               <tr className="bg-slate-100">
                                 <td
                                   colSpan={days.length + 1}
-                                  className="sticky left-0 z-20 px-3 py-2 text-[11px] font-bold tracking-[0.14em] uppercase text-foreground"
+                                  className="text-foreground sticky left-0 z-20 px-3 py-2 text-[11px] font-bold tracking-[0.14em] uppercase"
                                 >
                                   {dept}
                                 </td>
@@ -10028,7 +10252,7 @@ export function SchedulingTimesheetWorkspace({
                                   <tr className="bg-surface-container-low">
                                     <td
                                       colSpan={days.length + 1}
-                                      className="sticky left-0 z-20 px-3 py-1.5 pl-6 text-[10px] font-semibold tracking-[0.12em] uppercase text-muted-foreground"
+                                      className="text-muted-foreground sticky left-0 z-20 px-3 py-1.5 pl-6 text-[10px] font-semibold tracking-[0.12em] uppercase"
                                     >
                                       {section}{' '}
                                       <span className="font-normal">({sectionRows.length})</span>
@@ -10040,11 +10264,11 @@ export function SchedulingTimesheetWorkspace({
                                       className={`group border-b border-slate-100 ${employeesWithZeroFace.has(row.employee.id) ? 'bg-rose-50' : 'bg-white'}`}
                                     >
                                       <td
-                                        className={`sticky left-0 z-20 w-[260px] min-w-[260px] max-w-[260px] px-3 py-2 font-semibold shadow-[8px_0_16px_-14px_rgba(15,23,42,0.55)] ${employeesWithZeroFace.has(row.employee.id) ? 'bg-rose-50' : 'bg-white'}`}
+                                        className={`sticky left-0 z-20 w-[260px] max-w-[260px] min-w-[260px] px-3 py-2 font-semibold shadow-[8px_0_16px_-14px_rgba(15,23,42,0.55)] ${employeesWithZeroFace.has(row.employee.id) ? 'bg-rose-50' : 'bg-white'}`}
                                       >
                                         <div className="flex flex-col gap-1.5">
                                           <div className="flex items-center justify-between gap-1.5">
-                                            <div className="flex items-center gap-2 min-w-0">
+                                            <div className="flex min-w-0 items-center gap-2">
                                               <input
                                                 type="checkbox"
                                                 aria-label={`Pilih ${row.employee.name} untuk bulk OT PDF`}
@@ -10057,26 +10281,29 @@ export function SchedulingTimesheetWorkspace({
                                                 className="accent-primary size-3.5 shrink-0"
                                               />
                                               <div className="min-w-0 flex-1">
-                                                <p className="truncate text-xs font-semibold text-slate-900" title={row.employee.name}>
+                                                <p
+                                                  className="truncate text-xs font-semibold text-slate-900"
+                                                  title={row.employee.name}
+                                                >
                                                   {row.employee.name}
                                                 </p>
-                                                <p className="truncate text-[10px] font-normal text-muted-foreground">
+                                                <p className="text-muted-foreground truncate text-[10px] font-normal">
                                                   {row.employee.section || row.employee.role}
                                                 </p>
                                               </div>
                                             </div>
                                           </div>
                                           {/* PDF Action Buttons (Visible and easy to click) */}
-                                          <div className="flex items-center gap-1 pt-0.5 border-t border-slate-100 text-[10px]">
+                                          <div className="flex items-center gap-1 border-t border-slate-100 pt-0.5 text-[10px]">
                                             <button
-                                              className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 hover:bg-slate-200 transition-colors"
+                                              className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 transition-colors hover:bg-slate-200"
                                               title="Preview record PDF karyawan sesuai view ini"
                                               onClick={() => previewEmployeeRecordPdf(row.employee)}
                                             >
                                               Preview
                                             </button>
                                             <button
-                                              className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 hover:bg-slate-200 transition-colors"
+                                              className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 transition-colors hover:bg-slate-200"
                                               title={
                                                 attendanceView === 'msa' ||
                                                 attendanceView === 'meals' ||
@@ -10084,7 +10311,9 @@ export function SchedulingTimesheetWorkspace({
                                                   ? 'Generate record PDF sesuai view ini'
                                                   : 'Generate Overtime Record PDF'
                                               }
-                                              onClick={() => generateEmployeeOvertimePdf(row.employee)}
+                                              onClick={() =>
+                                                generateEmployeeOvertimePdf(row.employee)
+                                              }
                                             >
                                               {attendanceView === 'msa'
                                                 ? 'MSA'
@@ -10095,16 +10324,20 @@ export function SchedulingTimesheetWorkspace({
                                                     : 'OT'}
                                             </button>
                                             <button
-                                              className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 hover:bg-slate-200 transition-colors"
+                                              className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 transition-colors hover:bg-slate-200"
                                               title="Generate Benefit PDF (MSA, Meals, Tunjangan Khusus)"
-                                              onClick={() => generateEmployeeAllowancePdf(row.employee)}
+                                              onClick={() =>
+                                                generateEmployeeAllowancePdf(row.employee)
+                                              }
                                             >
                                               Benefit
                                             </button>
                                             <button
-                                              className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 hover:bg-slate-200 transition-colors"
+                                              className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 transition-colors hover:bg-slate-200"
                                               title="Generate Daily Activity PDF"
-                                              onClick={() => generateEmployeeDailyActivityPdf(row.employee)}
+                                              onClick={() =>
+                                                generateEmployeeDailyActivityPdf(row.employee)
+                                              }
                                             >
                                               DA
                                             </button>
@@ -10314,20 +10547,46 @@ export function SchedulingTimesheetWorkspace({
                                         const isConflict =
                                           cell.status === 'present' &&
                                           ['OFF', 'Libur', 'Sakit', 'FB'].includes(scheduleCode)
-                                        const scheduledClockIn = row.schedule[day - 1]?.split('-')[0]?.trim() || '';
+                                        const inferredShift = cell.clockIn
+                                          ? inferShiftFromClockInTime(
+                                              cell.clockIn,
+                                              effectiveSiteClockConfig
+                                            )
+                                          : null
+                                        const expectedShiftCode =
+                                          inferredShift?.shiftCode === 'night' ? 'NS' : 'DS'
+                                        const isShiftMismatch =
+                                          Boolean(inferredShift) &&
+                                          ((scheduleCode === 'DS' &&
+                                            inferredShift?.shiftCode === 'night') ||
+                                            (scheduleCode === 'NS' &&
+                                              inferredShift?.shiftCode === 'day'))
+                                        const isRosterMismatch = isConflict || isShiftMismatch
+                                        const rosterMismatchLabel = isConflict
+                                          ? 'Beda Roster'
+                                          : `Beda Roster · Seharusnya ${expectedShiftCode}`
+                                        const scheduledClockIn =
+                                          row.schedule[day - 1]?.split('-')[0]?.trim() || ''
                                         return (
                                           <td
                                             key={day}
                                             className={`w-[52px] min-w-[52px] px-1 py-2 align-top ${isHolidayDay ? 'bg-amber-100 ring-1 ring-amber-300 ring-inset' : ''}`}
                                             title={holidayName}
                                           >
+                                            <span
+                                              className={`mb-1 block text-[8px] leading-none font-black whitespace-nowrap text-orange-700 ${isRosterMismatch ? '' : 'invisible'}`}
+                                            >
+                                              Beda Roster
+                                            </span>
                                             <button
-                                              className={`relative h-[76px] w-[44px] rounded-xl px-1.5 py-1.5 text-left text-[11px] font-semibold transition ${
+                                              className={`group relative h-[76px] w-[44px] rounded-xl px-1.5 py-1.5 text-left text-[11px] font-semibold transition ${
                                                 cell.isLatePending
-                                                  ? 'bg-red-100 text-red-950 ring-1 ring-red-400 hover:bg-red-200 shadow-sm'
-                                                  : isHolidayDay
-                                                    ? attendanceHolidayCellClass
-                                                    : attendanceCellClass(cell.status)
+                                                  ? 'bg-red-100 text-red-950 shadow-sm ring-1 ring-red-400 hover:bg-red-200'
+                                                  : isRosterMismatch
+                                                    ? 'bg-orange-100 text-orange-950 shadow-sm ring-2 ring-orange-400 hover:bg-orange-200'
+                                                    : isHolidayDay
+                                                      ? attendanceHolidayCellClass
+                                                      : attendanceCellClass(cell.status)
                                               } ${isSelected ? 'outline outline-2 outline-offset-2 outline-slate-900' : ''} ${isConflict ? 'ring-2 ring-orange-400' : ''}`}
                                               onClick={() =>
                                                 multiSelectAttendance
@@ -10341,16 +10600,21 @@ export function SchedulingTimesheetWorkspace({
                                                 cell.isLatePending
                                                   ? `Terlambat ${cell.lateMinutes ? `${cell.lateMinutes} menit ` : ''}(Masuk: ${cell.clockIn || '--:--'}, Jadwal: ${cell.scheduledClockIn || scheduledClockIn || '--:--'})`
                                                   : isConflict
-                                                    ? `Conflict schedule ${scheduleCode} vs attendance masuk`
+                                                    ? rosterMismatchLabel
                                                     : holidayName ||
                                                       cell.note ||
                                                       attendanceStatusLabel(cell.status)
                                               }
                                             >
                                               {isConflict ? (
-                                                <span className="absolute top-1 right-1 text-[10px]">
-                                                  !
-                                                </span>
+                                                <>
+                                                  <span className="absolute top-1 right-1 rounded bg-orange-600 px-1 text-[9px] font-bold text-white">
+                                                    R
+                                                  </span>
+                                                  <span className="pointer-events-none absolute top-0 left-1/2 z-50 hidden -translate-x-1/2 -translate-y-full rounded-md bg-slate-900 px-2 py-1 text-[9px] font-medium whitespace-nowrap text-white shadow-lg group-hover:block">
+                                                    {rosterMismatchLabel}
+                                                  </span>
+                                                </>
                                               ) : null}
                                               {isHolidayDay ? (
                                                 <span className="absolute top-1 right-1 text-[9px]">
@@ -10359,7 +10623,7 @@ export function SchedulingTimesheetWorkspace({
                                               ) : null}
                                               {cell.isLatePending ? (
                                                 <span className="block leading-tight">
-                                                  <span className="block text-[9.5px] font-extrabold text-red-700 tracking-tight">
+                                                  <span className="block text-[9.5px] font-extrabold tracking-tight text-red-700">
                                                     Terlambat
                                                   </span>
                                                   {cell.lateMinutes ? (
@@ -10369,9 +10633,7 @@ export function SchedulingTimesheetWorkspace({
                                                   ) : null}
                                                 </span>
                                               ) : (
-                                                <span>
-                                                  {attendanceStatusLabel(cell.status)}
-                                                </span>
+                                                <span>{attendanceStatusLabel(cell.status)}</span>
                                               )}
                                               {cell.clockIn || cell.clockOut ? (
                                                 <span className="mt-1 block font-mono text-[9.5px] text-slate-800">
@@ -10498,12 +10760,19 @@ export function SchedulingTimesheetWorkspace({
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/80 px-4 py-3 text-xs text-slate-600">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-slate-900">Tips Penggunaan:</span>
-                    <span>Klik sel untuk edit jam/status · Double-click untuk rotasi cepat (Masuk → Sakit → Izin → Alpha → -).</span>
+                    <span>
+                      Klik sel untuk edit jam/status · Double-click untuk rotasi cepat (Masuk →
+                      Sakit → Izin → Alpha → -).
+                    </span>
                   </div>
                   <div className="flex items-center gap-1 font-mono text-[11px] text-slate-500">
                     <span>Format Import Excel:</span>
-                    <code className="rounded border border-slate-200 bg-white px-1.5 py-0.5 font-mono text-[10px] text-slate-700">Nama</code>
-                    <code className="rounded border border-slate-200 bg-white px-1.5 py-0.5 font-mono text-[10px] text-slate-700">D1..D31</code>
+                    <code className="rounded border border-slate-200 bg-white px-1.5 py-0.5 font-mono text-[10px] text-slate-700">
+                      Nama
+                    </code>
+                    <code className="rounded border border-slate-200 bg-white px-1.5 py-0.5 font-mono text-[10px] text-slate-700">
+                      D1..D31
+                    </code>
                   </div>
                 </div>
               </section>
@@ -10848,14 +11117,18 @@ export function SchedulingTimesheetWorkspace({
                       <>
                         <Button
                           variant="outline"
-                          disabled={isSavingFieldBreak || fieldBreakRows.length === 0 || isFinalized}
+                          disabled={
+                            isSavingFieldBreak || fieldBreakRows.length === 0 || isFinalized
+                          }
                           onClick={generateFieldBreakYear}
                           className="h-10"
                         >
                           <RefreshCw className="size-4" /> Generate
                         </Button>
                         <Button
-                          disabled={isSavingFieldBreak || fieldBreakRows.length === 0 || isFinalized}
+                          disabled={
+                            isSavingFieldBreak || fieldBreakRows.length === 0 || isFinalized
+                          }
                           onClick={syncFieldBreakPlansToDatabase}
                           className="h-10"
                         >
@@ -11334,6 +11607,22 @@ export function SchedulingTimesheetWorkspace({
                   (r) => r.employee.id === selectedAttendanceCell.employeeId
                 )
                 const employeeScheduleForDialog = employeeRowForDialog?.schedule ?? []
+                const dialogRosterCode =
+                  employeeScheduleForDialog[selectedAttendanceCell.day - 1] || ''
+                const dialogInferredShift = selectedAttendanceValue.clockIn
+                  ? inferShiftFromClockInTime(
+                      selectedAttendanceValue.clockIn,
+                      effectiveSiteClockConfig
+                    )
+                  : null
+                const dialogActualShiftCode =
+                  dialogInferredShift?.shiftCode === 'night' ? 'NS' : 'DS'
+                const dialogIsShiftMismatch =
+                  Boolean(dialogInferredShift) &&
+                  ((dialogRosterCode === 'DS' && dialogActualShiftCode === 'NS') ||
+                    (dialogRosterCode === 'NS' && dialogActualShiftCode === 'DS'))
+                const dialogNeedsShiftCheck =
+                  dialogIsShiftMismatch || (selectedAttendanceValue.lateMinutes ?? 0) > 60
                 const isStaffForDialog = isStaffRole(selectedAttendanceEmployee?.role || '')
                 const defaultOtCalculation = calculateDayOvertime(
                   employeeScheduleForDialog,
@@ -11451,13 +11740,66 @@ export function SchedulingTimesheetWorkspace({
                       </div>
                       {selectedAttendanceValue.isLatePending ? (
                         <span className="inline-flex items-center rounded-md bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700">
-                          Terlambat {selectedAttendanceValue.lateMinutes ? `+${selectedAttendanceValue.lateMinutes}m` : ''}
+                          Terlambat{' '}
+                          {selectedAttendanceValue.lateMinutes
+                            ? `+${selectedAttendanceValue.lateMinutes}m`
+                            : ''}
                         </span>
                       ) : dialogAttendanceDraft.clockIn ? (
                         <span className="inline-flex items-center rounded-md bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">
                           Tepat Waktu
                         </span>
                       ) : null}
+                    </div>
+                    {dialogNeedsShiftCheck ? (
+                      <div className="rounded-2xl border border-orange-300 bg-orange-50 px-3 py-2 text-xs text-orange-950">
+                        <span className="font-bold">Tolong cek:</span>{' '}
+                        {dialogIsShiftMismatch ? (
+                          <>
+                            jam masuk real terbaca{' '}
+                            <span className="font-bold">{dialogActualShiftCode}</span>, tetapi
+                            roster tanggal ini <span className="font-bold">{dialogRosterCode}</span>
+                            .
+                          </>
+                        ) : (
+                          <>keterlambatan lebih dari 60 menit.</>
+                        )}{' '}
+                        Kemungkinan salah masuk shift atau roster belum sesuai.
+                      </div>
+                    ) : null}
+                    <div className="flex flex-wrap items-end justify-between gap-3 rounded-2xl border border-orange-200 bg-orange-50/70 p-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold tracking-wide text-orange-950 uppercase">
+                          Edit roster tanggal {selectedAttendanceCell.day}
+                        </Label>
+                        <p className="text-xs text-orange-900/75">
+                          Perubahan ini langsung mengubah roster aktif untuk karyawan dan tanggal
+                          terpilih.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <NativeSelect
+                          value={rosterEditCode}
+                          onValueChange={(value) => setRosterEditCode(value as ScheduleCode)}
+                          disabled={isFinalized || isSavingSchedule}
+                          className="h-9 w-[150px] bg-white"
+                          options={(savedPlan?.sourceVersion === 'v2'
+                            ? ['', 'OFF', 'DS', 'NS', 'FB', 'ST']
+                            : codeCycle
+                          ).map((code) => ({
+                            value: code,
+                            label: code || 'Kosong',
+                          }))}
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={isFinalized || isSavingSchedule}
+                          onClick={() => saveRosterEditFromAttendance(rosterEditCode)}
+                        >
+                          {isSavingSchedule ? 'Menyimpan...' : 'Simpan roster'}
+                        </Button>
+                      </div>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-3">
                       <div className="space-y-2">
@@ -11810,11 +12152,7 @@ export function SchedulingTimesheetWorkspace({
           </DialogHeader>
           <div className="h-[calc(100vh-140px)] min-h-[70vh] bg-[#f5f7fb]">
             {pdfPreview ? (
-              <iframe
-                src={pdfPreview.url}
-                title={pdfPreview.title}
-                className="h-full w-full"
-              />
+              <iframe src={pdfPreview.url} title={pdfPreview.title} className="h-full w-full" />
             ) : null}
           </div>
           <div className="flex items-center justify-end gap-2 border-t p-3">

@@ -74,7 +74,7 @@ export default async function MobileLayout({ children }: { children: ReactNode }
   let siteId = null;
   if (session.user.email) {
     try {
-      const empData = await getEmployeeDisplayDataByEmail(session.user.email);
+      const empData = await getEmployeeDisplayDataByEmail(session.user.email, session.user.id);
       if (empData && (empData.isActive === false || empData.employmentStatus === 'inactive')) {
         redirect('/sign-in?error=account_deactivated');
       }

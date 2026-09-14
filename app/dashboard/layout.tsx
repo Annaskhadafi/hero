@@ -47,7 +47,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const [sidebarData, navbarSettings, employeeDisplay, unreadNotifications, groupLabelColor] = await Promise.all([
     getSidebarDataForUser(session.user.email),
     getNavbarSettingsData(),
-    getEmployeeDisplayDataByEmail(session.user.email),
+    getEmployeeDisplayDataByEmail(session.user.email, session.user.id),
     getRecipientUnreadNotificationCount(session.user.email).catch((error) => {
       console.error('[dashboard] failed to fetch unread notification count', error)
       return 0
