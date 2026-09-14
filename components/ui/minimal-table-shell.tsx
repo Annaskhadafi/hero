@@ -275,10 +275,16 @@ function matchesDataFilter(row: HTMLTableRowElement, key: string, expectedValue:
   if (!expectedValue) return true
   const datasetKey = `filter${toDatasetSuffix(key).charAt(0).toUpperCase()}${toDatasetSuffix(key).slice(1)}`
   const rawValue = row.dataset[datasetKey as keyof DOMStringMap]
+  if (rawValue === undefined || rawValue === null || rawValue === '') return false
   const normalizedExpectedValues = normalizeFilterValue(expectedValue).split('|').map((v) => v.trim()).filter(Boolean)
   const normalizedActualValues = normalizeFilterValue(rawValue).split('|').map((v) => v.trim()).filter(Boolean)
-  if (normalizedActualValues.length === 0) return true
-  return normalizedExpectedValues.some((expected) => normalizedActualValues.includes(expected))
+  if (normalizedExpectedValues.length === 0) return true
+  if (normalizedActualValues.length === 0) return false
+  return normalizedExpectedValues.some((expected) =>
+    normalizedActualValues.some(
+      (actual) => actual === expected || actual.includes(expected) || expected.includes(actual)
+    )
+  )
 }
 
 type TableSnapshot = {

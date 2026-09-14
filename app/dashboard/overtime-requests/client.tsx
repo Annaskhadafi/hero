@@ -567,8 +567,8 @@ export function OvertimeListingClient({
     const currentEmpName = (currentEmployeeName || '').toLowerCase().trim()
 
     const matchesId = currentEmpId != null && activeStep.approverEmployeeId != null && Number(activeStep.approverEmployeeId) === currentEmpId
-    const matchesEmail = Boolean(currentEmpEmail) && Boolean(activeStep.approverEmail) && activeStep.approverEmail.toLowerCase().trim() === currentEmpEmail
-    const matchesName = Boolean(currentEmpName) && Boolean(activeStep.approverName) && activeStep.approverName.toLowerCase().trim() === currentEmpName
+    const matchesEmail = Boolean(currentEmpEmail) && Boolean(activeStep.approverEmail) && (activeStep.approverEmail || '').toLowerCase().trim() === currentEmpEmail
+    const matchesName = Boolean(currentEmpName) && Boolean(activeStep.approverName) && (activeStep.approverName || '').toLowerCase().trim() === currentEmpName
 
     return Boolean(matchesId || matchesEmail || matchesName)
   }

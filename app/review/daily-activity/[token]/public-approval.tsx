@@ -656,30 +656,43 @@ export function DailyActivityPublicApproval({
         </div>
       </div>
 
-      {/* Evidence QR in Bottom Right Corner (Clickable to open floating modal) */}
-      <div className="absolute right-[20mm] bottom-[18mm]">
-        <div
-          onClick={() => setIsEvidenceModalOpen(true)}
-          className="flex flex-col items-center justify-start text-center border-l border-slate-200 pl-2 cursor-pointer group select-none transition-transform hover:scale-105 active:scale-95"
-          title="Klik untuk membuka galeri foto bukti pekerjaan"
-        >
-          <div className="h-14 flex items-center justify-center">
-            {evidenceQrDataUrl ? (
-              <img src={evidenceQrDataUrl} alt="QR Evidence" className="h-12 w-12 object-contain rounded border border-slate-200 p-0.5 bg-white shadow-xs group-hover:border-indigo-500 group-hover:shadow-md transition-all" />
-            ) : (
-              <div className="h-12 w-12 rounded border border-dashed border-slate-300 flex items-center justify-center text-[6pt] text-slate-400">
-                QR Code
+      {/* Evidence QR in Bottom Right Corner (Clickable to open floating modal, only if photo evidence exists) */}
+      {(() => {
+        const hasEvidence = (sessionItems || []).some((item: any) =>
+          Boolean(
+            (typeof item?.photoUrl === 'string' && item.photoUrl.trim().length > 0) ||
+            (Array.isArray(item?.photos) && item.photos.length > 0) ||
+            (Array.isArray(item?.evidenceUrls) && item.evidenceUrls.length > 0)
+          )
+        )
+        if (!hasEvidence) return null
+
+        return (
+          <div className="absolute right-[20mm] bottom-[18mm]">
+            <div
+              onClick={() => setIsEvidenceModalOpen(true)}
+              className="flex flex-col items-center justify-start text-center border-l border-slate-200 pl-2 cursor-pointer group select-none transition-transform hover:scale-105 active:scale-95"
+              title="Klik untuk membuka galeri foto bukti pekerjaan"
+            >
+              <div className="h-14 flex items-center justify-center">
+                {evidenceQrDataUrl ? (
+                  <img src={evidenceQrDataUrl} alt="QR Evidence" className="h-12 w-12 object-contain rounded border border-slate-200 p-0.5 bg-white shadow-xs group-hover:border-indigo-500 group-hover:shadow-md transition-all" />
+                ) : (
+                  <div className="h-12 w-12 rounded border border-dashed border-slate-300 flex items-center justify-center text-[6pt] text-slate-400">
+                    QR Code
+                  </div>
+                )}
               </div>
-            )}
+              <div className="font-bold text-[7.5pt] text-slate-800 mt-0.5 group-hover:text-indigo-600 transition-colors">
+                Scan / Klik Bukti Kerja
+              </div>
+              <div className="text-[6.5pt] text-slate-500 leading-tight">
+                Validasi Dokumen Digital
+              </div>
+            </div>
           </div>
-          <div className="font-bold text-[7.5pt] text-slate-800 mt-0.5 group-hover:text-indigo-600 transition-colors">
-            Scan / Klik Bukti Kerja
-          </div>
-          <div className="text-[6.5pt] text-slate-500 leading-tight">
-            Validasi Dokumen Digital
-          </div>
-        </div>
-      </div>
+        )
+      })()}
     </div>
   )
 

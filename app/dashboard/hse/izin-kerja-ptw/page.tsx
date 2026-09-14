@@ -229,7 +229,7 @@ export default async function IzinKerjaPtwPage() {
       currentEmployeeId={currentEmployee?.id ?? null}
       currentEmployeeEmail={normalizedEmail}
       currentEmployeeName={currentEmployee?.name || ''}
-      isAdmin={isGlobalAdmin}
+      isAdmin={Boolean(isGlobalAdmin)}
     />
   )
 }

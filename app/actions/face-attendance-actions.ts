@@ -162,6 +162,21 @@ export async function verifyAndSubmitFaceAttendanceAction(params: FaceAttendance
       console.error('[face-attendance-action] Timesheet sync failed:', syncErr)
     }
 
+    // 5. Auto-generate SPL if checkout is past scheduled shift hours
+    if (eventType === 'checked-out') {
+      try {
+        const { checkAndAutoGenerateSplOnCheckout } = await import('@/lib/timesheet/auto-spl-attendance')
+        await checkAndAutoGenerateSplOnCheckout({
+          employeeId: currentEmp.id,
+          siteId: targetSiteId,
+          eventTime,
+          shiftCode,
+        })
+      } catch (splErr) {
+        console.error('[face-attendance-action] Auto-SPL checkout generation error:', splErr)
+      }
+    }
+
     revalidatePath('/dashboard/analytics')
     revalidatePath('/dashboard/attendance')
     revalidatePath('/dashboard/attendance/records')

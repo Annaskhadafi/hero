@@ -1164,13 +1164,31 @@ function formatShortDate(value: string) {
     .replace(/ /g, '-')
 }
 
+const MONTH_NAMES_ID = [
+  'Januari',
+  'Februari',
+  'Maret',
+  'April',
+  'Mei',
+  'Juni',
+  'Juli',
+  'Agustus',
+  'September',
+  'Oktober',
+  'November',
+  'Desember',
+]
+
 function formatMonthPeriod(value: string) {
-  const date = new Date(`${value}-01T00:00:00Z`)
-  return Number.isNaN(date.getTime())
-    ? value
-    : new Intl.DateTimeFormat('id-ID', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
-        date
-      )
+  if (!value || typeof value !== 'string') return value
+  const parts = value.split('-')
+  if (parts.length < 2) return value
+  const year = parts[0]
+  const monthIdx = Number(parts[1]) - 1
+  if (monthIdx >= 0 && monthIdx < 12) {
+    return `${MONTH_NAMES_ID[monthIdx]} ${year}`
+  }
+  return value
 }
 
 function attendanceKey(employeeId: number, day: number) {
@@ -1656,16 +1674,29 @@ export function SchedulingTimesheetWorkspace({
   const [isSavingAttendance, startSavingAttendance] = useTransition()
 
   const [draftOvertimeHours, setDraftOvertimeHours] = useState<string>('')
+  const [dialogAttendanceDraft, setDialogAttendanceDraft] = useState<{
+    status: AttendanceCellStatus
+    clockIn: string
+    clockOut: string
+    note: string
+  } | null>(null)
 
   useEffect(() => {
     if (selectedAttendanceCell) {
       const cell = getAttendanceCell(selectedAttendanceCell.employeeId, selectedAttendanceCell.day)
+      setDialogAttendanceDraft({
+        status: cell.status,
+        clockIn: cell.clockIn,
+        clockOut: cell.clockOut,
+        note: cell.note || '',
+      })
       setDraftOvertimeHours(
         cell.overtimeHours !== undefined && cell.overtimeHours !== null
           ? String(cell.overtimeHours)
           : ''
       )
     } else {
+      setDialogAttendanceDraft(null)
       setDraftOvertimeHours('')
     }
   }, [selectedAttendanceCell])
@@ -1700,10 +1731,14 @@ export function SchedulingTimesheetWorkspace({
     recreate: boolean
   } | null>(null)
   const conflictsDismissKey = `conflicts-dismissed:${siteId}:${period}`
-  const [conflictsDismissed, setConflictsDismissedState] = useState(() => {
-    if (typeof window === 'undefined') return false
-    return sessionStorage.getItem(`conflicts-dismissed:${siteId}:${period}`) === 'true'
-  })
+  const [conflictsDismissed, setConflictsDismissedState] = useState(false)
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const isDismissed = sessionStorage.getItem(`conflicts-dismissed:${siteId}:${period}`) === 'true'
+      setConflictsDismissedState(isDismissed)
+    }
+  }, [siteId, period])
 
   function setConflictsDismissed(value: boolean) {
     setConflictsDismissedState(value)
@@ -2173,18 +2208,12 @@ export function SchedulingTimesheetWorkspace({
   }, [period])
 
   useEffect(() => {
-    const scoped = attendanceOverrides.filter((override) => {
-      if (override.period !== period) return false
-      if (siteId === 'all') return true
-      if (String(override.siteId) === siteId) return true
-      const emp = employees.find((e) => e.id === override.employeeId)
-      return emp && String(emp.siteId) === siteId
-    })
+    const scoped = attendanceOverrides.filter((override) => override.period === period)
     setManualAttendance(
       Object.fromEntries(
         scoped.map((override) => {
           const status = normalizeAttendanceStatus(override.status)
-          const clearsTime = status === 'standby' || status === 'field_break'
+          const clearsTime = status !== 'present'
           const overtimeHours =
             override.overtimeHours !== null && override.overtimeHours !== undefined
               ? Number(override.overtimeHours)
@@ -4453,19 +4482,23 @@ export function SchedulingTimesheetWorkspace({
     const rawStatus = isManual
       ? manual.status
       : normalizeAttendanceStatus(real?.clockIn?.status ?? real?.clockOut?.status ?? real?.records[0]?.status)
+    const isManualNonPresent = isManual && manual.status !== 'present'
     const clockIn = isManual
-      ? (manual.clockIn || timeFromIso(real?.clockIn?.eventTime, effectiveTz))
+      ? (isManualNonPresent ? (manual.clockIn || '') : (manual.clockIn || timeFromIso(real?.clockIn?.eventTime, effectiveTz)))
       : timeFromIso(real?.clockIn?.eventTime, effectiveTz)
     const clockOut = isManual
-      ? (manual.clockOut || timeFromIso(real?.clockOut?.eventTime, effectiveTz))
+      ? (isManualNonPresent ? (manual.clockOut || '') : (manual.clockOut || timeFromIso(real?.clockOut?.eventTime, effectiveTz)))
       : timeFromIso(real?.clockOut?.eventTime, effectiveTz)
 
     const rawNote = isManual
-      ? (manual.note || real?.clockIn?.locationNote || real?.records[0]?.locationNote || '')
+      ? (manual.note !== undefined ? manual.note : (real?.clockIn?.locationNote || real?.records[0]?.locationNote || ''))
       : (real?.clockIn?.locationNote || real?.clockOut?.locationNote || real?.records[0]?.locationNote || 'Face/location attendance')
 
     let effectiveStatus = rawStatus
-    if (clockIn || real?.clockIn || (real?.records && real.records.length > 0)) {
+    if (isManual) {
+      // Manual status explicitly set by admin/user MUST take precedence
+      effectiveStatus = manual.status
+    } else if (clockIn || real?.clockIn || (real?.records && real.records.length > 0)) {
       if (effectiveStatus === 'empty' || effectiveStatus === 'off') {
         effectiveStatus = 'present'
       }
@@ -4509,14 +4542,14 @@ export function SchedulingTimesheetWorkspace({
   ) {
     if (!guardOpenPeriod('Edit attendance')) return
     const key = attendanceKey(employeeId, day)
-    const statusClearsTime = patch.status === 'standby' || patch.status === 'field_break'
+    const isNonPresent = patch.status && patch.status !== 'present'
     setManualAttendance((current) => ({
       ...current,
       [key]: {
         ...getAttendanceCell(employeeId, day),
         source: 'manual',
         ...patch,
-        ...(statusClearsTime ? { clockIn: '', clockOut: '' } : {}),
+        ...(isNonPresent && patch.clockIn === undefined ? { clockIn: '', clockOut: '' } : {}),
       },
     }))
     setIsAttendanceDirty(true)
@@ -9068,7 +9101,7 @@ export function SchedulingTimesheetWorkspace({
                 {/* 1. Header & Actions Bar */}
                 <Card className="surface-module-card border-border/60 overflow-hidden rounded-2xl border bg-white p-0 shadow-xs">
                   <div className="flex flex-col gap-4 border-b border-border/50 p-5 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
                       <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-slate-900 text-white shadow-xs">
                         <CalendarDays className="size-5" />
                       </div>
@@ -9087,6 +9120,30 @@ export function SchedulingTimesheetWorkspace({
                         <p className="mt-0.5 text-xs text-muted-foreground">
                           Kelola data kehadiran karyawan untuk site dan bulan yang dipilih.
                         </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 sm:ml-4">
+                        <select
+                          aria-label="Pilih site"
+                          value={siteId}
+                          onChange={(e) => {
+                            const newSiteId = e.target.value
+                            setSiteId(newSiteId)
+                          }}
+                          className="h-9 rounded-lg border border-border/70 bg-white px-3 text-xs font-semibold text-slate-900 shadow-2xs focus:ring-1 focus:ring-primary"
+                        >
+                          {sites.map((item) => (
+                            <option key={item.id} value={String(item.id)}>
+                              {item.name}
+                            </option>
+                          ))}
+                        </select>
+                        <Input
+                          type="month"
+                          aria-label="Pilih bulan"
+                          value={period}
+                          onChange={(e) => setPeriod(e.target.value)}
+                          className="h-9 w-[150px] text-xs font-semibold bg-white"
+                        />
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -10280,9 +10337,6 @@ export function SchedulingTimesheetWorkspace({
                                                       day,
                                                     })
                                               }
-                                              onDoubleClick={() =>
-                                                cycleAttendanceCell(row.employee.id, day)
-                                              }
                                               title={
                                                 cell.isLatePending
                                                   ? `Terlambat ${cell.lateMinutes ? `${cell.lateMinutes} menit ` : ''}(Masuk: ${cell.clockIn || '--:--'}, Jadwal: ${cell.scheduledClockIn || scheduledClockIn || '--:--'})`
@@ -10526,12 +10580,13 @@ export function SchedulingTimesheetWorkspace({
                       key={`${plan.siteId}-${plan.period}`}
                       data-filter-site={historySite?.name ?? ''}
                       data-filter-period={plan.period}
-                      className="border-border/30 hover:bg-surface-container-low/40 border-t transition"
+                      className="border-border/30 hover:bg-surface-container-low/60 border-t transition cursor-pointer"
+                      onClick={() => openAttendanceWorkspace(plan.siteId, plan.period)}
                     >
-                      <TableCell className="px-4 py-3 font-semibold">
+                      <TableCell className="px-4 py-3 font-semibold text-primary hover:underline">
                         {historySite?.name ?? `Site ${plan.siteId}`}
                       </TableCell>
-                      <TableCell className="px-4 py-3 tabular-nums">
+                      <TableCell className="px-4 py-3 tabular-nums font-medium" suppressHydrationWarning>
                         {formatMonthPeriod(plan.period)}
                       </TableCell>
                       <TableCell className="px-4 py-3">
@@ -10546,17 +10601,20 @@ export function SchedulingTimesheetWorkspace({
                           {status?.attendanceStatus === 'saved' ? 'Tersimpan' : 'Belum diisi'}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-muted-foreground px-4 py-3">
+                      <TableCell className="text-muted-foreground px-4 py-3" suppressHydrationWarning>
                         {status?.lastSavedAt
                           ? new Date(status.lastSavedAt).toLocaleString('id-ID')
                           : '-'}
                       </TableCell>
-                      <TableCell className="px-4 py-3">
+                      <TableCell className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end gap-2">
                           <Button
                             size="icon"
                             variant="outline"
-                            onClick={() => openAttendanceWorkspace(plan.siteId, plan.period)}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openAttendanceWorkspace(plan.siteId, plan.period)
+                            }}
                             aria-label="Lihat attendance"
                             title="Lihat attendance"
                           >
@@ -10565,7 +10623,10 @@ export function SchedulingTimesheetWorkspace({
                           <Button
                             size="icon"
                             variant="outline"
-                            onClick={() => openAttendanceWorkspace(plan.siteId, plan.period)}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openAttendanceWorkspace(plan.siteId, plan.period)
+                            }}
                             aria-label="Edit attendance"
                             title="Edit attendance"
                           >
@@ -10574,13 +10635,14 @@ export function SchedulingTimesheetWorkspace({
                           <Button
                             size="icon"
                             variant="outline"
-                            onClick={() =>
+                            onClick={(e) => {
+                              e.stopPropagation()
                               setAttendanceResetTarget({
                                 siteId: plan.siteId,
                                 period: plan.period,
                                 recreate: true,
                               })
-                            }
+                            }}
                             aria-label="Buat ulang attendance"
                             title="Buat ulang attendance"
                           >
@@ -10589,13 +10651,14 @@ export function SchedulingTimesheetWorkspace({
                           <Button
                             size="icon"
                             variant="outline"
-                            onClick={() =>
+                            onClick={(e) => {
+                              e.stopPropagation()
                               setAttendanceResetTarget({
                                 siteId: plan.siteId,
                                 period: plan.period,
                                 recreate: false,
                               })
-                            }
+                            }}
                             aria-label="Hapus attendance"
                             title="Hapus attendance"
                           >
@@ -11265,7 +11328,7 @@ export function SchedulingTimesheetWorkspace({
           <DialogHeader>
             <DialogTitle>Edit Attendance Real {selectedAttendanceEmployee?.name}</DialogTitle>
           </DialogHeader>
-          {selectedAttendanceCell && selectedAttendanceValue
+          {selectedAttendanceCell && dialogAttendanceDraft && selectedAttendanceValue
             ? (() => {
                 const employeeRowForDialog = rows.find(
                   (r) => r.employee.id === selectedAttendanceCell.employeeId
@@ -11275,8 +11338,8 @@ export function SchedulingTimesheetWorkspace({
                 const defaultOtCalculation = calculateDayOvertime(
                   employeeScheduleForDialog,
                   selectedAttendanceCell.day,
-                  selectedAttendanceValue.clockIn,
-                  selectedAttendanceValue.clockOut,
+                  dialogAttendanceDraft.clockIn,
+                  dialogAttendanceDraft.clockOut,
                   isStaffForDialog,
                   selectedAttendanceCell.employeeId,
                   true
@@ -11286,17 +11349,17 @@ export function SchedulingTimesheetWorkspace({
                   : calculateLegacyOvertime(
                       employeeScheduleForDialog,
                       selectedAttendanceCell.day,
-                      selectedAttendanceValue.clockIn,
-                      selectedAttendanceValue.clockOut
+                      dialogAttendanceDraft.clockIn,
+                      dialogAttendanceDraft.clockOut
                     )
                 const isNonWorkingDialogStatus =
-                  selectedAttendanceValue.status === 'empty' ||
-                  selectedAttendanceValue.status === 'sick' ||
-                  selectedAttendanceValue.status === 'leave' ||
-                  selectedAttendanceValue.status === 'absent' ||
-                  selectedAttendanceValue.status === 'field_break'
+                  dialogAttendanceDraft.status === 'empty' ||
+                  dialogAttendanceDraft.status === 'sick' ||
+                  dialogAttendanceDraft.status === 'leave' ||
+                  dialogAttendanceDraft.status === 'absent' ||
+                  dialogAttendanceDraft.status === 'field_break'
                 const defaultOtHours =
-                  isNonWorkingDialogStatus && !selectedAttendanceValue.clockIn && !selectedAttendanceValue.clockOut
+                  isNonWorkingDialogStatus && !dialogAttendanceDraft.clockIn && !dialogAttendanceDraft.clockOut
                     ? 0
                     : defaultOtCalculation.totalHours > 0
                       ? defaultOtCalculation.totalHours
@@ -11307,28 +11370,40 @@ export function SchedulingTimesheetWorkspace({
                     selectedAttendanceCell.employeeId,
                     selectedAttendanceCell.day
                   )
+                  const isNonPresent = dialogAttendanceDraft.status !== 'present'
                   // When user hasn't changed anything, treat the shown default value as the intended override
-                  const finalOt =
-                    draftOvertimeHours === '' ? defaultOtHours : Number(draftOvertimeHours)
+                  const finalOt = isNonPresent
+                    ? 0
+                    : draftOvertimeHours === ''
+                      ? defaultOtHours
+                      : Number(draftOvertimeHours)
                   logClientActionAction(
                     `[CLIENT LOG] onSaveAndClose key=${key} draftOvertimeHours='${draftOvertimeHours}' finalOt=${finalOt}`
                   )
-                  // Update local state immediately so UI reflects change
+                  // Update local state ONLY on explicit save click
                   const updatedCell: ManualAttendanceCell = {
                     ...getAttendanceCell(
                       selectedAttendanceCell.employeeId,
                       selectedAttendanceCell.day
                     ),
-                    ...selectedAttendanceValue,
+                    status: dialogAttendanceDraft.status,
+                    clockIn: isNonPresent ? '' : dialogAttendanceDraft.clockIn,
+                    clockOut: isNonPresent ? '' : dialogAttendanceDraft.clockOut,
+                    note: dialogAttendanceDraft.note,
                     overtimeHours: finalOt,
                     source: 'manual' as const,
                   }
                   setManualAttendance((prev) => ({ ...prev, [key]: updatedCell }))
+                  setIsAttendanceDirty(true)
                   setSelectedAttendanceCell(null)
 
                   // Save ONLY this single cell directly to the server
                   if (!guardOpenPeriod('Save attendance')) return
-                  const numericSiteId = Number(siteId)
+                  const numericSiteId = Number(
+                    siteId === 'all'
+                      ? selectedAttendanceEmployee?.siteId || 1
+                      : siteId
+                  )
                   if (!Number.isFinite(numericSiteId) || numericSiteId <= 0 || isFinalized) return
                   startSavingAttendance(async () => {
                     try {
@@ -11351,6 +11426,10 @@ export function SchedulingTimesheetWorkspace({
                       if (result.ok) {
                         router.refresh()
                         toast.success('Attendance saved')
+                      } else {
+                        toast.error('Save attendance failed', {
+                          description: (result as { error?: string })?.error || 'Failed to save attendance',
+                        })
                       }
                     } catch (error) {
                       toast.error('Save attendance failed', {
@@ -11374,7 +11453,7 @@ export function SchedulingTimesheetWorkspace({
                         <span className="inline-flex items-center rounded-md bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700">
                           Terlambat {selectedAttendanceValue.lateMinutes ? `+${selectedAttendanceValue.lateMinutes}m` : ''}
                         </span>
-                      ) : selectedAttendanceValue.clockIn ? (
+                      ) : dialogAttendanceDraft.clockIn ? (
                         <span className="inline-flex items-center rounded-md bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">
                           Tepat Waktu
                         </span>
@@ -11384,14 +11463,20 @@ export function SchedulingTimesheetWorkspace({
                       <div className="space-y-2">
                         <Label>Status</Label>
                         <NativeSelect
-                          value={selectedAttendanceValue.status}
-                          onValueChange={(value) =>
-                            updateAttendanceCell(
-                              selectedAttendanceCell.employeeId,
-                              selectedAttendanceCell.day,
-                              { status: value as AttendanceCellStatus }
+                          value={dialogAttendanceDraft.status}
+                          onValueChange={(value) => {
+                            const nextStatus = value as AttendanceCellStatus
+                            const isNonPres = nextStatus !== 'present'
+                            setDialogAttendanceDraft((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    status: nextStatus,
+                                    ...(isNonPres ? { clockIn: '', clockOut: '' } : {}),
+                                  }
+                                : null
                             )
-                          }
+                          }}
                           options={[
                             { value: 'present', label: 'Masuk' },
                             { value: 'off', label: 'OFF (tetap dapat tunjangan)' },
@@ -11408,17 +11493,16 @@ export function SchedulingTimesheetWorkspace({
                         <Label>Jam Masuk</Label>
                         <Input
                           type="time"
-                          value={selectedAttendanceValue.clockIn}
+                          value={dialogAttendanceDraft.clockIn}
                           onChange={(event) =>
-                            updateAttendanceCell(
-                              selectedAttendanceCell.employeeId,
-                              selectedAttendanceCell.day,
-                              {
-                                clockIn: event.target.value,
-                                status: event.target.value
-                                  ? 'present'
-                                  : selectedAttendanceValue.status,
-                              }
+                            setDialogAttendanceDraft((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    clockIn: event.target.value,
+                                    status: event.target.value ? 'present' : prev.status,
+                                  }
+                                : null
                             )
                           }
                         />
@@ -11427,17 +11511,16 @@ export function SchedulingTimesheetWorkspace({
                         <Label>Jam Pulang</Label>
                         <Input
                           type="time"
-                          value={selectedAttendanceValue.clockOut}
+                          value={dialogAttendanceDraft.clockOut}
                           onChange={(event) =>
-                            updateAttendanceCell(
-                              selectedAttendanceCell.employeeId,
-                              selectedAttendanceCell.day,
-                              {
-                                clockOut: event.target.value,
-                                status: event.target.value
-                                  ? 'present'
-                                  : selectedAttendanceValue.status,
-                              }
+                            setDialogAttendanceDraft((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    clockOut: event.target.value,
+                                    status: event.target.value ? 'present' : prev.status,
+                                  }
+                                : null
                             )
                           }
                         />
@@ -11446,12 +11529,10 @@ export function SchedulingTimesheetWorkspace({
                     <div className="space-y-2">
                       <Label>Catatan</Label>
                       <Input
-                        value={selectedAttendanceValue.note}
+                        value={dialogAttendanceDraft.note}
                         onChange={(event) =>
-                          updateAttendanceCell(
-                            selectedAttendanceCell.employeeId,
-                            selectedAttendanceCell.day,
-                            { note: event.target.value }
+                          setDialogAttendanceDraft((prev) =>
+                            prev ? { ...prev, note: event.target.value } : null
                           )
                         }
                         placeholder="Face loc / izin / sakit / manual"
@@ -11484,7 +11565,17 @@ export function SchedulingTimesheetWorkspace({
                             </span>
                           )}
                       </div>
-                      <Button onClick={onSaveAndClose}>Simpan</Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => setSelectedAttendanceCell(null)}
+                        >
+                          Batal
+                        </Button>
+                        <Button onClick={onSaveAndClose} disabled={isSavingAttendance}>
+                          {isSavingAttendance ? 'Menyimpan...' : 'Simpan'}
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 )

@@ -56,7 +56,12 @@ export async function getCurrentEmployeeAccessRole(): Promise<string> {
     )
     .limit(1)
 
-  return employee?.accessRole ?? ''
+  if (employee?.accessRole) return employee.accessRole
+  if ((session.user as { role?: string } | undefined)?.role) {
+    return (session.user as { role?: string }).role || ''
+  }
+
+  return ''
 }
 
 export async function getMenuPermissionForRole(

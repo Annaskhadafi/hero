@@ -1351,8 +1351,8 @@ export function MobileDailyActivityForm({
               </Badge>
             ) : null}
             {requiresPhoto ? (
-              <Badge className="border-0 bg-[#fff1cf] px-1.5 py-0 text-[9px] font-black tracking-[0.14em] text-[#8a5a00] uppercase">
-                Wajib
+              <Badge className="border-0 bg-slate-100 px-1.5 py-0 text-[9px] font-medium tracking-[0.14em] text-slate-600 uppercase">
+                Opsional
               </Badge>
             ) : null}
           </div>
@@ -1868,29 +1868,13 @@ export function MobileDailyActivityForm({
   }, [draftPayload])
 
   function validatePayload() {
-    // 1. Validasi Header & Profil Pengajuan
+    // 1. Validasi Header & Source Mode
     if (!workDate) {
       return 'Tanggal kerja wajib diisi.'
     }
 
-    if (!shiftCode) {
-      return 'Shift kerja wajib dipilih.'
-    }
-
-    if (!customerName?.trim()) {
-      return 'Nama Customer / Pelanggan wajib diisi.'
-    }
-
-    if (!leaderEmployeeId) {
-      return 'Pilih Leader / Supervisor / PJO untuk persetujuan dokumen.'
-    }
-
-    if (superiorOptions.length > 0 && !superiorEmployeeId) {
-      return 'Pilih Section Head / Superior untuk persetujuan dokumen.'
-    }
-
-    if (isTeamLog && selectedMemberIds.length === 0) {
-      return 'Pilih minimal satu anggota tim untuk aktivitas kelompok / tim.'
+    if (!sourceMode) {
+      return 'Pilih Source Mode aktivitas terlebih dahulu.'
     }
 
     if (
@@ -1901,168 +1885,66 @@ export function MobileDailyActivityForm({
       return 'Tanggal aktivitas tidak sesuai dengan jadwal SPL.'
     }
 
-    if (
-      checklistContext &&
-      sourceMode !== 'self_input' &&
-      !assignmentId &&
-      !customActivityName.trim() &&
-      routeSessionItems.length > 0 &&
-      routeSessionItems.every((item) => !item.isChecked)
-    ) {
-      return checklistContext.kind === 'spl'
-        ? 'Centang minimal satu item checklist SPL.'
-        : 'Centang minimal satu item checklist route.'
-    }
-
-    // 2. Validasi Mode Assigned
+    // 2. Validasi Mode Assigned (Wajib pilih assignment & penjelasan pekerjaan)
     if (sourceMode === 'assigned') {
       if (!assignmentId) {
-        return 'Pilih assignment terlebih dahulu.'
+        return 'Pilih assignment penugasan terlebih dahulu.'
       }
 
-      if (!startTime || !endTime) {
-        return 'Waktu mulai dan selesai wajib diisi.'
+      if (!notes.trim()) {
+        return 'Penjelasan / catatan hasil kerja wajib diisi.'
       }
 
-      if (new Date(endTime) <= new Date(startTime)) {
+      if (startTime && endTime && new Date(endTime) <= new Date(startTime)) {
         return 'Waktu selesai harus setelah waktu mulai.'
-      }
-
-      const hasAssignedPhoto =
-        Boolean(photoFile) ||
-        Boolean(photoFiles && photoFiles.length > 0) ||
-        Boolean(restoredPhotoPayload) ||
-        Boolean(photoPreviewUrls && photoPreviewUrls.length > 0) ||
-        Boolean(photoName) ||
-        initialCustomUrls.length > 0
-      if (!hasAssignedPhoto) {
-        return 'Foto bukti pekerjaan (evidence) wajib diunggah untuk assignment ini.'
       }
 
       return ''
     }
 
-    // 3. Validasi Mode Custom
+    // 3. Validasi Mode Custom (Wajib nama custom & penjelasan deskripsi)
     if (sourceMode === 'custom') {
       if (!customActivityName.trim()) {
         return 'Nama custom activity wajib diisi.'
       }
 
-      if (!startTime || !endTime) {
-        return 'Waktu mulai dan selesai wajib diisi.'
+      if (!customActivityDescription.trim() && !notes.trim()) {
+        return 'Penjelasan / deskripsi aktivitas custom wajib diisi.'
       }
 
-      if (new Date(endTime) <= new Date(startTime)) {
+      if (startTime && endTime && new Date(endTime) <= new Date(startTime)) {
         return 'Waktu selesai harus setelah waktu mulai.'
-      }
-
-      const hasCustomPhoto =
-        Boolean(photoFile) ||
-        Boolean(photoFiles && photoFiles.length > 0) ||
-        Boolean(restoredPhotoPayload) ||
-        Boolean(photoPreviewUrls && photoPreviewUrls.length > 0) ||
-        Boolean(photoName) ||
-        initialCustomUrls.length > 0
-      if (!hasCustomPhoto) {
-        return 'Foto bukti pekerjaan (evidence) wajib diunggah untuk aktivitas custom.'
       }
 
       return ''
     }
 
-    // 4. Validasi Mode Kamus Aktivitas (Self Input) & Checklist
+    // 4. Validasi Mode Kamus Aktivitas (Self Input) & Checklist (Wajib 1 library & penjelasan diisi)
     if (selectedLibraries.length === 0 && !hasCheckedChecklist) {
       return 'Pilih minimal satu aktivitas dari Kamus Aktivitas sebelum submit.'
     }
 
-    // Validasi setiap aktivitas terpilih: field wajib dan foto evidence
     for (const [index, library] of (selectedLibraries || []).entries()) {
       const libraryId = `${library.id}`
       const entry =
         selfInputEntries[libraryId] ??
         buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
 
-      const matchingSessionItem = initialSessionData?.sessionItems?.find(
-        (it: any) => String(it.libraryActivityId) === libraryId || String(it.id) === libraryId
-      )
-      const sessionPhotos = matchingSessionItem ? extractItemPhotos(matchingSessionItem) : []
-      const hasPhoto = Boolean(
-        entry?.photoFile ||
-        (entry?.photoFiles && entry.photoFiles.length > 0) ||
-        entry?.restoredPhotoPayload ||
-        (entry?.previewUrls && entry.previewUrls.length > 0) ||
-        entry?.photoName ||
-        sessionPhotos.length > 0
-      )
-
-      if (!hasPhoto) {
-        return `Foto bukti pekerjaan (evidence) wajib diunggah untuk aktivitas "${library.activityCode} - ${library.activityName}".`
-      }
-
       if (!entry.notes?.trim()) {
-        return `Catatan item wajib diisi untuk aktivitas "${library.activityCode} - ${library.activityName}".`
+        return `Penjelasan / catatan aktivitas wajib diisi untuk "${library.activityCode} - ${library.activityName}".`
       }
 
-      if (library.requiresEquipmentNo && !entry.equipmentNo.trim()) {
-        return `Nomor Unit / Equipment wajib diisi untuk aktivitas ${library.activityCode}.`
-      }
+      if (entry.startTime && entry.endTime) {
+        const start = new Date(entry.startTime)
+        const end = new Date(entry.endTime)
 
-      if (library.requiresMaterialUsed && !entry.materialUsed.trim()) {
-        return `Material / tools wajib diisi untuk aktivitas ${library.activityCode}.`
-      }
-
-      if (library.requiresTireCount && (!entry.tireCount || entry.tireCount <= 0)) {
-        return `Jumlah tire wajib diisi untuk aktivitas ${library.activityCode}.`
-      }
-
-      if (!entry.startTime || !entry.endTime) {
-        return `Waktu mulai dan selesai wajib diisi untuk aktivitas ${library.activityCode}.`
-      }
-
-      const start = new Date(entry.startTime)
-      const end = new Date(entry.endTime)
-
-      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-        return `Format waktu tidak valid pada aktivitas ${library.activityCode}.`
-      }
-
-      if (end <= start) {
-        return `Waktu selesai harus setelah waktu mulai pada aktivitas ${library.activityCode}.`
-      }
-    }
-
-    // Validasi Checklist jika ada yang dicentang
-    if (checklistContext && hasCheckedChecklist) {
-      for (const group of checklistContext.groups) {
-        for (const item of group.items) {
-          const state = routeItemState[item.id]
-          if (state?.isChecked) {
-            const hasChecklistPhoto = Boolean(
-              state?.photoFile ||
-              (state?.photoFiles && state.photoFiles.length > 0) ||
-              state?.restoredPhotoPayload ||
-              (state?.previewUrls && state.previewUrls.length > 0) ||
-              state?.photoName
-            )
-            if (!hasChecklistPhoto) {
-              return `Foto bukti pekerjaan wajib diunggah untuk item checklist "${item.label || item.activityName || 'Checklist'}".`
-            }
-
-            if (item.requiresEquipmentNo && !state?.unitNumber?.trim()) {
-              return `Nomor unit/equipment wajib diisi untuk item checklist "${item.label || item.activityName || 'Checklist'}".`
-            }
-
-            if (item.requiresTireCount && (!state?.tireCount || state?.tireCount <= 0)) {
-              return `Jumlah tire wajib diisi untuk item checklist "${item.label || item.activityName || 'Checklist'}".`
-            }
-
-            if (item.requiresMaterialUsed && !state?.materialUsed?.trim()) {
-              return `Material / tools wajib diisi untuk item checklist "${item.label || item.activityName || 'Checklist'}".`
-            }
-          }
+        if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end <= start) {
+          return `Waktu selesai harus setelah waktu mulai pada aktivitas ${library.activityCode}.`
         }
       }
     }
+
+    // Checklist fields and evidence are fully optional
 
     // Validasi rentang waktu bentrok antar aktivitas
     const ranges: Array<{ code: string; start: Date; end: Date }> = []
@@ -2773,7 +2655,7 @@ export function MobileDailyActivityForm({
                 </select>
                 <p className="text-xs leading-5 font-semibold text-[#486275]">
                   {selectedAssignment?.requiresPhoto
-                    ? 'Assignment ini wajib upload foto evidence.'
+                    ? 'Foto bukti (evidence) opsional.'
                     : 'Pilih assignment yang sedang dikerjakan.'}
                 </p>
                 {selectedAssignment
@@ -2891,8 +2773,8 @@ export function MobileDailyActivityForm({
                       Description
                     </span>
                     <SpeechInputButton
-                      onFinalTranscript={(text) =>
-                        setCustomActivityDescription((prev) => (prev ? prev + ' ' + text : text))
+                      onFinalTranscript={(text: string) =>
+                        setCustomActivityDescription((prev: string) => (prev ? prev + ' ' + text : text))
                       }
                       className="size-7"
                     />
@@ -2923,8 +2805,8 @@ export function MobileDailyActivityForm({
                 </p>
               </div>
               {needsGlobalPhoto ? (
-                <Badge className="border-0 bg-[#fff1cf] text-[9px] font-black tracking-[0.14em] text-[#8a5a00] uppercase">
-                  Butuh foto
+                <Badge className="border-0 bg-slate-100 text-[9px] font-medium tracking-[0.14em] text-slate-600 uppercase">
+                  Foto opsional
                 </Badge>
               ) : null}
             </div>
@@ -2937,11 +2819,11 @@ export function MobileDailyActivityForm({
                     selfInputEntries[libraryId] ??
                     buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
                   const requirementBadges = [
-                    library.requiresEquipmentNo ? 'Equipment wajib' : null,
-                    library.requiresTireCount ? 'Tire wajib' : null,
-                    library.requiresDuration ? 'Waktu wajib' : null,
-                    library.requiresMaterialUsed ? 'Material wajib' : null,
-                    library.requiresPhoto ? 'Foto umum wajib' : null,
+                    library.requiresEquipmentNo ? 'Equipment' : null,
+                    library.requiresTireCount ? 'Tire' : null,
+                    library.requiresDuration ? 'Waktu' : null,
+                    library.requiresMaterialUsed ? 'Material' : null,
+                    library.requiresPhoto ? 'Foto (Opsional)' : null,
                   ].filter(Boolean)
 
                   return (
@@ -3057,7 +2939,7 @@ export function MobileDailyActivityForm({
                         <Label className="block space-y-2">
                           <div className="flex items-center justify-between">
                             <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
-                              Catatan item *
+                              Catatan item (Opsional)
                             </span>
                             <SpeechInputButton
                               onFinalTranscript={(text) =>
@@ -3074,7 +2956,7 @@ export function MobileDailyActivityForm({
                             onChange={(event) =>
                               updateSelfInputEntry(libraryId, { notes: event.target.value })
                             }
-                            placeholder="Wajib diisi: Hasil kerja, temuan, atau catatan singkat."
+                            placeholder="Hasil kerja, temuan, atau catatan singkat (opsional)."
                             className="rounded-2xl border-0 bg-white px-4 py-3 text-sm font-semibold text-[#082033]"
                           />
                         </Label>
@@ -3171,8 +3053,8 @@ export function MobileDailyActivityForm({
                                 {item.itemDescription || item.libraryName || 'Checklist item'}
                               </span>
                               {item.requiresPhoto ? (
-                                <span className="mt-1 inline-flex rounded-full bg-[#fff1cf] px-2 py-1 text-[10px] font-black tracking-[0.08em] text-[#8a5a00] uppercase">
-                                  Foto wajib
+                                <span className="mt-1 inline-flex rounded-full bg-slate-100 px-2 py-1 text-[10px] font-medium tracking-[0.08em] text-slate-600 uppercase">
+                                  Foto opsional
                                 </span>
                               ) : null}
                               <span className="mt-1 block text-[11px] font-black tracking-[0.12em] text-[#003f78] uppercase">
@@ -3864,24 +3746,37 @@ export function MobileDailyActivityForm({
                         </div>
                       </div>
 
-                      {/* Evidence QR in Bottom Right Corner (Clickable to open floating modal) */}
-                      <div
-                        onClick={() => setIsEvidenceModalOpen(true)}
-                        className="absolute right-[20mm] bottom-[18mm] flex flex-col items-center text-center cursor-pointer group select-none transition-transform hover:scale-105 active:scale-95"
-                        title="Klik untuk membuka galeri foto bukti pekerjaan"
-                      >
-                        <div className="p-1 bg-white border border-slate-300 rounded shadow-2xs group-hover:border-indigo-500 group-hover:shadow-md transition-all">
-                          {evidenceQrDataUrl ? (
-                            <img src={evidenceQrDataUrl} alt="QR Evidence" className="h-14 w-14 object-contain" />
-                          ) : (
-                            <div className="h-14 w-14 flex items-center justify-center text-[6pt] text-slate-400 border border-dashed border-slate-200">
-                              QR Code
+                      {/* Evidence QR in Bottom Right Corner (Clickable to open floating modal, only if photo evidence exists) */}
+                      {(() => {
+                        const hasEvidence = (previewItemsList || []).some((item: any) =>
+                          Boolean(
+                            (typeof item?.photoUrl === 'string' && item.photoUrl.trim().length > 0) ||
+                            (Array.isArray(item?.photos) && item.photos.length > 0) ||
+                            (Array.isArray(item?.evidenceUrls) && item.evidenceUrls.length > 0)
+                          )
+                        )
+                        if (!hasEvidence) return null
+
+                        return (
+                          <div
+                            onClick={() => setIsEvidenceModalOpen(true)}
+                            className="absolute right-[20mm] bottom-[18mm] flex flex-col items-center text-center cursor-pointer group select-none transition-transform hover:scale-105 active:scale-95"
+                            title="Klik untuk membuka galeri foto bukti pekerjaan"
+                          >
+                            <div className="p-1 bg-white border border-slate-300 rounded shadow-2xs group-hover:border-indigo-500 group-hover:shadow-md transition-all">
+                              {evidenceQrDataUrl ? (
+                                <img src={evidenceQrDataUrl} alt="QR Evidence" className="h-14 w-14 object-contain" />
+                              ) : (
+                                <div className="h-14 w-14 flex items-center justify-center text-[6pt] text-slate-400 border border-dashed border-slate-200">
+                                  QR Code
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
-                        <div className="text-[6.5pt] font-bold text-slate-700 mt-0.5 group-hover:text-indigo-600 transition-colors">Scan / Klik Bukti Kerja</div>
-                        <div className="text-[6pt] text-gray-400 mt-0.5">PT Chitra Paratama • HERO Platform</div>
-                      </div>
+                            <div className="text-[6.5pt] font-bold text-slate-700 mt-0.5 group-hover:text-indigo-600 transition-colors">Scan / Klik Bukti Kerja</div>
+                            <div className="text-[6pt] text-gray-400 mt-0.5">PT Chitra Paratama • HERO Platform</div>
+                          </div>
+                        )
+                      })()}
 
                       <div className="text-right text-[7pt] text-slate-500 mt-2 font-mono">
                         {isSplDoc ? 'F.HC.SPL.001.01 • PT Chitra Paratama' : 'F.OP.DAR.001.01 • PT Chitra Paratama'}

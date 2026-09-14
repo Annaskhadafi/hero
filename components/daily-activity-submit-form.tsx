@@ -422,8 +422,8 @@ export function DailyActivitySubmitForm({
                             {item.itemDescription || item.libraryName || "Checklist item"}
                           </span>
                           {item.requiresPhoto ? (
-                            <span className="inline-flex rounded-full bg-[#fff1cf] px-2 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-[#8a5a00]">
-                              Foto wajib
+                            <span className="inline-flex rounded-full bg-slate-100 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.08em] text-slate-600">
+                              Foto opsional
                             </span>
                           ) : null}
                           <span className="block text-[11px] font-semibold text-primary">
@@ -567,7 +567,7 @@ export function DailyActivitySubmitForm({
       </select>
       <span className={isMobile ? mobileHintClass : "text-xs text-muted-foreground"}>
         {selectedAssignment?.requiresPhoto
-          ? "Assignment ini wajib upload foto evidence."
+          ? "Foto bukti (evidence) opsional."
           : "Approval otomatis ke atasan langsung."}
       </span>
     </Label>
@@ -605,8 +605,8 @@ export function DailyActivitySubmitForm({
           </div>
           <div className="flex flex-wrap gap-1.5 pt-0.5">
             {selectedLibrary.requiresPhoto ? (
-              <span className="rounded-md bg-amber-100 border border-amber-300 px-2 py-0.5 text-[10px] font-bold text-amber-900">
-                FOTO EVIDENCE WAJIB
+              <span className="rounded-md bg-slate-100 border border-slate-300 px-2 py-0.5 text-[10px] font-bold text-slate-700">
+                FOTO EVIDENCE (OPSIONAL)
               </span>
             ) : null}
             {selectedLibrary.requiresTireCount ? (
@@ -915,7 +915,7 @@ export function DailyActivitySubmitForm({
               </div>
               <span className={mobileHintClass}>
                 {needsAnyPhoto
-                  ? "Foto wajib. Tombol ini buka kamera atau galeri native di mobile, dan file picker di web."
+                  ? "Foto opsional. Tombol ini buka kamera atau galeri native di mobile, dan file picker di web."
                   : "Di mobile, tombol ini buka kamera atau galeri native. Di web, upload dari file picker browser."}
               </span>
               {photoName ? <span className={mobileHintClass}>{photoName}</span> : null}
@@ -949,7 +949,6 @@ export function DailyActivitySubmitForm({
                   defaultValue={1}
                   placeholder="Contoh: 2 / 4"
                   className={fieldClass}
-                  required
                 />
               </Label>
             ) : null}
@@ -960,7 +959,6 @@ export function DailyActivitySubmitForm({
                 type="datetime-local"
                 defaultValue={defaultStartTime}
                 className={fieldClass}
-                required
               />
             </Label>
             <Label className={labelClass}>
@@ -970,7 +968,6 @@ export function DailyActivitySubmitForm({
                 type="datetime-local"
                 defaultValue={defaultEndTime}
                 className={fieldClass}
-                required
               />
             </Label>
           </div>
@@ -984,11 +981,12 @@ export function DailyActivitySubmitForm({
           {routeChecklistSection}
 
           <Label className={labelClass}>
-            <span className={labelTextClass}>Notes / hasil kerja</span>
+            <span className={labelTextClass}>Notes / penjelasan hasil kerja *</span>
             <Textarea
               name="notes"
               rows={4}
-              placeholder="Ringkas apa yang dikerjakan, hasilnya, kendala, dan bukti penting."
+              required
+              placeholder="Wajib diisi: Ringkas apa yang dikerjakan, hasilnya, kendala, atau catatan penting."
               className={textareaClass}
             />
           </Label>
@@ -1007,9 +1005,7 @@ export function DailyActivitySubmitForm({
             />
             {photoName ? <span className="text-xs text-muted-foreground">{photoName}</span> : null}
             <span className="text-xs text-muted-foreground">
-              {needsAnyPhoto
-                ? "Foto wajib karena assignment / checklist / library yang dipilih butuh image evidence."
-                : "Foto opsional, tapi disarankan untuk bukti kerja lapangan."}
+              Foto opsional, tapi disarankan untuk bukti kerja lapangan.
             </span>
           </Label>
         </>

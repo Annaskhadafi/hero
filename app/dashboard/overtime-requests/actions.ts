@@ -142,6 +142,7 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
           id: employees.id,
           name: employees.name,
           email: employees.email,
+          signatureDataUrl: employees.signatureDataUrl,
           directManagerId: employees.directManagerId,
           departmentId: employees.departmentId,
           sectionId: employees.sectionId,
@@ -310,14 +311,50 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
   const step2Token = randomUUID()
   const step3Token = randomUUID()
 
+  const now = new Date()
   const steps = [
-    { stepOrder: 1, stepLabel: 'Karyawan Sign', approverRole: 'employee', employeeId: requester?.id ?? null, name: requester?.name ?? 'Karyawan', email: requester?.email || '', token: step1Token },
-    { stepOrder: 2, stepLabel: 'Leader / Pengawas', approverRole: 'leader', employeeId: leaderEmployeeId, name: leaderName, email: leaderEmail, token: step2Token },
-    { stepOrder: 3, stepLabel: 'Section Head', approverRole: 'section_head', employeeId: sectionHeadEmployeeId, name: sectionHeadName, email: sectionHeadEmail, token: step3Token },
+    {
+      stepOrder: 1,
+      stepLabel: 'Karyawan Sign',
+      approverRole: 'employee',
+      employeeId: requester?.id ?? null,
+      name: requester?.name ?? 'Karyawan',
+      email: requester?.email || '',
+      token: step1Token,
+      status: 'approved',
+      signatureDataUrl: requester?.signatureDataUrl || null,
+      signedAt: now,
+      remarks: 'Auto-approved oleh pemohon saat submit SPL.',
+    },
+    {
+      stepOrder: 2,
+      stepLabel: 'Leader / Pengawas',
+      approverRole: 'leader',
+      employeeId: leaderEmployeeId,
+      name: leaderName,
+      email: leaderEmail,
+      token: step2Token,
+      status: 'pending',
+      signatureDataUrl: null,
+      signedAt: null,
+      remarks: '',
+    },
+    {
+      stepOrder: 3,
+      stepLabel: 'Section Head',
+      approverRole: 'section_head',
+      employeeId: sectionHeadEmployeeId,
+      name: sectionHeadName,
+      email: sectionHeadEmail,
+      token: step3Token,
+      status: 'waiting',
+      signatureDataUrl: null,
+      signedAt: null,
+      remarks: '',
+    },
   ]
 
   for (const step of steps) {
-    const isStep1 = step.stepOrder === 1
     await db
       .insert(overtimeApprovals)
       .values({
@@ -329,29 +366,31 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
         approverName: step.name,
         approverEmail: step.email,
         approverRole: step.approverRole,
-        status: isStep1 ? 'pending' : 'waiting',
-        signedAt: null,
-        createdAt: new Date(),
+        status: step.status,
+        signatureDataUrl: step.signatureDataUrl,
+        signedAt: step.signedAt,
+        remarks: step.remarks,
+        createdAt: now,
       })
       .onConflictDoNothing({
         target: [overtimeApprovals.overtimeCommandLetterId, overtimeApprovals.stepOrder],
       })
   }
 
-  // Send initial step 1 email
-  if (requester?.email) {
+  // Dispatch initial Step 2 approval email directly to Leader / Pengawas
+  if (leaderEmail) {
     sendOvertimeStepApprovalEmail({
       documentId: document.id,
       splNumber: document.splNumber || `SPL-${document.id}`,
       title: document.title || 'Penugasan Lembur Operasional',
       workDate: document.workDate,
-      employeeName: requester.name || 'Karyawan',
-      requesterName: requester.name || 'Karyawan',
-      approverName: requester.name || 'Karyawan',
-      approverEmail: requester.email,
-      approvalStep: 'Karyawan Sign',
-      approvalToken: step1Token,
-    }).catch((err) => console.error('[ensureOvertimeApprovalsExist] Email error:', err))
+      employeeName: requester?.name || 'Karyawan',
+      requesterName: requester?.name || 'Karyawan',
+      approverName: leaderName,
+      approverEmail: leaderEmail,
+      approvalStep: 'Leader / Pengawas',
+      approvalToken: step2Token,
+    }).catch((err) => console.error('[ensureOvertimeApprovalsExist] Email error to leader:', err))
   }
 }
 
@@ -1724,7 +1763,15 @@ export async function createOvertimeCommandLetterAction(payload: {
       }
     }
 
-    // Ensure or insert sequential approval steps (Step 1 Pending)
+    const requesterSig = requesterEmp?.signatureDataUrl || currentEmp?.signatureDataUrl
+    if (!requesterSig) {
+      return {
+        success: false as const,
+        error: 'Tanda tangan digital pemohon belum terdaftar. Silakan buat/daftarkan tanda tangan terlebih dahulu di menu Profil atau form tanda tangan.',
+      }
+    }
+
+    // Ensure or insert sequential approval steps (Step 1 Auto-Approved, Step 2 Pending)
     if (payload.leaderEmployeeId || payload.superiorEmployeeId || payload.managerEmployeeId) {
       const [validLeader] = payload.leaderEmployeeId
         ? await db.select({ id: employees.id, name: employees.name, email: employees.email }).from(employees).where(eq(employees.id, payload.leaderEmployeeId)).limit(1)
@@ -1741,6 +1788,7 @@ export async function createOvertimeCommandLetterAction(payload: {
       const step1Token = randomUUID()
       const step2Token = randomUUID()
       const step3Token = randomUUID()
+      const now = new Date()
 
       const steps = [
         {
@@ -1751,12 +1799,12 @@ export async function createOvertimeCommandLetterAction(payload: {
           approverEmployeeId: requesterId,
           approverName: requesterEmp?.name || currentEmp?.name || 'Karyawan',
           approverEmail: requesterEmp?.email || currentEmp?.email || '',
-          signatureDataUrl: null,
-          signedAt: null,
-          remarks: '',
-          status: 'pending',
+          signatureDataUrl: requesterSig,
+          signedAt: now,
+          remarks: 'Auto-approved oleh pemohon saat submit SPL.',
+          status: 'approved',
           approvalToken: step1Token,
-          createdAt: new Date(),
+          createdAt: now,
         },
         {
           overtimeCommandLetterId: inserted.id,
@@ -1769,9 +1817,9 @@ export async function createOvertimeCommandLetterAction(payload: {
           signatureDataUrl: null,
           signedAt: null,
           remarks: '',
-          status: 'waiting',
+          status: 'pending',
           approvalToken: step2Token,
-          createdAt: new Date(),
+          createdAt: now,
         },
         {
           overtimeCommandLetterId: inserted.id,
@@ -1786,7 +1834,7 @@ export async function createOvertimeCommandLetterAction(payload: {
           remarks: '',
           status: 'waiting',
           approvalToken: step3Token,
-          createdAt: new Date(),
+          createdAt: now,
         },
       ]
       await db
@@ -1796,22 +1844,24 @@ export async function createOvertimeCommandLetterAction(payload: {
           target: [overtimeApprovals.overtimeCommandLetterId, overtimeApprovals.stepOrder],
         })
 
-      const targetEmail = requesterEmp?.email || currentEmp?.email || ''
-      try {
-        await sendOvertimeStepApprovalEmail({
-          documentId: inserted.id,
-          splNumber: inserted.splNumber || `SPL-${inserted.id}`,
-          title: inserted.title || payload.title || 'Penugasan Lembur Operasional',
-          workDate: inserted.workDate,
-          employeeName: requesterEmp?.name || currentEmp?.name || 'Karyawan',
-          requesterName: requesterEmp?.name || currentEmp?.name || 'Karyawan',
-          approverName: requesterEmp?.name || currentEmp?.name || 'Karyawan',
-          approverEmail: targetEmail,
-          approvalStep: 'Karyawan Sign',
-          approvalToken: step1Token,
-        })
-      } catch (err) {
-        console.error('[createOvertimeCommandLetterAction] Email dispatch error:', err)
+      const leaderTargetEmail = validLeader?.email || ''
+      if (leaderTargetEmail) {
+        try {
+          await sendOvertimeStepApprovalEmail({
+            documentId: inserted.id,
+            splNumber: inserted.splNumber || `SPL-${inserted.id}`,
+            title: inserted.title || payload.title || 'Penugasan Lembur Operasional',
+            workDate: inserted.workDate,
+            employeeName: requesterEmp?.name || currentEmp?.name || 'Karyawan',
+            requesterName: requesterEmp?.name || currentEmp?.name || 'Karyawan',
+            approverName: payload.leaderName || validLeader?.name || 'Leader Lapangan',
+            approverEmail: leaderTargetEmail,
+            approvalStep: 'Leader / Supervisor',
+            approvalToken: step2Token,
+          })
+        } catch (err) {
+          console.error('[createOvertimeCommandLetterAction] Email dispatch error:', err)
+        }
       }
     } else {
       await ensureOvertimeApprovalsExist(inserted.id)
