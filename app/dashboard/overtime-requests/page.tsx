@@ -114,6 +114,7 @@ export default async function OvertimeRequestsPage() {
             overtimeCommandLetterId: overtimeApprovals.overtimeCommandLetterId,
             stepOrder: overtimeApprovals.stepOrder,
             stepLabel: overtimeApprovals.stepLabel,
+            approverRole: overtimeApprovals.approverRole,
             status: overtimeApprovals.status,
             approverName: overtimeApprovals.approverName,
             approverEmail: overtimeApprovals.approverEmail,

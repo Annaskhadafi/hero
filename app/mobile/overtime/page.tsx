@@ -266,8 +266,8 @@ export default async function MobileOvertimePage({
         <TabsContent value="apply" className="mt-4 space-y-4">
           {(() => {
             const isApprovedSpl =
-              (initialSplData?.status || initialSplData?.document?.status || '').toLowerCase() === 'approved' ||
-              (initialSplData?.status || initialSplData?.document?.status || '').toLowerCase() === 'closed';
+              (initialSplData?.status || (initialSplData as any)?.document?.status || '').toLowerCase() === 'approved' ||
+              (initialSplData?.status || (initialSplData as any)?.document?.status || '').toLowerCase() === 'closed';
 
             return (
               <section className="rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)] border border-slate-100">
@@ -284,7 +284,7 @@ export default async function MobileOvertimePage({
                     </p>
                     <h2 className="mt-0.5 text-base font-extrabold text-[#003461]">
                       {isApprovedSpl
-                        ? `Dokumen Surat Lembur (SPL) ${initialSplData?.splNumber || initialSplData?.document?.splNumber || `#${editSplId}`}`
+                        ? `Dokumen Surat Lembur (SPL) ${initialSplData?.splNumber || (initialSplData as any)?.document?.splNumber || `#${editSplId}`}`
                         : editSplId
                           ? `Revisi Surat Lembur (SPL) #${editSplId}`
                           : parentSplId

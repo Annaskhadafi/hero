@@ -155,7 +155,7 @@ export default async function DailyActivityApprovalPage({
       employees={employees}
       orgNodes={orgNodes}
       activityPresets={sanitizedPresets}
-      routeFolders={availableRouteFolders}
+      routeFolders={availableRouteFolders as any}
     />
   )
 }

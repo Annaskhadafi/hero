@@ -235,7 +235,7 @@ export default async function MobileActivityInputPage({
         employee={data.employee}
         hierarchy={hierarchy}
         assignments={data.assignments}
-        availableLibrary={data.availableLibrary}
+        availableLibrary={data.availableLibrary as any}
         defaultStartTime={defaultStartTime}
         defaultEndTime={defaultEndTime}
         routeChecklist={data.routeChecklist}

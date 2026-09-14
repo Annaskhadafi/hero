@@ -1005,10 +1005,24 @@ export function MobileDailyActivityClient({
                               </div>
                             </div>
 
-                            {/* Evidence QR in Bottom Right Corner */}
-                            <div className="absolute right-[20mm] bottom-[18mm]">
-                              <EvidenceQrBox sessionId={selectedReviewDoc?.sessionId || selectedReviewDoc?.id} />
-                            </div>
+                            {/* Evidence QR in Bottom Right Corner (only if photo evidence exists) */}
+                            {(() => {
+                              const items = selectedReviewDoc?.items || selectedReviewDoc?.sessionItems || []
+                              const hasEvidence = items.some((item: any) =>
+                                Boolean(
+                                  (typeof item?.photoUrl === 'string' && item.photoUrl.trim().length > 0) ||
+                                  (Array.isArray(item?.photos) && item.photos.length > 0) ||
+                                  (Array.isArray(item?.evidenceUrls) && item.evidenceUrls.length > 0)
+                                )
+                              )
+                              if (!hasEvidence) return null
+
+                              return (
+                                <div className="absolute right-[20mm] bottom-[18mm]">
+                                  <EvidenceQrBox sessionId={selectedReviewDoc?.sessionId || selectedReviewDoc?.id} />
+                                </div>
+                              )
+                            })()}
                           </>
                         )
                       })()}

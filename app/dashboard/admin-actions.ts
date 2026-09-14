@@ -246,7 +246,16 @@ async function requireSchedulingTimesheetAccess(
 ) {
   const access = await getCurrentMenuPermission(resource)
   const allowed = permission === 'finalize' ? access.canDelete : access.canEdit
-  if (!access.canView || !allowed) throw new Error('Unauthorized scheduling timesheet access')
+  if (!access.canView || !allowed) {
+    if (resource !== 'scheduling_timesheet') {
+      const parentAccess = await getCurrentMenuPermission('scheduling_timesheet')
+      const parentAllowed = permission === 'finalize' ? parentAccess.canDelete : parentAccess.canEdit
+      if (parentAccess.canView && parentAllowed) {
+        return parentAccess
+      }
+    }
+    throw new Error('Unauthorized scheduling timesheet access')
+  }
   return access
 }
 
@@ -1539,18 +1548,18 @@ const attendanceRealStatusSchema = z.enum([
   'field_break',
 ])
 const saveAttendanceRealOverridesSchema = z.object({
-  siteId: z.number().int().positive(),
+  siteId: z.coerce.number().int().positive(),
   period: z.string().regex(/^\d{4}-\d{2}$/),
   overrides: z.array(
     z.object({
-      employeeId: z.number().int().positive(),
-      day: z.number().int().min(1).max(31),
+      employeeId: z.coerce.number().int().positive(),
+      day: z.coerce.number().int().min(1).max(31),
       status: attendanceRealStatusSchema,
-      clockIn: z.string().max(8).default(''),
-      clockOut: z.string().max(8).default(''),
-      note: z.string().max(240).default(''),
+      clockIn: z.string().nullish().transform((v) => v?.trim() ?? '').default(''),
+      clockOut: z.string().nullish().transform((v) => v?.trim() ?? '').default(''),
+      note: z.string().nullish().transform((v) => v?.trim() ?? '').default(''),
       source: z.enum(['manual', 'excel', 'attendance']).default('manual'),
-      overtimeHours: z.number().nullable().optional(),
+      overtimeHours: z.coerce.number().nullable().optional(),
     })
   ),
 })

@@ -584,7 +584,7 @@ export default async function MyDayPage() {
                   </TableHeader>
                   <TableBody>
                     {data.availableLibrary.length > 0 ? (
-                      data.availableLibrary.map((item) => (
+                      data.availableLibrary.map((item: any) => (
                         <TableRow key={item.id}>
                           <TableCell className="align-top">
                             <div className="space-y-1">
@@ -596,7 +596,7 @@ export default async function MyDayPage() {
                           <TableCell className="align-top">
                             <div className="text-sm">
                               <p>{item.basePoints} pts</p>
-                              <p className="text-xs text-muted-foreground">Complexity {item.complexityLevel}</p>
+                              <p className="text-xs text-muted-foreground">Complexity {item.complexityLevel || 'Standard'}</p>
                             </div>
                           </TableCell>
                           <TableCell className="align-top">
@@ -607,7 +607,7 @@ export default async function MyDayPage() {
                               {item.requiresMaterialUsed ? <Badge variant="outline">Material</Badge> : null}
                             </div>
                           </TableCell>
-                          <TableCell className="align-top">{item.slaHours} jam</TableCell>
+                          <TableCell className="align-top">{item.slaHours || 24} jam</TableCell>
                         </TableRow>
                       ))
                     ) : (

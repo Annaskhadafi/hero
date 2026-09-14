@@ -801,6 +801,22 @@ export async function submitAttendance(formData: FormData) {
       console.error('[submitAttendance] Timesheet sync failed:', syncError)
     }
 
+    // Auto-generate SPL if checkout is past scheduled shift hours
+    if (eventType === 'checked-out') {
+      try {
+        const { checkAndAutoGenerateSplOnCheckout } = await import('@/lib/timesheet/auto-spl-attendance')
+        await checkAndAutoGenerateSplOnCheckout({
+          employeeId: employee.id,
+          siteId: employee.siteId,
+          eventTime,
+          shiftCode,
+          overtimeMinutes,
+        })
+      } catch (splErr) {
+        console.error('[submitAttendance] Auto-SPL checkout generation error:', splErr)
+      }
+    }
+
     revalidatePath('/mobile/attendance')
     revalidatePath('/dashboard/attendance')
     revalidatePath('/dashboard/attendance/records')

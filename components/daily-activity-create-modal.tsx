@@ -497,43 +497,15 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
       return
     }
 
-    if (!createForm.workDate?.trim()) {
-      toast.error('Tanggal Kerja (Work Date) wajib diisi!')
+    const workDate = createForm.workDate?.trim() || new Date().toISOString().split('T')[0]
+    const shiftCode = createForm.shiftCode?.trim() || 'ALL'
+
+    if (!createForm.sourceMode) {
+      toast.error('Pilih Source Mode aktivitas terlebih dahulu!')
       return
     }
 
-    if (!createForm.shiftCode?.trim()) {
-      toast.error('Shift Kerja wajib dipilih!')
-      return
-    }
-
-    if (!createForm.siteId?.trim()) {
-      toast.error('Site / Lokasi wajib dipilih!')
-      return
-    }
-
-    if (!createForm.jobTitle?.trim()) {
-      toast.error('Job Title / Posisi wajib diisi!')
-      return
-    }
-
-    if (!createForm.department?.trim()) {
-      toast.error('Departemen & Seksi wajib diisi!')
-      return
-    }
-
-    if (!createForm.customerName?.trim()) {
-      toast.error('Customer / Partner wajib diisi!')
-      return
-    }
-
-    // 2. Signatories Validations
-    if (!createForm.leaderEmployeeId?.trim()) {
-      toast.error('Leader / Supervisor (Verifikasi PJO) wajib dipilih!')
-      return
-    }
-
-    // 3. Activity Items & Evidence Validation
+    // 2. Activity Items & Explanation Validation (Photo evidence tetap opsional)
     let validItems: any[] = []
 
     if (createForm.sourceMode === 'custom') {
@@ -541,28 +513,9 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
         toast.error('Nama Custom Activity wajib diisi!')
         return
       }
-      if (!createForm.customPhotoUrl?.trim()) {
-        toast.error('Photo Evidence untuk Custom Activity wajib diunggah!')
-        return
-      }
-      if (!createForm.customDescription?.trim()) {
-        toast.error('Description / Penjelasan Custom Activity wajib diisi!')
-        return
-      }
-      if (!createForm.customStartTime?.trim()) {
-        toast.error('Start Time Custom Activity wajib diisi!')
-        return
-      }
-      if (!createForm.customEndTime?.trim()) {
-        toast.error('End Time Custom Activity wajib diisi!')
-        return
-      }
-      if (!createForm.customMaterialUsed?.trim()) {
-        toast.error('Material Used Custom Activity wajib diisi!')
-        return
-      }
-      if (!createForm.customNotes?.trim()) {
-        toast.error('Notes / Hasil Kerja Custom Activity wajib diisi!')
+      const customExplanation = `${createForm.customDescription?.trim() || ''} ${createForm.customNotes?.trim() || ''}`.trim()
+      if (!customExplanation) {
+        toast.error('Penjelasan / deskripsi Custom Activity wajib diisi!')
         return
       }
 
@@ -570,12 +523,12 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
         {
           label: createForm.customName.trim(),
           unitNumber: '',
-          remark: `${createForm.customDescription.trim()} - ${createForm.customNotes.trim()}`,
-          startedAt: `${createForm.workDate}T${createForm.customStartTime || '08:00'}:00`,
-          endedAt: `${createForm.workDate}T${createForm.customEndTime || '17:00'}:00`,
-          materialUsed: createForm.customMaterialUsed.trim(),
-          photoUrl: createForm.customPhotoUrl,
-          photos: [createForm.customPhotoUrl],
+          remark: customExplanation,
+          startedAt: `${workDate}T${createForm.customStartTime || '08:00'}:00`,
+          endedAt: `${workDate}T${createForm.customEndTime || '17:00'}:00`,
+          materialUsed: createForm.customMaterialUsed?.trim() || '',
+          photoUrl: createForm.customPhotoUrl || null,
+          photos: createForm.customPhotoUrl ? [createForm.customPhotoUrl] : [],
           duration: '60m',
           points: 10,
         },
@@ -585,70 +538,36 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
         toast.error('Assignment penugasan wajib dipilih!')
         return
       }
-      if (!createForm.assignedPhotoUrl?.trim()) {
-        toast.error('Photo Evidence untuk Assigned Activity wajib diunggah!')
-        return
-      }
-      if (!createForm.assignedStartTime?.trim()) {
-        toast.error('Start Time Assigned Activity wajib diisi!')
-        return
-      }
-      if (!createForm.assignedEndTime?.trim()) {
-        toast.error('End Time Assigned Activity wajib diisi!')
-        return
-      }
-      if (!createForm.assignedMaterialUsed?.trim()) {
-        toast.error('Material Used Assigned Activity wajib diisi!')
-        return
-      }
       if (!createForm.assignedNotes?.trim()) {
-        toast.error('Notes / Hasil Kerja Assigned Activity wajib diisi!')
+        toast.error('Penjelasan / catatan pekerjaan penugasan wajib diisi!')
         return
       }
 
+      const assignmentLabel = `Assignment #${createForm.assignmentId}`
       validItems = [
         {
-          label: `Assignment #${createForm.assignmentId}`,
+          label: assignmentLabel,
           unitNumber: '',
           remark: createForm.assignedNotes.trim(),
-          startedAt: `${createForm.workDate}T${createForm.assignedStartTime || '08:00'}:00`,
-          endedAt: `${createForm.workDate}T${createForm.assignedEndTime || '17:00'}:00`,
-          materialUsed: createForm.assignedMaterialUsed.trim(),
-          photoUrl: createForm.assignedPhotoUrl,
-          photos: [createForm.assignedPhotoUrl],
+          startedAt: `${workDate}T${createForm.assignedStartTime || '08:00'}:00`,
+          endedAt: `${workDate}T${createForm.assignedEndTime || '17:00'}:00`,
+          materialUsed: createForm.assignedMaterialUsed?.trim() || '',
+          photoUrl: createForm.assignedPhotoUrl || null,
+          photos: createForm.assignedPhotoUrl ? [createForm.assignedPhotoUrl] : [],
           duration: '60m',
           points: 10,
         },
       ]
     } else {
+      // self_input: Wajib minimal 1 library dan penjelasan terisi
       validItems = createForm.items.filter((it) => it.label && it.label.trim().length > 0)
       if (validItems.length === 0) {
-        toast.error('Buka Kamus Aktivitas dan pilih minimal 1 item aktivitas!')
+        toast.error('Pilih minimal 1 aktivitas dari Kamus Aktivitas!')
         return
       }
-
-      for (let idx = 0; idx < validItems.length; idx++) {
-        const item = validItems[idx]
-        const itemNumber = idx + 1
-        const itemLabel = item.label.split(' - ')[1] || item.label
-
-        if (!item.startTime?.trim()) {
-          toast.error(`Waktu Mulai pada item #${itemNumber} (${itemLabel}) wajib diisi!`)
-          return
-        }
-
-        if (!item.endTime?.trim()) {
-          toast.error(`Waktu Selesai pada item #${itemNumber} (${itemLabel}) wajib diisi!`)
-          return
-        }
-
-        if (!item.photoUrl?.trim() && (!item.photos || item.photos.length === 0)) {
-          toast.error(`Photo Evidence pada item #${itemNumber} (${itemLabel}) wajib diunggah!`)
-          return
-        }
-
-        if (!item.remark?.trim()) {
-          toast.error(`Catatan Item pada item #${itemNumber} (${itemLabel}) wajib diisi!`)
+      for (const it of validItems) {
+        if (!it.remark?.trim()) {
+          toast.error(`Penjelasan / catatan aktivitas wajib diisi untuk "${it.label}"!`)
           return
         }
       }
@@ -1044,14 +963,14 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                 <div className="rounded-lg border border-blue-100 bg-white p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                      <Camera className="size-3.5 text-slate-500" /> Photo Evidence <span className="text-red-500 font-bold">*</span>
+                      <Camera className="size-3.5 text-slate-500" /> Photo Evidence <span className="text-slate-400 font-normal text-[10px]">(Opsional)</span>
                     </span>
                     {createForm.assignedPhotoUrl ? (
                       <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-semibold">
                         Foto Terunggah
                       </Badge>
                     ) : (
-                      <span className="text-[10px] text-rose-500 font-bold">Wajib diunggah</span>
+                      <span className="text-[10px] text-slate-500 font-medium">Foto opsional</span>
                     )}
                   </div>
 
@@ -1177,14 +1096,14 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                 <div className="rounded-lg border border-sky-100 bg-white p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                      <Camera className="size-3.5 text-slate-500" /> Photo Evidence <span className="text-red-500 font-bold">*</span>
+                      <Camera className="size-3.5 text-slate-500" /> Photo Evidence <span className="text-slate-400 font-normal text-[10px]">(Opsional)</span>
                     </span>
                     {createForm.customPhotoUrl ? (
                       <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-semibold">
                         Foto Terunggah
                       </Badge>
                     ) : (
-                      <span className="text-[10px] text-rose-500 font-bold">Wajib diunggah</span>
+                      <span className="text-[10px] text-slate-500 font-medium">Foto opsional</span>
                     )}
                   </div>
 
@@ -1383,15 +1302,15 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                             )}>
                               <div className="flex items-center justify-between">
                                 <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                                  <Camera className="size-3.5 text-slate-500" /> Photo Evidence <span className="text-red-500 font-bold">*</span>
+                                  <Camera className="size-3.5 text-slate-500" /> Photo Evidence <span className="text-slate-400 font-normal text-[10px]">(Opsional)</span>
                                 </span>
                                 {item.photoUrl ? (
                                   <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-semibold">
                                     Foto Terunggah
                                   </Badge>
                                 ) : (
-                                  <span className="text-[10px] text-rose-600 font-bold bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">
-                                    Wajib diunggah
+                                  <span className="text-[10px] text-slate-500 font-medium bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
+                                    Foto opsional
                                   </span>
                                 )}
                               </div>

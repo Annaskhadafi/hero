@@ -712,8 +712,8 @@ async function uploadActivityPhoto(file: File): Promise<string> {
     const currentEmpName = (currentEmployeeName || '').toLowerCase().trim()
 
     const matchesId = currentEmpId != null && activeStep.approverEmployeeId != null && Number(activeStep.approverEmployeeId) === currentEmpId
-    const matchesEmail = Boolean(currentEmpEmail) && Boolean(activeStep.approverEmail) && activeStep.approverEmail.toLowerCase().trim() === currentEmpEmail
-    const matchesName = Boolean(currentEmpName) && Boolean(activeStep.approverName) && activeStep.approverName.toLowerCase().trim() === currentEmpName
+    const matchesEmail = Boolean(currentEmpEmail) && Boolean(activeStep.approverEmail) && (activeStep.approverEmail || '').toLowerCase().trim() === currentEmpEmail
+    const matchesName = Boolean(currentEmpName) && Boolean(activeStep.approverName) && (activeStep.approverName || '').toLowerCase().trim() === currentEmpName
 
     return Boolean(matchesId || matchesEmail || matchesName)
   }
@@ -1288,12 +1288,6 @@ async function uploadActivityPhoto(file: File): Promise<string> {
         toast.error(msg, { duration: 5000 })
         return
       }
-      if (!createForm.customPhotoUrl?.trim() && (!createForm.customPhotos || createForm.customPhotos.length === 0)) {
-        const msg = 'Photo Evidence untuk Custom Activity wajib diunggah!'
-        setCreateError(msg)
-        toast.error(msg, { duration: 5000 })
-        return
-      }
       validItems = [
         {
           label: createForm.customName.trim(),
@@ -1308,12 +1302,6 @@ async function uploadActivityPhoto(file: File): Promise<string> {
     } else if (createForm.sourceMode === 'assigned') {
       if (!createForm.assignmentId) {
         const msg = 'Pilih Assignment terlebih dahulu'
-        setCreateError(msg)
-        toast.error(msg, { duration: 5000 })
-        return
-      }
-      if (!createForm.assignedPhotoUrl?.trim() && (!createForm.assignedPhotos || createForm.assignedPhotos.length === 0)) {
-        const msg = 'Photo Evidence untuk Assigned Activity wajib diunggah!'
         setCreateError(msg)
         toast.error(msg, { duration: 5000 })
         return
@@ -1351,21 +1339,6 @@ async function uploadActivityPhoto(file: File): Promise<string> {
       setCreateError(msg)
       toast.error(msg, { duration: 5000 })
       return
-    }
-
-    for (let idx = 0; idx < validItems.length; idx++) {
-      const it = validItems[idx]
-      const hasPhoto = Boolean((it.photoUrl && it.photoUrl.trim().length > 0) || (it.photos && it.photos.length > 0))
-      if (!hasPhoto) {
-        const itemLabel = it.label || 'Aktivitas'
-        const msg =
-          validItems.length === 1
-            ? `Photo Evidence untuk "${itemLabel}" wajib diunggah!`
-            : `Photo Evidence pada item #${idx + 1} (${itemLabel}) wajib diunggah!`
-        setCreateError(msg)
-        toast.error(msg, { duration: 5000 })
-        return
-      }
     }
     setIsCreating(true)
     try {
@@ -2964,29 +2937,42 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                       </div>
                     </div>
 
-                    {/* Evidence QR in Bottom Right Corner (Clickable to open floating modal) */}
-                    <div className="absolute right-[20mm] bottom-[18mm]">
-                      <div
-                        onClick={() => {
-                          setEvidenceModalSessionId(previewTarget.sessionId)
-                          setIsEvidenceModalOpen(true)
-                        }}
-                        className="flex flex-col items-center justify-start text-center border-l border-slate-200 pl-2 cursor-pointer group select-none transition-transform hover:scale-105 active:scale-95"
-                        title="Klik untuk membuka galeri foto bukti pekerjaan"
-                      >
-                        <div className="h-14 flex items-center justify-center">
-                          {previewTargetQrDataUrl ? (
-                            <img src={previewTargetQrDataUrl} alt="QR Evidence" className="h-12 w-12 object-contain rounded border border-slate-200 p-0.5 bg-white shadow-xs group-hover:border-indigo-500 group-hover:shadow-md transition-all" />
-                          ) : (
-                            <div className="h-12 w-12 rounded border border-dashed border-slate-300 flex items-center justify-center text-[6pt] text-slate-400">
-                              QR Code
+                    {/* Evidence QR in Bottom Right Corner (Clickable to open floating modal, only if photo evidence exists) */}
+                    {(() => {
+                      const hasEvidence = (previewTarget.items || []).some((item: any) =>
+                        Boolean(
+                          (typeof item?.photoUrl === 'string' && item.photoUrl.trim().length > 0) ||
+                          (Array.isArray(item?.photos) && item.photos.length > 0) ||
+                          (Array.isArray(item?.evidenceUrls) && item.evidenceUrls.length > 0)
+                        )
+                      )
+                      if (!hasEvidence) return null
+
+                      return (
+                        <div className="absolute right-[20mm] bottom-[18mm]">
+                          <div
+                            onClick={() => {
+                              setEvidenceModalSessionId(previewTarget.sessionId)
+                              setIsEvidenceModalOpen(true)
+                            }}
+                            className="flex flex-col items-center justify-start text-center border-l border-slate-200 pl-2 cursor-pointer group select-none transition-transform hover:scale-105 active:scale-95"
+                            title="Klik untuk membuka galeri foto bukti pekerjaan"
+                          >
+                            <div className="h-14 flex items-center justify-center">
+                              {previewTargetQrDataUrl ? (
+                                <img src={previewTargetQrDataUrl} alt="QR Evidence" className="h-12 w-12 object-contain rounded border border-slate-200 p-0.5 bg-white shadow-xs group-hover:border-indigo-500 group-hover:shadow-md transition-all" />
+                              ) : (
+                                <div className="h-12 w-12 rounded border border-dashed border-slate-300 flex items-center justify-center text-[6pt] text-slate-400">
+                                  QR Code
+                                </div>
+                              )}
                             </div>
-                          )}
+                            <span className="text-[6.5pt] font-bold text-slate-800 mt-0.5 group-hover:text-indigo-600 leading-tight">Scan / Klik Bukti Kerja</span>
+                            <span className="text-[5.5pt] text-slate-500 leading-tight">Validasi Dokumen Digital</span>
+                          </div>
                         </div>
-                        <span className="text-[6.5pt] font-bold text-slate-800 mt-0.5 group-hover:text-indigo-600 leading-tight">Scan / Klik Bukti Kerja</span>
-                        <span className="text-[5.5pt] text-slate-500 leading-tight">Validasi Dokumen Digital</span>
-                      </div>
-                    </div>
+                      )
+                    })()}
 
                     <div className="text-right text-[7pt] text-gray-500 mt-2">
                       F.HC.DAR.001.01 • PT Chitra Paratama
@@ -3590,7 +3576,7 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                 <div className="rounded-xl border border-blue-100 bg-white p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                      <Camera className="size-3.5 text-slate-500" /> Photo Evidence <span className="text-rose-500 font-bold">*</span>
+                      <Camera className="size-3.5 text-slate-500" /> Photo Evidence <span className="text-slate-400 font-normal text-[10px]">(Opsional)</span>
                     </span>
                     {createForm.assignedPhotoUrl || (createForm.assignedPhotos && createForm.assignedPhotos.length > 0) ? (
                       <Badge className="bg-emerald-100 text-emerald-800 border-0 text-[10px] font-bold">
@@ -3601,8 +3587,8 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                         Mengunggah...
                       </Badge>
                     ) : (
-                      <Badge className="bg-rose-100 text-rose-700 border-0 text-[10px] font-bold">
-                        Wajib Diunggah
+                      <Badge className="bg-slate-100 text-slate-600 border-0 text-[10px] font-medium">
+                        Foto Opsional
                       </Badge>
                     )}
                   </div>
@@ -3729,7 +3715,7 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                 <div className="rounded-xl border border-sky-100 bg-white p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                      <Camera className="size-3.5 text-slate-500" /> Photo Evidence <span className="text-rose-500 font-bold">*</span>
+                      <Camera className="size-3.5 text-slate-500" /> Photo Evidence <span className="text-slate-400 font-normal text-[10px]">(Opsional)</span>
                     </span>
                     {createForm.customPhotoUrl || (createForm.customPhotos && createForm.customPhotos.length > 0) ? (
                       <Badge className="bg-emerald-100 text-emerald-800 border-0 text-[10px] font-bold">
@@ -3740,8 +3726,8 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                         Mengunggah...
                       </Badge>
                     ) : (
-                      <Badge className="bg-rose-100 text-rose-700 border-0 text-[10px] font-bold">
-                        Wajib Diunggah
+                      <Badge className="bg-slate-100 text-slate-600 border-0 text-[10px] font-medium">
+                        Foto Opsional
                       </Badge>
                     )}
                   </div>
@@ -4248,7 +4234,7 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                           <div className="rounded-xl border border-sky-100 bg-sky-50/40 p-3 space-y-2">
                             <div className="flex items-center justify-between">
                               <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                                <Camera className="size-3.5 text-sky-600" /> Photo Evidence <span className="text-rose-500 font-bold">*</span>
+                                <Camera className="size-3.5 text-sky-600" /> Photo Evidence <span className="text-slate-400 font-normal text-[10px]">(Opsional)</span>
                               </span>
                               {item.photoUrl || (item.photos && item.photos.length > 0) ? (
                                 <Badge className="bg-emerald-100 text-emerald-800 border-0 text-[10px] font-bold">
@@ -4259,8 +4245,8 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                                   Mengunggah...
                                 </Badge>
                               ) : (
-                                <Badge className="bg-rose-100 text-rose-700 border-0 text-[10px] font-bold">
-                                  Wajib Diunggah
+                                <Badge className="bg-slate-100 text-slate-600 border-0 text-[10px] font-medium">
+                                  Foto Opsional
                                 </Badge>
                               )}
                             </div>

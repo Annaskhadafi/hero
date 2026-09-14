@@ -679,28 +679,7 @@ export function DailyActivityApprovalForm({
       return
     }
 
-    // 2. Strict evidence photo check for each activity item
-    for (let idx = 0; idx < itemsList.length; idx++) {
-      const item = itemsList[idx]
-      const itemNumber = idx + 1
-      const itemLabel = item.label?.includes(' - ')
-        ? item.label.split(' - ').slice(1).join(' - ')
-        : (item.label || `Item #${itemNumber}`)
-
-      const hasPhoto = Boolean(
-        (typeof item.photoUrl === 'string' && item.photoUrl.trim().length > 0) ||
-        (Array.isArray((item as any).photos) && (item as any).photos.length > 0) ||
-        (Array.isArray((item as any).photoUrls) && (item as any).photoUrls.length > 0)
-      )
-
-      if (!hasPhoto) {
-        toast.error(
-          `Foto bukti pekerjaan (evidence) pada item #${itemNumber} (${itemLabel}) wajib diunggah sebelum ${isReverted ? 'mengirim ulang revisi' : 'menyimpan form'}!`
-        )
-        return
-      }
-    }
-
+    // 2. Photo evidence is optional
     startTransition(async () => {
       const leaderSignatureDataUrl = (activeStepId ? signaturesByStepId[activeStepId] : undefined) || getCanvasSignatureDataUrl() || previewSig
       const selectedLeader = employeesProp.find((e) => String(e.id) === selectedLeaderId)
@@ -1128,30 +1107,43 @@ export function DailyActivityApprovalForm({
         </div>
       </div>
 
-      {/* Evidence QR in Bottom Right Corner (Clickable to open floating modal) */}
-      <div className="absolute right-[20mm] bottom-[18mm]">
-        <div
-          onClick={() => setIsEvidenceModalOpen(true)}
-          className="flex flex-col items-center justify-start text-center border-l border-slate-200 pl-2 cursor-pointer group select-none transition-transform hover:scale-105 active:scale-95"
-          title="Klik untuk membuka galeri foto bukti pekerjaan"
-        >
-          <div className="h-14 flex items-center justify-center">
-            {evidenceQrDataUrl ? (
-              <img src={evidenceQrDataUrl} alt="QR Evidence" className="h-12 w-12 object-contain rounded border border-slate-200 p-0.5 bg-white shadow-xs group-hover:border-indigo-500 group-hover:shadow-md transition-all" />
-            ) : (
-              <div className="h-12 w-12 rounded border border-dashed border-slate-300 flex items-center justify-center text-[6pt] text-slate-400">
-                QR Code
+      {/* Evidence QR in Bottom Right Corner (Clickable to open floating modal, only if photo evidence exists) */}
+      {(() => {
+        const hasEvidence = (itemsList || []).some((item: any) =>
+          Boolean(
+            (typeof item?.photoUrl === 'string' && item.photoUrl.trim().length > 0) ||
+            (Array.isArray((item as any)?.photos) && (item as any).photos.length > 0) ||
+            (Array.isArray((item as any)?.photoUrls) && (item as any).photoUrls.length > 0)
+          )
+        )
+        if (!hasEvidence) return null
+
+        return (
+          <div className="absolute right-[20mm] bottom-[18mm]">
+            <div
+              onClick={() => setIsEvidenceModalOpen(true)}
+              className="flex flex-col items-center justify-start text-center border-l border-slate-200 pl-2 cursor-pointer group select-none transition-transform hover:scale-105 active:scale-95"
+              title="Klik untuk membuka galeri foto bukti pekerjaan"
+            >
+              <div className="h-14 flex items-center justify-center">
+                {evidenceQrDataUrl ? (
+                  <img src={evidenceQrDataUrl} alt="QR Evidence" className="h-12 w-12 object-contain rounded border border-slate-200 p-0.5 bg-white shadow-xs group-hover:border-indigo-500 group-hover:shadow-md transition-all" />
+                ) : (
+                  <div className="h-12 w-12 rounded border border-dashed border-slate-300 flex items-center justify-center text-[6pt] text-slate-400">
+                    QR Code
+                  </div>
+                )}
               </div>
-            )}
+              <div className="font-bold text-[7.5pt] text-slate-800 mt-0.5 group-hover:text-indigo-600 transition-colors">
+                Scan / Klik Bukti Kerja
+              </div>
+              <div className="text-[6.5pt] text-slate-500 leading-tight">
+                Validasi Dokumen Digital
+              </div>
+            </div>
           </div>
-          <div className="font-bold text-[7.5pt] text-slate-800 mt-0.5 group-hover:text-indigo-600 transition-colors">
-            Scan / Klik Bukti Kerja
-          </div>
-          <div className="text-[6.5pt] text-slate-500 leading-tight">
-            Validasi Dokumen Digital
-          </div>
-        </div>
-      </div>
+        )
+      })()}
     </div>
   )
 
@@ -2042,7 +2034,7 @@ export function DailyActivityApprovalForm({
                                         size="sm"
                                         onClick={() => {
                                           handleUpdateItem(idx, 'photoUrl', null)
-                                          handleUpdateItem(idx, 'photos', [])
+                                          handleUpdateItem(idx, 'photos' as any, [])
                                         }}
                                         className="h-7 px-2 text-[11px] text-rose-600 hover:bg-rose-50 hover:text-rose-700 rounded-lg cursor-pointer"
                                       >

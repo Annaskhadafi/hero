@@ -61,6 +61,7 @@ export async function GET(
           } as any,
         ];
 
+  const rowPages = chunk(rows, ROWS_PER_PAGE);
   const itemsWithPhotos = data.items.filter((item) => Boolean(item.photoUrl));
   const photoPages = chunk(itemsWithPhotos, 4);
   const totalPages = rowPages.length + photoPages.length;
@@ -863,41 +864,47 @@ async function drawSignatureArea(
     }
   }
 
-  // Evidence QR Code in bottom right
-  try {
-    const origin = process.env.NEXT_PUBLIC_APP_URL || 'https://hero.chitraparatama.co.id';
-    const qrDataUrl = await QRCode.toDataURL(`${origin}/activity-evidence/${data.sessionId}`, {
-      margin: 1,
-      width: 140,
-      errorCorrectionLevel: 'M',
-    });
-    const qrImage = await loadPdfImage(pdfDoc, qrDataUrl);
-    if (qrImage) {
-      const qrX = 502;
-      const qrY = startY + 28;
-      page.drawImage(qrImage, {
-        x: qrX,
-        y: qrY,
-        width: 48,
-        height: 48,
+  // Evidence QR Code in bottom right - only render if evidence/photos exist
+  const hasEvidence = (data.items || []).some(
+    (item) => Boolean(item.photoUrl) || (Array.isArray((item as any).photos) && (item as any).photos.length > 0)
+  );
+
+  if (hasEvidence) {
+    try {
+      const origin = process.env.NEXT_PUBLIC_APP_URL || 'https://hero.chitraparatama.co.id';
+      const qrDataUrl = await QRCode.toDataURL(`${origin}/activity-evidence/${data.sessionId}`, {
+        margin: 1,
+        width: 140,
+        errorCorrectionLevel: 'M',
       });
-      page.drawText("Scan Bukti Kerja", {
-        x: qrX - 5,
-        y: qrY - 8,
-        size: 6,
-        font: boldFont,
-        color: rgb(0.1, 0.1, 0.1),
-      });
-      page.drawText("Validasi Digital", {
-        x: qrX - 2,
-        y: qrY - 15,
-        size: 5.5,
-        font: regularFont,
-        color: rgb(0.4, 0.4, 0.4),
-      });
+      const qrImage = await loadPdfImage(pdfDoc, qrDataUrl);
+      if (qrImage) {
+        const qrX = 502;
+        const qrY = startY + 28;
+        page.drawImage(qrImage, {
+          x: qrX,
+          y: qrY,
+          width: 48,
+          height: 48,
+        });
+        page.drawText("Scan Bukti Kerja", {
+          x: qrX - 5,
+          y: qrY - 8,
+          size: 6,
+          font: boldFont,
+          color: rgb(0.1, 0.1, 0.1),
+        });
+        page.drawText("Validasi Digital", {
+          x: qrX - 2,
+          y: qrY - 15,
+          size: 5.5,
+          font: regularFont,
+          color: rgb(0.4, 0.4, 0.4),
+        });
+      }
+    } catch (e) {
+      console.error('Failed to draw QR in PDF:', e);
     }
-  } catch (e) {
-    console.error('Failed to draw QR in PDF:', e);
   }
 }
 

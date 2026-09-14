@@ -4150,7 +4150,7 @@ export function HistoryTab({
         setIsHistoryModalOpen(true)
         setTimeout(async () => {
           if (pdfRef.current) {
-            const filename = `${data.document?.splNumber || data.splNumber || 'SPL'}-Document.pdf`
+            const filename = `${data.splNumber || (data as any).document?.splNumber || 'SPL'}-Document.pdf`
             await downloadElementAsPdf(pdfRef.current, filename)
             toast.success('PDF SPL berhasil diunduh.', { id: 'pdf-spl-dl' })
           } else {
@@ -4905,10 +4905,24 @@ export function HistoryTab({
                             </div>
                           </div>
 
-                          {/* Evidence QR in Bottom Right Corner (Clickable to open floating modal) */}
-                          <div className="absolute right-[20mm] bottom-[18mm]">
-                            <DailyActivityEvidenceQr sessionId={sessionId} />
-                          </div>
+                          {/* Evidence QR in Bottom Right Corner (Clickable to open floating modal, only if photo evidence exists) */}
+                          {(() => {
+                            const hasEvidence = (items || []).some((item: any) =>
+                              Boolean(
+                                (typeof item?.photoUrl === 'string' && item.photoUrl.trim().length > 0) ||
+                                (Array.isArray(item?.photos) && item.photos.length > 0) ||
+                                (Array.isArray(item?.photoUrls) && item.photoUrls.length > 0) ||
+                                (Array.isArray(item?.evidenceUrls) && item.evidenceUrls.length > 0)
+                              )
+                            )
+                            if (!hasEvidence) return null
+
+                            return (
+                              <div className="absolute right-[20mm] bottom-[18mm]">
+                                <DailyActivityEvidenceQr sessionId={sessionId} />
+                              </div>
+                            )
+                          })()}
 
                           <div className="text-right text-[7pt] text-slate-500 mt-2 font-mono">
                             F.OP.DAR.001.01 • PT Chitra Paratama

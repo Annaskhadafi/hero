@@ -2480,9 +2480,9 @@ export async function transitionOvertimeCommandLetterStatusAction(formData: Form
           'SPL belum dapat ditutup: clock-in dan clock-out Attendance Real belum lengkap.'
         )
       }
-      if (Number(evidence?.checkedCount ?? 0) < 1 || Number(evidence?.photoCount ?? 0) < 1) {
+      if (Number(evidence?.checkedCount ?? 0) < 1) {
         throw new Error(
-          'SPL belum dapat ditutup: aktivitas selesai dan minimal satu foto wajib tersedia.'
+          'SPL belum dapat ditutup: aktivitas pekerjaan belum selesai.'
         )
       }
     }
@@ -2820,10 +2820,7 @@ export async function submitDailyActivityAction(formData: FormData) {
     uploadedPhotoUrls.push(uploaded.url)
   }
 
-  if (requiresEvidencePhoto && uploadedPhotoUrls.length === 0) {
-    throw new Error('Foto wajib diupload untuk activity / checklist yang dipilih.')
-  }
-
+  // Photo evidence is optional across all activity modes
   let createdActivityId: number | null = null
   let reusedExistingActivity: boolean = false
   let pendingApproverName: string | null = null
@@ -3858,6 +3855,7 @@ export async function initDailyActivityApprovalsAction(sessionId: number) {
       id: employees.id,
       name: employees.name,
       email: employees.email,
+      signatureDataUrl: employees.signatureDataUrl,
       directManagerId: employees.directManagerId,
       departmentId: employees.departmentId,
       sectionId: employees.sectionId,
@@ -4019,53 +4017,45 @@ export async function initDailyActivityApprovalsAction(sessionId: number) {
     leaderName = 'Leader Lapangan'
   }
 
-  const approvers: Array<{
-    stepOrder: number
-    stepLabel: string
-    approverRole: string
-    approverEmployeeId: number | null
-    approverName: string
-    approverEmail: string
-  }> = [
+  const now = new Date()
+  const step1Token = randomUUID()
+  const step2Token = randomUUID()
+
+  const approvers = [
     {
+      sessionId,
       stepOrder: 1,
       stepLabel: 'Karyawan Sign',
       approverRole: 'employee',
       approverEmployeeId: sessionEmployee?.id ?? null,
       approverName: sessionEmployee?.name ?? 'Karyawan',
       approverEmail: sessionEmployee?.email || '',
+      approvalToken: step1Token,
+      status: 'approved',
+      signatureDataUrl: sessionEmployee?.signatureDataUrl || null,
+      signedAt: now,
+      remarks: 'Auto-approved oleh pemohon saat inisialisasi approval.',
+      createdAt: now,
     },
     {
+      sessionId,
       stepOrder: 2,
       stepLabel: 'Leader / PJO',
       approverRole: 'leader',
       approverEmployeeId: leaderEmployeeId,
       approverName: leaderName,
       approverEmail: leaderEmail,
+      approvalToken: step2Token,
+      status: 'pending',
+      signatureDataUrl: null,
+      signedAt: null,
+      remarks: '',
+      createdAt: now,
     },
   ]
 
-  let step1Token = ''
-  let step2Token = ''
-  const now = new Date()
   for (const step of approvers) {
-    const token = randomUUID()
-    if (step.stepOrder === 1) step1Token = token
-    if (step.stepOrder === 2) step2Token = token
-    const isStep1 = step.stepOrder === 1
-    await db.insert(dailyActivityApprovals).values({
-      sessionId,
-      stepOrder: step.stepOrder,
-      stepLabel: step.stepLabel,
-      approvalToken: token,
-      approverName: step.approverName,
-      approverEmail: step.approverEmail,
-      approverRole: step.approverRole,
-      status: isStep1 ? 'pending' : 'waiting',
-      signatureDataUrl: null,
-      signedAt: null,
-      createdAt: now,
-    })
+    await db.insert(dailyActivityApprovals).values(step)
   }
 
   // Send notification & email to Step 2 (Leader / PJO)
@@ -4081,13 +4071,13 @@ export async function initDailyActivityApprovalsAction(sessionId: number) {
         employeeName: sessionEmployee?.name || 'Karyawan',
         workDate: session.workDate,
         siteName: siteRow?.name || '-',
-        approverName: sessionEmployee?.name || 'Karyawan',
-        approverEmail: sessionEmployee.email,
-        approvalStep: 'Karyawan Sign',
-        approvalToken: step1Token,
+        approverName: leaderName,
+        approverEmail: leaderEmail,
+        approvalStep: 'Leader / PJO',
+        approvalToken: step2Token,
       })
     } catch (emailErr) {
-      console.error('Error sending initial step 1 approval email:', emailErr)
+      console.error('Error sending initial step 2 approval email to leader:', emailErr)
     }
   }
 
@@ -5715,22 +5705,7 @@ export async function saveDailyActivityApprovalForm(payload: {
       (existingSession?.status || '').toLowerCase().includes('revision')
 
     if (isCurrentlyReverted) {
-      if (payload.items && payload.items.length > 0) {
-        for (let idx = 0; idx < payload.items.length; idx++) {
-          const item = payload.items[idx]
-          const hasPhoto = Boolean(
-            (typeof item.photoUrl === 'string' && item.photoUrl.trim().length > 0) ||
-            (Array.isArray(item.photos) && item.photos.length > 0)
-          )
-          if (!hasPhoto) {
-            return {
-              success: false as const,
-              error: `Foto bukti pekerjaan (evidence) pada item #${idx + 1} (${item.label || 'Aktivitas'}) wajib diunggah sebelum mengirim ulang revisi.`,
-            }
-          }
-        }
-      }
-
+      // Photo evidence is optional on revision submission
       sessionUpdates.status = 'submitted'
       sessionUpdates.submittedAt = new Date()
       sessionUpdates.updatedAt = new Date()
@@ -6643,27 +6618,18 @@ export async function createDailyActivitySessionAction(input: {
     }
     for (let i = 0; i < input.items.length; i++) {
       const it = input.items[i]
-      const itemNumber = i + 1
-      const itemLabel = it.label || `Item #${itemNumber}`
-
       if (!it.unitNumber || !it.unitNumber.trim()) {
         it.unitNumber = '-'
       }
-      if (!it.remark || !it.remark.trim() || it.remark.trim() === '-') {
-        return {
-          success: false as const,
-          error: `Catatan item pada item #${itemNumber} (${itemLabel}) wajib diisi!`,
-        }
+      if (!it.remark || !it.remark.trim()) {
+        it.remark = '-'
       }
-      const hasPhoto = Boolean(
-        (it.photoUrl && it.photoUrl.trim().length > 0) ||
-        (it.photos && it.photos.length > 0 && it.photos.some((p) => p && p.trim().length > 0))
-      )
-      if (!hasPhoto) {
-        return {
-          success: false as const,
-          error: `Photo Evidence pada item #${itemNumber} (${itemLabel}) wajib diunggah!`,
-        }
+    }
+
+    if (!primaryEmp.signatureDataUrl) {
+      return {
+        success: false as const,
+        error: 'Tanda tangan digital pemohon belum terdaftar. Silakan buat/daftarkan tanda tangan terlebih dahulu di menu Profil atau form tanda tangan.',
       }
     }
 
@@ -6973,9 +6939,10 @@ export async function createDailyActivitySessionAction(input: {
         approverEmployeeId: emp.id,
         approverName: emp.name,
         approverEmail: emp.email || '',
-        status: 'pending',
-        signatureDataUrl: null,
-        signedAt: null,
+        status: 'approved',
+        signatureDataUrl: primaryEmp.signatureDataUrl,
+        signedAt: now,
+        remarks: 'Auto-approved oleh pemohon saat submit Daily Activity.',
         approvalToken: step1Token,
         createdAt: now,
       },
@@ -6987,19 +6954,52 @@ export async function createDailyActivitySessionAction(input: {
         approverEmployeeId: leaderEmpId ?? null,
         approverName: leaderName,
         approverEmail: leaderEmail,
-        status: 'waiting',
+        status: 'pending',
         approvalToken: step2Token,
         createdAt: now,
       },
     ])
 
-    // Send Step 1 in-app notification to submitter & team members
+    // Send Step 2 email to Leader / PJO
+    if (leaderEmail) {
+      const [siteRow] = siteId
+        ? await db.select({ name: sites.name }).from(sites).where(eq(sites.id, siteId)).limit(1)
+        : []
+
+      try {
+        await sendDailyActivityStepApprovalEmail({
+          sessionId: created.id,
+          sessionCode: created.sessionCode || `ACT-${created.id}`,
+          employeeName: emp.name || 'Karyawan',
+          workDate: parsedWorkDate,
+          siteName: siteRow?.name || '-',
+          approverName: leaderName,
+          approverEmail: leaderEmail,
+          approvalStep: 'Leader / PJO',
+          approvalToken: step2Token,
+        })
+      } catch (emailErr) {
+        console.error('Error sending step 2 approval email to leader:', emailErr)
+      }
+    }
+
+    // Send in-app notification to Leader & submitter & team members
     try {
+      if (leaderEmail) {
+        await publishInAppApprovalNotification({
+          recipientEmail: leaderEmail,
+          title: `Daily Activity Menunggu Approval: ${created.sessionCode}`,
+          body: `Laporan aktivitas harian dari ${emp.name} telah diajukan dan menunggu persetujuan Anda.`,
+          url: `/dashboard/approval`,
+          eventType: 'daily_activity_submitted',
+        })
+      }
+
       if (emp.email) {
         await publishInAppApprovalNotification({
           recipientEmail: emp.email,
           title: `Daily Activity Diajukan: ${created.sessionCode}`,
-          body: `Laporan aktivitas harian Anda berhasil diajukan dan menunggu verifikasi / tanda tangan Karyawan.`,
+          body: `Laporan aktivitas harian Anda berhasil diajukan dan diteruskan ke ${leaderName} untuk persetujuan.`,
           url: `/dashboard/approval`,
           eventType: 'daily_activity_submitted',
         })
@@ -7011,7 +7011,7 @@ export async function createDailyActivitySessionAction(input: {
           await publishInAppApprovalNotification({
             recipientEmail: targetEmp.email,
             title: `Daily Activity Tim: ${created.sessionCode}`,
-            body: `Laporan aktivitas tim Anda telah diajukan oleh ${emp.name} dan sedang dalam alur approval.`,
+            body: `Laporan aktivitas tim Anda telah diajukan oleh ${emp.name} dan sedang di-review oleh ${leaderName}.`,
             url: `/mobile/activity`,
             eventType: 'daily_activity_submitted',
           })
