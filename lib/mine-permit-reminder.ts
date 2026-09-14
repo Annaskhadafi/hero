@@ -7,6 +7,7 @@ import {
   employees,
   sites,
   minePermitReminderConfig,
+  minePermitReminderSends,
   notificationEvents,
   notificationDeliveries,
 } from '@/db/schema/hero'
@@ -393,6 +394,47 @@ export async function sendSiteMinePermitExpiryReminder(
     }
   }
 
+  const dueEmployees = expiringEmployees.filter((employee) => employee.expMinePermit! <= todayStr)
+  const futureEmployees = expiringEmployees.filter((employee) => employee.expMinePermit! > todayStr)
+  let dueReminderEmployees = dueEmployees
+
+  if (dueEmployees.length > 0) {
+    const ledgerRows = await db
+      .select({
+        employeeId: minePermitReminderSends.employeeId,
+        permitExpiryDate: minePermitReminderSends.permitExpiryDate,
+        sendCount: minePermitReminderSends.sendCount,
+      })
+      .from(minePermitReminderSends)
+      .where(
+        and(
+          eq(minePermitReminderSends.siteId, siteId),
+          inArray(minePermitReminderSends.employeeId, dueEmployees.map((employee) => employee.id))
+        )
+      )
+
+    const sentCountByKey = new Map(
+      ledgerRows.map((row) => [`${row.employeeId}:${row.permitExpiryDate}`, row.sendCount])
+    )
+    dueReminderEmployees = dueEmployees.filter(
+      (employee) => (sentCountByKey.get(`${employee.id}:${employee.expMinePermit}`) ?? 0) < 2
+    )
+  }
+
+  const eligibleEmployees = [...futureEmployees, ...dueReminderEmployees]
+  if (eligibleEmployees.length === 0) {
+    return {
+      sent: false,
+      skipped: true,
+      siteId,
+      siteName: site.name,
+      count: expiringEmployees.length,
+      toCount: 0,
+      ccCount: 0,
+      reason: `Semua reminder pasca-due date di Site ${site.name} sudah mencapai batas 2 kali.`,
+    }
+  }
+
   // Resolve recipient emails
   let toEmails: string[] = []
   if (config.recipientEmployeeIds.length > 0) {
@@ -419,6 +461,38 @@ export async function sendSiteMinePermitExpiryReminder(
       toCount: 0,
       ccCount: 0,
       reason: `Penerima utama (To) belum diatur untuk Site ${site.name}. Silakan pilih minimal 1 karyawan penerima di Setting Reminder.`,
+    }
+  }
+
+  const claimedDueEmployees: typeof dueReminderEmployees = []
+  for (const employee of dueReminderEmployees) {
+    const claim = await db.execute(sql`
+      INSERT INTO hero_mine_permit_reminder_sends
+        (site_id, employee_id, permit_expiry_date, send_count, last_sent_at, created_at, updated_at)
+      VALUES
+        (${siteId}, ${employee.id}, ${employee.expMinePermit}, 1, NOW(), NOW(), NOW())
+      ON CONFLICT (employee_id, permit_expiry_date)
+      DO UPDATE SET
+        send_count = hero_mine_permit_reminder_sends.send_count + 1,
+        last_sent_at = NOW(),
+        updated_at = NOW()
+      WHERE hero_mine_permit_reminder_sends.send_count < 2
+      RETURNING employee_id
+    `)
+    if (claim.rows.length > 0) claimedDueEmployees.push(employee)
+  }
+
+  const sendEmployees = [...futureEmployees, ...claimedDueEmployees]
+  if (sendEmployees.length === 0) {
+    return {
+      sent: false,
+      skipped: true,
+      siteId,
+      siteName: site.name,
+      count: expiringEmployees.length,
+      toCount: 0,
+      ccCount: 0,
+      reason: `Semua reminder pasca-due date di Site ${site.name} sudah mencapai batas 2 kali.`,
     }
   }
 
@@ -452,7 +526,7 @@ export async function sendSiteMinePermitExpiryReminder(
   // receive the new, email-client-friendly employee list without a template migration.
   const tableContentHtml = `
     <ul style="margin:18px 0;padding:0;list-style:none;">
-  ${expiringEmployees
+  ${sendEmployees
     .map((emp, idx) => {
       const expDate = emp.expMinePermit || '-'
       const daysLeft = Math.ceil(
@@ -472,7 +546,7 @@ export async function sendSiteMinePermitExpiryReminder(
     </ul>
   `
 
-  const tableContentText = expiringEmployees
+  const tableContentText = sendEmployees
     .map((emp, idx) => {
       const expDate = emp.expMinePermit || '-'
       const daysLeft = Math.ceil(
@@ -487,15 +561,28 @@ export async function sendSiteMinePermitExpiryReminder(
   const appUrl = getPublicAppUrl()
   const viewLink = `${appUrl}/dashboard/hc/employee`
 
+  const releaseClaimedDueEmployees = async () => {
+    for (const employee of claimedDueEmployees) {
+      await db.execute(sql`
+        UPDATE hero_mine_permit_reminder_sends
+        SET send_count = GREATEST(send_count - 1, 0), updated_at = NOW()
+        WHERE employee_id = ${employee.id}
+          AND permit_expiry_date = ${employee.expMinePermit}
+      `)
+    }
+  }
+
   // Send Email via Centralized sendWorkflowEmail
-  await sendWorkflowEmail({
-    to: toEmails,
-    cc: ccEmails.length > 0 ? ccEmails : [],
-    exactCc: true,
-    templateCode: 'hc_employee_mine_permit_reminder',
-    templateName: 'HC Mine Permit Expiry Reminder',
-    fallbackSubject: `[Reminder] Mine Permit Karyawan Segera Berakhir — Site ${site.name} (${expiringEmployees.length} Karyawan)`,
-    fallbackHtml: `
+  let emailResult: Awaited<ReturnType<typeof sendWorkflowEmail>>
+  try {
+    emailResult = await sendWorkflowEmail({
+      to: toEmails,
+      cc: ccEmails.length > 0 ? ccEmails : [],
+      exactCc: true,
+      templateCode: 'hc_employee_mine_permit_reminder',
+      templateName: 'HC Mine Permit Expiry Reminder',
+      fallbackSubject: `[Reminder] Mine Permit Karyawan Segera Berakhir — Site ${site.name} (${sendEmployees.length} Karyawan)`,
+      fallbackHtml: `
       <div style="font-family:Inter,Arial,sans-serif;max-width:640px;margin:0 auto;background:#f8fafc;padding:24px;">
         <div style="background:linear-gradient(135deg,#92400e,#b45309);padding:24px;border-radius:12px 12px 0 0;">
           <p style="color:#fde68a;font-size:12px;margin:0 0 4px;text-transform:uppercase;letter-spacing:1px;font-weight:700;">PT CHITRA PARATAMA • HERO HC</p>
@@ -504,7 +591,7 @@ export async function sendSiteMinePermitExpiryReminder(
         <div style="background:#ffffff;padding:28px 24px;border-radius:0 0 12px 12px;border:1px solid #e2e8f0;border-top:0;">
           <p style="color:#1e293b;font-size:15px;margin:0 0 12px;font-weight:600;">Yth. Tim Manajemen & PIC Site <strong>${site.name}</strong>,</p>
           <p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 16px;">
-            Berikut rekapitulasi Mine Permit karyawan di Site <strong>${site.name}</strong> yang akan berakhir dalam kurun waktu <strong>${config.reminderDays} hari</strong> ke depan (Total: <strong>${expiringEmployees.length} orang</strong>):
+            Berikut rekapitulasi Mine Permit karyawan di Site <strong>${site.name}</strong> yang akan berakhir dalam kurun waktu <strong>${config.reminderDays} hari</strong> ke depan (Total: <strong>${sendEmployees.length} orang</strong>):
           </p>
           ${tableContentHtml}
           <div style="text-align:center;margin:28px 0;">
@@ -518,22 +605,49 @@ export async function sendSiteMinePermitExpiryReminder(
           </p>
         </div>
       </div>
-    `,
-    fallbackText: `Peringatan Expiry Mine Permit — Site ${site.name}\n\nTotal ${expiringEmployees.length} karyawan Mine Permit-nya akan berakhir dalam ${config.reminderDays} hari ke depan:\n\n${tableContentText}\n\nSilakan cek data selengkapnya di: ${viewLink}\n\nSistem HERO PT Chitra Paratama`,
-    variables: {
+      `,
+      fallbackText: `Peringatan Expiry Mine Permit — Site ${site.name}\n\nTotal ${sendEmployees.length} karyawan Mine Permit-nya akan berakhir dalam ${config.reminderDays} hari ke depan:\n\n${tableContentText}\n\nSilakan cek data selengkapnya di: ${viewLink}\n\nSistem HERO PT Chitra Paratama`,
+      variables: {
+        siteName: site.name,
+        totalExpiring: String(sendEmployees.length),
+        reminderDays: String(config.reminderDays),
+        tableContentHtml,
+        tableContentText,
+        employeeListText: tableContentText,
+        viewLink,
+      },
+    })
+  } catch (error) {
+    await releaseClaimedDueEmployees()
+    return {
+      sent: false,
+      skipped: true,
+      siteId,
       siteName: site.name,
-      totalExpiring: String(expiringEmployees.length),
-      reminderDays: String(config.reminderDays),
-      tableContentHtml,
-      tableContentText,
-      employeeListText: tableContentText,
-      viewLink,
-    },
-  })
+      count: sendEmployees.length,
+      toCount: toEmails.length,
+      ccCount: ccEmails.length,
+      reason: error instanceof Error ? error.message : 'Email reminder gagal diproses.',
+    }
+  }
+
+  if (emailResult.status !== 'sent') {
+    await releaseClaimedDueEmployees()
+    return {
+      sent: false,
+      skipped: true,
+      siteId,
+      siteName: site.name,
+      count: sendEmployees.length,
+      toCount: toEmails.length,
+      ccCount: ccEmails.length,
+      reason: emailResult.reason || emailResult.error || 'Email reminder gagal dikirim.',
+    }
+  }
 
   // In-App Notification Bell for all To recipients
   const notificationTitle = `[Reminder] Expiry Mine Permit Site ${site.name}`
-  const notificationBody = `${expiringEmployees.length} karyawan Mine Permit-nya mendekati batas expired (${config.reminderDays} hari). Segera tindak lanjuti.`
+  const notificationBody = `${sendEmployees.length} karyawan Mine Permit-nya mendekati batas expired (${config.reminderDays} hari). Segera tindak lanjuti.`
 
   for (const recipientEmail of toEmails) {
     try {
@@ -577,7 +691,7 @@ export async function sendSiteMinePermitExpiryReminder(
     sent: true,
     siteId,
     siteName: site.name,
-    count: expiringEmployees.length,
+    count: sendEmployees.length,
     toCount: toEmails.length,
     ccCount: ccEmails.length,
     reason: `Berhasil mengirim email rekapitulasi ke ${toEmails.length} penerima To dan ${ccEmails.length} CC.`,

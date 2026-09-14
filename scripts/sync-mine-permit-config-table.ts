@@ -35,6 +35,17 @@ async function main() {
     sql`ALTER TABLE hero_mine_permit_reminder_config ADD COLUMN IF NOT EXISTS last_sent_at TIMESTAMP;`,
     sql`ALTER TABLE hero_mine_permit_reminder_config ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW();`,
     sql`ALTER TABLE hero_mine_permit_reminder_config ADD COLUMN IF NOT EXISTS updated_by TEXT;`,
+    sql`CREATE TABLE IF NOT EXISTS hero_mine_permit_reminder_sends (
+      id SERIAL PRIMARY KEY,
+      site_id INTEGER NOT NULL REFERENCES hero_sites(id) ON DELETE CASCADE,
+      employee_id INTEGER NOT NULL REFERENCES hero_employees(id) ON DELETE CASCADE,
+      permit_expiry_date DATE NOT NULL,
+      send_count INTEGER NOT NULL DEFAULT 0,
+      last_sent_at TIMESTAMP,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      CONSTRAINT hero_mine_permit_reminder_sends_employee_expiry_uq UNIQUE (employee_id, permit_expiry_date)
+    );`,
   ]
 
   for (const alterSql of columnsToAdd) {

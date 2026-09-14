@@ -3883,6 +3883,26 @@ export const minePermitReminderConfig = pgTable('hero_mine_permit_reminder_confi
   updatedBy: text('updated_by'),
 })
 
+export const minePermitReminderSends = pgTable(
+  'hero_mine_permit_reminder_sends',
+  {
+    id: serial('id').primaryKey(),
+    siteId: integer('site_id').notNull().references(() => sites.id, { onDelete: 'cascade' }),
+    employeeId: integer('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
+    permitExpiryDate: date('permit_expiry_date').notNull(),
+    sendCount: integer('send_count').notNull().default(0),
+    lastSentAt: timestamp('last_sent_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    employeeExpiryUnique: uniqueIndex('hero_mine_permit_reminder_sends_employee_expiry_uidx').on(
+      table.employeeId,
+      table.permitExpiryDate
+    ),
+  })
+)
+
 export const broadcastCategories = pgTable('hero_broadcast_categories', {
   id: serial('id').primaryKey(),
   name: text('name').notNull().unique(),
