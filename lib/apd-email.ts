@@ -40,7 +40,7 @@ export async function sendMaterialToolsRequestSubmittedEmail(params: {
 }) {
   const baseUrl = getPublicAppUrl()
   const approvalLink = `${baseUrl}/dashboard/approval`
-  const cc = Array.from(new Set(['muhammad.akbar@chitraparatama.co.id', ...(params.ccEmails ?? [])]))
+  const cc = params.ccEmails ?? ['muhammad.akbar@chitraparatama.co.id']
 
   return sendWorkflowEmail({
     to: params.approverEmail,
@@ -55,8 +55,8 @@ export async function sendMaterialToolsRequestSubmittedEmail(params: {
       approvalLink,
     },
     fallbackSubject: `[${params.requestType}] Permohonan Baru: ${params.requestNumber} - ${params.employeeName}`,
-    fallbackHtml: `Halo ${params.approverName},<br><br>Karyawan <b>${params.employeeName}</b> telah mengajukan permohonan <b>${params.requestType}</b> (${params.requestNumber}) yang memerlukan persetujuan Anda sebagai Section Head.<br><br>Silakan buka tautan berikut untuk melakukan review dan persetujuan:<br><div style="margin: 16px 0;"><a href="${approvalLink}" style="background-color: #2563eb; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Buka Inbox Approval</a></div><br><small style="color: #64748b;">Atau salin tautan: <a href="${approvalLink}">${approvalLink}</a></small><br><br>CC: Muhammad Taufik Akbar<br>Terima kasih.`,
-    fallbackText: `Halo ${params.approverName},\n\nKaryawan ${params.employeeName} telah mengajukan permohonan ${params.requestType} (${params.requestNumber}) yang memerlukan persetujuan Anda sebagai Section Head.\n\nSilakan review dan setujui melalui tautan berikut:\n${approvalLink}\n\nCC: Muhammad Taufik Akbar\nTerima kasih.`,
+    fallbackHtml: `Halo ${params.approverName},<br><br>Karyawan <b>${params.employeeName}</b> telah mengajukan permohonan <b>${params.requestType}</b> (${params.requestNumber}) yang memerlukan persetujuan Anda sebagai Section Head.<br><br>Silakan buka tautan berikut untuk melakukan review dan persetujuan:<br><div style="margin: 16px 0;"><a href="${approvalLink}" style="background-color: #2563eb; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Buka Inbox Approval</a></div><br><small style="color: #64748b;">Atau salin tautan: <a href="${approvalLink}">${approvalLink}</a></small><br><br>Terima kasih.`,
+    fallbackText: `Halo ${params.approverName},\n\nKaryawan ${params.employeeName} telah mengajukan permohonan ${params.requestType} (${params.requestNumber}) yang memerlukan persetujuan Anda sebagai Section Head.\n\nSilakan review dan setujui melalui tautan berikut:\n${approvalLink}\n\nTerima kasih.`,
   })
 }
 
@@ -68,13 +68,15 @@ export async function sendMaterialToolsApprovedEmail(params: {
   requestType: string
   sectionName?: string
   requestId?: number
+  ccEmails?: string[]
 }) {
   const baseUrl = getPublicAppUrl()
   const dashboardLink = `${baseUrl}/dashboard/apd`
+  const cc = params.ccEmails ?? ["muhammad.akbar@chitraparatama.co.id"]
 
   return sendWorkflowEmail({
     to: params.requesterEmail,
-    cc: ["muhammad.akbar@chitraparatama.co.id"],
+    cc,
     templateCode: "material_tools_request_approved",
     variables: {
       employeeName: params.requesterName,
@@ -85,8 +87,8 @@ export async function sendMaterialToolsApprovedEmail(params: {
       dashboardLink,
     },
     fallbackSubject: `[${params.requestType}] Permohonan Disetujui: ${params.requestNumber}`,
-    fallbackHtml: `Halo ${params.requesterName},<br><br>Permohonan <b>${params.requestType}</b> Anda dengan nomor tiket <b>${params.requestNumber}</b> telah <b>DISETUJUI</b> oleh Section Head (${params.approverName}).<br><br>Lihat status permohonan di dashboard:<br><div style="margin: 16px 0;"><a href="${dashboardLink}" style="background-color: #16a34a; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Lihat Permohonan</a></div><br>Notifikasi ini juga telah diteruskan ke Muhammad Taufik Akbar.<br><br>Terima kasih.`,
-    fallbackText: `Halo ${params.requesterName},\n\nPermohonan ${params.requestType} Anda dengan nomor tiket ${params.requestNumber} telah DISETUJUI oleh Section Head (${params.approverName}).\n\nLihat status permohonan:\n${dashboardLink}\n\nNotifikasi ini juga telah diteruskan ke Muhammad Taufik Akbar.\n\nTerima kasih.`,
+    fallbackHtml: `Halo ${params.requesterName},<br><br>Permohonan <b>${params.requestType}</b> Anda dengan nomor tiket <b>${params.requestNumber}</b> telah <b>DISETUJUI</b> oleh Section Head (${params.approverName}).<br><br>Lihat status permohonan di dashboard:<br><div style="margin: 16px 0;"><a href="${dashboardLink}" style="background-color: #16a34a; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Lihat Permohonan</a></div><br>Terima kasih.`,
+    fallbackText: `Halo ${params.requesterName},\n\nPermohonan ${params.requestType} Anda dengan nomor tiket ${params.requestNumber} telah DISETUJUI oleh Section Head (${params.approverName}).\n\nLihat status permohonan:\n${dashboardLink}\n\nTerima kasih.`,
   })
 }
 

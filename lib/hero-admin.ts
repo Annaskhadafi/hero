@@ -41,6 +41,8 @@ import {
   hcNotificationConfig,
   hseSafetyNotificationConfig,
   apdNotificationConfig,
+  materialToolsNotificationConfig,
+  attendanceNotificationConfig,
   formWoNotificationConfig,
   notificationChannelRules,
   notificationChannelSettings,
@@ -7578,7 +7580,28 @@ export async function getHseSafetyNotificationConfigData() {
 }
 
 export async function getApdNotificationConfigData() {
-  await ensureHeroGovernanceSeedData()
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "hero_apd_notification_config" (
+        "id" serial PRIMARY KEY NOT NULL,
+        "recipient_emails" text DEFAULT '' NOT NULL,
+        "cc_emails" text DEFAULT '' NOT NULL,
+        "service_cc_email" text DEFAULT 'otoleeh123@gmail.com' NOT NULL,
+        "repair_cc_email" text DEFAULT 'zahiriarjun@gmail.com' NOT NULL,
+        "te_cc_email" text DEFAULT 'abian.husain@chitraparatama.co.id' NOT NULL,
+        "is_active" boolean DEFAULT true NOT NULL,
+        "updated_at" timestamp DEFAULT now() NOT NULL
+      )
+    `)
+    await db.execute(sql`
+      ALTER TABLE "hero_apd_notification_config"
+      ADD COLUMN IF NOT EXISTS "service_cc_email" text DEFAULT 'otoleeh123@gmail.com' NOT NULL,
+      ADD COLUMN IF NOT EXISTS "repair_cc_email" text DEFAULT 'zahiriarjun@gmail.com' NOT NULL,
+      ADD COLUMN IF NOT EXISTS "te_cc_email" text DEFAULT 'abian.husain@chitraparatama.co.id' NOT NULL
+    `).catch(() => null)
+  } catch {
+    // DDL bypass
+  }
 
   const [config] = await db
     .select()
@@ -7591,6 +7614,41 @@ export async function getApdNotificationConfigData() {
       id: 0,
       recipientEmails: '',
       ccEmails: '',
+      serviceCcEmail: 'otoleeh123@gmail.com',
+      repairCcEmail: 'zahiriarjun@gmail.com',
+      teCcEmail: 'abian.husain@chitraparatama.co.id',
+      isActive: true,
+      updatedAt: new Date(),
+    }
+  )
+}
+
+export async function getMaterialToolsNotificationConfigData() {
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "hero_material_tools_notification_config" (
+        "id" serial PRIMARY KEY NOT NULL,
+        "recipient_emails" text DEFAULT '' NOT NULL,
+        "cc_emails" text DEFAULT 'muhammad.akbar@chitraparatama.co.id' NOT NULL,
+        "is_active" boolean DEFAULT true NOT NULL,
+        "updated_at" timestamp DEFAULT now() NOT NULL
+      )
+    `)
+  } catch {
+    // DDL bypass
+  }
+
+  const [config] = await db
+    .select()
+    .from(materialToolsNotificationConfig)
+    .orderBy(desc(materialToolsNotificationConfig.updatedAt))
+    .limit(1)
+
+  return (
+    config ?? {
+      id: 0,
+      recipientEmails: '',
+      ccEmails: 'muhammad.akbar@chitraparatama.co.id',
       isActive: true,
       updatedAt: new Date(),
     }
@@ -7677,6 +7735,58 @@ export async function getHumanCapitalNotificationConfigData() {
       updatedAt: new Date(),
     }
   )
+}
+
+export async function getAttendanceNotificationConfigData() {
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "hero_attendance_notification_config" (
+        "id" serial PRIMARY KEY NOT NULL,
+        "cc_emails" text DEFAULT '' NOT NULL,
+        "head_section_mvc_email" text DEFAULT '' NOT NULL,
+        "head_section_repair_email" text DEFAULT '' NOT NULL,
+        "head_section_te_email" text DEFAULT '' NOT NULL,
+        "head_section_others_email" text DEFAULT '' NOT NULL,
+        "head_section_accessories_email" text DEFAULT '' NOT NULL,
+        "is_active" boolean DEFAULT true NOT NULL,
+        "updated_at" timestamp DEFAULT now() NOT NULL
+      )
+    `)
+  } catch {
+    // Table already exists or DDL bypass
+  }
+
+  const [config] = await db
+    .select()
+    .from(attendanceNotificationConfig)
+    .orderBy(desc(attendanceNotificationConfig.updatedAt))
+    .limit(1)
+
+  const seed = {
+    ccEmails:
+      'adila.arizona@chitraparatama.co.id, kesuma.bagaskara@chitraparatama.co.id',
+    headSectionMvcEmail: 'apriyanto.lastam@chitraparatama.co.id',
+    headSectionRepairEmail: 'ary.maulana@chitraparatama.co.id',
+    headSectionTeEmail: 'abian.husain@chitraparatama.co.id',
+    headSectionOthersEmail: 'junaidi.syamsudin@chitraparatama.co.id',
+    headSectionAccessoriesEmail: 'luthfi.yudistira@chitraparatama.co.id',
+    isActive: true,
+    updatedAt: new Date(),
+  }
+
+  if (!config) {
+    try {
+      const [inserted] = await db
+        .insert(attendanceNotificationConfig)
+        .values(seed)
+        .returning()
+      return inserted ?? { id: 0, ...seed }
+    } catch {
+      return { id: 0, ...seed }
+    }
+  }
+
+  return config
 }
 
 export async function getActiveEmployeesForSelect() {

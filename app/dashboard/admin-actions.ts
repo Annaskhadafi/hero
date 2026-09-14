@@ -5278,9 +5278,22 @@ async function applyApprovalDecision(params: {
 
           const isMaterialOrTools =
             notifInfo.requestCategory === 'MATERIAL' || notifInfo.requestCategory === 'TOOLS'
-          const materialToolsCc = isMaterialOrTools
-            ? ['muhammad.akbar@chitraparatama.co.id']
-            : undefined
+          let materialToolsCc: string[] | undefined = undefined
+          if (isMaterialOrTools) {
+            const { getMaterialToolsNotificationConfigData } = await import('@/lib/hero-admin')
+            const matConfig = await getMaterialToolsNotificationConfigData()
+            if (matConfig.isActive) {
+              const parseEmails = (s?: string) =>
+                (s || '')
+                  .split(',')
+                  .map((e) => e.trim())
+                  .filter(Boolean)
+              const list = Array.from(
+                new Set([...parseEmails(matConfig.ccEmails), ...parseEmails(matConfig.recipientEmails)])
+              )
+              if (list.length > 0) materialToolsCc = list
+            }
+          }
 
           // 1. Email + bell ke requester (progress update)
           if (notifInfo.requesterEmail) {
@@ -5342,13 +5355,16 @@ async function applyApprovalDecision(params: {
       }
 
       if (decisionStatus === 'proses_order' && approval.apdRequestId != null && !nextStep) {
-        // Fully approved, notify requester and CC central admin
+        // Fully approved, notify requester and CC central admin & stream PIC
         const reqInfo = await tx
           .select({
             requestNumber: apdRequests.requestNumber,
             requesterName: employees.name,
             requesterEmail: employees.email,
             requestCategory: apdRequests.requestCategory,
+            requesterSection: employees.section,
+            requesterDepartment: employees.department,
+            requesterJobTitle: employees.jobTitle,
           })
           .from(apdRequests)
           .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
@@ -5358,6 +5374,20 @@ async function applyApprovalDecision(params: {
 
         if (reqInfo?.requesterEmail) {
           if (reqInfo.requestCategory === 'MATERIAL' || reqInfo.requestCategory === 'TOOLS') {
+            const { getMaterialToolsNotificationConfigData } = await import('@/lib/hero-admin')
+            const matConfig = await getMaterialToolsNotificationConfigData()
+            const parseEmails = (s?: string) =>
+              (s || '')
+                .split(',')
+                .map((e) => e.trim())
+                .filter(Boolean)
+
+            const dynamicCc = matConfig.isActive
+              ? Array.from(
+                  new Set([...parseEmails(matConfig.ccEmails), ...parseEmails(matConfig.recipientEmails)])
+                )
+              : []
+
             const { sendMaterialToolsApprovedEmail } = await import('@/lib/apd-email')
             sendMaterialToolsApprovedEmail({
               requesterEmail: reqInfo.requesterEmail,
@@ -5365,10 +5395,11 @@ async function applyApprovalDecision(params: {
               requestNumber: reqInfo.requestNumber,
               approverName: actorName,
               requestType: reqInfo.requestCategory,
+              ccEmails: dynamicCc.length > 0 ? dynamicCc : undefined,
             }).catch(console.error)
 
             notifyWorkflowBellRecipients({
-              recipientEmails: [reqInfo.requesterEmail, 'muhammad.akbar@chitraparatama.co.id'],
+              recipientEmails: [reqInfo.requesterEmail, ...dynamicCc],
               eventType: 'material_tools_request_approved',
               category: 'approval_requests',
               title: `Permintaan ${reqInfo.requestCategory} Disetujui`,
@@ -5382,15 +5413,39 @@ async function applyApprovalDecision(params: {
             let ccEmails: string[] = []
 
             if (apdConfig.isActive) {
-              const parseEmails = (s: string) =>
-                s
+              const parseEmails = (s?: string) =>
+                (s || '')
                   .split(',')
                   .map((e) => e.trim())
                   .filter(Boolean)
-              ccEmails = [
-                ...parseEmails(apdConfig.recipientEmails),
-                ...parseEmails(apdConfig.ccEmails),
-              ]
+
+              const reqSec = (
+                (reqInfo.requesterSection || '') +
+                ' ' +
+                (reqInfo.requesterDepartment || '') +
+                ' ' +
+                (reqInfo.requesterJobTitle || '')
+              ).toLowerCase()
+
+              const streamCc: string[] = []
+              if (reqSec.includes('repair') || reqSec.includes('retread')) {
+                streamCc.push(...parseEmails(apdConfig.repairCcEmail || 'zahiriarjun@gmail.com'))
+              } else if (reqSec.includes('te') || reqSec.includes('technical') || reqSec.includes('engineer')) {
+                streamCc.push(...parseEmails(apdConfig.teCcEmail || 'abian.husain@chitraparatama.co.id'))
+              } else if (reqSec.includes('service') || reqSec.includes('mvc')) {
+                streamCc.push(...parseEmails(apdConfig.serviceCcEmail || 'otoleeh123@gmail.com'))
+              } else {
+                // Default fallback to service CC
+                streamCc.push(...parseEmails(apdConfig.serviceCcEmail || 'otoleeh123@gmail.com'))
+              }
+
+              ccEmails = Array.from(
+                new Set([
+                  ...parseEmails(apdConfig.recipientEmails),
+                  ...parseEmails(apdConfig.ccEmails),
+                  ...streamCc,
+                ])
+              )
             }
 
             const { sendApdRequestApprovedEmail } = await import('@/lib/apd-email')
@@ -5433,7 +5488,22 @@ async function applyApprovalDecision(params: {
         if (reqInfo?.requesterEmail) {
           const isMaterialOrTools =
             reqInfo.requestCategory === 'MATERIAL' || reqInfo.requestCategory === 'TOOLS'
-          const ccEmails = isMaterialOrTools ? ['muhammad.akbar@chitraparatama.co.id'] : undefined
+          let ccEmails: string[] | undefined = undefined
+          if (isMaterialOrTools) {
+            const { getMaterialToolsNotificationConfigData } = await import('@/lib/hero-admin')
+            const matConfig = await getMaterialToolsNotificationConfigData()
+            if (matConfig.isActive) {
+              const parseEmails = (s?: string) =>
+                (s || '')
+                  .split(',')
+                  .map((e) => e.trim())
+                  .filter(Boolean)
+              const list = Array.from(
+                new Set([...parseEmails(matConfig.ccEmails), ...parseEmails(matConfig.recipientEmails)])
+              )
+              if (list.length > 0) ccEmails = list
+            }
+          }
 
           const { sendApdRequestRejectedEmail } = await import('@/lib/apd-email')
           sendApdRequestRejectedEmail({
@@ -5475,7 +5545,22 @@ async function applyApprovalDecision(params: {
         if (reqInfo?.requesterEmail) {
           const isMaterialOrTools =
             reqInfo.requestCategory === 'MATERIAL' || reqInfo.requestCategory === 'TOOLS'
-          const ccEmails = isMaterialOrTools ? ['muhammad.akbar@chitraparatama.co.id'] : undefined
+          let ccEmails: string[] | undefined = undefined
+          if (isMaterialOrTools) {
+            const { getMaterialToolsNotificationConfigData } = await import('@/lib/hero-admin')
+            const matConfig = await getMaterialToolsNotificationConfigData()
+            if (matConfig.isActive) {
+              const parseEmails = (s?: string) =>
+                (s || '')
+                  .split(',')
+                  .map((e) => e.trim())
+                  .filter(Boolean)
+              const list = Array.from(
+                new Set([...parseEmails(matConfig.ccEmails), ...parseEmails(matConfig.recipientEmails)])
+              )
+              if (list.length > 0) ccEmails = list
+            }
+          }
 
           const { sendApdRequestRevertedEmail } = await import('@/lib/apd-email')
           sendApdRequestRevertedEmail({

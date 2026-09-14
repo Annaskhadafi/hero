@@ -7,6 +7,7 @@ import {
   FileText,
   History,
   Mail,
+  Package,
   RadioTower,
   Server,
   ShieldAlert,
@@ -18,6 +19,7 @@ import {
 import { EmailDeliveryLogTable } from "@/components/email-delivery-log-table";
 import { HseSafetyNotificationSettingsPanel } from "@/components/hse-safety-notification-settings-panel";
 import { ApdNotificationSettingsPanel } from "@/components/apd-notification-settings-panel";
+import { MaterialToolsNotificationSettingsPanel } from "@/components/material-tools-notification-settings-panel";
 import { HumanCapitalNotificationSettingsPanel } from "@/components/human-capital-notification-settings-panel";
 import { AttendanceNotificationSettingsPanel } from "@/components/attendance-notification-settings-panel";
 import { FormWoNotificationSettingsPanel } from "@/components/form-wo-notification-settings-panel";
@@ -48,10 +50,12 @@ import {
   getEmailTemplatesData,
   getHseSafetyNotificationConfigData,
   getHumanCapitalNotificationConfigData,
+  getAttendanceNotificationConfigData,
   getCsForecastDailyReportConfigData,
   getActiveEmployeesForSelect,
   getPwaPushSettingsData,
   getApdNotificationConfigData,
+  getMaterialToolsNotificationConfigData,
   getFormWoNotificationConfigData,
 } from "@/lib/hero-admin";
 
@@ -125,7 +129,22 @@ export default async function EmailSettingsPage() {
     redirect("/dashboard");
   }
 
-  const [logs, notifications, smtpSettings, templates, pwaPushSettings, hseSafetyConfig, humanCapitalConfig, csForecastConfig, apdConfig, formWoConfig, employees, session] = await Promise.all([
+  const [
+    logs,
+    notifications,
+    smtpSettings,
+    templates,
+    pwaPushSettings,
+    hseSafetyConfig,
+    humanCapitalConfig,
+    attendanceConfig,
+    csForecastConfig,
+    apdConfig,
+    materialToolsConfig,
+    formWoConfig,
+    employees,
+    session,
+  ] = await Promise.all([
     getEmailDeliveryLogsData(),
     getNotificationCenterData(),
     getEmailSmtpSettingsData(),
@@ -133,8 +152,10 @@ export default async function EmailSettingsPage() {
     getPwaPushSettingsData(),
     getHseSafetyNotificationConfigData(),
     getHumanCapitalNotificationConfigData(),
+    getAttendanceNotificationConfigData(),
     getCsForecastDailyReportConfigData(),
     getApdNotificationConfigData(),
+    getMaterialToolsNotificationConfigData(),
     getFormWoNotificationConfigData(),
     getActiveEmployeesForSelect(),
     getServerSession(),
@@ -203,8 +224,12 @@ export default async function EmailSettingsPage() {
             Izin Absensi
           </TabsTrigger>
           <TabsTrigger value="apd">
-            <Users className="size-4" />
-            APD & CS
+            <Package className="size-4" />
+            APD
+          </TabsTrigger>
+          <TabsTrigger value="material-tools">
+            <Wrench className="size-4" />
+            Material & Tools
           </TabsTrigger>
           <TabsTrigger value="mine-permit">
             <Users className="size-4" />
@@ -259,11 +284,15 @@ export default async function EmailSettingsPage() {
         </TabsContent>
 
         <TabsContent value="attendance">
-          <AttendanceNotificationSettingsPanel />
+          <AttendanceNotificationSettingsPanel config={attendanceConfig} employees={employees} />
         </TabsContent>
 
         <TabsContent value="apd">
           <ApdNotificationSettingsPanel config={apdConfig} employees={employees} />
+        </TabsContent>
+
+        <TabsContent value="material-tools">
+          <MaterialToolsNotificationSettingsPanel config={materialToolsConfig} employees={employees} />
         </TabsContent>
 
         <TabsContent value="mine-permit">

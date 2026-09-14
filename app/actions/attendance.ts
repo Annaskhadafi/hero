@@ -28,6 +28,7 @@ import { getCurrentMenuPermission, hasGlobalDataAccess } from '@/lib/hero-access
 import {
   buildWorkflowEmailContent,
   getAttendancePermissionRecipientEmails,
+  getAttendancePermissionHcCcEmails,
   resolveAttendancePermissionApprover,
   ATTENDANCE_PERMISSION_HC_CC_EMAILS,
   getEmployeeContactById,
@@ -399,9 +400,11 @@ async function notifyAttendancePermissionSubmitted(input: {
     ctaUrl: getAppUrl('/dashboard/hc/permission'),
   })
 
+  const hcCcEmails = await getAttendancePermissionHcCcEmails()
+
   await sendWorkflowEmail({
     to: approver.approverEmail,
-    cc: ATTENDANCE_PERMISSION_HC_CC_EMAILS,
+    cc: hcCcEmails,
     actorEmail: input.actorEmail,
     templateCode: 'attendance_permission_reminder',
     templateName: 'Attendance Permission Reminder',
@@ -1003,9 +1006,10 @@ export async function submitAttendancePermission(formData: FormData) {
         jobTitle: employee.jobTitle,
       })
 
+      const hcCcEmails = await getAttendancePermissionHcCcEmails()
       const bellRecipients = Array.from(
         new Set(
-          [approver?.approverEmail, ...ATTENDANCE_PERMISSION_HC_CC_EMAILS].filter(
+          [approver?.approverEmail, ...hcCcEmails].filter(
             (email): email is string => Boolean(email && email.includes('@'))
           )
         )

@@ -2799,6 +2799,29 @@ export const apdNotificationConfig = pgTable('hero_apd_notification_config', {
   id: serial('id').primaryKey(),
   recipientEmails: text('recipient_emails').notNull().default(''),
   ccEmails: text('cc_emails').notNull().default(''),
+  serviceCcEmail: text('service_cc_email').notNull().default('otoleeh123@gmail.com'),
+  repairCcEmail: text('repair_cc_email').notNull().default('zahiriarjun@gmail.com'),
+  teCcEmail: text('te_cc_email').notNull().default('abian.husain@chitraparatama.co.id'),
+  isActive: boolean('is_active').notNull().default(true),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const materialToolsNotificationConfig = pgTable('hero_material_tools_notification_config', {
+  id: serial('id').primaryKey(),
+  recipientEmails: text('recipient_emails').notNull().default(''),
+  ccEmails: text('cc_emails').notNull().default('muhammad.akbar@chitraparatama.co.id'),
+  isActive: boolean('is_active').notNull().default(true),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const attendanceNotificationConfig = pgTable('hero_attendance_notification_config', {
+  id: serial('id').primaryKey(),
+  ccEmails: text('cc_emails').notNull().default(''),
+  headSectionMvcEmail: text('head_section_mvc_email').notNull().default(''),
+  headSectionRepairEmail: text('head_section_repair_email').notNull().default(''),
+  headSectionTeEmail: text('head_section_te_email').notNull().default(''),
+  headSectionOthersEmail: text('head_section_others_email').notNull().default(''),
+  headSectionAccessoriesEmail: text('head_section_accessories_email').notNull().default(''),
   isActive: boolean('is_active').notNull().default(true),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })

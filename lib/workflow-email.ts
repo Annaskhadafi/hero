@@ -527,8 +527,6 @@ export async function getOperationalApprovalRecipientEmails(siteId?: number | nu
 export const ATTENDANCE_PERMISSION_HC_CC_EMAILS = [
   'adila.arizona@chitraparatama.co.id',
   'kesuma.bagaskara@chitraparatama.co.id',
-  'muhammad.iqbal@chitraparatama.co.id',
-  'putri.fitriana@chitraparatama.co.id',
 ]
 
 export const ATTENDANCE_SITE_ROUTING_MAP: Record<
@@ -603,6 +601,18 @@ export type ResolvedAttendanceApprover = {
   approverTitle: string
 }
 
+export async function getAttendancePermissionHcCcEmails(): Promise<string[]> {
+  try {
+    const { getAttendanceNotificationConfigData } = await import('@/lib/hero-admin')
+    const config = await getAttendanceNotificationConfigData()
+    const dynamicCc = splitEmails(config.ccEmails)
+    if (dynamicCc.length > 0) return dynamicCc
+  } catch {
+    // Fallback if DB not ready
+  }
+  return ATTENDANCE_PERMISSION_HC_CC_EMAILS
+}
+
 export async function resolveAttendancePermissionApprover(input: {
   employeeId?: number | null
   siteId?: number | null
@@ -614,6 +624,25 @@ export async function resolveAttendancePermissionApprover(input: {
   let resolvedSiteName = (input.siteName || '').trim().toLowerCase()
   let resolvedSection = (input.sectionName || '').trim().toLowerCase()
   let resolvedJobTitle = (input.jobTitle || '').trim().toLowerCase()
+
+  // Dynamic config for Central Service head sections
+  let mvcEmail = ATTENDANCE_ADMIN_CP_APPROVERS.mvcOthers.approverEmail
+  let repairEmail = ATTENDANCE_ADMIN_CP_APPROVERS.repairRetread.approverEmail
+  let teEmail = ATTENDANCE_ADMIN_CP_APPROVERS.technicalEngineer.approverEmail
+  let othersEmail = ATTENDANCE_ADMIN_CP_APPROVERS.serviceOthers.approverEmail
+  let accessoriesEmail = ATTENDANCE_ADMIN_CP_APPROVERS.productAccessories.approverEmail
+
+  try {
+    const { getAttendanceNotificationConfigData } = await import('@/lib/hero-admin')
+    const config = await getAttendanceNotificationConfigData()
+    if (config.headSectionMvcEmail?.trim()) mvcEmail = config.headSectionMvcEmail.trim()
+    if (config.headSectionRepairEmail?.trim()) repairEmail = config.headSectionRepairEmail.trim()
+    if (config.headSectionTeEmail?.trim()) teEmail = config.headSectionTeEmail.trim()
+    if (config.headSectionOthersEmail?.trim()) othersEmail = config.headSectionOthersEmail.trim()
+    if (config.headSectionAccessoriesEmail?.trim()) accessoriesEmail = config.headSectionAccessoriesEmail.trim()
+  } catch {
+    // Fallback to constants
+  }
 
   if (input.employeeId && (!resolvedSiteName || !resolvedSection || !resolvedJobTitle)) {
     const [emp] = await db
@@ -653,7 +682,75 @@ export async function resolveAttendancePermissionApprover(input: {
     }
   }
 
-  // 1. Direct match with PJO / HSE mapping
+  // 1. Live query to auto-detect active PJO or HSE at this site from User Management (hero_employees)
+  if (input.siteId) {
+    try {
+      const siteEmployees = await db
+        .select({
+          id: employees.id,
+          name: employees.name,
+          email: employees.email,
+          jobTitle: employees.jobTitle,
+          role: employees.role,
+        })
+        .from(employees)
+        .where(
+          and(
+            eq(employees.siteId, input.siteId),
+            eq(employees.isActive, true),
+            sql`coalesce(trim(${employees.email}), '') <> ''`
+          )
+        )
+
+      // 1a. Priority 1: Check for PJO (Project Manager, Technical Engineer / Leader PIC site)
+      const pjoEmp = siteEmployees.find((e) => {
+        const title = (e.jobTitle || '').toLowerCase()
+        const r = (e.role || '').toLowerCase()
+        return (
+          title.includes('pjo') ||
+          title.includes('project manager') ||
+          title.includes('site manager') ||
+          title.includes('technical leader') ||
+          title.includes('technical engineer') ||
+          r.includes('pjo')
+        )
+      })
+
+      if (pjoEmp?.email) {
+        return {
+          category: 'PJO',
+          approverName: pjoEmp.name,
+          approverEmail: pjoEmp.email.trim(),
+          approverTitle: pjoEmp.jobTitle || 'PJO Site',
+        }
+      }
+
+      // 1b. Priority 2: Check for HSE (HSE Officer / HSE Leader) if no PJO
+      const hseEmp = siteEmployees.find((e) => {
+        const title = (e.jobTitle || '').toLowerCase()
+        const r = (e.role || '').toLowerCase()
+        return (
+          title.includes('hse') ||
+          title.includes('safety') ||
+          title.includes('k3') ||
+          r.includes('hse')
+        )
+      })
+
+      if (hseEmp?.email) {
+        return {
+          category: 'HSE',
+          approverName: hseEmp.name,
+          approverEmail: hseEmp.email.trim(),
+          approverTitle: hseEmp.jobTitle || 'HSE Site',
+        }
+      }
+    } catch {
+      // Fallback to static mapping if query encounters error
+    }
+  }
+
+  // 2. Fallback to site routing map by name if live query did not match
   if (resolvedSiteName && ATTENDANCE_SITE_ROUTING_MAP[resolvedSiteName]) {
     const mapped = ATTENDANCE_SITE_ROUTING_MAP[resolvedSiteName]
     return {
@@ -671,7 +768,10 @@ export async function resolveAttendancePermissionApprover(input: {
     resolvedJobTitle.includes('repair') ||
     resolvedJobTitle.includes('retread')
   ) {
-    return ATTENDANCE_ADMIN_CP_APPROVERS.repairRetread
+    return {
+      ...ATTENDANCE_ADMIN_CP_APPROVERS.repairRetread,
+      approverEmail: repairEmail,
+    }
   }
 
   if (
@@ -681,21 +781,30 @@ export async function resolveAttendancePermissionApprover(input: {
     resolvedJobTitle.includes('technical') ||
     resolvedJobTitle.includes('engineer')
   ) {
-    return ATTENDANCE_ADMIN_CP_APPROVERS.technicalEngineer
+    return {
+      ...ATTENDANCE_ADMIN_CP_APPROVERS.technicalEngineer,
+      approverEmail: teEmail,
+    }
   }
 
   if (
     resolvedSection.includes('service operation others') ||
     resolvedSection.includes('service others')
   ) {
-    return ATTENDANCE_ADMIN_CP_APPROVERS.serviceOthers
+    return {
+      ...ATTENDANCE_ADMIN_CP_APPROVERS.serviceOthers,
+      approverEmail: othersEmail,
+    }
   }
 
   if (
     resolvedSection.includes('product accessories') ||
     resolvedSection.includes('accessories')
   ) {
-    return ATTENDANCE_ADMIN_CP_APPROVERS.productAccessories
+    return {
+      ...ATTENDANCE_ADMIN_CP_APPROVERS.productAccessories,
+      approverEmail: accessoriesEmail,
+    }
   }
 
   // 3. Check section head fallback for office/other sections if sectionId exists
@@ -725,7 +834,10 @@ export async function resolveAttendancePermissionApprover(input: {
   }
 
   // 4. Default Admin CP / Head of Service MVC (Apriyanto)
-  return ATTENDANCE_ADMIN_CP_APPROVERS.mvcOthers
+  return {
+    ...ATTENDANCE_ADMIN_CP_APPROVERS.mvcOthers,
+    approverEmail: mvcEmail,
+  }
 }
 
 export async function getAttendancePermissionRecipientEmails(
@@ -749,7 +861,8 @@ export async function getAttendancePermissionRecipientEmails(
 
   const template = await getActiveTemplate('attendance_permission_reminder')
   const templateCcEmails = splitEmails(template?.ccEmail)
-  const ccEmails = uniqueEmails([...ATTENDANCE_PERMISSION_HC_CC_EMAILS, ...templateCcEmails])
+  const hcCcEmails = await getAttendancePermissionHcCcEmails()
+  const ccEmails = uniqueEmails([...hcCcEmails, ...templateCcEmails])
   const toEmails = approver?.approverEmail ? [approver.approverEmail] : []
 
   return uniqueEmails([...toEmails, ...ccEmails])
