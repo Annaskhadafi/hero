@@ -46,6 +46,11 @@ export async function resolveSnAction(sn: string) {
       .from(employees)
       .leftJoin(user, eq(employees.authUserId, user.id))
       .where(and(snMatches(employees.employeeSn, snVariants), sql`${user.email} is not null`))
+      .orderBy(
+        sql`case when ${employees.isActive} = true and lower(${employees.employmentStatus}) <> 'inactive' then 0 else 1 end`,
+        sql`case when ${employees.authUserId} is not null then 0 else 1 end`,
+        employees.id,
+      )
       .limit(1)
 
     if (matched?.email) {
@@ -71,6 +76,11 @@ export async function resolveSnAction(sn: string) {
       })
       .from(employees)
       .where(snMatches(employees.employeeSn, snVariants))
+      .orderBy(
+        sql`case when ${employees.isActive} = true and lower(${employees.employmentStatus}) <> 'inactive' then 0 else 1 end`,
+        sql`case when ${employees.authUserId} is not null then 0 else 1 end`,
+        employees.id,
+      )
       .limit(1)
 
     if (empDirect?.email) {
@@ -89,6 +99,7 @@ export async function resolveSnAction(sn: string) {
       .select({ email: centralServiceEmployees.email, fullName: centralServiceEmployees.fullName })
       .from(centralServiceEmployees)
       .where(snMatches(centralServiceEmployees.employeeSn, snVariants))
+      .orderBy(centralServiceEmployees.id)
       .limit(1)
 
     if (centralServiceEmp?.email) {
