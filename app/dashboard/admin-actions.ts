@@ -5295,27 +5295,15 @@ async function applyApprovalDecision(params: {
             }
           }
 
-          // 1. Email + bell ke requester (progress update)
+          // 1. In-app bell ke requester (progress update, email dikirim hanya setelah approve tahap 2 / final)
           if (notifInfo.requesterEmail) {
-            const { sendApdLevelApprovedEmail } = await import('@/lib/apd-email')
-            sendApdLevelApprovedEmail({
-              requesterEmail: notifInfo.requesterEmail,
-              requesterName: notifInfo.requesterName,
-              requestNumber: notifInfo.requestNumber,
-              approverName: actorName,
-              requestType: notifInfo.requestCategory,
-              currentLevelLabel: currentStepLabel,
-              nextLevelLabel: nextStep.label,
-              ccEmails: materialToolsCc,
-            }).catch(console.error)
-
             notifyWorkflowBellRecipients({
               recipientEmails: [notifInfo.requesterEmail, ...(materialToolsCc ?? [])],
               eventType: 'apd_request_progress',
               category: 'approval_requests',
-              title: `${notifInfo.requestCategory} Tahap Disetujui`,
-              body: `Permintaan ${notifInfo.requestCategory} Anda (${notifInfo.requestNumber}) telah disetujui pada tahap ${currentStepLabel} dan menunggu tahap berikutnya.`,
-              url: '/dashboard/approval',
+              title: `${notifInfo.requestCategory} Tahap 1 Disetujui`,
+              body: `Permintaan ${notifInfo.requestCategory} Anda (${notifInfo.requestNumber}) telah disetujui pada tahap ${currentStepLabel} dan diteruskan ke ${nextStep.label || 'Tahap 2'}.`,
+              url: '/dashboard/apd',
               tagPrefix: 'apd',
             }).catch(console.error)
           }

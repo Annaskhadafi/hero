@@ -8,7 +8,7 @@ import { eq } from "drizzle-orm";
 import { getServerSession } from "@/lib/auth-session";
 import { getCurrentEmployee } from "@/lib/get-current-employee";
 import { ApdRequestForm } from "@/app/dashboard/apd/new/apd-form";
-import { fetchApdItemOptions } from "@/lib/apd-data";
+import { fetchApdItemOptions, fetchApproverOptions } from "@/lib/apd-data";
 
 export default async function MobileNewMaterialPage() {
   const session = await getServerSession();
@@ -32,7 +32,10 @@ export default async function MobileNewMaterialPage() {
 
   if (!employeeProfile) return notFound();
 
-  const materialOptions = await fetchApdItemOptions("MATERIAL");
+  const [materialOptions, approverOptions] = await Promise.all([
+    fetchApdItemOptions("MATERIAL"),
+    fetchApproverOptions(),
+  ]);
 
   return (
     <div className="space-y-4 pb-6">
@@ -62,6 +65,7 @@ export default async function MobileNewMaterialPage() {
           departmentName={employeeProfile.departmentName}
           sectionName={employeeProfile.sectionName}
           itemOptions={{ TOOLS: [], MATERIAL: materialOptions }}
+          approverOptions={approverOptions}
           defaultMode="material"
           mobileWide
         />

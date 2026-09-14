@@ -58,7 +58,16 @@ export function SearchableEmployeeSelect({
     })
 
     for (const emp of sorted) {
-      const key = emp.name.toLowerCase().trim()
+      const trimmedName = emp.name.trim()
+      if (
+        trimmedName.startsWith('[') ||
+        emp.role === 'Relative Approver' ||
+        emp.email?.endsWith('@relative.hero') ||
+        emp.id >= 990000
+      ) {
+        continue
+      }
+      const key = trimmedName.toLowerCase()
       if (!seen.has(key)) {
         seen.add(key)
         result.push(emp)

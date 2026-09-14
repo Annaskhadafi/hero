@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { employees, masterDepartments, masterSections } from "@/db/schema/hero";
 import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
-import { fetchApdItemOptions, fetchApdRequestById } from "@/lib/apd-data";
+import { fetchApdItemOptions, fetchApdRequestById, fetchApproverOptions } from "@/lib/apd-data";
 
 export default async function NewApdRequestPage(props: {
   searchParams: Promise<{ category?: string; edit?: string; id?: string }>;
@@ -42,9 +42,10 @@ export default async function NewApdRequestPage(props: {
 
   if (!employeeProfile) return notFound();
 
-  const [toolsOptions, materialOptions] = await Promise.all([
+  const [toolsOptions, materialOptions, approverOptions] = await Promise.all([
     fetchApdItemOptions("TOOLS"),
     fetchApdItemOptions("MATERIAL"),
+    fetchApproverOptions(),
   ]);
 
   const initialItems = existingRequest?.items?.map((item) => ({
@@ -54,6 +55,13 @@ export default async function NewApdRequestPage(props: {
     notes: item.notes || "",
     photoUrl: item.photoUrl || undefined,
   }));
+
+  const initialApprover1Id = existingRequest?.approvalHistory?.find((h) => h.level === 1)?.approverEmployeeId
+    ? String(existingRequest.approvalHistory.find((h) => h.level === 1)?.approverEmployeeId)
+    : undefined;
+  const initialApprover2Id = existingRequest?.approvalHistory?.find((h) => h.level === 2)?.approverEmployeeId
+    ? String(existingRequest.approvalHistory.find((h) => h.level === 2)?.approverEmployeeId)
+    : undefined;
 
   const isRevision = Boolean(existingRequest);
 
@@ -74,10 +82,13 @@ export default async function NewApdRequestPage(props: {
           departmentName={employeeProfile.departmentName}
           sectionName={employeeProfile.sectionName}
           itemOptions={{ TOOLS: toolsOptions, MATERIAL: materialOptions }}
+          approverOptions={approverOptions}
           defaultMode={defaultMode}
           requestId={existingRequest?.id}
           initialNotes={existingRequest?.notes || ""}
           initialItems={initialItems}
+          initialApprover1Id={initialApprover1Id}
+          initialApprover2Id={initialApprover2Id}
         />
       </div>
     </AdminPageShell>

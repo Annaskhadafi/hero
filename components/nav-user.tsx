@@ -61,9 +61,18 @@ export function NavUser({
     }
   }
 
-  const userInitials = user.name
-    ? user.name.split(" ").map((n) => n[0]).join("").toUpperCase()
-    : user.email[0].toUpperCase()
+  const userInitials = (
+    user.name?.trim()
+      ? user.name
+          .trim()
+          .split(/\s+/)
+          .map((n) => n[0])
+          .filter(Boolean)
+          .slice(0, 2)
+          .join("")
+          .toUpperCase()
+      : (user.email?.[0] || "U").toUpperCase()
+  ) || "U"
 
   return (
     <SidebarMenu className="group-data-[collapsible=icon]:items-center">
@@ -90,7 +99,9 @@ export function NavUser({
             >
               <Avatar className="h-8 w-8 rounded-lg">
                 <AvatarImage src={user.avatar} alt={user.name} />
-                <AvatarFallback className="rounded-lg">{userInitials}</AvatarFallback>
+                <AvatarFallback className="rounded-lg" suppressHydrationWarning>
+                  {userInitials}
+                </AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
                 <span className="truncate font-medium">{user.name}</span>
@@ -111,7 +122,9 @@ export function NavUser({
               <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                 <Avatar className="h-8 w-8 rounded-lg">
                   <AvatarImage src={user.avatar} alt={user.name} />
-                  <AvatarFallback className="rounded-lg">{userInitials}</AvatarFallback>
+                  <AvatarFallback className="rounded-lg" suppressHydrationWarning>
+                    {userInitials}
+                  </AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">{user.name}</span>

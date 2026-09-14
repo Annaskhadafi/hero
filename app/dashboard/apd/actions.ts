@@ -11,7 +11,7 @@ import {
 import { getCurrentEmployee } from '@/lib/get-current-employee'
 import { resolveApprovalRouteForActivity } from '@/lib/approval-engine'
 import { sendApdRequestSubmittedEmail, sendMaterialToolsRequestSubmittedEmail } from '@/lib/apd-email'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import { normalizeApdRequestCategory, normalizeApdRequestStatus } from '@/lib/apd-status'
@@ -238,32 +238,89 @@ export async function submitApdRequest(formData: FormData) {
     }
 
     // 3. Resolve approval route
-    const route = await resolveApprovalRouteForActivity({
-      employeeId: currentEmployee.id,
-      siteId: currentEmployee.siteId ?? undefined,
-      departmentId: currentEmployee.departmentId ?? undefined,
-      sectionId: currentEmployee.sectionId ?? undefined,
-      activityType: 'apd-request',
-      priority: 'Normal',
-      overtimeMinutes: 0,
-      transactionType: `apd-request-${requestCategory.toLowerCase()}`,
-      at: new Date(),
-    })
+    const rawApprover1Id = formData.get('approver1Id') || formData.get('approverEmployeeId') || formData.get('approverId')
+    const rawApprover2Id = formData.get('approver2Id')
 
-    if (route.steps.length > 0) {
-      const firstStep = route.steps.find((s) => s.stepOrder === 1)
+    const approver1EmployeeId = rawApprover1Id ? Number(rawApprover1Id) : null
+    const approver2EmployeeId = rawApprover2Id ? Number(rawApprover2Id) : null
 
-      const payloadSnapshot = JSON.stringify({
-        title: `Permintaan ${requestCategory} ${requestNumber}`,
-        reason: notes,
-        items: normalizedItems,
+    let route: any = null
+    let firstStep: any = null
+
+    if (
+      (requestCategory === 'MATERIAL' || requestCategory === 'TOOLS') &&
+      approver1EmployeeId &&
+      !isNaN(approver1EmployeeId)
+    ) {
+      // Direct 2-level approver selection flow for Material & Tools
+      const approverIds = [approver1EmployeeId, approver2EmployeeId].filter(
+        (id): id is number => id != null && !isNaN(id) && id > 0
+      )
+      const approverRows =
+        approverIds.length > 0
+          ? await tx
+              .select({
+                id: employees.id,
+                name: employees.name,
+                email: employees.email,
+                role: employees.role,
+                jobTitle: employees.jobTitle,
+              })
+              .from(employees)
+              .where(inArray(employees.id, approverIds))
+          : []
+      const approverMap = new Map(approverRows.map((r) => [r.id, r]))
+
+      const app1 = approverMap.get(approver1EmployeeId)
+      const app2 = approver2EmployeeId ? approverMap.get(approver2EmployeeId) : null
+
+      const steps: any[] = []
+      if (app1) {
+        steps.push({
+          stepOrder: 1,
+          label: 'Atasan Langsung / Pemeriksa',
+          approverName: app1.name,
+          approverEmployeeId: app1.id,
+          role: app1.jobTitle || app1.role || 'Atasan Langsung',
+          resolutionSource: 'manual_selection',
+        })
+      }
+      if (app2) {
+        steps.push({
+          stepOrder: 2,
+          label: 'Section Head / Penyetuju',
+          approverName: app2.name,
+          approverEmployeeId: app2.id,
+          role: app2.jobTitle || app2.role || 'Section Head',
+          resolutionSource: 'manual_selection',
+        })
+      }
+
+      route = {
+        name: `Approval Permintaan ${requestCategory}`,
+        activityType: 'apd-request',
+        transactionType: `apd-request-${requestCategory.toLowerCase()}`,
+        steps,
+        warnings: [],
+      }
+      firstStep = steps[0]
+    } else {
+      // Standard dynamic matrix resolution
+      route = await resolveApprovalRouteForActivity({
+        employeeId: currentEmployee.id,
+        siteId: currentEmployee.siteId ?? undefined,
+        departmentId: currentEmployee.departmentId ?? undefined,
+        sectionId: currentEmployee.sectionId ?? undefined,
+        activityType: 'apd-request',
+        priority: 'Normal',
+        overtimeMinutes: 0,
+        transactionType: `apd-request-${requestCategory.toLowerCase()}`,
+        at: new Date(),
       })
+      firstStep = route?.steps?.find((s: any) => s.stepOrder === 1)
+    }
 
-      const previewSnapshot = JSON.stringify({
-        title: `Permintaan ${requestCategory} ${requestNumber}`,
-        summary: `Diminta oleh ${currentEmployee.name}`,
-      })
-
+    if (firstStep) {
       // 4. Insert approval tracking
       await tx.insert(approvals).values({
         apdRequestId: request.id,
@@ -299,7 +356,7 @@ export async function submitApdRequest(formData: FormData) {
               eventType: 'material_tools_request_review',
               category: 'approval_requests',
               title: `Review Permintaan ${requestCategory}`,
-              body: `${currentEmployee.name} mengajukan permintaan ${requestCategory} baru (${requestNumber}) yang membutuhkan persetujuan Section Head. (CC: Muhammad Taufik Akbar)`,
+              body: `${currentEmployee.name} mengajukan permintaan ${requestCategory} baru (${requestNumber}) yang membutuhkan persetujuan Anda. (CC: Muhammad Taufik Akbar)`,
               url: `/dashboard/approval`,
               tagPrefix: 'apd',
             }).catch(console.error)
@@ -310,16 +367,6 @@ export async function submitApdRequest(formData: FormData) {
               approverEmail: approverEmailRec.email,
               approverName: firstStep.approverName,
               requestType: requestCategory,
-            }).catch(console.error)
-
-            notifyWorkflowBellRecipients({
-              recipientEmails: [approverEmailRec.email],
-              eventType: 'apd_request_review',
-              category: 'approval_requests',
-              title: `Review Permintaan ${requestCategory}`,
-              body: `${currentEmployee.name} mengajukan permintaan ${requestCategory} baru (${requestNumber}) yang membutuhkan persetujuan Anda.`,
-              url: `/dashboard/approval`,
-              tagPrefix: 'apd',
             }).catch(console.error)
           }
         }

@@ -15,7 +15,9 @@ import { toast } from "sonner";
 import { SignaturePad } from "@/components/signature-pad";
 import { getUserSignatureAction, saveUserSignatureAction } from "@/app/actions/user-signature";
 import { FiveRCameraModal } from "@/components/five-r/five-r-camera-modal";
+import { SearchableEmployeeSelect } from "@/components/searchable-employee-select";
 import type { ApdRequestCategory } from "@/lib/apd-status";
+import type { ApproverOption } from "@/lib/apd-data";
 
 const APD_ITEMS = [
   "Safety Glasses",
@@ -56,6 +58,7 @@ interface ApdRequestFormProps {
   departmentName: string | null;
   sectionName: string | null;
   itemOptions: Record<Exclude<ApdRequestCategory, "APD">, string[]>;
+  approverOptions?: ApproverOption[];
   defaultMode?: "apd" | "tools" | "material";
   mobileWide?: boolean;
   requestId?: number;
@@ -67,6 +70,8 @@ interface ApdRequestFormProps {
     notes: string;
     photoUrl?: string;
   }>;
+  initialApprover1Id?: string;
+  initialApprover2Id?: string;
 }
 
 function parsePhotoPreviews(photoUrl?: string | null): string[] {
@@ -86,16 +91,21 @@ export function ApdRequestForm({
   departmentName,
   sectionName,
   itemOptions,
+  approverOptions,
   defaultMode = "apd",
   mobileWide = false,
   requestId,
   initialNotes = "",
   initialItems,
+  initialApprover1Id = "",
+  initialApprover2Id = "",
 }: ApdRequestFormProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [requestMode, setRequestMode] = useState<"apd" | "tools" | "material">(defaultMode);
   const [notes, setNotes] = useState(initialNotes);
+  const [approver1Id, setApprover1Id] = useState<string>(initialApprover1Id);
+  const [approver2Id, setApprover2Id] = useState<string>(initialApprover2Id);
   const [items, setItems] = useState<ApdItemInput[]>(() => {
     if (initialItems && initialItems.length > 0) {
       return initialItems.map((item) => {
@@ -239,6 +249,18 @@ export function ApdRequestForm({
         }
       }
 
+      if (requestMode === "tools" || requestMode === "material") {
+        if (!approver1Id) {
+          throw new Error(`Silakan pilih Approver 1 (Atasan Langsung / Pemeriksa) untuk permohonan ${requestMode === "tools" ? "Tools" : "Material"}`);
+        }
+        if (!approver2Id) {
+          throw new Error(`Silakan pilih Approver 2 (Section Head / Penyetuju) untuk permohonan ${requestMode === "tools" ? "Tools" : "Material"}`);
+        }
+        if (approver1Id === approver2Id) {
+          throw new Error("Approver 1 dan Approver 2 tidak boleh memilih orang yang sama");
+        }
+      }
+
       let signatureUrl = "";
       if (!isDrawingCustomSig && profileSignature) {
         signatureUrl = profileSignature;
@@ -288,6 +310,12 @@ export function ApdRequestForm({
       submitData.append("signatureUrl", signatureUrl);
       submitData.append("requestCategory", requestMode === "apd" ? "APD" : requestMode.toUpperCase());
       submitData.append("items", JSON.stringify(processedItems));
+      if (approver1Id) {
+        submitData.append("approver1Id", approver1Id);
+      }
+      if (approver2Id) {
+        submitData.append("approver2Id", approver2Id);
+      }
 
       const res = await submitApdRequest(submitData);
       if (res.success) {
@@ -561,6 +589,66 @@ export function ApdRequestForm({
               </div>
             ))}
           </div>
+
+          {/* Section: Penyetuju / Approver Selection (Material & Tools) */}
+          {(requestMode === "tools" || requestMode === "material") && (
+            <div className="space-y-4 rounded-xl border border-border bg-card p-4 sm:p-5 shadow-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
+                <div>
+                  <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    <ShieldCheck className="size-4 text-emerald-600" />
+                    Persetujuan / Approver Permohonan
+                  </h4>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Pilih 2 atasan yang berwenang menyetujui pengajuan {requestMode === "tools" ? "Tools" : "Material"} ini secara berjenjang.
+                  </p>
+                </div>
+                <span className="text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 rounded-full">
+                  Wajib 2 Tingkat
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold text-foreground">
+                      Approver 1 (Atasan Langsung / Pemeriksa) <span className="text-destructive">*</span>
+                    </Label>
+                    <span className="text-[10px] bg-muted text-muted-foreground font-medium px-2 py-0.5 rounded">Tahap 1</span>
+                  </div>
+                  <SearchableEmployeeSelect
+                    employees={approverOptions || []}
+                    value={approver1Id}
+                    onValueChange={(val) => setApprover1Id(val)}
+                    placeholder="Pilih Atasan Langsung (Nama / NIK)..."
+                    showLabel={false}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Menerima review pertama di Inbox Approval, Email, dan Bell.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold text-foreground">
+                      Approver 2 (Section Head / Penyetuju Final) <span className="text-destructive">*</span>
+                    </Label>
+                    <span className="text-[10px] bg-muted text-muted-foreground font-medium px-2 py-0.5 rounded">Tahap 2</span>
+                  </div>
+                  <SearchableEmployeeSelect
+                    employees={approverOptions || []}
+                    value={approver2Id}
+                    onValueChange={(val) => setApprover2Id(val)}
+                    placeholder="Pilih Section Head / Penyetuju (Nama / NIK)..."
+                    showLabel={false}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Menerima review setelah Approver 1 memberikan persetujuan.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label>Catatan Tambahan (Opsional)</Label>
