@@ -233,10 +233,12 @@ export function FaceAttendanceV2Client({
   })
   const [logs, setLogs] = useState<TodayLog[]>(todayLogs)
 
+  const currentEventType = logs[0]?.eventType ?? lastEventType
+  const currentSuggestedEventType =
+    currentEventType === 'checked-in' ? 'checked-out' : 'checked-in'
+
   useEffect(() => {
-    if (todayLogs && todayLogs.length > 0) {
-      setLogs(todayLogs)
-    }
+    setLogs(todayLogs)
   }, [todayLogs])
 
   // ─── REVERSE GEOCODING FOR REAL LOCATION NAME ───
@@ -876,12 +878,12 @@ export function FaceAttendanceV2Client({
             <section className="order-1 space-y-3">
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <p className="text-sm font-bold text-slate-900">
-                  {lastEventType === 'checked-in'
+                  {currentEventType === 'checked-in'
                     ? 'Anda sudah check-in'
                     : 'Siap melakukan absensi'}
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
-                  {lastEventType === 'checked-in'
+                  {currentEventType === 'checked-in'
                     ? 'Gunakan Check out saat selesai bekerja.'
                     : 'Pilih Check in untuk mulai bekerja atau Auto absensi.'}
                 </p>
@@ -892,7 +894,9 @@ export function FaceAttendanceV2Client({
                   onClick={() => startFlow('checked-in')}
                   className={cn(
                     'flex min-h-14 items-center justify-center gap-2 rounded-xl text-xs font-bold text-white shadow-sm transition-transform active:scale-[0.98]',
-                    suggestedEventType === 'checked-in' ? 'bg-emerald-600' : 'bg-emerald-500'
+                    currentSuggestedEventType === 'checked-in'
+                      ? 'bg-emerald-600'
+                      : 'bg-emerald-500'
                   )}
                 >
                   <LogIn className="size-4" /> Check In
@@ -903,7 +907,9 @@ export function FaceAttendanceV2Client({
                   onClick={() => startFlow('checked-out')}
                   className={cn(
                     'flex min-h-14 items-center justify-center gap-2 rounded-xl text-xs font-bold text-white shadow-sm transition-transform active:scale-[0.98]',
-                    suggestedEventType === 'checked-out' ? 'bg-rose-600' : 'bg-rose-500'
+                    currentSuggestedEventType === 'checked-out'
+                      ? 'bg-rose-600'
+                      : 'bg-rose-500'
                   )}
                 >
                   <LogOut className="size-4" /> Check Out
