@@ -676,6 +676,11 @@ export function SecurityUserManagement({
       actions={
         <>
           {canEdit && (
+            <Button asChild variant="default" className="min-h-10 rounded-xl">
+              <Link href="/dashboard/security/quick-actions">Quick Action</Link>
+            </Button>
+          )}
+          {canEdit && (
             <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
               <DialogTrigger asChild>
                 <Button

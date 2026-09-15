@@ -97,7 +97,10 @@ declare global {
   var heroSeedDataPromise: Promise<void> | undefined
   var heroGovernanceSeedDataPromise: Promise<void> | undefined
   var heroGovernanceSeeded: boolean | undefined
+  var heroGovernanceSeedVersion: string | undefined
 }
+
+const HERO_GOVERNANCE_SEED_VERSION = 'quick-action-admin-v1'
 
 export async function withDbRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 350): Promise<T> {
   let attempt = 0
@@ -1691,11 +1694,22 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'secondary',
     section: 'Pengaturan',
+    title: 'Quick Action Admin',
+    url: '/dashboard/security/quick-actions',
+    iconName: 'bolt',
+    resource: 'security_quick_actions',
+    sortOrder: 3,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'secondary',
+    section: 'Pengaturan',
     title: 'Navbar Setting',
     url: '/dashboard/settings/navbar',
     iconName: 'settings',
     resource: 'settings_navbar',
-    sortOrder: 3,
+    sortOrder: 4,
     isVisible: true,
     openInNewTab: false,
   },
@@ -1706,7 +1720,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     url: '/dashboard/settings/portal-chitra',
     iconName: 'settings',
     resource: 'settings_portal_chitra',
-    sortOrder: 4,
+    sortOrder: 5,
     isVisible: true,
     openInNewTab: false,
   },
@@ -1717,7 +1731,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     url: '/dashboard/settings/email',
     iconName: 'mail',
     resource: 'settings_email',
-    sortOrder: 5,
+    sortOrder: 6,
     isVisible: true,
     openInNewTab: false,
   },
@@ -1728,7 +1742,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     url: '/dashboard/settings/system-backup',
     iconName: 'database',
     resource: 'settings_system_backup',
-    sortOrder: 6,
+    sortOrder: 7,
     isVisible: true,
     openInNewTab: false,
   },
@@ -5074,7 +5088,10 @@ export async function ensureHeroSeedData() {
 }
 
 export async function ensureHeroGovernanceSeedData() {
-  if (globalThis.heroGovernanceSeeded) {
+  if (
+    globalThis.heroGovernanceSeeded &&
+    globalThis.heroGovernanceSeedVersion === HERO_GOVERNANCE_SEED_VERSION
+  ) {
     return
   }
   if (globalThis.heroGovernanceSeedDataPromise) {
@@ -5529,6 +5546,7 @@ export async function ensureHeroGovernanceSeedData() {
     }
 
     globalThis.heroGovernanceSeeded = true
+    globalThis.heroGovernanceSeedVersion = HERO_GOVERNANCE_SEED_VERSION
   })().catch((error) => {
     console.warn('[ensureHeroGovernanceSeedData] Seed check failed or timed out:', error)
     globalThis.heroGovernanceSeedDataPromise = undefined
@@ -7717,9 +7735,14 @@ export async function getAttendanceNotificationConfigData() {
         "head_section_te_email" text DEFAULT '' NOT NULL,
         "head_section_others_email" text DEFAULT '' NOT NULL,
         "head_section_accessories_email" text DEFAULT '' NOT NULL,
+        "sla_reminders_enabled" boolean DEFAULT false NOT NULL,
         "is_active" boolean DEFAULT true NOT NULL,
         "updated_at" timestamp DEFAULT now() NOT NULL
       )
+    `)
+    await db.execute(sql`
+      ALTER TABLE "hero_attendance_notification_config"
+      ADD COLUMN IF NOT EXISTS "sla_reminders_enabled" boolean DEFAULT false NOT NULL
     `)
   } catch {
     // Table already exists or DDL bypass
@@ -7739,6 +7762,7 @@ export async function getAttendanceNotificationConfigData() {
     headSectionTeEmail: 'abian.husain@chitraparatama.co.id',
     headSectionOthersEmail: 'junaidi.syamsudin@chitraparatama.co.id',
     headSectionAccessoriesEmail: 'luthfi.yudistira@chitraparatama.co.id',
+    slaRemindersEnabled: false,
     isActive: true,
     updatedAt: new Date(),
   }
@@ -7938,6 +7962,35 @@ export const getSidebarDataForUser = cache(async function getSidebarDataForUser(
         }
       }
 
+      const [quickActionMenu] = await db
+        .select({ id: navbarMenuItems.id })
+        .from(navbarMenuItems)
+        .where(eq(navbarMenuItems.resource, 'security_quick_actions'))
+        .limit(1)
+
+      if (!quickActionMenu) {
+        await syncMenuPermissionsMatrix()
+      } else {
+        const [quickActionPermission] = await db
+          .select({ id: roleMenuPermissions.id })
+          .from(roleMenuPermissions)
+          .where(
+            and(
+              eq(roleMenuPermissions.roleId, activeRole.id),
+              eq(roleMenuPermissions.menuItemId, quickActionMenu.id)
+            )
+          )
+          .limit(1)
+
+        if (!quickActionPermission) {
+          await db.insert(roleMenuPermissions).values({
+            roleId: activeRole.id,
+            menuItemId: quickActionMenu.id,
+            ...getDefaultMenuPermission(roleName, 'security_quick_actions'),
+          })
+        }
+      }
+
       const permittedMenuItems = await db
         .select({
           id: navbarMenuItems.id,
@@ -7961,7 +8014,7 @@ export const getSidebarDataForUser = cache(async function getSidebarDataForUser(
 
       const visibleItems = dedupeMenuItemsByPage(
         permittedMenuItems
-          .filter((item) => item.isVisible && (superAdmin || item.canView))
+          .filter((item) => item.isVisible && (item.resource !== 'security_quick_actions' || superAdmin) && (superAdmin || item.canView))
           .map((item) => ({
             ...item,
             url: item.isIframe ? `/dashboard/iframe/${item.id}` : item.url,

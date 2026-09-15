@@ -67,6 +67,7 @@ const desktopToMobileRoutes: Array<{ desktop: string; mobile: string }> = [
   { desktop: '/dashboard/executive', mobile: '/mobile/executive' },
   { desktop: '/dashboard/cargo-manifest', mobile: '/mobile/cargo-manifest' },
   { desktop: '/dashboard/security/roles', mobile: '/mobile/security/roles' },
+  { desktop: '/dashboard/security/quick-actions', mobile: '/mobile/security/quick-actions' },
   { desktop: '/dashboard/reports', mobile: '/mobile/reports' },
   { desktop: '/dashboard/hc/training', mobile: '/mobile/training' },
   { desktop: '/dashboard/training-records', mobile: '/mobile/training' },

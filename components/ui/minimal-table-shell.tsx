@@ -267,6 +267,7 @@ type MinimalTableShellProps = {
   summaryClassName?: string
   tableViewportClassName?: string
   dateFilter?: boolean | 'auto'
+  paginationEnabled?: boolean
   /** @deprecated sorting has been removed */
   disableDomManipulation?: boolean
 }
@@ -320,6 +321,7 @@ export function MinimalTableShell({
   summaryClassName,
   tableViewportClassName,
   dateFilter = 'auto',
+  paginationEnabled = true,
 }: MinimalTableShellProps) {
   const { language } = useLanguage()
   const shellRef = React.useRef<HTMLDivElement>(null)
@@ -416,10 +418,10 @@ export function MinimalTableShell({
     const nextPageIndex = nextFilteredCount === 0 ? 0 : Math.min(pageIndex, nextPageCount - 1)
     const pageStart = nextPageIndex * pageSize
     const pageEnd = pageStart + pageSize
-    const pagedRows = matchedRows.slice(pageStart, pageEnd)
+    const pagedRows = paginationEnabled ? matchedRows.slice(pageStart, pageEnd) : matchedRows
     const visibleRows = new Set(pagedRows)
 
-    if (nextPageIndex !== pageIndex) setPageIndex(nextPageIndex)
+    if (paginationEnabled && nextPageIndex !== pageIndex) setPageIndex(nextPageIndex)
 
     snapshot.dataRows.forEach((row) => {
       const matchesFilters = matchedRows.includes(row)
@@ -441,7 +443,7 @@ export function MinimalTableShell({
     setFilteredCount((prev) => (prev === nextFilteredCount ? prev : nextFilteredCount))
     const nextShowNoResults = snapshot.dataRows.length > 0 && nextFilteredCount === 0
     setShowNoResults((prev) => (prev === nextShowNoResults ? prev : nextShowNoResults))
-  }, [dateRange, getTableSnapshot, pageIndex, pageSize, query, supportsDateFilter])
+  }, [dateRange, getTableSnapshot, pageIndex, pageSize, paginationEnabled, query, supportsDateFilter])
 
   React.useEffect(() => {
     applyFilters()
@@ -564,7 +566,7 @@ export function MinimalTableShell({
         </div>
       </div>
 
-      <div
+      {paginationEnabled ? <div
         className={cn(
           'border-border/70 text-muted-foreground flex flex-col gap-2 rounded-[0.95rem] border bg-white px-3 py-2.5 text-sm shadow-sm sm:flex-row sm:items-center sm:justify-between',
           summaryClassName
@@ -620,7 +622,7 @@ export function MinimalTableShell({
             </Button>
           </div>
         ) : null}
-      </div>
+      </div> : null}
 
       {scorecards?.length ? <EnterpriseScorecards items={scorecards} /> : null}
 

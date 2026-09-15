@@ -7,6 +7,7 @@ import { useLanguage } from "@/components/language-provider";
 const tabs = [
   { labelId: "Ringkasan Keamanan", labelEn: "Security Overview", href: "/dashboard/security" },
   { labelId: "Manajemen Pengguna", labelEn: "User Management", href: "/dashboard/security/users" },
+  { labelId: "Quick Action", labelEn: "Quick Actions", href: "/dashboard/security/quick-actions" },
   { labelId: "Peran & Hak Akses", labelEn: "Roles & Permissions", href: "/dashboard/security/roles" },
   { labelId: "Log Audit", labelEn: "Audit Logs", href: "/dashboard/security/audit-logs" },
 ];

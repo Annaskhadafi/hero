@@ -23,6 +23,8 @@ import {
   getCurrentEmployeeAccessRole,
   requireAdminOrHcManagerRole,
 } from '@/lib/get-current-employee'
+import { isSuperAdminRole } from '@/lib/hero-access'
+import { getPublicAppUrl } from '@/lib/auth-config'
 import { normalizeIndonesiaTimezone } from '@/lib/indonesia-timezone'
 import { resyncSiteAttendanceToTimesheet } from '@/lib/timesheet/face-attendance-sync'
 
@@ -3426,9 +3428,12 @@ const manageSecurityUserSchema = z.object({
     'ban-user',
     'unban-user',
     'activate-user',
+    'change-site',
     'delete-user',
     'change-role',
     'change-password',
+    'reset-face',
+    'send-magic-link',
   ]),
   employeeId: z.preprocess(
     (value) => (value === '' || value === null || value === undefined ? undefined : value),
@@ -7804,6 +7809,10 @@ export async function manageSecurityUserAction(
       birthDate: formData.get('birthDate'),
     })
 
+    if (['change-password', 'reset-face', 'ban-user', 'activate-user', 'change-site', 'send-magic-link'].includes(payload.intent) && !isSuperAdminRole(await getCurrentEmployeeAccessRole())) {
+      throw new Error('Quick Action hanya tersedia untuk role Super Admin.')
+    }
+
     if (payload.intent === 'create-user') {
       const overwriteExisting = formData.get('overwriteExisting') === 'true'
       const fullName = payload.fullName?.trim() ?? ''
@@ -8150,6 +8159,38 @@ export async function manageSecurityUserAction(
       return { status: 'success', message: 'Invitation email berhasil dikirim ulang.' }
     }
 
+    if (payload.intent === 'send-magic-link') {
+      if (!employee.email) {
+        return { status: 'error', message: 'Email pengguna belum tersedia.' }
+      }
+
+      try {
+        await auth.api.signInMagicLink({
+          body: {
+            email: normalizeEmail(employee.email),
+            callbackURL: '/dashboard',
+            errorCallbackURL: `${getPublicAppUrl()}/sign-in`,
+          },
+          headers: await headers(),
+        })
+      } catch (emailError) {
+        console.error('Send magic link error:', emailError)
+        return { status: 'error', message: 'Gagal mengirim magic link.' }
+      }
+
+      const actorEmail = await getCurrentActorEmail()
+      await logAuditEvent({
+        actorEmail,
+        action: 'user.magic_link_sent',
+        entityType: 'user',
+        entityLabel: employee.name,
+        description: `Sent magic link for ${employee.name} (${employee.email}).`,
+      })
+
+      revalidateAdminSurfaces()
+      return { status: 'success', message: 'Magic link berhasil dikirim.' }
+    }
+
     if (payload.intent === 'update-profile') {
       const email = normalizeEmail(payload.email ?? employee.email ?? '')
       const department = payload.department || 'General'
@@ -8471,7 +8512,10 @@ export async function manageSecurityUserAction(
     }
 
     if (payload.intent === 'change-password') {
-      const newPassword = payload.newPassword ?? ''
+      const newPassword =
+        formData.get('useDefaultPassword') === 'true'
+          ? buildDefaultCredentialPassword(employee.employeeSn)
+          : payload.newPassword ?? ''
 
       if (newPassword.length < 8) {
         return {
@@ -8517,6 +8561,47 @@ export async function manageSecurityUserAction(
 
       revalidateAdminSurfaces()
       return { status: 'success', message: 'User password changed successfully.' }
+    }
+
+    if (payload.intent === 'change-site') {
+      if (!payload.siteId) return { status: 'error', message: 'Lokasi site wajib dipilih.' }
+      const [site] = await db.select().from(sites).where(eq(sites.id, payload.siteId)).limit(1)
+      if (!site) return { status: 'error', message: 'Lokasi site tidak valid.' }
+
+      await db.update(employees).set({ siteId: site.id, workLocation: site.name }).where(eq(employees.id, employee.id))
+      if (employee.siteId !== site.id) await syncScheduleV2EmployeeSiteAcrossPlans(employee.id, employee.siteId, site.id)
+
+      const actorEmail = await getCurrentActorEmail()
+      await logAuditEvent({
+        actorEmail,
+        action: 'user.updated',
+        entityType: 'user',
+        entityLabel: employee.name,
+        description: `Changed site for ${employee.name} (${employee.employeeSn}) to ${site.name}.`,
+        severity: 'info',
+      })
+      revalidateAdminSurfaces()
+      return { status: 'success', message: `Lokasi ${employee.name} berhasil diubah ke ${site.name}.` }
+    }
+
+    if (payload.intent === 'reset-face') {
+      await db
+        .update(employees)
+        .set({ faceEmbedding: null, faceRegisteredAt: null })
+        .where(eq(employees.id, employee.id))
+
+      const actorEmail = await getCurrentActorEmail()
+      await logAuditEvent({
+        actorEmail,
+        action: 'user.updated',
+        entityType: 'user',
+        entityLabel: employee.name,
+        description: `Reset face biometric for ${employee.name} (${employee.employeeSn}).`,
+        severity: 'warning',
+      })
+
+      revalidateAdminSurfaces()
+      return { status: 'success', message: `Biometric wajah ${employee.name} berhasil direset.` }
     }
 
     return { status: 'error', message: 'User action intent not recognized.' }

@@ -21,6 +21,7 @@ export type AuditAction =
   | 'user.bulk_unbanned'
   | 'user.bulk_auth_provisioned'
   | 'user.invitation_resent'
+  | 'user.magic_link_sent'
   | 'role.permissions_synced'
   | 'checklist_template.created'
   | 'checklist_template.updated'
