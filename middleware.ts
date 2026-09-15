@@ -49,7 +49,7 @@ export function middleware(request: NextRequest) {
   }
 
   const requestHeaders = new Headers(request.headers)
-  requestHeaders.set('x-hero-dashboard-path', pathname)
+  requestHeaders.set('x-hero-dashboard-path', `${pathname}${url.search}`)
   return NextResponse.next({ request: { headers: requestHeaders } })
 }
 

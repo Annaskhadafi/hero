@@ -25,19 +25,18 @@ export const dynamic = 'force-dynamic'
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerSession()
 
+  const headerStore = await headers()
+  const dashboardPath = headerStore.get('x-hero-dashboard-path') ?? '/dashboard'
+
   if (!session?.user) {
-    redirect('/sign-in')
+    redirect(`/sign-in?callbackUrl=${encodeURIComponent(dashboardPath)}`)
   }
 
-  const headerStore = await headers()
   if (isMobileUserAgent(headerStore.get('user-agent'))) {
     redirect('/mobile')
   }
 
- const routePermission = await getDashboardRoutePermission(
-   headerStore.get('x-hero-dashboard-path') ?? ''
- )
-  const dashboardPath = headerStore.get('x-hero-dashboard-path') ?? ''
+  const routePermission = await getDashboardRoutePermission(dashboardPath)
   if (dashboardPath !== '/dashboard' && routePermission && !routePermission.canView) {
     redirect('/dashboard')
  }

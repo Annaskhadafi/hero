@@ -17,10 +17,19 @@ import { FaceLoginModal } from "@/components/auth/face-login-modal";
 
 import { resolveSnAction } from "@/app/actions/resolve-sn-action";
 
-function getClientPostLoginPath() {
-    if (typeof window === "undefined") {
-        return "/dashboard";
+function getSafeCallbackPath(value: string | null) {
+    if (!value || !value.startsWith("/") || value.startsWith("//")) {
+        return null;
     }
+    return value;
+}
+
+function getClientPostLoginPath(callbackPath?: string | null) {
+    if (typeof window === "undefined") {
+        return callbackPath || "/dashboard";
+    }
+
+    if (callbackPath) return callbackPath;
 
     const isPhoneLike = isMobileUserAgent(window.navigator.userAgent);
     const isNarrowViewport = window.matchMedia("(max-width: 767px)").matches;
@@ -46,15 +55,16 @@ function SignInContent() {
     const [message, setMessage] = useState("");
     const { data: session, isPending } = useSession();
     const searchParams = useSearchParams();
+    const callbackPath = getSafeCallbackPath(searchParams.get("callbackUrl"));
 
     const handleFaceLoginSuccess = (userData: { name: string; email?: string; employeeSn?: string; token?: string }) => {
         setIsFaceModalOpen(false);
         setMessage(`Login Wajah Berhasil! Selamat datang, ${userData.name}.`);
         setTimeout(() => {
             if (userData.token) {
-                window.location.href = `/api/auth/magic-link/verify?token=${userData.token}&callbackURL=${encodeURIComponent(getClientPostLoginPath())}`;
+                window.location.href = `/api/auth/magic-link/verify?token=${userData.token}&callbackURL=${encodeURIComponent(getClientPostLoginPath(callbackPath))}`;
             } else {
-                window.location.href = getClientPostLoginPath();
+                window.location.href = getClientPostLoginPath(callbackPath);
             }
         }, 500);
     };
@@ -70,9 +80,9 @@ function SignInContent() {
         if (session?.user && !isLoading) {
             // Full page navigation to guarantee the fresh session cookie
             // is present on the next server render.
-            window.location.href = getClientPostLoginPath();
+            window.location.href = getClientPostLoginPath(callbackPath);
         }
-    }, [session, isLoading, isDeactivatedError]);
+    }, [session, isLoading, isDeactivatedError, callbackPath]);
 
     useEffect(() => {
         if (searchParams.get("reset") === "success") {
@@ -101,7 +111,7 @@ function SignInContent() {
         setMessage("");
 
         try {
-            const callbackURL = getClientPostLoginPath();
+            const callbackURL = getClientPostLoginPath(callbackPath);
 
             // Resolve SN to email if input is not an email
             let loginEmail = email.trim();
@@ -188,7 +198,7 @@ function SignInContent() {
         setMessage("");
 
         try {
-            const callbackURL = getClientPostLoginPath();
+            const callbackURL = getClientPostLoginPath(callbackPath);
             const result = await authClient.signIn.magicLink({
                 email,
                 callbackURL,
