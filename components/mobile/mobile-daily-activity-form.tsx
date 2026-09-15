@@ -1817,6 +1817,7 @@ export function MobileDailyActivityForm({
         startTime: entry.startTime,
         endTime: entry.endTime,
         materialUsed: entry.materialUsed,
+        tireCount: entry.tireCount ?? 1,
         notes: entry.notes,
       }
     }),
@@ -2136,6 +2137,7 @@ export function MobileDailyActivityForm({
               points: library.basePoints || 5,
               remark: entry.notes || '',
               materialUsed: entry.materialUsed || '',
+              tireCount: library.requiresTireCount ? (entry.tireCount ?? 1) : 0,
               photoUrl: entryEvidence.urls[0] || null,
               photos: entryEvidence.urls,
             }
@@ -2188,6 +2190,7 @@ export function MobileDailyActivityForm({
                 points: item.actualPoints || 5,
                 remark: item.remark || '',
                 materialUsed: item.materialUsed || '',
+                tireCount: item.tireCount ?? 0,
                 photoUrl: evidence.urls[0] || null,
                 photos: evidence.urls,
               }
@@ -2210,6 +2213,7 @@ export function MobileDailyActivityForm({
             points: it.points,
             remark: it.remark,
             materialUsed: it.materialUsed,
+            tireCount: it.tireCount ?? 0,
             photoUrl: it.photoUrl,
             photos: it.photos,
           }))
@@ -2823,6 +2827,7 @@ export function MobileDailyActivityForm({
                     library.requiresTireCount ? 'Tire' : null,
                     library.requiresDuration ? 'Waktu' : null,
                     library.requiresMaterialUsed ? 'Material' : null,
+                    library.requiresLocationGps ? 'GPS' : null,
                     library.requiresPhoto ? 'Foto (Opsional)' : null,
                   ].filter(Boolean)
 
@@ -2863,34 +2868,51 @@ export function MobileDailyActivityForm({
                       ) : null}
 
                       <div className="mt-4 grid gap-3">
-                        <div className="grid gap-3 sm:grid-cols-2">
+                        {library.requiresEquipmentNo ? (
                           <Label className="block space-y-2">
                             <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
-                              Mulai
+                              Equipment / Unit No.
                             </span>
                             <Input
-                              type="datetime-local"
-                              value={entry.startTime}
+                              value={entry.equipmentNo}
                               onChange={(event) =>
-                                updateSelfInputEntry(libraryId, { startTime: event.target.value })
+                                updateSelfInputEntry(libraryId, { equipmentNo: event.target.value })
                               }
+                              placeholder="Contoh: DT-451 / BAY-03"
                               className="h-12 rounded-2xl border-0 bg-white px-4 text-sm font-semibold text-[#082033]"
                             />
                           </Label>
-                          <Label className="block space-y-2">
-                            <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
-                              Selesai
-                            </span>
-                            <Input
-                              type="datetime-local"
-                              value={entry.endTime}
-                              onChange={(event) =>
-                                updateSelfInputEntry(libraryId, { endTime: event.target.value })
-                              }
-                              className="h-12 rounded-2xl border-0 bg-white px-4 text-sm font-semibold text-[#082033]"
-                            />
-                          </Label>
-                        </div>
+                        ) : null}
+                        {library.requiresDuration ? (
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <Label className="block space-y-2">
+                              <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                                Mulai
+                              </span>
+                              <Input
+                                type="datetime-local"
+                                value={entry.startTime}
+                                onChange={(event) =>
+                                  updateSelfInputEntry(libraryId, { startTime: event.target.value })
+                                }
+                                className="h-12 rounded-2xl border-0 bg-white px-4 text-sm font-semibold text-[#082033]"
+                              />
+                            </Label>
+                            <Label className="block space-y-2">
+                              <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                                Selesai
+                              </span>
+                              <Input
+                                type="datetime-local"
+                                value={entry.endTime}
+                                onChange={(event) =>
+                                  updateSelfInputEntry(libraryId, { endTime: event.target.value })
+                                }
+                                className="h-12 rounded-2xl border-0 bg-white px-4 text-sm font-semibold text-[#082033]"
+                              />
+                            </Label>
+                          </div>
+                        ) : null}
 
                         {library.requiresMaterialUsed ? (
                           <Label className="block space-y-2">
@@ -3065,6 +3087,21 @@ export function MobileDailyActivityForm({
 
                           {itemState.isChecked ? (
                             <div className="mt-3 grid gap-3">
+                              {item.requiresUnit ? (
+                                <Label className="block space-y-2">
+                                  <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                                    Equipment / Unit No.
+                                  </span>
+                                  <Input
+                                    value={itemState.unitNumber ?? ''}
+                                    onChange={(event) =>
+                                      updateRouteItem(item.id, { unitNumber: event.target.value })
+                                    }
+                                    placeholder="Contoh: DT-451 / BAY-03"
+                                    className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
+                                  />
+                                </Label>
+                              ) : null}
                               {item.requiresMaterialUsed ? (
                                 <Label className="block space-y-2">
                                   <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
@@ -3479,13 +3516,19 @@ export function MobileDailyActivityForm({
                 const previewItemsList = selectedLibraries.length > 0
                   ? selectedLibraries.map((lib, idx) => {
                       const entry = selfInputEntries[`${lib.id}`]
-                      const durationStr = entry?.startTime && entry?.endTime ? `${entry.startTime} - ${entry.endTime}` : '-'
+                      const durationStr = lib.requiresDuration && entry?.startTime && entry?.endTime ? `${entry.startTime} - ${entry.endTime}` : '-'
                       const photoUrl = entry?.previewUrls?.[0] || null
                       return {
                         id: lib.id,
                         label: `${lib.activityCode} - ${lib.activityName}`,
-                        unitNumber: entry?.equipmentNo || '-',
-                        duration: durationStr,
+                        unitNumber: lib.requiresEquipmentNo ? (entry?.equipmentNo || '-') : '—',
+                        duration: lib.requiresDuration ? durationStr : '—',
+                        tireCount: lib.requiresTireCount ? (entry?.tireCount ?? 1) : 0,
+                        materialUsed: lib.requiresMaterialUsed ? (entry?.materialUsed || '-') : '—',
+                        requiresEquipmentNo: lib.requiresEquipmentNo,
+                        requiresDuration: lib.requiresDuration,
+                        requiresTireCount: lib.requiresTireCount,
+                        requiresMaterialUsed: lib.requiresMaterialUsed,
                         points: lib.basePoints || 5,
                         remark: entry?.notes || '-',
                         photoUrl,
@@ -3616,7 +3659,16 @@ export function MobileDailyActivityForm({
                             previewItemsList.map((item: any, idx: number) => (
                               <tr key={item.id || idx}>
                                 <td className="text-center font-mono">{idx + 1}</td>
-                                <td className="text-left font-medium text-slate-900">{item.label}</td>
+                                <td className="text-left font-medium text-slate-900">
+                                  <div>{item.label}</div>
+                                  {(item.requiresTireCount || item.requiresMaterialUsed || item.requiresEquipmentNo) ? (
+                                    <div className="text-[6.5pt] font-semibold text-slate-500 mt-0.5 leading-tight">
+                                      {item.requiresEquipmentNo ? `Unit: ${item.unitNumber} • ` : ''}
+                                      {item.requiresTireCount ? `Tire: ${item.tireCount} • ` : ''}
+                                      {item.requiresMaterialUsed ? `Material: ${item.materialUsed}` : ''}
+                                    </div>
+                                  ) : null}
+                                </td>
                                 <td className="text-center font-mono text-slate-900">{item.unitNumber || '—'}</td>
                                 <td className="text-center font-mono text-slate-900">{item.duration}</td>
                                 <td className="text-center font-bold font-mono text-slate-900">{item.points || 0} pts</td>

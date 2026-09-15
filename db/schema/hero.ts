@@ -450,6 +450,7 @@ export const dailyActivitySessionItems = pgTable('hero_daily_activity_session_it
   unitNumber: text('unit_number').notNull().default(''),
   remark: text('remark').notNull().default(''),
   actualPoints: integer('actual_points').notNull().default(0),
+  tireCount: integer('tire_count').notNull().default(0),
   isChecked: boolean('is_checked').notNull().default(false),
   isCustomItem: boolean('is_custom_item').notNull().default(false),
   photoCount: integer('photo_count').notNull().default(0),

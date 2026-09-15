@@ -1817,6 +1817,9 @@ async function ensureDailyActivityTables() {
   await db.execute(sql`
     alter table hero_point_events add column if not exists metadata text not null default '';
   `)
+  await db.execute(sql`
+    alter table hero_daily_activity_session_items add column if not exists tire_count integer not null default 0;
+  `)
 }
 
 async function seedDailyActivityReferenceData() {

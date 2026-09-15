@@ -456,6 +456,8 @@ const routeSessionItemSchema = z.object({
   endedAt: z.string().trim().optional().default(''),
   isChecked: z.boolean(),
   actualPoints: z.coerce.number().int().min(0).max(1000).optional(),
+  tireCount: z.coerce.number().int().min(0).max(100).optional().default(0),
+  materialUsed: z.string().trim().max(500).optional().default(''),
   sortOrder: z.coerce.number().int().min(1).max(999).optional().default(1),
 })
 
@@ -873,6 +875,7 @@ async function syncDailyRouteSessionForActivity(params: {
         unitNumber: item.unitNumber,
         remark: item.remark,
         actualPoints: item.isChecked ? (item.actualPoints ?? 0) : 0,
+        tireCount: item.isChecked ? (item.tireCount ?? 0) : 0,
         isChecked: item.isChecked,
         isCustomItem: false,
         photoCount: 0,
@@ -1663,6 +1666,10 @@ export async function importActivityLibraryAction(
         ),
         requiresMaterialUsed: parseActivityLibraryBoolean(
           getActivityLibraryImportValue(row, 'requiresMaterialUsed'),
+          false
+        ),
+        requiresTireCount: parseActivityLibraryBoolean(
+          getActivityLibraryImportValue(row, 'requiresTireCount'),
           false
         ),
         maxDailyCount: parseActivityLibraryInteger(
@@ -6577,6 +6584,7 @@ export async function createDailyActivitySessionAction(input: {
     points?: number
     remark?: string
     materialUsed?: string
+    tireCount?: number
     photoUrl?: string | null
     photos?: string[]
   }>
@@ -6754,11 +6762,13 @@ export async function createDailyActivitySessionAction(input: {
             unitNumber: it.unitNumber?.trim() || '',
             remark: it.remark?.trim() || '',
             actualPoints: Number(it.points) || 5,
+            tireCount: Number(it.tireCount) || 0,
             isChecked: true,
             sortOrder: idx + 1,
             snapshotPayload: JSON.stringify({
               duration: it.duration || '60m',
               materialUsed: it.materialUsed || '',
+              tireCount: Number(it.tireCount) || 0,
               photoUrl: it.photoUrl || null,
               photos: it.photos || [],
             }),
