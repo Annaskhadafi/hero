@@ -34,6 +34,7 @@ type FlowState =
   | 'camera-loading'
   | 'scanning'
   | 'verifying'
+  | 'manual-capture'
   | 'success'
   | 'failed'
   | 'not-registered'
@@ -200,6 +201,7 @@ export function FaceAttendanceV2Client({
   )
   const [now, setNow] = useState<Date | null>(null)
   const [showHistoryModal, setShowHistoryModal] = useState(false)
+  const [manualSubmitting, setManualSubmitting] = useState(false)
 
   // Default shift options if none provided
   const activeShifts: ShiftOption[] =
@@ -234,8 +236,7 @@ export function FaceAttendanceV2Client({
   const [logs, setLogs] = useState<TodayLog[]>(todayLogs)
 
   const currentEventType = logs[0]?.eventType ?? lastEventType
-  const currentSuggestedEventType =
-    currentEventType === 'checked-in' ? 'checked-out' : 'checked-in'
+  const currentSuggestedEventType = currentEventType === 'checked-in' ? 'checked-out' : 'checked-in'
 
   useEffect(() => {
     setLogs(todayLogs)
@@ -521,7 +522,9 @@ export function FaceAttendanceV2Client({
         if (newCount >= MAX_AUTO_RETRY) {
           stopCamera()
           setFlowState('failed')
-          setErrorMessage(data?.error?.message || 'Verifikasi gagal setelah beberapa percobaan.')
+          setErrorMessage(
+            'Verifikasi otomatis gagal beberapa kali. Anda masih dapat mengambil foto manual.'
+          )
           return
         }
         setFlowState('scanning')
@@ -563,7 +566,7 @@ export function FaceAttendanceV2Client({
         stopCamera()
         setFlowState('failed')
         setErrorMessage(
-          'Wajah tidak teridentifikasi. Pastikan posisi wajah tegak dan cahaya cukup.'
+          'Wajah tidak teridentifikasi. Anda masih dapat mengambil foto manual agar absensi tetap tercatat.'
         )
         return
       }
@@ -635,6 +638,66 @@ export function FaceAttendanceV2Client({
     } catch {
       setFlowState('error')
       setErrorMessage('Gagal membuka kamera. Pastikan izin kamera telah diberikan di browser.')
+    }
+  }
+
+  const startManualCapture = async () => {
+    setErrorMessage('')
+    setFlowState('camera-loading')
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 640 } },
+        audio: false,
+      })
+      streamRef.current = stream
+      setFlowState('manual-capture')
+    } catch {
+      setFlowState('failed')
+      setErrorMessage('Gagal membuka kamera untuk foto manual. Pastikan izin kamera diberikan.')
+    }
+  }
+
+  const submitManualCapture = async () => {
+    const frame = captureFrame()
+    if (!frame || manualSubmitting) return
+
+    setManualSubmitting(true)
+    setErrorMessage('')
+    try {
+      const position = await getCurrentGps()
+      const response = await fetch('/api/mobile/v2/face-recognition', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employeeId,
+          siteId,
+          eventType: selectedEventType,
+          shiftCode: selectedShift,
+          imageDataUrl: frame,
+          latitude: position.latitude,
+          longitude: position.longitude,
+          accuracy: position.accuracy,
+          clientRequestId: clientRequestIdRef.current,
+          manualFallback: true,
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok || !data.success || !data.attendanceRecord) {
+        throw new Error(data?.error?.message || data?.error || 'Foto manual gagal disimpan.')
+      }
+
+      stopCamera()
+      setResolvedEventType(data.resolvedEventType)
+      setSuccessRecord(data.attendanceRecord)
+      setSuccessEmployee(data.employee || null)
+      setSuccessPunctuality(data.punctuality || null)
+      setLogs((prev) => [data.attendanceRecord, ...prev])
+      setFlowState('success')
+    } catch (error) {
+      setFlowState('failed')
+      setErrorMessage(error instanceof Error ? error.message : 'Foto manual gagal disimpan.')
+    } finally {
+      setManualSubmitting(false)
     }
   }
 
@@ -894,9 +957,7 @@ export function FaceAttendanceV2Client({
                   onClick={() => startFlow('checked-in')}
                   className={cn(
                     'flex min-h-14 items-center justify-center gap-2 rounded-xl text-xs font-bold text-white shadow-sm transition-transform active:scale-[0.98]',
-                    currentSuggestedEventType === 'checked-in'
-                      ? 'bg-emerald-600'
-                      : 'bg-emerald-500'
+                    currentSuggestedEventType === 'checked-in' ? 'bg-emerald-600' : 'bg-emerald-500'
                   )}
                 >
                   <LogIn className="size-4" /> Check In
@@ -907,9 +968,7 @@ export function FaceAttendanceV2Client({
                   onClick={() => startFlow('checked-out')}
                   className={cn(
                     'flex min-h-14 items-center justify-center gap-2 rounded-xl text-xs font-bold text-white shadow-sm transition-transform active:scale-[0.98]',
-                    currentSuggestedEventType === 'checked-out'
-                      ? 'bg-rose-600'
-                      : 'bg-rose-500'
+                    currentSuggestedEventType === 'checked-out' ? 'bg-rose-600' : 'bg-rose-500'
                   )}
                 >
                   <LogOut className="size-4" /> Check Out
@@ -1103,7 +1162,9 @@ export function FaceAttendanceV2Client({
         )}
 
         {/* ─── SCANNING / VERIFYING STATE ─── */}
-        {(flowState === 'scanning' || flowState === 'verifying') && (
+        {(flowState === 'scanning' ||
+          flowState === 'verifying' ||
+          flowState === 'manual-capture') && (
           <div className="flex flex-1 flex-col items-center gap-4">
             {/* Mode banner */}
             <div
@@ -1111,12 +1172,16 @@ export function FaceAttendanceV2Client({
                 'w-full rounded-2xl px-4 py-2.5 text-center text-xs font-black tracking-wider uppercase shadow-sm',
                 flowState === 'verifying'
                   ? 'border border-violet-200 bg-violet-100 text-violet-800'
-                  : 'border border-blue-100 bg-blue-50 text-[#005bb5]'
+                  : flowState === 'manual-capture'
+                    ? 'border border-amber-200 bg-amber-50 text-amber-800'
+                    : 'border border-blue-100 bg-blue-50 text-[#005bb5]'
               )}
             >
               {flowState === 'verifying'
                 ? '⚡ Memverifikasi Wajah via Face Recog by Afi...'
-                : `🎯 Arahkan wajah ke kamera · Mode: ${selectedEventType === 'auto' ? 'Auto Absensi' : selectedEventType === 'checked-in' ? 'Check In' : 'Check Out'}`}
+                : flowState === 'manual-capture'
+                  ? '📷 Foto manual · Absensi tetap tercatat dan ditandai perlu review'
+                  : `🎯 Arahkan wajah ke kamera · Mode: ${selectedEventType === 'auto' ? 'Auto Absensi' : selectedEventType === 'checked-in' ? 'Check In' : 'Check Out'}`}
             </div>
 
             {/* Retry progress */}
@@ -1207,14 +1272,23 @@ export function FaceAttendanceV2Client({
             {/* ⚡ DIRECT VERIFICATION BUTTON PLACED DIRECTLY BELOW CAMERA PREVIEW (DI BAWAH MUKA) */}
             <button
               type="button"
-              onClick={runRecognitionLoop}
-              disabled={flowState === 'verifying'}
+              onClick={flowState === 'manual-capture' ? submitManualCapture : runRecognitionLoop}
+              disabled={flowState === 'verifying' || manualSubmitting}
               className="flex min-h-14 w-full max-w-md items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-r from-[#005bb5] via-[#006bd6] to-[#0077e6] px-5 text-sm font-black tracking-wider text-white uppercase shadow-xl shadow-blue-900/30 transition-all hover:brightness-110 active:scale-[0.98] disabled:opacity-75"
             >
               {flowState === 'verifying' ? (
                 <>
                   <Loader2 className="size-5 animate-spin text-white" />
                   Memverifikasi Wajah...
+                </>
+              ) : flowState === 'manual-capture' ? (
+                <>
+                  {manualSubmitting ? (
+                    <Loader2 className="size-5 animate-spin" />
+                  ) : (
+                    <Camera className="size-5" />
+                  )}
+                  {manualSubmitting ? 'Menyimpan Foto...' : 'Ambil Foto Manual & Catat Absensi'}
                 </>
               ) : (
                 <>
@@ -1314,6 +1388,16 @@ export function FaceAttendanceV2Client({
               >
                 <RefreshCw className="size-4" /> Coba Lagi
               </button>
+
+              {flowState === 'failed' && retryCount >= MAX_AUTO_RETRY && (
+                <button
+                  type="button"
+                  onClick={startManualCapture}
+                  className="flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-amber-300 bg-amber-50 text-xs font-black text-amber-800 uppercase active:scale-95"
+                >
+                  <Camera className="size-4" /> Foto Manual Setelah {MAX_AUTO_RETRY}x Gagal
+                </button>
+              )}
 
               <Link
                 href={`/mobile/attendance/face-v2/register?employeeId=${employeeId}&siteId=${siteId}&reregister=true`}

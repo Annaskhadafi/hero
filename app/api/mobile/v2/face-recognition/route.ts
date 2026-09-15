@@ -71,7 +71,10 @@ export async function POST(request: NextRequest) {
       accuracy,
       clientRequestId,
       shiftCode,
+      manualFallback,
     } = body as Record<string, unknown>
+
+    const isManualFallback = manualFallback === true
 
     // 2. Required field validation
     if (!employeeId)
@@ -216,7 +219,7 @@ export async function POST(request: NextRequest) {
       return errorResponse(404, 'EMPLOYEE_NOT_FOUND', 'Employee is inactive.', 'employeeId')
     }
 
-    if (!employee.faceRarayId && !employee.employeeSn) {
+    if (!isManualFallback && !employee.faceRarayId && !employee.employeeSn) {
       return errorResponse(
         404,
         'NO_FACE_REGISTRATION_V2',
@@ -251,11 +254,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 8.5 Anti-Spoofing Check via UniFace-v2 API
-    const antiSpoofRes = await rarayCheckAntiSpoofUniFaceV2({
-      imageBuffer,
-      mimeType,
-    }).catch(() => null)
+    // Manual fallback is an explicit camera photo after repeated failed attempts.
+    // Keep auth, GPS and audit metadata; skip biometric verification only.
+    const antiSpoofRes = isManualFallback
+      ? null
+      : await rarayCheckAntiSpoofUniFaceV2({
+          imageBuffer,
+          mimeType,
+        }).catch(() => null)
 
     if (
       antiSpoofRes &&
@@ -285,15 +291,17 @@ export async function POST(request: NextRequest) {
     }
 
     // 9. Call Raray Vision to verify face using Employee SN / faceRarayId
-    const rvResult = await rarayVerifyFace({
-      employeeId: empId,
-      employeeSn: employee.employeeSn || undefined,
-      faceRarayId: employee.faceRarayId || undefined,
-      imageBuffer,
-      mimeType,
-    })
+    const rvResult = isManualFallback
+      ? null
+      : await rarayVerifyFace({
+          employeeId: empId,
+          employeeSn: employee.employeeSn || undefined,
+          faceRarayId: employee.faceRarayId || undefined,
+          imageBuffer,
+          mimeType,
+        })
 
-    if (rvResult.status === 'error') {
+    if (rvResult?.status === 'error') {
       console.error('[face-recognition-v2] Raray Vision error:', rvResult.message)
       return errorResponse(
         502,
@@ -302,7 +310,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (rvResult.status === 'spoofing_detected' || rvResult.is_live === false) {
+    if (rvResult && (rvResult.status === 'spoofing_detected' || rvResult.is_live === false)) {
       return NextResponse.json(
         {
           success: false,
@@ -320,7 +328,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (rvResult.status === 'not_registered') {
+    if (rvResult?.status === 'not_registered') {
       return errorResponse(
         404,
         'NO_FACE_REGISTRATION_V2',
@@ -329,16 +337,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const confidence = rvResult.confidence ?? 0
+    const confidence = rvResult?.confidence ?? 0
 
     // 10. Raray Vision owns the configured identity threshold.
-    if (!rvResult.verified) {
+    if (!isManualFallback && !rvResult?.verified) {
       return NextResponse.json(
         {
           success: false,
           verified: false,
           confidence,
-          threshold: rvResult.threshold,
+          threshold: rvResult?.threshold,
           resolvedEventType,
           error: {
             code: 'FACE_NOT_MATCHED',
@@ -361,7 +369,7 @@ export async function POST(request: NextRequest) {
       shiftCode: typeof shiftCode === 'string' ? shiftCode : null,
     })
     const locationNote = [
-      `${gpsFlag}face-v2-raray${accuracyNote}`,
+      `${gpsFlag}${isManualFallback ? 'photo-fallback' : 'face-v2-raray'}${accuracyNote}`,
       boundary.status === 'inside'
         ? `[gps-inside] ${boundary.distanceMeters}m/${boundary.radiusMeters}m`
         : boundary.status === 'outside'
@@ -383,7 +391,7 @@ export async function POST(request: NextRequest) {
         siteId: sId,
         eventType: resolvedEventType,
         eventTime,
-        status: 'verified',
+        status: isManualFallback ? 'needs-review' : 'verified',
         locationNote,
         photoUrl: null, // Will be updated asynchronously in background
         latitude: lat.toString(),
@@ -391,7 +399,7 @@ export async function POST(request: NextRequest) {
         confidenceScore: confidence.toFixed(3),
         deviceType: 'mobile',
         clientRequestId: clientRequestId.trim(),
-        source: 'face-v2',
+        source: isManualFallback ? 'photo-fallback' : 'face-v2',
       })
       .returning()
 
@@ -432,6 +440,7 @@ export async function POST(request: NextRequest) {
       {
         success: true,
         verified: true,
+        manualFallback: isManualFallback,
         confidence,
         resolvedEventType,
         employee: {
