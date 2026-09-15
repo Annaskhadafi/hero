@@ -1,5 +1,6 @@
 import {
   IndonesiaTimezoneCode,
+  getTimezoneDateParts,
   inferTimezoneFromLocation,
   normalizeIndonesiaTimezone,
   resolveTimezoneIana,
@@ -315,6 +316,50 @@ export function evaluateAttendanceGridPunctuality(input: {
     isLate,
     punctualityNote,
   }
+}
+
+export function resolveShiftDateForEvent(input: {
+  eventTime: Date
+  shiftCode?: string | null
+  siteConfig: SiteAttendanceClockConfig
+}): string {
+  const { eventTime, shiftCode, siteConfig } = input
+  const tz = siteConfig.timezone
+  const parts = getTimezoneDateParts(eventTime, tz)
+  const hour = parts.hours
+  const code = String(shiftCode ?? '').trim().toUpperCase()
+  const nightCodes = ['NS','NIGHT','MALAM','SHIFT MALAM','SHIFT 2','SHIFT-2','N','2','NIGHT SHIFT','S2']
+  const isNightShift = nightCodes.includes(code) || (!code && hour < 12 && hour >= 0)
+  // Untuk night shift, event jam 00:00-11:59 masih milik shiftDate kemarin (checkout esok)
+  if (isNightShift && hour < 12) {
+    // Kurangi 1 hari secara timezone-aware
+    const d = new Date(eventTime)
+    // Gunakan parts untuk buat date lokal lalu -1
+    const pad = (n:number)=> String(n).padStart(2,'0')
+    const localMidnightStr = `${parts.year}-${pad(parts.month)}-${pad(parts.day)}T00:00:00${parts.timezoneInfo.offsetString}`
+    const localMidnight = new Date(localMidnightStr)
+    const prevMidnight = new Date(localMidnight.getTime() - 24*60*60*1000)
+    const prevParts = getTimezoneDateParts(prevMidnight, tz)
+    return `${prevParts.year}-${pad(prevParts.month)}-${pad(prevParts.day)}`
+  }
+  const pad2 = (n:number)=> String(n).padStart(2,'0')
+  return `${parts.year}-${pad2(parts.month)}-${pad2(parts.day)}`
+}
+
+export function getShiftWindowForDate(shiftDateStr: string, siteConfig: SiteAttendanceClockConfig): { start: Date; end: Date } {
+  const nightStart = clockMinutes(siteConfig.nightShiftClockIn) ?? 19*60
+  const dayStart = clockMinutes(siteConfig.dayShiftClockIn) ?? 8*60
+  const isNightDate = true // untuk AMM Mifa, night shift window dipakai untuk shiftDate tersebut
+  const tzInfo = normalizeIndonesiaTimezone(siteConfig.timezone)
+  // Start = shiftDate 19:00, End = shiftDate+1 12:00 (cover checkout sampai siang)
+  const [y,m,d] = shiftDateStr.split('-').map(Number)
+  const pad = (n:number)=> String(n).padStart(2,'0')
+  const startStr = `${y}-${pad(m)}-${pad(d)}T${String(Math.floor(nightStart/60)).padStart(2,'0')}:${String(nightStart%60).padStart(2,'0')}:00${tzInfo.offsetString}`
+  const endDate = new Date(`${y}-${pad(m)}-${pad(d)}T00:00:00${tzInfo.offsetString}`)
+  endDate.setDate(endDate.getDate()+1)
+  const endParts = getTimezoneDateParts(endDate, siteConfig.timezone)
+  const endStr = `${endParts.year}-${pad(endParts.month)}-${pad(endParts.day)}T12:00:00${tzInfo.offsetString}`
+  return { start: new Date(startStr), end: new Date(endStr) }
 }
 
 export function checkEmployeeOffDayStatus(input: {

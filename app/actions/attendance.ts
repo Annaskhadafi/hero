@@ -319,7 +319,9 @@ function getAttendanceQueryWindow(targetDate?: Date) {
 
   return {
     start: subHours(startOfDay(now), 8),
-    end: endOfDay(now),
+    // Extend to next day 12:00 WITA to cover night shift checkout (19:00-07:00) that falls next calendar day
+    // e.g. shift 14-Sep 19:00, checkout 15-Sep 06:10 must still belong to 14-Sep grid
+    end: new Date(endOfDay(now).getTime() + 12 * 60 * 60 * 1000),
   }
 }
 
