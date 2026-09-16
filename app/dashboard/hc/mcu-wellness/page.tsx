@@ -14,16 +14,34 @@ export const metadata = {
 
 export default async function McuWellnessPage() {
   const [mcuList, filterOptions, clinics, reminders, reminderScorecards, dashboardData] = await Promise.all([
-    getMcuWellnessList().catch(() => []),
-    getMcuFilterOptions().catch(() => ({ departments: [], sections: [] })),
-    getActiveMcuClinics().catch(() => []),
-    getMcuReminders().catch(() => []),
-    getMcuReminderScorecards().catch(() => ({ total: 0, overdue: 0, due: 0, upcoming: 0, noRecord: 0 })),
-    getHealthDashboardData().catch(() => ({
-      trends: [],
-      kpi: { fit: 0, unfit: 0, pending: 0, scheduled: 0, done: 0 },
-      abnormalByCategory: [],
-    })),
+    getMcuWellnessList().catch((err) => {
+      console.error('[McuWellnessPage:list] Error:', err)
+      return []
+    }),
+    getMcuFilterOptions().catch((err) => {
+      console.error('[McuWellnessPage:filter] Error:', err)
+      return { departments: [], sections: [] }
+    }),
+    getActiveMcuClinics().catch((err) => {
+      console.error('[McuWellnessPage:clinics] Error:', err)
+      return []
+    }),
+    getMcuReminders().catch((err) => {
+      console.error('[McuWellnessPage:reminders] Error:', err)
+      return []
+    }),
+    getMcuReminderScorecards().catch((err) => {
+      console.error('[McuWellnessPage:scorecards] Error:', err)
+      return { total: 0, overdue: 0, due: 0, upcoming: 0, noRecord: 0 }
+    }),
+    getHealthDashboardData().catch((err) => {
+      console.error('[McuWellnessPage:dashboardData] Error:', err)
+      return {
+        trends: [],
+        kpi: { fit: 0, unfit: 0, pending: 0, scheduled: 0, done: 0 },
+        abnormalByCategory: [],
+      }
+    }),
   ]);
 
   // Clean serialization to avoid React Server DOM deep prototype / array nesting errors

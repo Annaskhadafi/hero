@@ -391,7 +391,10 @@ Jawab HANYA dengan JSON valid dengan format:
       .select({ id: sites.id, name: sites.name })
       .from(sites)
       .limit(10)
-      .catch(() => []);
+      .catch((err) => {
+        console.error('[initSopConfig:sites] Query failed:', err)
+        return []
+      });
 
     const defaultSiteApprovals = activeSites.map((s) => ({
       siteId: s.id,

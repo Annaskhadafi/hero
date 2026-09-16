@@ -41,7 +41,7 @@ import {
   heroGeniusSessions,
   heroGeniusWebCrawlHistory,
 } from "@/db/schema";
-import { and, desc, eq, ilike } from "drizzle-orm";
+import { and, desc, eq, ilike, sql } from "drizzle-orm";
 
 export async function getHeroGeniusOverviewAction() {
   try {
@@ -71,10 +71,13 @@ export async function getHeroGeniusOverviewAction() {
         latency_ms: 2.1,
       })),
       db
-        .select()
+        .select({ count: sql<number>`count(*)::int` })
         .from(heroGeniusLearnedFacts)
         .where(eq(heroGeniusLearnedFacts.isActive, true))
-        .catch(() => []),
+        .catch((err) => {
+          console.error('[getHeroGeniusOverviewAction:learnedFacts] Error:', err)
+          return [{ count: 0 }]
+        }),
     ]);
 
     return {
@@ -83,7 +86,7 @@ export async function getHeroGeniusOverviewAction() {
       documents: docsRes.documents || [],
       totalDocuments: docsRes.total_documents || 0,
       totalChunks: docsRes.total_chunks || 0,
-      totalLearnedFacts: factsCountRes.length,
+      totalLearnedFacts: factsCountRes[0]?.count ?? 0,
       redis: redisRes,
     };
   } catch (error: any) {

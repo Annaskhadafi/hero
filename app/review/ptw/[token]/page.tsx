@@ -45,7 +45,10 @@ export default async function PtwPublicPage({ params }: PageProps) {
       .from(employees)
       .where(sql`lower(${employees.email}) = ${normEmail}`)
       .limit(1)
-      .catch(() => [])
+      .catch((err) => {
+        console.error('[ReviewPTW:employees] Lookup failed:', err)
+        return []
+      })
 
     if (emp) {
       isInternalHeroUser = true
@@ -55,7 +58,10 @@ export default async function PtwPublicPage({ params }: PageProps) {
         .from(user)
         .where(sql`lower(${user.email}) = ${normEmail}`)
         .limit(1)
-        .catch(() => [])
+        .catch((err) => {
+          console.error('[ReviewPTW:user] Lookup failed:', err)
+          return []
+        })
       if (u) {
         isInternalHeroUser = true
       }

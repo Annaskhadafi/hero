@@ -296,7 +296,11 @@ export async function getWaitingWoFromApi(): Promise<WipRepairRecord[]> {
 export async function getFormWoList() {
   try {
     await ensureFormWoTable()
-    const rows = await db.select().from(repairFormWo).orderBy(desc(repairFormWo.createdAt))
+    const rows = await db
+      .select()
+      .from(repairFormWo)
+      .orderBy(desc(repairFormWo.createdAt))
+      .limit(1000)
     if (rows.length === 0) return []
 
     const woIds = rows.map((r) => r.id)

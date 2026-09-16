@@ -11,12 +11,30 @@ import { FormWoClient } from "./_components/form-wo-client"
 
 async function FormWoContent() {
   const [waitingWoList, formWoList, stats, masterCaiList, customerRes, masterPriceList, permission] = await Promise.all([
-    getWaitingWoFromApi().catch(() => []),
-    getFormWoList().catch(() => []),
-    getFormWoStats().catch(() => ({ total: 0, pending: 0, diproses: 0, approved: 0, rejected: 0 })),
-    getMasterDataCaiList().catch(() => []),
-    getCustomersAction({ limit: 1000 }).catch(() => ({ success: false, data: [] })),
-    getRepairMasterPriceList().catch(() => []),
+    getWaitingWoFromApi().catch((err) => {
+      console.error('[FormWoContent:waitingWo] Error:', err)
+      return []
+    }),
+    getFormWoList().catch((err) => {
+      console.error('[FormWoContent:formWoList] Error:', err)
+      return []
+    }),
+    getFormWoStats().catch((err) => {
+      console.error('[FormWoContent:stats] Error:', err)
+      return { total: 0, pending: 0, diproses: 0, approved: 0, rejected: 0 }
+    }),
+    getMasterDataCaiList().catch((err) => {
+      console.error('[FormWoContent:masterCai] Error:', err)
+      return []
+    }),
+    getCustomersAction({ limit: 1000 }).catch((err) => {
+      console.error('[FormWoContent:customers] Error:', err)
+      return { success: false, data: [] }
+    }),
+    getRepairMasterPriceList().catch((err) => {
+      console.error('[FormWoContent:masterPrice] Error:', err)
+      return []
+    }),
     getCurrentMenuPermission("repair_form_wo"),
   ])
 

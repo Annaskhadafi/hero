@@ -6391,6 +6391,12 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
     console.warn('[ensureSchedulingTimesheetTables] skipped:', err?.message || err)
   )
   const authSession = await getServerSession()
+  const now = new Date()
+  const fromDate = new Date(now.getFullYear(), now.getMonth() - 4, 1)
+  const toDate = new Date(now.getFullYear(), now.getMonth() + 3, 1)
+  const fromPeriodStr = `${fromDate.getFullYear()}-${String(fromDate.getMonth() + 1).padStart(2, '0')}`
+  const toPeriodStr = `${toDate.getFullYear()}-${String(toDate.getMonth() + 1).padStart(2, '0')}`
+
   const [
     employeeRows,
     siteRows,
@@ -6435,7 +6441,10 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
       .leftJoin(sites, eq(employees.siteId, sites.id))
       .where(eq(employees.isActive, true))
       .orderBy(asc(employees.name))
-      .catch(() => []),
+      .catch((err) => {
+        console.error('[getSchedulingTimesheetOptions:employees] Query failed:', err)
+        return []
+      }),
     db
       .select({
         id: sites.id,
@@ -6448,11 +6457,23 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
       .from(sites)
       .where(eq(sites.isActive, true))
       .orderBy(asc(sites.name))
-      .catch(() => []),
+      .catch((err) => {
+        console.error('[getSchedulingTimesheetOptions:sites] Query failed:', err)
+        return []
+      }),
     db
       .select()
       .from(timesheetSchedulingPlans)
-      .catch(() => []),
+      .where(
+        and(
+          gte(timesheetSchedulingPlans.period, fromPeriodStr),
+          lte(timesheetSchedulingPlans.period, toPeriodStr)
+        )
+      )
+      .catch((err) => {
+        console.error('[getSchedulingTimesheetOptions:timesheetSchedulingPlans] Query failed:', err)
+        return []
+      }),
     db
       .select({
         id: timesheetSchedulingPlansV2.id,
@@ -6470,58 +6491,89 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
       })
       .from(timesheetSchedulingPlansV2)
       .leftJoin(employees, eq(timesheetSchedulingPlansV2.createdByUserId, employees.authUserId))
+      .where(
+        and(
+          gte(timesheetSchedulingPlansV2.period, fromPeriodStr),
+          lte(timesheetSchedulingPlansV2.period, toPeriodStr)
+        )
+      )
       .orderBy(desc(timesheetSchedulingPlansV2.updatedAt))
-      .catch(() => []),
+      .catch((err) => {
+        console.error('[getSchedulingTimesheetOptions:timesheetSchedulingPlansV2] Query failed:', err)
+        return []
+      }),
     db
       .select()
       .from(timesheetFieldBreakPlans)
-      .catch(() => []),
-    (() => {
-      // Only fetch recent attendance records: 3 months back to 2 months ahead
-      const now = new Date()
-      const fromDate = new Date(now.getFullYear(), now.getMonth() - 3, 1)
-      const toDate = new Date(now.getFullYear(), now.getMonth() + 3, 1)
-      return db
-        .select()
-        .from(attendanceRecords)
-        .where(
-          and(
-            gte(attendanceRecords.eventTime, fromDate),
-            lte(attendanceRecords.eventTime, toDate)
-          )
+      .where(
+        and(
+          gte(timesheetFieldBreakPlans.period, fromPeriodStr),
+          lte(timesheetFieldBreakPlans.period, toPeriodStr)
         )
-        .catch(() => [])
-    })(),
-    (() => {
-      // Only fetch recent overrides: 4 months back to 2 months ahead (period format: YYYY-MM)
-      const now = new Date()
-      const fromDate2 = new Date(now.getFullYear(), now.getMonth() - 4, 1)
-      const toDate2 = new Date(now.getFullYear(), now.getMonth() + 3, 1)
-      const fromPeriodStr = `${fromDate2.getFullYear()}-${String(fromDate2.getMonth() + 1).padStart(2, '0')}`
-      const toPeriodStr = `${toDate2.getFullYear()}-${String(toDate2.getMonth() + 1).padStart(2, '0')}`
-      return db
-        .select()
-        .from(timesheetAttendanceRealOverrides)
-        .where(
-          and(
-            gte(timesheetAttendanceRealOverrides.period, fromPeriodStr),
-            lte(timesheetAttendanceRealOverrides.period, toPeriodStr)
-          )
+      )
+      .catch((err) => {
+        console.error('[getSchedulingTimesheetOptions:timesheetFieldBreakPlans] Query failed:', err)
+        return []
+      }),
+    db
+      .select()
+      .from(attendanceRecords)
+      .where(
+        and(
+          gte(attendanceRecords.eventTime, fromDate),
+          lte(attendanceRecords.eventTime, toDate)
         )
-        .catch(() => [])
-    })(),
+      )
+      .catch((err) => {
+        console.error('[getSchedulingTimesheetOptions:attendanceRecords] Query failed:', err)
+        return []
+      }),
+    db
+      .select()
+      .from(timesheetAttendanceRealOverrides)
+      .where(
+        and(
+          gte(timesheetAttendanceRealOverrides.period, fromPeriodStr),
+          lte(timesheetAttendanceRealOverrides.period, toPeriodStr)
+        )
+      )
+      .catch((err) => {
+        console.error('[getSchedulingTimesheetOptions:timesheetAttendanceRealOverrides] Query failed:', err)
+        return []
+      }),
     db
       .select()
       .from(timesheetSchedulingConfigs)
-      .catch(() => []),
+      .catch((err) => {
+        console.error('[getSchedulingTimesheetOptions:timesheetSchedulingConfigs] Query failed:', err)
+        return []
+      }),
     db
       .select()
       .from(timesheetSchedulingStatuses)
-      .catch(() => []),
+      .where(
+        and(
+          gte(timesheetSchedulingStatuses.period, fromPeriodStr),
+          lte(timesheetSchedulingStatuses.period, toPeriodStr)
+        )
+      )
+      .catch((err) => {
+        console.error('[getSchedulingTimesheetOptions:timesheetSchedulingStatuses] Query failed:', err)
+        return []
+      }),
     db
       .select()
       .from(timesheetAttendanceImportPreviews)
-      .catch(() => []),
+      .where(
+        and(
+          gte(timesheetAttendanceImportPreviews.period, fromPeriodStr),
+          lte(timesheetAttendanceImportPreviews.period, toPeriodStr)
+        )
+      )
+      .catch((err) => {
+        console.error('[getSchedulingTimesheetOptions:timesheetAttendanceImportPreviews] Query failed:', err)
+        return []
+      }),
     db
       .select({
         id: activities.id,
@@ -6533,7 +6585,16 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
         status: activities.status,
       })
       .from(activities)
-      .catch(() => []),
+      .where(
+        and(
+          gte(activities.startTime, fromDate),
+          lte(activities.startTime, toDate)
+        )
+      )
+      .catch((err) => {
+        console.error('[getSchedulingTimesheetOptions:activities] Query failed:', err)
+        return []
+      }),
     db
       .select({
         employeeId: trainingRecords.employeeId,
@@ -6542,7 +6603,10 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
       })
       .from(trainingRecords)
       .where(inArray(sql`lower(${trainingRecords.status})`, ['valid', 'active', 'aktif']))
-      .catch(() => []),
+      .catch((err) => {
+        console.error('[getSchedulingTimesheetOptions:trainingRecords] Query failed:', err)
+        return []
+      }),
     db
       .select({
         employeeId: sioCertifications.employeeId,
@@ -6552,7 +6616,10 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
       })
       .from(sioCertifications)
       .where(inArray(sql`lower(${sioCertifications.status})`, ['valid', 'active', 'aktif']))
-      .catch(() => []),
+      .catch((err) => {
+        console.error('[getSchedulingTimesheetOptions:sioCertifications] Query failed:', err)
+        return []
+      }),
     db
       .select({
         id: masterSections.id,
@@ -6566,7 +6633,10 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
       .leftJoin(masterDepartments, eq(masterSections.departmentId, masterDepartments.id))
       .where(eq(masterSections.isActive, true))
       .orderBy(asc(masterDepartments.name), asc(masterSections.name))
-      .catch(() => []),
+      .catch((err) => {
+        console.error('[getSchedulingTimesheetOptions:masterSections] Query failed:', err)
+        return []
+      }),
     db
       .select({
         id: approvalMatrices.id,
@@ -6588,7 +6658,10 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
         )
       )
       .orderBy(asc(masterDepartments.name), asc(masterSections.name), asc(approvalMatrices.name))
-      .catch(() => []),
+      .catch((err) => {
+        console.error('[getSchedulingTimesheetOptions:approvalMatrices] Query failed:', err)
+        return []
+      }),
     db
       .select({
         matrixId: approvalMatrixSteps.matrixId,
@@ -6607,7 +6680,10 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
         )
       )
       .orderBy(asc(approvalMatrixSteps.matrixId), asc(approvalMatrixSteps.stepOrder))
-      .catch(() => []),
+      .catch((err) => {
+        console.error('[getSchedulingTimesheetOptions:approvalMatrixSteps] Query failed:', err)
+        return []
+      }),
     db
       .select({
         id: overtimeCommandLetters.id,
@@ -6631,10 +6707,15 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
         and(
           inArray(sql`lower(${overtimeCommandLetters.status})`, ['approved', 'closed']),
           isNotNull(overtimeCommandLetters.plannedStartAt),
-          isNotNull(overtimeCommandLetters.plannedEndAt)
+          isNotNull(overtimeCommandLetters.plannedEndAt),
+          gte(overtimeCommandLetters.plannedStartAt, fromDate),
+          lte(overtimeCommandLetters.plannedStartAt, toDate)
         )
       )
-      .catch(() => []),
+      .catch((err) => {
+        console.error('[getSchedulingTimesheetOptions:overtimeCommandLetters] Query failed:', err)
+        return []
+      }),
   ])
 
   const kimperMap = new Map<number, { isLV: boolean; isTH: boolean; sioNames: string[] }>()
@@ -7073,7 +7154,10 @@ async function getSchedulingTimesheetBaseOptions() {
       .leftJoin(sites, eq(employees.siteId, sites.id))
       .where(eq(employees.isActive, true))
       .orderBy(asc(employees.name))
-      .catch(() => []),
+      .catch((err) => {
+        console.error('[getSchedulingTimesheetBaseOptions:employees] Query failed:', err)
+        return []
+      }),
     db
       .select({
         id: sites.id,
@@ -7083,7 +7167,10 @@ async function getSchedulingTimesheetBaseOptions() {
       .from(sites)
       .where(eq(sites.isActive, true))
       .orderBy(asc(sites.name))
-      .catch(() => []),
+      .catch((err) => {
+        console.error('[getSchedulingTimesheetBaseOptions:sites] Query failed:', err)
+        return []
+      }),
   ])
 
   return {

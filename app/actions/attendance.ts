@@ -565,7 +565,10 @@ async function getMobileRosterCalendar(employeeId: number, siteId: number | null
           inArray(timesheetSchedulingPlansV2.period, periods)
         )
       )
-      .catch(() => []),
+      .catch((err) => {
+        console.error('[getMobileRosterCalendar:v2Plans] Error:', err)
+        return []
+      }),
     db
       .select({
         period: timesheetSchedulingPlans.period,
@@ -578,7 +581,10 @@ async function getMobileRosterCalendar(employeeId: number, siteId: number | null
           inArray(timesheetSchedulingPlans.period, periods)
         )
       )
-      .catch(() => []),
+      .catch((err) => {
+        console.error('[getMobileRosterCalendar:legacyPlans] Error:', err)
+        return []
+      }),
     db
       .select({
         fieldBreakDate: timesheetFieldBreakPlans.fieldBreakDate,
@@ -591,7 +597,10 @@ async function getMobileRosterCalendar(employeeId: number, siteId: number | null
           eq(timesheetFieldBreakPlans.employeeId, employeeId)
         )
       )
-      .catch(() => []),
+      .catch((err) => {
+        console.error('[getMobileRosterCalendar:fieldBreakPlans] Error:', err)
+        return []
+      }),
   ])
 
   const activeByPeriod = new Map(
@@ -726,7 +735,10 @@ export async function submitAttendance(formData: FormData) {
       Number(getTrimmedFormValue(formData, 'overtimeMinutes')) || 0
     )
     const shiftCode = getTrimmedFormValue(formData, 'shiftCode')
-    const activeShiftOptions = await getActiveAttendanceShiftOptions().catch(() => [])
+    const activeShiftOptions = await getActiveAttendanceShiftOptions().catch((err) => {
+      console.error('[createManualAttendanceRecord:activeShiftOptions] Query failed:', err)
+      return []
+    })
     let selectedShift = activeShiftOptions.find((shift) => shift.value === shiftCode)
 
     if (!selectedShift) {
