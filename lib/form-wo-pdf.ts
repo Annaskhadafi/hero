@@ -52,6 +52,18 @@ function formatIndoDate(val?: string | Date | null): string {
   })
 }
 
+function formatTableDate(val?: string | Date | null): string {
+  if (!val) return '-'
+  const d = typeof val === 'string' ? new Date(val) : val
+  if (isNaN(d.getTime())) return String(val)
+  return d.toLocaleDateString('id-ID', {
+    timeZone: 'Asia/Makassar',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  })
+}
+
 function formatIndoDateTime(val?: string | Date | null): string {
   if (!val) return '-'
   const d = typeof val === 'string' ? new Date(val) : val
@@ -576,9 +588,9 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
       itemsList.some((r: any) => isCiptaKridatamaCustomer(r.customer)))
 
   // Dynamic Column definitions for Landscape A4 (tableW = 769.89 pt)
-  // Service: NO, DESCRIPTION, JOB, CUSTOMER, SITE, SERIAL NO, REF NO, NO PO, NO WO CP, PRICE / AMOUNT
-  // Repair (CK): NO, DESCRIPTION (TIRE SN), ID UNIT, BRAND, POS, SIZE, SITE, CUSTOMER, CATEGORY, NO PO, NO WO CP, PRICE / AMOUNT
-  // Repair (Non-CK): NO, DESCRIPTION (TIRE SN), BRAND, POS, SIZE, SITE, CUSTOMER, CATEGORY, NO PO, NO WO CP, PRICE / AMOUNT
+  // Service: NO, DESCRIPTION, JOB, CUSTOMER, SITE, SERIAL NO, REF NO, NO PO, PO DATE, NO WO CP, PRICE / AMOUNT
+  // Repair (CK): NO, DESCRIPTION (TIRE SN), ID UNIT, BRAND, POS, SIZE, SITE, CUSTOMER, CATEGORY, NO PO, PO DATE, NO WO CP, PRICE / AMOUNT
+  // Repair (Non-CK): NO, DESCRIPTION (TIRE SN), BRAND, POS, SIZE, SITE, CUSTOMER, CATEGORY, NO PO, PO DATE, NO WO CP, PRICE / AMOUNT
   const columns = isService
     ? [
         { label: 'NO', w: 22, align: 'center' },
@@ -588,9 +600,10 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
         { label: 'SITE', w: 70 },
         { label: 'SERIAL NO', w: 75 },
         { label: 'REF NO', w: 65 },
-        { label: 'NO PO', w: 75 },
-        { label: 'NO WO CP', w: 75 },
-        { label: 'PRICE / AMOUNT', w: 127.89, align: 'right' },
+        { label: 'NO PO', w: 50 },
+        { label: 'PO DATE', w: 55 },
+        { label: 'NO WO CP', w: 50 },
+        { label: 'PRICE / AMOUNT', w: 122.89, align: 'right' },
       ]
     : isCk
       ? [
@@ -603,9 +616,10 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
           { label: 'SITE', w: 60 },
           { label: 'CUSTOMER', w: 85 },
           { label: 'CATEGORY', w: 60 },
-          { label: 'NO PO', w: 75 },
-          { label: 'NO WO CP', w: 75 },
-          { label: 'PRICE / AMOUNT', w: 124.89, align: 'right' },
+          { label: 'NO PO', w: 50 },
+          { label: 'PO DATE', w: 55 },
+          { label: 'NO WO CP', w: 50 },
+          { label: 'PRICE / AMOUNT', w: 119.89, align: 'right' },
         ]
       : [
           { label: 'NO', w: 20, align: 'center' },
@@ -616,9 +630,10 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
           { label: 'SITE', w: 63 },
           { label: 'CUSTOMER', w: 90 },
           { label: 'CATEGORY', w: 60 },
-          { label: 'NO PO', w: 75 },
-          { label: 'NO WO CP', w: 75 },
-          { label: 'PRICE / AMOUNT', w: 124.89, align: 'right' },
+          { label: 'NO PO', w: 50 },
+          { label: 'PO DATE', w: 55 },
+          { label: 'NO WO CP', w: 50 },
+          { label: 'PRICE / AMOUNT', w: 119.89, align: 'right' },
         ]
 
   let curColX = tableX
@@ -707,6 +722,7 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
           row.serialNo || '-',
           row.refNo || '-',
           row.noPo || data.noPo || '-',
+          formatTableDate(row.tanggalPo || data.tanggalPo),
           row.noWoCp || docNoWo || '-',
           priceNum > 0 ? formatCurrency(priceNum) : '-',
         ]
@@ -722,6 +738,7 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
             row.customer || data.customer || '-',
             row.category || 'R1',
             row.noPo || data.noPo || '-',
+            formatTableDate(row.tanggalPo || data.tanggalPo),
             row.noWoCp || docNoWo || '-',
             priceNum > 0 ? formatCurrency(priceNum) : '-',
           ]
@@ -735,6 +752,7 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
             row.customer || data.customer || '-',
             row.category || 'R1',
             row.noPo || data.noPo || '-',
+            formatTableDate(row.tanggalPo || data.tanggalPo),
             row.noWoCp || docNoWo || '-',
             priceNum > 0 ? formatCurrency(priceNum) : '-',
           ]

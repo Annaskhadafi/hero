@@ -578,6 +578,7 @@ export function FormWoDocumentView({
                     <th className="px-2.5 py-2">SERIAL NO</th>
                     <th className="px-2.5 py-2">REF NO</th>
                     <th className="px-2.5 py-2">NO PO</th>
+                    <th className="px-2.5 py-2">PO DATE</th>
                     <th className="px-2.5 py-2">NO WO CP</th>
                     <th className="px-2.5 py-2 text-right">PRICE / AMOUNT</th>
                   </tr>
@@ -599,6 +600,7 @@ export function FormWoDocumentView({
                       </td>
                       <td className="px-2.5 py-1.5">{row.refNo || '-'}</td>
                       <td className="px-2.5 py-1.5 font-mono">{row.noPo || doc.noPo || '-'}</td>
+                      <td className="px-2.5 py-1.5 font-mono">{formatIndoDate(row.tanggalPo || doc.tanggalPo)}</td>
                       <td className="px-2.5 py-1.5 font-mono">
                         {row.noWoCp || docNoWo || '-'}
                       </td>
@@ -625,6 +627,7 @@ export function FormWoDocumentView({
                     <th className="px-2.5 py-2">CUSTOMER</th>
                     <th className="px-2.5 py-2">CATEGORY</th>
                     <th className="px-2.5 py-2">NO PO</th>
+                    <th className="px-2.5 py-2">PO DATE</th>
                     <th className="px-2.5 py-2">NO WO CP</th>
                     <th className="px-2.5 py-2 text-right">PRICE / AMOUNT</th>
                   </tr>
@@ -646,6 +649,7 @@ export function FormWoDocumentView({
                       <td className="px-2.5 py-1.5">{row.customer || '-'}</td>
                       <td className="px-2.5 py-1.5 font-semibold">{row.category || '-'}</td>
                       <td className="px-2.5 py-1.5 font-mono">{row.noPo || doc.noPo || '-'}</td>
+                      <td className="px-2.5 py-1.5 font-mono">{formatIndoDate(row.tanggalPo || doc.tanggalPo)}</td>
                       <td className="px-2.5 py-1.5 font-mono">
                         {row.noWoCp || docNoWo || '-'}
                       </td>
