@@ -27,12 +27,27 @@ import {
   normalizeQuotationBillingStatusConfig,
 } from "@/lib/service360-quotation-attendance"
 import { normalizeAttendanceStatus } from "@/lib/timesheet/attendance-real"
+import { getCustomersAction } from "@/app/actions/customer-management"
 import { eq, desc, asc, and, sql, isNotNull, inArray, gte, lte, or, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
 export async function getCustomers() {
-  return db.select().from(service360Customers).orderBy(desc(service360Customers.createdAt))
+  const [localCustomers, masterResult] = await Promise.all([
+    db.select().from(service360Customers).orderBy(desc(service360Customers.createdAt)),
+    getCustomersAction({ limit: 1000 }),
+  ])
+
+  const masterCustomers = masterResult.data.map((customer) => ({
+    id: `master:${customer.id}`,
+    customerName: customer.name,
+  }))
+  const names = new Set(masterCustomers.map((customer) => customer.customerName.trim().toLowerCase()))
+
+  return [
+    ...masterCustomers,
+    ...localCustomers.filter((customer) => !names.has(customer.customerName.trim().toLowerCase())),
+  ]
 }
 
 const ROMAN_NUMERALS = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"]
@@ -68,8 +83,12 @@ export async function generateNextQuotationNumber() {
 }
 
 export async function createCustomer(data: { customerName: string }) {
-  const result = await db.insert(service360Customers).values(data).returning()
+  const customerName = data.customerName.trim()
+  if (!customerName) throw new Error("Customer name is required")
+
+  const result = await db.insert(service360Customers).values({ customerName }).returning()
   revalidatePath("/dashboard/360-service/customers")
+  revalidatePath("/dashboard/360-service/quotations/create")
   return result[0]
 }
 
@@ -114,6 +133,28 @@ export async function saveFormHistory(customerId: number, data: { attn?: string,
   if (entries.length > 0) {
     await db.insert(service360FormHistory).values(entries).onConflictDoNothing()
   }
+}
+
+async function resolveQuotationCustomerId(customerId: unknown, customerName?: string) {
+  const isNamedCustomer = customerId === "manual" || String(customerId).startsWith("master:")
+  if (isNamedCustomer) {
+    const normalizedName = customerName?.trim() || ""
+    if (!normalizedName) throw new Error("Customer is required")
+
+    const [existing] = await db
+      .select({ id: service360Customers.id })
+      .from(service360Customers)
+      .where(sql`lower(trim(${service360Customers.customerName})) = lower(trim(${normalizedName}))`)
+      .limit(1)
+
+    if (existing) return existing.id
+    const created = await createCustomer({ customerName: normalizedName })
+    return created.id
+  }
+
+  const resolvedId = Number(customerId)
+  if (!Number.isInteger(resolvedId) || resolvedId <= 0) throw new Error("Customer is required")
+  return resolvedId
 }
 
 export async function deleteFormHistory(id: number) {
@@ -512,12 +553,14 @@ export async function getLatestSignatureByFromName(fromName: string) {
 export async function createQuotation(data: any) {
   const { 
     quotationNumber, customerId, quotationDate, taxRate, taxAmount, subTotal, totalAmount, status, 
-    items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty, hideBackupPrice, hideBackupDate, hideMonthColumn, discountType, discountValue, showDays, includeBast, includeRoster
+    manualCustomerName, items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty, hideBackupPrice, hideBackupDate, hideMonthColumn, discountType, discountValue, showDays, includeBast, includeRoster
   } = data
+
+  const resolvedCustomerId = await resolveQuotationCustomerId(customerId, manualCustomerName)
   
   const [quotation] = await db.insert(service360Quotations).values({
     quotationNumber,
-    customerId,
+    customerId: resolvedCustomerId,
     quotationDate,
     attn,
     cc,
@@ -569,7 +612,7 @@ export async function createQuotation(data: any) {
   }
 
   // Save history
-  await saveFormHistory(customerId, { attn, cc, fromName, subject })
+  await saveFormHistory(resolvedCustomerId, { attn, cc, fromName, subject })
 
   revalidatePath("/dashboard/360-service/quotations")
   return quotation
@@ -578,12 +621,14 @@ export async function createQuotation(data: any) {
 export async function updateQuotation(id: number, data: any) {
   const { 
     quotationNumber, customerId, quotationDate, taxRate, taxAmount, subTotal, totalAmount, status, 
-    items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty, hideBackupPrice, hideBackupDate, hideMonthColumn, discountType, discountValue, showDays, includeBast, includeRoster
+    manualCustomerName, items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty, hideBackupPrice, hideBackupDate, hideMonthColumn, discountType, discountValue, showDays, includeBast, includeRoster
   } = data
+
+  const resolvedCustomerId = await resolveQuotationCustomerId(customerId, manualCustomerName)
   
   const [quotation] = await db.update(service360Quotations).set({
     quotationNumber,
-    customerId,
+    customerId: resolvedCustomerId,
     quotationDate,
     attn,
     cc,
@@ -640,7 +685,7 @@ export async function updateQuotation(id: number, data: any) {
   }
 
   // Save history
-  await saveFormHistory(customerId, { attn, cc, fromName, subject })
+  await saveFormHistory(resolvedCustomerId, { attn, cc, fromName, subject })
 
   revalidatePath("/dashboard/360-service/quotations")
   revalidatePath(`/dashboard/360-service/quotations/${id}`)

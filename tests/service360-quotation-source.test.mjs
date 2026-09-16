@@ -26,6 +26,18 @@ test('service 360 quotation line items support drag sorting', () => {
   assert.match(actionSource, /orderBy\(asc\(service360QuotationItems\.id\)\)/)
 })
 
+test('service 360 manual quotation customers are created and linked by id', () => {
+  const actionSource = read('app/actions/service360.ts')
+
+  assert.match(actionSource, /getCustomersAction\(\{ limit: 1000 \}\)/)
+  assert.match(actionSource, /String\(customerId\)\.startsWith\("master:"\)/)
+  assert.match(actionSource, /resolveQuotationCustomerId\(customerId, manualCustomerName\)/)
+  assert.match(actionSource, /createCustomer\(\{ customerName: normalizedName \}\)/)
+  assert.match(actionSource, /customerId: resolvedCustomerId/)
+  assert.match(actionSource, /saveFormHistory\(resolvedCustomerId/)
+  assert.match(actionSource, /const customerName = data\.customerName\.trim\(\)/)
+})
+
 test('service 360 quotation reload keeps backup labour prorate eligible', () => {
   const formSource = read('app/dashboard/360-service/quotations/create/quotation-form.tsx')
 
