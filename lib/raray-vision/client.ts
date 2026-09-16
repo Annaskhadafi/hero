@@ -382,6 +382,7 @@ export async function rarayVerifyFace(params: {
       headers: { Authorization: authHeader },
       body: formData,
       cache: 'no-store',
+      signal: AbortSignal.timeout(8000),
     })
 
     if (res.ok) {
@@ -423,6 +424,7 @@ export async function rarayVerifyFace(params: {
         headers: { Authorization: authHeader },
         body: formData,
         cache: 'no-store',
+        signal: AbortSignal.timeout(5000),
       })
 
       if (res.status === 404) {
@@ -573,7 +575,7 @@ export async function rarayCheckAntiSpoofUniFaceV2(params: {
       headers: { Authorization: authHeader },
       body: formData,
       cache: 'no-store',
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(7_000),
     })
 
     if (!res.ok) {

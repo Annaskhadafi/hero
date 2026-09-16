@@ -358,13 +358,29 @@ export function FaceAttendanceV2Client({
     const canvas = canvasRef.current
     if (!video || !canvas || video.readyState < 2) return null
 
-    canvas.width = video.videoWidth || 640
-    canvas.height = video.videoHeight || 640
+    const rawWidth = video.videoWidth || 640
+    const rawHeight = video.videoHeight || 640
+    const maxDimension = 512
+    let targetWidth = rawWidth
+    let targetHeight = rawHeight
+
+    if (rawWidth > maxDimension || rawHeight > maxDimension) {
+      if (rawWidth >= rawHeight) {
+        targetWidth = maxDimension
+        targetHeight = Math.round((rawHeight / rawWidth) * maxDimension)
+      } else {
+        targetHeight = maxDimension
+        targetWidth = Math.round((rawWidth / rawHeight) * maxDimension)
+      }
+    }
+
+    canvas.width = targetWidth
+    canvas.height = targetHeight
     const ctx = canvas.getContext('2d')
     if (!ctx) return null
 
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-    return canvas.toDataURL('image/jpeg', 0.85)
+    ctx.drawImage(video, 0, 0, targetWidth, targetHeight)
+    return canvas.toDataURL('image/jpeg', 0.7)
   }, [])
 
   const motionHistoryRef = useRef<number[]>([])

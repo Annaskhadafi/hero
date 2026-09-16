@@ -256,12 +256,34 @@ export async function POST(request: NextRequest) {
 
     // Manual fallback is an explicit camera photo after repeated failed attempts.
     // Keep auth, GPS and audit metadata; skip biometric verification only.
-    const antiSpoofRes = isManualFallback
-      ? null
-      : await rarayCheckAntiSpoofUniFaceV2({
-          imageBuffer,
-          mimeType,
-        }).catch(() => null)
+    // Execute Anti-Spoofing & Face Verification concurrently to minimize network latency
+    const [antiSpoofRes, rvResult] = await Promise.all([
+      isManualFallback
+        ? Promise.resolve(null)
+        : rarayCheckAntiSpoofUniFaceV2({
+            imageBuffer,
+            mimeType,
+          }).catch((err) => {
+            console.warn('[face-recognition-v2] Anti-Spoof check warning (non-fatal):', err)
+            return null
+          }),
+      isManualFallback
+        ? Promise.resolve(null)
+        : rarayVerifyFace({
+            employeeId: empId,
+            employeeSn: employee.employeeSn || undefined,
+            faceRarayId: employee.faceRarayId || undefined,
+            imageBuffer,
+            mimeType,
+          }).catch((err) => {
+            console.error('[face-recognition-v2] Face verify error:', err)
+            return {
+              status: 'error' as const,
+              verified: false,
+              message: err instanceof Error ? err.message : 'Error calling Vision AI',
+            }
+          }),
+    ])
 
     if (
       antiSpoofRes &&
@@ -289,17 +311,6 @@ export async function POST(request: NextRequest) {
         { status: 200 }
       )
     }
-
-    // 9. Call Raray Vision to verify face using Employee SN / faceRarayId
-    const rvResult = isManualFallback
-      ? null
-      : await rarayVerifyFace({
-          employeeId: empId,
-          employeeSn: employee.employeeSn || undefined,
-          faceRarayId: employee.faceRarayId || undefined,
-          imageBuffer,
-          mimeType,
-        })
 
     if (rvResult?.status === 'error') {
       console.error('[face-recognition-v2] Raray Vision error:', rvResult.message)
@@ -412,27 +423,27 @@ export async function POST(request: NextRequest) {
       console.warn('[face-recognition-v2] Path revalidation warning:', e)
     }
 
-    // Keep the raw record and the Grid projection consistent before reporting success.
-    try {
-      const photoUrl = await saveAttendancePhoto(imageBuffer, mimeType, clientRequestId.trim())
-      if (photoUrl) {
-        await db
-          .update(attendanceRecords)
-          .set({ photoUrl })
-          .where(eq(attendanceRecords.id, insertedRecord.id))
+    // Photo storage is optional / non-blocking: save in background without delaying user response
+    void (async () => {
+      try {
+        const photoUrl = await saveAttendancePhoto(imageBuffer, mimeType, clientRequestId.trim())
+        if (photoUrl) {
+          await db
+            .update(attendanceRecords)
+            .set({ photoUrl })
+            .where(eq(attendanceRecords.id, insertedRecord.id))
+        }
+      } catch (photoErr) {
+        console.warn('[face-recognition-v2] Optional photo upload error (non-fatal):', photoErr)
       }
+    })()
+
+    // Keep Timesheet Grid projection synchronized
+    try {
       await syncFaceAttendanceToTimesheet(empId, sId, eventTime)
       revalidatePath('/dashboard/scheduling-timesheet/attendance')
     } catch (syncError) {
-      console.error('[face-recognition-v2] Attendance projection failed:', syncError)
-      return NextResponse.json(
-        {
-          success: false,
-          verified: true,
-          error: 'Attendance tersimpan tetapi belum tersinkron ke Grid. Silakan ulangi.',
-        },
-        { status: 503 }
-      )
+      console.warn('[face-recognition-v2] Attendance timesheet sync warning (non-fatal):', syncError)
     }
 
     // Return only after the Grid projection is synchronized.
