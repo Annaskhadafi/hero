@@ -57,10 +57,18 @@ interface RecognitionResult {
 }
 
 interface FaceBox {
+  id: string;
   topPercent: number;
   leftPercent: number;
   widthPercent: number;
   heightPercent: number;
+  rawX: number;
+  rawY: number;
+  rawWidth: number;
+  rawHeight: number;
+  employeeName?: string;
+  confidence?: number;
+  isMatch?: boolean;
 }
 
 type TerminalPhase = "setup" | "scanning" | "recognized" | "error";
@@ -119,9 +127,9 @@ function saveSetup(siteId: number, shiftCode: string) {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-/** Dynamic Real-time Face Tracking Box Overlay (Matching Raray Vision Console) */
+/** Dynamic Real-time Face Tracking Box Overlay Supporting Multiple People */
 function FaceTrackerOverlay({
-  faceBox,
+  faceBoxes,
   active,
   success,
   checkout,
@@ -129,7 +137,7 @@ function FaceTrackerOverlay({
   employeeName,
   confidence,
 }: {
-  faceBox: FaceBox | null;
+  faceBoxes: FaceBox[];
   active?: boolean;
   success: boolean;
   checkout: boolean;
@@ -137,106 +145,128 @@ function FaceTrackerOverlay({
   employeeName?: string;
   confidence?: number;
 }) {
-  const isMatch = success || !!employeeName;
-  const color = isMatch ? (checkout ? "#f59e0b" : "#16a34a") : processing ? "#0284c7" : "#22c55e";
-  const confPct = confidence ? `${(confidence * 100).toFixed(1)}%` : "62.8%";
-
-  // Smooth position mapping
-  const boxStyle = faceBox
-    ? {
-        top: `${faceBox.topPercent}%`,
-        left: `${faceBox.leftPercent}%`,
-        width: `${faceBox.widthPercent}%`,
-        height: `${faceBox.heightPercent}%`,
-      }
-    : {
-        top: "50%",
-        left: "50%",
-        width: "240px",
-        height: "290px",
-        transform: "translate(-50%, -50%)",
-      };
-
-  return (
-    <div className="pointer-events-none absolute inset-0">
-      {/* Dynamic Bounding Box around detected face */}
-      <div
-        className="absolute transition-all duration-150 ease-out flex flex-col items-center justify-between"
-        style={{
-          ...boxStyle,
-          border: isMatch ? `2px solid ${color}` : `1.5px solid ${color}aa`,
-          boxShadow: isMatch ? `0 0 35px ${color}60` : `0 0 20px ${color}35`,
-          background: isMatch ? `${color}08` : "transparent",
-          borderRadius: "16px",
-        }}
-      >
-        {/* Floating Green Badge Pill Above Face (Matching Raray Vision Console) */}
-        {isMatch && employeeName && (
-          <div
-            className="absolute -top-11 left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold text-white shadow-lg whitespace-nowrap transition-all duration-300 z-30"
-            style={{
-              background: "#16a34a",
-              boxShadow: "0 4px 14px rgba(22,163,74,0.5)",
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-              <path d="M5 12l5 5L20 7" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span className="font-semibold text-white tracking-wide">{employeeName}</span>
-            <span className="font-mono text-xs opacity-95">{confPct}</span>
+  if (faceBoxes.length === 0) {
+    return (
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <div
+          className="w-56 h-72 rounded-[40px] border-2 border-dashed border-sky-400/40 animate-pulse flex flex-col items-center justify-between p-5"
+          style={{ boxShadow: "0 0 30px rgba(56, 189, 248, 0.12)" }}
+        >
+          <div className="text-[10px] font-bold text-sky-400 uppercase tracking-widest bg-sky-950/70 px-3.5 py-1 rounded-full border border-sky-400/30 shadow-md">
+            Arahkan Wajah Ke Sini
           </div>
-        )}
-
-        {!isMatch && (
-          <div
-            className="mt-2 rounded-full px-2.5 py-0.5 text-[9px] font-extrabold tracking-widest uppercase shadow-sm"
-            style={{
-              background: `${color}25`,
-              color: color,
-              border: `1px solid ${color}40`,
-              backdropFilter: "blur(4px)",
-            }}
-          >
-            {processing ? "MENGANALISA WAJAH..." : "FACE TRACKING"}
+          <div className="text-[10px] text-gray-400 font-semibold text-center leading-tight">
+            Mendukung beberapa orang sekaligus
           </div>
-        )}
-
-        {/* 5 Facial Landmark Dots */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="absolute w-1.5 h-1.5 rounded-full top-[36%] left-[34%]" style={{ background: color, boxShadow: `0 0 6px ${color}` }} />
-          <div className="absolute w-1.5 h-1.5 rounded-full top-[36%] right-[34%]" style={{ background: color, boxShadow: `0 0 6px ${color}` }} />
-          <div className="absolute w-1.5 h-1.5 rounded-full top-[50%] left-[49%]" style={{ background: color, boxShadow: `0 0 6px ${color}` }} />
-          <div className="absolute w-1.5 h-1.5 rounded-full bottom-[30%] left-[38%]" style={{ background: color, boxShadow: `0 0 6px ${color}` }} />
-          <div className="absolute w-1.5 h-1.5 rounded-full bottom-[30%] right-[38%]" style={{ background: color, boxShadow: `0 0 6px ${color}` }} />
-        </div>
-
-        {/* L-Bracket Reticle Corners */}
-        {(["tl", "tr", "bl", "br"] as const).map((corner) => (
-          <div
-            key={corner}
-            className="absolute"
-            style={{
-              width: 20,
-              height: 20,
-              top: corner.startsWith("t") ? -2 : "auto",
-              bottom: corner.startsWith("b") ? -2 : "auto",
-              left: corner.endsWith("l") ? -2 : "auto",
-              right: corner.endsWith("r") ? -2 : "auto",
-              borderTop: corner.startsWith("t") ? `3px solid ${color}` : "none",
-              borderBottom: corner.startsWith("b") ? `3px solid ${color}` : "none",
-              borderLeft: corner.endsWith("l") ? `3px solid ${color}` : "none",
-              borderRight: corner.endsWith("r") ? `3px solid ${color}` : "none",
-              borderRadius: corner === "tl" ? "8px 0 0 0" : corner === "tr" ? "0 8px 0 0" : corner === "bl" ? "0 0 0 8px" : "0 0 8px 0",
-            }}
-          />
-        ))}
-
-        {/* Bottom Lock Indicator */}
-        <div className="mb-2 flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider" style={{ color }}>
-          <div className="w-1.5 h-1.5 rounded-full" style={{ background: color, animation: "pulse 1.2s infinite" }} />
-          {isMatch ? "MATCH LOCKED" : "FACE DETECTED"}
         </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      {faceBoxes.map((box, idx) => {
+        const isThisMatch = box.isMatch || (success && (faceBoxes.length === 1 || !!employeeName));
+        const name = box.employeeName || (isThisMatch ? employeeName : undefined);
+        const conf = box.confidence ?? (isThisMatch ? confidence : undefined);
+        const confPct = conf ? `${(conf * 100).toFixed(1)}%` : "";
+
+        const color = isThisMatch
+          ? checkout
+            ? "#f59e0b"
+            : "#16a34a"
+          : processing
+          ? "#0284c7"
+          : "#22c55e";
+
+        return (
+          <div
+            key={box.id || idx}
+            className="absolute transition-all duration-150 ease-out flex flex-col items-center justify-between"
+            style={{
+              top: `${box.topPercent}%`,
+              left: `${box.leftPercent}%`,
+              width: `${box.widthPercent}%`,
+              height: `${box.heightPercent}%`,
+              border: isThisMatch ? `2.5px solid ${color}` : `1.5px solid ${color}cc`,
+              boxShadow: isThisMatch
+                ? `0 0 35px ${color}70`
+                : `0 0 20px ${color}35`,
+              background: isThisMatch ? `${color}10` : "transparent",
+              borderRadius: "16px",
+            }}
+          >
+            {/* Floating Green Badge Pill Above Face */}
+            {isThisMatch && name && (
+              <div
+                className="absolute -top-11 left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold text-white shadow-lg whitespace-nowrap transition-all duration-300 z-30"
+                style={{
+                  background: checkout ? "#d97706" : "#16a34a",
+                  boxShadow: checkout
+                    ? "0 4px 14px rgba(217,119,6,0.5)"
+                    : "0 4px 14px rgba(22,163,74,0.5)",
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                  <path d="M5 12l5 5L20 7" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <span className="font-semibold text-white tracking-wide">{name}</span>
+                {confPct && <span className="font-mono text-xs opacity-95">{confPct}</span>}
+              </div>
+            )}
+
+            {!isThisMatch && (
+              <div
+                className="mt-2 rounded-full px-2.5 py-0.5 text-[9px] font-extrabold tracking-widest uppercase shadow-sm"
+                style={{
+                  background: `${color}25`,
+                  color: color,
+                  border: `1px solid ${color}40`,
+                  backdropFilter: "blur(4px)",
+                }}
+              >
+                {processing ? "MENGANALISA WAJAH..." : `WAJAH #${idx + 1}`}
+              </div>
+            )}
+
+            {/* 5 Facial Landmark Dots */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="absolute w-1.5 h-1.5 rounded-full top-[36%] left-[34%]" style={{ background: color, boxShadow: `0 0 6px ${color}` }} />
+              <div className="absolute w-1.5 h-1.5 rounded-full top-[36%] right-[34%]" style={{ background: color, boxShadow: `0 0 6px ${color}` }} />
+              <div className="absolute w-1.5 h-1.5 rounded-full top-[50%] left-[49%]" style={{ background: color, boxShadow: `0 0 6px ${color}` }} />
+              <div className="absolute w-1.5 h-1.5 rounded-full bottom-[30%] left-[38%]" style={{ background: color, boxShadow: `0 0 6px ${color}` }} />
+              <div className="absolute w-1.5 h-1.5 rounded-full bottom-[30%] right-[38%]" style={{ background: color, boxShadow: `0 0 6px ${color}` }} />
+            </div>
+
+            {/* L-Bracket Reticle Corners */}
+            {(["tl", "tr", "bl", "br"] as const).map((corner) => (
+              <div
+                key={corner}
+                className="absolute"
+                style={{
+                  width: 20,
+                  height: 20,
+                  top: corner.startsWith("t") ? -2 : "auto",
+                  bottom: corner.startsWith("b") ? -2 : "auto",
+                  left: corner.endsWith("l") ? -2 : "auto",
+                  right: corner.endsWith("r") ? -2 : "auto",
+                  borderTop: corner.startsWith("t") ? `3px solid ${color}` : "none",
+                  borderBottom: corner.startsWith("b") ? `3px solid ${color}` : "none",
+                  borderLeft: corner.endsWith("l") ? `3px solid ${color}` : "none",
+                  borderRight: corner.endsWith("r") ? `3px solid ${color}` : "none",
+                  borderRadius: corner === "tl" ? "8px 0 0 0" : corner === "tr" ? "0 8px 0 0" : corner === "bl" ? "0 0 0 8px" : "0 0 8px 0",
+                }}
+              />
+            ))}
+
+            {/* Bottom Lock Indicator */}
+            <div className="mb-2 flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider" style={{ color }}>
+              <div className="w-1.5 h-1.5 rounded-full" style={{ background: color, animation: "pulse 1.2s infinite" }} />
+              {isThisMatch ? "MATCH LOCKED" : "FACE DETECTED"}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -501,15 +531,17 @@ export default function MultiAttendancePage() {
   const [selectedShift, setSelectedShift] = useState<ShiftOption | null>(null);
   const [savedSetup, setSavedSetup] = useState<SavedSetup | null>(null);
 
-  // UI state
+  const containerRef = useRef<HTMLDivElement>(null);
   const [phase, setPhase] = useState<TerminalPhase>("setup");
   const [showSetupModal, setShowSetupModal] = useState(false);
 
-  // Camera & Face Box
+  // Camera & Multi-Face Boxes
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState("");
-  const [faceBox, setFaceBox] = useState<FaceBox | null>(null);
-  const faceBoxRef = useRef<FaceBox | null>(null);
+  const [faceBoxes, setFaceBoxes] = useState<FaceBox[]>([]);
+  const faceBoxesRef = useRef<FaceBox[]>([]);
+  const scanIndexRef = useRef<number>(0);
+  const faceapiRef = useRef<any>(null);
 
   // Recognition
   const [lastResult, setLastResult] = useState<RecognitionResult | null>(null);
@@ -613,10 +645,33 @@ export default function MultiAttendancePage() {
     };
   }, [startCamera]);
 
-  // ── Real-time Dynamic Face Tracking Loop (FaceDetector API + Skin Centroid Tracker) ───
+  // ── Load face-api.js tinyFaceDetector model ─────────────────────────────────
+  useEffect(() => {
+    let isMounted = true;
+    const initFaceApi = async () => {
+      try {
+        const faceapi = await import("face-api.js");
+        if (!faceapi.nets.tinyFaceDetector.params) {
+          await faceapi.nets.tinyFaceDetector.loadFromUri("/models");
+        }
+        if (isMounted) {
+          faceapiRef.current = faceapi;
+        }
+      } catch (err) {
+        console.warn("[multi-attendance] face-api tinyFaceDetector load failed:", err);
+      }
+    };
+    initFaceApi();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // ── Real-time Multi-Face Tracking Loop (face-api -> FaceDetector -> Skin Cluster) ──
   useEffect(() => {
     if (!cameraReady || phase !== "scanning") {
-      setFaceBox(null);
+      setFaceBoxes([]);
+      faceBoxesRef.current = [];
       return;
     }
 
@@ -625,7 +680,7 @@ export default function MultiAttendancePage() {
 
     if (typeof window !== "undefined" && "FaceDetector" in window) {
       try {
-        detector = new (window as any).FaceDetector({ fastMode: true, maxFaces: 1 });
+        detector = new (window as any).FaceDetector({ fastMode: true, maxFaces: 5 });
       } catch {
         detector = null;
       }
@@ -634,36 +689,63 @@ export default function MultiAttendancePage() {
     const detectLoop = async () => {
       if (!active) return;
       const video = videoRef.current;
+      const container = containerRef.current;
 
-      if (video && video.readyState === 4) {
+      if (video && container && video.readyState === 4) {
+        const cw = container.clientWidth || 640;
+        const ch = container.clientHeight || 480;
         const vw = video.videoWidth || 640;
         const vh = video.videoHeight || 480;
-        let detectedBox: FaceBox | null = null;
 
-        // Mode A: Native Chromium FaceDetector API
-        if (detector) {
+        // CSS object-cover compensation calculations:
+        const scale = Math.max(cw / vw, ch / vh);
+        const renderedW = vw * scale;
+        const renderedH = vh * scale;
+        const offsetX = (cw - renderedW) / 2;
+        const offsetY = (ch - renderedH) / 2;
+
+        // Raw face coordinates on native video pixels: { x, y, width, height }
+        let rawFaces: Array<{ x: number; y: number; width: number; height: number }> = [];
+
+        // Tier 1: Deep Learning face-api tinyFaceDetector (Precise Multi-Face AI)
+        if (faceapiRef.current && faceapiRef.current.nets.tinyFaceDetector.params) {
           try {
-            const faces = await detector.detect(video);
-            if (faces && faces.length > 0) {
-              const b = faces[0].boundingBox;
-              const leftPct = ((vw - b.x - b.width) / vw) * 100;
-              const topPct = (b.y / vh) * 100;
-              const widthPct = (b.width / vw) * 100;
-              const heightPct = (b.height / vh) * 100;
-              detectedBox = {
-                leftPercent: Math.max(5, Math.min(75, leftPct)),
-                topPercent: Math.max(5, Math.min(70, topPct)),
-                widthPercent: Math.max(18, Math.min(45, widthPct)),
-                heightPercent: Math.max(25, Math.min(55, heightPct)),
-              };
+            const detections = await faceapiRef.current.detectAllFaces(
+              video,
+              new faceapiRef.current.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.45 })
+            );
+            if (detections && detections.length > 0) {
+              rawFaces = detections.map((d: any) => ({
+                x: d.box.x,
+                y: d.box.y,
+                width: d.box.width,
+                height: d.box.height,
+              }));
             }
           } catch {
-            // fallthrough to skin centroid
+            // fallback to Tier 2
           }
         }
 
-        // Mode B: Universal Canvas Skin-Centroid Tracker (Works 100% in all browsers)
-        if (!detectedBox && canvasRef.current) {
+        // Tier 2: Native Chromium FaceDetector API (Up to 5 faces)
+        if (rawFaces.length === 0 && detector) {
+          try {
+            const faces = await detector.detect(video);
+            if (faces && faces.length > 0) {
+              rawFaces = faces.map((f: any) => ({
+                x: f.boundingBox.x,
+                y: f.boundingBox.y,
+                width: f.boundingBox.width,
+                height: f.boundingBox.height,
+              }));
+            }
+          } catch {
+            // fallback to Tier 3
+          }
+        }
+
+        // Tier 3: Universal Skin Centroid Tracker with Neck-Exclusion & Top-Biased Head Framing
+        if (rawFaces.length === 0 && canvasRef.current) {
           try {
             const canvas = canvasRef.current;
             const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -680,7 +762,7 @@ export default function MultiAttendancePage() {
               let sumX = 0;
               let sumY = 0;
               let count = 0;
-              let minX = sw, maxX = 0, minY = sh, maxY = 0;
+              let minY = sh;
 
               for (let y = 0; y < sh; y += 3) {
                 for (let x = 0; x < sw; x += 3) {
@@ -697,49 +779,79 @@ export default function MultiAttendancePage() {
                     sumX += x;
                     sumY += y;
                     count++;
-                    if (x < minX) minX = x;
-                    if (x > maxX) maxX = x;
                     if (y < minY) minY = y;
-                    if (y > maxY) maxY = y;
                   }
                 }
               }
 
               if (count > 25) {
-                const avgX = sumX / count;
-                const avgY = sumY / count;
+                const avgX = (sumX / count) * (vw / sw);
+                // minY is the top of head/forehead
+                const headTopY = minY * (vh / sh);
+                // Estimated human head width & 1.3x height
+                const headW = vw * 0.26;
+                const headH = headW * 1.3;
+                // Align box starting from headTopY so neck/chest never drags it down
+                const headX = Math.max(0, avgX - headW / 2);
+                const headY = Math.max(0, headTopY);
 
-                // Tight 1.35:1 human face aspect ratio centered over face centroid
-                const rawW = ((maxX - minX) / sw) * 100 * 0.75;
-                const faceW = Math.max(18, Math.min(30, rawW + 8));
-                const faceH = Math.max(24, Math.min(40, faceW * 1.35));
-
-                // Mirrored coordinates for scaleX(-1) CSS video
-                const mirroredX = ((sw - avgX) / sw) * 100;
-                const leftPct = mirroredX - (faceW / 2);
-                const topPct = (avgY / sh) * 100 - (faceH / 2) - 3;
-
-                detectedBox = {
-                  leftPercent: Math.max(2, Math.min(80, leftPct)),
-                  topPercent: Math.max(2, Math.min(75, topPct)),
-                  widthPercent: faceW,
-                  heightPercent: faceH,
-                };
+                rawFaces.push({
+                  x: headX,
+                  y: headY,
+                  width: headW,
+                  height: headH,
+                });
               }
-
             }
           } catch {
             // ignore
           }
         }
 
+        // Convert raw video pixel coordinates -> screen percentage with mirror & object-cover
+        const newBoxes: FaceBox[] = rawFaces.map((rf, idx) => {
+          // Horizontal mirror coordinate on video
+          const mirroredX = vw - (rf.x + rf.width);
+          // Scale and offset within container
+          const screenX = offsetX + mirroredX * scale;
+          const screenY = offsetY + rf.y * scale;
+          const screenW = rf.width * scale;
+          const screenH = rf.height * scale;
+
+          const leftPercent = Math.max(0, Math.min(95, (screenX / cw) * 100));
+          const topPercent = Math.max(0, Math.min(95, (screenY / ch) * 100));
+          const widthPercent = Math.max(8, Math.min(80, (screenW / cw) * 100));
+          const heightPercent = Math.max(10, Math.min(80, (screenH / ch) * 100));
+
+          // Preserve matched status if face was already recognized
+          const prevBox = faceBoxesRef.current.find(
+            (pb) => Math.abs(pb.leftPercent - leftPercent) < 12 && Math.abs(pb.topPercent - topPercent) < 12
+          );
+
+          return {
+            id: prevBox?.id ?? `face-${idx}-${Date.now()}`,
+            leftPercent,
+            topPercent,
+            widthPercent,
+            heightPercent,
+            rawX: rf.x,
+            rawY: rf.y,
+            rawWidth: rf.width,
+            rawHeight: rf.height,
+            isMatch: prevBox?.isMatch ?? false,
+            employeeName: prevBox?.employeeName,
+            confidence: prevBox?.confidence,
+          };
+        });
+
         if (active) {
-          faceBoxRef.current = detectedBox;
-          setFaceBox(detectedBox);
+          faceBoxesRef.current = newBoxes;
+          setFaceBoxes(newBoxes);
         }
       }
+
       if (active) {
-        setTimeout(detectLoop, 100);
+        setTimeout(detectLoop, 90);
       }
     };
 
@@ -765,37 +877,48 @@ export default function MultiAttendancePage() {
     [sites, shifts, refreshHistory]
   );
 
-  // ── Smart Frame capture (Auto-crop to face region + 512x512 High-Res compression) ──
-  const captureFrame = useCallback(async (): Promise<Blob | null> => {
+  // ── Smart Frame capture (Round-robin face crop + 512x512 compression for Raray Vision) ──
+  const captureFrame = useCallback(async (): Promise<{ blob: Blob | null; targetBoxId: string | null }> => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas || !video.videoWidth || !video.videoHeight) return null;
+    if (!video || !canvas || !video.videoWidth || !video.videoHeight) {
+      return { blob: null, targetBoxId: null };
+    }
 
     const vw = video.videoWidth;
     const vh = video.videoHeight;
-    const box = faceBoxRef.current;
+    const boxes = faceBoxesRef.current;
 
     const targetDim = 512;
     canvas.width = targetDim;
     canvas.height = targetDim;
     const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
+    if (!ctx) return { blob: null, targetBoxId: null };
 
     let sx = 0;
     let sy = 0;
     let sDim = Math.min(vw, vh);
+    let targetBoxId: string | null = null;
 
-    if (box && box.widthPercent > 0 && box.heightPercent > 0) {
-      // Un-mirror the X coordinate because video has CSS scaleX(-1) in UI
-      const unmirroredLeftPct = 100 - (box.leftPercent + box.widthPercent);
-      const faceW = (box.widthPercent / 100) * vw;
-      const faceH = (box.heightPercent / 100) * vh;
-      const faceCenterX = (unmirroredLeftPct / 100) * vw + faceW / 2;
-      const faceCenterY = (box.topPercent / 100) * vh + faceH / 2;
+    if (boxes.length > 0) {
+      // Pick next face in round-robin sequence to recognize all people present
+      const index = scanIndexRef.current % boxes.length;
+      scanIndexRef.current = (scanIndexRef.current + 1) % boxes.length;
+      const targetBox = boxes[index];
+      targetBoxId = targetBox.id;
 
-      // Expand margin by 1.65x so head, forehead, chin, and hair are comfortably framed
-      const maxFaceDim = Math.max(faceW, faceH);
-      sDim = Math.min(Math.max(maxFaceDim * 1.65, 320), Math.min(vw, vh));
+      // Use raw video pixel coordinates directly (no un-mirroring confusion!)
+      const rawW = targetBox.rawWidth ?? (targetBox.widthPercent / 100) * vw;
+      const rawH = targetBox.rawHeight ?? (targetBox.heightPercent / 100) * vh;
+      const rawX = targetBox.rawX ?? 0;
+      const rawY = targetBox.rawY ?? 0;
+
+      const faceCenterX = rawX + rawW / 2;
+      const faceCenterY = rawY + rawH / 2;
+
+      // Expand margin by 1.65x so head, forehead, and chin are comfortably framed
+      const maxFaceDim = Math.max(rawW, rawH);
+      sDim = Math.min(Math.max(maxFaceDim * 1.65, 240), Math.min(vw, vh));
 
       sx = faceCenterX - sDim / 2;
       sy = faceCenterY - sDim / 2;
@@ -813,7 +936,8 @@ export default function MultiAttendancePage() {
     }
 
     ctx.drawImage(video, sx, sy, sDim, sDim, 0, 0, targetDim, targetDim);
-    return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.80));
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
+    return { blob, targetBoxId };
   }, []);
 
   // ── Error toast ───────────────────────────────────────────────────────────────
@@ -830,7 +954,7 @@ export default function MultiAttendancePage() {
     setScanStatus("processing");
 
     try {
-      const blob = await captureFrame();
+      const { blob, targetBoxId } = await captureFrame();
       if (!blob) { isScanningRef.current = false; setScanStatus("scanning"); return; }
 
       const fd = new FormData();
@@ -844,8 +968,18 @@ export default function MultiAttendancePage() {
       if (result.recognized && result.reason !== "cooldown") {
         setLastResult(result);
         setShowCard(true);
-        setPhase("recognized");
         refreshHistory(selectedSite.id);
+
+        // Update target face box to show green match & employee name
+        if (targetBoxId) {
+          setFaceBoxes((prev) =>
+            prev.map((b) =>
+              b.id === targetBoxId
+                ? { ...b, isMatch: true, employeeName: result.employee_name, confidence: result.confidence }
+                : b
+            )
+          );
+        }
 
         // Audio Voice Greeting
         const actionStr = result.event_type === "checked-in" ? "masuk" : "keluar";
@@ -853,7 +987,7 @@ export default function MultiAttendancePage() {
 
         setTimeout(() => {
           setShowCard(false);
-          setTimeout(() => { setPhase("scanning"); setLastResult(null); }, 400);
+          setLastResult(null);
         }, SUCCESS_DISPLAY_MS);
       } else if (result.reason === "cooldown") {
         // Voice warning for cooldown
@@ -885,8 +1019,6 @@ export default function MultiAttendancePage() {
     return () => { if (scanTimerRef.current) clearInterval(scanTimerRef.current); };
   }, [phase, cameraReady, doScan]);
 
-  const isSuccess = phase === "recognized";
-  const isCheckout = lastResult?.event_type === "checked-out";
   const countIn = history.filter((h) => h.event_type === "checked-in").length;
   const countOut = history.filter((h) => h.event_type === "checked-out").length;
 
@@ -981,7 +1113,7 @@ export default function MultiAttendancePage() {
       <div className="flex flex-1 min-h-0">
 
         {/* ── CAMERA ZONE ─────────────────────────────────────────────────────── */}
-        <div className="relative flex-1 min-h-0 overflow-hidden bg-gray-900">
+        <div ref={containerRef} className="relative flex-1 min-h-0 overflow-hidden bg-gray-900">
           {/* Video */}
           <video
             ref={videoRef}
@@ -1011,16 +1143,12 @@ export default function MultiAttendancePage() {
             </div>
           )}
 
-          {/* Dynamic Real-time Face Tracking Overlay Box */}
+          {/* Dynamic Real-time Multi-Face Tracking Overlay Box */}
           {(phase === "scanning" || phase === "recognized") && (
             <FaceTrackerOverlay
-              faceBox={faceBox}
+              faceBoxes={faceBoxes}
               active={phase === "scanning"}
-              success={isSuccess}
-              checkout={isCheckout}
               processing={scanStatus === "processing"}
-              employeeName={lastResult?.employee_name}
-              confidence={lastResult?.confidence}
             />
           )}
 
