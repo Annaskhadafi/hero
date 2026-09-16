@@ -101,8 +101,13 @@ export async function POST(req: NextRequest) {
     const mimeType = file.type || 'image/jpeg'
 
     // ── 0. UniFace-v2 Anti-Spoofing Check ─────────────────────────────────────
+    // Aligned with Mobile Attendance: only reject on high-confidence confirmed spoof
     const antiSpoofRes = await rarayCheckAntiSpoofUniFaceV2({ imageBuffer, mimeType }).catch(() => null)
-    if (antiSpoofRes && (antiSpoofRes.status === 'spoof_detected' || (antiSpoofRes.status === 'success' && !antiSpoofRes.is_real))) {
+    if (
+      antiSpoofRes &&
+      antiSpoofRes.status === 'spoof_detected' &&
+      (antiSpoofRes.confidence ?? 0) > 0.85
+    ) {
       console.warn('[multi-attendance/recognize] Spoof attempt detected:', antiSpoofRes.verdict, antiSpoofRes.confidence)
       return NextResponse.json<MultiAttendanceRecognizeResponse>({
         recognized: false,
@@ -114,8 +119,9 @@ export async function POST(req: NextRequest) {
 
     // ── 1. Raray Vision: 1:N Recognition ──────────────────────────────────────
     const rarayResult = await rarayRecognizeFace({ imageBuffer, mimeType })
+    const rawIdOrSn = String(rarayResult.employee_id || rarayResult.face_id || '').trim()
 
-    if (!rarayResult.recognized || !rarayResult.employee_id || (rarayResult.confidence ?? 0) < 0.45) {
+    if (!rarayResult.recognized || !rawIdOrSn || (rarayResult.confidence ?? 0) < 0.45) {
       return NextResponse.json<MultiAttendanceRecognizeResponse>({
         recognized: false,
         confidence: rarayResult.confidence ?? 0,
@@ -124,7 +130,6 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    const rawIdOrSn = String(rarayResult.employee_id || rarayResult.face_id || '').trim()
     const numericId = Number(rawIdOrSn)
 
     // ── 2. Lookup employee in HERO DB (by id, employeeSn, or faceRarayId) ───

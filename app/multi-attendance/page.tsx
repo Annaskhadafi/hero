@@ -509,6 +509,7 @@ export default function MultiAttendancePage() {
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState("");
   const [faceBox, setFaceBox] = useState<FaceBox | null>(null);
+  const faceBoxRef = useRef<FaceBox | null>(null);
 
   // Recognition
   const [lastResult, setLastResult] = useState<RecognitionResult | null>(null);
@@ -733,6 +734,7 @@ export default function MultiAttendancePage() {
         }
 
         if (active) {
+          faceBoxRef.current = detectedBox;
           setFaceBox(detectedBox);
         }
       }
@@ -763,15 +765,55 @@ export default function MultiAttendancePage() {
     [sites, shifts, refreshHistory]
   );
 
-  // ── Frame capture ─────────────────────────────────────────────────────────────
+  // ── Smart Frame capture (Auto-crop to face region + 512x512 High-Res compression) ──
   const captureFrame = useCallback(async (): Promise<Blob | null> => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas || !video.videoWidth || !video.videoHeight) return null;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext("2d")?.drawImage(video, 0, 0);
-    return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
+
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    const box = faceBoxRef.current;
+
+    const targetDim = 512;
+    canvas.width = targetDim;
+    canvas.height = targetDim;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    let sx = 0;
+    let sy = 0;
+    let sDim = Math.min(vw, vh);
+
+    if (box && box.widthPercent > 0 && box.heightPercent > 0) {
+      // Un-mirror the X coordinate because video has CSS scaleX(-1) in UI
+      const unmirroredLeftPct = 100 - (box.leftPercent + box.widthPercent);
+      const faceW = (box.widthPercent / 100) * vw;
+      const faceH = (box.heightPercent / 100) * vh;
+      const faceCenterX = (unmirroredLeftPct / 100) * vw + faceW / 2;
+      const faceCenterY = (box.topPercent / 100) * vh + faceH / 2;
+
+      // Expand margin by 1.65x so head, forehead, chin, and hair are comfortably framed
+      const maxFaceDim = Math.max(faceW, faceH);
+      sDim = Math.min(Math.max(maxFaceDim * 1.65, 320), Math.min(vw, vh));
+
+      sx = faceCenterX - sDim / 2;
+      sy = faceCenterY - sDim / 2;
+
+      // Clamp inside video dimensions
+      if (sx < 0) sx = 0;
+      if (sy < 0) sy = 0;
+      if (sx + sDim > vw) sx = vw - sDim;
+      if (sy + sDim > vh) sy = vh - sDim;
+    } else {
+      // Default: Center-crop square to eliminate widescreen side noise / window glare
+      sDim = Math.min(vw, vh);
+      sx = (vw - sDim) / 2;
+      sy = (vh - sDim) / 2;
+    }
+
+    ctx.drawImage(video, sx, sy, sDim, sDim, 0, 0, targetDim, targetDim);
+    return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.80));
   }, []);
 
   // ── Error toast ───────────────────────────────────────────────────────────────

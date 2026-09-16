@@ -294,7 +294,11 @@ export async function rarayRecognizeFace(params: {
       cache: 'no-store',
     })
     if (res.ok) {
-      return (await res.json()) as RarayRecognizeResult
+      const data = (await res.json()) as RarayRecognizeResult
+      if (data.recognized && !data.employee_id && data.face_id) {
+        data.employee_id = String(data.face_id).replace(/^emp-/, '')
+      }
+      return data
     }
   } catch {
     // Fall through
