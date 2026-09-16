@@ -31,6 +31,24 @@ describe('notification reminder wiring', () => {
     expect(source).toContain("deliveryChannel: 'email'")
   })
 
+  it('defaults attendance SLA reminders off and gates only scheduled SLA jobs', () => {
+    const schema = read('db/schema/hero.ts')
+    const infrastructure = read('lib/notification-infrastructure.ts')
+    const blueprint = read('lib/approval-blueprint.ts')
+    const attendance = read('app/actions/attendance.ts')
+
+    expect(schema).toContain(
+      "slaRemindersEnabled: boolean('sla_reminders_enabled').notNull().default(false)",
+    )
+    expect(infrastructure).toContain('hero_attendance_notification_config')
+    expect(blueprint).toContain('await ensureNotificationInfrastructure()')
+    expect(blueprint).toContain("job.templateKey === 'attendance-permission'")
+    expect(blueprint).toContain("job.reminderType === 'before_due' || job.reminderType === 'overdue'")
+    expect(blueprint).toContain('!attendancePermissionSlaRemindersEnabled')
+    expect(attendance).toContain("templateCode: 'attendance_permission_reminder'")
+    expect(attendance).toContain("eventType: 'attendance_permission_decision'")
+  })
+
   it('hard-deletes expired push subscriptions', () => {
     const source = read('lib/push-notifications.ts')
 

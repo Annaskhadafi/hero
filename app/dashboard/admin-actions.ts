@@ -1698,7 +1698,7 @@ export async function saveAttendanceRealOverridesAction(
     // Auto-create in sites table as fallback
     await db.execute(sql`
       INSERT INTO hero_sites (id, name, location, customer_name, contract_number, is_active, created_at)
-      VALUES (${payload.siteId}, ${'Site ' + payload.siteId}, "" , ${'Site ' + payload.siteId}, "", true, NOW())
+      VALUES (${payload.siteId}, ${'Site ' + payload.siteId}, '', ${'Site ' + payload.siteId}, '', true, NOW())
       ON CONFLICT (id) DO NOTHING
     `)
   }
@@ -1712,7 +1712,12 @@ export async function saveAttendanceRealOverridesAction(
   const validEmployeeIds = new Set(validEmployeeRows.map((e) => e.id))
   const validOverrides = payload.overrides.filter((o) => validEmployeeIds.has(o.employeeId))
 
-  if (!validOverrides.length) return { ok: true, savedCount: 0 }
+  if (!validOverrides.length) {
+    if (payload.overrides.length > 0) {
+      throw new Error('Data karyawan yang akan disimpan tidak ditemukan di database.')
+    }
+    return { ok: true, savedCount: 0 }
+  }
 
   console.log(
     '[SERVER] validOverrides with overtimeHours:',

@@ -1,5 +1,5 @@
 import { cache } from 'react'
-import { and, asc, desc, eq, ilike, inArray, isNotNull, notInArray, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, lte, notInArray, or, sql } from 'drizzle-orm'
 import Fuse from 'fuse.js'
 import { db } from '@/db'
 import {
@@ -6476,14 +6476,40 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
       .select()
       .from(timesheetFieldBreakPlans)
       .catch(() => []),
-    db
-      .select()
-      .from(attendanceRecords)
-      .catch(() => []),
-    db
-      .select()
-      .from(timesheetAttendanceRealOverrides)
-      .catch(() => []),
+    (() => {
+      // Only fetch recent attendance records: 3 months back to 2 months ahead
+      const now = new Date()
+      const fromDate = new Date(now.getFullYear(), now.getMonth() - 3, 1)
+      const toDate = new Date(now.getFullYear(), now.getMonth() + 3, 1)
+      return db
+        .select()
+        .from(attendanceRecords)
+        .where(
+          and(
+            gte(attendanceRecords.eventTime, fromDate),
+            lte(attendanceRecords.eventTime, toDate)
+          )
+        )
+        .catch(() => [])
+    })(),
+    (() => {
+      // Only fetch recent overrides: 4 months back to 2 months ahead (period format: YYYY-MM)
+      const now = new Date()
+      const fromDate2 = new Date(now.getFullYear(), now.getMonth() - 4, 1)
+      const toDate2 = new Date(now.getFullYear(), now.getMonth() + 3, 1)
+      const fromPeriodStr = `${fromDate2.getFullYear()}-${String(fromDate2.getMonth() + 1).padStart(2, '0')}`
+      const toPeriodStr = `${toDate2.getFullYear()}-${String(toDate2.getMonth() + 1).padStart(2, '0')}`
+      return db
+        .select()
+        .from(timesheetAttendanceRealOverrides)
+        .where(
+          and(
+            gte(timesheetAttendanceRealOverrides.period, fromPeriodStr),
+            lte(timesheetAttendanceRealOverrides.period, toPeriodStr)
+          )
+        )
+        .catch(() => [])
+    })(),
     db
       .select()
       .from(timesheetSchedulingConfigs)

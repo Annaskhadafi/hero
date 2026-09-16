@@ -3,9 +3,6 @@ import { redirect } from "next/navigation";
 import {
   ArrowRight,
   BriefcaseBusiness,
-  CalendarDays,
-  CheckCircle2,
-  Clock3,
   FileSignature,
   MapPin,
   ShieldCheck,
@@ -120,19 +117,6 @@ function buildRecentFeed(data: NonNullable<Awaited<ReturnType<typeof getDailyAct
     .slice(0, 4);
 }
 
-function MiniAvatar({ label, active = false }: { label: string; active?: boolean }) {
-  return (
-    <span
-      className={cn(
-        "flex size-6 items-center justify-center rounded-full text-[10px] font-black",
-        active ? "bg-[#f4b183] text-[#5a2200]" : "bg-[#003f78] text-white",
-      )}
-    >
-      {label}
-    </span>
-  );
-}
-
 export default async function MobileDashboardPage() {
   const session = await getServerSession();
 
@@ -200,12 +184,7 @@ export default async function MobileDashboardPage() {
   const primaryAssignment = data.assignments[0];
   const nextAction = getNextAction(data);
   const recentFeed = buildRecentFeed(data);
-  const progressPercent =
-    data.summary.jobsAssigned > 0
-      ? Math.min(100, Math.round((data.summary.jobsCompleted / data.summary.jobsAssigned) * 100))
-      : 0;
   const levelProgress = Math.max(8, Math.min(96, data.employee.totalPoints % 100));
-  const reliability = Math.min(99, 88 + Math.min(data.summary.streakDays, 10));
   const activeSplCard = data.standaloneOvertimeChecklist
     ? {
         splNumber: data.standaloneOvertimeChecklist.splNumber,
@@ -350,41 +329,6 @@ export default async function MobileDashboardPage() {
         siteName={data.site?.name ?? ""} 
         workLocation={data.employee.workLocation ?? ""} 
       />
-
-      <section className="space-y-3">
-        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">Attendance Summary</p>
-        <div className="flex items-center justify-between rounded-[1.25rem] bg-[#e9f6fd] p-4 shadow-[inset_0_0_0_1px_rgba(0,52,97,0.04)]">
-          <div className="flex items-center gap-3">
-            <span className="flex size-11 items-center justify-center rounded-2xl bg-[#d7ecf9] text-[#003f78]">
-              <CalendarDays className="size-5" />
-            </span>
-            <div>
-              <p className="text-xl font-black leading-none text-[#082033]">{reliability}%</p>
-              <p className="mt-1 text-[10px] font-bold text-[#486275]">Monthly Reliability</p>
-            </div>
-          </div>
-          <div className="flex -space-x-2">
-            <MiniAvatar label="M" />
-            <MiniAvatar label="T" />
-            <MiniAvatar label="W" />
-            <MiniAvatar label="T" active />
-            <MiniAvatar label="F" active={progressPercent >= 80} />
-          </div>
-        </div>
-      </section>
-
-      <section className="grid grid-cols-2 gap-3">
-        <div className="rounded-[1.2rem] bg-white p-4 shadow-[0_12px_28px_rgba(8,32,51,0.07)]">
-          <CheckCircle2 className="size-5 text-[#003f78]" />
-          <p className="mt-3 text-2xl font-black text-[#082033]">{data.summary.jobsCompleted}/{data.summary.jobsAssigned}</p>
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Jobs Today</p>
-        </div>
-        <div className="rounded-[1.2rem] bg-white p-4 shadow-[0_12px_28px_rgba(8,32,51,0.07)]">
-          <Clock3 className="size-5 text-[#5a2200]" />
-          <p className="mt-3 text-2xl font-black text-[#082033]">{data.summary.syncAt}</p>
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">Last Sync</p>
-        </div>
-      </section>
 
       {/* MCU Wellness shortcut */}
       {wellnessData?.mcuHistory && wellnessData.mcuHistory.length > 0 && (

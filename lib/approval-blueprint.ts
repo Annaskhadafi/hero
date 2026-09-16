@@ -37,6 +37,7 @@ import {
   workflowStepRules,
   workflowTemplateVersions,
   workflowTemplates,
+  attendanceNotificationConfig,
 } from '@/db/schema/hero'
 import { fiveRMasterAreas } from '@/db/schema/five-r'
 import { parseApprovalNoteEntries } from '@/lib/approval-notes'
@@ -48,6 +49,7 @@ import {
   getAppUrl,
   sendWorkflowEmail,
 } from '@/lib/workflow-email'
+import { ensureNotificationInfrastructure } from '@/lib/notification-infrastructure'
 
 const DAILY_ACTIVITY_TEMPLATE_KEY = 'daily-activity'
 const DAILY_ACTIVITY_WORKFLOW_KEY = 'daily-activity-org'
@@ -2801,6 +2803,15 @@ export function evaluateWorkflowConditionGroups(
 }
 
 export async function runApprovalAutomationTick(referenceDate = new Date()) {
+  await ensureNotificationInfrastructure()
+  const [attendanceNotificationConfigRow] = await db
+    .select({ slaRemindersEnabled: attendanceNotificationConfig.slaRemindersEnabled })
+    .from(attendanceNotificationConfig)
+    .orderBy(desc(attendanceNotificationConfig.updatedAt))
+    .limit(1)
+  const attendancePermissionSlaRemindersEnabled =
+    attendanceNotificationConfigRow?.slaRemindersEnabled ?? false
+
   const executedReminderJobs = await db
     .select({
       id: reminderJobs.id,
@@ -2814,11 +2825,13 @@ export async function runApprovalAutomationTick(referenceDate = new Date()) {
       assigneeName: employees.name,
       assigneeEmail: employees.email,
       requestNumber: formSubmissions.requestNumber,
+      templateKey: formTemplates.templateKey,
       requestStatus: formSubmissions.requestStatus,
     })
     .from(reminderJobs)
     .innerJoin(inboxItems, eq(reminderJobs.inboxItemId, inboxItems.id))
     .innerJoin(formSubmissions, eq(inboxItems.submissionId, formSubmissions.id))
+    .innerJoin(formTemplates, eq(formSubmissions.templateId, formTemplates.id))
     .leftJoin(employees, eq(inboxItems.assigneeEmployeeId, employees.id))
     .where(and(eq(reminderJobs.status, 'scheduled'), lte(reminderJobs.reminderAt, referenceDate)))
 
@@ -2843,6 +2856,15 @@ export async function runApprovalAutomationTick(referenceDate = new Date()) {
             updatedAt: referenceDate,
           })
           .where(eq(reminderJobs.id, job.id))
+        continue
+      }
+
+      if (
+        job.templateKey === 'attendance-permission' &&
+        (job.reminderType === 'before_due' || job.reminderType === 'overdue') &&
+        !attendancePermissionSlaRemindersEnabled
+      ) {
+        // ponytail: leave disabled jobs scheduled so enabling the switch can process them later.
         continue
       }
 

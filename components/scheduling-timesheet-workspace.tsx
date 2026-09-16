@@ -2219,7 +2219,11 @@ export function SchedulingTimesheetWorkspace({
   }, [period])
 
   useEffect(() => {
-    const scoped = attendanceOverrides.filter((override) => override.period === period)
+    const scoped = attendanceOverrides.filter(
+      (override) =>
+        override.period === period &&
+        (siteId === 'all' || String(override.siteId) === siteId)
+    )
     setManualAttendance(
       Object.fromEntries(
         scoped.map((override) => {
@@ -5023,23 +5027,36 @@ export function SchedulingTimesheetWorkspace({
   function saveAttendanceRealWithData(nextManual: Record<string, ManualAttendanceCell>) {
     if (!guardOpenPeriod('Save attendance')) return
     const numericSiteId = Number(siteId)
-    if (!Number.isFinite(numericSiteId) || numericSiteId <= 0 || isFinalized) return
-    const overrides = Object.entries(nextManual || {}).map(([key, cell]) => {
-      const [employeeId, day] = key.split('-').map(Number)
-      return {
-        employeeId,
-        day,
-        status: cell.status,
-        clockIn: cell.clockIn,
-        clockOut: cell.clockOut,
-        note: cell.note,
-        source: cell.source ?? 'manual',
-        overtimeHours:
-          cell.overtimeHours !== undefined && cell.overtimeHours !== null
-            ? cell.overtimeHours
-            : null,
-      }
-    })
+    if (!Number.isFinite(numericSiteId) || numericSiteId <= 0) {
+      toast.error('Pilih site terlebih dahulu untuk menyimpan attendance.')
+      return
+    }
+    if (isFinalized) {
+      toast.error('Periode ini sudah difinalisasi.')
+      return
+    }
+    const visibleEmpIdSet = new Set(visibleEmployees.map((e) => e.id))
+    const overrides = Object.entries(nextManual || {})
+      .filter(([key]) => {
+        const [employeeId] = key.split('-').map(Number)
+        return visibleEmpIdSet.size === 0 || visibleEmpIdSet.has(employeeId)
+      })
+      .map(([key, cell]) => {
+        const [employeeId, day] = key.split('-').map(Number)
+        return {
+          employeeId,
+          day,
+          status: cell.status,
+          clockIn: cell.clockIn,
+          clockOut: cell.clockOut,
+          note: cell.note,
+          source: cell.source ?? 'manual',
+          overtimeHours:
+            cell.overtimeHours !== undefined && cell.overtimeHours !== null
+              ? cell.overtimeHours
+              : null,
+        }
+      })
     console.log(
       '[CLIENT] overrides payload being sent:',
       overrides.filter((o) => o.overtimeHours !== null)
@@ -5056,7 +5073,11 @@ export function SchedulingTimesheetWorkspace({
           setAttendanceSavedAt(new Date().toISOString())
           setIsAttendanceDirty(false)
           router.refresh()
-          toast.success('Attendance saved')
+          toast.success('Attendance saved ke database.')
+        } else {
+          toast.error('Save attendance failed', {
+            description: (result as { error?: string })?.error || 'Gagal menyimpan ke database.',
+          })
         }
       } catch (error) {
         toast.error('Save attendance failed', {
@@ -11688,12 +11709,20 @@ export function SchedulingTimesheetWorkspace({
 
                   // Save ONLY this single cell directly to the server
                   if (!guardOpenPeriod('Save attendance')) return
+                  const empObj = employees.find((e) => e.id === selectedAttendanceCell.employeeId)
                   const numericSiteId = Number(
-                    siteId === 'all'
-                      ? selectedAttendanceEmployee?.siteId || 1
-                      : siteId
+                    siteId !== 'all' && Number(siteId) > 0
+                      ? siteId
+                      : selectedAttendanceEmployee?.siteId || empObj?.siteId || 0
                   )
-                  if (!Number.isFinite(numericSiteId) || numericSiteId <= 0 || isFinalized) return
+                  if (!Number.isFinite(numericSiteId) || numericSiteId <= 0) {
+                    toast.error('Pilih site terlebih dahulu untuk menyimpan attendance.')
+                    return
+                  }
+                  if (isFinalized) {
+                    toast.error('Periode ini sudah difinalisasi.')
+                    return
+                  }
                   startSavingAttendance(async () => {
                     try {
                       const result = await saveAttendanceRealOverridesAction({
@@ -11714,7 +11743,7 @@ export function SchedulingTimesheetWorkspace({
                       })
                       if (result.ok) {
                         router.refresh()
-                        toast.success('Attendance saved')
+                        toast.success('Attendance saved ke database.')
                       } else {
                         toast.error('Save attendance failed', {
                           description: (result as { error?: string })?.error || 'Failed to save attendance',

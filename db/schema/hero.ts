@@ -2823,6 +2823,7 @@ export const attendanceNotificationConfig = pgTable('hero_attendance_notificatio
   headSectionTeEmail: text('head_section_te_email').notNull().default(''),
   headSectionOthersEmail: text('head_section_others_email').notNull().default(''),
   headSectionAccessoriesEmail: text('head_section_accessories_email').notNull().default(''),
+  slaRemindersEnabled: boolean('sla_reminders_enabled').notNull().default(false),
   isActive: boolean('is_active').notNull().default(true),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })

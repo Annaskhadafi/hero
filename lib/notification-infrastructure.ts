@@ -37,6 +37,14 @@ export async function ensureNotificationInfrastructure() {
         `);
 
         await tx.execute(sql`
+          create table if not exists hero_attendance_notification_config (
+            id serial primary key,
+            sla_reminders_enabled boolean not null default false,
+            updated_at timestamp not null default now()
+          );
+        `);
+
+        await tx.execute(sql`
           create table if not exists hero_notification_events (
             id serial primary key,
             submission_id integer references hero_form_submissions(id) on delete cascade,

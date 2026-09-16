@@ -1,13 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { CalendarClock, CheckCircle2, Save, Search, UserCheck, Users } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { useState } from "react";
+import { CalendarClock, CheckCircle2, Search, UserCheck, Users } from "lucide-react";
+import {
+  saveAttendanceNotificationConfigAction,
+  type EmailSettingsActionState,
+} from "@/app/dashboard/settings/email/actions";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { toast } from "sonner";
 import {
   Table,
   TableBody,
@@ -16,23 +21,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { EmployeeMultiSelect, type EmployeeOption } from "@/components/employee-multi-select";
-import {
-  saveAttendanceNotificationConfigAction,
-  type EmailSettingsActionState,
-} from "@/app/dashboard/settings/email/actions";
-import { toast } from "sonner";
-
-export type AttendanceNotificationConfig = {
-  id?: number;
-  ccEmails: string;
-  headSectionMvcEmail: string;
-  headSectionRepairEmail: string;
-  headSectionTeEmail: string;
-  headSectionOthersEmail: string;
-  headSectionAccessoriesEmail: string;
-  isActive: boolean;
-};
 
 type SiteRecipientRow = {
   no: number;
@@ -45,19 +33,19 @@ type SiteRecipientRow = {
 
 const SITE_DATA: SiteRecipientRow[] = [
   // 13 Site Admin CP
-  { no: 1, siteName: "Balikpapan", category: "Admin CP", approverName: "Head Section CS", approverTitle: "Head Section Central Services", approverEmail: "Sesuai seksi: MVC / Repair / TE / Others / Accessories" },
-  { no: 2, siteName: "CK NCN", category: "Admin CP", approverName: "Head Section CS", approverTitle: "Head Section Central Services", approverEmail: "Sesuai seksi: MVC / Repair / TE / Others / Accessories" },
-  { no: 3, siteName: "TU Batu Hijau", category: "Admin CP", approverName: "Head Section CS", approverTitle: "Head Section Central Services", approverEmail: "Sesuai seksi: MVC / Repair / TE / Others / Accessories" },
-  { no: 4, siteName: "TU Gresik", category: "Admin CP", approverName: "Head Section CS", approverTitle: "Head Section Central Services", approverEmail: "Sesuai seksi: MVC / Repair / TE / Others / Accessories" },
-  { no: 5, siteName: "BSI - Banyuwangi", category: "Admin CP", approverName: "Head Section CS", approverTitle: "Head Section Central Services", approverEmail: "Sesuai seksi: MVC / Repair / TE / Others / Accessories" },
-  { no: 6, siteName: "Madhani Talatah - ME", category: "Admin CP", approverName: "Head Section CS", approverTitle: "Head Section Central Services", approverEmail: "Sesuai seksi: MVC / Repair / TE / Others / Accessories" },
-  { no: 7, siteName: "MTN - Berau", category: "Admin CP", approverName: "Head Section CS", approverTitle: "Head Section Central Services", approverEmail: "Sesuai seksi: MVC / Repair / TE / Others / Accessories" },
-  { no: 8, siteName: "MTN - ME", category: "Admin CP", approverName: "Head Section CS", approverTitle: "Head Section Central Services", approverEmail: "Sesuai seksi: MVC / Repair / TE / Others / Accessories" },
-  { no: 9, siteName: "Petrosea SDA", category: "Admin CP", approverName: "Head Section CS", approverTitle: "Head Section Central Services", approverEmail: "Sesuai seksi: MVC / Repair / TE / Others / Accessories" },
-  { no: 10, siteName: "PKA Musi Rawas", category: "Admin CP", approverName: "Head Section CS", approverTitle: "Head Section Central Services", approverEmail: "Sesuai seksi: MVC / Repair / TE / Others / Accessories" },
-  { no: 11, siteName: "PPA TJ-Enim", category: "Admin CP", approverName: "Head Section CS", approverTitle: "Head Section Central Services", approverEmail: "Sesuai seksi: MVC / Repair / TE / Others / Accessories" },
-  { no: 12, siteName: "PT SMJ - Berau", category: "Admin CP", approverName: "Head Section CS", approverTitle: "Head Section Central Services", approverEmail: "Sesuai seksi: MVC / Repair / TE / Others / Accessories" },
-  { no: 13, siteName: "Tj. Redeb - Berau", category: "Admin CP", approverName: "Head Section CS", approverTitle: "Head Section Central Services", approverEmail: "Sesuai seksi: MVC / Repair / TE / Others / Accessories" },
+  { no: 1, siteName: "Balikpapan", category: "Admin CP", approverName: "Head Section CS (Apriyanto / Ary Maulana / M. Abian / Junaidi)", approverTitle: "Head Section Central Services", approverEmail: "Sesuai seksi: apriyanto.lastam / ary.maulana / abian.husain / junaidi.syamsudin@chitraparatama.co.id" },
+  { no: 2, siteName: "CK NCN", category: "Admin CP", approverName: "Head Section CS (Apriyanto / Ary Maulana / M. Abian / Junaidi)", approverTitle: "Head Section Central Services", approverEmail: "Sesuai seksi: apriyanto.lastam / ary.maulana / abian.husain / junaidi.syamsudin@chitraparatama.co.id" },
+  { no: 3, siteName: "TU Batu Hijau", category: "Admin CP", approverName: "Head Section CS (Apriyanto / Ary Maulana / M. Abian / Junaidi)", approverTitle: "Head Section Central Services", approverEmail: "Sesuai seksi: apriyanto.lastam / ary.maulana / abian.husain / junaidi.syamsudin@chitraparatama.co.id" },
+  { no: 4, siteName: "TU Gresik", category: "Admin CP", approverName: "Head Section CS (Apriyanto / Ary Maulana / M. Abian / Junaidi)", approverTitle: "Head Section Central Services", approverEmail: "Sesuai seksi: apriyanto.lastam / ary.maulana / abian.husain / junaidi.syamsudin@chitraparatama.co.id" },
+  { no: 5, siteName: "BSI - Banyuwangi", category: "Admin CP", approverName: "Head Section CS (Apriyanto / Ary Maulana / M. Abian / Junaidi)", approverTitle: "Head Section Central Services", approverEmail: "Sesuai seksi: apriyanto.lastam / ary.maulana / abian.husain / junaidi.syamsudin@chitraparatama.co.id" },
+  { no: 6, siteName: "Madhani Talatah - ME", category: "Admin CP", approverName: "Head Section CS (Apriyanto / Ary Maulana / M. Abian / Junaidi)", approverTitle: "Head Section Central Services", approverEmail: "Sesuai seksi: apriyanto.lastam / ary.maulana / abian.husain / junaidi.syamsudin@chitraparatama.co.id" },
+  { no: 7, siteName: "MTN - Berau", category: "Admin CP", approverName: "Head Section CS (Apriyanto / Ary Maulana / M. Abian / Junaidi)", approverTitle: "Head Section Central Services", approverEmail: "Sesuai seksi: apriyanto.lastam / ary.maulana / abian.husain / junaidi.syamsudin@chitraparatama.co.id" },
+  { no: 8, siteName: "MTN - ME", category: "Admin CP", approverName: "Head Section CS (Apriyanto / Ary Maulana / M. Abian / Junaidi)", approverTitle: "Head Section Central Services", approverEmail: "Sesuai seksi: apriyanto.lastam / ary.maulana / abian.husain / junaidi.syamsudin@chitraparatama.co.id" },
+  { no: 9, siteName: "Petrosea SDA", category: "Admin CP", approverName: "Head Section CS (Apriyanto / Ary Maulana / M. Abian / Junaidi)", approverTitle: "Head Section Central Services", approverEmail: "Sesuai seksi: apriyanto.lastam / ary.maulana / abian.husain / junaidi.syamsudin@chitraparatama.co.id" },
+  { no: 10, siteName: "PKA Musi Rawas", category: "Admin CP", approverName: "Head Section CS (Apriyanto / Ary Maulana / M. Abian / Junaidi)", approverTitle: "Head Section Central Services", approverEmail: "Sesuai seksi: apriyanto.lastam / ary.maulana / abian.husain / junaidi.syamsudin@chitraparatama.co.id" },
+  { no: 11, siteName: "PPA TJ-Enim", category: "Admin CP", approverName: "Head Section CS (Apriyanto / Ary Maulana / M. Abian / Junaidi)", approverTitle: "Head Section Central Services", approverEmail: "Sesuai seksi: apriyanto.lastam / ary.maulana / abian.husain / junaidi.syamsudin@chitraparatama.co.id" },
+  { no: 12, siteName: "PT SMJ - Berau", category: "Admin CP", approverName: "Head Section CS (Apriyanto / Ary Maulana / M. Abian / Junaidi)", approverTitle: "Head Section Central Services", approverEmail: "Sesuai seksi: apriyanto.lastam / ary.maulana / abian.husain / junaidi.syamsudin@chitraparatama.co.id" },
+  { no: 13, siteName: "Tj. Redeb - Berau", category: "Admin CP", approverName: "Head Section CS (Apriyanto / Ary Maulana / M. Abian / Junaidi)", approverTitle: "Head Section Central Services", approverEmail: "Sesuai seksi: apriyanto.lastam / ary.maulana / abian.husain / junaidi.syamsudin@chitraparatama.co.id" },
 
   // 5 Site HSE
   { no: 14, siteName: "CK BIB", category: "HSE", approverName: "Fathurrahman Sufi", approverTitle: "HSE Officer", approverEmail: "77169@chitraparatama.co.id" },
@@ -82,58 +70,49 @@ const SITE_DATA: SiteRecipientRow[] = [
   { no: 31, siteName: "Tj. Adaro", category: "PJO", approverName: "Tommy Indra Aldiny Rambe", approverTitle: "Technical Leader", approverEmail: "tommy.indra@chitraparatama.co.id" },
 ];
 
-const INITIAL_STATE: EmailSettingsActionState = {
-  status: "idle",
-  message: "",
-};
+const HC_CC_TEAM = [
+  { name: "Adila Tri Arizona", email: "adila.arizona@chitraparatama.co.id", role: "HR Recruitment & GA" },
+  { name: "Kesuma Bagaskara", email: "kesuma.bagaskara@chitraparatama.co.id", role: "Staff HR-GA" },
+  { name: "Muhammad Iqbal", email: "muhammad.iqbal@chitraparatama.co.id", role: "HR-GA Supervisor" },
+  { name: "Putri Rezky Fitriana", email: "putri.fitriana@chitraparatama.co.id", role: "HR Development & Comben" },
+];
+
+const CS_SECTION_HEADS = [
+  { section: "Service Operation MVC", name: "Apriyanto", title: "Head of Service MVC", email: "apriyanto.lastam@chitraparatama.co.id" },
+  { section: "Repair / Retread Operation", name: "Ary Maulana", title: "SPV Repair & Retread Operation", email: "ary.maulana@chitraparatama.co.id" },
+  { section: "Technical Operation (TE)", name: "Muhammad Abian Husain", title: "Technical Coordinator", email: "abian.husain@chitraparatama.co.id" },
+  { section: "Service Operation Others", name: "Junaidi", title: "Service Operation Others Coordinator", email: "junaidi.syamsudin@chitraparatama.co.id" },
+  { section: "Product Accessories", name: "Luthfi Mahendra Yudistira", title: "Product Accessories Coordinator", email: "luthfi.yudistira@chitraparatama.co.id" },
+];
 
 export function AttendanceNotificationSettingsPanel({
-  config = {
-    ccEmails: "adila.arizona@chitraparatama.co.id, kesuma.bagaskara@chitraparatama.co.id",
-    headSectionMvcEmail: "apriyanto.lastam@chitraparatama.co.id",
-    headSectionRepairEmail: "ary.maulana@chitraparatama.co.id",
-    headSectionTeEmail: "abian.husain@chitraparatama.co.id",
-    headSectionOthersEmail: "junaidi.syamsudin@chitraparatama.co.id",
-    headSectionAccessoriesEmail: "luthfi.yudistira@chitraparatama.co.id",
-    isActive: true,
-  },
-  employees = [],
+  config,
+  canEdit,
 }: {
-  config?: AttendanceNotificationConfig;
-  employees?: EmployeeOption[];
+  config: { slaRemindersEnabled: boolean };
+  canEdit: boolean;
 }) {
-  const [formData, setFormData] = useState<AttendanceNotificationConfig>(config);
-  const [isSaving, setIsSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
-
-  const ccEmailList = useMemo(() => {
-    return formData.ccEmails
-      ? formData.ccEmails.split(",").map((e) => e.trim()).filter(Boolean)
-      : [];
-  }, [formData.ccEmails]);
+  const [formData, setFormData] = useState(config);
+  const [isSaving, setIsSaving] = useState(false);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setIsSaving(true);
 
-    const fd = new FormData();
-    fd.set("ccEmails", formData.ccEmails);
-    fd.set("headSectionMvcEmail", formData.headSectionMvcEmail);
-    fd.set("headSectionRepairEmail", formData.headSectionRepairEmail);
-    fd.set("headSectionTeEmail", formData.headSectionTeEmail);
-    fd.set("headSectionOthersEmail", formData.headSectionOthersEmail);
-    fd.set("headSectionAccessoriesEmail", formData.headSectionAccessoriesEmail);
-    fd.set("isActive", String(formData.isActive));
-
-    const result = await saveAttendanceNotificationConfigAction(INITIAL_STATE, fd);
+    const form = new FormData();
+    form.set("slaRemindersEnabled", String(formData.slaRemindersEnabled));
+    const result = await saveAttendanceNotificationConfigAction(
+      { status: "idle", message: "" } satisfies EmailSettingsActionState,
+      form,
+    );
 
     if (result.status === "success") {
       toast.success(result.message);
     } else {
       toast.error(result.message);
     }
-
     setIsSaving(false);
   }
 
@@ -149,7 +128,7 @@ export function AttendanceNotificationSettingsPanel({
 
   return (
     <div className="space-y-6">
-      {/* Header Overview Card */}
+      {/* Overview Card */}
       <Card className="rounded-lg p-5 shadow-sm border border-border">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-3">
@@ -158,10 +137,10 @@ export function AttendanceNotificationSettingsPanel({
             </span>
             <div>
               <h2 className="font-display text-lg font-semibold text-foreground">
-                Penerima Notifikasi Izin Absensi (Sakit &amp; Terlambat)
+                Penerima Notifikasi Izin Absensi (Sakit & Terlambat)
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Routing notifikasi email pengajuan izin sakit dan terlambat: <strong>PJO Site</strong> (untuk site dengan PJO) &rarr; <strong>HSE Site</strong> (untuk site tanpa PJO) &rarr; <strong>Head Section Central Services</strong> (untuk 13 site Admin CP).
+                Routing penerima email pengajuan izin sakit dan terlambat: <strong>PJO Site</strong> (untuk site dengan PJO) &rarr; <strong>HSE Site</strong> (untuk site tanpa PJO) &rarr; <strong>Head Section Central Services</strong> (untuk 13 site Admin CP).
               </p>
             </div>
           </div>
@@ -171,179 +150,96 @@ export function AttendanceNotificationSettingsPanel({
         </div>
       </Card>
 
-      {/* Main Edit Form */}
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Human Capital CC Section */}
-        <Card className="rounded-lg p-5 shadow-sm border border-border space-y-4">
-          <div className="flex items-center gap-2 border-b border-border pb-3">
-            <Users className="size-4 text-primary" />
-            <h3 className="font-display text-base font-semibold">
-              Tembusan Email (CC) &mdash; Tim Human Capital
-            </h3>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Semua email pengajuan izin/sakit/terlambat dari seluruh site otomatis ditembuskan (CC) ke personil Human Capital berikut:
-          </p>
-
-          <div className="space-y-2">
-            <Label htmlFor="attendance-hc-cc">Pilih Penerima CC Human Capital</Label>
-            <EmployeeMultiSelect
-              label="tim Human Capital (CC)"
-              selectedEmails={ccEmailList}
-              onChange={(emails: string[]) =>
-                setFormData((current) => ({ ...current, ccEmails: emails.join(", ") }))
-              }
-              employees={employees}
-              placeholder="Pilih karyawan Human Capital yang menerima CC..."
-            />
+      <Card className="rounded-lg border border-border p-5 shadow-sm">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <Label className="text-sm font-semibold">Reminder SLA terjadwal</Label>
             <p className="text-xs text-muted-foreground">
-              Karyawan yang dipilih akan menerima salinan (CC) email izin absensi yang diajukan di seluruh site.
+              Aktifkan reminder <code>before_due</code> dan <code>overdue</code> untuk pengajuan sakit dan terlambat.
+              Notifikasi pengajuan dan keputusan langsung tetap dikirim.
             </p>
           </div>
-        </Card>
-
-        {/* Central Service Section Heads Reference & Config for Admin CP */}
-        <Card className="rounded-lg p-5 shadow-sm border border-border space-y-4">
-          <div className="flex items-center gap-2 border-b border-border pb-3">
-            <UserCheck className="size-4 text-primary" />
-            <h3 className="font-display text-base font-semibold">
-              Approver Head Section Central Services (Untuk 13 Site Admin CP)
-            </h3>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Untuk karyawan yang bertugas di 13 site Admin CP, email approver ditujukan langsung ke Head Section Central Services sesuai seksi pemohon:
-          </p>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <div className="space-y-2 rounded-lg border bg-surface-container-low p-3.5">
-              <Badge variant="secondary" className="text-[0.7rem] mb-1">Service Operation MVC</Badge>
-              <Label className="text-xs font-semibold">Email Head Section MVC</Label>
-              <EmployeeMultiSelect
-                label="Head Section MVC"
-                selectedEmails={
-                  formData.headSectionMvcEmail
-                    ? formData.headSectionMvcEmail.split(",").map((e) => e.trim()).filter(Boolean)
-                    : []
-                }
-                onChange={(emails: string[]) =>
-                  setFormData((current) => ({ ...current, headSectionMvcEmail: emails.join(", ") }))
-                }
-                employees={employees}
-                placeholder="Pilih Head Section MVC..."
-              />
-            </div>
-
-            <div className="space-y-2 rounded-lg border bg-surface-container-low p-3.5">
-              <Badge variant="secondary" className="text-[0.7rem] mb-1">Repair / Retread Operation</Badge>
-              <Label className="text-xs font-semibold">Email SPV Repair &amp; Retread</Label>
-              <EmployeeMultiSelect
-                label="SPV Repair & Retread"
-                selectedEmails={
-                  formData.headSectionRepairEmail
-                    ? formData.headSectionRepairEmail.split(",").map((e) => e.trim()).filter(Boolean)
-                    : []
-                }
-                onChange={(emails: string[]) =>
-                  setFormData((current) => ({ ...current, headSectionRepairEmail: emails.join(", ") }))
-                }
-                employees={employees}
-                placeholder="Pilih SPV Repair & Retread..."
-              />
-            </div>
-
-            <div className="space-y-2 rounded-lg border bg-surface-container-low p-3.5">
-              <Badge variant="secondary" className="text-[0.7rem] mb-1">Technical Operation (TE)</Badge>
-              <Label className="text-xs font-semibold">Email Technical Coordinator</Label>
-              <EmployeeMultiSelect
-                label="Technical Coordinator"
-                selectedEmails={
-                  formData.headSectionTeEmail
-                    ? formData.headSectionTeEmail.split(",").map((e) => e.trim()).filter(Boolean)
-                    : []
-                }
-                onChange={(emails: string[]) =>
-                  setFormData((current) => ({ ...current, headSectionTeEmail: emails.join(", ") }))
-                }
-                employees={employees}
-                placeholder="Pilih Technical Coordinator..."
-              />
-            </div>
-
-            <div className="space-y-2 rounded-lg border bg-surface-container-low p-3.5">
-              <Badge variant="secondary" className="text-[0.7rem] mb-1">Service Operation Others</Badge>
-              <Label className="text-xs font-semibold">Email Service Others Coordinator</Label>
-              <EmployeeMultiSelect
-                label="Service Others Coordinator"
-                selectedEmails={
-                  formData.headSectionOthersEmail
-                    ? formData.headSectionOthersEmail.split(",").map((e) => e.trim()).filter(Boolean)
-                    : []
-                }
-                onChange={(emails: string[]) =>
-                  setFormData((current) => ({ ...current, headSectionOthersEmail: emails.join(", ") }))
-                }
-                employees={employees}
-                placeholder="Pilih Service Others Coordinator..."
-              />
-            </div>
-
-            <div className="space-y-2 rounded-lg border bg-surface-container-low p-3.5">
-              <Badge variant="secondary" className="text-[0.7rem] mb-1">Product Accessories</Badge>
-              <Label className="text-xs font-semibold">Email Accessories Coordinator</Label>
-              <EmployeeMultiSelect
-                label="Accessories Coordinator"
-                selectedEmails={
-                  formData.headSectionAccessoriesEmail
-                    ? formData.headSectionAccessoriesEmail.split(",").map((e) => e.trim()).filter(Boolean)
-                    : []
-                }
-                onChange={(emails: string[]) =>
-                  setFormData((current) => ({ ...current, headSectionAccessoriesEmail: emails.join(", ") }))
-                }
-                employees={employees}
-                placeholder="Pilih Accessories Coordinator..."
-              />
-            </div>
-          </div>
-        </Card>
-
-        {/* Status Toggle & Submit Button */}
-        <Card className="rounded-lg p-5 shadow-sm border border-border space-y-4">
-          <div className="rounded-lg border bg-surface-container-low p-3">
-            <label className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold">Aktifkan notifikasi email Izin Absensi</p>
-                <p className="text-xs text-muted-foreground">
-                  Jika dinonaktifkan, pengajuan izin sakit/terlambat tetap tersimpan tetapi notifikasi email otomatis tidak dikirim.
-                </p>
-              </div>
-              <Switch
-                checked={formData.isActive}
-                onCheckedChange={(checked) =>
-                  setFormData((current) => ({ ...current, isActive: checked }))
-                }
-              />
-            </label>
-          </div>
-
-          <div className="flex justify-end">
-            <Button type="submit" disabled={isSaving} className="gap-2">
-              <Save className="size-4" />
-              {isSaving ? "Menyimpan..." : "Simpan Pengaturan Izin Absensi"}
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-medium text-muted-foreground">
+              {formData.slaRemindersEnabled ? "Aktif" : "Nonaktif (default)"}
+            </span>
+            <Switch
+              checked={formData.slaRemindersEnabled}
+              disabled={!canEdit || isSaving}
+              onCheckedChange={(checked) =>
+                setFormData((current) => ({ ...current, slaRemindersEnabled: checked }))
+              }
+              aria-label="Aktifkan reminder SLA izin absensi"
+            />
+            <Button type="submit" size="sm" disabled={!canEdit || isSaving}>
+              {isSaving ? "Menyimpan..." : "Simpan"}
             </Button>
           </div>
-        </Card>
-      </form>
+        </form>
+      </Card>
 
-      {/* 31 Sites Reference Table */}
+      {/* Human Capital CC Section */}
+      <Card className="rounded-lg p-5 shadow-sm border border-border space-y-4">
+        <div className="flex items-center gap-2 border-b border-border pb-3">
+          <Users className="size-4 text-primary" />
+          <h3 className="font-display text-base font-semibold">
+            Tembusan Email (CC) &mdash; Tim Human Capital
+          </h3>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Semua email pengajuan izin/sakit/terlambat dari seluruh 31 site otomatis ditembuskan (CC) ke 4 personil Human Capital berikut:
+        </p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {HC_CC_TEAM.map((member) => (
+            <div
+              key={member.email}
+              className="flex flex-col justify-between rounded-lg border border-border/80 bg-muted/40 p-3"
+            >
+              <div>
+                <p className="font-semibold text-sm text-foreground">{member.name}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{member.role}</p>
+              </div>
+              <p className="font-mono text-[0.75rem] text-primary mt-2 break-all">{member.email}</p>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* Central Service Section Heads Reference for Admin CP */}
+      <Card className="rounded-lg p-5 shadow-sm border border-border space-y-4">
+        <div className="flex items-center gap-2 border-b border-border pb-3">
+          <UserCheck className="size-4 text-primary" />
+          <h3 className="font-display text-base font-semibold">
+            Approver Head Section Central Services (Untuk 13 Site Admin CP)
+          </h3>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Untuk karyawan yang bertugas di 13 site Admin CP, email approver ditujukan langsung ke Head Section Department Central Services sesuai seksi pemohon:
+        </p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {CS_SECTION_HEADS.map((head) => (
+            <div
+              key={head.email}
+              className="rounded-lg border border-border/80 bg-muted/30 p-3"
+            >
+              <Badge variant="secondary" className="text-[0.7rem] mb-1.5">{head.section}</Badge>
+              <p className="font-semibold text-sm text-foreground">{head.name}</p>
+              <p className="text-xs text-muted-foreground">{head.title}</p>
+              <p className="font-mono text-[0.75rem] text-primary mt-1.5 break-all">{head.email}</p>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* 31 Sites Table */}
       <Card className="rounded-lg p-5 shadow-sm border border-border space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="font-display text-base font-semibold">
-              Daftar Pemetaan Routing Approver per Site (31 Site)
+              Daftar Penerima Utama per Site (31 Site)
             </h3>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Menampilkan default routing approver utama (`to`) untuk setiap site.
+              Menampilkan mapping approver utama (`to`) untuk setiap site.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">

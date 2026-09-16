@@ -123,6 +123,13 @@ const hseSafetyNotificationSchema = z.object({
   isActive: z.preprocess((value) => value === "true" || value === true, z.boolean()),
 });
 
+const attendanceNotificationSchema = z.object({
+  slaRemindersEnabled: z.preprocess(
+    (value) => value === "true" || value === true || value === "on",
+    z.boolean(),
+  ),
+});
+
 const humanCapitalNotificationSchema = z.object({
   recipientEmails: z.string().trim().default(""),
   ccEmails: z.string().trim().default(""),
@@ -132,25 +139,6 @@ const humanCapitalNotificationSchema = z.object({
 const apdNotificationSchema = z.object({
   recipientEmails: z.string().trim().default(""),
   ccEmails: z.string().trim().default(""),
-  serviceCcEmail: z.string().trim().default(""),
-  repairCcEmail: z.string().trim().default(""),
-  teCcEmail: z.string().trim().default(""),
-  isActive: z.preprocess((value) => value === "true" || value === true, z.boolean()),
-});
-
-const materialToolsNotificationSchema = z.object({
-  recipientEmails: z.string().trim().default(""),
-  ccEmails: z.string().trim().default(""),
-  isActive: z.preprocess((value) => value === "true" || value === true, z.boolean()),
-});
-
-const attendanceNotificationSchema = z.object({
-  ccEmails: z.string().trim().default(""),
-  headSectionMvcEmail: z.string().trim().default(""),
-  headSectionRepairEmail: z.string().trim().default(""),
-  headSectionTeEmail: z.string().trim().default(""),
-  headSectionOthersEmail: z.string().trim().default(""),
-  headSectionAccessoriesEmail: z.string().trim().default(""),
   isActive: z.preprocess((value) => value === "true" || value === true, z.boolean()),
 });
 
@@ -467,6 +455,63 @@ export async function savePwaPushSettingsAction(
     return {
       status: "error",
       message,
+    };
+  }
+}
+
+export async function saveAttendanceNotificationConfigAction(
+  _state: EmailSettingsActionState = INITIAL_STATE,
+  formData: FormData,
+): Promise<EmailSettingsActionState> {
+  const { getCurrentMenuPermission } = await import("@/lib/hero-access");
+  const access = await getCurrentMenuPermission("settings_email");
+  if (!access.canEdit) {
+    return {
+      status: "error",
+      message: "Akses ditolak: Anda tidak memiliki izin mengubah konfigurasi notifikasi.",
+    };
+  }
+
+  await ensureHeroGovernanceSeedData();
+
+  const parsed = attendanceNotificationSchema.safeParse(Object.fromEntries(formData.entries()));
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: parsed.error.issues[0]?.message ?? "Konfigurasi reminder SLA belum valid.",
+    };
+  }
+
+  try {
+    const [existing] = await db
+      .select({ id: attendanceNotificationConfig.id })
+      .from(attendanceNotificationConfig)
+      .limit(1);
+
+    const values = {
+      slaRemindersEnabled: parsed.data.slaRemindersEnabled,
+      updatedAt: new Date(),
+    };
+
+    if (existing) {
+      await db
+        .update(attendanceNotificationConfig)
+        .set(values)
+        .where(eq(attendanceNotificationConfig.id, existing.id));
+    } else {
+      await db.insert(attendanceNotificationConfig).values(values);
+    }
+
+    revalidatePath("/dashboard/settings/email");
+
+    return {
+      status: "success",
+      message: "Pengaturan reminder SLA izin absensi berhasil disimpan.",
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Gagal menyimpan reminder SLA izin absensi.",
     };
   }
 }
@@ -909,9 +954,6 @@ export async function saveApdNotificationConfigAction(
     const values = {
       recipientEmails: parsed.data.recipientEmails,
       ccEmails: parsed.data.ccEmails,
-      serviceCcEmail: parsed.data.serviceCcEmail,
-      repairCcEmail: parsed.data.repairCcEmail,
-      teCcEmail: parsed.data.teCcEmail,
       isActive: parsed.data.isActive,
       updatedAt: new Date(),
     };
@@ -925,15 +967,11 @@ export async function saveApdNotificationConfigAction(
       await db.insert(apdNotificationConfig).values(values);
     }
 
-    try {
-      revalidatePath("/dashboard/settings/email");
-    } catch {
-      // Revalidation in non-request contexts
-    }
+    revalidatePath("/dashboard/settings/email");
 
     return {
       status: "success",
-      message: "Pengaturan APD berhasil disimpan.",
+      message: "Penerima APD berhasil disimpan.",
     };
   } catch (error) {
     return {
@@ -949,54 +987,21 @@ export async function saveMaterialToolsNotificationConfigAction(
   formData: FormData,
 ): Promise<EmailSettingsActionState> {
   await ensureHeroGovernanceSeedData();
-
-  const parsed = materialToolsNotificationSchema.safeParse(Object.fromEntries(formData.entries()));
-
-  if (!parsed.success) {
-    return {
-      status: "error",
-      message: parsed.error.issues[0]?.message ?? "Konfigurasi penerima Material & Tools belum valid.",
-    };
-  }
-
+  const parsed = z.object({
+    recipientEmails: z.string().trim().default(''),
+    ccEmails: z.string().trim().default(''),
+    isActive: z.preprocess((value) => value === 'true' || value === true, z.boolean()),
+  }).safeParse(Object.fromEntries(formData.entries()));
+  if (!parsed.success) return { status: 'error', message: 'Konfigurasi penerima Material & Tools belum valid.' };
   try {
-    const [existing] = await db
-      .select({ id: materialToolsNotificationConfig.id })
-      .from(materialToolsNotificationConfig)
-      .limit(1);
-
-    const values = {
-      recipientEmails: parsed.data.recipientEmails,
-      ccEmails: parsed.data.ccEmails,
-      isActive: parsed.data.isActive,
-      updatedAt: new Date(),
-    };
-
-    if (existing) {
-      await db
-        .update(materialToolsNotificationConfig)
-        .set(values)
-        .where(eq(materialToolsNotificationConfig.id, existing.id));
-    } else {
-      await db.insert(materialToolsNotificationConfig).values(values);
-    }
-
-    try {
-      revalidatePath("/dashboard/settings/email");
-    } catch {
-      // Revalidation in non-request contexts
-    }
-
-    return {
-      status: "success",
-      message: "Pengaturan Material & Tools berhasil disimpan.",
-    };
+    const [existing] = await db.select({ id: materialToolsNotificationConfig.id }).from(materialToolsNotificationConfig).limit(1);
+    const values = { ...parsed.data, updatedAt: new Date() };
+    if (existing) await db.update(materialToolsNotificationConfig).set(values).where(eq(materialToolsNotificationConfig.id, existing.id));
+    else await db.insert(materialToolsNotificationConfig).values(values);
+    revalidatePath('/dashboard/settings/email');
+    return { status: 'success', message: 'Pengaturan Material & Tools berhasil disimpan.' };
   } catch (error) {
-    return {
-      status: "error",
-      message:
-        error instanceof Error ? error.message : "Gagal menyimpan pengaturan Material & Tools.",
-    };
+    return { status: 'error', message: error instanceof Error ? error.message : 'Gagal menyimpan pengaturan Material & Tools.' };
   }
 }
 
@@ -1109,65 +1114,6 @@ export async function saveHumanCapitalNotificationConfigAction(
     return {
       status: "error",
       message: error instanceof Error ? error.message : "Gagal menyimpan penerima Human Capital.",
-    };
-  }
-}
-
-export async function saveAttendanceNotificationConfigAction(
-  _state: EmailSettingsActionState = INITIAL_STATE,
-  formData: FormData,
-): Promise<EmailSettingsActionState> {
-  await ensureHeroGovernanceSeedData();
-
-  const parsed = attendanceNotificationSchema.safeParse(Object.fromEntries(formData.entries()));
-
-  if (!parsed.success) {
-    return {
-      status: "error",
-      message: parsed.error.issues[0]?.message ?? "Konfigurasi penerima Izin Absensi belum valid.",
-    };
-  }
-
-  try {
-    const [existing] = await db
-      .select({ id: attendanceNotificationConfig.id })
-      .from(attendanceNotificationConfig)
-      .limit(1);
-
-    const values = {
-      ccEmails: parsed.data.ccEmails,
-      headSectionMvcEmail: parsed.data.headSectionMvcEmail,
-      headSectionRepairEmail: parsed.data.headSectionRepairEmail,
-      headSectionTeEmail: parsed.data.headSectionTeEmail,
-      headSectionOthersEmail: parsed.data.headSectionOthersEmail,
-      headSectionAccessoriesEmail: parsed.data.headSectionAccessoriesEmail,
-      isActive: parsed.data.isActive,
-      updatedAt: new Date(),
-    };
-
-    if (existing) {
-      await db
-        .update(attendanceNotificationConfig)
-        .set(values)
-        .where(eq(attendanceNotificationConfig.id, existing.id));
-    } else {
-      await db.insert(attendanceNotificationConfig).values(values);
-    }
-
-    try {
-      revalidatePath("/dashboard/settings/email");
-    } catch {
-      // Revalidation in non-request contexts
-    }
-
-    return {
-      status: "success",
-      message: "Pengaturan Notifikasi Izin Absensi berhasil disimpan.",
-    };
-  } catch (error) {
-    return {
-      status: "error",
-      message: error instanceof Error ? error.message : "Gagal menyimpan pengaturan Izin Absensi.",
     };
   }
 }
