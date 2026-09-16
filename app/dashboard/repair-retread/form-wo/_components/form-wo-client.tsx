@@ -1279,7 +1279,7 @@ function CreateOrEditWoDialog({
         <div className="flex flex-col gap-5 py-2">
           {/* Header Controls: WO Type Selector & Document Dates */}
           <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               {/* Jenis Form WO Selector */}
               <div className="flex flex-col gap-1.5 sm:col-span-1">
                 <Label className="text-xs font-semibold text-slate-500 uppercase">
@@ -1332,6 +1332,16 @@ function CreateOrEditWoDialog({
                   type="date"
                   value={tanggal}
                   onChange={(e) => setTanggal(e.target.value)}
+                  className="h-9 bg-white text-xs font-medium"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5 sm:col-span-1">
+                <Label className="text-xs font-semibold text-slate-500 uppercase">PO Date</Label>
+                <Input
+                  type="date"
+                  value={tanggalPo}
+                  onChange={(e) => setTanggalPo(e.target.value)}
                   className="h-9 bg-white text-xs font-medium"
                 />
               </div>
@@ -1961,7 +1971,7 @@ function ViewDetailDialog({
           </div>
 
           {/* Document Sub-Header: Hari & Tanggal */}
-          <div className="grid grid-cols-2 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs sm:grid-cols-5">
             <div>
               <span className="block font-medium text-slate-500">Hari</span>
               <strong className="text-sm text-slate-900">{item.hari || getTodayHari()}</strong>
@@ -1971,6 +1981,10 @@ function ViewDetailDialog({
               <strong className="text-sm text-slate-900">
                 {item.tanggal || formatDate(item.tanggalPengajuan)}
               </strong>
+            </div>
+            <div>
+              <span className="block font-medium text-slate-500">PO Date</span>
+              <strong className="text-sm text-slate-900">{formatDate(item.tanggalPo)}</strong>
             </div>
             <div>
               <span className="block font-medium text-slate-500">Jenis Form</span>

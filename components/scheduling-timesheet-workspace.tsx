@@ -1610,6 +1610,9 @@ export function SchedulingTimesheetWorkspace({
     'attendance' | 'msa' | 'lokasi' | 'meals' | 'ovt'
   >('attendance')
   const [attendanceSearch, setAttendanceSearch] = useState('')
+  const [attendanceGridExportMode, setAttendanceGridExportMode] = useState<
+    'attendance' | 'checkin-checkout' | 'work-hours'
+  >('attendance')
   const [attendanceStatusFilter, setAttendanceStatusFilter] = useState<
     'all' | 'present' | 'sick' | 'leave' | 'absent' | 'off' | 'gb'
   >('all')
@@ -1680,7 +1683,7 @@ export function SchedulingTimesheetWorkspace({
     note: string
   } | null>(null)
   const [rosterEditCode, setRosterEditCode] = useState<ScheduleCode>('IN')
-  
+
 
   useEffect(() => {
     if (selectedAttendanceCell) {
@@ -1723,7 +1726,7 @@ export function SchedulingTimesheetWorkspace({
   const [clearExcelImportDialogOpen, setClearExcelImportDialogOpen] = useState(false)
   const [attendanceWorkspaceOpen, setAttendanceWorkspaceOpen] = useState(false)
   const [payrollWorkspaceOpen, setPayrollWorkspaceOpen] = useState(false)
-  const [payrollDetailTab, setPayrollDetailTab] = useState<'allowance' | 'overtime'>('allowance')
+  const [payrollDetailTab, setPayrollDetailTab] = useState<'allowance' | 'overtime' | 'time'>('allowance')
   const [openPayrollHistorySiteId, setOpenPayrollHistorySiteId] = useState<number | null>(null)
   const [attendanceCreateOpen, setAttendanceCreateOpen] = useState(false)
   const [attendanceCreateSiteId, setAttendanceCreateSiteId] = useState('')
@@ -4374,6 +4377,34 @@ export function SchedulingTimesheetWorkspace({
     printable.document.close()
   }
 
+  function exportAttendanceGrid() {
+    const modeLabel = {
+      attendance: 'Attendance',
+      'checkin-checkout': 'Check In Check Out',
+      'work-hours': 'Attendance Jam Kerja',
+    }[attendanceGridExportMode]
+    const columns = ['Nama', ...days.map((day) => `${day} ${weekdayLabel(period, day)}`)]
+    const rows = displayedAttendanceRows.map((row) => [
+      row.employee.name,
+      ...days.map((day) => {
+        const cell = getAttendanceCell(row.employee.id, day)
+        if (attendanceGridExportMode === 'attendance') return attendanceStatusLabel(cell.status)
+        if (attendanceGridExportMode === 'checkin-checkout') {
+          return cell.clockIn || cell.clockOut
+            ? `${cell.clockIn || '-'} / ${cell.clockOut || '-'}`
+            : '-'
+        }
+        const clockIn = minutesFromTime(cell.clockIn)
+        const clockOut = minutesFromTime(cell.clockOut)
+        if (clockIn == null || clockOut == null) return 0
+        return Number(
+          ((clockOut >= clockIn ? clockOut - clockIn : clockOut + 1440 - clockIn) / 60).toFixed(2)
+        )
+      }),
+    ])
+    exportRowsToFile({ columns, rows, fileName: `${modeLabel} Grid` })
+  }
+
   function TabExportActions({
     tabTitle,
     tableRows = rows,
@@ -6761,6 +6792,55 @@ export function SchedulingTimesheetWorkspace({
       sectionOptions.indexOf(left.rosterSection) - sectionOptions.indexOf(right.rosterSection) ||
       left.employee.name.localeCompare(right.employee.name)
   )
+
+  const payrollTimeRows =
+    mode === 'payroll'
+      ? payrollRows.flatMap((row) =>
+          days.map((day) => {
+            const cell = getAttendanceCell(row.employee.id, day)
+            const scheduleCode = row.schedule[day - 1] as string
+            const holiday = holidaysByDay.get(day)
+            const clockIn = minutesFromTime(cell.clockIn)
+            const clockOut = minutesFromTime(cell.clockOut)
+            const actualHours =
+              clockIn == null || clockOut == null
+                ? 0
+                : (clockOut >= clockIn ? clockOut - clockIn : clockOut + 1440 - clockIn) / 60
+            const allowance = getAllowanceAmounts(row, day)
+            const overtime =
+              cell.status === 'present'
+                ? calculateDayOvertime(
+                    row.schedule,
+                    day,
+                    cell.clockIn,
+                    cell.clockOut,
+                    isStaffRole(row.employee.role),
+                    row.employee.id
+                  ).totalHours
+                : 0
+
+            return {
+              employee: row.employee.name,
+              date: `${period}-${String(day).padStart(2, '0')}`,
+              schedule: scheduleCode || '-',
+              dayType: holiday
+                ? `Libur: ${holiday.localName || holiday.name}`
+                : scheduleCode === 'OFF' || scheduleCode === 'FB' || scheduleCode === 'Libur'
+                  ? 'Hari Off'
+                  : 'Hari Kerja',
+              attendance: attendanceStatusLabel(cell.status),
+              scheduledHours: hoursFromCode(scheduleCode as ScheduleCode),
+              actualHours: Number(actualHours.toFixed(2)),
+              clockIn: cell.clockIn || '-',
+              clockOut: cell.clockOut || '-',
+              overtime: roundOvertimeHours(overtime),
+              msa: allowance.msaAmount,
+              meals: allowance.mealsAmount,
+              specialAllowance: allowance.specialAllowanceAmount,
+            }
+          })
+        )
+      : []
 
   function buildPayrollSnapshot() {
     let totalMsa = 0
@@ -9456,6 +9536,37 @@ export function SchedulingTimesheetWorkspace({
                           ? `(${selectedOvertimeEmployeeIds.length})`
                           : ''}
                       </Button>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-muted-foreground hidden text-[11px] font-semibold sm:inline">
+                          Export Grid:
+                        </span>
+                        <NativeSelect
+                          value={attendanceGridExportMode}
+                          onValueChange={(value) =>
+                            setAttendanceGridExportMode(
+                              value as 'attendance' | 'checkin-checkout' | 'work-hours'
+                            )
+                          }
+                          options={[
+                            { value: 'attendance', label: 'Attendance' },
+                            { value: 'checkin-checkout', label: 'Check In / Check Out' },
+                            { value: 'work-hours', label: 'Attendance Jam Kerja' },
+                          ]}
+                          className="h-8.5 min-w-[170px] bg-white text-xs"
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={exportAttendanceGrid}
+                          disabled={displayedAttendanceRows.length === 0}
+                          className="h-8.5 bg-white text-xs"
+                          aria-label="Export Excel Grid Attendance"
+                          title="Export Excel Grid Attendance"
+                        >
+                          <FileSpreadsheet className="mr-1.5 size-3.5" />
+                          Export Grid
+                        </Button>
+                      </div>
                       <TabExportActions
                         tabTitle="Attendance"
                         columns={[
@@ -11482,6 +11593,14 @@ export function SchedulingTimesheetWorkspace({
           >
             Overtime
           </Button>
+          <Button
+            size="sm"
+            variant={payrollDetailTab === 'time' ? 'secondary' : 'ghost'}
+            onClick={() => setPayrollDetailTab('time')}
+            aria-pressed={payrollDetailTab === 'time'}
+          >
+            Detail Time
+          </Button>
           <div className="ml-auto flex items-center gap-1">
             {payrollDetailTab === 'allowance' ? (
               <TabExportActions
@@ -11515,7 +11634,7 @@ export function SchedulingTimesheetWorkspace({
                   money(row.msa + row.meals + row.specialAllowance),
                 ])}
               />
-            ) : (
+            ) : payrollDetailTab === 'overtime' ? (
               <TabExportActions
                 tabTitle="Overtime"
                 iconOnly
@@ -11537,6 +11656,42 @@ export function SchedulingTimesheetWorkspace({
                   row.attendanceBaseHours,
                   row.attendanceOvertime,
                   roster,
+                ])}
+              />
+            ) : (
+              <TabExportActions
+                tabTitle="Detail Time"
+                iconOnly
+                excelInsteadOfCsv
+                columns={[
+                  'Employee',
+                  'Tanggal',
+                  'Roster',
+                  'Tipe Hari',
+                  'Attendance',
+                  'Jam Schedule',
+                  'Jam Aktual',
+                  'Clock In',
+                  'Clock Out',
+                  'Overtime',
+                  'MSA',
+                  'Meals',
+                  'Tunjangan Khusus',
+                ]}
+                exportRows={payrollTimeRows.map((row) => [
+                  row.employee,
+                  row.date,
+                  row.schedule,
+                  row.dayType,
+                  row.attendance,
+                  row.scheduledHours,
+                  row.actualHours,
+                  row.clockIn,
+                  row.clockOut,
+                  row.overtime,
+                  money(row.msa),
+                  money(row.meals),
+                  money(row.specialAllowance),
                 ])}
               />
             )}
@@ -11609,6 +11764,43 @@ export function SchedulingTimesheetWorkspace({
               row.attendanceBaseHours,
               row.attendanceOvertime,
               roster,
+            ])}
+          />
+        </section>
+      ) : null}
+
+      {mode === 'payroll' && payrollWorkspaceOpen && payrollDetailTab === 'time' ? (
+        <section className="space-y-3">
+          <SummaryTable
+            columns={[
+              'Employee',
+              'Tanggal',
+              'Roster',
+              'Tipe Hari',
+              'Attendance',
+              'Jam Schedule',
+              'Jam Aktual',
+              'Clock In',
+              'Clock Out',
+              'Overtime',
+              'MSA',
+              'Meals',
+              'Tunjangan Khusus',
+            ]}
+            rows={payrollTimeRows.map((row) => [
+              row.employee,
+              row.date,
+              row.schedule,
+              row.dayType,
+              row.attendance,
+              row.scheduledHours,
+              row.actualHours,
+              row.clockIn,
+              row.clockOut,
+              row.overtime,
+              money(row.msa),
+              money(row.meals),
+              money(row.specialAllowance),
             ])}
           />
         </section>

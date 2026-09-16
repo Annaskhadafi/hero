@@ -403,7 +403,7 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
 
   curY -= boxH + 10
 
-  // Customer, Site, & No. PO Box (with vertical divider lines)
+  // Customer, Site, No. PO, & PO Date Box (with vertical divider lines)
   const metaBoxH = 26
   page.drawRectangle({
     x: boxX,
@@ -425,9 +425,10 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
     } catch {}
   }
 
-  const custColW = boxW * 0.4
-  const siteColW = boxW * 0.3
-  const poColW = boxW * 0.3
+  const custColW = boxW * 0.3
+  const siteColW = boxW * 0.25
+  const poColW = boxW * 0.25
+  const poDateColW = boxW * 0.2
 
   // Col 1: Customer
   const custLabel = 'Customer: '
@@ -500,11 +501,41 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
 
   const headerNoPo = data.noPo || (itemsList[0]?.noPo ?? '-')
   const headerTglPo = data.tanggalPo || (itemsList[0]?.tanggalPo ?? '')
-  const poDisplay =
-    headerNoPo !== '-' && headerTglPo ? `${headerNoPo} (${headerTglPo})` : headerNoPo
-  const fittedPo = fitText(poDisplay, poColW - poLabelW - 16, fontRegular, 8)
+  const fittedPo = fitText(headerNoPo, poColW - poLabelW - 16, fontRegular, 8)
   page.drawText(fittedPo, {
     x: boxX + custColW + siteColW + 10 + poLabelW,
+    y: curY - 17,
+    size: 8,
+    font: fontRegular,
+    color: rgb(0.1, 0.15, 0.25),
+  })
+
+  // Vertical dividing line between No PO and PO Date
+  page.drawLine({
+    start: { x: boxX + custColW + siteColW + poColW, y: curY },
+    end: { x: boxX + custColW + siteColW + poColW, y: curY - metaBoxH },
+    thickness: 1,
+    color: rgb(0.85, 0.88, 0.92),
+  })
+
+  // Col 4: PO Date
+  const poDateLabel = 'PO Date: '
+  const poDateLabelW = fontBold.widthOfTextAtSize(poDateLabel, 8)
+  page.drawText(poDateLabel, {
+    x: boxX + custColW + siteColW + poColW + 10,
+    y: curY - 17,
+    size: 8,
+    font: fontBold,
+    color: rgb(0.25, 0.3, 0.38),
+  })
+  const fittedPoDate = fitText(
+    headerTglPo ? formatIndoDate(headerTglPo) : '-',
+    poDateColW - poDateLabelW - 16,
+    fontRegular,
+    8
+  )
+  page.drawText(fittedPoDate, {
+    x: boxX + custColW + siteColW + poColW + 10 + poDateLabelW,
     y: curY - 17,
     size: 8,
     font: fontRegular,
