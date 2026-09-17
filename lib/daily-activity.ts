@@ -2155,10 +2155,33 @@ export type RouteFolder = {
   routeName: string
   groups: Array<{
     id: number
+    groupKey?: string
     groupName: string
+    description?: string | null
+    sortOrder?: number
+    isRequired?: boolean
     items: Array<{
       id: number
+      routeGroupId?: number
       libraryActivityId: number | null
+      itemCode?: string | null
+      itemLabel: string
+      itemDescription?: string | null
+      pointOverride?: number | null
+      sortOrder?: number
+      requiresUnit?: boolean
+      requiresTime?: boolean
+      requiresRemark?: boolean | null
+      requiresPhoto?: boolean
+      requiresLocationGps?: boolean
+      requiresMaterialUsed?: boolean
+      requiresTireCount?: boolean
+      requiresChecklistEvidence?: boolean | null
+      isOptional?: boolean | null
+      allowCustomUnit?: boolean | null
+      libraryCode?: string | null
+      libraryName?: string | null
+      libraryPoints?: number | null
     }>
   }>
 }
@@ -2239,8 +2262,22 @@ async function getAvailableRouteFoldersForEmployee(
         itemDescription: activityRouteItems.itemDescription,
         pointOverride: activityRouteItems.pointOverride,
         sortOrder: activityRouteItems.sortOrder,
+        requiresUnit: sql<boolean>`coalesce(${activityRouteItems.requiresUnit}, ${activityLibraries.requiresEquipmentNo}, false)`,
+        requiresTime: sql<boolean>`coalesce(${activityRouteItems.requiresTime}, ${activityLibraries.requiresDuration}, false)`,
+        requiresRemark: activityRouteItems.requiresRemark,
+        requiresPhoto: sql<boolean>`coalesce(${activityRouteItems.requiresPhoto}, ${activityLibraries.requiresPhoto}, false)`,
+        requiresLocationGps: sql<boolean>`coalesce(${activityLibraries.requiresLocationGps}, false)`,
+        requiresMaterialUsed: sql<boolean>`coalesce(${activityLibraries.requiresMaterialUsed}, false)`,
+        requiresTireCount: sql<boolean>`coalesce(${activityLibraries.requiresTireCount}, false)`,
+        requiresChecklistEvidence: activityRouteItems.requiresChecklistEvidence,
+        isOptional: activityRouteItems.isOptional,
+        allowCustomUnit: activityRouteItems.allowCustomUnit,
+        libraryCode: activityLibraries.activityCode,
+        libraryName: activityLibraries.activityName,
+        libraryPoints: activityLibraries.basePoints,
       })
       .from(activityRouteItems)
+      .leftJoin(activityLibraries, eq(activityRouteItems.libraryActivityId, activityLibraries.id))
       .innerJoin(activityRouteGroups, eq(activityRouteItems.routeGroupId, activityRouteGroups.id))
       .where(inArray(activityRouteGroups.routeTemplateId, templateIds))
       .orderBy(asc(activityRouteItems.sortOrder), asc(activityRouteItems.id)),

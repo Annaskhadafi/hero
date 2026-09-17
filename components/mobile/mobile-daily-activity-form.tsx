@@ -1141,8 +1141,43 @@ export function MobileDailyActivityForm({
         }
       }
     }
+    if (availableRouteFolders && availableRouteFolders.length > 0) {
+      for (const folder of availableRouteFolders) {
+        for (const group of folder.groups || []) {
+          for (const item of group.items || []) {
+            const idStr = String(item.libraryActivityId ?? `route-item-${item.id}`)
+            const numId = item.libraryActivityId ?? (-item.id)
+            if (!existingIds.has(idStr) && !existingIds.has(String(numId))) {
+              list.push({
+                id: numId as any,
+                activityCode: item.itemCode || item.libraryCode || 'CUSTOM',
+                activityName: item.itemLabel || item.libraryName || 'Aktivitas',
+                basePoints: Number(item.pointOverride ?? item.libraryPoints) || 5,
+                requiresPhoto: Boolean(item.requiresPhoto),
+                requiresEquipmentNo: Boolean(item.requiresUnit),
+                requiresDuration: item.requiresTime ?? true,
+                requiresMaterialUsed: Boolean(item.requiresMaterialUsed),
+                requiresLocationGps: Boolean(item.requiresLocationGps),
+                requiresTireCount: Boolean(item.requiresTireCount),
+                maxDailyCount: 99,
+                maxPointsPerDay: 999,
+                departmentId: null,
+                sectionId: null,
+                isSelfInput: true,
+                isAssignable: true,
+                approvalRequired: true,
+                autoApproveIfGpsValid: false,
+              })
+              existingIds.add(idStr)
+              existingIds.add(String(numId))
+            }
+          }
+        }
+      }
+    }
+
     return list
-  }, [availableLibrary, rawItems])
+  }, [availableLibrary, rawItems, availableRouteFolders])
 
   const availableLibraryMap = useMemo(
     () => new Map(safeAvailableLibrary.map((item) => [`${item.id}`, item])),

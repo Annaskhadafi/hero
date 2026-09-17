@@ -1089,7 +1089,36 @@ async function uploadActivityPhoto(file: File): Promise<string> {
         const matchingGroups = (route.groups || [])
           .map((group) => {
             const matchingItems = (group.items || [])
-              .map((i) => (i.libraryActivityId != null ? availableLibraryMap.get(String(i.libraryActivityId)) : null))
+              .map((i) => {
+                if (i.libraryActivityId != null) {
+                  const lib = availableLibraryMap.get(String(i.libraryActivityId))
+                  if (lib) {
+                    return {
+                      ...lib,
+                      basePoints: i.pointOverride != null ? i.pointOverride : lib.basePoints,
+                      requiresEquipmentNo: i.requiresUnit != null ? i.requiresUnit : lib.requiresEquipmentNo,
+                      requiresDuration: i.requiresTime != null ? i.requiresTime : lib.requiresDuration,
+                      requiresPhoto: i.requiresPhoto != null ? i.requiresPhoto : lib.requiresPhoto,
+                      requiresMaterialUsed: i.requiresMaterialUsed != null ? i.requiresMaterialUsed : lib.requiresMaterialUsed,
+                      name: i.itemLabel || lib.name,
+                      code: i.itemCode || lib.code,
+                    }
+                  }
+                }
+                return {
+                  id: -(i.id || Math.abs((i.itemCode || i.itemLabel || 'item').split('').reduce((acc, c) => ((acc << 5) - acc) + c.charCodeAt(0), 0))),
+                  code: i.itemCode || 'CUSTOM',
+                  name: i.itemLabel || 'Aktivitas Route',
+                  basePoints: i.pointOverride ?? 10,
+                  category: 'Route Activity',
+                  requiresEquipmentNo: i.requiresUnit ?? false,
+                  requiresDuration: i.requiresTime ?? true,
+                  requiresPhoto: i.requiresPhoto ?? false,
+                  requiresMaterialUsed: i.requiresMaterialUsed ?? false,
+                  requiresLocationGps: false,
+                  requiresTireCount: false,
+                } as (typeof activityPresets)[0]
+              })
               .filter((lib): lib is (typeof activityPresets)[0] => Boolean(lib))
               .filter((lib) => {
                 if (!normalizedPickerSearch) return true

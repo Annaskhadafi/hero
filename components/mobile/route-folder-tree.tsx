@@ -78,12 +78,39 @@ export function RouteFolderTree({
 
   // 2. Calculate matching group folders
   const matchingRouteFolders = useMemo(() => {
-    return routeFolders
+    return (routeFolders || [])
       .map((route) => {
-        const matchingGroups = route.groups
+        const matchingGroups = (route.groups || [])
           .map((group) => {
-            const matchingItems = group.items
-              .map((i) => availableLibraryMap.get(String(i.libraryActivityId)))
+            const matchingItems = (group.items || [])
+              .map((item) => {
+                const lib = item.libraryActivityId != null ? availableLibraryMap.get(String(item.libraryActivityId)) : null
+                const numId = item.libraryActivityId ?? (-item.id)
+                const fallbackOpt = availableLibraryMap.get(String(numId))
+                if (fallbackOpt) return fallbackOpt
+
+                const opt: LibraryOption = {
+                  id: numId,
+                  activityCode: item.itemCode || item.libraryCode || lib?.activityCode || 'CUSTOM',
+                  activityName: item.itemLabel || item.libraryName || lib?.activityName || 'Aktivitas',
+                  basePoints: Number(item.pointOverride ?? item.libraryPoints ?? lib?.basePoints) || 5,
+                  requiresPhoto: item.requiresPhoto ?? lib?.requiresPhoto ?? false,
+                  requiresEquipmentNo: item.requiresUnit ?? lib?.requiresEquipmentNo ?? false,
+                  requiresDuration: item.requiresTime ?? lib?.requiresDuration ?? true,
+                  requiresLocationGps: item.requiresLocationGps ?? lib?.requiresLocationGps ?? false,
+                  requiresMaterialUsed: item.requiresMaterialUsed ?? lib?.requiresMaterialUsed ?? false,
+                  requiresTireCount: item.requiresTireCount ?? lib?.requiresTireCount ?? false,
+                  maxDailyCount: lib?.maxDailyCount ?? 99,
+                  maxPointsPerDay: lib?.maxPointsPerDay ?? 999,
+                  departmentId: lib?.departmentId ?? null,
+                  sectionId: lib?.sectionId ?? null,
+                  isSelfInput: lib?.isSelfInput ?? true,
+                  isAssignable: lib?.isAssignable ?? true,
+                  approvalRequired: lib?.approvalRequired ?? true,
+                  autoApproveIfGpsValid: lib?.autoApproveIfGpsValid ?? false,
+                }
+                return opt
+              })
               .filter((lib): lib is LibraryOption => Boolean(lib))
               .filter((lib) => {
                 if (!normalizedSearch) return true
