@@ -39,18 +39,18 @@ import { resolveUploadUrl } from '@/lib/s3-storage'
 let dailyActivitySeedPromise: Promise<void> | null = null
 
 // Aktivitas library bersifat global (siteIds kosong) atau tersedia untuk site yang
-// terdaftar di kolom siteIds. Menggantikan filter lama yang hanya satu site.
+// terdaftar di kolom siteIds. Jika siteIds berisi -1 (Non Global), maka tidak pernah match ke karyawan manapun (tidak tampil di mobile).
 function librarySiteMatches(siteIdCol: AnyPgColumn, siteIdsCol: AnyPgColumn, employeeSiteId: number | null | undefined) {
   if (employeeSiteId == null) {
     return and(
-      isNull(siteIdCol),
-      sql`(${siteIdsCol} is null or jsonb_array_length(${siteIdsCol}) = 0)`
+      or(isNull(siteIdCol), sql`${siteIdCol} != -1`),
+      sql`(${siteIdsCol} is null or (jsonb_array_length(${siteIdsCol}) = 0 and not (${siteIdsCol} @> '[-1]'::jsonb)))`
     )
   }
   return or(
     and(
-      isNull(siteIdCol),
-      sql`(${siteIdsCol} is null or jsonb_array_length(${siteIdsCol}) = 0)`
+      or(isNull(siteIdCol), sql`${siteIdCol} != -1`),
+      sql`(${siteIdsCol} is null or (jsonb_array_length(${siteIdsCol}) = 0 and not (${siteIdsCol} @> '[-1]'::jsonb)))`
     ),
     eq(siteIdCol, employeeSiteId),
     sql`${siteIdsCol} @> jsonb_build_array(${employeeSiteId}::integer)`
@@ -2481,7 +2481,12 @@ export async function getDailyActivityEmployeeData(
         })
         .from(activityLibraries)
         .leftJoin(sites, eq(activityLibraries.siteId, sites.id))
-        .where(eq(activityLibraries.isActive, true))
+        .where(
+          and(
+            eq(activityLibraries.isActive, true),
+            librarySiteMatches(activityLibraries.siteId, activityLibraries.siteIds, employee.siteId)
+          )
+        )
         .orderBy(desc(activityLibraries.basePoints), asc(activityLibraries.activityName)),
       db
         .select()
@@ -3501,12 +3506,14 @@ export async function getDailyActivityLibraryData(email?: string | null) {
       ...row,
       siteIds: rowSiteIds,
       siteNames:
-        rowSiteIds.length > 0
-          ? rowSiteIds
-              .map((id) => siteNameById.get(id))
-              .filter((name): name is string => Boolean(name))
-              .join(', ') || null
-          : null,
+        rowSiteIds.includes(-1)
+          ? 'Non global'
+          : rowSiteIds.length > 0
+            ? rowSiteIds
+                .map((id) => siteNameById.get(id))
+                .filter((name): name is string => Boolean(name))
+                .join(', ') || null
+            : null,
       departmentIds: rowDeptIds,
       departmentNames:
         rowDeptIds.length > 0

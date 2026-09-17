@@ -161,7 +161,7 @@ const manageLibrarySchema = z.object({
       return value
         .split(',')
         .map((part) => parseInt(part.trim(), 10))
-        .filter((part) => Number.isInteger(part) && part > 0)
+        .filter((part) => Number.isInteger(part) && (part > 0 || part === -1))
     }),
   departmentId: optionalPositiveInt,
   departmentIds: z
@@ -1106,6 +1106,8 @@ export async function manageActivityLibraryAction(formData: FormData) {
         ? [payload.siteId]
         : []
 
+  const siteId = siteIds.includes(-1) ? null : (siteIds[0] ?? null)
+
   const departmentIds =
     payload.departmentIds.length > 0
       ? [...new Set(payload.departmentIds)]
@@ -1128,7 +1130,7 @@ export async function manageActivityLibraryAction(formData: FormData) {
     departmentIds,
     sectionId: sectionIds[0] ?? payload.sectionId ?? null,
     sectionIds,
-    siteId: siteIds[0] ?? null,
+    siteId,
     siteIds,
     basePoints: payload.basePoints,
     complexityLevel: payload.complexityLevel,

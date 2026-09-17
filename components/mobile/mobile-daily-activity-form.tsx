@@ -1173,7 +1173,37 @@ export function MobileDailyActivityForm({
 
     const groupedLibraryIdSet = new Set<string>()
     for (const folder of availableRouteFolders || []) {
+      const folderCode = (folder.routeCode || '').trim().toLowerCase()
+      const folderName = (folder.routeName || '').trim().toLowerCase()
+
+      for (const lib of availableLibraryMap.values()) {
+        const libCode = (lib.activityCode || '').trim().toLowerCase()
+        const libName = (lib.activityName || '').trim().toLowerCase()
+
+        if (
+          (libCode && (folderCode === `grp-${libCode}` || folderCode === libCode)) ||
+          (libName && (folderName === `group: ${libName}` || folderName === libName))
+        ) {
+          groupedLibraryIdSet.add(String(lib.id))
+        }
+      }
+
       for (const group of folder.groups || []) {
+        const groupKey = ((group as any).groupKey || '').trim().toLowerCase()
+        const groupName = (group.groupName || '').trim().toLowerCase()
+
+        for (const lib of availableLibraryMap.values()) {
+          const libCode = (lib.activityCode || '').trim().toLowerCase()
+          const libName = (lib.activityName || '').trim().toLowerCase()
+
+          if (
+            (libCode && (groupKey === `grp-${libCode}` || groupKey === libCode)) ||
+            (libName && (groupName === `group: ${libName}` || groupName === libName))
+          ) {
+            groupedLibraryIdSet.add(String(lib.id))
+          }
+        }
+
         for (const item of group.items || []) {
           if (item.libraryActivityId != null) {
             groupedLibraryIdSet.add(String(item.libraryActivityId))

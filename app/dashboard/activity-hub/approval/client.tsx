@@ -1042,7 +1042,37 @@ async function uploadActivityPhoto(file: File): Promise<string> {
   const groupedLibraryIdSet = useMemo(() => {
     const set = new Set<string>()
     for (const folder of routeFolders || []) {
+      const folderCode = (folder.routeCode || '').trim().toLowerCase()
+      const folderName = (folder.routeName || '').trim().toLowerCase()
+
+      for (const lib of availableLibraryMap.values()) {
+        const libCode = (lib.code || '').trim().toLowerCase()
+        const libName = (lib.name || '').trim().toLowerCase()
+
+        if (
+          (libCode && (folderCode === `grp-${libCode}` || folderCode === libCode)) ||
+          (libName && (folderName === `group: ${libName}` || folderName === libName))
+        ) {
+          set.add(String(lib.id))
+        }
+      }
+
       for (const group of folder.groups || []) {
+        const groupKey = ((group as any).groupKey || '').trim().toLowerCase()
+        const groupName = (group.groupName || '').trim().toLowerCase()
+
+        for (const lib of availableLibraryMap.values()) {
+          const libCode = (lib.code || '').trim().toLowerCase()
+          const libName = (lib.name || '').trim().toLowerCase()
+
+          if (
+            (libCode && (groupKey === `grp-${libCode}` || groupKey === libCode)) ||
+            (libName && (groupName === `group: ${libName}` || groupName === libName))
+          ) {
+            set.add(String(lib.id))
+          }
+        }
+
         for (const item of group.items || []) {
           if (item.libraryActivityId != null) {
             set.add(String(item.libraryActivityId))
@@ -1051,7 +1081,7 @@ async function uploadActivityPhoto(file: File): Promise<string> {
       }
     }
     return set
-  }, [routeFolders])
+  }, [routeFolders, availableLibraryMap])
 
   const matchingRouteFolders = useMemo(() => {
     return (routeFolders || [])

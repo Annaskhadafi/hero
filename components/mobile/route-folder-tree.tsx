@@ -31,12 +31,42 @@ export function RouteFolderTree({
 
   const normalizedSearch = (librarySearch || '').toLowerCase().replace(/[^a-z0-9]/g, '')
 
-  // 1. Calculate which library IDs belong to groups
+  // 1. Calculate which library IDs belong to groups or represent group folders
   const groupedLibraryIdSet = useMemo(() => {
     const set = new Set<string>()
-    for (const folder of routeFolders) {
-      for (const group of folder.groups) {
-        for (const item of group.items) {
+    for (const folder of routeFolders || []) {
+      const folderCode = (folder.routeCode || '').trim().toLowerCase()
+      const folderName = (folder.routeName || '').trim().toLowerCase()
+
+      for (const lib of availableLibraryMap.values()) {
+        const libCode = (lib.activityCode || '').trim().toLowerCase()
+        const libName = (lib.activityName || '').trim().toLowerCase()
+
+        if (
+          (libCode && (folderCode === `grp-${libCode}` || folderCode === libCode)) ||
+          (libName && (folderName === `group: ${libName}` || folderName === libName))
+        ) {
+          set.add(String(lib.id))
+        }
+      }
+
+      for (const group of folder.groups || []) {
+        const groupKey = ((group as any).groupKey || '').trim().toLowerCase()
+        const groupName = (group.groupName || '').trim().toLowerCase()
+
+        for (const lib of availableLibraryMap.values()) {
+          const libCode = (lib.activityCode || '').trim().toLowerCase()
+          const libName = (lib.activityName || '').trim().toLowerCase()
+
+          if (
+            (libCode && (groupKey === `grp-${libCode}` || groupKey === libCode)) ||
+            (libName && (groupName === `group: ${libName}` || groupName === libName))
+          ) {
+            set.add(String(lib.id))
+          }
+        }
+
+        for (const item of group.items || []) {
           if (item.libraryActivityId != null) {
             set.add(String(item.libraryActivityId))
           }
@@ -44,7 +74,7 @@ export function RouteFolderTree({
       }
     }
     return set
-  }, [routeFolders])
+  }, [routeFolders, availableLibraryMap])
 
   // 2. Calculate matching group folders
   const matchingRouteFolders = useMemo(() => {
