@@ -1,6 +1,6 @@
 'use client'
 
-import { Download, Loader2, Plus, Trash2 } from 'lucide-react'
+import { Download, Loader2, Plus, Save, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -247,45 +247,50 @@ function PdfPage({
   return (
     <div
       className="change-tire-pdf-page relative overflow-hidden bg-white font-sans text-black"
-      style={{ width: '210mm', minHeight: '297mm' }}
+      style={{ width: '210mm', minHeight: '297mm', height: '297mm' }}
     >
       <img src={LETTERHEAD_URL} alt="" className="absolute inset-0 z-0 h-full w-full object-fill" />
-      <div className="relative z-10 px-[10mm] pt-[8mm] text-black">
-        <h2 className="text-center text-[12px] font-black">
-          FORM CHANGE OUT & ROTATION RECORD SHEET
-        </h2>
-
-        <div className="mt-[5mm] grid grid-cols-2 gap-x-[10mm] gap-y-[1.5mm] text-[7px]">
-          <PdfField label="Date" value={header.date} />
-          <div />
-          <PdfField label="WO / Work Order" value={header.wo} />
-          <PdfField label="Unit Number" value={header.unitNumber} />
-          <PdfField label="SMU (Service Meter Unit)" value={header.smu} />
-          <div className="grid grid-cols-[28mm_1mm_1fr] items-center gap-[0.5mm] text-[6px] leading-none text-black">
-            <span>Start Time</span>
-            <span>:</span>
-            <span className="flex items-center gap-[0.5mm]">
-              <span className="inline-block min-h-[3.5mm] w-[15mm] border border-black px-[0.5mm] leading-[3.5mm]">
-                {header.startTime}
-              </span>
-              hrs
-            </span>
-          </div>
-          <div className="grid grid-cols-[28mm_1mm_1fr] items-center gap-[0.5mm] text-[6px] leading-none text-black">
-            <span>Finish Time</span>
-            <span>:</span>
-            <span className="flex items-center gap-[0.5mm]">
-              <span className="inline-block min-h-[3.5mm] w-[15mm] border border-black px-[0.5mm] leading-[3.5mm]">
-                {header.finishTime}
-              </span>
-              hrs
-            </span>
-          </div>
+      <div className="relative z-10 px-[12mm] pt-[36mm] pb-[25mm] text-black">
+        <div className="text-center">
+          <h2 className="text-[12px] font-black tracking-wide">
+            FORM CHANGE OUT & ROTATION RECORD SHEET
+          </h2>
+          {siteName ? (
+            <div className="mt-[1mm] text-[10px] font-bold uppercase">{siteName}</div>
+          ) : null}
         </div>
 
-        {siteName && (
-          <div className="mt-[2mm] text-center text-[9px] font-black">{siteName}</div>
-        )}
+        <div className="mt-[4mm] grid grid-cols-2 gap-x-[10mm] gap-y-[1.5mm] text-[7px]">
+          <div className="space-y-[1.5mm]">
+            <PdfField label="Date" value={header.date} />
+            <PdfField label="WO / Work Order" value={header.wo} />
+            <PdfField label="SMU (Service Meter Unit)" value={header.smu} />
+            <div className="grid grid-cols-[28mm_1mm_1fr] items-center gap-[0.5mm] text-[6px] leading-none text-black">
+              <span>Finish Time</span>
+              <span>:</span>
+              <span className="flex items-center gap-[0.5mm]">
+                <span className="inline-block min-h-[3.5mm] w-[15mm] border border-black px-[0.5mm] leading-[3.5mm]">
+                  {header.finishTime}
+                </span>
+                hrs
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-[1.5mm]">
+            <PdfField label="Unit Number" value={header.unitNumber} />
+            <div className="grid grid-cols-[28mm_1mm_1fr] items-center gap-[0.5mm] text-[6px] leading-none text-black">
+              <span>Start Time</span>
+              <span>:</span>
+              <span className="flex items-center gap-[0.5mm]">
+                <span className="inline-block min-h-[3.5mm] w-[15mm] border border-black px-[0.5mm] leading-[3.5mm]">
+                  {header.startTime}
+                </span>
+                hrs
+              </span>
+            </div>
+          </div>
+        </div>
 
         <div className="mt-[4mm] space-y-[4mm]">
           {blocks.map((block, i) => (
@@ -626,6 +631,16 @@ export function ChangeTireForm({ mobile }: { mobile?: boolean }) {
         installed: { ...b.installed },
       })),
     })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  function deleteRecord(id: string) {
+    if (window.confirm('Hapus riwayat form ini?')) {
+      setRecords((c) => c.filter((r) => r.id !== id))
+      if (editingId === id) {
+        newForm()
+      }
+    }
   }
 
   async function downloadPdf() {
@@ -667,10 +682,24 @@ export function ChangeTireForm({ mobile }: { mobile?: boolean }) {
   return (
     <>
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" size="dense" onClick={newForm}>
-            + New Form
-          </Button>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/40 pb-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" size="dense" variant="outline" onClick={newForm}>
+              + New Form
+            </Button>
+            <Button type="button" size="dense" variant="outline" onClick={saveRecord}>
+              <Save className="size-3.5 mr-1" />
+              Simpan Riwayat
+            </Button>
+            <Button type="button" size="dense" onClick={downloadPdf} disabled={isGenerating}>
+              {isGenerating ? (
+                <Loader2 className="size-3.5 mr-1 animate-spin" />
+              ) : (
+                <Download className="size-3.5 mr-1" />
+              )}
+              Download PDF
+            </Button>
+          </div>
         </div>
 
         <div className="space-y-3">
@@ -764,11 +793,12 @@ export function ChangeTireForm({ mobile }: { mobile?: boolean }) {
         </div>
 
         <div className="flex flex-wrap gap-2 border-t border-black/5 pt-3">
-          <Button type="button" size="dense" onClick={saveRecord}>
-            Save History
+          <Button type="button" size="dense" variant="outline" onClick={saveRecord}>
+            <Save className="size-3.5 mr-1" />
+            Simpan Riwayat
           </Button>
           <Button type="button" size="dense" onClick={downloadPdf} disabled={isGenerating}>
-            {isGenerating ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+            {isGenerating ? <Loader2 className="size-3.5 mr-1 animate-spin" /> : <Download className="size-3.5 mr-1" />}
             Download PDF
           </Button>
         </div>
@@ -821,6 +851,15 @@ export function ChangeTireForm({ mobile }: { mobile?: boolean }) {
                           >
                             <Download className="size-3.5" />
                             PDF
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="dense"
+                            className="text-destructive hover:bg-destructive/10"
+                            onClick={() => deleteRecord(record.id)}
+                          >
+                            <Trash2 className="size-3.5" />
                           </Button>
                         </div>
                       </TableCell>
