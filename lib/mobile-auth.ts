@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { auth } from '@/lib/auth'
 import { db } from '@/db'
 import { employees } from '@/db/schema/hero'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, sql } from 'drizzle-orm'
 
 export type AuthResult =
   | { authenticated: true; type: 'api-key' }
@@ -44,9 +44,9 @@ export async function authenticateMobileRequest(
     })
 
     if (session?.user?.id) {
-      // Lookup employee by authUserId FK (not email — employees.email has corp format)
-      const [employee] = await db
-        .select({ id: employees.id, email: employees.email })
+      // Lookup employee by authUserId FK first
+      let [employee] = await db
+        .select({ id: employees.id, email: employees.email, authUserId: employees.authUserId })
         .from(employees)
         .where(
           and(
@@ -55,6 +55,32 @@ export async function authenticateMobileRequest(
           )
         )
         .limit(1)
+
+      // Fallback: Lookup by matching email and auto-link authUserId if missing
+      if (!employee && session.user.email) {
+        const cleanEmail = session.user.email.trim().toLowerCase()
+        const [fallbackEmp] = await db
+          .select({ id: employees.id, email: employees.email, authUserId: employees.authUserId })
+          .from(employees)
+          .where(
+            and(
+              sql`LOWER(TRIM(${employees.email})) = ${cleanEmail}`,
+              eq(employees.isActive, true)
+            )
+          )
+          .limit(1)
+
+        if (fallbackEmp) {
+          employee = fallbackEmp
+          // Auto-heal / backfill authUserId link
+          if (!fallbackEmp.authUserId) {
+            await db
+              .update(employees)
+              .set({ authUserId: session.user.id })
+              .where(eq(employees.id, fallbackEmp.id))
+          }
+        }
+      }
 
       if (!employee) {
         return {
@@ -66,7 +92,7 @@ export async function authenticateMobileRequest(
       }
 
       // Ownership check
-      if (requestEmployeeId !== undefined && requestEmployeeId !== employee.id) {
+      if (requestEmployeeId !== undefined && requestEmployeeId > 0 && requestEmployeeId !== employee.id) {
         return {
           authenticated: false,
           status: 403,

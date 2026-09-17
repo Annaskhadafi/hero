@@ -33,24 +33,20 @@ export async function POST(request: NextRequest) {
     }
 
     const { employeeId, embedding } = body as Record<string, unknown>
+    let empId = typeof employeeId === 'number' ? employeeId : Number(employeeId || 0)
 
-    if (employeeId === undefined || employeeId === null) {
-      return errorResponse(400, 'VALIDATION_ERROR', 'employeeId is required.', 'employeeId')
-    }
-
-    if (typeof employeeId !== 'number' || !Number.isInteger(employeeId) || employeeId <= 0) {
-      return errorResponse(
-        400,
-        'VALIDATION_ERROR',
-        'employeeId must be a positive integer.',
-        'employeeId'
-      )
-    }
-
-    // 3. Authentication (after parsing employeeId)
-    const authResult = await authenticateMobileRequest(request, employeeId as number)
+    // 3. Authentication
+    const authResult = await authenticateMobileRequest(request, empId > 0 ? empId : undefined)
     if (!authResult.authenticated) {
       return errorResponse(authResult.status, authResult.code, authResult.message)
+    }
+
+    if (empId <= 0 && authResult.type === 'session') {
+      empId = authResult.employeeId
+    }
+
+    if (empId <= 0) {
+      return errorResponse(400, 'VALIDATION_ERROR', 'employeeId must be a positive integer.', 'employeeId')
     }
 
     if (embedding === undefined || embedding === null) {
@@ -71,7 +67,7 @@ export async function POST(request: NextRequest) {
         faceRegisteredAt: employees.faceRegisteredAt,
       })
       .from(employees)
-      .where(eq(employees.id, employeeId))
+      .where(eq(employees.id, empId))
       .limit(1)
 
     if (employeeResults.length === 0 || !employeeResults[0].isActive) {
@@ -108,7 +104,7 @@ export async function POST(request: NextRequest) {
         faceEmbedding: embedding,
         faceRegisteredAt: registeredAt,
       })
-      .where(eq(employees.id, employeeId))
+      .where(eq(employees.id, empId))
 
     revalidatePath('/mobile/attendance')
 
