@@ -202,12 +202,15 @@ export async function getDailyActivitySessionDocumentData(
         cleanPhotoUrl(parsedPayload?.photo) ||
         cleanPhotoUrl(parsedPayload?.image) ||
         cleanPhotoUrl(parsedPayload?.images?.[0]) ||
-        cleanPhotoUrl((item as any).photoUrl) ||
         null
+      const tireCount = Number(parsedPayload?.tireCount ?? (parsedPayload?.requiresTireCount ? 1 : 0)) || 0
+      const materialUsed = String(parsedPayload?.materialUsed ?? '').trim()
 
       return {
         ...item,
         photoUrl,
+        tireCount,
+        materialUsed,
         durationMinutes,
         durationLabel: formatDurationLabel(durationMinutes),
         dayLabel: header.workDate.toLocaleDateString('id-ID', { weekday: 'long' }),

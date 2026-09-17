@@ -34,6 +34,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
 
 export type SessionItem = {
   id: number
@@ -44,11 +45,18 @@ export type SessionItem = {
   unitNumber: string
   remark: string
   materialUsed?: string
+  tireCount?: number | null
   duration: string
   points: number
   photoUrl: string | null
   startedAt?: Date | string | null
   endedAt?: Date | string | null
+  requiresPhoto?: boolean
+  requiresEquipmentNo?: boolean
+  requiresDuration?: boolean
+  requiresLocationGps?: boolean
+  requiresTireCount?: boolean
+  requiresMaterialUsed?: boolean
 }
 
 export type StepApproval = {
@@ -142,7 +150,14 @@ type EditableItem = {
   points: number
   remark: string
   materialUsed: string
+  tireCount?: number | null
   photoUrl: string | null
+  requiresPhoto?: boolean
+  requiresEquipmentNo?: boolean
+  requiresDuration?: boolean
+  requiresLocationGps?: boolean
+  requiresTireCount?: boolean
+  requiresMaterialUsed?: boolean
 }
 
 type MobileDailyActivityApprovalClientProps = {
@@ -187,8 +202,15 @@ export function MobileDailyActivityApprovalClient({
         endTime: formatTimeValue(item.endedAt, '17:00'),
         points: item.points || 5,
         remark: item.remark || '',
-        materialUsed: item.materialUsed || '',
+        materialUsed: item.materialUsed || (item as any).snapshotPayload?.materialUsed || '',
+        tireCount: item.tireCount != null ? Number(item.tireCount) : ((item as any).snapshotPayload?.tireCount != null ? Number((item as any).snapshotPayload.tireCount) : null),
         photoUrl: item.photoUrl || null,
+        requiresPhoto: item.requiresPhoto,
+        requiresEquipmentNo: item.requiresEquipmentNo,
+        requiresDuration: item.requiresDuration,
+        requiresLocationGps: item.requiresLocationGps,
+        requiresTireCount: item.requiresTireCount,
+        requiresMaterialUsed: item.requiresMaterialUsed,
       }))
     : [
         {
@@ -200,6 +222,7 @@ export function MobileDailyActivityApprovalClient({
           points: 5,
           remark: '',
           materialUsed: '',
+          tireCount: null,
           photoUrl: null,
         },
       ]
@@ -223,7 +246,14 @@ export function MobileDailyActivityApprovalClient({
       points: lib.basePoints || 5,
       remark: '',
       materialUsed: '',
+      tireCount: null,
       photoUrl: null,
+      requiresPhoto: lib.requiresPhoto,
+      requiresEquipmentNo: lib.requiresEquipmentNo,
+      requiresDuration: lib.requiresDuration,
+      requiresLocationGps: lib.requiresLocationGps,
+      requiresTireCount: lib.requiresTireCount,
+      requiresMaterialUsed: lib.requiresMaterialUsed,
     }
     setItems((prev) => [...prev, newItem])
     setIsLibraryDialogOpen(false)
@@ -241,6 +271,7 @@ export function MobileDailyActivityApprovalClient({
       points: 5,
       remark: '',
       materialUsed: '',
+      tireCount: null,
       photoUrl: null,
     }
     setItems((prev) => [...prev, newItem])
@@ -286,6 +317,7 @@ export function MobileDailyActivityApprovalClient({
           points: Number(item.points) || 5,
           remark: item.remark.trim(),
           materialUsed: item.materialUsed.trim(),
+          tireCount: item.tireCount != null ? Number(item.tireCount) : null,
           startedAt,
           endedAt,
           photoUrl: item.photoUrl,
@@ -530,7 +562,9 @@ export function MobileDailyActivityApprovalClient({
 
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
-                      <Label className="text-[11px] font-semibold text-gray-600">No. Unit / Alat</Label>
+                      <Label className="text-[11px] font-semibold text-gray-600">
+                        No. Unit / Alat {item.requiresEquipmentNo ? '*' : ''}
+                      </Label>
                       <Input
                         type="text"
                         value={item.unitNumber}
@@ -551,6 +585,41 @@ export function MobileDailyActivityApprovalClient({
                       />
                     </div>
                   </div>
+
+                  {(item.requiresTireCount || item.requiresMaterialUsed || item.tireCount != null || item.materialUsed) && (
+                    <div className="grid grid-cols-2 gap-2">
+                      {(item.requiresTireCount || item.tireCount != null) ? (
+                        <div className="space-y-1">
+                          <Label className="text-[11px] font-semibold text-gray-600">
+                            Jumlah Tire {item.requiresTireCount ? '*' : ''}
+                          </Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={20}
+                            value={item.tireCount ?? ''}
+                            onChange={(e) => handleUpdateItem(index, 'tireCount', e.target.value ? Number(e.target.value) : null)}
+                            placeholder="Contoh: 4"
+                            className="h-8 text-xs rounded-lg bg-white border-gray-200 font-bold"
+                          />
+                        </div>
+                      ) : null}
+                      {(item.requiresMaterialUsed || item.materialUsed) ? (
+                        <div className={cn("space-y-1", !(item.requiresTireCount || item.tireCount != null) && "col-span-2")}>
+                          <Label className="text-[11px] font-semibold text-gray-600">
+                            Material / Alat {item.requiresMaterialUsed ? '*' : ''}
+                          </Label>
+                          <Input
+                            type="text"
+                            value={item.materialUsed}
+                            onChange={(e) => handleUpdateItem(index, 'materialUsed', e.target.value)}
+                            placeholder="Contoh: OTR Grease"
+                            className="h-8 text-xs rounded-lg bg-white border-gray-200"
+                          />
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
@@ -714,7 +783,7 @@ export function MobileDailyActivityApprovalClient({
                 <div key={i} className="text-[11px] border-b border-gray-200/50 pb-1">
                   <p className="font-semibold text-gray-800">{i + 1}. {it.label || '-'}</p>
                   <p className="text-gray-500 text-[10px]">
-                    Unit: {it.unitNumber || '-'} &bull; Jam: {it.startTime} - {it.endTime} &bull; Poin: {it.points} pts
+                    Unit: {it.unitNumber || '-'} {it.tireCount != null ? `• ${it.tireCount} Tire` : ''} {it.materialUsed ? `• Mat: ${it.materialUsed}` : ''} &bull; Jam: {it.startTime} - {it.endTime} &bull; Poin: {it.points} pts
                   </p>
                 </div>
               ))}

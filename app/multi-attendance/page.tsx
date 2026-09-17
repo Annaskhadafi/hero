@@ -131,17 +131,17 @@ function saveSetup(siteId: number, shiftCode: string) {
 function FaceTrackerOverlay({
   faceBoxes,
   active,
-  success,
-  checkout,
-  processing,
+  success = false,
+  checkout = false,
+  processing = false,
   employeeName,
   confidence,
 }: {
   faceBoxes: FaceBox[];
   active?: boolean;
-  success: boolean;
-  checkout: boolean;
-  processing: boolean;
+  success?: boolean;
+  checkout?: boolean;
+  processing?: boolean;
   employeeName?: string;
   confidence?: number;
 }) {

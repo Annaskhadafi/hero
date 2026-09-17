@@ -229,6 +229,8 @@ export function ApprovalRequestDetails({ item }: { item: ApprovalInboxItem }) {
                     <p className="text-sm font-bold text-[#082033]">{workItem.label}</p>
                     <p className="mt-1 text-xs leading-5 text-[#60788a]">
                       {workItem.employeeName} • Unit {workItem.unitNumber || '-'}
+                      {(workItem as any).tireCount != null ? ` • ${(workItem as any).tireCount} Tire` : ''}
+                      {(workItem as any).materialUsed ? ` • Mat: ${(workItem as any).materialUsed}` : ''}
                     </p>
                   </div>
                   <AdminStatusBadge value={workItem.isChecked ? 'selesai' : 'belum selesai'} />

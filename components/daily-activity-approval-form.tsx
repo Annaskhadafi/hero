@@ -130,6 +130,14 @@ type SessionItem = {
   startTime?: string
   endTime?: string
   photoUrl?: string | null
+  tireCount?: number | null
+  materialUsed?: string
+  requiresPhoto?: boolean
+  requiresEquipmentNo?: boolean
+  requiresDuration?: boolean
+  requiresLocationGps?: boolean
+  requiresTireCount?: boolean
+  requiresMaterialUsed?: boolean
 }
 
 type ApprovalData = {
@@ -400,7 +408,13 @@ export function DailyActivityApprovalForm({
     const map = new Map<string, ModalPreset>()
     for (const p of activityPresets || []) {
       map.set(String(p.id), p)
-      if (p.code) map.set(p.code.toLowerCase(), p)
+      if (p.code) {
+        map.set(p.code.toLowerCase().trim(), p)
+        map.set(p.code.trim(), p)
+      }
+      if (p.name) {
+        map.set(p.name.toLowerCase().trim(), p)
+      }
     }
     return map
   }, [activityPresets])
@@ -489,6 +503,8 @@ export function DailyActivityApprovalForm({
           label: `${sub.code} - ${sub.name}`,
           group: sub.category || 'Technical',
           unitNumber: '',
+          materialUsed: '',
+          tireCount: null,
           duration: '30m',
           points: sub.basePoints || 5,
           remark: '',
@@ -496,12 +512,18 @@ export function DailyActivityApprovalForm({
           startTime: '08:00',
           endTime: '08:30',
           photoUrl: null,
+          requiresPhoto: sub.requiresPhoto,
+          requiresEquipmentNo: sub.requiresEquipmentNo,
+          requiresDuration: sub.requiresDuration,
+          requiresLocationGps: sub.requiresLocationGps,
+          requiresTireCount: sub.requiresTireCount,
+          requiresMaterialUsed: sub.requiresMaterialUsed,
         })),
       ])
     }
   }
 
-  const addPresetActivity = (label: string, points = 10, category = 'Technical') => {
+  const addPresetActivity = (label: string, points = 10, category = 'Technical', preset?: Partial<ModalPreset>) => {
     setItemsList((prev) => {
       const exists = prev.some((i) => i.label === label)
       if (exists) return prev
@@ -510,6 +532,8 @@ export function DailyActivityApprovalForm({
         label,
         group: category,
         unitNumber: '',
+        materialUsed: '',
+        tireCount: null,
         remark: '',
         duration: '30m',
         points,
@@ -517,6 +541,12 @@ export function DailyActivityApprovalForm({
         startTime: '08:00',
         endTime: '08:30',
         photoUrl: null,
+        requiresPhoto: preset?.requiresPhoto,
+        requiresEquipmentNo: preset?.requiresEquipmentNo,
+        requiresDuration: preset?.requiresDuration,
+        requiresLocationGps: preset?.requiresLocationGps,
+        requiresTireCount: preset?.requiresTireCount,
+        requiresMaterialUsed: preset?.requiresMaterialUsed,
       }
       return [...prev, newItem]
     })
@@ -984,7 +1014,16 @@ export function DailyActivityApprovalForm({
             itemsList.map((item, idx) => (
               <tr key={item.id || idx}>
                 <td className="text-center align-middle">{idx + 1}</td>
-                <td className="align-middle">{item.label}</td>
+                <td className="align-middle">
+                  <div className="font-semibold">{item.label}</div>
+                  {(item.unitNumber || item.tireCount != null || item.materialUsed) && (
+                    <div className="text-[7pt] text-slate-600 flex flex-wrap gap-x-2 mt-0.5">
+                      {item.unitNumber ? <span>Unit: <strong>{item.unitNumber}</strong></span> : null}
+                      {item.tireCount != null ? <span>Tire: <strong>{item.tireCount}</strong></span> : null}
+                      {item.materialUsed ? <span>Mat: <strong>{item.materialUsed}</strong></span> : null}
+                    </div>
+                  )}
+                </td>
                 <td className="text-center align-middle">{item.duration}</td>
                 <td className="text-center font-bold align-middle">{item.points || 0}</td>
                 <td className="text-left text-[7.5pt] align-middle">{itemRemarks[item.id] || item.remark || '-'}</td>
@@ -1942,8 +1981,10 @@ export function DailyActivityApprovalForm({
             <CardContent className="p-3.5 space-y-3">
               {itemsList.length > 0 ? (
                 <div className="space-y-3">
-                  {itemsList.map((item, idx) => (
-                    <div key={item.id || idx} className="rounded-xl border border-slate-200 bg-slate-50/50 p-3.5 space-y-3 relative shadow-2xs">
+                  {itemsList.map((item, idx) => {
+                    const itemPreset = availableLibraryMap.get(item.label) || availableLibraryMap.get(item.label.split(' - ')[0]) || null
+                    return (
+                      <div key={item.id || idx} className="rounded-xl border border-slate-200 bg-slate-50/50 p-3.5 space-y-3 relative shadow-2xs">
                       <div className="flex items-start justify-between">
                         <div>
                           <p className="text-xs font-bold font-mono text-slate-500">
@@ -1964,6 +2005,71 @@ export function DailyActivityApprovalForm({
                           </button>
                         ) : null}
                       </div>
+
+                      {/* Equipment / Unit & Points */}
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-700">
+                            No. Equipment / Unit {itemPreset?.requiresEquipmentNo ? '*' : ''}
+                          </Label>
+                          <Input
+                            type="text"
+                            placeholder="Contoh: HD-785-7, DT-01"
+                            disabled={!canEditItems}
+                            value={item.unitNumber || ''}
+                            onChange={(e) => handleUpdateItem(idx, 'unitNumber', e.target.value)}
+                            className="h-8.5 text-xs bg-white border-slate-200 disabled:opacity-80 disabled:bg-slate-50 font-mono"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-700">Poin Aktivitas</Label>
+                          <Input
+                            type="number"
+                            disabled={!canEditItems}
+                            value={item.points || 0}
+                            onChange={(e) => handleUpdateItem(idx, 'points', Number(e.target.value))}
+                            className="h-8.5 text-xs bg-white border-slate-200 text-center font-bold disabled:opacity-80 disabled:bg-slate-50"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Tire Count & Material Used */}
+                      {(itemPreset?.requiresTireCount || itemPreset?.requiresMaterialUsed || item.tireCount != null || item.materialUsed) && (
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          {(itemPreset?.requiresTireCount || item.tireCount != null) ? (
+                            <div className="space-y-1">
+                              <Label className="text-xs font-semibold text-slate-700">
+                                Jumlah Tire {itemPreset?.requiresTireCount ? '*' : ''}
+                              </Label>
+                              <Input
+                                type="number"
+                                min={1}
+                                max={20}
+                                placeholder="Contoh: 4"
+                                disabled={!canEditItems}
+                                value={item.tireCount ?? ''}
+                                onChange={(e) => handleUpdateItem(idx, 'tireCount', e.target.value ? Number(e.target.value) : null)}
+                                className="h-8.5 text-xs bg-white border-slate-200 font-bold disabled:opacity-80 disabled:bg-slate-50"
+                              />
+                            </div>
+                          ) : null}
+                          {(itemPreset?.requiresMaterialUsed || item.materialUsed) ? (
+                            <div className={cn("space-y-1", !(itemPreset?.requiresTireCount || item.tireCount != null) && "col-span-2")}>
+                              <Label className="text-xs font-semibold text-slate-700">
+                                Material / Alat {itemPreset?.requiresMaterialUsed ? '*' : ''}
+                              </Label>
+                              <Input
+                                type="text"
+                                placeholder="Contoh: OTR Grease, Patch 32"
+                                disabled={!canEditItems}
+                                value={item.materialUsed || ''}
+                                onChange={(e) => handleUpdateItem(idx, 'materialUsed', e.target.value)}
+                                className="h-8.5 text-xs bg-white border-slate-200 disabled:opacity-80 disabled:bg-slate-50"
+                              />
+                            </div>
+                          ) : null}
+                        </div>
+                      )}
 
                       <div className="grid grid-cols-2 gap-2 text-xs">
                         <div className="space-y-1">
@@ -2114,8 +2220,9 @@ export function DailyActivityApprovalForm({
                         />
                       </div>
                     </div>
-                  ))}
-                </div>
+                  )
+                })}
+              </div>
               ) : (
                 <div className="p-8 text-center text-xs text-slate-400">
                   Belum ada item aktivitas. Klik <span className="font-semibold text-slate-700">"Tambah Baris"</span> atau gunakan <span className="font-semibold text-indigo-700">"Pilih Activity Library"</span>.

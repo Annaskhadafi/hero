@@ -182,6 +182,7 @@ export function RouteFolderTree({
                               item.requiresEquipmentNo ? 'Equipment' : null,
                               item.requiresDuration ? 'Duration' : null,
                               item.requiresTireCount ? 'Tire' : null,
+                              item.requiresMaterialUsed ? 'Material' : null,
                               item.requiresLocationGps ? 'GPS' : null,
                               item.requiresPhoto ? 'Photo' : null,
                             ].filter(Boolean)
@@ -286,6 +287,7 @@ export function RouteFolderTree({
                 item.requiresEquipmentNo ? 'Equipment' : null,
                 item.requiresDuration ? 'Duration' : null,
                 item.requiresTireCount ? 'Tire' : null,
+                item.requiresMaterialUsed ? 'Material' : null,
                 item.requiresLocationGps ? 'GPS' : null,
                 item.requiresPhoto ? 'Photo' : null,
               ].filter(Boolean)

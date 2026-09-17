@@ -4669,6 +4669,7 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
       unitNumber: item.unitNumber || parsedPayload?.unitNumber || parsedPayload?.equipmentNo || parsedPayload?.unitNo || '',
       remark: item.remark || parsedPayload?.remark || parsedPayload?.notes || parsedPayload?.description || '',
       materialUsed: parsedPayload?.materialUsed || '',
+      tireCount: parsedPayload?.tireCount != null ? Number(parsedPayload.tireCount) : null,
       duration: durationMinutes > 0 ? (hours > 0 ? `${hours}j ${mins}m` : `${mins}m`) : '-',
       points: item.actualPoints || 0,
       actualPoints: item.actualPoints || 0,

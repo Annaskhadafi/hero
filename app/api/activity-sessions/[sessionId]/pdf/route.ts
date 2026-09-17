@@ -523,7 +523,11 @@ async function drawWorkTable(
     cellX += columns[0].width;
 
     // Col 1: Aktivitas
-    const actLabel = [item.snapshotLabel || item.workSummary || "-", item.unitNumber].filter(Boolean).join(" - ");
+    const details = []
+    if (item.unitNumber && item.unitNumber !== '-' && !item.snapshotLabel?.includes(item.unitNumber)) details.push(item.unitNumber)
+    if ((item as any).tireCount && Number((item as any).tireCount) > 0) details.push(`${(item as any).tireCount} Tire`)
+    if ((item as any).materialUsed) details.push(`Mat: ${(item as any).materialUsed}`)
+    const actLabel = [item.snapshotLabel || item.workSummary || "-", details.join(" • ")].filter(Boolean).join(" - ");
     const activityLines = splitText(actLabel, 38);
     let actY = rowTopY - 11;
     for (const line of activityLines.slice(0, 2)) {

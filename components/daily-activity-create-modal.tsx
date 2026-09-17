@@ -148,6 +148,8 @@ export function DailyActivityCreateModal({
     items: Array<{
       label: string
       unitNumber?: string
+      materialUsed?: string
+      tireCount?: number
       duration?: string
       points?: number
       remark?: string
@@ -155,6 +157,13 @@ export function DailyActivityCreateModal({
       endTime?: string
       photoUrl?: string | null
       photos?: string[]
+      libraryActivityId?: number
+      requiresEquipmentNo?: boolean
+      requiresDuration?: boolean
+      requiresLocationGps?: boolean
+      requiresTireCount?: boolean
+      requiresMaterialUsed?: boolean
+      requiresPhoto?: boolean
     }>
   }>({
     employeeId: '',
@@ -348,6 +357,8 @@ export function DailyActivityCreateModal({
           ...missing.map((sub) => ({
             label: `${sub.code} - ${sub.name}`,
             unitNumber: '',
+            materialUsed: '',
+            tireCount: sub.requiresTireCount ? 1 : 0,
             duration: '60m',
             points: sub.basePoints || 5,
             remark: '',
@@ -355,30 +366,49 @@ export function DailyActivityCreateModal({
             endTime: '08:30',
             photoUrl: null,
             photos: [],
+            libraryActivityId: sub.id,
+            requiresEquipmentNo: sub.requiresEquipmentNo ?? false,
+            requiresDuration: sub.requiresDuration ?? true,
+            requiresLocationGps: sub.requiresLocationGps ?? false,
+            requiresTireCount: sub.requiresTireCount ?? false,
+            requiresMaterialUsed: sub.requiresMaterialUsed ?? false,
+            requiresPhoto: sub.requiresPhoto ?? false,
           })),
         ],
       }))
     }
   }
 
-  const addPresetActivity = (label: string, points = 10) => {
+  const addPresetActivity = (label: string, points = 10, presetObj?: ModalPreset) => {
     setCreateForm((p) => {
       const exists = p.items.some((i) => i.label === label)
       if (exists) return p
+      const matched = presetObj || activityPresets?.find(
+        (pr) => `${pr.code} - ${pr.name}` === label || label.includes(pr.code) || label.includes(pr.name)
+      )
       return {
         ...p,
         items: [
           ...p.items,
           {
             label,
-            points,
+            points: matched?.basePoints || points,
             duration: '60m',
             unitNumber: '',
+            materialUsed: '',
+            tireCount: matched?.requiresTireCount ? 1 : 0,
             remark: '',
             startTime: '08:00',
             endTime: '08:30',
             photoUrl: null,
             photos: [],
+            libraryActivityId: matched?.id,
+            requiresEquipmentNo: matched?.requiresEquipmentNo ?? false,
+            requiresDuration: matched?.requiresDuration ?? true,
+            requiresLocationGps: matched?.requiresLocationGps ?? false,
+            requiresTireCount: matched?.requiresTireCount ?? false,
+            requiresMaterialUsed: matched?.requiresMaterialUsed ?? false,
+            requiresPhoto: matched?.requiresPhoto ?? false,
           },
         ],
       }
@@ -570,6 +600,26 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
           toast.error(`Penjelasan / catatan aktivitas wajib diisi untuk "${it.label}"!`)
           return
         }
+        if ((it as any).requiresEquipmentNo && !it.unitNumber?.trim()) {
+          toast.error(`Nomor Equipment / Unit wajib diisi untuk "${it.label}"!`)
+          return
+        }
+        if ((it as any).requiresMaterialUsed && !it.materialUsed?.trim()) {
+          toast.error(`Material used wajib diisi untuk "${it.label}"!`)
+          return
+        }
+        if ((it as any).requiresTireCount && (!it.tireCount || it.tireCount < 1)) {
+          toast.error(`Jumlah tire wajib diisi (minimal 1) untuk "${it.label}"!`)
+          return
+        }
+        if ((it as any).requiresDuration !== false && (!it.startTime || !it.endTime)) {
+          toast.error(`Durasi waktu mulai dan selesai wajib diisi untuk "${it.label}"!`)
+          return
+        }
+        if ((it as any).requiresPhoto && !it.photoUrl && (!it.photos || it.photos.length === 0)) {
+          toast.error(`Foto dokumentasi wajib diunggah untuk "${it.label}"!`)
+          return
+        }
       }
     }
 
@@ -592,6 +642,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
           notes: createForm.customerName ? `Customer: ${createForm.customerName.trim()}` : undefined,
           items: validItems.map((it) => ({
             label: it.label,
+            libraryActivityId: it.libraryActivityId ? Number(it.libraryActivityId) : undefined,
             unitNumber: it.unitNumber,
             startedAt: it.startedAt || `${createForm.workDate}T${it.startTime || '08:00'}:00`,
             endedAt: it.endedAt || `${createForm.workDate}T${it.endTime || '08:30'}:00`,
@@ -599,6 +650,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
             points: it.points || 10,
             remark: it.remark,
             materialUsed: it.materialUsed,
+            tireCount: it.tireCount ?? ((it as any).requiresTireCount ? 1 : 0),
             photoUrl: it.photoUrl || (it.photos?.[0] ?? null),
             photos: it.photos || (it.photoUrl ? [it.photoUrl] : []),
           })),
@@ -1256,7 +1308,17 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                     <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
                       {createForm.items
                         .filter((i) => i?.label?.trim())
-                        .map((item, idx) => (
+                        .map((item, idx) => {
+                          const requirementBadges = [
+                            item.requiresEquipmentNo ? 'Equipment' : null,
+                            item.requiresDuration !== false ? 'Duration' : null,
+                            item.requiresTireCount ? 'Tire' : null,
+                            item.requiresMaterialUsed ? 'Material' : null,
+                            item.requiresLocationGps ? 'GPS' : null,
+                            item.requiresPhoto ? 'Photo Wajib' : null,
+                          ].filter(Boolean)
+
+                          return (
                           <div key={idx} className="rounded-xl border border-slate-200 bg-slate-50/50 p-3 space-y-2.5 relative">
                             <div className="flex items-start justify-between">
                               <div>
@@ -1264,6 +1326,18 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                                   #{idx + 1} • {item.label.split(' - ')[0] || 'SVC'}
                                 </p>
                                 <h6 className="text-xs font-bold text-slate-800">{item.label.split(' - ')[1] || item.label}</h6>
+                                {requirementBadges.length > 0 ? (
+                                  <div className="flex flex-wrap gap-1 pt-1">
+                                    {requirementBadges.map((badge, bIdx) => (
+                                      <span
+                                        key={bIdx}
+                                        className="rounded-md bg-white border border-slate-200 px-1.5 py-0.5 text-[8.5px] font-bold text-[#003f78] uppercase tracking-wider"
+                                      >
+                                        {badge}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : null}
                               </div>
                               <button
                                 type="button"
@@ -1275,9 +1349,31 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                               </button>
                             </div>
 
+                            {item.requiresEquipmentNo ? (
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <Label className="text-xs font-semibold text-slate-700">No. Equipment / Unit <span className="text-red-500 font-bold">*</span></Label>
+                                  {!item.unitNumber?.trim() && (
+                                    <span className="text-[10px] text-rose-600 font-bold bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">
+                                      Wajib diisi
+                                    </span>
+                                  )}
+                                </div>
+                                <Input
+                                  placeholder="Contoh: DT-451 / BAY-03..."
+                                  value={item.unitNumber || ''}
+                                  onChange={(e) => updateItemRow(idx, 'unitNumber', e.target.value)}
+                                  className={cn(
+                                    "h-8 text-xs bg-white border-slate-200",
+                                    !item.unitNumber?.trim() && "border-amber-300 focus:border-rose-500"
+                                  )}
+                                />
+                              </div>
+                            ) : null}
+
                             <div className="grid grid-cols-2 gap-2 text-xs">
                               <div className="space-y-1">
-                                <Label className="text-xs font-semibold text-slate-700">Mulai <span className="text-red-500 font-bold">*</span></Label>
+                                <Label className="text-xs font-semibold text-slate-700">Mulai {item.requiresDuration !== false ? <span className="text-red-500 font-bold">*</span> : ''}</Label>
                                 <Input
                                   type="time"
                                   value={(item as any).startTime || '08:00'}
@@ -1286,7 +1382,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                                 />
                               </div>
                               <div className="space-y-1">
-                                <Label className="text-xs font-semibold text-slate-700">Selesai <span className="text-red-500 font-bold">*</span></Label>
+                                <Label className="text-xs font-semibold text-slate-700">Selesai {item.requiresDuration !== false ? <span className="text-red-500 font-bold">*</span> : ''}</Label>
                                 <Input
                                   type="time"
                                   value={(item as any).endTime || '08:30'}
@@ -1296,21 +1392,59 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                               </div>
                             </div>
 
+                            {item.requiresMaterialUsed ? (
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <Label className="text-xs font-semibold text-slate-700">Material Used <span className="text-red-500 font-bold">*</span></Label>
+                                  {!item.materialUsed?.trim() && (
+                                    <span className="text-[10px] text-rose-600 font-bold bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">
+                                      Wajib diisi
+                                    </span>
+                                  )}
+                                </div>
+                                <Input
+                                  placeholder="Material / tools dipakai..."
+                                  value={item.materialUsed || ''}
+                                  onChange={(e) => updateItemRow(idx, 'materialUsed', e.target.value)}
+                                  className={cn(
+                                    "h-8 text-xs bg-white border-slate-200",
+                                    !item.materialUsed?.trim() && "border-amber-300 focus:border-rose-500"
+                                  )}
+                                />
+                              </div>
+                            ) : null}
+
+                            {item.requiresTireCount ? (
+                              <div className="space-y-1">
+                                <Label className="text-xs font-semibold text-slate-700">Jumlah Tire <span className="text-red-500 font-bold">*</span></Label>
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  value={item.tireCount ?? 1}
+                                  onChange={(e) => updateItemRow(idx, 'tireCount', Math.max(1, parseInt(e.target.value, 10) || 1))}
+                                  className="h-8 text-xs bg-white border-slate-200"
+                                />
+                              </div>
+                            ) : null}
+
                             <div className={cn(
                               "rounded-lg border p-2.5 space-y-2 bg-white",
-                              !item.photoUrl && (!item.photos || item.photos.length === 0) ? "border-amber-200 bg-amber-50/20" : "border-slate-200"
+                              !item.photoUrl && (!item.photos || item.photos.length === 0) ? (item.requiresPhoto ? "border-rose-300 bg-rose-50/30" : "border-amber-200 bg-amber-50/20") : "border-slate-200"
                             )}>
                               <div className="flex items-center justify-between">
                                 <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                                  <Camera className="size-3.5 text-slate-500" /> Photo Evidence <span className="text-slate-400 font-normal text-[10px]">(Opsional)</span>
+                                  <Camera className="size-3.5 text-slate-500" /> Photo Evidence {item.requiresPhoto ? <span className="text-rose-600 font-bold text-[10px]">(Wajib)</span> : <span className="text-slate-400 font-normal text-[10px]">(Opsional)</span>}
                                 </span>
                                 {item.photoUrl ? (
                                   <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-semibold">
                                     Foto Terunggah
                                   </Badge>
                                 ) : (
-                                  <span className="text-[10px] text-slate-500 font-medium bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
-                                    Foto opsional
+                                  <span className={cn(
+                                    "text-[10px] font-medium border px-1.5 py-0.5 rounded",
+                                    item.requiresPhoto ? "text-rose-700 bg-rose-50 border-rose-200 font-bold" : "text-slate-500 bg-slate-100 border-slate-200"
+                                  )}>
+                                    {item.requiresPhoto ? "Foto wajib diunggah" : "Foto opsional"}
                                   </span>
                                 )}
                               </div>
@@ -1397,7 +1531,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                               />
                             </div>
                           </div>
-                        ))}
+                        )})}
                     </div>
                   </div>
                 )}
@@ -1581,6 +1715,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                                     sub.requiresEquipmentNo ? 'Equipment' : null,
                                     sub.requiresDuration ? 'Duration' : null,
                                     sub.requiresTireCount ? 'Tire' : null,
+                                    sub.requiresMaterialUsed ? 'Material' : null,
                                     sub.requiresLocationGps ? 'GPS' : null,
                                     sub.requiresPhoto ? 'Photo' : null,
                                   ].filter(Boolean)
@@ -1595,7 +1730,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                                           )
                                           if (idxToRemove >= 0) removeItemRow(idxToRemove)
                                         } else {
-                                          addPresetActivity(`${sub.code} - ${sub.name}`, sub.basePoints || 5)
+                                          addPresetActivity(`${sub.code} - ${sub.name}`, sub.basePoints || 5, sub)
                                         }
                                       }}
                                       className={`flex items-center justify-between rounded-xl p-3 cursor-pointer transition border ${
@@ -1674,6 +1809,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                         item.requiresEquipmentNo ? 'Equipment' : null,
                         item.requiresDuration ? 'Duration' : null,
                         item.requiresTireCount ? 'Tire' : null,
+                        item.requiresMaterialUsed ? 'Material' : null,
                         item.requiresLocationGps ? 'GPS' : null,
                         item.requiresPhoto ? 'Photo' : null,
                       ].filter(Boolean)
@@ -1688,7 +1824,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                               )
                               if (idxToRemove >= 0) removeItemRow(idxToRemove)
                             } else {
-                              addPresetActivity(`${item.code} - ${item.name}`, item.basePoints || 10)
+                              addPresetActivity(`${item.code} - ${item.name}`, item.basePoints || 10, item)
                             }
                           }}
                           className={`flex items-center justify-between rounded-xl p-3 cursor-pointer transition border ${

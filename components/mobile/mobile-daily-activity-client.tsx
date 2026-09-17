@@ -853,7 +853,16 @@ export function MobileDailyActivityClient({
                                     return (
                                       <tr key={it.id || idx}>
                                         <td className="text-center align-middle">{idx + 1}</td>
-                                        <td className="align-middle">{it.label || it.snapshotLabel || 'Aktivitas'}</td>
+                                        <td className="align-middle">
+                                          <div className="font-semibold">{it.label || it.snapshotLabel || 'Aktivitas'}</div>
+                                          {(it.unitNumber || it.tireCount != null || it.materialUsed) && (
+                                            <div className="text-[7pt] text-slate-600 flex flex-wrap gap-x-2 mt-0.5">
+                                              {it.unitNumber ? <span>Unit: <strong>{it.unitNumber}</strong></span> : null}
+                                              {it.tireCount != null ? <span>Tire: <strong>{it.tireCount}</strong></span> : null}
+                                              {it.materialUsed ? <span>Mat: <strong>{it.materialUsed}</strong></span> : null}
+                                            </div>
+                                          )}
+                                        </td>
                                         <td className="text-center align-middle">{it.duration || '-'}</td>
                                         <td className="text-center font-bold align-middle">{it.points || it.actualPoints || 0}</td>
                                         <td className="text-left text-[7.5pt] align-middle">{it.remark || it.remarks || '-'}</td>

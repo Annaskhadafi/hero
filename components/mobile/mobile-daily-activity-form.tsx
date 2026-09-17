@@ -114,6 +114,10 @@ export type LibraryOption = {
   departmentId: number | null
   sectionId: number | null
   isGroupActivity?: boolean
+  isSelfInput?: boolean
+  isAssignable?: boolean
+  approvalRequired?: boolean
+  autoApproveIfGpsValid?: boolean
 }
 
 type ChecklistRenderItem = {
@@ -1118,16 +1122,20 @@ export function MobileDailyActivityForm({
             activityCode: code,
             activityName: name,
             basePoints: Number(item.points || item.actualPoints) || 5,
-            requiresPhoto: Boolean(item.photos?.length || item.photoUrl || extractItemPhotos(item).length > 0),
-            requiresEquipmentNo: false,
-            requiresDuration: true,
-            requiresMaterialUsed: Boolean(item.materialUsed),
-            requiresLocationGps: false,
-            requiresTireCount: false,
-            maxDailyCount: 99,
-            maxPointsPerDay: 999,
-            departmentId: null,
-            sectionId: null,
+            requiresPhoto: Boolean(item.requiresPhoto ?? (item.photos?.length || item.photoUrl || extractItemPhotos(item).length > 0)),
+            requiresEquipmentNo: Boolean((item as any).requiresEquipmentNo ?? item.requiresUnit),
+            requiresDuration: (item as any).requiresDuration ?? true,
+            requiresMaterialUsed: Boolean((item as any).requiresMaterialUsed || item.materialUsed),
+            requiresLocationGps: Boolean((item as any).requiresLocationGps),
+            requiresTireCount: Boolean((item as any).requiresTireCount),
+            maxDailyCount: (item as any).maxDailyCount ?? 99,
+            maxPointsPerDay: (item as any).maxPointsPerDay ?? 999,
+            departmentId: (item as any).departmentId ?? null,
+            sectionId: (item as any).sectionId ?? null,
+            isSelfInput: (item as any).isSelfInput ?? true,
+            isAssignable: (item as any).isAssignable ?? true,
+            approvalRequired: (item as any).approvalRequired ?? true,
+            autoApproveIfGpsValid: (item as any).autoApproveIfGpsValid ?? false,
           })
           existingIds.add(idStr)
         }
@@ -1935,6 +1943,44 @@ export function MobileDailyActivityForm({
         return `Penjelasan / catatan aktivitas wajib diisi untuk "${library.activityCode} - ${library.activityName}".`
       }
 
+      if (library.requiresEquipmentNo && !entry.equipmentNo?.trim()) {
+        return `Nomor Equipment / Unit wajib diisi untuk "${library.activityCode} - ${library.activityName}".`
+      }
+
+      if (library.requiresMaterialUsed && !entry.materialUsed?.trim()) {
+        return `Material used wajib diisi untuk "${library.activityCode} - ${library.activityName}".`
+      }
+
+      if (library.requiresTireCount && (!entry.tireCount || entry.tireCount < 1)) {
+        return `Jumlah tire wajib diisi (minimal 1) untuk "${library.activityCode} - ${library.activityName}".`
+      }
+
+      if (library.requiresDuration !== false) {
+        if (!entry.startTime || !entry.endTime) {
+          return `Durasi waktu mulai dan selesai wajib diisi untuk "${library.activityCode} - ${library.activityName}".`
+        }
+      }
+
+      if (library.requiresPhoto) {
+        const matchingItem = initialSessionData?.sessionItems?.find(
+          (it: any) => String(it.libraryActivityId) === libraryId || String(it.id) === libraryId
+        )
+        const hasSessionPhoto = matchingItem ? extractItemPhotos(matchingItem).length > 0 : false
+        const hasLocalPhoto = Boolean(
+          (entry.previewUrls && entry.previewUrls.length > 0) ||
+            entry.photoFile ||
+            (entry.photoFiles && entry.photoFiles.length > 0) ||
+            entry.restoredPhotoPayload
+        )
+        if (!hasSessionPhoto && !hasLocalPhoto) {
+          return `Foto dokumentasi wajib diunggah untuk "${library.activityCode} - ${library.activityName}".`
+        }
+      }
+
+      if (library.requiresLocationGps && (!geo.latitude || !geo.longitude)) {
+        return `Validasi GPS wajib aktif untuk aktivitas "${library.activityCode} - ${library.activityName}".`
+      }
+
       if (entry.startTime && entry.endTime) {
         const start = new Date(entry.startTime)
         const end = new Date(entry.endTime)
@@ -2137,7 +2183,7 @@ export function MobileDailyActivityForm({
               points: library.basePoints || 5,
               remark: entry.notes || '',
               materialUsed: entry.materialUsed || '',
-              tireCount: library.requiresTireCount ? (entry.tireCount ?? 1) : 0,
+              tireCount: library.requiresTireCount ? (entry.tireCount ?? 1) : (entry.tireCount ?? null),
               photoUrl: entryEvidence.urls[0] || null,
               photos: entryEvidence.urls,
             }
@@ -2824,11 +2870,11 @@ export function MobileDailyActivityForm({
                     buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
                   const requirementBadges = [
                     library.requiresEquipmentNo ? 'Equipment' : null,
+                    library.requiresDuration !== false ? 'Waktu' : null,
                     library.requiresTireCount ? 'Tire' : null,
-                    library.requiresDuration ? 'Waktu' : null,
                     library.requiresMaterialUsed ? 'Material' : null,
                     library.requiresLocationGps ? 'GPS' : null,
-                    library.requiresPhoto ? 'Foto (Opsional)' : null,
+                    library.requiresPhoto ? 'Foto Wajib' : null,
                   ].filter(Boolean)
 
                   return (
@@ -2871,23 +2917,26 @@ export function MobileDailyActivityForm({
                         {library.requiresEquipmentNo ? (
                           <Label className="block space-y-2">
                             <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
-                              Equipment / Unit No.
+                              No. Equipment / Unit <span className="text-rose-500">*</span>
                             </span>
                             <Input
-                              value={entry.equipmentNo}
+                              value={entry.equipmentNo || ''}
                               onChange={(event) =>
-                                updateSelfInputEntry(libraryId, { equipmentNo: event.target.value })
+                                updateSelfInputEntry(libraryId, {
+                                  equipmentNo: event.target.value,
+                                })
                               }
-                              placeholder="Contoh: DT-451 / BAY-03"
+                              placeholder="Nomor unit / equipment (contoh: DT-451)"
                               className="h-12 rounded-2xl border-0 bg-white px-4 text-sm font-semibold text-[#082033]"
                             />
                           </Label>
                         ) : null}
-                        {library.requiresDuration ? (
+
+                        {library.requiresDuration !== false ? (
                           <div className="grid gap-3 sm:grid-cols-2">
                             <Label className="block space-y-2">
                               <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
-                                Mulai
+                                Mulai <span className="text-rose-500">*</span>
                               </span>
                               <Input
                                 type="datetime-local"
@@ -2900,7 +2949,7 @@ export function MobileDailyActivityForm({
                             </Label>
                             <Label className="block space-y-2">
                               <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
-                                Selesai
+                                Selesai <span className="text-rose-500">*</span>
                               </span>
                               <Input
                                 type="datetime-local"

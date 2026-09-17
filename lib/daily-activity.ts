@@ -2459,6 +2459,24 @@ export async function getDailyActivityEmployeeData(
           siteIds: activityLibraries.siteIds,
           siteName: sites.name,
           basePoints: activityLibraries.basePoints,
+          complexityLevel: activityLibraries.complexityLevel,
+          requiresPhoto: activityLibraries.requiresPhoto,
+          requiresEquipmentNo: activityLibraries.requiresEquipmentNo,
+          requiresDuration: activityLibraries.requiresDuration,
+          requiresMaterialUsed: activityLibraries.requiresMaterialUsed,
+          requiresLocationGps: activityLibraries.requiresLocationGps,
+          requiresTireCount: activityLibraries.requiresTireCount,
+          maxDailyCount: activityLibraries.maxDailyCount,
+          maxPointsPerDay: activityLibraries.maxPointsPerDay,
+          departmentId: activityLibraries.departmentId,
+          departmentIds: activityLibraries.departmentIds,
+          sectionId: activityLibraries.sectionId,
+          sectionIds: activityLibraries.sectionIds,
+          slaHours: activityLibraries.slaHours,
+          isSelfInput: activityLibraries.isSelfInput,
+          isAssignable: activityLibraries.isAssignable,
+          approvalRequired: activityLibraries.approvalRequired,
+          autoApproveIfGpsValid: activityLibraries.autoApproveIfGpsValid,
         })
         .from(activityLibraries)
         .leftJoin(sites, eq(activityLibraries.siteId, sites.id))
@@ -2674,6 +2692,10 @@ export async function getDailyActivityEmployeeData(
           sectionId: activityLibraries.sectionId,
           sectionIds: activityLibraries.sectionIds,
           slaHours: activityLibraries.slaHours,
+          isSelfInput: activityLibraries.isSelfInput,
+          isAssignable: activityLibraries.isAssignable,
+          approvalRequired: activityLibraries.approvalRequired,
+          autoApproveIfGpsValid: activityLibraries.autoApproveIfGpsValid,
         })
         .from(activityLibraries)
         .leftJoin(sites, eq(activityLibraries.siteId, sites.id))
