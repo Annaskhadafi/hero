@@ -1,20 +1,13 @@
 'use client'
 
 import SignatureCanvas from 'react-signature-canvas'
-import { Download, Loader2, PenLine, Pencil, Save } from 'lucide-react'
+import { Download, Loader2, Pencil, RotateCcw, Save, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Combobox } from '@/components/ui/combobox'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { MinimalTableShell } from '@/components/ui/minimal-table-shell'
@@ -30,6 +23,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { getSites, getManualTorqueAssets } from '@/app/dashboard/360-service/service-form/actions'
 import { ChangeTireForm } from '@/components/service-forms/change-tire-form'
+import { TireInflationForm } from '@/components/service-forms/tire-inflation-form'
+import { TyreHandlerInspectionForm } from '@/components/service-forms/tyre-handler-inspection-form'
+import { SiapHadirForm } from '@/components/service-forms/siap-hadir-form'
 
 type RetorqueVariant = 'DT' | 'OHT'
 type SignatureKey = 'first' | 'second' | 'knownBy'
@@ -205,10 +201,10 @@ function formatDateTime(value: string) {
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
-    <div className="grid grid-cols-[30mm_3mm_1fr] items-center gap-1 text-[7px] leading-none text-black">
-      <span>{label}</span>
+    <div className="grid grid-cols-[36mm_3mm_1fr] items-center gap-1 text-[8.5px] leading-none text-black">
+      <span className="font-medium">{label}</span>
       <span>:</span>
-      <span className="min-h-[4mm] border border-black px-1 leading-[4mm]">{value}</span>
+      <span className="min-h-[5.5mm] border border-black px-1.5 flex items-center">{value}</span>
     </div>
   )
 }
@@ -225,16 +221,19 @@ function PdfSignature({
   footer: string
 }) {
   return (
-    <div className="flex min-h-[28mm] flex-col justify-between text-center text-[7px] text-black">
-      <div>{title}</div>
-      <div className="flex h-[13mm] items-center justify-center">
+    <div className="flex min-h-[34mm] flex-col justify-between text-center text-[8.5px] text-black">
+      <div className="font-semibold">{title}</div>
+      <div className="flex h-[18mm] items-center justify-center">
         {signature ? (
-          <img src={signature} alt="" className="max-h-[12mm] max-w-[42mm] object-contain" />
+          <img src={signature} alt="" className="max-h-[16mm] max-w-[48mm] object-contain" />
         ) : null}
       </div>
       <div>
-        <div className="min-h-[4mm] font-semibold">{name}</div>
-        <div>{footer}</div>
+        {name ? (
+          <div className="min-h-[5mm] font-bold border-b border-black inline-block px-3 pb-0.5">{name}</div>
+        ) : (
+          <div className="min-h-[5mm] font-medium">{footer}</div>
+        )}
       </div>
     </div>
   )
@@ -265,30 +264,30 @@ function RetorquePdfPage({
       style={{ width: '210mm', height: '297mm' }}
     >
       <img src={LETTERHEAD_URL} alt="" className="absolute inset-0 z-0 h-full w-full object-fill" />
-      <div className="relative z-10 px-[15mm] pt-[55mm] text-black">
-        <div className="mr-[10mm] ml-[30mm] text-center">
-          <h2 className="text-[14px] leading-tight font-black">{title}</h2>
-          <p className="mt-1 text-[14px] leading-tight font-black">
+      <div className="relative z-10 px-[14mm] pt-[36mm] pb-[25mm] text-black">
+        <div className="text-center">
+          <h2 className="text-[13px] leading-tight font-black">{title}</h2>
+          <p className="mt-1 text-[12px] leading-tight font-black uppercase">
             {draft.siteName || 'BMB SITE'}
           </p>
         </div>
 
-        <div className="mt-[10mm] grid grid-cols-2 gap-[10mm]">
-          <div className="space-y-[1mm]">
+        <div className="mt-[6mm] grid grid-cols-2 gap-[8mm]">
+          <div className="space-y-[1.5mm]">
             <Field label="Tanggal" value={draft.date} />
             <Field label="Tipe Unit" value={draft.unitType} />
             <Field label="Shift" value={draft.shift} />
           </div>
-          <div className="space-y-[1mm]">
+          <div className="space-y-[1.5mm]">
             <Field label="Nama Site" value={draft.siteName} />
             <Field label="Lokasi Kerja" value={draft.workLocation} />
           </div>
         </div>
 
-        <div className="my-[5mm] h-px bg-black" />
+        <div className="my-[4mm] h-px bg-black" />
 
-        <div className="grid grid-cols-2 gap-[10mm]">
-          <div className="space-y-[1mm]">
+        <div className="grid grid-cols-2 gap-[8mm]">
+          <div className="space-y-[1.5mm]">
             <Field label="No Unit" value={draft.unitNumber} />
             <Field label="Kilometer Unit" value={draft.kilometerFirst} />
             <Field label="Jam Torque Pertama" value={draft.firstTorqueStart} />
@@ -299,7 +298,7 @@ function RetorquePdfPage({
             {variant === 'OHT' ? <Field label="R100 VOLVO" value="1100 lbft" /> : null}
             <Field label="SN Retorque" value={draft.firstSn} />
           </div>
-          <div className="space-y-[1mm]">
+          <div className="space-y-[1.5mm]">
             <Field label="Tanggal" value={draft.retorqueDate} />
             <Field label="Kilometer Unit" value={draft.kilometerSecond} />
             <Field label="Jam Re-Torque Kedua" value={draft.secondTorqueStart} />
@@ -312,48 +311,52 @@ function RetorquePdfPage({
           </div>
         </div>
 
-        <div className="mt-[7mm] grid grid-cols-[25mm_1fr] gap-[5mm]">
-          <div className="pt-[1mm] text-center text-black">
-            <div className="text-[11px] font-bold">RE TORQUE</div>
-            <div className="text-[7px]">Posisi Ban</div>
-            <div className="mt-[1mm] space-y-[1.2mm] text-[7px] leading-none">
+        <div className="mt-[5mm] grid grid-cols-[28mm_1fr] gap-[4mm]">
+          <div className="pt-[1mm] text-center text-black flex flex-col justify-between">
+            <div>
+              <div className="text-[11px] font-bold">RE TORQUE</div>
+              <div className="text-[8px] font-medium">Posisi Ban</div>
+            </div>
+            <div className="my-auto space-y-0 text-[8.5px] font-bold">
               {rows.slice(0, rowCount).map((_, index) => (
-                <div key={index}>{index + 1}</div>
+                <div key={index} className="h-[6.5mm] flex items-center justify-center">
+                  {index + 1}
+                </div>
               ))}
             </div>
           </div>
-          <table className="w-full border-collapse text-[7px] leading-none text-black">
+          <table className="w-full border-collapse text-[8.5px] leading-none text-black">
             <thead>
-              <tr>
-                <th className="h-[5mm] border border-black font-bold">Kondisi Bolt Stud dan Nut</th>
-                <th className="h-[5mm] border border-black font-bold">Rekomendasi</th>
+              <tr className="bg-slate-100/60">
+                <th className="h-[6.5mm] border border-black font-bold px-2 text-center">Kondisi Bolt Stud dan Nut</th>
+                <th className="h-[6.5mm] border border-black font-bold px-2 text-center">Rekomendasi</th>
               </tr>
             </thead>
             <tbody>
               {rows.slice(0, rowCount).map((row, index) => (
                 <tr key={index}>
-                  <td className="h-[5mm] border border-black px-1">{row.condition}</td>
-                  <td className="h-[5mm] border border-black px-1">{row.recommendation}</td>
+                  <td className="h-[6.5mm] border border-black px-2">{row.condition}</td>
+                  <td className="h-[6.5mm] border border-black px-2">{row.recommendation}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
 
-        <div className="mt-[8mm] grid grid-cols-2 gap-[10mm] text-[7px] text-black">
-          <div className="grid grid-cols-[30mm_3mm_1fr]">
-            <span>Alasan</span>
+        <div className="mt-[5mm] grid grid-cols-2 gap-[8mm] text-[8.5px] text-black">
+          <div className="grid grid-cols-[20mm_3mm_1fr] items-center">
+            <span className="font-semibold">Alasan</span>
             <span>:</span>
-            <span>{draft.reason}</span>
+            <span className="min-h-[5.5mm] border-b border-black px-1 flex items-center">{draft.reason}</span>
           </div>
-          <div className="grid grid-cols-[30mm_3mm_1fr]">
-            <span>Catatan</span>
+          <div className="grid grid-cols-[20mm_3mm_1fr] items-center">
+            <span className="font-semibold">Catatan</span>
             <span>:</span>
-            <span>{draft.notes}</span>
+            <span className="min-h-[5.5mm] border-b border-black px-1 flex items-center">{draft.notes}</span>
           </div>
         </div>
 
-        <div className="mt-[4mm] grid grid-cols-3 gap-[10mm]">
+        <div className="mt-[6mm] grid grid-cols-3 gap-[8mm]">
           <PdfSignature
             title="Yang Melakukan Re-torque pertama"
             name={draft.firstSignerName}
@@ -364,7 +367,7 @@ function RetorquePdfPage({
             title="Yang Melakukan Re-torque kedua"
             name={draft.secondSignerName}
             signature={signatures.second}
-            footer="Nama dan Tanda Tangan karyawan"
+            footer="Nama dan Tanda Tangan Karyawan"
           />
           <PdfSignature
             title="Mengetahui,"
@@ -383,16 +386,23 @@ function FieldInput({
   value,
   onChange,
   type = 'text',
+  placeholder,
 }: {
   label: string
   value: string
   onChange: (value: string) => void
   type?: string
+  placeholder?: string
 }) {
   return (
     <div className="space-y-2">
       <Label className="text-muted-foreground text-xs font-bold">{label}</Label>
-      <Input value={value} onChange={(event) => onChange(event.target.value)} type={type} />
+      <Input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        type={type}
+        placeholder={placeholder}
+      />
     </div>
   )
 }
@@ -428,7 +438,7 @@ function SignatureBox({
 }
 
 export function ServiceFormWorkspace({ mobile = false }: { mobile?: boolean }) {
-  const [activeVariant, setActiveVariant] = useState<RetorqueVariant | null>(null)
+  const [activeVariant, setActiveVariant] = useState<RetorqueVariant>('DT')
   const [draft, setDraft] = useState<RetorqueDraft>(DEFAULT_DRAFT)
   const [rows, setRows] = useState<RetorqueRow[]>(() => emptyRows())
   const [dtRowCount, setDtRowCount] = useState(8)
@@ -439,7 +449,7 @@ export function ServiceFormWorkspace({ mobile = false }: { mobile?: boolean }) {
   const [records, setRecords] = useState<ServiceFormRecord[]>([])
   const [hasLoadedRecords, setHasLoadedRecords] = useState(false)
   const [editingRecordId, setEditingRecordId] = useState<string | null>(null)
-  const [pdfPayload, setPdfPayload] = useState<RetorquePdfPayload>(() => createBlankPayload())
+  const [pdfPayload, setPdfPayload] = useState<RetorquePdfPayload>(() => createBlankPayload('DT'))
   const [siteOptions, setSiteOptions] = useState<string[]>([])
   const [snOptions, setSnOptions] = useState<string[]>([])
 
@@ -448,10 +458,10 @@ export function ServiceFormWorkspace({ mobile = false }: { mobile?: boolean }) {
   const knownBySignatureRef = useRef<SignatureCanvas | null>(null)
   const pdfPageRef = useRef<HTMLDivElement | null>(null)
 
-  const variant = activeVariant ?? 'DT'
+  const variant = activeVariant
   const rowCount = variant === 'OHT' ? 6 : dtRowCount
   const torqueSpecLabel = labelForTorqueSpec(variant)
-  const dialogTitle = variant === 'OHT' ? 'Form Retorque OHT' : 'Form Retorque DT'
+  const formTitle = variant === 'OHT' ? 'Form Retorque OHT' : 'Form Retorque DT'
 
   const signatureRefByKey = useMemo(
     () => ({
@@ -558,6 +568,16 @@ export function ServiceFormWorkspace({ mobile = false }: { mobile?: boolean }) {
     setDtRowCount(record.variant === 'DT' ? record.rowCount : 8)
     setSignatures(record.signatures)
     loadSignatureCanvases(record.signatures)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  function deleteRecord(id: string) {
+    if (window.confirm('Hapus riwayat form ini?')) {
+      setRecords((current) => current.filter((r) => r.id !== id))
+      if (editingRecordId === id) {
+        openForm(activeVariant)
+      }
+    }
   }
 
   function saveRecord() {
@@ -651,21 +671,392 @@ export function ServiceFormWorkspace({ mobile = false }: { mobile?: boolean }) {
         >
           <TabsTrigger value="retorque">Retorque</TabsTrigger>
           <TabsTrigger value="change-tire">Change Tire</TabsTrigger>
+          <TabsTrigger value="tire-inflation">Pengisian Angin</TabsTrigger>
+          <TabsTrigger value="tyre-handler">Tyre Handler</TabsTrigger>
+          <TabsTrigger value="siap-hadir">Siap dan Hadir</TabsTrigger>
         </TabsList>
+
+        {/* Retorque Tab - Rendered Inline just like Siap dan Hadir */}
         <TabsContent value="retorque">
-          <div className="space-y-4">
-            <div className="flex flex-wrap gap-2">
-              {formVariants.map((v) => (
-                <Button key={v} type="button" size="dense" onClick={() => openForm(v)}>
-                  <PenLine className="size-4" />
-                  Form Retorque {v}
+          <div className="space-y-6">
+            {/* Sub-tabs switcher */}
+            <div className="flex items-center justify-between border-b pb-2">
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={activeVariant === 'DT' ? 'default' : 'outline'}
+                  size="dense"
+                  onClick={() => openForm('DT')}
+                  className={cn(
+                    activeVariant === 'DT' && 'bg-blue-600 text-white hover:bg-blue-700'
+                  )}
+                >
+                  Form Retorque DT
                 </Button>
-              ))}
+                <Button
+                  type="button"
+                  variant={activeVariant === 'OHT' ? 'default' : 'outline'}
+                  size="dense"
+                  onClick={() => openForm('OHT')}
+                  className={cn(
+                    activeVariant === 'OHT' && 'bg-blue-600 text-white hover:bg-blue-700'
+                  )}
+                >
+                  Form Retorque OHT
+                </Button>
+              </div>
             </div>
 
+            {/* Inline Form Card */}
+            <Card className="rounded-xl shadow-sm">
+              <CardHeader className="flex flex-col gap-3 border-b border-gray-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-lg font-bold">
+                      {formTitle}
+                    </CardTitle>
+                    {editingRecordId ? (
+                      <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                        Mode Edit
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Input data, tanda tangan digital, lalu simpan riwayat atau download PDF A4.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="dense"
+                    onClick={() => openForm(activeVariant)}
+                  >
+                    <RotateCcw className="mr-1.5 size-4" />
+                    Reset Form
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="dense"
+                    onClick={saveRecord}
+                  >
+                    <Save className="mr-1.5 size-4" />
+                    Simpan History
+                  </Button>
+                  <Button
+                    type="button"
+                    size="dense"
+                    onClick={() => downloadPdf()}
+                    disabled={isGenerating}
+                  >
+                    {isGenerating ? (
+                      <>
+                        <Loader2 className="mr-1.5 size-4 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="mr-1.5 size-4" />
+                        Download PDF
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardHeader>
+
+              <CardContent className="space-y-6 pt-5">
+                {/* Document Metadata */}
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                  <FieldInput
+                    label="Tanggal"
+                    value={draft.date}
+                    onChange={(value) => updateDraft('date', value)}
+                    type="date"
+                  />
+                  <FieldInput
+                    label="Tipe Unit"
+                    value={draft.unitType}
+                    onChange={(value) => updateDraft('unitType', value)}
+                    placeholder="Contoh: Hino 700 / Cat 777"
+                  />
+                  <FieldInput
+                    label="Shift"
+                    value={draft.shift}
+                    onChange={(value) => updateDraft('shift', value)}
+                    placeholder="Contoh: Pagi / Malam"
+                  />
+                  <div className="space-y-2">
+                    <Label className="text-muted-foreground text-xs font-bold">Nama Site</Label>
+                    <Combobox
+                      value={draft.siteName}
+                      onChange={(value) => updateDraft('siteName', value)}
+                      options={siteOptions}
+                      placeholder="Pilih site..."
+                    />
+                  </div>
+                  <FieldInput
+                    label="Lokasi Kerja"
+                    value={draft.workLocation}
+                    onChange={(value) => updateDraft('workLocation', value)}
+                    placeholder="Contoh: Workshop Tyre"
+                  />
+                </div>
+
+                {/* Torque Pertama & Re-Torque Kedua */}
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <Card className="border border-gray-100 shadow-none">
+                    <CardHeader className="py-3 px-4 bg-gray-50/50 rounded-t-lg border-b">
+                      <CardTitle className="text-sm font-semibold">Torque Pertama</CardTitle>
+                    </CardHeader>
+                    <CardContent className="grid gap-3 sm:grid-cols-2 p-4">
+                      <FieldInput
+                        label="No Unit"
+                        value={draft.unitNumber}
+                        onChange={(value) => updateDraft('unitNumber', value)}
+                        placeholder="Contoh: DT012"
+                      />
+                      <FieldInput
+                        label="Kilometer Unit"
+                        value={draft.kilometerFirst}
+                        onChange={(value) => updateDraft('kilometerFirst', value)}
+                      />
+                      <FieldInput
+                        label="Jam Torque Pertama"
+                        value={draft.firstTorqueStart}
+                        onChange={(value) => updateDraft('firstTorqueStart', value)}
+                        type="time"
+                      />
+                      <FieldInput
+                        label="Jam Selesai Torque Pertama"
+                        value={draft.firstTorqueEnd}
+                        onChange={(value) => updateDraft('firstTorqueEnd', value)}
+                        type="time"
+                      />
+                      <FieldInput
+                        label="Waktu Pengerjaan"
+                        value={draft.firstDuration}
+                        onChange={(value) => updateDraft('firstDuration', value)}
+                        placeholder="Contoh: 30 Menit"
+                      />
+                      <FieldInput
+                        label="Tekanan Torque"
+                        value={draft.firstPressure}
+                        onChange={(value) => updateDraft('firstPressure', value)}
+                        placeholder="Contoh: 120 Psi"
+                      />
+                      <FieldInput
+                        label={torqueSpecLabel}
+                        value={draft.firstTorqueSpec}
+                        onChange={(value) => updateDraft('firstTorqueSpec', value)}
+                      />
+                      <div className="space-y-2">
+                        <Label className="text-muted-foreground text-xs font-bold">SN Retorque</Label>
+                        <Combobox
+                          value={draft.firstSn}
+                          onChange={(value) => updateDraft('firstSn', value.split(' — ')[0])}
+                          options={snOptions}
+                          placeholder="Cari SN asset MANUAL TORQUE..."
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border border-gray-100 shadow-none">
+                    <CardHeader className="py-3 px-4 bg-gray-50/50 rounded-t-lg border-b">
+                      <CardTitle className="text-sm font-semibold">Re-Torque Kedua</CardTitle>
+                    </CardHeader>
+                    <CardContent className="grid gap-3 sm:grid-cols-2 p-4">
+                      <FieldInput
+                        label="Tanggal"
+                        value={draft.retorqueDate}
+                        onChange={(value) => updateDraft('retorqueDate', value)}
+                        type="date"
+                      />
+                      <FieldInput
+                        label="Kilometer Unit"
+                        value={draft.kilometerSecond}
+                        onChange={(value) => updateDraft('kilometerSecond', value)}
+                      />
+                      <FieldInput
+                        label="Jam Re-Torque Kedua"
+                        value={draft.secondTorqueStart}
+                        onChange={(value) => updateDraft('secondTorqueStart', value)}
+                        type="time"
+                      />
+                      <FieldInput
+                        label="Jam Selesai Re-Torque Kedua"
+                        value={draft.secondTorqueEnd}
+                        onChange={(value) => updateDraft('secondTorqueEnd', value)}
+                        type="time"
+                      />
+                      <FieldInput
+                        label="Waktu Pengerjaan"
+                        value={draft.secondDuration}
+                        onChange={(value) => updateDraft('secondDuration', value)}
+                        placeholder="Contoh: 30 Menit"
+                      />
+                      <FieldInput
+                        label="Tekanan Torque"
+                        value={draft.secondPressure}
+                        onChange={(value) => updateDraft('secondPressure', value)}
+                        placeholder="Contoh: 120 Psi"
+                      />
+                      <FieldInput
+                        label={torqueSpecLabel}
+                        value={draft.secondTorqueSpec}
+                        onChange={(value) => updateDraft('secondTorqueSpec', value)}
+                      />
+                      <div className="space-y-2">
+                        <Label className="text-muted-foreground text-xs font-bold">SN Retorque</Label>
+                        <Combobox
+                          value={draft.secondSn}
+                          onChange={(value) => updateDraft('secondSn', value.split(' — ')[0])}
+                          options={snOptions}
+                          placeholder="Cari SN asset MANUAL TORQUE..."
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Posisi Ban */}
+                <Card className="border border-gray-100 shadow-none">
+                  <CardHeader className="py-3 px-4 bg-gray-50/50 rounded-t-lg border-b">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <CardTitle className="text-sm font-semibold">Posisi Ban</CardTitle>
+                      {variant === 'DT' ? (
+                        <label className="text-muted-foreground flex items-center gap-2 text-xs font-semibold">
+                          Jumlah Baris DT:
+                          <select
+                            value={dtRowCount}
+                            onChange={(event) => setDtRowCount(Number(event.target.value))}
+                            className="bg-white text-foreground h-8 rounded-md px-2.5 border text-xs"
+                          >
+                            <option value={8}>8 Baris</option>
+                            <option value={12}>12 Baris</option>
+                          </select>
+                        </label>
+                      ) : (
+                        <span className="text-muted-foreground text-xs font-semibold">OHT (6 Baris Ban)</span>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3 p-4">
+                    {rows.slice(0, rowCount).map((row, index) => (
+                      <div
+                        key={index}
+                        className="bg-gray-50/70 border border-gray-100 grid gap-3 rounded-lg p-3 md:grid-cols-[80px_1fr_1fr]"
+                      >
+                        <div className="text-primary flex items-center text-xs font-bold">
+                          Ban #{index + 1}
+                        </div>
+                        <Input
+                          value={row.condition}
+                          onChange={(event) => updateRow(index, 'condition', event.target.value)}
+                          placeholder="Kondisi Bolt Stud dan Nut..."
+                          className="h-8 text-xs bg-white"
+                        />
+                        <Input
+                          value={row.recommendation}
+                          onChange={(event) => updateRow(index, 'recommendation', event.target.value)}
+                          placeholder="Rekomendasi..."
+                          className="h-8 text-xs bg-white"
+                        />
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+
+                {/* Alasan & Catatan */}
+                <div className="grid gap-4 md:grid-cols-2">
+                  <FieldInput
+                    label="Alasan Retorque"
+                    value={draft.reason}
+                    onChange={(value) => updateDraft('reason', value)}
+                    placeholder="Contoh: Penggantian Ban Posisi 1"
+                  />
+                  <FieldInput
+                    label="Catatan Khusus"
+                    value={draft.notes}
+                    onChange={(value) => updateDraft('notes', value)}
+                    placeholder="Catatan tambahan bila ada..."
+                  />
+                </div>
+
+                {/* Tanda Tangan Digital */}
+                <Card className="border border-gray-100 shadow-none">
+                  <CardHeader className="py-3 px-4 bg-gray-50/50 rounded-t-lg border-b">
+                    <CardTitle className="text-sm font-semibold">Tanda Tangan Digital</CardTitle>
+                  </CardHeader>
+                  <CardContent className="grid gap-4 lg:grid-cols-3 p-4">
+                    <div className="space-y-3">
+                      <FieldInput
+                        label="Nama Operator Retorque Pertama"
+                        value={draft.firstSignerName}
+                        onChange={(value) => updateDraft('firstSignerName', value)}
+                        placeholder="Nama operator..."
+                      />
+                      <SignatureBox
+                        label="TTD Retorque Pertama"
+                        signatureRef={firstSignatureRef}
+                        onEnd={() => updateSignature('first')}
+                        onClear={() => clearSignature('first')}
+                      />
+                    </div>
+                    <div className="space-y-3">
+                      <FieldInput
+                        label="Nama Operator Retorque Kedua"
+                        value={draft.secondSignerName}
+                        onChange={(value) => updateDraft('secondSignerName', value)}
+                        placeholder="Nama operator..."
+                      />
+                      <SignatureBox
+                        label="TTD Retorque Kedua"
+                        signatureRef={secondSignatureRef}
+                        onEnd={() => updateSignature('second')}
+                        onClear={() => clearSignature('second')}
+                      />
+                    </div>
+                    <div className="space-y-3">
+                      <FieldInput
+                        label="Nama Customer / Mengetahui"
+                        value={draft.knownByName}
+                        onChange={(value) => updateDraft('knownByName', value)}
+                        placeholder="Nama customer..."
+                      />
+                      <SignatureBox
+                        label="TTD Mengetahui"
+                        signatureRef={knownBySignatureRef}
+                        onEnd={() => updateSignature('knownBy')}
+                        onClear={() => clearSignature('knownBy')}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Bottom Action Bar */}
+                <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
+                  <Button type="button" variant="outline" size="dense" onClick={saveRecord}>
+                    <Save className="mr-1.5 size-4" />
+                    Simpan History
+                  </Button>
+                  <Button type="button" size="dense" onClick={() => downloadPdf()} disabled={isGenerating}>
+                    {isGenerating ? (
+                      <Loader2 className="mr-1.5 size-4 animate-spin" />
+                    ) : (
+                      <Download className="mr-1.5 size-4" />
+                    )}
+                    Download PDF
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Riwayat History Card */}
             <Card className={cn(mobile && 'rounded-2xl bg-white shadow-sm')}>
               <CardHeader>
-                <CardTitle>History Service Form</CardTitle>
+                <CardTitle>History Retorque Form ({records.length})</CardTitle>
               </CardHeader>
               <CardContent>
                 <MinimalTableShell label="History Retorque">
@@ -683,26 +1074,31 @@ export function ServiceFormWorkspace({ mobile = false }: { mobile?: boolean }) {
                     <TableBody>
                       {records.map((record) => (
                         <TableRow key={record.id}>
-                          <TableCell className="whitespace-nowrap">
+                          <TableCell className="whitespace-nowrap font-mono text-xs">
                             {record.draft.date || '-'}
                           </TableCell>
-                          <TableCell>{record.variant}</TableCell>
-                          <TableCell className="font-semibold">
+                          <TableCell>
+                            <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">
+                              {record.variant}
+                            </span>
+                          </TableCell>
+                          <TableCell className="font-semibold text-xs">
                             {record.draft.unitNumber || '-'}
                           </TableCell>
-                          <TableCell>{record.draft.siteName || '-'}</TableCell>
-                          <TableCell className="whitespace-nowrap">
+                          <TableCell className="text-xs">{record.draft.siteName || '-'}</TableCell>
+                          <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                             {formatDateTime(record.updatedAt)}
                           </TableCell>
                           <TableCell>
-                            <div className="flex justify-end gap-2">
+                            <div className="flex justify-end gap-1.5">
                               <Button
                                 type="button"
                                 variant="outline"
                                 size="dense"
                                 onClick={() => editRecord(record)}
+                                title="Edit Form"
                               >
-                                <Pencil className="size-4" />
+                                <Pencil className="mr-1 size-3.5" />
                                 Edit
                               </Button>
                               <Button
@@ -710,9 +1106,20 @@ export function ServiceFormWorkspace({ mobile = false }: { mobile?: boolean }) {
                                 size="dense"
                                 onClick={() => downloadPdf(record)}
                                 disabled={isGenerating}
+                                title="Download PDF"
                               >
-                                <Download className="size-4" />
+                                <Download className="mr-1 size-3.5" />
                                 PDF
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="denseIcon"
+                                onClick={() => deleteRecord(record.id)}
+                                title="Hapus Riwayat"
+                                className="text-red-500 hover:bg-red-50 hover:text-red-700"
+                              >
+                                <Trash2 className="size-4" />
                               </Button>
                             </div>
                           </TableCell>
@@ -720,8 +1127,8 @@ export function ServiceFormWorkspace({ mobile = false }: { mobile?: boolean }) {
                       ))}
                       {records.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-muted-foreground py-8 text-center">
-                            Belum ada history form.
+                          <TableCell colSpan={6} className="text-muted-foreground py-8 text-center text-xs">
+                            Belum ada riwayat form retorque yang tersimpan.
                           </TableCell>
                         </TableRow>
                       ) : null}
@@ -732,291 +1139,20 @@ export function ServiceFormWorkspace({ mobile = false }: { mobile?: boolean }) {
             </Card>
           </div>
         </TabsContent>
+
         <TabsContent value="change-tire">
           <ChangeTireForm mobile={mobile} />
         </TabsContent>
+        <TabsContent value="tire-inflation">
+          <TireInflationForm mobile={mobile} />
+        </TabsContent>
+        <TabsContent value="tyre-handler">
+          <TyreHandlerInspectionForm mobile={mobile} />
+        </TabsContent>
+        <TabsContent value="siap-hadir">
+          <SiapHadirForm mobile={mobile} />
+        </TabsContent>
       </Tabs>
-
-      <Dialog
-        open={Boolean(activeVariant)}
-        onOpenChange={(open) => !open && setActiveVariant(null)}
-      >
-        <DialogContent className="max-w-[min(1120px,calc(100vw-1rem))] gap-0 p-0">
-          <DialogHeader className="border-b border-black/5 px-5 py-4">
-            <DialogTitle>{dialogTitle}</DialogTitle>
-            <DialogDescription>
-              Input data, tanda tangan digital, lalu download PDF.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="max-h-[calc(100vh-10rem)] space-y-5 overflow-y-auto px-5 py-5">
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-              <FieldInput
-                label="Tanggal"
-                value={draft.date}
-                onChange={(value) => updateDraft('date', value)}
-                type="date"
-              />
-              <FieldInput
-                label="Tipe Unit"
-                value={draft.unitType}
-                onChange={(value) => updateDraft('unitType', value)}
-              />
-              <FieldInput
-                label="Shift"
-                value={draft.shift}
-                onChange={(value) => updateDraft('shift', value)}
-              />
-              <div className="space-y-2">
-                <Label className="text-muted-foreground text-xs font-bold">Nama Site</Label>
-                <Combobox
-                  value={draft.siteName}
-                  onChange={(value) => updateDraft('siteName', value)}
-                  options={siteOptions}
-                  placeholder="Pilih site..."
-                />
-              </div>
-              <FieldInput
-                label="Lokasi Kerja"
-                value={draft.workLocation}
-                onChange={(value) => updateDraft('workLocation', value)}
-              />
-            </div>
-
-            <div className="grid gap-4 lg:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Torque Pertama</CardTitle>
-                </CardHeader>
-                <CardContent className="grid gap-4 sm:grid-cols-2">
-                  <FieldInput
-                    label="No Unit"
-                    value={draft.unitNumber}
-                    onChange={(value) => updateDraft('unitNumber', value)}
-                  />
-                  <FieldInput
-                    label="Kilometer Unit"
-                    value={draft.kilometerFirst}
-                    onChange={(value) => updateDraft('kilometerFirst', value)}
-                  />
-                  <FieldInput
-                    label="Jam Torque Pertama"
-                    value={draft.firstTorqueStart}
-                    onChange={(value) => updateDraft('firstTorqueStart', value)}
-                    type="time"
-                  />
-                  <FieldInput
-                    label="Jam Selesai Torque Pertama"
-                    value={draft.firstTorqueEnd}
-                    onChange={(value) => updateDraft('firstTorqueEnd', value)}
-                    type="time"
-                  />
-                  <FieldInput
-                    label="Waktu Pengerjaan"
-                    value={draft.firstDuration}
-                    onChange={(value) => updateDraft('firstDuration', value)}
-                  />
-                  <FieldInput
-                    label="Tekanan Torque"
-                    value={draft.firstPressure}
-                    onChange={(value) => updateDraft('firstPressure', value)}
-                  />
-                  <FieldInput
-                    label={torqueSpecLabel}
-                    value={draft.firstTorqueSpec}
-                    onChange={(value) => updateDraft('firstTorqueSpec', value)}
-                  />
-                  <div className="space-y-2">
-                    <Label className="text-muted-foreground text-xs font-bold">SN Retorque</Label>
-                    <Combobox
-                      value={draft.firstSn}
-                      onChange={(value) => updateDraft('firstSn', value.split(' — ')[0])}
-                      options={snOptions}
-                      placeholder="Cari SN asset MANUAL TORQUE..."
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Re-Torque Kedua</CardTitle>
-                </CardHeader>
-                <CardContent className="grid gap-4 sm:grid-cols-2">
-                  <FieldInput
-                    label="Tanggal"
-                    value={draft.retorqueDate}
-                    onChange={(value) => updateDraft('retorqueDate', value)}
-                    type="date"
-                  />
-                  <FieldInput
-                    label="Kilometer Unit"
-                    value={draft.kilometerSecond}
-                    onChange={(value) => updateDraft('kilometerSecond', value)}
-                  />
-                  <FieldInput
-                    label="Jam Re-Torque Kedua"
-                    value={draft.secondTorqueStart}
-                    onChange={(value) => updateDraft('secondTorqueStart', value)}
-                    type="time"
-                  />
-                  <FieldInput
-                    label="Jam Selesai Re-Torque Kedua"
-                    value={draft.secondTorqueEnd}
-                    onChange={(value) => updateDraft('secondTorqueEnd', value)}
-                    type="time"
-                  />
-                  <FieldInput
-                    label="Waktu Pengerjaan"
-                    value={draft.secondDuration}
-                    onChange={(value) => updateDraft('secondDuration', value)}
-                  />
-                  <FieldInput
-                    label="Tekanan Torque"
-                    value={draft.secondPressure}
-                    onChange={(value) => updateDraft('secondPressure', value)}
-                  />
-                  <FieldInput
-                    label={torqueSpecLabel}
-                    value={draft.secondTorqueSpec}
-                    onChange={(value) => updateDraft('secondTorqueSpec', value)}
-                  />
-                  <div className="space-y-2">
-                    <Label className="text-muted-foreground text-xs font-bold">SN Retorque</Label>
-                    <Combobox
-                      value={draft.secondSn}
-                      onChange={(value) => updateDraft('secondSn', value.split(' — ')[0])}
-                      options={snOptions}
-                      placeholder="Cari SN asset MANUAL TORQUE..."
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            <Card>
-              <CardHeader>
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <CardTitle>Posisi Ban</CardTitle>
-                  {variant === 'DT' ? (
-                    <label className="text-muted-foreground flex items-center gap-2 text-sm font-semibold">
-                      Baris DT
-                      <select
-                        value={dtRowCount}
-                        onChange={(event) => setDtRowCount(Number(event.target.value))}
-                        className="bg-surface-container-low text-foreground h-9 rounded-md px-3 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.08)]"
-                      >
-                        <option value={8}>8</option>
-                        <option value={12}>12</option>
-                      </select>
-                    </label>
-                  ) : (
-                    <span className="text-muted-foreground text-sm font-semibold">OHT 6 baris</span>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {rows.slice(0, rowCount).map((row, index) => (
-                  <div
-                    key={index}
-                    className="bg-surface-container-low grid gap-3 rounded-lg p-3 md:grid-cols-[64px_1fr_1fr]"
-                  >
-                    <div className="text-primary flex items-center text-sm font-black">
-                      Ban {index + 1}
-                    </div>
-                    <Input
-                      value={row.condition}
-                      onChange={(event) => updateRow(index, 'condition', event.target.value)}
-                      placeholder="Kondisi Bolt Stud dan Nut"
-                    />
-                    <Input
-                      value={row.recommendation}
-                      onChange={(event) => updateRow(index, 'recommendation', event.target.value)}
-                      placeholder="Rekomendasi"
-                    />
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <FieldInput
-                label="Alasan"
-                value={draft.reason}
-                onChange={(value) => updateDraft('reason', value)}
-              />
-              <FieldInput
-                label="Catatan"
-                value={draft.notes}
-                onChange={(value) => updateDraft('notes', value)}
-              />
-            </div>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Tanda Tangan Digital</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-4 lg:grid-cols-3">
-                <div className="space-y-3">
-                  <FieldInput
-                    label="Nama Operator Retorque Pertama"
-                    value={draft.firstSignerName}
-                    onChange={(value) => updateDraft('firstSignerName', value)}
-                  />
-                  <SignatureBox
-                    label="TTD Retorque Pertama"
-                    signatureRef={firstSignatureRef}
-                    onEnd={() => updateSignature('first')}
-                    onClear={() => clearSignature('first')}
-                  />
-                </div>
-                <div className="space-y-3">
-                  <FieldInput
-                    label="Nama Operator Retorque Kedua"
-                    value={draft.secondSignerName}
-                    onChange={(value) => updateDraft('secondSignerName', value)}
-                  />
-                  <SignatureBox
-                    label="TTD Retorque Kedua"
-                    signatureRef={secondSignatureRef}
-                    onEnd={() => updateSignature('second')}
-                    onClear={() => clearSignature('second')}
-                  />
-                </div>
-                <div className="space-y-3">
-                  <FieldInput
-                    label="Nama Customer / Mengetahui"
-                    value={draft.knownByName}
-                    onChange={(value) => updateDraft('knownByName', value)}
-                  />
-                  <SignatureBox
-                    label="TTD Mengetahui"
-                    signatureRef={knownBySignatureRef}
-                    onEnd={() => updateSignature('knownBy')}
-                    onClear={() => clearSignature('knownBy')}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-          <div className="flex flex-col-reverse gap-2 border-t border-black/5 px-5 py-4 sm:flex-row sm:justify-end">
-            <Button type="button" variant="outline" onClick={() => setActiveVariant(null)}>
-              Tutup
-            </Button>
-            <Button type="button" variant="outline" onClick={saveRecord}>
-              <Save className="size-4" />
-              Simpan History
-            </Button>
-            <Button type="button" onClick={() => downloadPdf()} disabled={isGenerating}>
-              {isGenerating ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Download className="size-4" />
-              )}
-              Download PDF
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <div className="fixed top-0 -left-[10000px] opacity-100" aria-hidden="true">
         <div ref={pdfPageRef}>
