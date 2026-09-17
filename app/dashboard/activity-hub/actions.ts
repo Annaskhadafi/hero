@@ -6635,6 +6635,53 @@ export async function createDailyActivitySessionAction(input: {
       }
     }
 
+    const libIds = input.items
+      .map((it) => (it.libraryActivityId ? Number(it.libraryActivityId) : null))
+      .filter((id): id is number => id != null && !isNaN(id))
+
+    if (libIds.length > 0) {
+      const libRows = await db
+        .select({
+          id: activityLibraries.id,
+          activityCode: activityLibraries.activityCode,
+          activityName: activityLibraries.activityName,
+          requiresPhoto: activityLibraries.requiresPhoto,
+          requiresEquipmentNo: activityLibraries.requiresEquipmentNo,
+          requiresDuration: activityLibraries.requiresDuration,
+          requiresMaterialUsed: activityLibraries.requiresMaterialUsed,
+          requiresLocationGps: activityLibraries.requiresLocationGps,
+          requiresTireCount: activityLibraries.requiresTireCount,
+        })
+        .from(activityLibraries)
+        .where(inArray(activityLibraries.id, libIds))
+
+      const libMap = new Map(libRows.map((r) => [r.id, r]))
+
+      for (const it of input.items) {
+        if (!it.libraryActivityId) continue
+        const lib = libMap.get(Number(it.libraryActivityId))
+        if (!lib) continue
+
+        const label = `${lib.activityCode} - ${lib.activityName}`
+
+        if (lib.requiresEquipmentNo && (!it.unitNumber || !it.unitNumber.trim() || it.unitNumber.trim() === '-')) {
+          return { success: false as const, error: `Nomor Equipment / Unit wajib diisi untuk "${label}".` }
+        }
+        if (lib.requiresMaterialUsed && (!it.materialUsed || !it.materialUsed.trim())) {
+          return { success: false as const, error: `Material used wajib diisi untuk "${label}".` }
+        }
+        if (lib.requiresTireCount && (!it.tireCount || Number(it.tireCount) < 1)) {
+          return { success: false as const, error: `Jumlah tire wajib diisi (minimal 1) untuk "${label}".` }
+        }
+        if (lib.requiresDuration !== false && (!it.startedAt || !it.endedAt)) {
+          return { success: false as const, error: `Durasi waktu mulai dan selesai wajib diisi untuk "${label}".` }
+        }
+        if (lib.requiresPhoto && !it.photoUrl && (!it.photos || it.photos.length === 0)) {
+          return { success: false as const, error: `Foto dokumentasi wajib diunggah untuk "${label}".` }
+        }
+      }
+    }
+
     if (!primaryEmp.signatureDataUrl) {
       return {
         success: false as const,

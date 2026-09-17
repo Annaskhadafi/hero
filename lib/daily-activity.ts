@@ -2197,12 +2197,11 @@ async function getAvailableRouteFoldersForEmployee(
     .orderBy(desc(activityRouteTemplates.mobileEnabled), desc(activityRouteTemplates.createdAt))
 
   const shiftAliases = getShiftAliases(referenceDate)
-  const matchedRouteTemplates = routeTemplateRows
+  const sortedRouteTemplates = routeTemplateRows
     .map((template) => ({
       ...template,
       score: getRouteTemplateScore(template, employee, shiftAliases),
     }))
-    .filter((template) => template.score >= 0)
     .sort((left, right) => {
       if (right.score !== left.score) {
         return right.score - left.score
@@ -2210,11 +2209,11 @@ async function getAvailableRouteFoldersForEmployee(
       return right.createdAt.getTime() - left.createdAt.getTime()
     })
 
-  if (matchedRouteTemplates.length === 0) {
+  if (sortedRouteTemplates.length === 0) {
     return []
   }
 
-  const templateIds = matchedRouteTemplates.map(t => t.id)
+  const templateIds = sortedRouteTemplates.map((t) => t.id)
 
   const [groupRows, itemRows] = await Promise.all([
     db
@@ -2259,17 +2258,19 @@ async function getAvailableRouteFoldersForEmployee(
     const list = groupsByTemplateId.get(group.routeTemplateId) ?? []
     list.push({
       ...group,
-      items: itemsByGroupId.get(group.id) ?? []
+      items: itemsByGroupId.get(group.id) ?? [],
     })
     groupsByTemplateId.set(group.routeTemplateId, list)
   }
 
-  return matchedRouteTemplates.map(t => ({
-    id: t.id,
-    routeCode: t.routeCode,
-    routeName: t.routeName,
-    groups: groupsByTemplateId.get(t.id) ?? []
-  }))
+  return sortedRouteTemplates
+    .map((t) => ({
+      id: t.id,
+      routeCode: t.routeCode,
+      routeName: t.routeName,
+      groups: groupsByTemplateId.get(t.id) ?? [],
+    }))
+    .filter((folder) => folder.groups.some((g) => g.items.length > 0))
 }
 export async function getDailyActivityEmployeeData(
   email?: string | null,

@@ -117,7 +117,10 @@ export function RouteFolderTree({
                 <span className="truncate">{route.routeName}</span>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                {isRouteExpanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+                <span className="text-[10px] font-bold text-[#003f78] bg-[#eaf4fb] px-2 py-0.5 rounded-full border border-[#d6e9f8]">
+                  {route.matchingGroups.reduce((acc, g) => acc + (g?.matchingItems?.length || 0), 0)} Activity
+                </span>
+                {isRouteExpanded ? <ChevronDown className="size-4 text-[#003f78]" /> : <ChevronRight className="size-4 text-[#003f78]" />}
               </div>
             </button>
 

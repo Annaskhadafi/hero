@@ -1167,6 +1167,49 @@ export function MobileDailyActivityForm({
       )
     )
   }, [safeAvailableLibrary, librarySearch])
+
+  const totalVisibleLibraryCount = useMemo(() => {
+    const normalizedSearch = (librarySearch || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+
+    const groupedLibraryIdSet = new Set<string>()
+    for (const folder of availableRouteFolders || []) {
+      for (const group of folder.groups || []) {
+        for (const item of group.items || []) {
+          if (item.libraryActivityId != null) {
+            groupedLibraryIdSet.add(String(item.libraryActivityId))
+          }
+        }
+      }
+    }
+
+    let groupMatchingCount = 0
+    for (const folder of availableRouteFolders || []) {
+      for (const group of folder.groups || []) {
+        const matchingGroupItems = (group.items || [])
+          .map((i) => (i.libraryActivityId != null ? availableLibraryMap.get(String(i.libraryActivityId)) : null))
+          .filter((lib): lib is LibraryOption => Boolean(lib))
+          .filter((lib) => {
+            if (!normalizedSearch) return true
+            const nCode = (lib.activityCode || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+            const nName = (lib.activityName || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+            return nCode.includes(normalizedSearch) || nName.includes(normalizedSearch)
+          })
+        groupMatchingCount += matchingGroupItems.length
+      }
+    }
+
+    const standaloneMatchingCount = Array.from(availableLibraryMap.values())
+      .filter((lib) => !groupedLibraryIdSet.has(String(lib.id)))
+      .filter((lib) => {
+        if (!normalizedSearch) return true
+        const nCode = (lib.activityCode || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+        const nName = (lib.activityName || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+        return nCode.includes(normalizedSearch) || nName.includes(normalizedSearch)
+      }).length
+
+    return groupMatchingCount + standaloneMatchingCount
+  }, [availableRouteFolders, availableLibraryMap, librarySearch])
+
   const needsGlobalPhoto = selectedLibraries.some((item) => item.requiresPhoto)
   const selectedAssignment = useMemo(
     () => assignments.find((item) => `${item.id}` === assignmentId) ?? null,
@@ -1359,10 +1402,14 @@ export function MobileDailyActivityForm({
               </Badge>
             ) : null}
             {requiresPhoto ? (
+              <Badge className="border-0 bg-rose-50 px-1.5 py-0 text-[9px] font-bold tracking-[0.14em] text-rose-600 uppercase">
+                Foto Wajib *
+              </Badge>
+            ) : (
               <Badge className="border-0 bg-slate-100 px-1.5 py-0 text-[9px] font-medium tracking-[0.14em] text-slate-600 uppercase">
                 Opsional
               </Badge>
-            ) : null}
+            )}
           </div>
         </div>
         <div className="grid grid-cols-2 gap-2">
@@ -2391,7 +2438,7 @@ export function MobileDailyActivityForm({
             </div>
 
             <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-500 shrink-0 border border-slate-100">
-              <span>{filteredLibraries.length} library tersedia</span>
+              <span>{totalVisibleLibraryCount} library tampil</span>
               <span className="font-bold text-[#003461] bg-sky-50 px-2 py-0.5 rounded-full border border-sky-100">
                 {selectedLibraryIds.length} dipilih
               </span>
@@ -2855,8 +2902,8 @@ export function MobileDailyActivityForm({
                 </p>
               </div>
               {needsGlobalPhoto ? (
-                <Badge className="border-0 bg-slate-100 text-[9px] font-medium tracking-[0.14em] text-slate-600 uppercase">
-                  Foto opsional
+                <Badge className="border-0 bg-rose-50 text-[9px] font-bold tracking-[0.14em] text-rose-600 uppercase">
+                  Foto Wajib *
                 </Badge>
               ) : null}
             </div>
@@ -2966,7 +3013,7 @@ export function MobileDailyActivityForm({
                         {library.requiresMaterialUsed ? (
                           <Label className="block space-y-2">
                             <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
-                              Material used
+                              Material Used <span className="text-rose-500">*</span>
                             </span>
                             <Input
                               value={entry.materialUsed}
@@ -2984,7 +3031,7 @@ export function MobileDailyActivityForm({
                         {library.requiresTireCount ? (
                           <Label className="block space-y-2">
                             <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
-                              Jumlah tire
+                              Jumlah Tire <span className="text-rose-500">*</span>
                             </span>
                             <Input
                               type="number"
