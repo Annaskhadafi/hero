@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Trash2 } from "lucide-react";
 import { deleteApdRequest } from "./actions";
@@ -20,13 +21,15 @@ import {
 export function DeleteApdButton({ id }: { id: number }) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [open, setOpen] = useState(false);
+  const router = useRouter();
 
   const handleDelete = async () => {
     try {
       setIsDeleting(true);
       await deleteApdRequest(id);
-      toast.success("Permintaan APD berhasil dihapus");
+      toast.success("Permintaan berhasil dihapus");
       setOpen(false);
+      router.refresh();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Gagal menghapus permintaan");
     } finally {

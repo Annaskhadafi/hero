@@ -241,10 +241,9 @@ export function ApdRequestForm({
         if (item.requestType === "pergantian") {
           const validPhotos = (item.photoFiles || []).filter(Boolean);
           const validPreviews = (item.photoPreviews || []).filter(Boolean);
-          if (validPhotos.length === 0 && validPreviews.length >= 3) {
-            // Reusing existing photos
-          } else if (validPhotos.length < 3 && validPreviews.length < 3) {
-            throw new Error(`Item "${item.itemType}" membutuhkan minimal 3 foto bukti barang rusak/lama. Saat ini baru ${Math.max(validPhotos.length, validPreviews.length)} foto terlampir.`);
+          const totalPhotos = Math.max(validPhotos.length, validPreviews.length);
+          if (totalPhotos < 3 && parsePhotoPreviews(item.photoUrl).length < 3) {
+            throw new Error(`Item "${item.itemType}" (Pergantian) membutuhkan minimal 3 foto bukti fisik barang rusak/lama. Saat ini baru ${Math.max(totalPhotos, parsePhotoPreviews(item.photoUrl).length)} foto terlampir.`);
           }
         }
       }
@@ -274,7 +273,7 @@ export function ApdRequestForm({
         });
       }
 
-      // Upload photos for replacements (supporting min 3 photos per item)
+      // Upload photos for replacements (supporting 1 or more photos per item)
       const processedItems = await Promise.all(
         items.map(async (item) => {
           let photoUrl = item.photoUrl || "";
@@ -290,7 +289,9 @@ export function ApdRequestForm({
                 throw new Error(`Gagal mengupload salah satu foto untuk ${item.itemType}`);
               })
             );
-            photoUrl = JSON.stringify(uploadedUrls);
+            const existingUrls = parsePhotoPreviews(item.photoUrl);
+            const combinedUrls = Array.from(new Set([...existingUrls, ...uploadedUrls]));
+            photoUrl = JSON.stringify(combinedUrls);
           }
           return {
             itemType: item.itemType,
@@ -469,28 +470,28 @@ export function ApdRequestForm({
                   <div className="mt-4 space-y-3 rounded-lg border border-dashed border-rose-300 bg-rose-50/40 p-3.5">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
-                        <Label className="text-rose-700 font-bold flex items-center gap-1.5 text-xs sm:text-sm">
-                          <Camera className="size-4 text-rose-600" />
-                          Foto Bukti Barang Rusak/Lama (Wajib Minimal 3 Foto)
+                        <Label className="text-xs font-semibold text-rose-900 flex items-center gap-1.5">
+                          <AlertCircle className="size-4 text-rose-600" />
+                          Foto Bukti Barang Rusak/Lama (Wajib Minimal 3 Foto) <span className="text-rose-600">*</span>
                         </Label>
                         <p className="text-[11px] text-muted-foreground mt-0.5">
-                          Lampirkan minimal 3 foto jelas (tampak depan, area rusak/aus, dan detail/label).
+                          Lampirkan minimal 3 foto jelas (tampak depan, area rusak/aus, dan detail/label barang lama).
                         </p>
                       </div>
                       <div className={`text-xs font-semibold px-2.5 py-1 rounded-full flex items-center gap-1 ${
-                        (item.photoFiles || []).length >= 3 
+                        (item.photoPreviews || []).length >= 3 
                           ? "bg-emerald-100 text-emerald-800 border border-emerald-300" 
                           : "bg-amber-100 text-amber-900 border border-amber-300"
                       }`}>
-                        {(item.photoFiles || []).length >= 3 ? (
+                        {(item.photoPreviews || []).length >= 3 ? (
                           <>
                             <CheckCircle2 className="size-3.5 text-emerald-700" />
-                            <span>{(item.photoFiles || []).length}/3 Foto (Lengkap)</span>
+                            <span>{(item.photoPreviews || []).length}/3 Foto (Lengkap)</span>
                           </>
                         ) : (
                           <>
                             <AlertCircle className="size-3.5 text-amber-700" />
-                            <span>{(item.photoFiles || []).length}/3 Foto (Kurang {3 - (item.photoFiles || []).length})</span>
+                            <span>{(item.photoPreviews || []).length}/3 Foto (Kurang {3 - (item.photoPreviews || []).length})</span>
                           </>
                         )}
                       </div>
@@ -570,7 +571,7 @@ export function ApdRequestForm({
                           Upload File
                         </span>
                         <span className="text-[8pt] text-slate-400">
-                          {(item.photoFiles || []).length < 3 ? `(Wajib ${3 - (item.photoFiles || []).length} lagi)` : "(Galeri)"}
+                          {(item.photoPreviews || []).length < 3 ? `(Wajib ${3 - (item.photoPreviews || []).length} lagi)` : "(Galeri)"}
                         </span>
                         <input
                           type="file"

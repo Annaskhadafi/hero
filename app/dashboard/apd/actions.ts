@@ -9,6 +9,7 @@ import {
   employeeAssets,
 } from '@/db/schema/hero'
 import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { getCurrentMenuPermission } from '@/lib/hero-access'
 import { resolveApprovalRouteForActivity } from '@/lib/approval-engine'
 import { sendApdRequestSubmittedEmail, sendMaterialToolsRequestSubmittedEmail } from '@/lib/apd-email'
 import { and, eq, inArray } from 'drizzle-orm'
@@ -387,24 +388,31 @@ export async function deleteApdRequest(id: number) {
 
   const [request] = await db.select().from(apdRequests).where(eq(apdRequests.id, id))
   if (!request) {
-    throw new Error('Request not found')
+    throw new Error('Permintaan tidak ditemukan')
   }
 
-  // Allow delete if it's their own request, or they are admin/superadmin
-  // Optional: check if status is still pending. If it's already approved/completed, maybe prevent deletion?
-  if (
-    request.employeeId !== currentEmployee.id &&
-    currentEmployee.role !== 'admin' &&
-    currentEmployee.role !== 'superadmin'
-  ) {
+  const apdAccess = await getCurrentMenuPermission('apd-request')
+  const isAdmin = ['admin', 'superadmin'].includes(currentEmployee.role)
+  const isOwner = request.employeeId === currentEmployee.id
+  const canDelete = isAdmin || apdAccess.canDelete || apdAccess.canEdit || isOwner
+
+  if (!canDelete) {
     throw new Error('Anda tidak memiliki akses untuk menghapus permintaan ini')
   }
 
-  if (request.status !== 'pending') {
-    throw new Error("Hanya permintaan berstatus 'Pending' yang dapat dihapus")
-  }
-
-  await db.delete(apdRequests).where(eq(apdRequests.id, id))
+  await db.transaction(async (tx) => {
+    // 1. Delete associated approvals
+    await tx.delete(approvals).where(eq(approvals.apdRequestId, id))
+    // 2. Delete associated items
+    await tx.delete(apdRequestItems).where(eq(apdRequestItems.requestId, id))
+    // 3. Clear any asset references to this request
+    await tx
+      .update(employeeAssets)
+      .set({ lastRequestId: null })
+      .where(eq(employeeAssets.lastRequestId, id))
+    // 4. Delete the request itself
+    await tx.delete(apdRequests).where(eq(apdRequests.id, id))
+  })
 
   revalidatePath('/dashboard/apd')
   revalidatePath('/dashboard/approval')
@@ -413,12 +421,20 @@ export async function deleteApdRequest(id: number) {
 
 export async function updateApdRequestStatus(id: number, rawStatus: string) {
   const currentEmployee = await getCurrentEmployee()
-  if (!currentEmployee || !['admin', 'superadmin'].includes(currentEmployee.role)) {
-    throw new Error('Anda tidak memiliki akses untuk mengubah status permintaan APD')
+  if (!currentEmployee) {
+    throw new Error('Unauthorized')
+  }
+
+  const apdAccess = await getCurrentMenuPermission('apd-request')
+  const canManageStatus =
+    ['admin', 'superadmin'].includes(currentEmployee.role) || apdAccess.canEdit
+
+  if (!canManageStatus) {
+    throw new Error('Anda tidak memiliki akses untuk mengubah status permintaan barang')
   }
 
   const status = normalizeApdRequestStatus(rawStatus)
-  if (!status) throw new Error('Status APD tidak valid')
+  if (!status) throw new Error('Status tidak valid')
 
   const [request] = await db
     .select({
@@ -428,7 +444,7 @@ export async function updateApdRequestStatus(id: number, rawStatus: string) {
     })
     .from(apdRequests)
     .where(eq(apdRequests.id, id))
-  if (!request) throw new Error('Request tidak ditemukan')
+  if (!request) throw new Error('Permintaan tidak ditemukan')
 
   await db.transaction(async (tx) => {
     await tx

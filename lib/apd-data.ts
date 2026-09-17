@@ -36,7 +36,7 @@ export async function fetchApdRequests(currentEmployeeId?: number) {
     .from(apdRequests)
     .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
     .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
-    .innerJoin(sites, eq(apdRequests.siteId, sites.id))
+    .leftJoin(sites, eq(apdRequests.siteId, sites.id))
     .leftJoin(
       approvals,
       and(
@@ -74,7 +74,7 @@ export async function fetchApdRequestById(id: number) {
     .from(apdRequests)
     .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
     .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
-    .innerJoin(sites, eq(apdRequests.siteId, sites.id))
+    .leftJoin(sites, eq(apdRequests.siteId, sites.id))
     .where(eq(apdRequests.id, id));
 
   if (!request) return null;
