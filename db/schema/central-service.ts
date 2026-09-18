@@ -289,3 +289,38 @@ export const centralServiceForecastHistories = pgTable(
     itemIdx: index('cs_forecast_history_item_idx').on(table.forecastItemId),
   })
 )
+
+// ─── Re-Fueling Logs (Central Service) ────────────────────────────────────────
+
+export const centralServiceRefuelingLogs = pgTable(
+  'hero_central_service_refueling_logs',
+  {
+    id: serial('id').primaryKey(),
+    timestamp: timestamp('timestamp').notNull().defaultNow(),
+    siteName: text('site_name').notNull().default(''),
+    driverName: text('driver_name').notNull().default(''),
+    driverSn: text('driver_sn'),
+    refuelDate: text('refuel_date').notNull().default(''),
+    unitNumber: text('unit_number').notNull().default(''),
+    odometerKm: integer('odometer_km').notNull().default(0),
+    fuelExpenditureType: text('fuel_expenditure_type').notNull().default('Di bebankan ke PT Chitra Paratama (Internal)'),
+    fuelAmountLiters: numeric('fuel_amount_liters', { precision: 10, scale: 2 }).notNull().default('0'),
+    fuelmanName: text('fuelman_name').notNull().default(''),
+    odometerPhotoUrl: text('odometer_photo_url'),
+    flowmeterPhotoUrl: text('flowmeter_photo_url'),
+    remarks: text('remarks').notNull().default(''),
+    createdByUserId: text('created_by_user_id').references(() => user.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    siteNameIdx: index('cs_refuel_site_name_idx').on(table.siteName),
+    refuelDateIdx: index('cs_refuel_date_idx').on(table.refuelDate),
+    unitNumberIdx: index('cs_refuel_unit_idx').on(table.unitNumber),
+    driverNameIdx: index('cs_refuel_driver_idx').on(table.driverName),
+  })
+)
+
+export type CentralServiceRefuelingLog = typeof centralServiceRefuelingLogs.$inferSelect
+export type NewCentralServiceRefuelingLog = typeof centralServiceRefuelingLogs.$inferInsert
+

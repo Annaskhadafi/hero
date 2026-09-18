@@ -16,7 +16,40 @@ async function main() {
   try {
     console.log('🛞 Creating tire pattern tables...')
 
-    await client.query('BEGIN')
+    // ── hero_central_service_refueling_logs ──────────────────────────────
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS hero_central_service_refueling_logs (
+        id SERIAL PRIMARY KEY,
+        timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
+        site_name TEXT NOT NULL DEFAULT '',
+        driver_name TEXT NOT NULL DEFAULT '',
+        driver_sn TEXT,
+        refuel_date TEXT NOT NULL DEFAULT '',
+        unit_number TEXT NOT NULL DEFAULT '',
+        odometer_km INTEGER NOT NULL DEFAULT 0,
+        fuel_expenditure_type TEXT NOT NULL DEFAULT 'Operational Site (Rutin)',
+        fuel_amount_liters NUMERIC(10, 2) NOT NULL DEFAULT 0,
+        fuelman_name TEXT NOT NULL DEFAULT '',
+        odometer_photo_url TEXT,
+        flowmeter_photo_url TEXT,
+        remarks TEXT NOT NULL DEFAULT '',
+        created_by_user_id TEXT REFERENCES "user"(id) ON DELETE SET NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS cs_refuel_site_name_idx ON hero_central_service_refueling_logs (site_name);
+      CREATE INDEX IF NOT EXISTS cs_refuel_date_idx ON hero_central_service_refueling_logs (refuel_date);
+      CREATE INDEX IF NOT EXISTS cs_refuel_unit_idx ON hero_central_service_refueling_logs (unit_number);
+      CREATE INDEX IF NOT EXISTS cs_refuel_driver_idx ON hero_central_service_refueling_logs (driver_name);
+
+      -- Insert Re-Fueling LV menu item if not exists
+      INSERT INTO hero_navbar_menu_items (menu_area, section, title, url, icon_name, resource, sort_order, is_visible, open_in_new_tab, item_type, group_label)
+      SELECT 'main', 'Central Service', 'Re-Fueling LV', '/dashboard/central-service/refueling', 'truck', 'central_service_refueling', 2, true, false, 'menu', 'Management'
+      WHERE NOT EXISTS (
+        SELECT 1 FROM hero_navbar_menu_items WHERE url = '/dashboard/central-service/refueling'
+      );
+    `)
+    console.log('  ✓ hero_central_service_refueling_logs & menu item')
 
     // ── tire_size_presets ─────────────────────────────────────────────────
     await client.query(`

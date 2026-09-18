@@ -1,7 +1,7 @@
 'use client'
 
-import { Download, Loader2, Plus, RotateCcw, Trash2, CheckSquare } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { ArrowLeft, Download, Loader2, Plus, RotateCcw, Save, Trash2, CheckSquare } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
@@ -16,7 +16,11 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
-import { getSites } from '@/app/dashboard/360-service/service-form/actions'
+import {
+  getSites,
+  getServiceFormUserContext,
+  type ServiceFormUserContext,
+} from '@/app/dashboard/360-service/service-form/actions'
 
 export type CheckStatus = '' | 'sesuai' | 'tidak_sesuai'
 
@@ -80,6 +84,9 @@ export type TireInflationRecord = {
   rows: TireInflationRow[]
   createdAt: string
   updatedAt: string
+  createdByUserId?: string
+  createdBySn?: string
+  createdByName?: string
 }
 
 const STORAGE_KEY = 'hero-service-form-tire-inflation-history'
@@ -629,8 +636,15 @@ function PdfPage({
   )
 }
 
-export function TireInflationForm({ mobile = false }: { mobile?: boolean }) {
+export function TireInflationForm({
+  mobile = false,
+  onBackToHub,
+}: {
+  mobile?: boolean
+  onBackToHub?: () => void
+}) {
   const [siteOptions, setSiteOptions] = useState<string[]>([])
+  const [userContext, setUserContext] = useState<ServiceFormUserContext | null>(null)
   const [header, setHeader] = useState<TireInflationHeader>({
     docNumber: '',
     date: new Date().toISOString().slice(0, 10),
@@ -642,8 +656,12 @@ export function TireInflationForm({ mobile = false }: { mobile?: boolean }) {
   const [isGenerating, setIsGenerating] = useState(false)
   const pdfRef = useRef<HTMLDivElement>(null)
 
-  // Fetch sites
+  // Fetch sites and user context
   useEffect(() => {
+    getServiceFormUserContext().then((ctx) => {
+      setUserContext(ctx)
+    })
+
     let active = true
     getSites().then((res) => {
       if (!active || !res.success) return
@@ -657,6 +675,27 @@ export function TireInflationForm({ mobile = false }: { mobile?: boolean }) {
       active = false
     }
   }, [])
+
+  const canEditHistory = Boolean(userContext?.isSuperAdmin || userContext?.canEdit)
+
+  const visibleRecords = useMemo(() => {
+    const isGlobal = Boolean(userContext?.isSuperAdmin || userContext?.dataScope === 'global')
+    const userName = (userContext?.name || '').trim().toLowerCase()
+    const userSn = (userContext?.employeeSn || '').trim().toLowerCase()
+    const userId = userContext?.userId
+
+    return records.filter((r) => {
+      if (isGlobal || !userContext) return true
+      const recCreator = (r.createdByName || '').trim().toLowerCase()
+      const recTimekeeper = r.rows.some((row) => (row.timeKeeper || '').toLowerCase().includes(userName))
+      const recSupervisor = r.rows.some((row) => (row.customerSupervisor || '').toLowerCase().includes(userName))
+      return (
+        (userName && (recCreator.includes(userName) || recTimekeeper || recSupervisor)) ||
+        (userSn && r.createdBySn && r.createdBySn.toLowerCase() === userSn) ||
+        (userId && r.createdByUserId === userId)
+      )
+    })
+  }, [records, userContext])
 
   const [hasLoaded, setHasLoaded] = useState(false)
 
@@ -754,7 +793,15 @@ export function TireInflationForm({ mobile = false }: { mobile?: boolean }) {
       setRecords((prev) =>
         prev.map((r) =>
           r.id === editingId
-            ? { ...r, header: { ...header }, rows: [...rows], updatedAt: now }
+            ? {
+                ...r,
+                header: { ...header },
+                rows: [...rows],
+                updatedAt: now,
+                createdByUserId: r.createdByUserId || userContext?.userId || undefined,
+                createdBySn: r.createdBySn || userContext?.employeeSn || undefined,
+                createdByName: r.createdByName || userContext?.name || undefined,
+              }
             : r
         )
       )
@@ -771,6 +818,9 @@ export function TireInflationForm({ mobile = false }: { mobile?: boolean }) {
         rows: [...rows],
         createdAt: now,
         updatedAt: now,
+        createdByUserId: userContext?.userId || undefined,
+        createdBySn: userContext?.employeeSn || undefined,
+        createdByName: userContext?.name || undefined,
       },
       ...prev,
     ])
@@ -778,6 +828,10 @@ export function TireInflationForm({ mobile = false }: { mobile?: boolean }) {
   }
 
   const handleEditRecord = (record: TireInflationRecord) => {
+    if (!canEditHistory) {
+      window.alert('Anda hanya memiliki izin melihat riwayat dan tidak dapat mengedit data.')
+      return
+    }
     setEditingId(record.id)
     setHeader({ ...record.header })
     setRows(record.rows.map((r) => ({ ...r })))
@@ -785,6 +839,10 @@ export function TireInflationForm({ mobile = false }: { mobile?: boolean }) {
   }
 
   const handleDeleteRecord = (id: string) => {
+    if (!canEditHistory) {
+      window.alert('Anda tidak memiliki izin menghapus data riwayat.')
+      return
+    }
     if (!window.confirm('Hapus riwayat form ini?')) return
     setRecords((prev) => prev.filter((r) => r.id !== id))
     if (editingId === id) setEditingId(null)
@@ -840,6 +898,31 @@ export function TireInflationForm({ mobile = false }: { mobile?: boolean }) {
 
   return (
     <div className="space-y-6">
+      {onBackToHub && (
+        <div className="flex items-center justify-between">
+          <Button
+            type="button"
+            variant="ghost"
+            size="dense"
+            onClick={onBackToHub}
+            className="h-8 gap-1.5 px-2.5 text-xs font-semibold text-slate-600 hover:text-slate-900"
+          >
+            <ArrowLeft className="size-4" />
+            Menu Hub
+          </Button>
+          <div className="flex items-center gap-1.5">
+            <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-bold text-blue-700">
+              Pengisian Angin
+            </span>
+            {editingId && (
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                Edit
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Header Info Card */}
       <div className={cn('rounded-xl border bg-card p-4 shadow-sm space-y-4', mobile && 'p-3')}>
         <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
@@ -851,14 +934,15 @@ export function TireInflationForm({ mobile = false }: { mobile?: boolean }) {
               Dokumen: {header.docNumber || '-'}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
               variant="outline"
               size="dense"
               onClick={handleReset}
+              className="h-8 text-xs"
             >
-              <RotateCcw className="size-3.5" />
+              <RotateCcw className="size-3.5 mr-1" />
               Reset
             </Button>
             <Button
@@ -866,19 +950,22 @@ export function TireInflationForm({ mobile = false }: { mobile?: boolean }) {
               variant="outline"
               size="dense"
               onClick={handleSaveDraft}
+              className="h-8 px-3 text-xs font-semibold"
             >
-              Simpan Draft
+              <Save className="size-3.5 mr-1.5" />
+              Submit Form
             </Button>
             <Button
               type="button"
               size="dense"
               onClick={() => handleDownloadPdf()}
               disabled={isGenerating}
+              className="h-8 px-3 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white"
             >
               {isGenerating ? (
-                <Loader2 className="size-3.5 animate-spin" />
+                <Loader2 className="size-3.5 mr-1.5 animate-spin" />
               ) : (
-                <Download className="size-3.5" />
+                <Download className="size-3.5 mr-1.5" />
               )}
               Download PDF
             </Button>
@@ -1204,10 +1291,83 @@ export function TireInflationForm({ mobile = false }: { mobile?: boolean }) {
         </div>
       </div>
 
+      {/* Bottom Action Bar */}
+      <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-3.5">
+        <Button
+          type="button"
+          variant="outline"
+          size="dense"
+          onClick={handleReset}
+          className="h-9 px-3 text-xs"
+        >
+          <RotateCcw className="size-3.5 mr-1" />
+          Reset
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="dense"
+          onClick={handleSaveDraft}
+          className="h-9 px-4 text-xs font-semibold"
+        >
+          <Save className="size-3.5 mr-1.5" />
+          Submit Form
+        </Button>
+        <Button
+          type="button"
+          size="dense"
+          onClick={() => handleDownloadPdf()}
+          disabled={isGenerating}
+          className="h-9 px-4 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white"
+        >
+          {isGenerating ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <Download className="size-3.5 mr-1.5" />}
+          Download PDF
+        </Button>
+      </div>
+
+      {/* Mobile Sticky Action Bar */}
+      <div className="fixed bottom-[64px] inset-x-0 mx-auto max-w-[430px] z-50 p-2.5 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-2xl flex items-center gap-2 sm:hidden">
+        <Button
+          type="button"
+          variant="outline"
+          size="dense"
+          onClick={handleReset}
+          className="h-10 px-3 text-xs"
+        >
+          <RotateCcw className="size-3.5 mr-1" />
+          Reset
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="dense"
+          onClick={handleSaveDraft}
+          className="flex-1 h-10 text-xs font-bold"
+        >
+          <Save className="size-3.5 mr-1.5" />
+          Submit Form
+        </Button>
+        <Button
+          type="button"
+          size="dense"
+          onClick={() => handleDownloadPdf()}
+          disabled={isGenerating}
+          className="flex-1 h-10 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white"
+        >
+          {isGenerating ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <Download className="size-3.5 mr-1.5" />}
+          Download PDF
+        </Button>
+      </div>
+
       {/* History Table Card */}
       <div className={cn('rounded-xl border bg-card p-4 shadow-sm space-y-3', mobile && 'p-3')}>
-        <h3 className="text-sm font-bold text-foreground">Riwayat Form Pengisian Angin Ban</h3>
-        {records.length === 0 ? (
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold text-foreground">Riwayat Form Pengisian Angin Ban</h3>
+          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
+            {visibleRecords.length} Data
+          </span>
+        </div>
+        {visibleRecords.length === 0 ? (
           <p className="text-xs text-muted-foreground">Belum ada riwayat tersimpan.</p>
         ) : (
           <div className="overflow-x-auto">
@@ -1223,26 +1383,28 @@ export function TireInflationForm({ mobile = false }: { mobile?: boolean }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {records.map((r) => (
+                {visibleRecords.map((r: TireInflationRecord) => (
                   <TableRow key={r.id}>
                     <TableCell className="font-medium whitespace-nowrap">{r.header.date || '-'}</TableCell>
                     <TableCell className="font-mono text-xs">{r.header.docNumber || '-'}</TableCell>
                     <TableCell>{r.header.workArea || '-'}</TableCell>
-                    <TableCell>{r.rows.filter((row) => row.unitNumber.trim()).length} unit</TableCell>
+                    <TableCell>{r.rows.filter((row: TireInflationRow) => row.unitNumber.trim()).length} unit</TableCell>
                     <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                       {formatDateTime(r.updatedAt)}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1.5">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="dense"
-                          onClick={() => handleEditRecord(r)}
-                          className="h-7 text-xs"
-                        >
-                          Edit
-                        </Button>
+                        {canEditHistory && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="dense"
+                            onClick={() => handleEditRecord(r)}
+                            className="h-7 text-xs"
+                          >
+                            Edit
+                          </Button>
+                        )}
                         <Button
                           type="button"
                           variant="outline"
@@ -1254,15 +1416,17 @@ export function TireInflationForm({ mobile = false }: { mobile?: boolean }) {
                           <Download className="size-3" />
                           PDF
                         </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="dense"
-                          onClick={() => handleDeleteRecord(r.id)}
-                          className="h-7 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/50"
-                        >
-                          <Trash2 className="size-3" />
-                        </Button>
+                        {canEditHistory && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="dense"
+                            onClick={() => handleDeleteRecord(r.id)}
+                            className="h-7 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/50"
+                          >
+                            <Trash2 className="size-3" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

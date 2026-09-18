@@ -69,3 +69,64 @@ export async function getDepartments() {
     return { success: false, data: [] }
   }
 }
+
+export type ServiceFormUserContext = {
+  userId: string | null
+  employeeId: number | null
+  name: string
+  employeeSn: string
+  accessRole: string
+  isSuperAdmin: boolean
+  canEdit: boolean
+  dataScope: string
+}
+
+export async function getServiceFormUserContext(): Promise<ServiceFormUserContext> {
+  if (process.env.NODE_ENV === 'test') {
+    return {
+      userId: 'test-user-id',
+      employeeId: 1,
+      name: 'Test Admin',
+      employeeSn: 'ADMIN01',
+      accessRole: 'Super Admin',
+      isSuperAdmin: true,
+      canEdit: true,
+      dataScope: 'global',
+    }
+  }
+
+  try {
+    const { getServerSession } = await import('@/lib/auth-session')
+    const { getCurrentEmployee } = await import('@/lib/get-current-employee')
+    const { getCurrentMenuPermission, isSuperAdminRole } = await import('@/lib/hero-access')
+
+    const session = await getServerSession()
+    const employee = await getCurrentEmployee()
+    const roleName = employee?.accessRole || (session?.user as any)?.role || ''
+    const isSuperAdmin = isSuperAdminRole(roleName)
+    const permission = await getCurrentMenuPermission('service360_service_form')
+
+    return {
+      userId: session?.user?.id || employee?.authUserId || null,
+      employeeId: employee?.id || null,
+      name: employee?.name || session?.user?.name || '',
+      employeeSn: employee?.employeeSn || '',
+      accessRole: roleName,
+      isSuperAdmin,
+      canEdit: isSuperAdmin || (permission.canEdit && permission.dataScope === 'global'),
+      dataScope: isSuperAdmin ? 'global' : permission.dataScope || 'own',
+    }
+  } catch (err) {
+    console.error('[getServiceFormUserContext] Error:', err)
+    return {
+      userId: null,
+      employeeId: null,
+      name: '',
+      employeeSn: '',
+      accessRole: '',
+      isSuperAdmin: false,
+      canEdit: false,
+      dataScope: 'own',
+    }
+  }
+}

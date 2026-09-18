@@ -1,11 +1,13 @@
 'use client'
 
 import {
+  ArrowLeft,
   Check,
   CheckSquare,
   Download,
   Eraser,
   Loader2,
+  Pencil,
   Plus,
   RotateCcw,
   Save,
@@ -44,7 +46,13 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
-import { getDepartments, getEmployees, getSites } from '@/app/dashboard/360-service/service-form/actions'
+import {
+  getDepartments,
+  getEmployees,
+  getSites,
+  getServiceFormUserContext,
+  type ServiceFormUserContext,
+} from '@/app/dashboard/360-service/service-form/actions'
 
 export type CheckStatusVX = 'V' | 'X' | ''
 
@@ -82,6 +90,9 @@ export type KesiapanBekerjaRecord = KesiapanBekerjaDraft & {
   id: string
   createdAt: string
   updatedAt: string
+  createdByUserId?: string
+  createdBySn?: string
+  createdByName?: string
 }
 
 // ==========================================
@@ -110,6 +121,9 @@ export type DaftarHadirRecord = DaftarHadirDraft & {
   id: string
   createdAt: string
   updatedAt: string
+  createdByUserId?: string
+  createdBySn?: string
+  createdByName?: string
 }
 
 const STORAGE_KEY_KB = 'hero-service-form-kesiapan-bekerja-history'
@@ -765,7 +779,14 @@ const DEFAULT_DEPARTMENT_OPTIONS = [
   'General Affairs',
 ]
 
-export function SiapHadirForm({ mobile = false }: { mobile?: boolean }) {
+export function SiapHadirForm({
+  mobile = false,
+  onBackToHub,
+}: {
+  mobile?: boolean
+  onBackToHub?: () => void
+}) {
+  const [activeTab, setActiveTab] = useState<'form' | 'history'>('form')
   const [activeSubTab, setActiveSubTab] = useState<'kesiapan-bekerja' | 'daftar-hadir'>('kesiapan-bekerja')
 
   // Employees & Sites state
@@ -797,6 +818,57 @@ export function SiapHadirForm({ mobile = false }: { mobile?: boolean }) {
   const [isDhGenerating, setIsDhGenerating] = useState(false)
   const [dhPdfPayload, setDhPdfPayload] = useState<DaftarHadirDraft>(defaultDhDraft())
   const dhPdfRef = useRef<HTMLDivElement>(null)
+
+  // User Context for role management & scoping
+  const [userContext, setUserContext] = useState<ServiceFormUserContext | null>(null)
+
+  useEffect(() => {
+    let active = true
+    getServiceFormUserContext().then((ctx) => {
+      if (active && ctx) {
+        setUserContext(ctx)
+      }
+    })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const canEditHistory = Boolean(userContext?.isSuperAdmin || userContext?.canEdit)
+
+  const isRecordOwnedByUser = useCallback(
+    (record: { createdByUserId?: string; createdBySn?: string; createdByName?: string }) => {
+      if (!userContext || userContext.isSuperAdmin || userContext.dataScope === 'all') {
+        return true
+      }
+      if (record.createdByUserId && String(record.createdByUserId) === String(userContext.userId)) {
+        return true
+      }
+      if (record.createdBySn && userContext.employeeSn && record.createdBySn === userContext.employeeSn) {
+        return true
+      }
+      if (
+        record.createdByName &&
+        userContext.name &&
+        record.createdByName.trim().toLowerCase() === userContext.name.trim().toLowerCase()
+      ) {
+        return true
+      }
+      if (!record.createdByUserId && !record.createdBySn && !record.createdByName) {
+        return true
+      }
+      return false
+    },
+    [userContext]
+  )
+
+  const visibleKbRecords = useMemo(() => {
+    return kbRecords.filter(isRecordOwnedByUser)
+  }, [kbRecords, isRecordOwnedByUser])
+
+  const visibleDhRecords = useMemo(() => {
+    return dhRecords.filter(isRecordOwnedByUser)
+  }, [dhRecords, isRecordOwnedByUser])
 
   // Fetch employees
   useEffect(() => {
@@ -1014,6 +1086,10 @@ export function SiapHadirForm({ mobile = false }: { mobile?: boolean }) {
 
     const now = new Date().toISOString()
     if (kbEditingId) {
+      if (!canEditHistory) {
+        window.alert('Anda hanya memiliki izin melihat riwayat dan tidak dapat mengedit form ini.')
+        return
+      }
       setKbRecords((prev) =>
         prev.map((r) =>
           r.id === kbEditingId ? { ...kbDraft, id: kbEditingId, createdAt: r.createdAt, updatedAt: now } : r
@@ -1026,11 +1102,14 @@ export function SiapHadirForm({ mobile = false }: { mobile?: boolean }) {
         id: `kb-${Date.now()}`,
         createdAt: now,
         updatedAt: now,
+        createdByUserId: userContext?.userId ? String(userContext.userId) : undefined,
+        createdBySn: userContext?.employeeSn || undefined,
+        createdByName: userContext?.name || undefined,
       }
       setKbRecords((prev) => [newRec, ...prev])
     }
     window.alert('Data Form Kesiapan Bekerja berhasil disimpan!')
-  }, [kbDraft, kbEditingId])
+  }, [kbDraft, kbEditingId, canEditHistory, userContext])
 
   const resetKbForm = useCallback(() => {
     if (window.confirm('Reset seluruh isi form kesiapan bekerja?')) {
@@ -1040,19 +1119,27 @@ export function SiapHadirForm({ mobile = false }: { mobile?: boolean }) {
   }, [])
 
   const editKbRecord = useCallback((record: KesiapanBekerjaRecord) => {
+    if (!canEditHistory) {
+      window.alert('Anda hanya memiliki izin melihat riwayat dan tidak dapat mengedit form ini.')
+      return
+    }
     setKbDraft({
       header: { ...record.header },
       rows: record.rows.map((r) => ({ ...r })),
     })
     setKbEditingId(record.id)
     window.scrollTo({ top: 0, behavior: 'smooth' })
-  }, [])
+  }, [canEditHistory])
 
   const deleteKbRecord = useCallback((id: string) => {
+    if (!canEditHistory) {
+      window.alert('Anda hanya memiliki izin melihat riwayat dan tidak dapat menghapus form ini.')
+      return
+    }
     if (window.confirm('Hapus riwayat form ini?')) {
       setKbRecords((prev) => prev.filter((r) => r.id !== id))
     }
-  }, [])
+  }, [canEditHistory])
 
   const downloadKbPdf = useCallback(async (dataToPrint = kbDraft) => {
     setIsKbGenerating(true)
@@ -1147,6 +1234,10 @@ export function SiapHadirForm({ mobile = false }: { mobile?: boolean }) {
 
     const now = new Date().toISOString()
     if (dhEditingId) {
+      if (!canEditHistory) {
+        window.alert('Anda hanya memiliki izin melihat riwayat dan tidak dapat mengedit form ini.')
+        return
+      }
       setDhRecords((prev) =>
         prev.map((r) =>
           r.id === dhEditingId ? { ...dhDraft, id: dhEditingId, createdAt: r.createdAt, updatedAt: now } : r
@@ -1159,11 +1250,14 @@ export function SiapHadirForm({ mobile = false }: { mobile?: boolean }) {
         id: `dh-${Date.now()}`,
         createdAt: now,
         updatedAt: now,
+        createdByUserId: userContext?.userId ? String(userContext.userId) : undefined,
+        createdBySn: userContext?.employeeSn || undefined,
+        createdByName: userContext?.name || undefined,
       }
       setDhRecords((prev) => [newRec, ...prev])
     }
     window.alert('Data Form Daftar Hadir Sosialisasi berhasil disimpan!')
-  }, [dhDraft, dhEditingId])
+  }, [dhDraft, dhEditingId, canEditHistory, userContext])
 
   const resetDhForm = useCallback(() => {
     if (window.confirm('Reset seluruh isi form daftar hadir?')) {
@@ -1173,19 +1267,27 @@ export function SiapHadirForm({ mobile = false }: { mobile?: boolean }) {
   }, [])
 
   const editDhRecord = useCallback((record: DaftarHadirRecord) => {
+    if (!canEditHistory) {
+      window.alert('Anda hanya memiliki izin melihat riwayat dan tidak dapat mengedit form ini.')
+      return
+    }
     setDhDraft({
       header: { ...record.header },
       rows: record.rows.map((r) => ({ ...r })),
     })
     setDhEditingId(record.id)
     window.scrollTo({ top: 0, behavior: 'smooth' })
-  }, [])
+  }, [canEditHistory])
 
   const deleteDhRecord = useCallback((id: string) => {
+    if (!canEditHistory) {
+      window.alert('Anda hanya memiliki izin melihat riwayat dan tidak dapat menghapus form ini.')
+      return
+    }
     if (window.confirm('Hapus riwayat form ini?')) {
       setDhRecords((prev) => prev.filter((r) => r.id !== id))
     }
-  }, [])
+  }, [canEditHistory])
 
   const downloadDhPdf = useCallback(async (dataToPrint = dhDraft) => {
     setIsDhGenerating(true)
@@ -1227,7 +1329,33 @@ export function SiapHadirForm({ mobile = false }: { mobile?: boolean }) {
   }, [dhDraft])
 
   return (
-    <div className="space-y-6">
+    <div className={cn('space-y-4', mobile && 'pb-20')}>
+      {/* Top Back & Header Bar */}
+      {onBackToHub && (
+        <div className="flex items-center justify-between gap-2 pb-1 border-b border-slate-100">
+          <Button
+            type="button"
+            variant="ghost"
+            size="dense"
+            onClick={onBackToHub}
+            className="h-8 gap-1.5 px-2.5 text-xs font-semibold text-slate-600 hover:text-slate-900"
+          >
+            <ArrowLeft className="size-4" />
+            Menu Hub
+          </Button>
+          <div className="flex items-center gap-1.5">
+            <span className="rounded-full bg-violet-50 px-2.5 py-0.5 text-[11px] font-bold text-violet-700">
+              Siap & Hadir
+            </span>
+            {(activeSubTab === 'daftar-hadir' ? dhEditingId : kbEditingId) && (
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                Edit
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Sub-tabs switcher */}
       <div className="flex items-center justify-between border-b pb-2">
         <div className="flex gap-2">
@@ -1258,656 +1386,930 @@ export function SiapHadirForm({ mobile = false }: { mobile?: boolean }) {
         </div>
       </div>
 
+      {/* Mobile Segmented Toggle */}
+      <div className="grid grid-cols-2 rounded-xl bg-slate-100 p-1 text-xs font-bold text-slate-600">
+        <button
+          type="button"
+          onClick={() => setActiveTab('form')}
+          className={cn(
+            'flex items-center justify-center gap-1.5 rounded-lg py-2 transition-all',
+            activeTab === 'form' ? 'bg-white text-slate-900 shadow-xs' : 'hover:text-slate-900'
+          )}
+        >
+          <Pencil className="size-3.5" />
+          Isi Form
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('history')}
+          className={cn(
+            'flex items-center justify-center gap-1.5 rounded-lg py-2 transition-all',
+            activeTab === 'history' ? 'bg-white text-slate-900 shadow-xs' : 'hover:text-slate-900'
+          )}
+        >
+          <Save className="size-3.5" />
+          Riwayat ({activeSubTab === 'daftar-hadir' ? visibleDhRecords.length : visibleKbRecords.length})
+        </button>
+      </div>
+
       {activeSubTab === 'daftar-hadir' ? (
         /* ==========================================
            2. Form Daftar Hadir Sosialisasi
            ========================================== */
         <div className="space-y-6">
-          {/* Header Info Card */}
-          <div className={cn('rounded-xl border bg-card p-4 shadow-sm space-y-4', mobile && 'p-3')}>
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
-              <div>
-                <h2 className="text-base font-bold text-foreground">
-                  Daftar Hadir Sosialisasi
-                </h2>
-                <p className="text-xs text-muted-foreground">
-                  Departemen: {dhDraft.header.departemen || '-'} | Lokasi: {dhDraft.header.lokasi || '-'}
-                </p>
+          {activeTab === 'form' && (
+            <div className="space-y-6">
+              {/* Header Info Card */}
+              <div className={cn('rounded-xl border bg-card p-4 shadow-sm space-y-4', mobile && 'p-3')}>
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
+                  <div>
+                    <h2 className="text-base font-bold text-foreground">
+                      Daftar Hadir Sosialisasi
+                    </h2>
+                    <p className="text-xs text-muted-foreground">
+                      Departemen: {dhDraft.header.departemen || '-'} | Lokasi: {dhDraft.header.lokasi || '-'}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={resetDhForm} className="h-8 text-xs">
+                      <RotateCcw className="mr-1.5 size-3.5" />
+                      Reset
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={saveDhRecord} className="h-8 px-3 text-xs font-semibold">
+                      <Save className="mr-1.5 size-3.5" />
+                      {dhEditingId ? 'Update Form' : 'Submit Form'}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => downloadDhPdf(dhDraft)}
+                      disabled={isDhGenerating}
+                      className="h-8 px-3 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      {isDhGenerating ? (
+                        <>
+                          <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                          Generating...
+                        </>
+                      ) : (
+                        <>
+                          <Download className="mr-1.5 size-3.5" />
+                          Download PDF
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Document Metadata Inputs */}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-700">Departemen</Label>
+                    <Combobox
+                      options={departmentOptions}
+                      value={dhDraft.header.departemen}
+                      onChange={(v) => updateDhHeader('departemen', v)}
+                      placeholder="Pilih departemen..."
+                      className="h-9 text-xs font-normal border-0 border-b-2 border-b-transparent ring-0 shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)] focus-visible:border-b-primary"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-700">Lokasi / Site</Label>
+                    <Combobox
+                      options={siteOptions}
+                      value={dhDraft.header.lokasi}
+                      onChange={(v) => updateDhHeader('lokasi', v)}
+                      placeholder="Pilih lokasi..."
+                      className="h-9 text-xs font-normal border-0 border-b-2 border-b-transparent ring-0 shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)] focus-visible:border-b-primary"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-700">Tanggal</Label>
+                    <Input
+                      type="date"
+                      value={dhDraft.header.tanggal}
+                      onChange={(e) => updateDhHeader('tanggal', e.target.value)}
+                      className="h-9 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-700">Shift</Label>
+                    <Select
+                      value={dhDraft.header.shift || 'Pagi'}
+                      onValueChange={(v) => updateDhHeader('shift', v)}
+                    >
+                      <SelectTrigger className="!h-9 data-[size=default]:!h-9 data-[size=sm]:!h-9 w-full text-xs px-4">
+                        <SelectValue placeholder="Pilih Shift" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Pagi">Pagi</SelectItem>
+                        <SelectItem value="Malam">Malam</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={resetDhForm}>
-                  <RotateCcw className="mr-1.5 size-4" />
+
+              {/* Table Card (28 Rows) */}
+              <Card className="rounded-xl shadow-sm">
+                <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-gray-100">
+                  <CardTitle className="text-base font-semibold">
+                    Daftar Hadir Karyawan (28 Baris)
+                  </CardTitle>
+                  <span className="text-xs text-muted-foreground">
+                    Terisi: {dhDraft.rows.filter((r) => r.name.trim()).length} / 28 Karyawan
+                  </span>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-gray-50/75 text-xs text-gray-700 font-bold">
+                          <TableHead className="w-12 text-center">No</TableHead>
+                          <TableHead className="min-w-[240px]">Nama Karyawan</TableHead>
+                          <TableHead className="w-36 text-center">SN</TableHead>
+                          <TableHead className="min-w-[200px]">Keterangan</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {dhDraft.rows.map((row, idx) => (
+                          <TableRow key={idx} className="hover:bg-gray-50/50">
+                            <TableCell className="text-center font-bold text-xs text-gray-600">
+                              {idx + 1}
+                            </TableCell>
+                            <TableCell className="p-2">
+                              <Combobox
+                                options={operatorOptions}
+                                value={row.name}
+                                onChange={(val) => handleDhRowNameChange(idx, val)}
+                                placeholder={`Karyawan #${idx + 1}...`}
+                                emptyText="Karyawan tidak ditemukan."
+                                className="h-8 text-xs font-normal border-0 border-b-2 border-b-transparent ring-0 shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)] focus-visible:border-b-primary"
+                              />
+                            </TableCell>
+                            <TableCell className="p-2">
+                              <Input
+                                value={row.sn}
+                                onChange={(e) => handleDhRowFieldChange(idx, 'sn', e.target.value)}
+                                placeholder="SN..."
+                                className="h-8 text-xs text-center font-mono"
+                              />
+                            </TableCell>
+                            <TableCell className="p-2">
+                              <Input
+                                value={row.keterangan}
+                                onChange={(e) => handleDhRowFieldChange(idx, 'keterangan', e.target.value)}
+                                placeholder="Keterangan kehadiran / catatan..."
+                                className="h-8 text-xs"
+                              />
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Bottom Action Bar */}
+              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-3.5">
+                <Button type="button" variant="outline" size="dense" onClick={resetDhForm} className="h-9 px-3 text-xs">
+                  <RotateCcw className="mr-1.5 size-3.5" />
                   Reset
                 </Button>
-                <Button type="button" variant="outline" size="sm" onClick={saveDhRecord}>
-                  <Save className="mr-1.5 size-4" />
-                  {dhEditingId ? 'Update Riwayat' : 'Simpan Draft'}
+                <Button type="button" variant="outline" size="dense" onClick={saveDhRecord} className="h-9 px-4 text-xs font-semibold">
+                  <Save className="mr-1.5 size-3.5" />
+                  {dhEditingId ? 'Update Form' : 'Submit Form'}
                 </Button>
                 <Button
                   type="button"
-                  size="sm"
+                  size="dense"
                   onClick={() => downloadDhPdf(dhDraft)}
                   disabled={isDhGenerating}
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  className="h-9 px-4 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white"
                 >
                   {isDhGenerating ? (
                     <>
-                      <Loader2 className="mr-1.5 size-4 animate-spin" />
+                      <Loader2 className="mr-1.5 size-3.5 animate-spin" />
                       Generating...
                     </>
                   ) : (
                     <>
-                      <Download className="mr-1.5 size-4" />
+                      <Download className="mr-1.5 size-3.5" />
                       Download PDF
                     </>
                   )}
                 </Button>
               </div>
-            </div>
 
-            {/* Document Metadata Inputs */}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold text-gray-700">Departemen</Label>
-                <Combobox
-                  options={departmentOptions}
-                  value={dhDraft.header.departemen}
-                  onChange={(v) => updateDhHeader('departemen', v)}
-                  placeholder="Pilih departemen..."
-                  className="h-9 text-xs font-normal border-0 border-b-2 border-b-transparent ring-0 shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)] focus-visible:border-b-primary"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold text-gray-700">Lokasi / Site</Label>
-                <Combobox
-                  options={siteOptions}
-                  value={dhDraft.header.lokasi}
-                  onChange={(v) => updateDhHeader('lokasi', v)}
-                  placeholder="Pilih lokasi..."
-                  className="h-9 text-xs font-normal border-0 border-b-2 border-b-transparent ring-0 shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)] focus-visible:border-b-primary"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold text-gray-700">Tanggal</Label>
-                <Input
-                  type="date"
-                  value={dhDraft.header.tanggal}
-                  onChange={(e) => updateDhHeader('tanggal', e.target.value)}
-                  className="h-9 text-xs"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold text-gray-700">Shift</Label>
-                <Select
-                  value={dhDraft.header.shift || 'Pagi'}
-                  onValueChange={(v) => updateDhHeader('shift', v)}
+              {/* Mobile Sticky Action Bar */}
+              <div className="fixed bottom-[64px] inset-x-0 mx-auto max-w-[430px] z-50 p-2.5 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-2xl flex items-center gap-2 sm:hidden">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="dense"
+                  onClick={resetDhForm}
+                  className="h-10 px-3 text-xs"
                 >
-                  <SelectTrigger className="!h-9 data-[size=default]:!h-9 data-[size=sm]:!h-9 w-full text-xs px-4">
-                    <SelectValue placeholder="Pilih Shift" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Pagi">Pagi</SelectItem>
-                    <SelectItem value="Malam">Malam</SelectItem>
-                  </SelectContent>
-                </Select>
+                  <RotateCcw className="size-3.5 mr-1" />
+                  Reset
+                </Button>
+                <Button
+                  type="button"
+                  size="dense"
+                  variant="outline"
+                  onClick={saveDhRecord}
+                  className="flex-1 h-10 text-xs font-bold"
+                >
+                  <Save className="size-3.5 mr-1.5" />
+                  {dhEditingId ? 'Update Form' : 'Submit Form'}
+                </Button>
+                <Button
+                  type="button"
+                  size="dense"
+                  onClick={() => downloadDhPdf(dhDraft)}
+                  disabled={isDhGenerating}
+                  className="flex-1 h-10 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  {isDhGenerating ? (
+                    <Loader2 className="size-3.5 mr-1.5 animate-spin" />
+                  ) : (
+                    <Download className="size-3.5 mr-1.5" />
+                  )}
+                  Download PDF
+                </Button>
               </div>
             </div>
-          </div>
+          )}
 
-          {/* Table Card (28 Rows) */}
-          <Card className="rounded-xl shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-gray-100">
-              <CardTitle className="text-base font-semibold">
-                Daftar Hadir Karyawan (28 Baris)
-              </CardTitle>
-              <span className="text-xs text-muted-foreground">
-                Terisi: {dhDraft.rows.filter((r) => r.name.trim()).length} / 28 Karyawan
-              </span>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-gray-50/75 text-xs text-gray-700 font-bold">
-                      <TableHead className="w-12 text-center">No</TableHead>
-                      <TableHead className="min-w-[240px]">Nama Karyawan</TableHead>
-                      <TableHead className="w-36 text-center">SN</TableHead>
-                      <TableHead className="min-w-[200px]">Keterangan</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {dhDraft.rows.map((row, idx) => (
-                      <TableRow key={idx} className="hover:bg-gray-50/50">
-                        <TableCell className="text-center font-bold text-xs text-gray-600">
-                          {idx + 1}
-                        </TableCell>
-                        <TableCell className="p-2">
-                          <Combobox
-                            options={operatorOptions}
-                            value={row.name}
-                            onChange={(val) => handleDhRowNameChange(idx, val)}
-                            placeholder={`Karyawan #${idx + 1}...`}
-                            emptyText="Karyawan tidak ditemukan."
-                            className="h-8 text-xs font-normal border-0 border-b-2 border-b-transparent ring-0 shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)] focus-visible:border-b-primary"
-                          />
-                        </TableCell>
-                        <TableCell className="p-2">
-                          <Input
-                            value={row.sn}
-                            onChange={(e) => handleDhRowFieldChange(idx, 'sn', e.target.value)}
-                            placeholder="SN..."
-                            className="h-8 text-xs text-center font-mono"
-                          />
-                        </TableCell>
-                        <TableCell className="p-2">
-                          <Input
-                            value={row.keterangan}
-                            onChange={(e) => handleDhRowFieldChange(idx, 'keterangan', e.target.value)}
-                            placeholder="Keterangan kehadiran / catatan..."
-                            className="h-8 text-xs"
-                          />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* History Records Table */}
-          <Card className={cn(mobile && 'rounded-2xl bg-white shadow-sm')}>
-            <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-gray-100">
-              <CardTitle className="text-base font-semibold">Riwayat Form Daftar Hadir</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-4">
-              <MinimalTableShell label="History Daftar Hadir">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Tanggal</TableHead>
-                      <TableHead>Shift</TableHead>
-                      <TableHead>Lokasi</TableHead>
-                      <TableHead>Departemen</TableHead>
-                      <TableHead>Jumlah Hadir</TableHead>
-                      <TableHead>Diupdate</TableHead>
-                      <TableHead className="text-right">Aksi</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {dhRecords.map((rec) => (
-                      <TableRow key={rec.id}>
-                        <TableCell className="whitespace-nowrap font-medium">
-                          {formatDateDisplay(rec.header.tanggal)}
-                        </TableCell>
-                        <TableCell>{rec.header.shift || '-'}</TableCell>
-                        <TableCell>{rec.header.lokasi || '-'}</TableCell>
-                        <TableCell>{rec.header.departemen || '-'}</TableCell>
-                        <TableCell className="font-semibold">
-                          {rec.rows.filter((r) => r.name.trim()).length} Karyawan
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                          {formatDateTime(rec.updatedAt)}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="dense"
-                              onClick={() => editDhRecord(rec)}
-                            >
-                              Edit
-                            </Button>
+          {/* History Records Table / Mobile Cards */}
+          {activeTab === 'history' && (
+            <Card className={cn('rounded-2xl border border-slate-200/90 bg-white shadow-xs', mobile && 'p-0')}>
+              <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-gray-100">
+                <CardTitle className="text-base font-semibold">Riwayat Form Daftar Hadir</CardTitle>
+                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
+                  {visibleDhRecords.length} Data
+                </span>
+              </CardHeader>
+              <CardContent className="p-3 sm:p-6">
+                {visibleDhRecords.length === 0 ? (
+                  <p className="text-muted-foreground py-6 text-center text-xs">
+                    Belum ada riwayat form daftar hadir.
+                  </p>
+                ) : (
+                  <>
+                    {/* Mobile Cards */}
+                    <div className="space-y-2.5 sm:hidden">
+                      {visibleDhRecords.map((rec) => (
+                        <div
+                          key={rec.id}
+                          className="rounded-xl border border-slate-200/90 bg-slate-50/40 p-3.5 shadow-xs space-y-2"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-slate-900 text-sm">
+                              {formatDateDisplay(rec.header.tanggal)}
+                            </span>
+                            <span className="rounded-md bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">
+                              {rec.header.shift || 'Shift -'}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-1 text-xs text-slate-600">
+                            <div>
+                              <span className="text-slate-400">Lokasi:</span> {rec.header.lokasi || '-'}
+                            </div>
+                            <div className="text-right">
+                              <span className="text-slate-400">Hadir:</span>{' '}
+                              <span className="font-bold text-slate-800">
+                                {rec.rows.filter((r) => r.name.trim()).length} Orang
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-slate-100">
+                            {canEditHistory && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="dense"
+                                onClick={() => {
+                                  editDhRecord(rec)
+                                  setActiveTab('form')
+                                }}
+                                className="h-8 px-3 text-xs"
+                              >
+                                <Pencil className="mr-1 size-3.5" />
+                                Edit
+                              </Button>
+                            )}
                             <Button
                               type="button"
                               size="dense"
                               onClick={() => downloadDhPdf(rec)}
-                              className="bg-blue-600 hover:bg-blue-700 text-white"
+                              className="h-8 px-3 text-xs bg-blue-600 text-white hover:bg-blue-700"
                             >
                               <Download className="mr-1 size-3.5" />
                               PDF
                             </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="denseIcon"
-                              onClick={() => deleteDhRecord(rec.id)}
-                              className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                            >
-                              <Trash2 className="size-4" />
-                            </Button>
+                            {canEditHistory && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="denseIcon"
+                                onClick={() => deleteDhRecord(rec.id)}
+                                className="h-8 w-8 text-rose-500 hover:bg-rose-50"
+                              >
+                                <Trash2 className="size-4" />
+                              </Button>
+                            )}
                           </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {dhRecords.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={7} className="text-muted-foreground py-8 text-center text-xs">
-                          Belum ada riwayat form daftar hadir.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </MinimalTableShell>
-            </CardContent>
-          </Card>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Desktop Table */}
+                    <div className="hidden sm:block">
+                      <MinimalTableShell label="History Daftar Hadir">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Tanggal</TableHead>
+                              <TableHead>Shift</TableHead>
+                              <TableHead>Lokasi</TableHead>
+                              <TableHead>Departemen</TableHead>
+                              <TableHead>Jumlah Hadir</TableHead>
+                              <TableHead>Diupdate</TableHead>
+                              <TableHead className="text-right">Aksi</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {visibleDhRecords.map((rec) => (
+                              <TableRow key={rec.id}>
+                                <TableCell className="whitespace-nowrap font-medium">
+                                  {formatDateDisplay(rec.header.tanggal)}
+                                </TableCell>
+                                <TableCell>{rec.header.shift || '-'}</TableCell>
+                                <TableCell>{rec.header.lokasi || '-'}</TableCell>
+                                <TableCell>{rec.header.departemen || '-'}</TableCell>
+                                <TableCell className="font-semibold">
+                                  {rec.rows.filter((r) => r.name.trim()).length} Karyawan
+                                </TableCell>
+                                <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                                  {formatDateTime(rec.updatedAt)}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex justify-end gap-2">
+                                    {canEditHistory && (
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="dense"
+                                        onClick={() => {
+                                          editDhRecord(rec)
+                                          setActiveTab('form')
+                                        }}
+                                      >
+                                        Edit
+                                      </Button>
+                                    )}
+                                    <Button
+                                      type="button"
+                                      size="dense"
+                                      onClick={() => downloadDhPdf(rec)}
+                                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                                    >
+                                      <Download className="mr-1 size-3.5" />
+                                      PDF
+                                    </Button>
+                                    {canEditHistory && (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="denseIcon"
+                                        onClick={() => deleteDhRecord(rec.id)}
+                                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                                      >
+                                        <Trash2 className="size-4" />
+                                      </Button>
+                                    )}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </MinimalTableShell>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
       ) : (
         /* ==========================================
            1. Form Kesiapan Bekerja
            ========================================== */
         <div className="space-y-6">
-          {/* Header Info Card */}
-          <div className={cn('rounded-xl border bg-card p-4 shadow-sm space-y-4', mobile && 'p-3')}>
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
-              <div>
-                <h2 className="text-base font-bold text-foreground">
-                  Form Kesiapan Bekerja
-                </h2>
-                <p className="text-xs text-muted-foreground">
-                  Dokumen: {kbDraft.header.docNo || '-'}
-                </p>
+          {activeTab === 'form' && (
+            <div className="space-y-6">
+              {/* Header Info Card */}
+              <div className={cn('rounded-xl border bg-card p-4 shadow-sm space-y-4', mobile && 'p-3')}>
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
+                  <div>
+                    <h2 className="text-base font-bold text-foreground">
+                      Form Kesiapan Bekerja
+                    </h2>
+                    <p className="text-xs text-muted-foreground">
+                      Dokumen: {kbDraft.header.docNo || '-'}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={resetKbForm} className="h-8 text-xs">
+                      <RotateCcw className="mr-1.5 size-3.5" />
+                      Reset
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={saveKbRecord} className="h-8 px-3 text-xs font-semibold">
+                      <Save className="mr-1.5 size-3.5" />
+                      {kbEditingId ? 'Update Form' : 'Submit Form'}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => downloadKbPdf(kbDraft)}
+                      disabled={isKbGenerating}
+                      className="h-8 px-3 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      {isKbGenerating ? (
+                        <>
+                          <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                          Generating...
+                        </>
+                      ) : (
+                        <>
+                          <Download className="mr-1.5 size-3.5" />
+                          Download PDF
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Document Metadata Inputs */}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7">
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-700">No. Dokumen</Label>
+                    <Input
+                      value={kbDraft.header.docNo}
+                      onChange={(e) => updateKbHeader('docNo', e.target.value)}
+                      placeholder="Contoh: HSE-01-08-(0)"
+                      className="h-9 text-xs font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-700">Tgl. Berlaku</Label>
+                    <Input
+                      type="date"
+                      value={kbDraft.header.tglBerlaku}
+                      onChange={(e) => updateKbHeader('tglBerlaku', e.target.value)}
+                      className="h-9 text-xs font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-700">Departemen</Label>
+                    <Combobox
+                      options={departmentOptions}
+                      value={kbDraft.header.departemen}
+                      onChange={(v) => updateKbHeader('departemen', v)}
+                      placeholder="Pilih departemen..."
+                      className="h-9 text-xs font-normal border-0 border-b-2 border-b-transparent ring-0 shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)] focus-visible:border-b-primary"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-700">Lokasi / Site</Label>
+                    <Combobox
+                      options={siteOptions}
+                      value={kbDraft.header.lokasi}
+                      onChange={(v) => updateKbHeader('lokasi', v)}
+                      placeholder="Pilih lokasi..."
+                      className="h-9 text-xs font-normal border-0 border-b-2 border-b-transparent ring-0 shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)] focus-visible:border-b-primary"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-700">Pembahasan</Label>
+                    <Input
+                      value={kbDraft.header.pembahasan}
+                      onChange={(e) => updateKbHeader('pembahasan', e.target.value)}
+                      placeholder="Topik pembahasan..."
+                      className="h-9 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-700">Tanggal</Label>
+                    <Input
+                      type="date"
+                      value={kbDraft.header.tanggal}
+                      onChange={(e) => updateKbHeader('tanggal', e.target.value)}
+                      className="h-9 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-gray-700">Shift</Label>
+                    <Select
+                      value={kbDraft.header.shift || 'Pagi'}
+                      onValueChange={(v) => updateKbHeader('shift', v)}
+                    >
+                      <SelectTrigger className="!h-9 data-[size=default]:!h-9 data-[size=sm]:!h-9 w-full text-xs px-4">
+                        <SelectValue placeholder="Pilih Shift" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Pagi">Pagi</SelectItem>
+                        <SelectItem value="Malam">Malam</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={resetKbForm}>
-                  <RotateCcw className="mr-1.5 size-4" />
+
+              {/* Table Card (Kesiapan Bekerja Rows) */}
+              <Card className="rounded-xl shadow-sm">
+                <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-gray-100">
+                  <CardTitle className="text-base font-semibold">
+                    Daftar Kesiapan Karyawan (15 Baris)
+                  </CardTitle>
+                  <span className="text-xs text-muted-foreground">
+                    Terisi: {kbDraft.rows.filter((r) => r.name.trim()).length} / 15 Karyawan
+                  </span>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-gray-50/75 text-xs text-gray-700 font-bold">
+                          <TableHead className="w-10 text-center">No</TableHead>
+                          <TableHead className="min-w-[180px]">Nama Karyawan</TableHead>
+                          <TableHead className="w-28 text-center">SN</TableHead>
+                          <TableHead className="w-24 text-center">Konsumsi Obat</TableHead>
+                          <TableHead className="w-36 text-center">Jam Tidur</TableHead>
+                          <TableHead className="w-24 text-center">Siap Kerja</TableHead>
+                          <TableHead className="w-24 text-center">Paraf</TableHead>
+                          <TableHead className="w-28 text-center">Verif Pengawas</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {kbDraft.rows.map((row, idx) => (
+                          <TableRow key={idx} className="hover:bg-gray-50/50">
+                            <TableCell className="text-center font-bold text-xs text-gray-600">
+                              {idx + 1}
+                            </TableCell>
+                            <TableCell className="p-2">
+                              <Combobox
+                                options={operatorOptions}
+                                value={row.name}
+                                onChange={(val) => handleKbRowNameChange(idx, val)}
+                                placeholder={`Karyawan #${idx + 1}...`}
+                                emptyText="Karyawan tidak ditemukan."
+                                className="h-8 text-xs font-normal border-0 border-b-2 border-b-transparent ring-0 shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)] focus-visible:border-b-primary"
+                              />
+                            </TableCell>
+                            <TableCell className="p-2">
+                              <Input
+                                value={row.sn}
+                                onChange={(e) => handleKbRowFieldChange(idx, 'sn', e.target.value)}
+                                placeholder="SN..."
+                                className="h-8 text-xs text-center font-mono"
+                              />
+                            </TableCell>
+                            <TableCell className="p-2 text-center">
+                              <Button
+                                type="button"
+                                variant={row.konsumsiObat ? (row.konsumsiObat === 'V' ? 'default' : 'destructive') : 'outline'}
+                                size="dense"
+                                onClick={() => handleKbCycleStatus(idx, 'konsumsiObat')}
+                                className={cn(
+                                  'h-7 w-12 text-xs font-bold',
+                                  row.konsumsiObat === 'V' && 'bg-emerald-600 hover:bg-emerald-700 text-white',
+                                  row.konsumsiObat === 'X' && 'bg-rose-600 hover:bg-rose-700 text-white'
+                                )}
+                              >
+                                {row.konsumsiObat || '-'}
+                              </Button>
+                            </TableCell>
+                            <TableCell className="p-2">
+                              <div className="flex items-center gap-1 justify-center">
+                                <Input
+                                  type="time"
+                                  value={row.jamTidurMulai}
+                                  onChange={(e) => handleKbRowFieldChange(idx, 'jamTidurMulai', e.target.value)}
+                                  className="h-7 text-[11px] p-1 w-16 text-center"
+                                />
+                                <span className="text-[10px] text-gray-400">-</span>
+                                <Input
+                                  type="time"
+                                  value={row.jamTidurBangun}
+                                  onChange={(e) => handleKbRowFieldChange(idx, 'jamTidurBangun', e.target.value)}
+                                  className="h-7 text-[11px] p-1 w-16 text-center"
+                                />
+                              </div>
+                            </TableCell>
+                            <TableCell className="p-2 text-center">
+                              <Button
+                                type="button"
+                                variant={row.siapKerja ? (row.siapKerja === 'V' ? 'default' : 'destructive') : 'outline'}
+                                size="dense"
+                                onClick={() => handleKbCycleStatus(idx, 'siapKerja')}
+                                className={cn(
+                                  'h-7 w-12 text-xs font-bold',
+                                  row.siapKerja === 'V' && 'bg-emerald-600 hover:bg-emerald-700 text-white',
+                                  row.siapKerja === 'X' && 'bg-rose-600 hover:bg-rose-700 text-white'
+                                )}
+                              >
+                                {row.siapKerja || '-'}
+                              </Button>
+                            </TableCell>
+                            <TableCell className="p-2 text-center">
+                              {row.paraf ? (
+                                <div className="flex items-center justify-center gap-1">
+                                  <img
+                                    src={row.paraf}
+                                    alt="Paraf"
+                                    className="h-6 max-w-[48px] object-contain border rounded bg-white"
+                                  />
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="denseIcon"
+                                    onClick={() => setSigModalRowIndex(idx)}
+                                    className="h-6 w-6 text-gray-400 hover:text-gray-700"
+                                  >
+                                    <Pencil className="size-3" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="dense"
+                                  onClick={() => setSigModalRowIndex(idx)}
+                                  className="h-7 text-[10px] px-2"
+                                >
+                                  Paraf
+                                </Button>
+                              )}
+                            </TableCell>
+                            <TableCell className="p-2 text-center">
+                              <Button
+                                type="button"
+                                variant={row.verifikasiPengawas ? (row.verifikasiPengawas === 'V' ? 'default' : 'destructive') : 'outline'}
+                                size="dense"
+                                onClick={() => handleKbCycleStatus(idx, 'verifikasiPengawas')}
+                                className={cn(
+                                  'h-7 w-12 text-xs font-bold',
+                                  row.verifikasiPengawas === 'V' && 'bg-emerald-600 hover:bg-emerald-700 text-white',
+                                  row.verifikasiPengawas === 'X' && 'bg-rose-600 hover:bg-rose-700 text-white'
+                                )}
+                              >
+                                {row.verifikasiPengawas || '-'}
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Bottom Action Bar */}
+              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-3.5">
+                <Button type="button" variant="outline" size="dense" onClick={resetKbForm} className="h-9 px-3 text-xs">
+                  <RotateCcw className="mr-1.5 size-3.5" />
                   Reset
                 </Button>
-                <Button type="button" variant="outline" size="sm" onClick={saveKbRecord}>
-                  <Save className="mr-1.5 size-4" />
-                  {kbEditingId ? 'Update Riwayat' : 'Simpan Draft'}
+                <Button type="button" variant="outline" size="dense" onClick={saveKbRecord} className="h-9 px-4 text-xs font-semibold">
+                  <Save className="mr-1.5 size-3.5" />
+                  {kbEditingId ? 'Update Form' : 'Submit Form'}
                 </Button>
                 <Button
                   type="button"
-                  size="sm"
+                  size="dense"
                   onClick={() => downloadKbPdf(kbDraft)}
                   disabled={isKbGenerating}
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  className="h-9 px-4 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white"
                 >
                   {isKbGenerating ? (
                     <>
-                      <Loader2 className="mr-1.5 size-4 animate-spin" />
+                      <Loader2 className="mr-1.5 size-3.5 animate-spin" />
                       Generating...
                     </>
                   ) : (
                     <>
-                      <Download className="mr-1.5 size-4" />
+                      <Download className="mr-1.5 size-3.5" />
                       Download PDF
                     </>
                   )}
                 </Button>
               </div>
-            </div>
 
-            {/* Document Metadata Inputs */}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7">
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold text-gray-700">No. Dokumen</Label>
-                <Input
-                  value={kbDraft.header.docNo}
-                  onChange={(e) => updateKbHeader('docNo', e.target.value)}
-                  placeholder="Contoh: HSE-01-08-(0)"
-                  className="h-9 text-xs font-mono"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold text-gray-700">Tgl. Berlaku</Label>
-                <Input
-                  type="date"
-                  value={kbDraft.header.tglBerlaku}
-                  onChange={(e) => updateKbHeader('tglBerlaku', e.target.value)}
-                  className="h-9 text-xs font-mono"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold text-gray-700">Departemen</Label>
-                <Combobox
-                  options={departmentOptions}
-                  value={kbDraft.header.departemen}
-                  onChange={(v) => updateKbHeader('departemen', v)}
-                  placeholder="Pilih departemen..."
-                  className="h-9 text-xs font-normal border-0 border-b-2 border-b-transparent ring-0 shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)] focus-visible:border-b-primary"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold text-gray-700">Lokasi / Site</Label>
-                <Combobox
-                  options={siteOptions}
-                  value={kbDraft.header.lokasi}
-                  onChange={(v) => updateKbHeader('lokasi', v)}
-                  placeholder="Pilih lokasi..."
-                  className="h-9 text-xs font-normal border-0 border-b-2 border-b-transparent ring-0 shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)] focus-visible:border-b-primary"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold text-gray-700">Pembahasan</Label>
-                <Input
-                  value={kbDraft.header.pembahasan}
-                  onChange={(e) => updateKbHeader('pembahasan', e.target.value)}
-                  placeholder="Contoh: P5M / Kesiapan Kerja"
-                  className="h-9 text-xs"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold text-gray-700">Tanggal</Label>
-                <Input
-                  type="date"
-                  value={kbDraft.header.tanggal}
-                  onChange={(e) => updateKbHeader('tanggal', e.target.value)}
-                  className="h-9 text-xs"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold text-gray-700">Shift</Label>
-                <Select
-                  value={kbDraft.header.shift || 'Pagi'}
-                  onValueChange={(v) => updateKbHeader('shift', v)}
+              {/* Mobile Sticky Action Bar */}
+              <div className="fixed bottom-[64px] inset-x-0 mx-auto max-w-[430px] z-50 p-2.5 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-2xl flex items-center gap-2 sm:hidden">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="dense"
+                  onClick={resetKbForm}
+                  className="h-10 px-3 text-xs"
                 >
-                  <SelectTrigger className="!h-9 data-[size=default]:!h-9 data-[size=sm]:!h-9 w-full text-xs px-4">
-                    <SelectValue placeholder="Pilih Shift" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Pagi">Pagi</SelectItem>
-                    <SelectItem value="Malam">Malam</SelectItem>
-                  </SelectContent>
-                </Select>
+                  <RotateCcw className="size-3.5 mr-1" />
+                  Reset
+                </Button>
+                <Button
+                  type="button"
+                  size="dense"
+                  variant="outline"
+                  onClick={saveKbRecord}
+                  className="flex-1 h-10 text-xs font-bold"
+                >
+                  <Save className="size-3.5 mr-1.5" />
+                  {kbEditingId ? 'Update Form' : 'Submit Form'}
+                </Button>
+                <Button
+                  type="button"
+                  size="dense"
+                  onClick={() => downloadKbPdf(kbDraft)}
+                  disabled={isKbGenerating}
+                  className="flex-1 h-10 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  {isKbGenerating ? (
+                    <Loader2 className="size-3.5 mr-1.5 animate-spin" />
+                  ) : (
+                    <Download className="size-3.5 mr-1.5" />
+                  )}
+                  Download PDF
+                </Button>
               </div>
             </div>
-          </div>
+          )}
 
-          {/* Quick Action Toolbar */}
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-white p-3 shadow-sm text-xs">
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-gray-700">Quick Fill:</span>
-              <Button
-                type="button"
-                variant="outline"
-                size="dense"
-                onClick={() => handleKbBulkSetSiapKerja('V')}
-                className="text-[11px] text-green-700 hover:bg-green-50"
-              >
-                <Check className="mr-1 size-3" />
-                Semua Siap Kerja (V)
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="dense"
-                onClick={() => handleKbBulkSetObat('X')}
-                className="text-[11px] text-blue-700 hover:bg-blue-50"
-              >
-                <X className="mr-1 size-3" />
-                Semua Obat Bebas (X)
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="dense"
-                onClick={() => handleKbBulkSetVerifikasi('V')}
-                className="text-[11px] text-emerald-700 hover:bg-emerald-50"
-              >
-                <CheckSquare className="mr-1 size-3" />
-                Semua Verifikasi (V)
-              </Button>
-            </div>
-            <div className="text-muted-foreground text-[11px]">
-              Klik tombol status (V/X) untuk toggle cepat: <b>V</b> (Ya/Sesuai) &rarr; <b>X</b> (Tidak) &rarr; Kosong.
-            </div>
-          </div>
-
-          {/* Main Inspection Table Card */}
-          <Card className="rounded-xl shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-gray-100">
-              <CardTitle className="text-base font-semibold">
-                Daftar Karyawan & Kesiapan Bekerja (28 Baris)
-              </CardTitle>
-              <span className="text-xs text-muted-foreground">
-                Terisi: {kbDraft.rows.filter((r) => r.name.trim()).length} / 28 Karyawan
-              </span>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-gray-50/75 text-xs text-gray-700 font-bold">
-                      <TableHead className="w-12 text-center">No</TableHead>
-                      <TableHead className="min-w-[200px]">Nama Karyawan</TableHead>
-                      <TableHead className="w-28 text-center">SN</TableHead>
-                      <TableHead className="w-32 text-center">
-                        Konsumsi Obat
-                        <br />
-                        <span className="font-normal text-[10px] text-muted-foreground">Flu/Alergi (V/X)</span>
-                      </TableHead>
-                      <TableHead className="w-28 text-center">
-                        Mulai Tidur
-                        <br />
-                        <span className="font-normal text-[10px] text-muted-foreground">Jam</span>
-                      </TableHead>
-                      <TableHead className="w-28 text-center">
-                        Bangun
-                        <br />
-                        <span className="font-normal text-[10px] text-muted-foreground">Jam</span>
-                      </TableHead>
-                      <TableHead className="w-28 text-center">
-                        Siap Kerja
-                        <br />
-                        <span className="font-normal text-[10px] text-muted-foreground">(V/X)</span>
-                      </TableHead>
-                      <TableHead className="w-28 text-center">Paraf</TableHead>
-                      <TableHead className="w-32 text-center">
-                        Verifikasi
-                        <br />
-                        <span className="font-normal text-[10px] text-muted-foreground">Pengawas (V/X)</span>
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {kbDraft.rows.map((row, idx) => (
-                      <TableRow key={idx} className="hover:bg-gray-50/50">
-                        <TableCell className="text-center font-bold text-xs text-gray-600">
-                          {idx + 1}
-                        </TableCell>
-                        <TableCell className="p-2">
-                          <Combobox
-                            options={operatorOptions}
-                            value={row.name}
-                            onChange={(val) => handleKbRowNameChange(idx, val)}
-                            placeholder={`Karyawan #${idx + 1}...`}
-                            emptyText="Karyawan tidak ditemukan."
-                            className="h-8 text-xs font-normal border-0 border-b-2 border-b-transparent ring-0 shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)] focus-visible:border-b-primary"
-                          />
-                        </TableCell>
-                        <TableCell className="p-2">
-                          <Input
-                            value={row.sn}
-                            onChange={(e) => handleKbRowFieldChange(idx, 'sn', e.target.value)}
-                            placeholder="SN..."
-                            className="h-8 text-xs text-center font-mono"
-                          />
-                        </TableCell>
-                        <TableCell className="text-center p-2">
-                          <Button
-                            type="button"
-                            size="dense"
-                            variant="outline"
-                            onClick={() => handleKbCycleStatus(idx, 'konsumsiObat')}
-                            className={cn(
-                              'h-8 w-16 text-xs font-bold transition-all',
-                              row.konsumsiObat === 'V' && 'bg-green-100 text-green-700 border-green-300 hover:bg-green-200',
-                              row.konsumsiObat === 'X' && 'bg-red-100 text-red-700 border-red-300 hover:bg-red-200',
-                              !row.konsumsiObat && 'text-gray-400'
-                            )}
-                          >
-                            {row.konsumsiObat || '-'}
-                          </Button>
-                        </TableCell>
-                        <TableCell className="p-2">
-                          <Input
-                            type="time"
-                            value={row.jamTidurMulai}
-                            onChange={(e) => handleKbRowFieldChange(idx, 'jamTidurMulai', e.target.value)}
-                            className="h-8 text-xs text-center"
-                          />
-                        </TableCell>
-                        <TableCell className="p-2">
-                          <Input
-                            type="time"
-                            value={row.jamTidurBangun}
-                            onChange={(e) => handleKbRowFieldChange(idx, 'jamTidurBangun', e.target.value)}
-                            className="h-8 text-xs text-center"
-                          />
-                        </TableCell>
-                        <TableCell className="text-center p-2">
-                          <Button
-                            type="button"
-                            size="dense"
-                            variant="outline"
-                            onClick={() => handleKbCycleStatus(idx, 'siapKerja')}
-                            className={cn(
-                              'h-8 w-16 text-xs font-bold transition-all',
-                              row.siapKerja === 'V' && 'bg-green-100 text-green-700 border-green-300 hover:bg-green-200',
-                              row.siapKerja === 'X' && 'bg-red-100 text-red-700 border-red-300 hover:bg-red-200',
-                              !row.siapKerja && 'text-gray-400'
-                            )}
-                          >
-                            {row.siapKerja || '-'}
-                          </Button>
-                        </TableCell>
-                        <TableCell className="text-center p-2">
-                          {row.paraf ? (
-                            <div className="flex items-center justify-center gap-1">
-                              <img
-                                src={row.paraf}
-                                alt="Paraf"
-                                className="h-7 max-w-[50px] object-contain border rounded bg-white"
-                              />
+          {/* History Records Table / Mobile Cards */}
+          {activeTab === 'history' && (
+            <Card className={cn('rounded-2xl border border-slate-200/90 bg-white shadow-xs', mobile && 'p-0')}>
+              <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-gray-100">
+                <CardTitle className="text-base font-semibold">Riwayat Form Kesiapan Bekerja</CardTitle>
+                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
+                  {visibleKbRecords.length} Data
+                </span>
+              </CardHeader>
+              <CardContent className="p-3 sm:p-6">
+                {visibleKbRecords.length === 0 ? (
+                  <p className="text-muted-foreground py-6 text-center text-xs">
+                    Belum ada riwayat form kesiapan bekerja.
+                  </p>
+                ) : (
+                  <>
+                    {/* Mobile Cards */}
+                    <div className="space-y-2.5 sm:hidden">
+                      {visibleKbRecords.map((rec) => (
+                        <div
+                          key={rec.id}
+                          className="rounded-xl border border-slate-200/90 bg-slate-50/40 p-3.5 shadow-xs space-y-2"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-slate-900 text-sm">
+                              {formatDateDisplay(rec.header.tanggal)}
+                            </span>
+                            <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                              {rec.header.shift || 'Shift -'}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-1 text-xs text-slate-600">
+                            <div>
+                              <span className="text-slate-400">Lokasi:</span> {rec.header.lokasi || '-'}
+                            </div>
+                            <div className="text-right">
+                              <span className="text-slate-400">Total:</span>{' '}
+                              <span className="font-bold text-slate-800">
+                                {rec.rows.filter((r) => r.name.trim()).length} Karyawan
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-slate-100">
+                            {canEditHistory && (
                               <Button
                                 type="button"
-                                variant="ghost"
-                                size="denseIcon"
-                                onClick={() => handleClearSignature(idx)}
-                                title="Hapus paraf"
-                                className="h-6 w-6 text-red-500"
+                                variant="outline"
+                                size="dense"
+                                onClick={() => {
+                                  editKbRecord(rec)
+                                  setActiveTab('form')
+                                }}
+                                className="h-8 px-3 text-xs"
                               >
-                                <Trash2 className="size-3" />
+                                <Pencil className="mr-1 size-3.5" />
+                                Edit
                               </Button>
-                            </div>
-                          ) : (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="dense"
-                              onClick={() => setSigModalRowIndex(idx)}
-                              className="h-8 text-[11px] text-blue-600"
-                            >
-                              Paraf
-                            </Button>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-center p-2">
-                          <Button
-                            type="button"
-                            size="dense"
-                            variant="outline"
-                            onClick={() => handleKbCycleStatus(idx, 'verifikasiPengawas')}
-                            className={cn(
-                              'h-8 w-16 text-xs font-bold transition-all',
-                              row.verifikasiPengawas === 'V' && 'bg-green-100 text-green-700 border-green-300 hover:bg-green-200',
-                              row.verifikasiPengawas === 'X' && 'bg-red-100 text-red-700 border-red-300 hover:bg-red-200',
-                              !row.verifikasiPengawas && 'text-gray-400'
                             )}
-                          >
-                            {row.verifikasiPengawas || '-'}
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* History Records Table */}
-          <Card className={cn(mobile && 'rounded-2xl bg-white shadow-sm')}>
-            <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-gray-100">
-              <CardTitle className="text-base font-semibold">Riwayat Form Kesiapan Bekerja</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-4">
-              <MinimalTableShell label="History Kesiapan Bekerja">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Tanggal</TableHead>
-                      <TableHead>Shift</TableHead>
-                      <TableHead>Lokasi</TableHead>
-                      <TableHead>Departemen</TableHead>
-                      <TableHead>Jumlah Karyawan</TableHead>
-                      <TableHead>Diupdate</TableHead>
-                      <TableHead className="text-right">Aksi</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {kbRecords.map((rec) => (
-                      <TableRow key={rec.id}>
-                        <TableCell className="whitespace-nowrap font-medium">
-                          {formatDateDisplay(rec.header.tanggal)}
-                        </TableCell>
-                        <TableCell>{rec.header.shift || '-'}</TableCell>
-                        <TableCell>{rec.header.lokasi || '-'}</TableCell>
-                        <TableCell>{rec.header.departemen || '-'}</TableCell>
-                        <TableCell className="font-semibold">
-                          {rec.rows.filter((r) => r.name.trim()).length} Karyawan
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                          {formatDateTime(rec.updatedAt)}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="dense"
-                              onClick={() => editKbRecord(rec)}
-                            >
-                              Edit
-                            </Button>
                             <Button
                               type="button"
                               size="dense"
                               onClick={() => downloadKbPdf(rec)}
-                              className="bg-blue-600 hover:bg-blue-700 text-white"
+                              className="h-8 px-3 text-xs bg-blue-600 text-white hover:bg-blue-700"
                             >
                               <Download className="mr-1 size-3.5" />
                               PDF
                             </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="denseIcon"
-                              onClick={() => deleteKbRecord(rec.id)}
-                              className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                            >
-                              <Trash2 className="size-4" />
-                            </Button>
+                            {canEditHistory && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="denseIcon"
+                                onClick={() => deleteKbRecord(rec.id)}
+                                className="h-8 w-8 text-rose-500 hover:bg-rose-50"
+                              >
+                                <Trash2 className="size-4" />
+                              </Button>
+                            )}
                           </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {kbRecords.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={7} className="text-muted-foreground py-8 text-center text-xs">
-                          Belum ada riwayat form kesiapan bekerja.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </MinimalTableShell>
-            </CardContent>
-          </Card>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Desktop Table */}
+                    <div className="hidden sm:block">
+                      <MinimalTableShell label="History Kesiapan Bekerja">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Tanggal</TableHead>
+                              <TableHead>Shift</TableHead>
+                              <TableHead>Lokasi</TableHead>
+                              <TableHead>Departemen</TableHead>
+                              <TableHead>Jumlah Karyawan</TableHead>
+                              <TableHead>Diupdate</TableHead>
+                              <TableHead className="text-right">Aksi</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {visibleKbRecords.map((rec) => (
+                              <TableRow key={rec.id}>
+                                <TableCell className="whitespace-nowrap font-medium">
+                                  {formatDateDisplay(rec.header.tanggal)}
+                                </TableCell>
+                                <TableCell>{rec.header.shift || '-'}</TableCell>
+                                <TableCell>{rec.header.lokasi || '-'}</TableCell>
+                                <TableCell>{rec.header.departemen || '-'}</TableCell>
+                                <TableCell className="font-semibold">
+                                  {rec.rows.filter((r) => r.name.trim()).length} Karyawan
+                                </TableCell>
+                                <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                                  {formatDateTime(rec.updatedAt)}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex justify-end gap-2">
+                                    {canEditHistory && (
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="dense"
+                                        onClick={() => {
+                                          editKbRecord(rec)
+                                          setActiveTab('form')
+                                        }}
+                                      >
+                                        Edit
+                                      </Button>
+                                    )}
+                                    <Button
+                                      type="button"
+                                      size="dense"
+                                      onClick={() => downloadKbPdf(rec)}
+                                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                                    >
+                                      <Download className="mr-1 size-3.5" />
+                                      PDF
+                                    </Button>
+                                    {canEditHistory && (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="denseIcon"
+                                        onClick={() => deleteKbRecord(rec.id)}
+                                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                                      >
+                                        <Trash2 className="size-4" />
+                                      </Button>
+                                    )}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </MinimalTableShell>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 

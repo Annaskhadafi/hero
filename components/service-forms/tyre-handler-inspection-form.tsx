@@ -1,6 +1,7 @@
 'use client'
 
 import {
+  ArrowLeft,
   Check,
   Download,
   Eraser,
@@ -45,7 +46,12 @@ import {
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import { getEmployees, getSites } from '@/app/dashboard/360-service/service-form/actions'
+import {
+  getEmployees,
+  getSites,
+  getServiceFormUserContext,
+  type ServiceFormUserContext,
+} from '@/app/dashboard/360-service/service-form/actions'
 
 export type InspectionItemStatus = 'baik' | 'tidak' | ''
 
@@ -97,6 +103,9 @@ export type TyreHandlerRecord = TyreHandlerDraft & {
   id: string
   createdAt: string
   updatedAt: string
+  createdByUserId?: string
+  createdBySn?: string
+  createdByName?: string
 }
 
 const STORAGE_KEY = 'hero-service-form-tyre-handler-history'
@@ -730,8 +739,16 @@ function PdfPage({
   )
 }
 
-export function TyreHandlerInspectionForm({ mobile = false }: { mobile?: boolean }) {
+export function TyreHandlerInspectionForm({
+  mobile = false,
+  onBackToHub,
+}: {
+  mobile?: boolean
+  onBackToHub?: () => void
+}) {
   const [siteOptions, setSiteOptions] = useState<string[]>([])
+  const [userContext, setUserContext] = useState<ServiceFormUserContext | null>(null)
+  const [activeTab, setActiveTab] = useState<'form' | 'history'>('form')
   const [draft, setDraft] = useState<TyreHandlerDraft>(defaultDraft())
   const [records, setRecords] = useState<TyreHandlerRecord[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -747,8 +764,12 @@ export function TyreHandlerInspectionForm({ mobile = false }: { mobile?: boolean
   const [employeesList, setEmployeesList] = useState<{ id: number; name: string; employeeSn: string }[]>([])
   const [operatorOptions, setOperatorOptions] = useState<string[]>([])
 
-  // Fetch employees from database (hero_employees)
+  // Fetch employees and user context
   useEffect(() => {
+    getServiceFormUserContext().then((ctx) => {
+      setUserContext(ctx)
+    })
+
     let active = true
     getEmployees().then((res) => {
       if (!active || !res.success) return
@@ -762,6 +783,31 @@ export function TyreHandlerInspectionForm({ mobile = false }: { mobile?: boolean
       active = false
     }
   }, [])
+
+  const canEditHistory = Boolean(userContext?.isSuperAdmin || userContext?.canEdit)
+
+  const visibleRecords = useMemo(() => {
+    const isGlobal = Boolean(userContext?.isSuperAdmin || userContext?.dataScope === 'global')
+    const userName = (userContext?.name || '').trim().toLowerCase()
+    const userSn = (userContext?.employeeSn || '').trim().toLowerCase()
+    const userId = userContext?.userId
+
+    return records.filter((r) => {
+      if (isGlobal || !userContext) return true
+      const recOperator = (r.header.operatorName || '').trim().toLowerCase()
+      const recSupervisor = (r.supervisorOpName || '').trim().toLowerCase()
+      const recPlant = (r.plantSignerName || '').trim().toLowerCase()
+      const recCreator = (r.createdByName || '').trim().toLowerCase()
+      return (
+        (userName && (recOperator.includes(userName) || recSupervisor.includes(userName) || recPlant.includes(userName) || recCreator.includes(userName))) ||
+        (userSn && (
+          (r.createdBySn && r.createdBySn.toLowerCase() === userSn) ||
+          (r.header.operatorSn && r.header.operatorSn.toLowerCase() === userSn)
+        )) ||
+        (userId && r.createdByUserId === userId)
+      )
+    })
+  }, [records, userContext])
 
   // Fetch sites
   useEffect(() => {
@@ -928,7 +974,17 @@ export function TyreHandlerInspectionForm({ mobile = false }: { mobile?: boolean
     if (editingId) {
       setRecords((prev) =>
         prev.map((r) =>
-          r.id === editingId ? { ...draft, id: editingId, createdAt: r.createdAt, updatedAt: now } : r
+          r.id === editingId
+            ? {
+                ...draft,
+                id: editingId,
+                createdAt: r.createdAt,
+                updatedAt: now,
+                createdByUserId: r.createdByUserId || userContext?.userId || undefined,
+                createdBySn: r.createdBySn || userContext?.employeeSn || undefined,
+                createdByName: r.createdByName || userContext?.name || undefined,
+              }
+            : r
         )
       )
       setEditingId(null)
@@ -938,11 +994,14 @@ export function TyreHandlerInspectionForm({ mobile = false }: { mobile?: boolean
         id: `th-${Date.now()}`,
         createdAt: now,
         updatedAt: now,
+        createdByUserId: userContext?.userId || undefined,
+        createdBySn: userContext?.employeeSn || undefined,
+        createdByName: userContext?.name || undefined,
       }
       setRecords((prev) => [newRec, ...prev])
     }
     window.alert('Data Laporan Pemeriksaan Tyre Handler berhasil disimpan!')
-  }, [draft, editingId])
+  }, [draft, editingId, employeesList, userContext])
 
   // Reset form
   const resetForm = useCallback(() => {
@@ -954,6 +1013,10 @@ export function TyreHandlerInspectionForm({ mobile = false }: { mobile?: boolean
 
   // Edit existing
   const editRecord = useCallback((record: TyreHandlerRecord) => {
+    if (!canEditHistory) {
+      window.alert('Anda hanya memiliki izin melihat riwayat dan tidak dapat mengedit data.')
+      return
+    }
     setDraft({
       header: { ...record.header },
       unitItems: record.unitItems.map((i) => ({ ...i })),
@@ -972,14 +1035,18 @@ export function TyreHandlerInspectionForm({ mobile = false }: { mobile?: boolean
     })
     setEditingId(record.id)
     window.scrollTo({ top: 0, behavior: 'smooth' })
-  }, [])
+  }, [canEditHistory])
 
   // Delete record
   const deleteRecord = useCallback((id: string) => {
+    if (!canEditHistory) {
+      window.alert('Anda tidak memiliki izin menghapus data riwayat.')
+      return
+    }
     if (window.confirm('Hapus riwayat form ini?')) {
       setRecords((prev) => prev.filter((r) => r.id !== id))
     }
-  }, [])
+  }, [canEditHistory])
 
   // Generate PDF
   const downloadPdf = useCallback(async (dataToPrint = draft) => {
@@ -1033,48 +1100,103 @@ export function TyreHandlerInspectionForm({ mobile = false }: { mobile?: boolean
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header Info Card */}
-      <div className={cn('rounded-xl border bg-card p-4 shadow-sm space-y-4', mobile && 'p-3')}>
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
-          <div>
-            <h2 className="text-base font-bold text-foreground">
-              Laporan Pemeriksaan Harian Tyre Handler
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              Dokumen: {draft.header.docNo || '-'}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={resetForm}>
-              <RotateCcw className="mr-1.5 size-4" />
-              Reset
-            </Button>
-            <Button type="button" variant="outline" size="sm" onClick={saveRecord}>
-              <Save className="mr-1.5 size-4" />
-              {editingId ? 'Update Riwayat' : 'Simpan Draft'}
-            </Button>
+    <>
+      <div className={cn('space-y-4', mobile && 'pb-20')}>
+        {/* Top Back & Header Bar */}
+        {onBackToHub && (
+          <div className="flex items-center justify-between gap-2 pb-1 border-b border-slate-100">
             <Button
               type="button"
-              size="sm"
-              onClick={() => downloadPdf(draft)}
-              disabled={isGenerating}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
+              variant="ghost"
+              size="dense"
+              onClick={onBackToHub}
+              className="h-8 gap-1.5 px-2.5 text-xs font-semibold text-slate-600 hover:text-slate-900"
             >
-              {isGenerating ? (
-                <>
-                  <Loader2 className="mr-1.5 size-4 animate-spin" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <Download className="mr-1.5 size-4" />
-                  Download PDF
-                </>
-              )}
+              <ArrowLeft className="size-4" />
+              Menu Hub
             </Button>
+            <div className="flex items-center gap-1.5">
+              <span className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-[11px] font-bold text-indigo-700">
+                Tyre Handler
+              </span>
+              {editingId && (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                  Edit
+                </span>
+              )}
+            </div>
           </div>
+        )}
+
+        {/* Mobile Segmented Toggle */}
+        <div className="grid grid-cols-2 rounded-xl bg-slate-100 p-1 text-xs font-bold text-slate-600">
+          <button
+            type="button"
+            onClick={() => setActiveTab('form')}
+            className={cn(
+              'flex items-center justify-center gap-1.5 rounded-lg py-2 transition-all',
+              activeTab === 'form' ? 'bg-white text-slate-900 shadow-xs' : 'hover:text-slate-900'
+            )}
+          >
+            <Pencil className="size-3.5" />
+            Isi Form
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('history')}
+            className={cn(
+              'flex items-center justify-center gap-1.5 rounded-lg py-2 transition-all',
+              activeTab === 'history' ? 'bg-white text-slate-900 shadow-xs' : 'hover:text-slate-900'
+            )}
+          >
+            <Save className="size-3.5" />
+            Riwayat ({visibleRecords.length})
+          </button>
         </div>
+
+        {activeTab === 'form' && (
+          <div className="space-y-6">
+            {/* Header Info Card */}
+            <div className={cn('rounded-xl border bg-card p-4 shadow-sm space-y-4', mobile && 'p-3')}>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
+                <div>
+                  <h2 className="text-base font-bold text-foreground">
+                    Laporan Pemeriksaan Harian Tyre Handler
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    Dokumen: {draft.header.docNo || '-'}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={resetForm} className="h-8 text-xs">
+                    <RotateCcw className="mr-1.5 size-3.5" />
+                    Reset
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={saveRecord} className="h-8 px-3 text-xs font-semibold">
+                    <Save className="mr-1.5 size-3.5" />
+                    {editingId ? 'Update Form' : 'Submit Form'}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => downloadPdf(draft)}
+                    disabled={isGenerating}
+                    className="h-8 px-3 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    {isGenerating ? (
+                      <>
+                        <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="mr-1.5 size-3.5" />
+                        Download PDF
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
 
         {/* Document Metadata Inputs */}
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -1627,81 +1749,233 @@ export function TyreHandlerInspectionForm({ mobile = false }: { mobile?: boolean
         </Card>
       </div>
 
-      {/* History Records Table */}
-      <Card className="rounded-xl shadow-sm">
-        <CardHeader className="pb-3 border-b border-gray-100">
-          <CardTitle className="text-base font-semibold">Riwayat Laporan Pemeriksaan</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <MinimalTableShell label="History Tyre Handler">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Tanggal</TableHead>
-                  <TableHead>No Unit</TableHead>
-                  <TableHead>Operator</TableHead>
-                  <TableHead>Shift</TableHead>
-                  <TableHead>Terakhir Diubah</TableHead>
-                  <TableHead className="text-right">Aksi</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {records.map((rec) => (
-                  <TableRow key={rec.id}>
-                    <TableCell className="font-medium whitespace-nowrap">{rec.header.date || '-'}</TableCell>
-                    <TableCell className="font-bold text-gray-900">{rec.header.unitNumber || '-'}</TableCell>
-                    <TableCell>{rec.header.operatorName || '-'}</TableCell>
-                    <TableCell>{rec.header.shift || '-'}</TableCell>
-                    <TableCell className="text-gray-500 text-xs whitespace-nowrap">
-                      {new Date(rec.updatedAt).toLocaleString('id-ID')}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1.5">
+            {/* Bottom Action Bar */}
+            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-3.5">
+              <Button type="button" variant="outline" size="dense" onClick={resetForm} className="h-9 px-3 text-xs">
+                <RotateCcw className="mr-1.5 size-3.5" />
+                Reset
+              </Button>
+              <Button type="button" variant="outline" size="dense" onClick={saveRecord} className="h-9 px-4 text-xs font-semibold">
+                <Save className="mr-1.5 size-3.5" />
+                {editingId ? 'Update Form' : 'Submit Form'}
+              </Button>
+              <Button
+                type="button"
+                size="dense"
+                onClick={() => downloadPdf(draft)}
+                disabled={isGenerating}
+                className="h-9 px-4 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Download className="mr-1.5 size-3.5" />
+                    Download PDF
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {/* Mobile Sticky Action Bar */}
+            <div className="fixed bottom-[64px] inset-x-0 mx-auto max-w-[430px] z-50 p-2.5 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-2xl flex items-center gap-2 sm:hidden">
+              <Button
+                type="button"
+                variant="outline"
+                size="dense"
+                onClick={resetForm}
+                className="h-10 px-3 text-xs"
+              >
+                <RotateCcw className="size-3.5 mr-1" />
+                Reset
+              </Button>
+              <Button
+                type="button"
+                size="dense"
+                variant="outline"
+                onClick={saveRecord}
+                className="flex-1 h-10 text-xs font-bold"
+              >
+                <Save className="size-3.5 mr-1.5" />
+                {editingId ? 'Update Form' : 'Submit Form'}
+              </Button>
+              <Button
+                type="button"
+                size="dense"
+                onClick={() => downloadPdf(draft)}
+                disabled={isGenerating}
+                className="flex-1 h-10 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                {isGenerating ? (
+                  <Loader2 className="size-3.5 mr-1.5 animate-spin" />
+                ) : (
+                  <Download className="size-3.5 mr-1.5" />
+                )}
+                Download PDF
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* History Records View */}
+        {activeTab === 'history' && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900">Riwayat Tyre Handler</h3>
+              <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
+                {visibleRecords.length} Data
+              </span>
+            </div>
+
+            {visibleRecords.length === 0 ? (
+              <p className="text-center py-8 text-xs text-muted-foreground">
+                Belum ada riwayat form pemeriksaan Tyre Handler yang tersimpan.
+              </p>
+            ) : (
+              <>
+                {/* Mobile Cards View */}
+                <div className="space-y-2.5 sm:hidden">
+                  {visibleRecords.map((rec) => (
+                    <div
+                      key={rec.id}
+                      className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-xs space-y-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-900 text-sm">
+                          {rec.header.unitNumber || 'No Unit -'}
+                        </span>
+                        <span className="font-mono text-xs text-slate-500">
+                          {rec.header.date || '-'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1 text-xs text-slate-600">
+                        <div>
+                          <span className="text-slate-400">Operator:</span> {rec.header.operatorName || '-'}
+                        </div>
+                        <div className="text-right">
+                          <span className="text-slate-400">Shift:</span> {rec.header.shift || '-'}
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-slate-100">
+                        {canEditHistory && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="dense"
+                            onClick={() => {
+                              editRecord(rec)
+                              setActiveTab('form')
+                            }}
+                            className="h-8 px-3 text-xs"
+                          >
+                            <Pencil className="mr-1 size-3.5" />
+                            Edit
+                          </Button>
+                        )}
                         <Button
                           type="button"
-                          variant="outline"
-                          size="dense"
-                          onClick={() => editRecord(rec)}
-                        >
-                          <Pencil className="size-3.5 mr-1" />
-                          Edit
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
                           size="dense"
                           onClick={() => downloadPdf(rec)}
                           disabled={isGenerating}
-                          className="text-blue-600 hover:text-blue-700"
+                          className="h-8 px-3 text-xs bg-blue-600 text-white hover:bg-blue-700"
                         >
-                          <Download className="size-3.5 mr-1" />
+                          <Download className="mr-1 size-3.5" />
                           PDF
                         </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="dense"
-                          onClick={() => deleteRecord(rec.id)}
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                        >
-                          <Trash2 className="size-3.5" />
-                        </Button>
+                        {canEditHistory && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="denseIcon"
+                            onClick={() => deleteRecord(rec.id)}
+                            className="h-8 w-8 text-rose-500 hover:bg-rose-50"
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        )}
                       </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {records.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                      Belum ada riwayat form pemeriksaan Tyre Handler.
-                    </TableCell>
-                  </TableRow>
-                ) : null}
-              </TableBody>
-            </Table>
-          </MinimalTableShell>
-        </CardContent>
-      </Card>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Desktop Table View */}
+                <div className="hidden sm:block">
+                  <MinimalTableShell label="History Tyre Handler">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Tanggal</TableHead>
+                          <TableHead>No Unit</TableHead>
+                          <TableHead>Operator</TableHead>
+                          <TableHead>Shift</TableHead>
+                          <TableHead>Terakhir Diubah</TableHead>
+                          <TableHead className="text-right">Aksi</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {visibleRecords.map((rec) => (
+                          <TableRow key={rec.id}>
+                            <TableCell className="font-medium whitespace-nowrap">{rec.header.date || '-'}</TableCell>
+                            <TableCell className="font-bold text-gray-900">{rec.header.unitNumber || '-'}</TableCell>
+                            <TableCell>{rec.header.operatorName || '-'}</TableCell>
+                            <TableCell>{rec.header.shift || '-'}</TableCell>
+                            <TableCell className="text-gray-500 text-xs whitespace-nowrap">
+                              {new Date(rec.updatedAt).toLocaleString('id-ID')}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-1.5">
+                                {canEditHistory && (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="dense"
+                                    onClick={() => {
+                                      editRecord(rec)
+                                      setActiveTab('form')
+                                    }}
+                                  >
+                                    <Pencil className="size-3.5 mr-1" />
+                                    Edit
+                                  </Button>
+                                )}
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="dense"
+                                  onClick={() => downloadPdf(rec)}
+                                  disabled={isGenerating}
+                                  className="text-blue-600 hover:text-blue-700"
+                                >
+                                  <Download className="size-3.5 mr-1" />
+                                  PDF
+                                </Button>
+                                {canEditHistory && (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="dense"
+                                    onClick={() => deleteRecord(rec.id)}
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  >
+                                    <Trash2 className="size-3.5" />
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </MinimalTableShell>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Signature Canvas Modal Dialog */}
       <Dialog open={Boolean(sigModalKey)} onOpenChange={(open) => !open && setSigModalKey(null)}>
@@ -1753,6 +2027,6 @@ export function TyreHandlerInspectionForm({ mobile = false }: { mobile?: boolean
       <div style={{ position: 'fixed', left: '-10000px', top: '-10000px', zIndex: -100 }}>
         <PdfPage payload={pdfPayload} pageRef={pdfRef} />
       </div>
-    </div>
+    </>
   )
 }

@@ -280,3 +280,6 @@ export { repairMasterPrice } from './repair-master-price'
 // Hero Genius & Self-Growth Smart Memory
 export * from './hero-genius'
 
+// Central Service
+export * from './central-service'
+

@@ -40,7 +40,9 @@ export function Combobox({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
 
-  const filteredOptions = options.filter((opt) =>
+  const uniqueOptions = Array.from(new Set(options.filter(Boolean)));
+
+  const filteredOptions = uniqueOptions.filter((opt) =>
     opt.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -51,7 +53,7 @@ export function Combobox({
   };
 
   const handleCustomInput = () => {
-    if (search.trim() && !options.includes(search.trim())) {
+    if (search.trim() && !uniqueOptions.includes(search.trim())) {
       onChange(search.trim());
       setOpen(false);
       setSearch("");
@@ -99,9 +101,9 @@ export function Combobox({
               </div>
             )}
             <CommandGroup>
-              {filteredOptions.map((option) => (
+              {filteredOptions.map((option, index) => (
                 <CommandItem
-                  key={option}
+                  key={`${option}-${index}`}
                   value={option}
                   onSelect={() => handleSelect(option)}
                   className="text-xs"

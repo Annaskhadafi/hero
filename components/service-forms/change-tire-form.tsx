@@ -1,7 +1,7 @@
 'use client'
 
-import { Download, Loader2, Plus, Save, Trash2 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { ArrowLeft, Download, Loader2, Plus, RotateCcw, Save, Trash2, Pencil } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
@@ -17,7 +17,11 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
-import { getSites } from '@/app/dashboard/360-service/service-form/actions'
+import {
+  getSites,
+  getServiceFormUserContext,
+  type ServiceFormUserContext,
+} from '@/app/dashboard/360-service/service-form/actions'
 
 type TireData = {
   position: string
@@ -71,6 +75,9 @@ type TireChangeRecord = TireChangePdfPayload & {
   id: string
   createdAt: string
   updatedAt: string
+  createdByUserId?: string
+  createdBySn?: string
+  createdByName?: string
 }
 
 const LETTERHEAD_URL = '/ChitraParatama_Stationery_Letterhead_jkt.jpg'
@@ -529,24 +536,55 @@ function TireSection({
   )
 }
 
-export function ChangeTireForm({ mobile }: { mobile?: boolean }) {
+export function ChangeTireForm({
+  mobile,
+  onBackToHub,
+}: {
+  mobile?: boolean
+  onBackToHub?: () => void
+}) {
   const [siteOptions, setSiteOptions] = useState<string[]>([])
   const [records, setRecords] = useState<TireChangeRecord[]>([])
+  const [userContext, setUserContext] = useState<ServiceFormUserContext | null>(null)
   const [hasLoaded, setHasLoaded] = useState(false)
+  const [activeTab, setActiveTab] = useState<'form' | 'history'>('form')
   const [draft, setDraft] = useState<TireChangeDraft>({
     header: emptyHeader(),
     siteName: '',
     blocks: [emptyBlock()],
   })
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [pdfPayload, setPdfPayload] = useState<TireChangePdfPayload | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const pdfPageRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
+    getServiceFormUserContext().then((ctx) => {
+      setUserContext(ctx)
+    })
     getSites().then((res) => {
       if (res.success) setSiteOptions(res.data.map((s) => s.name))
     })
   }, [])
+
+  const canEditHistory = Boolean(userContext?.isSuperAdmin || userContext?.canEdit)
+
+  const visibleRecords = useMemo(() => {
+    const isGlobal = Boolean(userContext?.isSuperAdmin || userContext?.dataScope === 'global')
+    const userName = (userContext?.name || '').trim().toLowerCase()
+    const userSn = (userContext?.employeeSn || '').trim().toLowerCase()
+    const userId = userContext?.userId
+
+    return records.filter((r) => {
+      if (isGlobal || !userContext) return true
+      const recCreator = (r.createdByName || '').trim().toLowerCase()
+      return (
+        (userName && recCreator.includes(userName)) ||
+        (userSn && r.createdBySn && r.createdBySn.toLowerCase() === userSn) ||
+        (userId && r.createdByUserId === userId)
+      )
+    })
+  }, [records, userContext])
 
   useEffect(() => {
     try {
@@ -611,17 +649,43 @@ export function ChangeTireForm({ mobile }: { mobile?: boolean }) {
 
     if (editingId) {
       setRecords((c) =>
-        c.map((r) => (r.id === editingId ? { ...r, ...payload, updatedAt: now } : r))
+        c.map((r) =>
+          r.id === editingId
+            ? {
+                ...r,
+                ...payload,
+                updatedAt: now,
+                createdByUserId: r.createdByUserId || userContext?.userId || undefined,
+                createdBySn: r.createdBySn || userContext?.employeeSn || undefined,
+                createdByName: r.createdByName || userContext?.name || undefined,
+              }
+            : r
+        )
       )
       return
     }
 
     const id = crypto.randomUUID?.() ?? `change-tire-${Date.now()}`
     setEditingId(id)
-    setRecords((c) => [{ id, ...payload, createdAt: now, updatedAt: now }, ...c])
+    setRecords((c) => [
+      {
+        id,
+        ...payload,
+        createdAt: now,
+        updatedAt: now,
+        createdByUserId: userContext?.userId || undefined,
+        createdBySn: userContext?.employeeSn || undefined,
+        createdByName: userContext?.name || undefined,
+      },
+      ...c,
+    ])
   }
 
   function editRecord(record: TireChangeRecord) {
+    if (!canEditHistory) {
+      window.alert('Anda hanya memiliki izin melihat riwayat dan tidak dapat mengedit data.')
+      return
+    }
     setEditingId(record.id)
     setDraft({
       header: { ...record.header },
@@ -635,6 +699,10 @@ export function ChangeTireForm({ mobile }: { mobile?: boolean }) {
   }
 
   function deleteRecord(id: string) {
+    if (!canEditHistory) {
+      window.alert('Anda tidak memiliki izin menghapus data riwayat.')
+      return
+    }
     if (window.confirm('Hapus riwayat form ini?')) {
       setRecords((c) => c.filter((r) => r.id !== id))
       if (editingId === id) {
@@ -643,12 +711,21 @@ export function ChangeTireForm({ mobile }: { mobile?: boolean }) {
     }
   }
 
-  async function downloadPdf() {
-    const page = pdfPageRef.current
-    if (!page) return
+  async function downloadPdf(targetPayload?: TireChangePdfPayload) {
+    if (targetPayload) {
+      setPdfPayload(targetPayload)
+    } else {
+      setPdfPayload({
+        header: draft.header,
+        siteName: draft.siteName,
+        blocks: draft.blocks,
+      })
+    }
     setIsGenerating(true)
     try {
-      await new Promise((r) => requestAnimationFrame(() => r(null)))
+      await new Promise((r) => setTimeout(r, 250))
+      const page = pdfPageRef.current
+      if (!page) return
       const images = Array.from(page.querySelectorAll('img'))
       await Promise.all(
         images.map((img) =>
@@ -668,8 +745,9 @@ export function ChangeTireForm({ mobile }: { mobile?: boolean }) {
       })
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
       pdf.addImage(canvas.toDataURL('image/jpeg', 1), 'JPEG', 0, 0, 210, 297)
+      const currentUnit = targetPayload ? targetPayload.header.unitNumber : draft.header.unitNumber
       pdf.save(
-        `Change-Tire-${draft.header.unitNumber || 'draft'}.pdf`
+        `Change-Tire-${currentUnit || 'draft'}.pdf`
       )
     } catch (error) {
       console.error('[change-tire] PDF error:', error)
@@ -677,197 +755,373 @@ export function ChangeTireForm({ mobile }: { mobile?: boolean }) {
     } finally {
       setIsGenerating(false)
     }
-  }
-
-  return (
+  }  return (
     <>
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/40 pb-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" size="dense" variant="outline" onClick={newForm}>
-              + New Form
-            </Button>
-            <Button type="button" size="dense" variant="outline" onClick={saveRecord}>
-              <Save className="size-3.5 mr-1" />
-              Simpan Riwayat
-            </Button>
-            <Button type="button" size="dense" onClick={downloadPdf} disabled={isGenerating}>
-              {isGenerating ? (
-                <Loader2 className="size-3.5 mr-1 animate-spin" />
-              ) : (
-                <Download className="size-3.5 mr-1" />
-              )}
-              Download PDF
-            </Button>
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          <div className="grid gap-2 sm:gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            <div className="space-y-1">
-              <Label className="text-muted-foreground text-[11px] font-bold leading-none">Site Name</Label>
-              <Combobox
-                value={draft.siteName}
-                onChange={(v) => setDraft((d) => ({ ...d, siteName: v }))}
-                options={siteOptions}
-                placeholder="Select site..."
-              />
-            </div>
-            <ChangeTireField
-              label="Date"
-              value={draft.header.date}
-              onChange={(v) => updateHeader({ date: v })}
-              type="date"
-            />
-            <ChangeTireField
-              label="WO / Work Order"
-              value={draft.header.wo}
-              onChange={(v) => updateHeader({ wo: v })}
-            />
-            <ChangeTireField
-              label="Unit Number"
-              value={draft.header.unitNumber}
-              onChange={(v) => updateHeader({ unitNumber: v })}
-            />
-            <ChangeTireField
-              label="SMU (Service Meter Unit)"
-              value={draft.header.smu}
-              onChange={(v) => updateHeader({ smu: v })}
-            />
-            <ChangeTireField
-              label="Start Time"
-              value={draft.header.startTime}
-              onChange={(v) => updateHeader({ startTime: v })}
-              type="time"
-            />
-            <ChangeTireField
-              label="Finish Time"
-              value={draft.header.finishTime}
-              onChange={(v) => updateHeader({ finishTime: v })}
-              type="time"
-            />
-          </div>
-
-          {draft.blocks.map((block, blockIndex) => (
-            <div
-              key={blockIndex}
-              className="bg-surface-container-low rounded-xl border border-black/5 p-2 sm:p-3"
+      <div className={cn('space-y-4', mobile && 'pb-20')}>
+        {/* Top Back & Header Bar */}
+        {onBackToHub && (
+          <div className="flex items-center justify-between gap-2 pb-1 border-b border-slate-100">
+            <Button
+              type="button"
+              variant="ghost"
+              size="dense"
+              onClick={onBackToHub}
+              className="h-8 gap-1.5 px-2.5 text-xs font-semibold text-slate-600 hover:text-slate-900"
             >
-              <div className="mb-3 flex items-center justify-between">
-                <span className="text-sm font-black text-foreground">
-                  Block {blockIndex + 1}
+              <ArrowLeft className="size-4" />
+              Menu Hub
+            </Button>
+            <div className="flex items-center gap-1.5">
+              <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700">
+                Change Tire
+              </span>
+              {editingId && (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                  Edit
                 </span>
-                {draft.blocks.length > 1 && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="dense"
-                    onClick={() => removeBlock(blockIndex)}
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                )}
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Mobile Segmented Toggle */}
+        <div className="grid grid-cols-2 rounded-xl bg-slate-100 p-1 text-xs font-bold text-slate-600">
+          <button
+            type="button"
+            onClick={() => setActiveTab('form')}
+            className={cn(
+              'flex items-center justify-center gap-1.5 rounded-lg py-2 transition-all',
+              activeTab === 'form' ? 'bg-white text-slate-900 shadow-xs' : 'hover:text-slate-900'
+            )}
+          >
+            <Pencil className="size-3.5" />
+            Isi Form
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('history')}
+            className={cn(
+              'flex items-center justify-center gap-1.5 rounded-lg py-2 transition-all',
+              activeTab === 'history' ? 'bg-white text-slate-900 shadow-xs' : 'hover:text-slate-900'
+            )}
+          >
+            <Save className="size-3.5" />
+            Riwayat ({records.length})
+          </button>
+        </div>
+
+        {activeTab === 'form' && (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/40 pb-2">
+              <h2 className="text-sm font-bold text-slate-900">
+                {editingId ? 'Edit Change Tire Form' : 'Form Change Tire Baru'}
+              </h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" size="dense" variant="outline" onClick={newForm} className="h-8 text-xs">
+                  <RotateCcw className="mr-1 size-3.5" />
+                  Reset
+                </Button>
+                <Button type="button" size="dense" variant="outline" onClick={saveRecord} className="h-8 px-3 text-xs font-semibold">
+                  <Save className="mr-1.5 size-3.5" />
+                  Submit Form
+                </Button>
+                <Button type="button" size="dense" onClick={() => downloadPdf()} disabled={isGenerating} className="h-8 px-3 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white">
+                  {isGenerating ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <Download className="mr-1.5 size-3.5" />}
+                  Download PDF
+                </Button>
               </div>
-              <div className="space-y-3 sm:space-y-4">
-                <TireSection
-                  title="TYRE BEING REMOVED"
-                  data={block.removed}
-                  onUpdate={(patch) => updateBlockTire(blockIndex, 'removed', patch)}
-                  showReason
+            </div>
+
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-3.5 sm:p-5 shadow-xs">
+              <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">
+                1. Data Dokumen & Unit
+              </h3>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                <div className="space-y-1">
+                  <Label className="text-muted-foreground block truncate text-[10px] font-bold leading-none sm:text-[11px]">
+                    Site Name
+                  </Label>
+                  <Combobox
+                    value={draft.siteName}
+                    onChange={(v) => setDraft((d) => ({ ...d, siteName: v }))}
+                    options={siteOptions}
+                    placeholder="Select site..."
+                  />
+                </div>
+                <ChangeTireField
+                  label="Date"
+                  value={draft.header.date}
+                  onChange={(v) => updateHeader({ date: v })}
+                  type="date"
                 />
-                <TireSection
-                  title="TYRE BEING INSTALLED"
-                  data={block.installed}
-                  onUpdate={(patch) => updateBlockTire(blockIndex, 'installed', patch)}
-                  showPressure
-                  showComments
+                <ChangeTireField
+                  label="WO / Work Order"
+                  value={draft.header.wo}
+                  onChange={(v) => updateHeader({ wo: v })}
+                />
+                <ChangeTireField
+                  label="Unit Number"
+                  value={draft.header.unitNumber}
+                  onChange={(v) => updateHeader({ unitNumber: v })}
+                />
+                <ChangeTireField
+                  label="SMU (Service Meter Unit)"
+                  value={draft.header.smu}
+                  onChange={(v) => updateHeader({ smu: v })}
+                />
+                <ChangeTireField
+                  label="Start Time"
+                  value={draft.header.startTime}
+                  onChange={(v) => updateHeader({ startTime: v })}
+                  type="time"
+                />
+                <ChangeTireField
+                  label="Finish Time"
+                  value={draft.header.finishTime}
+                  onChange={(v) => updateHeader({ finishTime: v })}
+                  type="time"
                 />
               </div>
             </div>
-          ))}
 
-          <Button type="button" variant="outline" size="dense" onClick={addBlock}>
-            <Plus className="size-3.5" />
-            Tambah Block
-          </Button>
-        </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  2. Tire Change Blocks
+                </h3>
+                <Button type="button" variant="outline" size="dense" onClick={addBlock} className="h-7 text-xs">
+                  <Plus className="size-3.5 mr-1" />
+                  Tambah Block
+                </Button>
+              </div>
 
-        <div className="flex flex-wrap gap-2 border-t border-black/5 pt-3">
-          <Button type="button" size="dense" variant="outline" onClick={saveRecord}>
-            <Save className="size-3.5 mr-1" />
-            Simpan Riwayat
-          </Button>
-          <Button type="button" size="dense" onClick={downloadPdf} disabled={isGenerating}>
-            {isGenerating ? <Loader2 className="size-3.5 mr-1 animate-spin" /> : <Download className="size-3.5 mr-1" />}
-            Download PDF
-          </Button>
-        </div>
+              {draft.blocks.map((block, blockIndex) => (
+                <div
+                  key={blockIndex}
+                  className="rounded-2xl border border-slate-200/80 bg-white p-3.5 sm:p-5 shadow-xs"
+                >
+                  <div className="mb-3 flex items-center justify-between border-b border-slate-100 pb-2">
+                    <span className="text-sm font-black text-slate-900">
+                      Block #{blockIndex + 1}
+                    </span>
+                    {draft.blocks.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="dense"
+                        onClick={() => removeBlock(blockIndex)}
+                        className="h-7 px-2 text-rose-500 hover:bg-rose-50 hover:text-rose-700"
+                      >
+                        <Trash2 className="size-3.5 mr-1" />
+                        Hapus Block
+                      </Button>
+                    )}
+                  </div>
+                  <div className="space-y-4">
+                    <TireSection
+                      title="TYRE BEING REMOVED"
+                      data={block.removed}
+                      onUpdate={(patch) => updateBlockTire(blockIndex, 'removed', patch)}
+                      showReason
+                    />
+                    <TireSection
+                      title="TYRE BEING INSTALLED"
+                      data={block.installed}
+                      onUpdate={(patch) => updateBlockTire(blockIndex, 'installed', patch)}
+                      showPressure
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
 
-        {records.length > 0 && (
-          <div className="space-y-2">
-            <h3 className="text-sm font-black">Change Tire History</h3>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Unit No</TableHead>
-                    <TableHead>Site</TableHead>
-                    <TableHead>Updated</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {records.map((record) => (
-                    <TableRow key={record.id}>
-                      <TableCell className="whitespace-nowrap">
-                        {record.header.date || '-'}
-                      </TableCell>
-                      <TableCell className="font-semibold">
-                        {record.header.unitNumber || '-'}
-                      </TableCell>
-                      <TableCell>{record.siteName || '-'}</TableCell>
-                      <TableCell className="whitespace-nowrap">
-                        {formatDateTime(record.updatedAt)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex justify-end gap-2">
+            {/* Bottom Action Bar */}
+            <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-3 justify-end">
+              <Button type="button" size="dense" variant="outline" onClick={saveRecord} className="h-9 px-4 text-xs font-semibold">
+                <Save className="size-3.5 mr-1.5" />
+                Submit Form
+              </Button>
+              <Button type="button" size="dense" onClick={() => downloadPdf()} disabled={isGenerating} className="h-9 px-4 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white">
+                {isGenerating ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <Download className="size-3.5 mr-1.5" />}
+                Download PDF
+              </Button>
+            </div>
+
+            {/* Mobile Sticky Action Bar */}
+            <div className="fixed bottom-[64px] inset-x-0 mx-auto max-w-[430px] z-50 p-2.5 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-2xl flex items-center gap-2">
+              <Button
+                type="button"
+                size="dense"
+                variant="outline"
+                onClick={saveRecord}
+                className="flex-1 h-10 text-xs font-bold"
+              >
+                <Save className="size-3.5 mr-1.5" />
+                Submit Form
+              </Button>
+              <Button
+                type="button"
+                size="dense"
+                onClick={() => downloadPdf()}
+                disabled={isGenerating}
+                className="flex-1 h-10 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                {isGenerating ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <Download className="size-3.5 mr-1.5" />}
+                Download PDF
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'history' && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900">Riwayat Change Tire</h3>
+              <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
+                {visibleRecords.length} Data
+              </span>
+            </div>
+
+            {visibleRecords.length === 0 ? (
+              <p className="text-center py-8 text-xs text-muted-foreground">
+                Belum ada riwayat form Change Tire yang tersimpan.
+              </p>
+            ) : (
+              <>
+                {/* Mobile Cards View */}
+                <div className="space-y-2.5 sm:hidden">
+                  {visibleRecords.map((record: TireChangeRecord) => (
+                    <div
+                      key={record.id}
+                      className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-xs space-y-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-900 text-sm">
+                          {record.header.unitNumber || 'No Unit -'}
+                        </span>
+                        <span className="font-mono text-xs text-slate-500">
+                          {record.header.date || '-'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1 text-xs text-slate-600">
+                        <div>
+                          <span className="text-slate-400">Site:</span> {record.siteName || '-'}
+                        </div>
+                        <div className="text-right text-slate-400">
+                          {formatDateTime(record.updatedAt)}
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-slate-100">
+                        {canEditHistory && (
                           <Button
                             type="button"
                             variant="outline"
-                            size="dense"
-                            onClick={() => editRecord(record)}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            type="button"
                             size="dense"
                             onClick={() => {
                               editRecord(record)
-                              window.setTimeout(downloadPdf, 200)
+                              setActiveTab('form')
                             }}
-                            disabled={isGenerating}
+                            className="h-8 px-3 text-xs"
                           >
-                            <Download className="size-3.5" />
-                            PDF
+                            <Pencil className="mr-1 size-3.5" />
+                            Edit
                           </Button>
+                        )}
+                        <Button
+                          type="button"
+                          size="dense"
+                          onClick={() => downloadPdf(record)}
+                          disabled={isGenerating}
+                          className="h-8 px-3 text-xs bg-blue-600 text-white hover:bg-blue-700"
+                        >
+                          <Download className="mr-1 size-3.5" />
+                          PDF
+                        </Button>
+                        {canEditHistory && (
                           <Button
                             type="button"
-                            variant="outline"
-                            size="dense"
-                            className="text-destructive hover:bg-destructive/10"
+                            variant="ghost"
+                            size="denseIcon"
                             onClick={() => deleteRecord(record.id)}
+                            className="h-8 w-8 text-rose-500 hover:bg-rose-50"
                           >
-                            <Trash2 className="size-3.5" />
+                            <Trash2 className="size-4" />
                           </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
+                        )}
+                      </div>
+                    </div>
                   ))}
-                </TableBody>
-              </Table>
-            </div>
+                </div>
+
+                {/* Desktop Table View */}
+                <div className="hidden sm:block overflow-x-auto rounded-xl border border-slate-200/90 bg-white">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Unit No</TableHead>
+                        <TableHead>Site</TableHead>
+                        <TableHead>Updated</TableHead>
+                        <TableHead className="text-right">Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {visibleRecords.map((record: TireChangeRecord) => (
+                        <TableRow key={record.id}>
+                          <TableCell className="whitespace-nowrap">
+                            {record.header.date || '-'}
+                          </TableCell>
+                          <TableCell className="font-semibold">
+                            {record.header.unitNumber || '-'}
+                          </TableCell>
+                          <TableCell>{record.siteName || '-'}</TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {formatDateTime(record.updatedAt)}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex justify-end gap-2">
+                              {canEditHistory && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="dense"
+                                  onClick={() => {
+                                    editRecord(record)
+                                    setActiveTab('form')
+                                  }}
+                                >
+                                  Edit
+                                </Button>
+                              )}
+                              <Button
+                                type="button"
+                                size="dense"
+                                onClick={() => downloadPdf(record)}
+                                disabled={isGenerating}
+                              >
+                                <Download className="size-3.5 mr-1" />
+                                PDF
+                              </Button>
+                              {canEditHistory && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="dense"
+                                  className="text-destructive hover:bg-destructive/10"
+                                  onClick={() => deleteRecord(record.id)}
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -875,9 +1129,9 @@ export function ChangeTireForm({ mobile }: { mobile?: boolean }) {
       <div className="fixed top-0 -left-[10000px] opacity-100" aria-hidden="true">
         <div ref={pdfPageRef}>
           <PdfPage
-            header={draft.header}
-            siteName={draft.siteName}
-            blocks={draft.blocks}
+            header={pdfPayload?.header || draft.header}
+            siteName={pdfPayload?.siteName || draft.siteName}
+            blocks={pdfPayload?.blocks || draft.blocks}
           />
         </div>
       </div>

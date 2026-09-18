@@ -1350,6 +1350,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'Central Service',
+    groupLabel: 'Management',
+    title: 'Re-Fueling LV',
+    url: '/dashboard/central-service/refueling',
+    iconName: 'truck',
+    resource: 'central_service_refueling',
+    sortOrder: 2,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Central Service',
     groupLabel: 'Technical',
     title: 'Tire Site Inspection',
     url: '/dashboard/hse/tire-inspection',
