@@ -1,10 +1,11 @@
-"use server";
+'use server'
 
-import { and, asc, desc, eq, sql } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
-import { z } from "zod";
-import { db } from "@/db";
-import { getCurrentEmployee } from "@/lib/get-current-employee";
+import { and, asc, desc, eq, sql } from 'drizzle-orm'
+import { revalidatePath } from 'next/cache'
+import { z } from 'zod'
+import { db } from '@/db'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { getCurrentMenuPermission } from '@/lib/hero-access'
 import {
   cargoManifests,
   cargoManifestItems,
@@ -14,12 +15,12 @@ import {
   cargoMasterSites,
   masterSections,
   employees,
-} from "@/db/schema/hero";
+} from '@/db/schema/hero'
 import {
   warehouseRepairOutbound,
   warehouseRepairItems,
   warehouseRepairUnits,
-} from "@/db/schema/warehouse-repair";
+} from '@/db/schema/warehouse-repair'
 
 // ─── Ensure tables exist ──────────────────────────────────────────────────────
 
@@ -40,7 +41,7 @@ async function ensureCargoManifestTables() {
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     )
-  `);
+  `)
   await db.execute(sql`
     create table if not exists hero_cargo_manifest_items (
       id serial primary key,
@@ -53,61 +54,124 @@ async function ensureCargoManifestTables() {
       remark text not null default '',
       created_at timestamptz not null default now()
     )
-  `);
+  `)
   await db.execute(sql`
     alter table hero_cargo_manifests
       add column if not exists signature_name text not null default '',
       add column if not exists signature_data_url text not null default '',
       add column if not exists site_id integer references hero_cargo_master_sites(id) on delete set null,
       add column if not exists section_id integer references hero_master_sections(id) on delete set null
-  `);
+  `)
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type CargoManifestRecord = {
-  id: number;
-  manifestNumber: string;
-  date: string;
-  siteId: number | null;
-  siteName: string | null;
-  sectionId: number | null;
-  sectionName: string | null;
-  attention: string;
-  transportVia: string;
-  shippedVia: string;
-  finalDestination: string;
-  signatureName: string;
-  signatureDataUrl: string;
-  status: string;
-  createdByEmployeeId: number | null;
-  createdByName: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-  items: CargoManifestItemRecord[];
-};
+  id: number
+  manifestNumber: string
+  date: string
+  siteId: number | null
+  siteName: string | null
+  sectionId: number | null
+  sectionName: string | null
+  attention: string
+  transportVia: string
+  shippedVia: string
+  finalDestination: string
+  signatureName: string
+  signatureDataUrl: string
+  status: string
+  createdByEmployeeId: number | null
+  createdByName: string | null
+  createdAt: Date
+  updatedAt: Date
+  items: CargoManifestItemRecord[]
+}
 
 export type CargoManifestItemRecord = {
-  id: number;
-  manifestId: number;
-  no: number;
-  description: string;
-  serialNumber: string;
-  qty: number;
-  brand: string;
-  remark: string;
-};
+  id: number
+  manifestId: number
+  no: number
+  description: string
+  serialNumber: string
+  qty: number
+  brand: string
+  remark: string
+}
 
 export type CargoManifestMutationState = {
-  status: "idle" | "success" | "error";
-  message: string;
-  manifestId?: number;
-};
+  status: 'idle' | 'success' | 'error'
+  message: string
+  manifestId?: number
+}
+
+type CargoPermissionAction = 'view' | 'create' | 'edit' | 'delete'
+
+async function requireCargoAccess(action: CargoPermissionAction) {
+  const permission = await getCurrentMenuPermission('cargo_manifest')
+  const allowed =
+    action === 'view'
+      ? permission.canView
+      : action === 'delete'
+        ? permission.canDelete
+        : permission.canEdit
+  if (!allowed) throw new Error('Role Anda tidak punya akses Cargo Manifest.')
+
+  const employee = await getCurrentEmployee()
+  if (!employee) throw new Error('Employee aktif tidak ditemukan.')
+  return { permission, employee }
+}
+
+async function assertCargoManifestAccess(
+  id: number,
+  action: Exclude<CargoPermissionAction, 'create'>
+) {
+  const access = await requireCargoAccess(action)
+  if (access.permission.dataScope === 'global') return access
+
+  const [manifest] = await db
+    .select({ creatorId: cargoManifests.createdByEmployeeId, creatorSiteId: employees.siteId })
+    .from(cargoManifests)
+    .leftJoin(employees, eq(cargoManifests.createdByEmployeeId, employees.id))
+    .where(eq(cargoManifests.id, id))
+    .limit(1)
+
+  const allowed =
+    access.permission.dataScope === 'own'
+      ? manifest?.creatorId === access.employee.id
+      : access.permission.dataScope === 'site' &&
+        access.employee.siteId != null &&
+        manifest?.creatorSiteId === access.employee.siteId
+  if (!allowed) throw new Error('Manifest berada di luar scope data Anda.')
+  return access
+}
+
+function cargoScopeCondition(
+  permission: { dataScope: 'own' | 'site' | 'global' },
+  employee: { id: number; siteId: number | null }
+) {
+  if (permission.dataScope === 'global') return undefined
+  if (permission.dataScope === 'own') return eq(cargoManifests.createdByEmployeeId, employee.id)
+  return employee.siteId == null ? sql`false` : eq(employees.siteId, employee.siteId)
+}
+
+async function requireWarehouseOutboundSourceAccess() {
+  const permission = await getCurrentMenuPermission('warehouse_repair_dashboard')
+  if (!permission.canView) {
+    throw new Error('Role Anda tidak punya akses sumber Warehouse Repair.')
+  }
+  // Warehouse outbound rows currently have no creator/site columns. A scoped
+  // role cannot be matched safely, so only global source access may convert IDs.
+  if (permission.dataScope !== 'global') {
+    throw new Error('Konversi Cargo Manifest membutuhkan scope global pada Warehouse Repair.')
+  }
+}
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
 export async function getCargoManifests(): Promise<CargoManifestRecord[]> {
-  await ensureCargoManifestTables();
+  await ensureCargoManifestTables()
+  const access = await requireCargoAccess('view')
 
   const rows = await db
     .select({
@@ -134,17 +198,18 @@ export async function getCargoManifests(): Promise<CargoManifestRecord[]> {
     .leftJoin(employees, eq(cargoManifests.createdByEmployeeId, employees.id))
     .leftJoin(cargoMasterSites, eq(cargoManifests.siteId, cargoMasterSites.id))
     .leftJoin(masterSections, eq(cargoManifests.sectionId, masterSections.id))
-    .orderBy(desc(cargoManifests.createdAt));
+    .where(cargoScopeCondition(access.permission, access.employee))
+    .orderBy(desc(cargoManifests.createdAt))
 
   const items = await db
     .select()
     .from(cargoManifestItems)
-    .orderBy(asc(cargoManifestItems.manifestId), asc(cargoManifestItems.no));
+    .orderBy(asc(cargoManifestItems.manifestId), asc(cargoManifestItems.no))
 
-  const itemsByManifest = new Map<number, CargoManifestItemRecord[]>();
+  const itemsByManifest = new Map<number, CargoManifestItemRecord[]>()
   for (const item of items) {
     if (!itemsByManifest.has(item.manifestId)) {
-      itemsByManifest.set(item.manifestId, []);
+      itemsByManifest.set(item.manifestId, [])
     }
     itemsByManifest.get(item.manifestId)!.push({
       id: item.id,
@@ -155,13 +220,13 @@ export async function getCargoManifests(): Promise<CargoManifestRecord[]> {
       qty: item.qty,
       brand: item.brand,
       remark: item.remark,
-    });
+    })
   }
 
   return rows.map((row) => ({
     ...row,
     items: itemsByManifest.get(row.id) ?? [],
-  }));
+  }))
 }
 
 export async function getMasterSections() {
@@ -173,12 +238,13 @@ export async function getMasterSections() {
     })
     .from(masterSections)
     .where(eq(masterSections.isActive, true))
-    .orderBy(asc(masterSections.name));
-  return sections;
+    .orderBy(asc(masterSections.name))
+  return sections
 }
 
 export async function getCargoManifestById(id: number): Promise<CargoManifestRecord | null> {
-  await ensureCargoManifestTables();
+  await ensureCargoManifestTables()
+  await assertCargoManifestAccess(id, 'view')
 
   const [row] = await db
     .select({
@@ -206,15 +272,15 @@ export async function getCargoManifestById(id: number): Promise<CargoManifestRec
     .leftJoin(cargoMasterSites, eq(cargoManifests.siteId, cargoMasterSites.id))
     .leftJoin(masterSections, eq(cargoManifests.sectionId, masterSections.id))
     .where(eq(cargoManifests.id, id))
-    .limit(1);
+    .limit(1)
 
-  if (!row) return null;
+  if (!row) return null
 
   const items = await db
     .select()
     .from(cargoManifestItems)
     .where(eq(cargoManifestItems.manifestId, id))
-    .orderBy(asc(cargoManifestItems.no));
+    .orderBy(asc(cargoManifestItems.no))
 
   return {
     ...row,
@@ -228,7 +294,7 @@ export async function getCargoManifestById(id: number): Promise<CargoManifestRec
       brand: item.brand,
       remark: item.remark,
     })),
-  };
+  }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -238,67 +304,69 @@ async function generateManifestNumber(): Promise<string> {
     select coalesce(max(nullif(regexp_replace(manifest_number, '[^0-9]', '', 'g'), '')::integer), 0) + 1 as next_number
     from hero_cargo_manifests
     where manifest_number ~ '^CM-[0-9]+$'
-  `);
-  const nextNumber = Number((result.rows[0] as { next_number: string | number }).next_number ?? 1);
-  const padded = String(nextNumber).padStart(6, "0");
-  return `CM-${padded}`;
+  `)
+  const nextNumber = Number((result.rows[0] as { next_number: string | number }).next_number ?? 1)
+  const padded = String(nextNumber).padStart(6, '0')
+  return `CM-${padded}`
 }
 
-function parseItemsJson(raw: string): Array<Omit<CargoManifestItemRecord, "id" | "manifestId">> {
+function parseItemsJson(raw: string): Array<Omit<CargoManifestItemRecord, 'id' | 'manifestId'>> {
   try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
     return parsed.map((item: Record<string, unknown>, idx: number) => ({
       no: Number(item.no) || idx + 1,
-      description: String(item.description ?? ""),
-      serialNumber: String(item.serialNumber ?? ""),
+      description: String(item.description ?? ''),
+      serialNumber: String(item.serialNumber ?? ''),
       qty: Number(item.qty) || 1,
-      brand: String(item.brand ?? ""),
-      remark: String(item.remark ?? ""),
-    }));
+      brand: String(item.brand ?? ''),
+      remark: String(item.remark ?? ''),
+    }))
   } catch {
-    return [];
+    return []
   }
 }
 
 async function syncCargoMasterData(data: z.infer<typeof manageCargoManifestSchema>) {
-  const items = parseItemsJson(data.itemsJson ?? "[]");
-  const attention = data.attention.trim();
-  const finalDestination = data.finalDestination.trim();
+  const items = parseItemsJson(data.itemsJson ?? '[]')
+  const attention = data.attention.trim()
+  const finalDestination = data.finalDestination.trim()
 
   if (attention) {
     await db
       .insert(cargoMasterRecipients)
       .values({ recipientName: attention })
-      .onConflictDoNothing({ target: cargoMasterRecipients.recipientName });
+      .onConflictDoNothing({ target: cargoMasterRecipients.recipientName })
   }
 
   if (finalDestination) {
     await db
       .insert(cargoMasterLocations)
       .values({ locationName: finalDestination })
-      .onConflictDoNothing({ target: cargoMasterLocations.locationName });
+      .onConflictDoNothing({ target: cargoMasterLocations.locationName })
   }
 
   const uniqueItems = Array.from(
-    new Map(items.filter((item) => item.description.trim()).map((item) => [item.description.trim(), item])).values(),
-  );
+    new Map(
+      items.filter((item) => item.description.trim()).map((item) => [item.description.trim(), item])
+    ).values()
+  )
 
   for (const item of uniqueItems) {
-    const goodsName = item.description.trim();
+    const goodsName = item.description.trim()
     const existing = await db
       .select({ id: cargoMasterGoods.id, brand: cargoMasterGoods.brand })
       .from(cargoMasterGoods)
       .where(eq(cargoMasterGoods.goodsName, goodsName))
-      .limit(1);
+      .limit(1)
 
     if (existing.length === 0) {
-      await db.insert(cargoMasterGoods).values({ goodsName, brand: item.brand.trim() });
+      await db.insert(cargoMasterGoods).values({ goodsName, brand: item.brand.trim() })
     } else if (!existing[0].brand && item.brand.trim()) {
       await db
         .update(cargoMasterGoods)
         .set({ brand: item.brand.trim(), updatedAt: new Date() })
-        .where(eq(cargoMasterGoods.id, existing[0].id));
+        .where(eq(cargoMasterGoods.id, existing[0].id))
     }
   }
 }
@@ -306,48 +374,49 @@ async function syncCargoMasterData(data: z.infer<typeof manageCargoManifestSchem
 // ─── Actions ──────────────────────────────────────────────────────────────────
 
 const manageCargoManifestSchema = z.object({
-  intent: z.enum(["create", "update", "update-status", "delete"]),
+  intent: z.enum(['create', 'update', 'update-status', 'delete']),
   id: z.preprocess(
-    (v) => (v === "" || v == null ? undefined : v),
-    z.coerce.number().int().positive().optional(),
+    (v) => (v === '' || v == null ? undefined : v),
+    z.coerce.number().int().positive().optional()
   ),
-  date: z.string().trim().optional().default(""),
+  date: z.string().trim().optional().default(''),
   siteId: z.preprocess(
-    (v) => (v === "" || v == null ? undefined : v),
-    z.coerce.number().int().positive().optional(),
+    (v) => (v === '' || v == null ? undefined : v),
+    z.coerce.number().int().positive().optional()
   ),
   sectionId: z.preprocess(
-    (v) => (v === "" || v == null ? undefined : v),
-    z.coerce.number().int().positive().optional(),
+    (v) => (v === '' || v == null ? undefined : v),
+    z.coerce.number().int().positive().optional()
   ),
-  attention: z.string().trim().max(200).optional().default(""),
-  transportVia: z.string().trim().max(200).optional().default(""),
-  shippedVia: z.string().trim().max(200).optional().default(""),
-  finalDestination: z.string().trim().max(200).optional().default(""),
-  signatureName: z.string().trim().max(200).optional().default(""),
-  signatureDataUrl: z.string().trim().max(250_000).optional().default(""),
-  status: z.string().trim().max(50).optional().default("draft"),
-  itemsJson: z.string().trim().optional().default("[]"),
-});
+  attention: z.string().trim().max(200).optional().default(''),
+  transportVia: z.string().trim().max(200).optional().default(''),
+  shippedVia: z.string().trim().max(200).optional().default(''),
+  finalDestination: z.string().trim().max(200).optional().default(''),
+  signatureName: z.string().trim().max(200).optional().default(''),
+  signatureDataUrl: z.string().trim().max(250_000).optional().default(''),
+  status: z.string().trim().max(50).optional().default('draft'),
+  itemsJson: z.string().trim().optional().default('[]'),
+})
 
 export async function manageCargoManifestAction(
   _prev: CargoManifestMutationState,
-  formData: FormData,
+  formData: FormData
 ): Promise<CargoManifestMutationState> {
-  await ensureCargoManifestTables();
+  await ensureCargoManifestTables()
 
-  const parsed = manageCargoManifestSchema.safeParse(Object.fromEntries(formData));
+  const parsed = manageCargoManifestSchema.safeParse(Object.fromEntries(formData))
   if (!parsed.success) {
-    return { status: "error", message: parsed.error.issues[0]?.message ?? "Validasi gagal." };
+    return { status: 'error', message: parsed.error.issues[0]?.message ?? 'Validasi gagal.' }
   }
 
-  const data = parsed.data;
-  const now = new Date();
+  const data = parsed.data
+  const now = new Date()
 
   try {
-    if (data.intent === "create") {
-      const manifestNumber = await generateManifestNumber();
-      const dateValue = data.date || new Date().toISOString().split("T")[0];
+    if (data.intent === 'create') {
+      const access = await requireCargoAccess('create')
+      const manifestNumber = await generateManifestNumber()
+      const dateValue = data.date || new Date().toISOString().split('T')[0]
       const [inserted] = await db
         .insert(cargoManifests)
         .values({
@@ -355,132 +424,142 @@ export async function manageCargoManifestAction(
           date: dateValue,
           siteId: data.siteId ?? null,
           sectionId: data.sectionId ?? null,
-          attention: data.attention ?? "",
-          transportVia: data.transportVia ?? "",
-          shippedVia: data.shippedVia ?? "",
-          finalDestination: data.finalDestination ?? "",
-          signatureName: data.signatureName ?? "",
-          signatureDataUrl: data.signatureDataUrl ?? "",
-          status: data.status ?? "draft",
+          attention: data.attention ?? '',
+          transportVia: data.transportVia ?? '',
+          shippedVia: data.shippedVia ?? '',
+          finalDestination: data.finalDestination ?? '',
+          signatureName: data.signatureName ?? '',
+          signatureDataUrl: data.signatureDataUrl ?? '',
+          status: data.status ?? 'draft',
+          createdByEmployeeId: access.employee.id,
           updatedAt: now,
         })
-        .returning({ id: cargoManifests.id });
+        .returning({ id: cargoManifests.id })
 
-      const items = parseItemsJson(data.itemsJson ?? "[]");
+      const items = parseItemsJson(data.itemsJson ?? '[]')
       if (items.length > 0) {
-        await db.insert(cargoManifestItems).values(
-          items.map((item) => ({ ...item, manifestId: inserted.id })),
-        );
+        await db
+          .insert(cargoManifestItems)
+          .values(items.map((item) => ({ ...item, manifestId: inserted.id })))
       }
-      await syncCargoMasterData(data);
+      await syncCargoMasterData(data)
 
-      revalidatePath("/dashboard/cargo-manifest");
-      return { status: "success", message: `Cargo Manifest ${manifestNumber} berhasil dibuat.`, manifestId: inserted.id };
+      revalidatePath('/dashboard/cargo-manifest')
+      return {
+        status: 'success',
+        message: `Cargo Manifest ${manifestNumber} berhasil dibuat.`,
+        manifestId: inserted.id,
+      }
     }
 
-    if (data.intent === "update") {
-      if (!data.id) return { status: "error", message: "ID manifest tidak valid." };
+    if (data.intent === 'update') {
+      if (!data.id) return { status: 'error', message: 'ID manifest tidak valid.' }
+      await assertCargoManifestAccess(data.id, 'edit')
 
       await db
         .update(cargoManifests)
         .set({
-          date: data.date || new Date().toISOString().split("T")[0],
+          date: data.date || new Date().toISOString().split('T')[0],
           siteId: data.siteId ?? null,
           sectionId: data.sectionId ?? null,
-          attention: data.attention ?? "",
-          transportVia: data.transportVia ?? "",
-          shippedVia: data.shippedVia ?? "",
-          finalDestination: data.finalDestination ?? "",
-          signatureName: data.signatureName ?? "",
-          signatureDataUrl: data.signatureDataUrl ?? "",
-          status: data.status ?? "draft",
+          attention: data.attention ?? '',
+          transportVia: data.transportVia ?? '',
+          shippedVia: data.shippedVia ?? '',
+          finalDestination: data.finalDestination ?? '',
+          signatureName: data.signatureName ?? '',
+          signatureDataUrl: data.signatureDataUrl ?? '',
+          status: data.status ?? 'draft',
           updatedAt: now,
         })
-        .where(eq(cargoManifests.id, data.id));
+        .where(eq(cargoManifests.id, data.id))
 
       // Replace items
-      await db.delete(cargoManifestItems).where(eq(cargoManifestItems.manifestId, data.id));
-      const items = parseItemsJson(data.itemsJson ?? "[]");
+      await db.delete(cargoManifestItems).where(eq(cargoManifestItems.manifestId, data.id))
+      const items = parseItemsJson(data.itemsJson ?? '[]')
       if (items.length > 0) {
-        await db.insert(cargoManifestItems).values(
-          items.map((item) => ({ ...item, manifestId: data.id! })),
-        );
+        await db
+          .insert(cargoManifestItems)
+          .values(items.map((item) => ({ ...item, manifestId: data.id! })))
       }
-      await syncCargoMasterData(data);
+      await syncCargoMasterData(data)
 
-      revalidatePath("/dashboard/cargo-manifest");
-      return { status: "success", message: "Cargo Manifest berhasil diperbarui." };
+      revalidatePath('/dashboard/cargo-manifest')
+      return { status: 'success', message: 'Cargo Manifest berhasil diperbarui.' }
     }
 
-    if (data.intent === "update-status") {
-      if (!data.id) return { status: "error", message: "ID manifest tidak valid." };
+    if (data.intent === 'update-status') {
+      if (!data.id) return { status: 'error', message: 'ID manifest tidak valid.' }
+      await assertCargoManifestAccess(data.id, 'edit')
 
       await db
         .update(cargoManifests)
-        .set({ status: data.status ?? "draft", updatedAt: now })
-        .where(eq(cargoManifests.id, data.id));
+        .set({ status: data.status ?? 'draft', updatedAt: now })
+        .where(eq(cargoManifests.id, data.id))
 
-      revalidatePath("/dashboard/cargo-manifest");
-      return { status: "success", message: "Status berhasil diperbarui." };
+      revalidatePath('/dashboard/cargo-manifest')
+      return { status: 'success', message: 'Status berhasil diperbarui.' }
     }
 
-    if (data.intent === "delete") {
-      if (!data.id) return { status: "error", message: "ID manifest tidak valid." };
-      await db.delete(cargoManifests).where(eq(cargoManifests.id, data.id));
-      revalidatePath("/dashboard/cargo-manifest");
-      return { status: "success", message: "Cargo Manifest berhasil dihapus." };
+    if (data.intent === 'delete') {
+      if (!data.id) return { status: 'error', message: 'ID manifest tidak valid.' }
+      await assertCargoManifestAccess(data.id, 'delete')
+      await db.delete(cargoManifests).where(eq(cargoManifests.id, data.id))
+      revalidatePath('/dashboard/cargo-manifest')
+      return { status: 'success', message: 'Cargo Manifest berhasil dihapus.' }
     }
 
-    return { status: "error", message: "Intent tidak dikenal." };
+    return { status: 'error', message: 'Intent tidak dikenal.' }
   } catch (error) {
-    console.error("[manageCargoManifestAction]", error);
-    return { status: "error", message: "Terjadi kesalahan server." };
+    console.error('[manageCargoManifestAction]', error)
+    return { status: 'error', message: 'Terjadi kesalahan server.' }
   }
 }
 
 // ─── CSV Import ───────────────────────────────────────────────────────────────
 
 export type CargoImportState = {
-  status: "idle" | "success" | "error";
-  message: string;
-  importedCount?: number;
-};
+  status: 'idle' | 'success' | 'error'
+  message: string
+  importedCount?: number
+}
 
 export async function importCargoManifestsAction(
   _prev: CargoImportState,
-  formData: FormData,
+  formData: FormData
 ): Promise<CargoImportState> {
-  await ensureCargoManifestTables();
+  await ensureCargoManifestTables()
+  const access = await requireCargoAccess('create')
 
-  const rawCsv = formData.get("rawCsv") as string;
+  const rawCsv = formData.get('rawCsv') as string
   if (!rawCsv?.trim()) {
-    return { status: "error", message: "File CSV tidak boleh kosong." };
+    return { status: 'error', message: 'File CSV tidak boleh kosong.' }
   }
 
   try {
-    const lines = rawCsv.trim().split(/\r?\n/);
-    const headers = lines[0].split(",").map((h) => h.trim().toLowerCase().replace(/\s+/g, "_"));
-    
-    const getCol = (row: string[], key: string) => {
-      const idx = headers.indexOf(key);
-      return idx >= 0 ? (row[idx] ?? "").trim() : "";
-    };
+    const lines = rawCsv.trim().split(/\r?\n/)
+    const headers = lines[0].split(',').map((h) => h.trim().toLowerCase().replace(/\s+/g, '_'))
 
-    let importedCount = 0;
-    const now = new Date();
+    const getCol = (row: string[], key: string) => {
+      const idx = headers.indexOf(key)
+      return idx >= 0 ? (row[idx] ?? '').trim() : ''
+    }
+
+    let importedCount = 0
+    const now = new Date()
 
     for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-      const cols = line.split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
-      const date = getCol(cols, "date") || getCol(cols, "tanggal") || new Date().toISOString().split("T")[0];
-      const attention = getCol(cols, "attention");
-      const transportVia = getCol(cols, "transport_via");
-      const shippedVia = getCol(cols, "shipped_via");
-      const finalDestination = getCol(cols, "final_destination");
-      const status = getCol(cols, "status") || "draft";
+      const line = lines[i].trim()
+      if (!line) continue
+      const cols = line.split(',').map((c) => c.trim().replace(/^"|"$/g, ''))
+      const date =
+        getCol(cols, 'date') || getCol(cols, 'tanggal') || new Date().toISOString().split('T')[0]
+      const attention = getCol(cols, 'attention')
+      const transportVia = getCol(cols, 'transport_via')
+      const shippedVia = getCol(cols, 'shipped_via')
+      const finalDestination = getCol(cols, 'final_destination')
+      const status = getCol(cols, 'status') || 'draft'
 
-      const manifestNumber = await generateManifestNumber();
+      const manifestNumber = await generateManifestNumber()
       await db.insert(cargoManifests).values({
         manifestNumber,
         date,
@@ -489,27 +568,38 @@ export async function importCargoManifestsAction(
         shippedVia,
         finalDestination,
         status,
+        createdByEmployeeId: access.employee.id,
         updatedAt: now,
-      });
+      })
 
-      importedCount++;
+      importedCount++
     }
 
-    revalidatePath("/dashboard/cargo-manifest");
-    return { status: "success", message: `${importedCount} manifest berhasil diimpor.`, importedCount };
+    revalidatePath('/dashboard/cargo-manifest')
+    return {
+      status: 'success',
+      message: `${importedCount} manifest berhasil diimpor.`,
+      importedCount,
+    }
   } catch (error) {
-    console.error("[importCargoManifestsAction]", error);
-    return { status: "error", message: "Gagal mengimpor data CSV." };
+    console.error('[importCargoManifestsAction]', error)
+    return { status: 'error', message: 'Gagal mengimpor data CSV.' }
   }
 }
 
-export async function createCargoManifestFromOutbound(outboundId: number, creatorNameOverride?: string): Promise<{ success: boolean; error?: string; manifest?: CargoManifestRecord | null }> {
+export async function createCargoManifestFromOutbound(
+  outboundId: number,
+  creatorNameOverride?: string
+): Promise<{ success: boolean; error?: string; manifest?: CargoManifestRecord | null }> {
   try {
-    await ensureCargoManifestTables();
-    const currentEmp = await getCurrentEmployee();
-    const creatorName = (creatorNameOverride && creatorNameOverride.trim()) 
-      ? creatorNameOverride 
-      : (currentEmp?.name || "Administrator");
+    await requireWarehouseOutboundSourceAccess()
+    await ensureCargoManifestTables()
+    const currentEmp = await getCurrentEmployee()
+    const access = await requireCargoAccess('create')
+    const creatorName =
+      creatorNameOverride && creatorNameOverride.trim()
+        ? creatorNameOverride
+        : currentEmp?.name || 'Administrator'
 
     const [outbound] = await db
       .select({
@@ -531,28 +621,29 @@ export async function createCargoManifestFromOutbound(outboundId: number, creato
       .from(warehouseRepairOutbound)
       .leftJoin(warehouseRepairItems, eq(warehouseRepairOutbound.itemId, warehouseRepairItems.id))
       .leftJoin(warehouseRepairUnits, eq(warehouseRepairItems.unitId, warehouseRepairUnits.id))
-      .where(eq(warehouseRepairOutbound.id, outboundId));
+      .where(eq(warehouseRepairOutbound.id, outboundId))
 
     if (!outbound) {
-      return { success: false, error: "Data transaksi barang keluar tidak ditemukan." };
+      return { success: false, error: 'Data transaksi barang keluar tidak ditemukan.' }
     }
 
-    const cleanTrxNo = (outbound.trxNo || `OUT-${outboundId}`).replace(/[^a-zA-Z0-9-]/g, "_");
-    const manifestNumber = `CM-${cleanTrxNo}`;
+    const cleanTrxNo = (outbound.trxNo || `OUT-${outboundId}`).replace(/[^a-zA-Z0-9-]/g, '_')
+    const manifestNumber = `CM-${cleanTrxNo}`
     const rawLoc = outbound.destinationSLoc
       ? `${outbound.destinationSLoc} (${outbound.destinationSLocDesc})`
       : outbound.storageLocation
-      ? `${outbound.storageLocation} (${outbound.storageLocationDesc})`
-      : "Site / Operations";
+        ? `${outbound.storageLocation} (${outbound.storageLocationDesc})`
+        : 'Site / Operations'
 
-    const finalDest = `PT Chitra Paratama Site | ${rawLoc}`;
+    const finalDest = `PT Chitra Paratama Site | ${rawLoc}`
 
     const existing = await db
       .select({ id: cargoManifests.id })
       .from(cargoManifests)
-      .where(eq(cargoManifests.manifestNumber, manifestNumber));
+      .where(eq(cargoManifests.manifestNumber, manifestNumber))
 
     if (existing.length > 0) {
+      await assertCargoManifestAccess(existing[0].id, 'edit')
       await db
         .update(cargoManifests)
         .set({
@@ -561,10 +652,10 @@ export async function createCargoManifestFromOutbound(outboundId: number, creato
           signatureName: creatorName,
           updatedAt: new Date(),
         })
-        .where(eq(cargoManifests.id, existing[0].id));
+        .where(eq(cargoManifests.id, existing[0].id))
 
-      const manifest = await getCargoManifestById(existing[0].id);
-      return { success: true, manifest };
+      const manifest = await getCargoManifestById(existing[0].id)
+      return { success: true, manifest }
     }
 
     const [inserted] = await db
@@ -573,57 +664,65 @@ export async function createCargoManifestFromOutbound(outboundId: number, creato
         manifestNumber,
         date: outbound.trxDate || new Date().toISOString().slice(0, 10),
         sectionId: 29,
-        attention: "Penerima Cargo / Operations",
-        transportVia: "Land Transport / Expediter",
-        shippedVia: "Warehouse Repair Outbound",
+        attention: 'Penerima Cargo / Operations',
+        transportVia: 'Land Transport / Expediter',
+        shippedVia: 'Warehouse Repair Outbound',
         finalDestination: finalDest,
         signatureName: creatorName,
-        status: "draft",
+        createdByEmployeeId: access.employee.id,
+        status: 'draft',
         updatedAt: new Date(),
       })
-      .returning();
+      .returning()
 
     const itemDesc = outbound.materialDesc
-      ? `${outbound.itemCode ? `[${outbound.itemCode}] ` : ""}${outbound.materialDesc}`
-      : `${outbound.itemCode ? `[${outbound.itemCode}] ` : ""}${outbound.itemName || "Barang Repair"}`;
+      ? `${outbound.itemCode ? `[${outbound.itemCode}] ` : ''}${outbound.materialDesc}`
+      : `${outbound.itemCode ? `[${outbound.itemCode}] ` : ''}${outbound.itemName || 'Barang Repair'}`
 
-    const remarkParts = [];
-    if (outbound.outboundType) remarkParts.push(`Tipe: ${outbound.outboundType}`);
-    if (outbound.destinationSLoc) remarkParts.push(`Ke S-Loc: ${outbound.destinationSLoc} (${outbound.destinationSLocDesc})`);
-    if (outbound.unitName) remarkParts.push(`Satuan: ${outbound.unitName}`);
-    if (outbound.note) remarkParts.push(outbound.note);
+    const remarkParts = []
+    if (outbound.outboundType) remarkParts.push(`Tipe: ${outbound.outboundType}`)
+    if (outbound.destinationSLoc)
+      remarkParts.push(`Ke S-Loc: ${outbound.destinationSLoc} (${outbound.destinationSLocDesc})`)
+    if (outbound.unitName) remarkParts.push(`Satuan: ${outbound.unitName}`)
+    if (outbound.note) remarkParts.push(outbound.note)
 
     await db.insert(cargoManifestItems).values({
       manifestId: inserted.id,
       no: 1,
       description: itemDesc,
-      serialNumber: outbound.itemCode || "-",
+      serialNumber: outbound.itemCode || '-',
       qty: outbound.quantity || 1,
-      brand: "",
-      remark: remarkParts.join(" | "),
-    });
+      brand: '',
+      remark: remarkParts.join(' | '),
+    })
 
-    revalidatePath("/dashboard/cargo-manifest");
-    revalidatePath("/dashboard/warehouse-repair/barang-keluar");
+    revalidatePath('/dashboard/cargo-manifest')
+    revalidatePath('/dashboard/warehouse-repair/barang-keluar')
 
-    const manifest = await getCargoManifestById(inserted.id);
-    return { success: true, manifest };
+    const manifest = await getCargoManifestById(inserted.id)
+    return { success: true, manifest }
   } catch (error: any) {
-    console.error("[createCargoManifestFromOutbound]", error);
-    return { success: false, error: error.message || "Gagal membuat Cargo Manifest" };
+    console.error('[createCargoManifestFromOutbound]', error)
+    return { success: false, error: error.message || 'Gagal membuat Cargo Manifest' }
   }
 }
 
-export async function createCargoManifestFromMultipleOutbound(outboundIds: number[], creatorNameOverride?: string): Promise<{ success: boolean; error?: string; manifest?: CargoManifestRecord | null }> {
+export async function createCargoManifestFromMultipleOutbound(
+  outboundIds: number[],
+  creatorNameOverride?: string
+): Promise<{ success: boolean; error?: string; manifest?: CargoManifestRecord | null }> {
   try {
-    await ensureCargoManifestTables();
-    const currentEmp = await getCurrentEmployee();
-    const creatorName = (creatorNameOverride && creatorNameOverride.trim())
-      ? creatorNameOverride
-      : (currentEmp?.name || "Administrator");
+    await requireWarehouseOutboundSourceAccess()
+    await ensureCargoManifestTables()
+    const currentEmp = await getCurrentEmployee()
+    const access = await requireCargoAccess('create')
+    const creatorName =
+      creatorNameOverride && creatorNameOverride.trim()
+        ? creatorNameOverride
+        : currentEmp?.name || 'Administrator'
 
     if (!outboundIds || outboundIds.length === 0) {
-      return { success: false, error: "Pilih setidaknya 1 transaksi barang keluar." };
+      return { success: false, error: 'Pilih setidaknya 1 transaksi barang keluar.' }
     }
 
     const records = await db
@@ -644,20 +743,24 @@ export async function createCargoManifestFromMultipleOutbound(outboundIds: numbe
       .from(warehouseRepairOutbound)
       .leftJoin(warehouseRepairItems, eq(warehouseRepairOutbound.itemId, warehouseRepairItems.id))
       .leftJoin(warehouseRepairUnits, eq(warehouseRepairItems.unitId, warehouseRepairUnits.id))
-      .where(sql`${warehouseRepairOutbound.id} IN ${outboundIds}`);
+      .where(sql`${warehouseRepairOutbound.id} IN ${outboundIds}`)
 
     if (records.length === 0) {
-      return { success: false, error: "Data transaksi barang keluar tidak ditemukan." };
+      return { success: false, error: 'Data transaksi barang keluar tidak ditemukan.' }
     }
 
-    const cleanDate = records[0].trxDate || new Date().toISOString().slice(0, 10);
-    const manifestNumber = `CM-OUT-${Date.now().toString().slice(-6)}`;
+    const cleanDate = records[0].trxDate || new Date().toISOString().slice(0, 10)
+    const manifestNumber = `CM-OUT-${Date.now().toString().slice(-6)}`
 
-    const destSlocs = Array.from(new Set(records.map(r => r.destinationSLoc).filter(Boolean))).join(", ");
-    const destSlocDescs = Array.from(new Set(records.map(r => r.destinationSLocDesc).filter(Boolean))).join(", ");
+    const destSlocs = Array.from(
+      new Set(records.map((r) => r.destinationSLoc).filter(Boolean))
+    ).join(', ')
+    const destSlocDescs = Array.from(
+      new Set(records.map((r) => r.destinationSLocDesc).filter(Boolean))
+    ).join(', ')
 
-    const rawLoc = destSlocs ? `${destSlocs} (${destSlocDescs})` : "Site / Operations";
-    const finalDestination = `PT Chitra Paratama Site | ${rawLoc}`;
+    const rawLoc = destSlocs ? `${destSlocs} (${destSlocDescs})` : 'Site / Operations'
+    const finalDestination = `PT Chitra Paratama Site | ${rawLoc}`
 
     const [inserted] = await db
       .insert(cargoManifests)
@@ -665,47 +768,49 @@ export async function createCargoManifestFromMultipleOutbound(outboundIds: numbe
         manifestNumber,
         date: cleanDate,
         sectionId: 29,
-        attention: "Penerima Cargo / Operations",
-        transportVia: "Land Transport / Expediter",
-        shippedVia: "Warehouse Repair Outbound",
+        attention: 'Penerima Cargo / Operations',
+        transportVia: 'Land Transport / Expediter',
+        shippedVia: 'Warehouse Repair Outbound',
         finalDestination,
         signatureName: creatorName,
-        status: "draft",
+        createdByEmployeeId: access.employee.id,
+        status: 'draft',
         updatedAt: new Date(),
       })
-      .returning();
+      .returning()
 
     const manifestItemsPayload = records.map((r, index) => {
       const itemDesc = r.materialDesc
-        ? `${r.itemCode ? `[${r.itemCode}] ` : ""}${r.materialDesc}`
-        : `${r.itemCode ? `[${r.itemCode}] ` : ""}${r.itemName || "Barang Repair"}`;
+        ? `${r.itemCode ? `[${r.itemCode}] ` : ''}${r.materialDesc}`
+        : `${r.itemCode ? `[${r.itemCode}] ` : ''}${r.itemName || 'Barang Repair'}`
 
-      const remarkParts = [];
-      if (r.outboundType) remarkParts.push(`Tipe: ${r.outboundType}`);
-      if (r.destinationSLoc) remarkParts.push(`Ke S-Loc: ${r.destinationSLoc} (${r.destinationSLocDesc})`);
-      if (r.unitName) remarkParts.push(`Satuan: ${r.unitName}`);
-      if (r.notes) remarkParts.push(r.notes);
+      const remarkParts = []
+      if (r.outboundType) remarkParts.push(`Tipe: ${r.outboundType}`)
+      if (r.destinationSLoc)
+        remarkParts.push(`Ke S-Loc: ${r.destinationSLoc} (${r.destinationSLocDesc})`)
+      if (r.unitName) remarkParts.push(`Satuan: ${r.unitName}`)
+      if (r.notes) remarkParts.push(r.notes)
 
       return {
         manifestId: inserted.id,
         no: index + 1,
         description: itemDesc,
-        serialNumber: r.itemCode || "-",
+        serialNumber: r.itemCode || '-',
         qty: r.quantity || 1,
-        brand: "",
-        remark: remarkParts.join(" | "),
-      };
-    });
+        brand: '',
+        remark: remarkParts.join(' | '),
+      }
+    })
 
-    await db.insert(cargoManifestItems).values(manifestItemsPayload);
+    await db.insert(cargoManifestItems).values(manifestItemsPayload)
 
-    revalidatePath("/dashboard/cargo-manifest");
-    revalidatePath("/dashboard/warehouse-repair/barang-keluar");
+    revalidatePath('/dashboard/cargo-manifest')
+    revalidatePath('/dashboard/warehouse-repair/barang-keluar')
 
-    const manifest = await getCargoManifestById(inserted.id);
-    return { success: true, manifest };
+    const manifest = await getCargoManifestById(inserted.id)
+    return { success: true, manifest }
   } catch (error: any) {
-    console.error("[createCargoManifestFromMultipleOutbound]", error);
-    return { success: false, error: error.message || "Gagal membuat Cargo Manifest" };
+    console.error('[createCargoManifestFromMultipleOutbound]', error)
+    return { success: false, error: error.message || 'Gagal membuat Cargo Manifest' }
   }
 }

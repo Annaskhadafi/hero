@@ -4,16 +4,15 @@ import { getSchedulingTimesheetAttendanceOptions } from '@/lib/hero-admin'
 import { getCurrentMenuPermission, getPermittedSchedulingTabs } from '@/lib/hero-access'
 
 export default async function SchedulingTimesheetAttendancePage() {
-  const [options, permission] = await Promise.all([
-    getSchedulingTimesheetAttendanceOptions(),
-    getCurrentMenuPermission('scheduling_timesheet_attendance'),
-  ])
+  const permission = await getCurrentMenuPermission('scheduling_timesheet_attendance')
 
   if (!permission.canView) {
     const permittedTabs = await getPermittedSchedulingTabs()
     const fallback = permittedTabs[0]?.href ?? '/dashboard'
     redirect(fallback)
   }
+
+  const options = await getSchedulingTimesheetAttendanceOptions()
 
   return (
     <SchedulingTimesheetWorkspace

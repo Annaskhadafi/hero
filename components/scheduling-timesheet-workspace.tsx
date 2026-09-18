@@ -1684,7 +1684,6 @@ export function SchedulingTimesheetWorkspace({
   } | null>(null)
   const [rosterEditCode, setRosterEditCode] = useState<ScheduleCode>('IN')
 
-
   useEffect(() => {
     if (selectedAttendanceCell) {
       const cell = getAttendanceCell(selectedAttendanceCell.employeeId, selectedAttendanceCell.day)
@@ -1726,7 +1725,9 @@ export function SchedulingTimesheetWorkspace({
   const [clearExcelImportDialogOpen, setClearExcelImportDialogOpen] = useState(false)
   const [attendanceWorkspaceOpen, setAttendanceWorkspaceOpen] = useState(false)
   const [payrollWorkspaceOpen, setPayrollWorkspaceOpen] = useState(false)
-  const [payrollDetailTab, setPayrollDetailTab] = useState<'allowance' | 'overtime' | 'time'>('allowance')
+  const [payrollDetailTab, setPayrollDetailTab] = useState<'allowance' | 'overtime' | 'time'>(
+    'allowance'
+  )
   const [openPayrollHistorySiteId, setOpenPayrollHistorySiteId] = useState<number | null>(null)
   const [attendanceCreateOpen, setAttendanceCreateOpen] = useState(false)
   const [attendanceCreateSiteId, setAttendanceCreateSiteId] = useState('')
@@ -1741,7 +1742,8 @@ export function SchedulingTimesheetWorkspace({
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const isDismissed = sessionStorage.getItem(`conflicts-dismissed:${siteId}:${period}`) === 'true'
+      const isDismissed =
+        sessionStorage.getItem(`conflicts-dismissed:${siteId}:${period}`) === 'true'
       setConflictsDismissedState(isDismissed)
     }
   }, [siteId, period])
@@ -2191,6 +2193,23 @@ export function SchedulingTimesheetWorkspace({
     return map
   }, [attendanceRecords, employees, period, site, effectiveSiteClockConfig.timezone, siteId])
 
+  // Face-attendance sync already resolves overnight punches into the workday
+  // cell (for example 19:00 -> 06:00). Keep that row authoritative over the
+  // raw-punch heuristic below, which only knows each punch's calendar date.
+  const attendanceOverrideByCell = useMemo(() => {
+    const map = new Map<string, SavedAttendanceOverride>()
+    for (const override of attendanceOverrides) {
+      if (
+        override.period === period &&
+        override.source === 'attendance' &&
+        (siteId === 'all' || String(override.siteId) === siteId)
+      ) {
+        map.set(attendanceKey(override.employeeId, override.day), override)
+      }
+    }
+    return map
+  }, [attendanceOverrides, period, siteId])
+
   useEffect(() => {
     const firstConfig = schedulingConfigs.find((config) => String(config.siteId) === siteId)
     setAllowanceVariables(
@@ -2224,8 +2243,7 @@ export function SchedulingTimesheetWorkspace({
   useEffect(() => {
     const scoped = attendanceOverrides.filter(
       (override) =>
-        override.period === period &&
-        (siteId === 'all' || String(override.siteId) === siteId)
+        override.period === period && (siteId === 'all' || String(override.siteId) === siteId)
     )
     setManualAttendance(
       Object.fromEntries(
@@ -4559,6 +4577,7 @@ export function SchedulingTimesheetWorkspace({
   ): ManualAttendanceCell {
     const key = attendanceKey(employeeId, day)
     const manual = manualAttendance[key]
+    const authoritativeAttendance = attendanceOverrideByCell.get(key)
     const real = attendanceByCell.get(key)
     const rowCode =
       scheduleCode ?? rows.find((r) => r.employee.id === employeeId)?.schedule[day - 1]
@@ -4574,7 +4593,7 @@ export function SchedulingTimesheetWorkspace({
     }
     const effectiveTz = cellClockConfig.timezone
 
-    if (!manual && !real) {
+    if (!manual && !authoritativeAttendance && !real) {
       const rosterStatus = normalizeAttendanceStatus(rowCode)
       const configuredClockIn = resolveConfiguredShiftClockIn(rowCode, cellClockConfig)
       if (
@@ -4604,26 +4623,42 @@ export function SchedulingTimesheetWorkspace({
       }
     }
 
-    const isManual = Boolean(manual)
+    // A local edit is newer user intent; synced attendance is authoritative
+    // only when there is no local/manual override for this cell.
+    const manualEdit = manual && manual.source !== 'attendance' ? manual : undefined
+    const effectiveOverride = manualEdit ?? authoritativeAttendance ?? manual
+    const isManual = Boolean(effectiveOverride)
     const rawStatus = isManual
-      ? manual.status
-      : normalizeAttendanceStatus(real?.clockIn?.status ?? real?.clockOut?.status ?? real?.records[0]?.status)
-    const isManualNonPresent = isManual && manual.status !== 'present'
+      ? normalizeAttendanceStatus(effectiveOverride.status)
+      : normalizeAttendanceStatus(
+          real?.clockIn?.status ?? real?.clockOut?.status ?? real?.records[0]?.status
+        )
+    const isManualNonPresent =
+      isManual && normalizeAttendanceStatus(effectiveOverride.status) !== 'present'
     const clockIn = isManual
-      ? (isManualNonPresent ? (manual.clockIn || '') : (manual.clockIn || timeFromIso(real?.clockIn?.eventTime, effectiveTz)))
+      ? isManualNonPresent
+        ? ''
+        : effectiveOverride.clockIn || timeFromIso(real?.clockIn?.eventTime, effectiveTz)
       : timeFromIso(real?.clockIn?.eventTime, effectiveTz)
     const clockOut = isManual
-      ? (isManualNonPresent ? (manual.clockOut || '') : (manual.clockOut || timeFromIso(real?.clockOut?.eventTime, effectiveTz)))
+      ? isManualNonPresent
+        ? ''
+        : effectiveOverride.clockOut || timeFromIso(real?.clockOut?.eventTime, effectiveTz)
       : timeFromIso(real?.clockOut?.eventTime, effectiveTz)
 
     const rawNote = isManual
-      ? (manual.note !== undefined ? manual.note : (real?.clockIn?.locationNote || real?.records[0]?.locationNote || ''))
-      : (real?.clockIn?.locationNote || real?.clockOut?.locationNote || real?.records[0]?.locationNote || 'Face/location attendance')
+      ? effectiveOverride.note !== undefined
+        ? effectiveOverride.note
+        : real?.clockIn?.locationNote || real?.records[0]?.locationNote || ''
+      : real?.clockIn?.locationNote ||
+        real?.clockOut?.locationNote ||
+        real?.records[0]?.locationNote ||
+        'Face/location attendance'
 
     let effectiveStatus = rawStatus
     if (isManual) {
       // Manual status explicitly set by admin/user MUST take precedence
-      effectiveStatus = manual.status
+      effectiveStatus = normalizeAttendanceStatus(effectiveOverride.status)
     } else if (clockIn || real?.clockIn || (real?.records && real.records.length > 0)) {
       if (effectiveStatus === 'empty' || effectiveStatus === 'off') {
         effectiveStatus = 'present'
@@ -4648,13 +4683,26 @@ export function SchedulingTimesheetWorkspace({
         ? updatePunctualityInNote(rawNote, punctuality.punctualityNote)
         : rawNote
 
+    const overrideOvertimeHours =
+      effectiveOverride && 'overtimeHours' in effectiveOverride
+        ? effectiveOverride.overtimeHours == null
+          ? null
+          : Number(effectiveOverride.overtimeHours)
+        : undefined
+
     return {
-      ...(manual ?? {}),
+      ...(overrideOvertimeHours !== undefined ? { overtimeHours: overrideOvertimeHours } : {}),
       status: effectiveStatus,
       clockIn,
       clockOut,
       note,
-      source: isManual ? manual.source || 'manual' : 'attendance',
+      source: !effectiveOverride
+        ? 'attendance'
+        : effectiveOverride.source === 'excel'
+          ? 'excel'
+          : effectiveOverride.source === 'attendance'
+            ? 'attendance'
+            : 'manual',
       lateMinutes,
       isLatePending,
       scheduledClockIn: punctuality.scheduledClockIn,
@@ -9358,7 +9406,7 @@ export function SchedulingTimesheetWorkspace({
               <section className="space-y-4">
                 {/* 1. Header & Actions Bar */}
                 <Card className="surface-module-card border-border/60 overflow-hidden rounded-2xl border bg-white p-0 shadow-xs">
-                  <div className="flex flex-col gap-4 border-b border-border/50 p-5 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="border-border/50 flex flex-col gap-4 border-b p-5 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex flex-wrap items-center gap-3">
                       <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-slate-900 text-white shadow-xs">
                         <CalendarDays className="size-5" />
@@ -9393,7 +9441,7 @@ export function SchedulingTimesheetWorkspace({
                             const newSiteId = e.target.value
                             setSiteId(newSiteId)
                           }}
-                          className="h-9 rounded-lg border border-border/70 bg-white px-3 text-xs font-semibold text-slate-900 shadow-2xs focus:ring-1 focus:ring-primary"
+                          className="border-border/70 focus:ring-primary h-9 rounded-lg border bg-white px-3 text-xs font-semibold text-slate-900 shadow-2xs focus:ring-1"
                         >
                           {sites.map((item) => (
                             <option key={item.id} value={String(item.id)}>
@@ -9406,7 +9454,7 @@ export function SchedulingTimesheetWorkspace({
                           aria-label="Pilih bulan"
                           value={period}
                           onChange={(e) => setPeriod(e.target.value)}
-                          className="h-9 w-[150px] text-xs font-semibold bg-white"
+                          className="h-9 w-[150px] bg-white text-xs font-semibold"
                         />
                       </div>
                     </div>
@@ -10356,530 +10404,544 @@ export function SchedulingTimesheetWorkspace({
                       </thead>
                       <tbody>
                         {(() => {
-                          // Group by Department > Section
+                          // Keep the source row order intact; only derive a grouped render order.
                           const grouped = new Map<
                             string,
                             Map<string, typeof displayedAttendanceRows>
                           >()
                           for (const row of displayedAttendanceRows) {
-                            const dept = row.employee.department || 'Tanpa Departemen'
                             const section = row.employee.section || row.employee.role || 'Umum'
-                            if (!grouped.has(dept)) grouped.set(dept, new Map())
-                            const deptMap = grouped.get(dept)!
-                            if (!deptMap.has(section)) deptMap.set(section, [])
-                            deptMap.get(section)!.push(row)
+                            const dept = row.employee.department || 'Tanpa Departemen'
+                            if (!grouped.has(section)) grouped.set(section, new Map())
+                            const sectionMap = grouped.get(section)!
+                            if (!sectionMap.has(dept)) sectionMap.set(dept, [])
+                            sectionMap.get(dept)!.push(row)
                           }
-                          return Array.from(grouped.entries()).map(([dept, sections]) => (
-                            <React.Fragment key={dept}>
+                          return Array.from(grouped.entries()).map(([section, departments]) => (
+                            <React.Fragment key={section}>
                               <tr className="bg-slate-100">
                                 <td
                                   colSpan={days.length + 1}
                                   className="text-foreground sticky left-0 z-20 px-3 py-2 text-[11px] font-bold tracking-[0.14em] uppercase"
                                 >
-                                  {dept}
+                                  {section}
                                 </td>
                               </tr>
-                              {Array.from(sections.entries()).map(([section, sectionRows]) => (
-                                <React.Fragment key={`${dept}-${section}`}>
+                              {Array.from(departments.entries()).map(([dept, departmentRows]) => (
+                                <React.Fragment key={`${section}-${dept}`}>
                                   <tr className="bg-surface-container-low">
                                     <td
                                       colSpan={days.length + 1}
                                       className="text-muted-foreground sticky left-0 z-20 px-3 py-1.5 pl-6 text-[10px] font-semibold tracking-[0.12em] uppercase"
                                     >
-                                      {section}{' '}
-                                      <span className="font-normal">({sectionRows.length})</span>
+                                      {dept}{' '}
+                                      <span className="font-normal">({departmentRows.length})</span>
                                     </td>
                                   </tr>
-                                  {sectionRows.map((row) => (
-                                    <tr
-                                      key={row.employee.id}
-                                      className={`group border-b border-slate-100 ${employeesWithZeroFace.has(row.employee.id) ? 'bg-rose-50' : 'bg-white'}`}
-                                    >
-                                      <td
-                                        className={`sticky left-0 z-20 w-[260px] max-w-[260px] min-w-[260px] px-3 py-2 font-semibold shadow-[8px_0_16px_-14px_rgba(15,23,42,0.55)] ${employeesWithZeroFace.has(row.employee.id) ? 'bg-rose-50' : 'bg-white'}`}
+                                  {departmentRows
+                                    .slice()
+                                    .sort((a, b) =>
+                                      employeeSnLabel(a.employee).localeCompare(
+                                        employeeSnLabel(b.employee),
+                                        undefined,
+                                        { numeric: true, sensitivity: 'base' }
+                                      )
+                                    )
+                                    .map((row) => (
+                                      <tr
+                                        key={row.employee.id}
+                                        className={`group border-b border-slate-100 ${employeesWithZeroFace.has(row.employee.id) ? 'bg-rose-50' : 'bg-white'}`}
                                       >
-                                        <div className="flex flex-col gap-1.5">
-                                          <div className="flex items-center justify-between gap-1.5">
-                                            <div className="flex min-w-0 items-center gap-2">
-                                              <input
-                                                type="checkbox"
-                                                aria-label={`Pilih ${row.employee.name} untuk bulk OT PDF`}
-                                                checked={selectedOvertimeEmployeeIds.includes(
-                                                  row.employee.id
-                                                )}
-                                                onChange={() =>
-                                                  toggleOvertimeEmployee(row.employee.id)
-                                                }
-                                                className="accent-primary size-3.5 shrink-0"
-                                              />
-                                              <div className="min-w-0 flex-1">
-                                                <p
-                                                  className="truncate text-xs font-semibold text-slate-900"
-                                                  title={row.employee.name}
-                                                >
-                                                  {row.employee.name}
-                                                </p>
-                                                <p className="text-muted-foreground truncate text-[10px] font-normal">
-                                                  {row.employee.section || row.employee.role}
-                                                </p>
+                                        <td
+                                          className={`sticky left-0 z-20 w-[260px] max-w-[260px] min-w-[260px] px-3 py-2 font-semibold shadow-[8px_0_16px_-14px_rgba(15,23,42,0.55)] ${employeesWithZeroFace.has(row.employee.id) ? 'bg-rose-50' : 'bg-white'}`}
+                                        >
+                                          <div className="flex flex-col gap-1.5">
+                                            <div className="flex items-center justify-between gap-1.5">
+                                              <div className="flex min-w-0 items-center gap-2">
+                                                <input
+                                                  type="checkbox"
+                                                  aria-label={`Pilih ${row.employee.name} untuk bulk OT PDF`}
+                                                  checked={selectedOvertimeEmployeeIds.includes(
+                                                    row.employee.id
+                                                  )}
+                                                  onChange={() =>
+                                                    toggleOvertimeEmployee(row.employee.id)
+                                                  }
+                                                  className="accent-primary size-3.5 shrink-0"
+                                                />
+                                                <div className="min-w-0 flex-1">
+                                                  <p
+                                                    className="truncate text-xs font-semibold text-slate-900"
+                                                    title={row.employee.name}
+                                                  >
+                                                    {row.employee.name}
+                                                  </p>
+                                                  <p className="text-muted-foreground truncate text-[10px] font-normal">
+                                                    {row.employee.section || row.employee.role}
+                                                  </p>
+                                                </div>
                                               </div>
                                             </div>
+                                            {/* PDF Action Buttons (Visible and easy to click) */}
+                                            <div className="flex items-center gap-1 border-t border-slate-100 pt-0.5 text-[10px]">
+                                              <button
+                                                className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 transition-colors hover:bg-slate-200"
+                                                title="Preview record PDF karyawan sesuai view ini"
+                                                onClick={() =>
+                                                  previewEmployeeRecordPdf(row.employee)
+                                                }
+                                              >
+                                                Preview
+                                              </button>
+                                              <button
+                                                className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 transition-colors hover:bg-slate-200"
+                                                title={
+                                                  attendanceView === 'msa' ||
+                                                  attendanceView === 'meals' ||
+                                                  attendanceView === 'lokasi'
+                                                    ? 'Generate record PDF sesuai view ini'
+                                                    : 'Generate Overtime Record PDF'
+                                                }
+                                                onClick={() =>
+                                                  generateEmployeeOvertimePdf(row.employee)
+                                                }
+                                              >
+                                                {attendanceView === 'msa'
+                                                  ? 'MSA'
+                                                  : attendanceView === 'meals'
+                                                    ? 'MLS'
+                                                    : attendanceView === 'lokasi'
+                                                      ? 'TU'
+                                                      : 'OT'}
+                                              </button>
+                                              <button
+                                                className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 transition-colors hover:bg-slate-200"
+                                                title="Generate Benefit PDF (MSA, Meals, Tunjangan Khusus)"
+                                                onClick={() =>
+                                                  generateEmployeeAllowancePdf(row.employee)
+                                                }
+                                              >
+                                                Benefit
+                                              </button>
+                                              <button
+                                                className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 transition-colors hover:bg-slate-200"
+                                                title="Generate Daily Activity PDF"
+                                                onClick={() =>
+                                                  generateEmployeeDailyActivityPdf(row.employee)
+                                                }
+                                              >
+                                                DA
+                                              </button>
+                                            </div>
                                           </div>
-                                          {/* PDF Action Buttons (Visible and easy to click) */}
-                                          <div className="flex items-center gap-1 border-t border-slate-100 pt-0.5 text-[10px]">
-                                            <button
-                                              className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 transition-colors hover:bg-slate-200"
-                                              title="Preview record PDF karyawan sesuai view ini"
-                                              onClick={() => previewEmployeeRecordPdf(row.employee)}
-                                            >
-                                              Preview
-                                            </button>
-                                            <button
-                                              className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 transition-colors hover:bg-slate-200"
-                                              title={
-                                                attendanceView === 'msa' ||
-                                                attendanceView === 'meals' ||
-                                                attendanceView === 'lokasi'
-                                                  ? 'Generate record PDF sesuai view ini'
-                                                  : 'Generate Overtime Record PDF'
-                                              }
-                                              onClick={() =>
-                                                generateEmployeeOvertimePdf(row.employee)
-                                              }
-                                            >
-                                              {attendanceView === 'msa'
-                                                ? 'MSA'
-                                                : attendanceView === 'meals'
-                                                  ? 'MLS'
-                                                  : attendanceView === 'lokasi'
-                                                    ? 'TU'
-                                                    : 'OT'}
-                                            </button>
-                                            <button
-                                              className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 transition-colors hover:bg-slate-200"
-                                              title="Generate Benefit PDF (MSA, Meals, Tunjangan Khusus)"
-                                              onClick={() =>
-                                                generateEmployeeAllowancePdf(row.employee)
-                                              }
-                                            >
-                                              Benefit
-                                            </button>
-                                            <button
-                                              className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 transition-colors hover:bg-slate-200"
-                                              title="Generate Daily Activity PDF"
-                                              onClick={() =>
-                                                generateEmployeeDailyActivityPdf(row.employee)
-                                              }
-                                            >
-                                              DA
-                                            </button>
-                                          </div>
-                                        </div>
-                                      </td>
-                                      {days.map((day) => {
-                                        const scheduleCode = row.schedule[day - 1] as string
-                                        const cell = getAttendanceCell(
-                                          row.employee.id,
-                                          day,
-                                          scheduleCode
-                                        )
-                                        const holiday = holidaysByDay.get(day)
-                                        const holidayName = holiday?.localName ?? holiday?.name
-                                        const isHolidayDay = Boolean(holiday)
-                                        const isOff =
-                                          scheduleCode === 'OFF' ||
-                                          scheduleCode === 'FB' ||
-                                          scheduleCode === 'Libur' ||
-                                          scheduleCode === 'Sakit'
-                                        const staff = isStaffRole(row.employee.role)
-
-                                        // MSA/Meals/OVT view
-                                        if (attendanceView !== 'attendance') {
-                                          const allowance = getAllowanceAmounts(row, day)
-                                          let cellValue: string | number = ''
-                                          let cellBg = ''
-                                          let cellTitle =
-                                            holidayName || `${scheduleCode} · ${cell.status}`
-                                          let overtimeMeta = ''
-                                          // Check if this day is in a Field Break period (14+ days no attendance)
-                                          const isFieldBreakDay =
+                                        </td>
+                                        {days.map((day) => {
+                                          const scheduleCode = row.schedule[day - 1] as string
+                                          const cell = getAttendanceCell(
+                                            row.employee.id,
+                                            day,
+                                            scheduleCode
+                                          )
+                                          const holiday = holidaysByDay.get(day)
+                                          const holidayName = holiday?.localName ?? holiday?.name
+                                          const isHolidayDay = Boolean(holiday)
+                                          const isOff =
+                                            scheduleCode === 'OFF' ||
                                             scheduleCode === 'FB' ||
-                                            cell.status === 'field_break' ||
-                                            (fieldBreakDaysByEmployee
-                                              .get(row.employee.id)
-                                              ?.has(day) ??
-                                              false)
+                                            scheduleCode === 'Libur' ||
+                                            scheduleCode === 'Sakit'
+                                          const staff = isStaffRole(row.employee.role)
 
-                                          // MSA adalah tunjangan lokasi: semua hari dibayar kecuali Field Break.
-                                          // Meals dan tunjangan khusus tetap mengikuti attendance masing-masing.
-                                          const isRosterOff =
-                                            scheduleCode === 'OFF' || scheduleCode === 'Libur'
-                                          const isNationalHoliday = Boolean(isHolidayDay)
-                                          const isWorkDay = !isRosterOff
-                                          const isAbsent =
-                                            cell.status === 'leave' ||
-                                            cell.status === 'sick' ||
-                                            cell.status === 'absent'
-                                          // 'off' status = manual OFF day, treated like roster OFF (gets allowance)
-                                          // 'off' status = manual OFF, treated like roster OFF (not empty workday)
-                                          const isEmptyWorkDay =
-                                            isWorkDay &&
-                                            !isNationalHoliday &&
-                                            scheduleCode !== 'ST' &&
-                                            cell.status === 'empty'
-                                          const noAllowance =
-                                            isAbsent || isEmptyWorkDay || scheduleCode === 'FB'
-                                          const absentLabel =
-                                            cell.status === 'leave'
-                                              ? 'Izin'
-                                              : cell.status === 'sick'
-                                                ? 'Sakit'
-                                                : cell.status === 'absent'
-                                                  ? 'Alpha'
-                                                  : '-'
+                                          // MSA/Meals/OVT view
+                                          if (attendanceView !== 'attendance') {
+                                            const allowance = getAllowanceAmounts(row, day)
+                                            let cellValue: string | number = ''
+                                            let cellBg = ''
+                                            let cellTitle =
+                                              holidayName || `${scheduleCode} · ${cell.status}`
+                                            let overtimeMeta = ''
+                                            // Check if this day is in a Field Break period (14+ days no attendance)
+                                            const isFieldBreakDay =
+                                              scheduleCode === 'FB' ||
+                                              cell.status === 'field_break' ||
+                                              (fieldBreakDaysByEmployee
+                                                .get(row.employee.id)
+                                                ?.has(day) ??
+                                                false)
 
-                                          if (attendanceView === 'msa') {
-                                            if (
-                                              !allowance.rule.msa ||
-                                              siteConfig.msaType === 'none'
-                                            ) {
-                                              cellValue = '-'
-                                              cellBg = 'bg-slate-50 text-muted-foreground'
-                                            } else if (isFieldBreakDay) {
-                                              cellValue = 'FB'
-                                              cellBg = 'bg-purple-50 text-purple-700'
-                                            } else {
-                                              const msaRate = allowance.msaAmount
-                                              cellValue = msaRate > 0 ? msaRate : '-'
-                                              cellBg = isNationalHoliday
-                                                ? 'bg-amber-50 text-foreground'
-                                                : isRosterOff
-                                                  ? 'bg-slate-50 text-foreground'
-                                                  : msaRate > 0
-                                                    ? 'bg-white text-foreground'
-                                                    : 'bg-slate-50 text-muted-foreground'
-                                            }
-                                          } else if (attendanceView === 'lokasi') {
-                                            if (!allowance.rule.specialAllowance) {
-                                              cellValue = '-'
-                                              cellBg = 'bg-slate-50 text-muted-foreground'
-                                            } else if (
-                                              isFieldBreakDay &&
-                                              cell.status !== 'present'
-                                            ) {
-                                              cellValue = 'FB'
-                                              cellBg = 'bg-purple-50 text-purple-700'
-                                            } else if (noAllowance) {
-                                              cellValue = absentLabel
-                                              cellBg = 'bg-rose-50 text-rose-700'
-                                            } else {
-                                              cellValue = allowance.specialAllowanceAmount || '-'
-                                              cellBg = isNationalHoliday
-                                                ? 'bg-amber-50 text-foreground'
-                                                : isRosterOff
-                                                  ? 'bg-slate-50 text-foreground'
-                                                  : 'bg-white text-foreground'
-                                            }
-                                          } else if (attendanceView === 'meals') {
-                                            if (
-                                              !allowance.rule.meals ||
-                                              siteConfig.mealsType === 'none'
-                                            ) {
-                                              cellValue = '-'
-                                              cellBg = 'bg-slate-50 text-muted-foreground'
-                                            } else if (isFieldBreakDay) {
-                                              cellValue = 'FB'
-                                              cellBg = 'bg-purple-50 text-purple-700'
-                                            } else {
-                                              const mealsRate = allowance.mealsAmount
-                                              cellValue = mealsRate
-                                              cellBg = isNationalHoliday
-                                                ? 'bg-amber-50 text-foreground'
-                                                : isRosterOff
-                                                  ? 'bg-slate-50 text-foreground'
-                                                  : mealsRate > 0
-                                                    ? 'bg-white text-foreground'
-                                                    : 'bg-slate-50 text-muted-foreground'
-                                            }
-                                          } else if (attendanceView === 'ovt') {
-                                            // Overtime hanya untuk Non Staff
-                                            if (staff) {
-                                              cellValue = '-'
-                                              cellBg = 'bg-slate-50 text-muted-foreground'
-                                            } else if (cell.status !== 'present') {
-                                              cellValue = isOff ? scheduleCode : ''
-                                              cellBg = isOff
-                                                ? 'bg-rose-50 text-rose-700'
-                                                : isHolidayDay
-                                                  ? 'bg-amber-50 text-amber-700'
-                                                  : ''
-                                            } else {
-                                              const overtime = calculateDayOvertime(
-                                                row.schedule,
-                                                day,
-                                                cell.clockIn,
-                                                cell.clockOut,
-                                                staff,
-                                                row.employee.id
-                                              )
-                                              cellValue =
-                                                overtime.totalHours > 0
-                                                  ? overtime.totalHours
-                                                  : overtime.unauthorizedMinutes > 0
-                                                    ? 'SPL'
+                                            // MSA adalah tunjangan lokasi: semua hari dibayar kecuali Field Break.
+                                            // Meals dan tunjangan khusus tetap mengikuti attendance masing-masing.
+                                            const isRosterOff =
+                                              scheduleCode === 'OFF' || scheduleCode === 'Libur'
+                                            const isNationalHoliday = Boolean(isHolidayDay)
+                                            const isWorkDay = !isRosterOff
+                                            const isAbsent =
+                                              cell.status === 'leave' ||
+                                              cell.status === 'sick' ||
+                                              cell.status === 'absent'
+                                            // 'off' status = manual OFF day, treated like roster OFF (gets allowance)
+                                            // 'off' status = manual OFF, treated like roster OFF (not empty workday)
+                                            const isEmptyWorkDay =
+                                              isWorkDay &&
+                                              !isNationalHoliday &&
+                                              scheduleCode !== 'ST' &&
+                                              cell.status === 'empty'
+                                            const noAllowance =
+                                              isAbsent || isEmptyWorkDay || scheduleCode === 'FB'
+                                            const absentLabel =
+                                              cell.status === 'leave'
+                                                ? 'Izin'
+                                                : cell.status === 'sick'
+                                                  ? 'Sakit'
+                                                  : cell.status === 'absent'
+                                                    ? 'Alpha'
+                                                    : '-'
+
+                                            if (attendanceView === 'msa') {
+                                              if (
+                                                !allowance.rule.msa ||
+                                                siteConfig.msaType === 'none'
+                                              ) {
+                                                cellValue = '-'
+                                                cellBg = 'bg-slate-50 text-muted-foreground'
+                                              } else if (isFieldBreakDay) {
+                                                cellValue = 'FB'
+                                                cellBg = 'bg-purple-50 text-purple-700'
+                                              } else {
+                                                const msaRate = allowance.msaAmount
+                                                cellValue = msaRate > 0 ? msaRate : '-'
+                                                cellBg = isNationalHoliday
+                                                  ? 'bg-amber-50 text-foreground'
+                                                  : isRosterOff
+                                                    ? 'bg-slate-50 text-foreground'
+                                                    : msaRate > 0
+                                                      ? 'bg-white text-foreground'
+                                                      : 'bg-slate-50 text-muted-foreground'
+                                              }
+                                            } else if (attendanceView === 'lokasi') {
+                                              if (!allowance.rule.specialAllowance) {
+                                                cellValue = '-'
+                                                cellBg = 'bg-slate-50 text-muted-foreground'
+                                              } else if (
+                                                isFieldBreakDay &&
+                                                cell.status !== 'present'
+                                              ) {
+                                                cellValue = 'FB'
+                                                cellBg = 'bg-purple-50 text-purple-700'
+                                              } else if (noAllowance) {
+                                                cellValue = absentLabel
+                                                cellBg = 'bg-rose-50 text-rose-700'
+                                              } else {
+                                                cellValue = allowance.specialAllowanceAmount || '-'
+                                                cellBg = isNationalHoliday
+                                                  ? 'bg-amber-50 text-foreground'
+                                                  : isRosterOff
+                                                    ? 'bg-slate-50 text-foreground'
+                                                    : 'bg-white text-foreground'
+                                              }
+                                            } else if (attendanceView === 'meals') {
+                                              if (
+                                                !allowance.rule.meals ||
+                                                siteConfig.mealsType === 'none'
+                                              ) {
+                                                cellValue = '-'
+                                                cellBg = 'bg-slate-50 text-muted-foreground'
+                                              } else if (isFieldBreakDay) {
+                                                cellValue = 'FB'
+                                                cellBg = 'bg-purple-50 text-purple-700'
+                                              } else {
+                                                const mealsRate = allowance.mealsAmount
+                                                cellValue = mealsRate
+                                                cellBg = isNationalHoliday
+                                                  ? 'bg-amber-50 text-foreground'
+                                                  : isRosterOff
+                                                    ? 'bg-slate-50 text-foreground'
+                                                    : mealsRate > 0
+                                                      ? 'bg-white text-foreground'
+                                                      : 'bg-slate-50 text-muted-foreground'
+                                              }
+                                            } else if (attendanceView === 'ovt') {
+                                              // Overtime hanya untuk Non Staff
+                                              if (staff) {
+                                                cellValue = '-'
+                                                cellBg = 'bg-slate-50 text-muted-foreground'
+                                              } else if (cell.status !== 'present') {
+                                                cellValue = isOff ? scheduleCode : ''
+                                                cellBg = isOff
+                                                  ? 'bg-rose-50 text-rose-700'
+                                                  : isHolidayDay
+                                                    ? 'bg-amber-50 text-amber-700'
                                                     : ''
-                                              cellBg =
-                                                overtime.unauthorizedMinutes > 0
-                                                  ? 'bg-orange-100 text-orange-900 font-semibold'
-                                                  : overtime.totalHours > 0
-                                                    ? 'bg-white text-foreground font-semibold'
-                                                    : ''
-                                              overtimeMeta =
-                                                overtime.unauthorizedMinutes > 0
-                                                  ? `${overtime.source === 'None' ? '' : `${overtime.source} · `}Perlu SPL`
-                                                  : overtime.source === 'Auto + SPL'
-                                                    ? 'Auto+SPL'
-                                                    : overtime.source === 'None'
-                                                      ? ''
-                                                      : overtime.source
-                                              cellTitle = [
-                                                `${scheduleCode} · ${cell.status}`,
-                                                `Sumber: ${overtime.source}`,
-                                                overtime.splNumbers.length
-                                                  ? `SPL: ${overtime.splNumbers.join(', ')}`
-                                                  : '',
-                                                overtime.unauthorizedMinutes > 0
-                                                  ? `Perlu SPL: ${overtime.unauthorizedMinutes / 60} jam`
-                                                  : '',
-                                              ]
-                                                .filter(Boolean)
-                                                .join(' · ')
+                                              } else {
+                                                const overtime = calculateDayOvertime(
+                                                  row.schedule,
+                                                  day,
+                                                  cell.clockIn,
+                                                  cell.clockOut,
+                                                  staff,
+                                                  row.employee.id
+                                                )
+                                                cellValue =
+                                                  overtime.totalHours > 0
+                                                    ? overtime.totalHours
+                                                    : overtime.unauthorizedMinutes > 0
+                                                      ? 'SPL'
+                                                      : ''
+                                                cellBg =
+                                                  overtime.unauthorizedMinutes > 0
+                                                    ? 'bg-orange-100 text-orange-900 font-semibold'
+                                                    : overtime.totalHours > 0
+                                                      ? 'bg-white text-foreground font-semibold'
+                                                      : ''
+                                                overtimeMeta =
+                                                  overtime.unauthorizedMinutes > 0
+                                                    ? `${overtime.source === 'None' ? '' : `${overtime.source} · `}Perlu SPL`
+                                                    : overtime.source === 'Auto + SPL'
+                                                      ? 'Auto+SPL'
+                                                      : overtime.source === 'None'
+                                                        ? ''
+                                                        : overtime.source
+                                                cellTitle = [
+                                                  `${scheduleCode} · ${cell.status}`,
+                                                  `Sumber: ${overtime.source}`,
+                                                  overtime.splNumbers.length
+                                                    ? `SPL: ${overtime.splNumbers.join(', ')}`
+                                                    : '',
+                                                  overtime.unauthorizedMinutes > 0
+                                                    ? `Perlu SPL: ${overtime.unauthorizedMinutes / 60} jam`
+                                                    : '',
+                                                ]
+                                                  .filter(Boolean)
+                                                  .join(' · ')
+                                              }
                                             }
+
+                                            return (
+                                              <td
+                                                key={day}
+                                                className={`w-[52px] min-w-[52px] px-0.5 py-1.5 text-center text-[10px] ${cellBg} ${isHolidayDay ? 'bg-amber-50' : ''}`}
+                                                title={cellTitle}
+                                              >
+                                                <span>{cellValue}</span>
+                                                {overtimeMeta ? (
+                                                  <span className="mt-0.5 block text-[8px] font-medium">
+                                                    {overtimeMeta}
+                                                  </span>
+                                                ) : null}
+                                              </td>
+                                            )
                                           }
-
+                                          // Normal attendance view
+                                          const isSelected = selectedAttendanceKeys.includes(
+                                            attendanceKey(row.employee.id, day)
+                                          )
+                                          const isConflict =
+                                            cell.status === 'present' &&
+                                            ['OFF', 'Libur', 'Sakit', 'FB'].includes(scheduleCode)
+                                          const inferredShift = cell.clockIn
+                                            ? inferShiftFromClockInTime(
+                                                cell.clockIn,
+                                                effectiveSiteClockConfig
+                                              )
+                                            : null
+                                          const expectedShiftCode =
+                                            inferredShift?.shiftCode === 'night' ? 'NS' : 'DS'
+                                          const isShiftMismatch =
+                                            Boolean(inferredShift) &&
+                                            ((scheduleCode === 'DS' &&
+                                              inferredShift?.shiftCode === 'night') ||
+                                              (scheduleCode === 'NS' &&
+                                                inferredShift?.shiftCode === 'day'))
+                                          const isRosterMismatch = isConflict || isShiftMismatch
+                                          const rosterMismatchLabel = isConflict
+                                            ? 'Beda Roster'
+                                            : `Beda Roster · Seharusnya ${expectedShiftCode}`
+                                          const scheduledClockIn =
+                                            row.schedule[day - 1]?.split('-')[0]?.trim() || ''
                                           return (
                                             <td
                                               key={day}
-                                              className={`w-[52px] min-w-[52px] px-0.5 py-1.5 text-center text-[10px] ${cellBg} ${isHolidayDay ? 'bg-amber-50' : ''}`}
-                                              title={cellTitle}
+                                              className={`w-[52px] min-w-[52px] px-1 py-2 align-top ${isHolidayDay ? 'bg-amber-100 ring-1 ring-amber-300 ring-inset' : ''}`}
+                                              title={holidayName}
                                             >
-                                              <span>{cellValue}</span>
-                                              {overtimeMeta ? (
-                                                <span className="mt-0.5 block text-[8px] font-medium">
-                                                  {overtimeMeta}
-                                                </span>
-                                              ) : null}
-                                            </td>
-                                          )
-                                        }
-                                        // Normal attendance view
-                                        const isSelected = selectedAttendanceKeys.includes(
-                                          attendanceKey(row.employee.id, day)
-                                        )
-                                        const isConflict =
-                                          cell.status === 'present' &&
-                                          ['OFF', 'Libur', 'Sakit', 'FB'].includes(scheduleCode)
-                                        const inferredShift = cell.clockIn
-                                          ? inferShiftFromClockInTime(
-                                              cell.clockIn,
-                                              effectiveSiteClockConfig
-                                            )
-                                          : null
-                                        const expectedShiftCode =
-                                          inferredShift?.shiftCode === 'night' ? 'NS' : 'DS'
-                                        const isShiftMismatch =
-                                          Boolean(inferredShift) &&
-                                          ((scheduleCode === 'DS' &&
-                                            inferredShift?.shiftCode === 'night') ||
-                                            (scheduleCode === 'NS' &&
-                                              inferredShift?.shiftCode === 'day'))
-                                        const isRosterMismatch = isConflict || isShiftMismatch
-                                        const rosterMismatchLabel = isConflict
-                                          ? 'Beda Roster'
-                                          : `Beda Roster · Seharusnya ${expectedShiftCode}`
-                                        const scheduledClockIn =
-                                          row.schedule[day - 1]?.split('-')[0]?.trim() || ''
-                                        return (
-                                          <td
-                                            key={day}
-                                            className={`w-[52px] min-w-[52px] px-1 py-2 align-top ${isHolidayDay ? 'bg-amber-100 ring-1 ring-amber-300 ring-inset' : ''}`}
-                                            title={holidayName}
-                                          >
-                                            <span
-                                              className={`mb-1 block text-[8px] leading-none font-black whitespace-nowrap text-orange-700 ${isRosterMismatch ? '' : 'invisible'}`}
-                                            >
-                                              Beda Roster
-                                            </span>
-                                            <button
-                                              className={`group relative h-[76px] w-[44px] rounded-xl px-1.5 py-1.5 text-left text-[11px] font-semibold transition ${
-                                                cell.isLatePending
-                                                  ? 'bg-red-100 text-red-950 shadow-sm ring-1 ring-red-400 hover:bg-red-200'
-                                                  : isRosterMismatch
-                                                    ? 'bg-orange-100 text-orange-950 shadow-sm ring-2 ring-orange-400 hover:bg-orange-200'
-                                                    : isHolidayDay
-                                                      ? attendanceHolidayCellClass
-                                                      : attendanceCellClass(cell.status)
-                                              } ${isSelected ? 'outline outline-2 outline-offset-2 outline-slate-900' : ''} ${isConflict ? 'ring-2 ring-orange-400' : ''}`}
-                                              onClick={() =>
-                                                multiSelectAttendance
-                                                  ? toggleAttendanceSelection(row.employee.id, day)
-                                                  : setSelectedAttendanceCell({
-                                                      employeeId: row.employee.id,
-                                                      day,
-                                                    })
-                                              }
-                                              title={
-                                                cell.isLatePending
-                                                  ? `Terlambat ${cell.lateMinutes ? `${cell.lateMinutes} menit ` : ''}(Masuk: ${cell.clockIn || '--:--'}, Jadwal: ${cell.scheduledClockIn || scheduledClockIn || '--:--'})`
-                                                  : isConflict
-                                                    ? rosterMismatchLabel
-                                                    : holidayName ||
-                                                      cell.note ||
-                                                      attendanceStatusLabel(cell.status)
-                                              }
-                                            >
-                                              {isConflict ? (
-                                                <>
-                                                  <span className="absolute top-1 right-1 rounded bg-orange-600 px-1 text-[9px] font-bold text-white">
-                                                    R
-                                                  </span>
-                                                  <span className="pointer-events-none absolute top-0 left-1/2 z-50 hidden -translate-x-1/2 -translate-y-full rounded-md bg-slate-900 px-2 py-1 text-[9px] font-medium whitespace-nowrap text-white shadow-lg group-hover:block">
-                                                    {rosterMismatchLabel}
-                                                  </span>
-                                                </>
-                                              ) : null}
-                                              {isHolidayDay ? (
-                                                <span className="absolute top-1 right-1 text-[9px]">
-                                                  L
-                                                </span>
-                                              ) : null}
-                                              {cell.isLatePending ? (
-                                                <span className="block leading-tight">
-                                                  <span className="block text-[9.5px] font-extrabold tracking-tight text-red-700">
-                                                    Terlambat
-                                                  </span>
-                                                  {cell.lateMinutes ? (
-                                                    <span className="mt-0.5 block text-[8px] font-bold text-red-600">
-                                                      +{cell.lateMinutes}m
-                                                    </span>
-                                                  ) : null}
-                                                </span>
-                                              ) : (
-                                                <span>{attendanceStatusLabel(cell.status)}</span>
-                                              )}
-                                              {cell.clockIn || cell.clockOut ? (
-                                                <span className="mt-1 block font-mono text-[9.5px] text-slate-800">
-                                                  {cell.clockIn || '--:--'}-
-                                                  {cell.clockOut || '--:--'}
-                                                </span>
-                                              ) : null}
-                                              {cell.status !== 'empty' && cell.source ? (
-                                                <span className="absolute right-1 bottom-1">
-                                                  <AttendanceSourceIndicator
-                                                    source={cell.source}
-                                                    timestamp={
-                                                      cell.clockIn
-                                                        ? `${period}-${String(day).padStart(2, '0')}T${cell.clockIn}:00`
-                                                        : undefined
-                                                    }
-                                                  />
-                                                </span>
-                                              ) : null}
-                                              {(() => {
-                                                const activityKey = `${row.employee.id}-${period}-${day}`
-                                                const dayActivities =
-                                                  activitiesByEmployeeDay.get(activityKey) || []
-                                                if (dayActivities.length === 0) return null
-                                                return (
-                                                  <div
-                                                    onClick={(e) => {
-                                                      e.stopPropagation()
-                                                      setSelectedActivityCell({
+                                              <span
+                                                className={`mb-1 block text-[8px] leading-none font-black whitespace-nowrap text-orange-700 ${isRosterMismatch ? '' : 'invisible'}`}
+                                              >
+                                                Beda Roster
+                                              </span>
+                                              <button
+                                                className={`group relative h-[76px] w-[44px] rounded-xl px-1.5 py-1.5 text-left text-[11px] font-semibold transition ${
+                                                  cell.isLatePending
+                                                    ? 'bg-red-100 text-red-950 shadow-sm ring-1 ring-red-400 hover:bg-red-200'
+                                                    : isRosterMismatch
+                                                      ? 'bg-orange-100 text-orange-950 shadow-sm ring-2 ring-orange-400 hover:bg-orange-200'
+                                                      : isHolidayDay
+                                                        ? attendanceHolidayCellClass
+                                                        : attendanceCellClass(cell.status)
+                                                } ${isSelected ? 'outline outline-2 outline-offset-2 outline-slate-900' : ''} ${isConflict ? 'ring-2 ring-orange-400' : ''}`}
+                                                onClick={() =>
+                                                  multiSelectAttendance
+                                                    ? toggleAttendanceSelection(
+                                                        row.employee.id,
+                                                        day
+                                                      )
+                                                    : setSelectedAttendanceCell({
                                                         employeeId: row.employee.id,
                                                         day,
                                                       })
-                                                    }}
-                                                    className="absolute bottom-1 left-1 flex size-4 cursor-pointer items-center justify-center rounded-full bg-blue-600 text-[8px] font-bold text-white"
-                                                    title={`${dayActivities.length} aktivitas`}
-                                                  >
-                                                    {dayActivities.length}
-                                                  </div>
+                                                }
+                                                title={
+                                                  cell.isLatePending
+                                                    ? `Terlambat ${cell.lateMinutes ? `${cell.lateMinutes} menit ` : ''}(Masuk: ${cell.clockIn || '--:--'}, Jadwal: ${cell.scheduledClockIn || scheduledClockIn || '--:--'})`
+                                                    : isConflict
+                                                      ? rosterMismatchLabel
+                                                      : holidayName ||
+                                                        cell.note ||
+                                                        attendanceStatusLabel(cell.status)
+                                                }
+                                              >
+                                                {isConflict ? (
+                                                  <>
+                                                    <span className="absolute top-1 right-1 rounded bg-orange-600 px-1 text-[9px] font-bold text-white">
+                                                      R
+                                                    </span>
+                                                    <span className="pointer-events-none absolute top-0 left-1/2 z-50 hidden -translate-x-1/2 -translate-y-full rounded-md bg-slate-900 px-2 py-1 text-[9px] font-medium whitespace-nowrap text-white shadow-lg group-hover:block">
+                                                      {rosterMismatchLabel}
+                                                    </span>
+                                                  </>
+                                                ) : null}
+                                                {isHolidayDay ? (
+                                                  <span className="absolute top-1 right-1 text-[9px]">
+                                                    L
+                                                  </span>
+                                                ) : null}
+                                                {cell.isLatePending ? (
+                                                  <span className="block leading-tight">
+                                                    <span className="block text-[9.5px] font-extrabold tracking-tight text-red-700">
+                                                      Terlambat
+                                                    </span>
+                                                    {cell.lateMinutes ? (
+                                                      <span className="mt-0.5 block text-[8px] font-bold text-red-600">
+                                                        +{cell.lateMinutes}m
+                                                      </span>
+                                                    ) : null}
+                                                  </span>
+                                                ) : (
+                                                  <span>{attendanceStatusLabel(cell.status)}</span>
+                                                )}
+                                                {cell.clockIn || cell.clockOut ? (
+                                                  <span className="mt-1 block font-mono text-[9.5px] text-slate-800">
+                                                    {cell.clockIn || '--:--'}-
+                                                    {cell.clockOut || '--:--'}
+                                                  </span>
+                                                ) : null}
+                                                {cell.status !== 'empty' && cell.source ? (
+                                                  <span className="absolute right-1 bottom-1">
+                                                    <AttendanceSourceIndicator
+                                                      source={cell.source}
+                                                      timestamp={
+                                                        cell.clockIn
+                                                          ? `${period}-${String(day).padStart(2, '0')}T${cell.clockIn}:00`
+                                                          : undefined
+                                                      }
+                                                    />
+                                                  </span>
+                                                ) : null}
+                                                {(() => {
+                                                  const activityKey = `${row.employee.id}-${period}-${day}`
+                                                  const dayActivities =
+                                                    activitiesByEmployeeDay.get(activityKey) || []
+                                                  if (dayActivities.length === 0) return null
+                                                  return (
+                                                    <div
+                                                      onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        setSelectedActivityCell({
+                                                          employeeId: row.employee.id,
+                                                          day,
+                                                        })
+                                                      }}
+                                                      className="absolute bottom-1 left-1 flex size-4 cursor-pointer items-center justify-center rounded-full bg-blue-600 text-[8px] font-bold text-white"
+                                                      title={`${dayActivities.length} aktivitas`}
+                                                    >
+                                                      {dayActivities.length}
+                                                    </div>
+                                                  )
+                                                })()}
+                                              </button>
+                                            </td>
+                                          )
+                                        })}
+                                        {/* Total column for MSA/Meals/OVT views */}
+                                        {attendanceView !== 'attendance'
+                                          ? (() => {
+                                              const staff = isStaffRole(row.employee.role)
+                                              let total = 0
+                                              for (const day of days) {
+                                                const cell = getAttendanceCell(row.employee.id, day)
+                                                const code = row.schedule[day - 1] as string
+                                                const isOff2 =
+                                                  code === 'OFF' ||
+                                                  code === 'FB' ||
+                                                  code === 'Libur' ||
+                                                  code === 'Sakit'
+                                                const hol = holidaysByDay.get(day)
+
+                                                const isRosterOff2 =
+                                                  code === 'OFF' || code === 'Libur'
+                                                const allowance = getAllowanceAmounts(row, day)
+
+                                                if (attendanceView === 'lokasi') {
+                                                  total += allowance.specialAllowanceAmount
+                                                  continue
+                                                }
+
+                                                // Skip Field Break days for MSA/Meals
+                                                const isFbPeriod =
+                                                  code === 'FB' || cell.status === 'field_break'
+                                                if (
+                                                  isFbPeriod &&
+                                                  (attendanceView === 'msa' ||
+                                                    attendanceView === 'meals')
                                                 )
-                                              })()}
-                                            </button>
-                                          </td>
-                                        )
-                                      })}
-                                      {/* Total column for MSA/Meals/OVT views */}
-                                      {attendanceView !== 'attendance'
-                                        ? (() => {
-                                            const staff = isStaffRole(row.employee.role)
-                                            let total = 0
-                                            for (const day of days) {
-                                              const cell = getAttendanceCell(row.employee.id, day)
-                                              const code = row.schedule[day - 1] as string
-                                              const isOff2 =
-                                                code === 'OFF' ||
-                                                code === 'FB' ||
-                                                code === 'Libur' ||
-                                                code === 'Sakit'
-                                              const hol = holidaysByDay.get(day)
+                                                  continue
 
-                                              const isRosterOff2 =
-                                                code === 'OFF' || code === 'Libur'
-                                              const allowance = getAllowanceAmounts(row, day)
-
-                                              if (attendanceView === 'lokasi') {
-                                                total += allowance.specialAllowanceAmount
-                                                continue
-                                              }
-
-                                              // Skip Field Break days for MSA/Meals
-                                              const isFbPeriod =
-                                                code === 'FB' || cell.status === 'field_break'
-                                              if (
-                                                isFbPeriod &&
-                                                (attendanceView === 'msa' ||
-                                                  attendanceView === 'meals')
-                                              )
-                                                continue
-
-                                              // Skip if no allowance (izin/sakit/alpha/empty workday)
-                                              // OVT: only count present days
-                                              if (
-                                                attendanceView === 'ovt' &&
-                                                cell.status !== 'present'
-                                              )
-                                                continue
-                                              if (attendanceView === 'msa') {
-                                                total += allowance.msaAmount
-                                              } else if (attendanceView === 'meals') {
-                                                total += allowance.mealsAmount
-                                              } else {
-                                                // OVT only for non-staff
-                                                if (!staff) {
-                                                  total += calculateDayOvertime(
-                                                    row.schedule,
-                                                    day,
-                                                    cell.clockIn,
-                                                    cell.clockOut,
-                                                    staff,
-                                                    row.employee.id
-                                                  ).totalHours
+                                                // Skip if no allowance (izin/sakit/alpha/empty workday)
+                                                // OVT: only count present days
+                                                if (
+                                                  attendanceView === 'ovt' &&
+                                                  cell.status !== 'present'
+                                                )
+                                                  continue
+                                                if (attendanceView === 'msa') {
+                                                  total += allowance.msaAmount
+                                                } else if (attendanceView === 'meals') {
+                                                  total += allowance.mealsAmount
+                                                } else {
+                                                  // OVT only for non-staff
+                                                  if (!staff) {
+                                                    total += calculateDayOvertime(
+                                                      row.schedule,
+                                                      day,
+                                                      cell.clockIn,
+                                                      cell.clockOut,
+                                                      staff,
+                                                      row.employee.id
+                                                    ).totalHours
+                                                  }
                                                 }
                                               }
-                                            }
-                                            return (
-                                              <td className="text-foreground w-[80px] min-w-[80px] px-2 py-2 text-right text-[11px] font-bold">
-                                                {attendanceView === 'ovt'
-                                                  ? roundOvertimeHours(total)
-                                                  : `Rp ${total.toLocaleString('id-ID')}`}
-                                              </td>
-                                            )
-                                          })()
-                                        : null}
-                                    </tr>
-                                  ))}
+                                              return (
+                                                <td className="text-foreground w-[80px] min-w-[80px] px-2 py-2 text-right text-[11px] font-bold">
+                                                  {attendanceView === 'ovt'
+                                                    ? roundOvertimeHours(total)
+                                                    : `Rp ${total.toLocaleString('id-ID')}`}
+                                                </td>
+                                              )
+                                            })()
+                                          : null}
+                                      </tr>
+                                    ))}
                                 </React.Fragment>
                               ))}
                             </React.Fragment>
@@ -10981,13 +11043,16 @@ export function SchedulingTimesheetWorkspace({
                       key={`${plan.siteId}-${plan.period}`}
                       data-filter-site={historySite?.name ?? ''}
                       data-filter-period={plan.period}
-                      className="border-border/30 hover:bg-surface-container-low/60 border-t transition cursor-pointer"
+                      className="border-border/30 hover:bg-surface-container-low/60 cursor-pointer border-t transition"
                       onClick={() => openAttendanceWorkspace(plan.siteId, plan.period)}
                     >
-                      <TableCell className="px-4 py-3 font-semibold text-primary hover:underline">
+                      <TableCell className="text-primary px-4 py-3 font-semibold hover:underline">
                         {historySite?.name ?? `Site ${plan.siteId}`}
                       </TableCell>
-                      <TableCell className="px-4 py-3 tabular-nums font-medium" suppressHydrationWarning>
+                      <TableCell
+                        className="px-4 py-3 font-medium tabular-nums"
+                        suppressHydrationWarning
+                      >
                         {formatMonthPeriod(plan.period)}
                       </TableCell>
                       <TableCell className="px-4 py-3">
@@ -11002,7 +11067,10 @@ export function SchedulingTimesheetWorkspace({
                           {status?.attendanceStatus === 'saved' ? 'Tersimpan' : 'Belum diisi'}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-muted-foreground px-4 py-3" suppressHydrationWarning>
+                      <TableCell
+                        className="text-muted-foreground px-4 py-3"
+                        suppressHydrationWarning
+                      >
                         {status?.lastSavedAt
                           ? new Date(status.lastSavedAt).toLocaleString('id-ID')
                           : '-'}
@@ -11861,7 +11929,9 @@ export function SchedulingTimesheetWorkspace({
                   dialogAttendanceDraft.status === 'absent' ||
                   dialogAttendanceDraft.status === 'field_break'
                 const defaultOtHours =
-                  isNonWorkingDialogStatus && !dialogAttendanceDraft.clockIn && !dialogAttendanceDraft.clockOut
+                  isNonWorkingDialogStatus &&
+                  !dialogAttendanceDraft.clockIn &&
+                  !dialogAttendanceDraft.clockOut
                     ? 0
                     : defaultOtCalculation.totalHours > 0
                       ? defaultOtCalculation.totalHours
@@ -11938,7 +12008,8 @@ export function SchedulingTimesheetWorkspace({
                         toast.success('Attendance saved ke database.')
                       } else {
                         toast.error('Save attendance failed', {
-                          description: (result as { error?: string })?.error || 'Failed to save attendance',
+                          description:
+                            (result as { error?: string })?.error || 'Failed to save attendance',
                         })
                       }
                     } catch (error) {
@@ -12129,10 +12200,7 @@ export function SchedulingTimesheetWorkspace({
                           )}
                       </div>
                       <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          onClick={() => setSelectedAttendanceCell(null)}
-                        >
+                        <Button variant="outline" onClick={() => setSelectedAttendanceCell(null)}>
                           Batal
                         </Button>
                         <Button onClick={onSaveAndClose} disabled={isSavingAttendance}>

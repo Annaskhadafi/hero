@@ -1,17 +1,17 @@
-import { AdminPageShell } from "@/components/admin-page-shell";
-import { AdminMetricGrid } from "@/components/admin-metric-grid";
-import { AdminTableCard } from "@/components/admin-table-card";
-import { AdminStatusBadge } from "@/components/admin-status-badge";
-import { TableFilterPresets } from "@/components/table-filter-presets";
-import { TableMultiFilter } from "@/components/ui/table-multi-filter";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AdminPageShell } from '@/components/admin-page-shell'
+import { AdminMetricGrid } from '@/components/admin-metric-grid'
+import { AdminTableCard } from '@/components/admin-table-card'
+import { AdminStatusBadge } from '@/components/admin-status-badge'
+import { TableFilterPresets } from '@/components/table-filter-presets'
+import { TableMultiFilter } from '@/components/ui/table-multi-filter'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   CargoManifestCreateDialog,
   CargoManifestRowActions,
   CargoManifestStatusAction,
   CargoManifestImportDialog,
-} from "@/components/cargo-manifest-panels";
-import { CargoManifestTable } from "@/components/cargo-manifest-table";
+} from '@/components/cargo-manifest-panels'
+import { CargoManifestTable } from '@/components/cargo-manifest-table'
 import {
   MasterGoodsDialog,
   MasterGoodsRowActions,
@@ -21,27 +21,40 @@ import {
   MasterRecipientRowActions,
   MasterSiteDialog,
   MasterSiteRowActions,
-} from "@/components/cargo-master-panels";
-import { getCargoManifests } from "@/app/actions/cargo-manifest";
-import { getMasterGoods, getMasterLocations, getMasterRecipients, getMasterSites } from "@/app/actions/cargo-master";
+} from '@/components/cargo-master-panels'
+import { getCargoManifests } from '@/app/actions/cargo-manifest'
+import {
+  getMasterGoods,
+  getMasterLocations,
+  getMasterRecipients,
+  getMasterSites,
+} from '@/app/actions/cargo-master'
+import { getCurrentMenuPermission } from '@/lib/hero-access'
+import { redirect } from 'next/navigation'
 
 export default async function CargoManifestPage() {
-  const [manifests, masterGoods, masterLocations, masterRecipients, masterSites] = await Promise.all([
-    getCargoManifests(),
-    getMasterGoods(),
-    getMasterLocations(),
-    getMasterRecipients(),
-    getMasterSites(),
-  ]);
+  const access = await getCurrentMenuPermission('cargo_manifest')
+  if (!access.canView) redirect('/dashboard')
 
-  const totalItems = manifests.reduce((sum, m) => sum + m.items.length, 0);
-  const sent = manifests.filter((m) => m.status === "sent").length;
-  const delivered = manifests.filter((m) => m.status === "delivered").length;
-  const draft = manifests.filter((m) => m.status === "draft").length;
+  const [manifests, masterGoods, masterLocations, masterRecipients, masterSites] =
+    await Promise.all([
+      getCargoManifests(),
+      getMasterGoods(),
+      getMasterLocations(),
+      getMasterRecipients(),
+      getMasterSites(),
+    ])
 
-  const destinations = Array.from(new Set(manifests.map((m) => m.finalDestination).filter(Boolean))).sort();
-  const statuses = Array.from(new Set(manifests.map((m) => m.status))).sort();
-  const empty = (value: string | null | undefined) => value?.trim() || "-";
+  const totalItems = manifests.reduce((sum, m) => sum + m.items.length, 0)
+  const sent = manifests.filter((m) => m.status === 'sent').length
+  const delivered = manifests.filter((m) => m.status === 'delivered').length
+  const draft = manifests.filter((m) => m.status === 'draft').length
+
+  const destinations = Array.from(
+    new Set(manifests.map((m) => m.finalDestination).filter(Boolean))
+  ).sort()
+  const statuses = Array.from(new Set(manifests.map((m) => m.status))).sort()
+  const empty = (value: string | null | undefined) => value?.trim() || '-'
 
   return (
     <AdminPageShell
@@ -50,18 +63,18 @@ export default async function CargoManifestPage() {
       description="Daftar pengiriman barang / cargo manifest PT. Chitra Paratama."
       actions={
         <>
-          <CargoManifestImportDialog />
-          <CargoManifestCreateDialog />
+          <CargoManifestImportDialog canEdit={access.canEdit} />
+          <CargoManifestCreateDialog canEdit={access.canEdit} />
         </>
       }
     >
       {/* KPI Summary */}
       <AdminMetricGrid
         items={[
-          { label: "Total Manifest", value: `${manifests.length}`, meta: "Semua dokumen" },
-          { label: "Draft", value: `${draft}`, meta: "Belum dikirim" },
-          { label: "Sent", value: `${sent}`, meta: "Sudah dikirim" },
-          { label: "Delivered", value: `${delivered}`, meta: "Sudah diterima" },
+          { label: 'Total Manifest', value: `${manifests.length}`, meta: 'Semua dokumen' },
+          { label: 'Draft', value: `${draft}`, meta: 'Belum dikirim' },
+          { label: 'Sent', value: `${sent}`, meta: 'Sudah dikirim' },
+          { label: 'Delivered', value: `${delivered}`, meta: 'Sudah diterima' },
         ]}
       />
 
@@ -77,16 +90,20 @@ export default async function CargoManifestPage() {
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-semibold">Cargo Manifest</h3>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-muted-foreground text-sm">
                   Daftar seluruh dokumen cargo manifest dengan detail item dan status pengiriman.
                 </p>
               </div>
               <div className="flex gap-2">
-                <CargoManifestImportDialog />
-                <CargoManifestCreateDialog />
+                <CargoManifestImportDialog canEdit={access.canEdit} />
+                <CargoManifestCreateDialog canEdit={access.canEdit} />
               </div>
             </div>
-            <CargoManifestTable manifests={manifests} />
+            <CargoManifestTable
+              manifests={manifests}
+              canEdit={access.canEdit}
+              canDelete={access.canDelete}
+            />
           </div>
         </TabsContent>
 
@@ -105,7 +122,7 @@ export default async function CargoManifestPage() {
               <AdminTableCard
                 title="Master Data Item / Barang"
                 description="Data master barang untuk referensi saat membuat cargo manifest."
-                columns={["Nama Barang", "Kategori", "Brand", "Unit", "Berat", "Dimensi", "Aksi"]}
+                columns={['Nama Barang', 'Kategori', 'Brand', 'Unit', 'Berat', 'Dimensi', 'Aksi']}
                 actions={<MasterGoodsDialog mode="create" />}
                 rows={masterGoods.map((item, idx) => [
                   <span key={`goods-${idx}`} className="font-medium">
@@ -126,13 +143,25 @@ export default async function CargoManifestPage() {
               <AdminTableCard
                 title="Master Data Lokasi"
                 description="Data master lokasi tujuan untuk referensi saat membuat cargo manifest."
-                columns={["Nama Lokasi", "Alamat", "Kota", "Provinsi", "Contact Person", "Phone", "Aksi"]}
+                columns={[
+                  'Nama Lokasi',
+                  'Alamat',
+                  'Kota',
+                  'Provinsi',
+                  'Contact Person',
+                  'Phone',
+                  'Aksi',
+                ]}
                 actions={<MasterLocationDialog mode="create" />}
                 rows={masterLocations.map((loc, idx) => [
                   <span key={`loc-${idx}`} className="font-medium">
                     {loc.locationName}
                   </span>,
-                  <span key={`addr-${idx}`} className="max-w-[200px] truncate text-xs text-muted-foreground block" title={loc.address || undefined}>
+                  <span
+                    key={`addr-${idx}`}
+                    className="text-muted-foreground block max-w-[200px] truncate text-xs"
+                    title={loc.address || undefined}
+                  >
                     {empty(loc.address)}
                   </span>,
                   empty(loc.city),
@@ -149,7 +178,15 @@ export default async function CargoManifestPage() {
               <AdminTableCard
                 title="Master Data Penerima"
                 description="Data master penerima barang untuk referensi saat membuat cargo manifest."
-                columns={["Nama Penerima", "Perusahaan", "Contact Person", "Phone", "Email", "Kota", "Aksi"]}
+                columns={[
+                  'Nama Penerima',
+                  'Perusahaan',
+                  'Contact Person',
+                  'Phone',
+                  'Email',
+                  'Kota',
+                  'Aksi',
+                ]}
                 actions={<MasterRecipientDialog mode="create" />}
                 rows={masterRecipients.map((rec, idx) => [
                   <span key={`rec-${idx}`} className="font-medium">
@@ -168,7 +205,7 @@ export default async function CargoManifestPage() {
               <AdminTableCard
                 title="Master Data Site"
                 description="Data master site untuk referensi saat membuat cargo manifest."
-                columns={["Nama Site", "Lokasi", "Notes", "Aksi"]}
+                columns={['Nama Site', 'Lokasi', 'Notes', 'Aksi']}
                 actions={<MasterSiteDialog mode="create" />}
                 rows={masterSites.map((site, idx) => [
                   <span key={`site-${idx}`} className="font-medium">
@@ -184,5 +221,5 @@ export default async function CargoManifestPage() {
         </TabsContent>
       </Tabs>
     </AdminPageShell>
-  );
+  )
 }

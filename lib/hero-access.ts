@@ -11,7 +11,13 @@ export type HeroMenuPermission = {
   canEdit: boolean
   canDelete: boolean
   canSelectAll: boolean
-  dataScope: string
+  dataScope: DataScope
+}
+
+export type DataScope = 'own' | 'site' | 'global'
+
+export function normalizeDataScope(value: unknown): DataScope {
+  return value === 'site' || value === 'global' ? value : 'own'
 }
 
 export type HeroEmployeeAccessContext = {
@@ -33,7 +39,12 @@ export async function getEmployeeAccessRoleByEmail(email: string) {
     .select({ accessRole: employees.accessRole })
     .from(employees)
     .leftJoin(authUser, eq(employees.authUserId, authUser.id))
-    .where(or(eq(employees.email, email), eq(authUser.email, email)))
+    .where(
+      or(
+        sql`lower(${employees.email}) = lower(${email})`,
+        sql`lower(${authUser.email}) = lower(${email})`
+      )
+    )
     .limit(1)
 
   return employee?.accessRole ?? null
@@ -57,10 +68,6 @@ export async function getCurrentEmployeeAccessRole(): Promise<string> {
     .limit(1)
 
   if (employee?.accessRole) return employee.accessRole
-  if ((session.user as { role?: string } | undefined)?.role) {
-    return (session.user as { role?: string }).role || ''
-  }
-
   return ''
 }
 
@@ -110,13 +117,20 @@ export async function getMenuPermissionForRole(
     .limit(1)
 
   if (permission) {
+    const dataScope = normalizeDataScope(permission.dataScope)
+    const hasInvalidDataScope =
+      permission.dataScope != null &&
+      permission.dataScope !== 'own' &&
+      permission.dataScope !== 'site' &&
+      permission.dataScope !== 'global'
+
     return {
       roleName,
-      canView: permission.canView,
-      canEdit: permission.canEdit,
-      canDelete: permission.canDelete,
-      canSelectAll: permission.canSelectAll,
-      dataScope: permission.dataScope || 'own',
+      canView: hasInvalidDataScope ? false : permission.canView,
+      canEdit: hasInvalidDataScope ? false : permission.canEdit,
+      canDelete: hasInvalidDataScope ? false : permission.canDelete,
+      canSelectAll: hasInvalidDataScope ? false : permission.canSelectAll,
+      dataScope,
     }
   }
 
@@ -199,7 +213,9 @@ export async function getCurrentEmployeeAccessContext(): Promise<HeroEmployeeAcc
     .where(
       or(
         session.user.id ? eq(employees.authUserId, session.user.id) : undefined,
-        session.user.email ? eq(employees.email, session.user.email) : undefined
+        session.user.email
+          ? sql`lower(${employees.email}) = lower(${session.user.email})`
+          : undefined
       )
     )
     .limit(1)
