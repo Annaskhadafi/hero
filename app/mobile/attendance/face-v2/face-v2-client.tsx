@@ -223,8 +223,27 @@ export function FaceAttendanceV2Client({
         ]
 
   const [selectedShift, setSelectedShift] = useState<string>(() => {
+    // 1. Check if today's roster specifically specifies NS or DS
+    const todayStr = new Date().toISOString().slice(0, 10)
+    const todayRoster = rosterCalendar.days.find((d) => d.date === todayStr)
+    if (todayRoster?.code) {
+      const code = todayRoster.code.toUpperCase()
+      if (code === 'NS') {
+        const nightOption = activeShifts.find(
+          (s) => s.value === 'night' || s.value.toLowerCase().includes('night') || s.value === 'NS'
+        )
+        if (nightOption) return nightOption.value
+      } else if (code === 'DS') {
+        const dayOption = activeShifts.find(
+          (s) => s.value === 'day' || s.value.toLowerCase().includes('day') || s.value === 'DS'
+        )
+        if (dayOption) return dayOption.value
+      }
+    }
+
+    // 2. Fallback to time of day (True night shift check-in window is 18:00 - 05:00)
     const currentHour = new Date().getHours()
-    const isNight = currentHour >= 15 || currentHour < 7
+    const isNight = currentHour >= 18 || currentHour < 5
     if (isNight) {
       const nightOption = activeShifts.find(
         (s) => s.value === 'night' || s.value.toLowerCase().includes('night') || s.value === 'NS'

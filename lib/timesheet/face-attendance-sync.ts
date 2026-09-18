@@ -132,6 +132,17 @@ export async function syncFaceAttendanceToTimesheet(
   // Ensure timesheet tables exist
   await ensureSchedulingTimesheetTables()
 
+  const [siteRow] = await db
+    .select({ id: sites.id })
+    .from(sites)
+    .where(eq(sites.id, siteId))
+    .limit(1)
+
+  if (!siteRow) {
+    console.warn(`[face-sync] Site ${siteId} does not exist in hero_sites. Skipping timesheet sync.`)
+    return null
+  }
+
   const siteTimezone = explicitTimezone || (await getSiteTimezone(siteId))
   const tzInfo = normalizeIndonesiaTimezone(siteTimezone)
 
@@ -176,33 +187,36 @@ export async function syncFaceAttendanceToTimesheet(
     )
   const prevSorted = [...prevRecords].sort((a, b) => a.eventTime.getTime() - b.eventTime.getTime())
 
-  // Find yesterday's night check-in punch (local hour >= 15 or < 05)
-  const prevNightPunch = prevSorted.find((r) => {
+  // Find yesterday's night check-in punch (MUST be a check-in event, local hour >= 15 or < 05)
+  const prevCheckInPunches = prevSorted.filter((r) => !isCheckOutEvent(r.eventType))
+  const prevNightPunch = prevCheckInPunches.find((r) => {
     const h = getTimezoneDateParts(r.eventTime, tzInfo.code).hours
     return h >= 15 || h < 5
   })
 
-  if (prevNightPunch) {
+  // Only proceed if yesterday did NOT have an earlier day-shift check-in (h between 5 and 15)
+  const prevHasDayShiftIn = prevCheckInPunches.some((r) => {
+    const h = getTimezoneDateParts(r.eventTime, tzInfo.code).hours
+    return h >= 5 && h < 15
+  })
+
+  if (prevNightPunch && !prevHasDayShiftIn) {
     // Check if yesterday had a same-evening checkout punch >= 2h after prevNightPunch
     const prevSameEveningOut = prevSorted.filter(
       (r) =>
+        isCheckOutEvent(r.eventType) &&
         r.id !== prevNightPunch.id &&
         r.eventTime.getTime() - prevNightPunch.eventTime.getTime() >= 2 * 60 * 60 * 1000
     )
 
     if (prevSameEveningOut.length === 0) {
-      // Look for today's early-morning punch (< 10:00 local time)
-      const morningPunches = sortedRecords.filter(
-        (r) => getTimezoneDateParts(r.eventTime, tzInfo.code).hours < 10
+      // Look for today's early-morning EXPLICIT checkout punches (< 10:00 local time)
+      const morningCheckoutPunches = sortedRecords.filter(
+        (r) => isCheckOutEvent(r.eventType) && getTimezoneDateParts(r.eventTime, tzInfo.code).hours < 10
       )
 
-      if (morningPunches.length > 0) {
-        // Find the best morning checkout punch (prefer explicit check-out event, else latest morning punch)
-        const explicitOut = morningPunches.filter((r) => isCheckOutEvent(r.eventType))
-        const morningCheckout =
-          explicitOut.length > 0
-            ? explicitOut[explicitOut.length - 1]
-            : morningPunches[morningPunches.length - 1]
+      if (morningCheckoutPunches.length > 0) {
+        const morningCheckout = morningCheckoutPunches[morningCheckoutPunches.length - 1]
 
         const prevClockIn = formatTimeHHMMInTimezone(prevNightPunch.eventTime, tzInfo.code)
         const prevClockOut = formatTimeHHMMInTimezone(morningCheckout.eventTime, tzInfo.code)
@@ -255,8 +269,8 @@ export async function syncFaceAttendanceToTimesheet(
           `[face-sync] ✓ Updated Prev Day Night Shift: site=${siteId}, period=${prevPeriod}, emp=${employeeId}, day=${prevDay}, in=${prevClockIn}, out=${prevClockOut}`
         )
 
-        // Mark all morning punches up to the morning checkout as consumed by yesterday's shift
-        for (const punch of morningPunches) {
+        // Mark only the morning checkout punches as consumed by yesterday's shift
+        for (const punch of morningCheckoutPunches) {
           if (punch.eventTime.getTime() <= morningCheckout.eventTime.getTime()) {
             consumedPunchIds.add(punch.id)
           }
@@ -290,15 +304,25 @@ export async function syncFaceAttendanceToTimesheet(
   }
 
   // 3. Process Today's own shift
-  const firstPunch = todayOwnPunches[0]
-  const firstPunchLocalHours = getTimezoneDateParts(firstPunch.eventTime, tzInfo.code).hours
-  const clockIn = formatTimeHHMMInTimezone(firstPunch.eventTime, tzInfo.code)
-  const isNightShift = firstPunchLocalHours >= 15 || firstPunchLocalHours < 5
+  const checkInPunches = todayOwnPunches.filter((r) => !isCheckOutEvent(r.eventType))
+  const checkOutPunches = todayOwnPunches.filter((r) => isCheckOutEvent(r.eventType))
+
+  let clockIn = ''
+  let isNightShift = false
+  let syncNote = todayOwnPunches[0].locationNote || ''
+
+  if (checkInPunches.length > 0) {
+    const firstCheckIn = checkInPunches[0]
+    const firstCheckInHours = getTimezoneDateParts(firstCheckIn.eventTime, tzInfo.code).hours
+    clockIn = formatTimeHHMMInTimezone(firstCheckIn.eventTime, tzInfo.code)
+    isNightShift = firstCheckInHours >= 15 || firstCheckInHours < 5
+    syncNote = firstCheckIn.locationNote || syncNote
+  }
 
   let clockOut = ''
 
-  if (isNightShift) {
-    // Overnight shift handling: look for checkout punches on next day 00:00 - 10:00 local time
+  if (isNightShift && checkInPunches.length > 0) {
+    // Overnight shift handling: look for explicit checkout punches on next day 00:00 - 10:00 local time
     const nextDayCutoff = new Date(startOfNextDay.getTime() + 10 * 60 * 60 * 1000)
     const overnightRecords = await db
       .select()
@@ -312,15 +336,12 @@ export async function syncFaceAttendanceToTimesheet(
         )
       )
 
-    if (overnightRecords.length > 0) {
-      const sortedOvernight = [...overnightRecords].sort(
-        (a, b) => a.eventTime.getTime() - b.eventTime.getTime()
-      )
-      const explicitNextOut = sortedOvernight.filter((r) => isCheckOutEvent(r.eventType))
-      const lastOvernight =
-        explicitNextOut.length > 0
-          ? explicitNextOut[explicitNextOut.length - 1]
-          : sortedOvernight[sortedOvernight.length - 1]
+    const explicitNextOut = overnightRecords
+      .filter((r) => isCheckOutEvent(r.eventType))
+      .sort((a, b) => a.eventTime.getTime() - b.eventTime.getTime())
+
+    if (explicitNextOut.length > 0) {
+      const lastOvernight = explicitNextOut[explicitNextOut.length - 1]
       clockOut = formatTimeHHMMInTimezone(lastOvernight.eventTime, tzInfo.code)
 
       // Ensure Day T+1 override does not retain orphan attendance if it has no own shift punches (>= 10:00)
@@ -338,7 +359,7 @@ export async function syncFaceAttendanceToTimesheet(
           )
         )
       const nextDayOwnPunches = nextDayFullRecords.filter(
-        (r) => getTimezoneDateParts(r.eventTime, tzInfo.code).hours >= 10
+        (r) => !isCheckOutEvent(r.eventType) || getTimezoneDateParts(r.eventTime, tzInfo.code).hours >= 10
       )
       const { period: nextPeriod, day: nextDay } = derivePeriodAndDayInTimezone(
         nextDayDate,
@@ -358,19 +379,16 @@ export async function syncFaceAttendanceToTimesheet(
           )
       }
     } else {
-      // Only an explicit checkout closes the shift; repeated check-ins must not become clock-out.
-      const sameDayCheckouts = todayOwnPunches.filter((r) => isCheckOutEvent(r.eventType))
-      if (sameDayCheckouts.length > 0) {
+      // Only an explicit checkout closes the shift on same evening
+      if (checkOutPunches.length > 0) {
         clockOut = formatTimeHHMMInTimezone(
-          sameDayCheckouts[sameDayCheckouts.length - 1].eventTime,
+          checkOutPunches[checkOutPunches.length - 1].eventTime,
           tzInfo.code
         )
       }
     }
   } else {
-    // Day Shift handling
-    // Keep the earliest punch as clock-in and the latest explicit checkout as clock-out.
-    const checkOutPunches = todayOwnPunches.filter((r) => isCheckOutEvent(r.eventType))
+    // Day Shift (or missing check-in where only check-outs exist)
     if (checkOutPunches.length > 0) {
       clockOut = formatTimeHHMMInTimezone(
         checkOutPunches[checkOutPunches.length - 1].eventTime,
@@ -384,6 +402,9 @@ export async function syncFaceAttendanceToTimesheet(
 
   // Set validation flags
   const validationFlags: string[] = []
+  if (!clockIn) {
+    validationFlags.push('missing-check-in')
+  }
   if (!clockOut) {
     validationFlags.push('missing-check-out')
   }
@@ -399,7 +420,6 @@ export async function syncFaceAttendanceToTimesheet(
   }
 
   const status = 'present'
-  const syncNote = firstPunch.locationNote || ''
 
   // Upsert into timesheetAttendanceRealOverrides
   await db
