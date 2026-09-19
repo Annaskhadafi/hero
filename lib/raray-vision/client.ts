@@ -766,4 +766,37 @@ export async function rarayPdfInspectorProcess(params: {
   }
 }
 
+/** Run the active tire-damage model while keeping Vision credentials server-side. */
+export async function rarayPredictTireDamage(params: {
+  fileBuffer: Buffer
+  fileName: string
+  mimeType: string
+  confidenceThreshold?: number
+  iouThreshold?: number
+}): Promise<{ status: 'success' | 'error'; result?: unknown; message?: string }> {
+  const { fileBuffer, fileName, mimeType, confidenceThreshold = 0.25, iouThreshold = 0.45 } = params
 
+  try {
+    const formData = new FormData()
+    formData.append('file', new Blob([new Uint8Array(fileBuffer)], { type: mimeType }), fileName)
+    formData.append('conf_threshold', String(confidenceThreshold))
+    formData.append('iou_threshold', String(iouThreshold))
+
+    const response = await fetch(`${getBaseUrl()}/api/v1/models/endpoints/tire-demage/predict`, {
+      method: 'POST',
+      headers: { Authorization: await getAuthHeader() },
+      body: formData,
+      cache: 'no-store',
+      signal: AbortSignal.timeout(120_000),
+    })
+
+    if (!response.ok) {
+      const details = await response.text().catch(() => '')
+      return { status: 'error', message: `Vision API error (${response.status}): ${details.slice(0, 240)}` }
+    }
+
+    return { status: 'success', result: await response.json() }
+  } catch (error) {
+    return { status: 'error', message: error instanceof Error ? error.message : 'Gagal menghubungi Vision API.' }
+  }
+}

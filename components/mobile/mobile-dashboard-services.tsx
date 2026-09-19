@@ -22,6 +22,7 @@ import {
   BookOpen,
   TrendingUp,
   Package,
+  ScanSearch,
   Wrench,
   Files,
   Users,
@@ -81,6 +82,7 @@ type DashboardServicesProps = {
 
 export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: DashboardServicesProps) {
   const [open, setOpen] = useState(false);
+  const [requestOpen, setRequestOpen] = useState(false);
   const allowedResources = new Set(sidebarItems.map((item) => item.resource).filter(Boolean));
   const isServiceAllowed = (service: { href: string; resource?: string }) => {
     if (service.resource === "hero-genius" || service.resource === "sop-win") {
@@ -99,6 +101,7 @@ export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: Da
     icon: typeof MapPin;
     bg: string;
     target?: string;
+    isRequestGroup?: boolean;
   }> = [
     {
       title: "Check-In",
@@ -157,25 +160,19 @@ export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: Da
       bg: "bg-violet-500/10 text-violet-600",
     },
     {
-      title: "Request APD",
-      href: "/mobile/apd",
-      resource: "apd-request",
-      icon: HardHat,
-      bg: "bg-blue-500/10 text-blue-600",
-    },
-    {
-      title: "Request Material",
-      href: "/mobile/material",
+      title: "Request Barang",
+      href: "/mobile/tools",
       resource: "apd-request",
       icon: Package,
       bg: "bg-amber-500/10 text-amber-600",
+      isRequestGroup: true,
     },
     {
-      title: "Request Tools",
-      href: "/mobile/tools",
-      resource: "apd-request",
-      icon: Wrench,
-      bg: "bg-emerald-500/10 text-emerald-600",
+      title: "Deteksi Kerusakan Ban",
+      href: "/mobile/hse/tire-damage",
+      resource: "hse_tire_inspection",
+      icon: ScanSearch,
+      bg: "bg-rose-500/10 text-rose-600",
     },
     {
       title: "Summary APD",
@@ -321,19 +318,15 @@ export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: Da
       </div>
 
       <div className="grid grid-cols-4 gap-y-5 gap-x-2 rounded-[1.5rem] bg-white p-5 shadow-[0_12px_32px_rgba(8,32,51,0.06)] border border-slate-100">
-        {visibleServices.map((service, index) => (
-          <Link
-            key={index}
-            href={service.href}
-            target={service.target}
-            className="flex flex-col items-center justify-start text-center group active:scale-95 transition-transform"
-          >
-            <div className={`flex shrink-0 size-12 items-center justify-center rounded-2xl ${service.bg} transition-colors duration-200`}>
-              <service.icon className="size-5" />
-            </div>
-            <span className="mt-2 text-[11px] font-bold text-slate-700 leading-tight group-hover:text-primary transition-colors">
-              {service.title}
-            </span>
+        {visibleServices.map((service, index) => service.isRequestGroup ? (
+          <button key={index} type="button" onClick={() => setRequestOpen(true)} className="flex flex-col items-center justify-start text-center group active:scale-95 transition-transform">
+            <div className={`flex shrink-0 size-12 items-center justify-center rounded-2xl ${service.bg} transition-colors duration-200`}><service.icon className="size-5" /></div>
+            <span className="mt-2 text-[11px] font-bold text-slate-700 leading-tight group-hover:text-primary transition-colors">{service.title}</span>
+          </button>
+        ) : (
+          <Link key={index} href={service.href} target={service.target} className="flex flex-col items-center justify-start text-center group active:scale-95 transition-transform">
+            <div className={`flex shrink-0 size-12 items-center justify-center rounded-2xl ${service.bg} transition-colors duration-200`}><service.icon className="size-5" /></div>
+            <span className="mt-2 text-[11px] font-bold text-slate-700 leading-tight group-hover:text-primary transition-colors">{service.title}</span>
           </Link>
         ))}
 
@@ -357,20 +350,15 @@ export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: Da
 
             {/* Direct Core Services */}
             <div className="grid grid-cols-4 gap-4">
-              {visibleServices.map((service, index) => (
-                <Link
-                  key={index}
-                  href={service.href}
-                  target={service.target}
-                  onClick={() => setOpen(false)}
-                  className="flex flex-col items-center justify-center text-center group"
-                >
-                  <div className={`flex size-12 items-center justify-center rounded-2xl ${service.bg}`}>
-                    <service.icon className="size-5" />
-                  </div>
-                  <span className="mt-2 text-[11px] font-bold text-slate-700 leading-tight">
-                    {service.title}
-                  </span>
+              {visibleServices.map((service, index) => service.isRequestGroup ? (
+                <button key={index} type="button" onClick={() => { setOpen(false); setRequestOpen(true) }} className="flex flex-col items-center justify-center text-center group">
+                  <div className={`flex size-12 items-center justify-center rounded-2xl ${service.bg}`}><service.icon className="size-5" /></div>
+                  <span className="mt-2 text-[11px] font-bold text-slate-700 leading-tight">{service.title}</span>
+                </button>
+              ) : (
+                <Link key={index} href={service.href} target={service.target} onClick={() => setOpen(false)} className="flex flex-col items-center justify-center text-center group">
+                  <div className={`flex size-12 items-center justify-center rounded-2xl ${service.bg}`}><service.icon className="size-5" /></div>
+                  <span className="mt-2 text-[11px] font-bold text-slate-700 leading-tight">{service.title}</span>
                 </Link>
               ))}
             </div>
@@ -432,6 +420,21 @@ export function MobileDashboardServices({ isHR, sidebarItems, allowedLinks }: Da
           </SheetContent>
         </Sheet>
       </div>
+
+      <Sheet open={requestOpen} onOpenChange={setRequestOpen}>
+        <SheetContent side="bottom" className="space-y-4 rounded-t-[2rem] px-5 pb-8 pt-4">
+          <SheetHeader className="text-left"><SheetTitle className="text-lg font-black text-[#003461]">Request Barang</SheetTitle></SheetHeader>
+          {[
+            { title: "Request APD", href: "/mobile/apd", icon: HardHat, bg: "bg-blue-500/10 text-blue-600" },
+            { title: "Request Material", href: "/mobile/material", icon: Package, bg: "bg-amber-500/10 text-amber-600" },
+            { title: "Request Tools", href: "/mobile/tools", icon: Wrench, bg: "bg-emerald-500/10 text-emerald-600" },
+          ].map((request) => (
+            <Link key={request.href} href={request.href} onClick={() => setRequestOpen(false)} className="flex min-h-14 items-center gap-3 rounded-xl bg-slate-50 px-4 text-sm font-black text-[#082033]">
+              <span className={`flex size-10 items-center justify-center rounded-xl ${request.bg}`}><request.icon className="size-5" /></span>{request.title}
+            </Link>
+          ))}
+        </SheetContent>
+      </Sheet>
     </section>
   );
 }
