@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { Camera, Download, FileVideo, Loader2, ScanSearch, Upload, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Camera, Download, FileVideo, Loader2, ScanSearch, Timer, Upload, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 type PredictionResponse = { success?: boolean; result?: unknown; error?: string }
 type ProcessingStage = 'idle' | 'optimizing' | 'uploading' | 'analyzing'
+type DamageDetail = { label: string; confidence: number | null }
 
 const ACCEPTED_MEDIA = 'image/jpeg,image/png,image/webp,video/mp4,video/x-msvideo,video/quicktime'
 const MAX_IMAGE_DIMENSION = 1600
@@ -27,6 +28,37 @@ function findAnnotatedUrl(value: unknown): string | null {
     if (nested) return nested
   }
   return null
+}
+
+function findDamageDetails(value: unknown): DamageDetail[] {
+  if (!value || typeof value !== 'object') return []
+  const object = value as Record<string, unknown>
+  for (const key of ['detections', 'predictions', 'damages', 'results']) {
+    if (!Array.isArray(object[key])) continue
+    const details = object[key]
+      .map((item): DamageDetail | null => {
+        if (!item || typeof item !== 'object') return null
+        const detection = item as Record<string, unknown>
+        const label = [detection.class_name, detection.class, detection.label, detection.name].find(
+          (candidate) => typeof candidate === 'string' && candidate.trim()
+        )
+        if (typeof label !== 'string') return null
+        const rawConfidence = [detection.confidence, detection.score, detection.conf].find(
+          (candidate) => typeof candidate === 'number'
+        )
+        const confidence =
+          typeof rawConfidence === 'number'
+            ? rawConfidence > 1
+              ? rawConfidence / 100
+              : rawConfidence
+            : null
+        return { label, confidence }
+      })
+      .filter((detail): detail is DamageDetail => detail !== null)
+    if (details.length) return details
+  }
+  const dataDetails = findDamageDetails(object.data)
+  return dataDetails.length ? dataDetails : findDamageDetails(object.result)
 }
 
 async function optimizeImage(file: File) {
@@ -54,9 +86,60 @@ export default function MobileTireDamagePage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [result, setResult] = useState<unknown>(null)
   const [stage, setStage] = useState<ProcessingStage>('idle')
+  const [elapsedSeconds, setElapsedSeconds] = useState<number | null>(null)
+  const [cameraOpen, setCameraOpen] = useState(false)
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
+  const cameraRef = useRef<HTMLVideoElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
   const loading = stage !== 'idle'
 
   useEffect(() => () => previewUrl && URL.revokeObjectURL(previewUrl), [previewUrl])
+  useEffect(() => {
+    if (cameraRef.current && cameraStream) cameraRef.current.srcObject = cameraStream
+  }, [cameraStream])
+  useEffect(() => () => streamRef.current?.getTracks().forEach((track) => track.stop()), [])
+
+  function closeCamera() {
+    streamRef.current?.getTracks().forEach((track) => track.stop())
+    streamRef.current = null
+    setCameraStream(null)
+    setCameraOpen(false)
+  }
+
+  async function openCamera() {
+    if (!navigator.mediaDevices?.getUserMedia)
+      return toast.error('Kamera tidak didukung di perangkat ini.')
+    try {
+      closeCamera()
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      })
+      streamRef.current = stream
+      setCameraStream(stream)
+      setCameraOpen(true)
+    } catch {
+      toast.error('Kamera tidak dapat dibuka. Izinkan akses kamera lalu coba lagi.')
+    }
+  }
+
+  function capturePhoto() {
+    const video = cameraRef.current
+    if (!video?.videoWidth || !video.videoHeight) return toast.error('Kamera belum siap.')
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height)
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return toast.error('Gagal mengambil foto.')
+        chooseFile(new File([blob], `foto-ban-${Date.now()}.jpg`, { type: 'image/jpeg' }))
+        closeCamera()
+      },
+      'image/jpeg',
+      0.9
+    )
+  }
 
   function chooseFile(nextFile: File | undefined) {
     if (!nextFile) return
@@ -73,6 +156,12 @@ export default function MobileTireDamagePage() {
   async function predict() {
     if (!file) return
     setResult(null)
+    setElapsedSeconds(0)
+    const startedAt = performance.now()
+    const timer = window.setInterval(
+      () => setElapsedSeconds(Math.ceil((performance.now() - startedAt) / 1000)),
+      250
+    )
     let analyzeTimer: ReturnType<typeof setTimeout> | undefined
     try {
       setStage(file.type.startsWith('image/') ? 'optimizing' : 'uploading')
@@ -97,12 +186,15 @@ export default function MobileTireDamagePage() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Deteksi kerusakan gagal.')
     } finally {
+      window.clearInterval(timer)
+      setElapsedSeconds(Math.max(1, Math.ceil((performance.now() - startedAt) / 1000)))
       if (analyzeTimer) window.clearTimeout(analyzeTimer)
       setStage('idle')
     }
   }
 
   const annotatedUrl = findAnnotatedUrl(result)
+  const damageDetails = findDamageDetails(result)
   const isVideo = file?.type.startsWith('video/')
   const progress = stage === 'optimizing' ? 30 : stage === 'uploading' ? 60 : 90
 
@@ -153,6 +245,42 @@ export default function MobileTireDamagePage() {
           onChange={(event) => chooseFile(event.target.files?.[0])}
         />
       </label>
+
+      <button
+        type="button"
+        onClick={() => void openCamera()}
+        className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#eaf4fb] px-4 text-sm font-black text-[#003f78]"
+      >
+        <Camera className="size-4" /> Gunakan Kamera
+      </button>
+
+      {cameraOpen ? (
+        <section className="space-y-3 rounded-2xl bg-white p-4 shadow-[0_8px_24px_rgba(8,32,51,0.06)]">
+          <video
+            ref={cameraRef}
+            autoPlay
+            playsInline
+            muted
+            className="max-h-80 w-full rounded-xl bg-slate-950 object-cover"
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={closeCamera}
+              className="min-h-12 rounded-xl bg-slate-100 text-sm font-black text-[#486275]"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={capturePhoto}
+              className="min-h-12 rounded-xl bg-[#003f78] text-sm font-black text-white"
+            >
+              Ambil Foto
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       {file ? (
         <div className="flex items-center justify-between rounded-xl bg-[#eaf4fb] px-3 py-2.5 text-xs font-bold text-[#153249]">
@@ -219,6 +347,44 @@ export default function MobileTireDamagePage() {
       {result ? (
         <section className="space-y-3 rounded-2xl bg-white p-4 shadow-[0_8px_24px_rgba(8,32,51,0.06)]">
           <h2 className="text-sm font-black text-[#082033]">Hasil Deteksi</h2>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-xl bg-[#eaf4fb] px-3 py-2.5">
+              <span className="flex items-center gap-1 text-[10px] font-black tracking-wide text-[#486275] uppercase">
+                <Timer className="size-3" /> Waktu
+              </span>
+              <p className="mt-1 text-sm font-black text-[#082033]">
+                {elapsedSeconds ? `${elapsedSeconds} dtk` : '-'}
+              </p>
+            </div>
+            <div className="rounded-xl bg-[#eaf4fb] px-3 py-2.5">
+              <span className="text-[10px] font-black tracking-wide text-[#486275] uppercase">
+                Luka terdeteksi
+              </span>
+              <p className="mt-1 text-sm font-black text-[#082033]">{damageDetails.length}</p>
+            </div>
+          </div>
+          {damageDetails.length ? (
+            <div className="space-y-2">
+              <p className="text-[10px] font-black tracking-wide text-[#486275] uppercase">
+                Detail luka
+              </p>
+              {damageDetails.map((damage, index) => (
+                <div
+                  key={`${damage.label}-${index}`}
+                  className="flex items-center justify-between rounded-xl bg-[#f5f7fb] px-3 py-2.5 text-sm"
+                >
+                  <span className="font-bold text-[#082033]">{damage.label}</span>
+                  <span className="font-black text-[#003f78]">
+                    {damage.confidence === null ? '-' : `${Math.round(damage.confidence * 100)}%`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs font-semibold text-[#486275]">
+              Model tidak mengirim detail luka terstruktur.
+            </p>
+          )}
           {annotatedUrl ? (
             <>
               <img
