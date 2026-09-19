@@ -776,27 +776,52 @@ export async function rarayPredictTireDamage(params: {
 }): Promise<{ status: 'success' | 'error'; result?: unknown; message?: string }> {
   const { fileBuffer, fileName, mimeType, confidenceThreshold = 0.25, iouThreshold = 0.45 } = params
 
-  try {
+  const predictWithEndpoint = async (endpoint: string, timeoutMs: number) => {
     const formData = new FormData()
     formData.append('file', new Blob([new Uint8Array(fileBuffer)], { type: mimeType }), fileName)
     formData.append('conf_threshold', String(confidenceThreshold))
     formData.append('iou_threshold', String(iouThreshold))
 
-    const response = await fetch(`${getBaseUrl()}/api/v1/models/endpoints/tire-demage/predict`, {
+    return fetch(`${getBaseUrl()}/api/v1/models/endpoints/${endpoint}/predict`, {
       method: 'POST',
       headers: { Authorization: await getAuthHeader() },
       body: formData,
       cache: 'no-store',
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.timeout(timeoutMs),
     })
+  }
 
-    if (!response.ok) {
-      const details = await response.text().catch(() => '')
-      return { status: 'error', message: `Vision API error (${response.status}): ${details.slice(0, 240)}` }
+  try {
+    // ponytail: keep the established model as one compatibility fallback.
+    let primary: Response | undefined
+    try {
+      primary = await predictWithEndpoint('tire-demage-onnx', 3_000)
+    } catch {
+      // The compatibility endpoint below handles unavailable or slow ONNX.
     }
 
-    return { status: 'success', result: await response.json() }
+    if (primary?.ok) return { status: 'success', result: await primary.json() }
+
+    if (primary && [400, 401, 403].includes(primary.status)) {
+      const details = await primary.text().catch(() => '')
+      return {
+        status: 'error',
+        message: `Vision API error (${primary.status}): ${details.slice(0, 240)}`,
+      }
+    }
+
+    const fallback = await predictWithEndpoint('tire-demage', 120_000)
+    if (fallback.ok) return { status: 'success', result: await fallback.json() }
+
+    const details = await fallback.text().catch(() => '')
+    return {
+      status: 'error',
+      message: `Vision API error (${fallback.status}): ${details.slice(0, 240)}`,
+    }
   } catch (error) {
-    return { status: 'error', message: error instanceof Error ? error.message : 'Gagal menghubungi Vision API.' }
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Gagal menghubungi Vision API.',
+    }
   }
 }
