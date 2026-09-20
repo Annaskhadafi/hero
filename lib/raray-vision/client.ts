@@ -825,3 +825,61 @@ export async function rarayPredictTireDamage(params: {
     }
   }
 }
+
+export async function raraySubmitTireDamageFeedback(params: {
+  predictionId: string
+  feedback: 'good' | 'bad'
+  notes?: string | null
+  modelVersion?: string | null
+  sourceRecordId?: string | null
+  actorEmail?: string | null
+  source?: string | null
+  idempotencyKey?: string | null
+  imageWidth?: number | null
+  imageHeight?: number | null
+  annotations?: Array<{
+    shape: 'rectangle'
+    label: string
+    x: number
+    y: number
+    width: number
+    height: number
+  }>
+}): Promise<{ status: 'success' | 'error'; result?: unknown; message?: string }> {
+  try {
+    const response = await fetch(
+      `${getBaseUrl()}/api/v1/models/feedback/${encodeURIComponent(params.predictionId)}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: await getAuthHeader(),
+          'Content-Type': 'application/json',
+          ...(params.idempotencyKey ? { 'Idempotency-Key': params.idempotencyKey } : {}),
+        },
+        body: JSON.stringify({
+          feedback: params.feedback,
+          notes: params.notes ?? null,
+          model_version: params.modelVersion ?? null,
+          source_record_id: params.sourceRecordId ?? null,
+          actor_email: params.actorEmail ?? null,
+          source: params.source ?? 'HERO',
+          image_width: params.imageWidth ?? null,
+          image_height: params.imageHeight ?? null,
+          annotations: params.annotations ?? [],
+        }),
+        cache: 'no-store',
+        signal: AbortSignal.timeout(30_000),
+      }
+    )
+    const result = await response.json().catch(() => null)
+    if (!response.ok) {
+      return { status: 'error', message: `Vision API error (${response.status})` }
+    }
+    return { status: 'success', result }
+  } catch (error) {
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Gagal menghubungi Vision API.',
+    }
+  }
+}
