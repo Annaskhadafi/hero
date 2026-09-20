@@ -121,6 +121,7 @@ export interface RagChatRequest {
   top_k?: number
   session_id?: string | null
   document_id?: string | null
+  mode?: 'tire-specialist'
 }
 
 export interface RagChatResponse {

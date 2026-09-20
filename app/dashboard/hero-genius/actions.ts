@@ -104,6 +104,8 @@ export async function getHeroGeniusOverviewAction() {
   }
 }
 
+const TIRE_SPECIALIST_GUIDANCE = `Anda adalah spesialis Tire Inspection dan Tire Repair untuk ban alat berat/industrial. Gunakan dokumen HERO bila relevan dan sebutkan sebagai referensi. Jika dokumen tidak membahas kasusnya, tetap jawab berdasarkan pengetahuan teknis AI yang umum, tetapi nyatakan dengan jelas bahwa jawaban perlu diverifikasi terhadap manual pabrikan, standar site, dan teknisi/vendor berwenang. Jangan mengarang nilai torsi, tekanan, batas keausan, atau prosedur spesifik tanpa sumber. Untuk risiko struktural atau keselamatan, rekomendasikan penghentian operasi dan inspeksi langsung.`;
+
 /**
  * Direct RAG Generation fallback using pgvector search + internal OpenRouter LLM
  */
@@ -111,7 +113,8 @@ async function generateDirectRagChat(
   query: string,
   topK: number,
   augmentedMessages: Array<{ role: string; content: string }>,
-  learnedFactsText?: string
+  learnedFactsText?: string,
+  modeGuidance?: string
 ): Promise<RagChatResponse> {
   const startTime = Date.now();
 
@@ -169,7 +172,7 @@ Tugas Anda:
 3. Gunakan Bahasa Indonesia yang baik dan komunikatif.
 4. Jika dokumen referensi menyediakan tautan gambar/diagram (![alt](url)), sertakan tag gambar Markdown tersebut di respons Anda agar pengguna dapat melihat diagram visualnya secara langsung.
 
-${learnedFactsText ? `[MEMORI PINTAR / ATURAN TERPELAJAR]:\n${learnedFactsText}\n\n` : ""}[DOKUMEN KNOWLEDGE BASE (PGVECTOR)]:\n${contextSnippet || "Tidak ada dokumen spesifik yang terindeks untuk query ini."}`;
+${modeGuidance ? `[INSTRUKSI MODE]:\n${modeGuidance}\n\n` : ""}${learnedFactsText ? `[MEMORI PINTAR / ATURAN TERPELAJAR]:\n${learnedFactsText}\n\n` : ""}[DOKUMEN KNOWLEDGE BASE (PGVECTOR)]:\n${contextSnippet || "Tidak ada dokumen spesifik yang terindeks untuk query ini."}`;
 
   // 3. Call working OpenRouter LLM (e.g. openai/gpt-4o-mini or xiaomi/mimo-v2.5)
   const apiUrl =
@@ -281,7 +284,14 @@ export async function sendHeroGeniusChatAction(payload: RagChatRequest) {
       .map((f, i) => `[Aturan/Fakta #${i + 1}] (${f.category}): ${f.fact}`)
       .join("\n");
 
+    const modeGuidance = payload.mode === "tire-specialist" ? TIRE_SPECIALIST_GUIDANCE : undefined;
     const augmentedMessages = [...(payload.messages || [])];
+    if (modeGuidance) {
+      augmentedMessages.unshift({
+        role: "system",
+        content: modeGuidance,
+      });
+    }
     if (validActiveFacts.length > 0) {
       // Check if system message exists, else prepend
       const sysIdx = augmentedMessages.findIndex((m) => m.role === "system");
@@ -299,8 +309,9 @@ export async function sendHeroGeniusChatAction(payload: RagChatRequest) {
 
     let response: RagChatResponse;
     try {
+      const { mode: _mode, ...ragPayload } = payload;
       response = await sendRagChat({
-        ...payload,
+        ...ragPayload,
         session_id: sessionId,
         messages: augmentedMessages,
       });
@@ -313,7 +324,8 @@ export async function sendHeroGeniusChatAction(payload: RagChatRequest) {
         payload.query,
         payload.top_k || 4,
         augmentedMessages,
-        memoryContext
+        memoryContext,
+        modeGuidance
       );
     }
 

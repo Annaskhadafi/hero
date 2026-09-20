@@ -1,7 +1,17 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Camera, Download, FileVideo, Loader2, ScanSearch, Timer, Upload, X } from 'lucide-react'
+import {
+  Camera,
+  Download,
+  FileVideo,
+  Loader2,
+  ScanSearch,
+  Sparkles,
+  Timer,
+  Upload,
+  X,
+} from 'lucide-react'
 import { toast } from 'sonner'
 
 type PredictionResponse = { success?: boolean; result?: unknown; error?: string }
@@ -59,6 +69,19 @@ function findDamageDetails(value: unknown): DamageDetail[] {
   }
   const dataDetails = findDamageDetails(object.data)
   return dataDetails.length ? dataDetails : findDamageDetails(object.result)
+}
+
+function buildGeniusPrompt(damages: DamageDetail[]) {
+  const findings = damages.length
+    ? damages
+        .map(
+          (damage) =>
+            `${damage.label}${damage.confidence === null ? '' : ` (${Math.round(damage.confidence * 100)}%)`}`
+        )
+        .join(', ')
+    : 'tidak ada detail kerusakan terstruktur dari Vision AI'
+
+  return `Saya baru selesai deteksi kerusakan ban. Hasil Vision AI: ${findings}. Jelaskan kemungkinan penyebab, risiko operasional, langkah penanganan aman segera, solusi perbaikan, dan pencegahannya. Tandai bila perlu inspeksi teknisi. Hasil deteksi bukan diagnosis final.`
 }
 
 async function optimizeImage(file: File) {
@@ -195,6 +218,7 @@ export default function MobileTireDamagePage() {
 
   const annotatedUrl = findAnnotatedUrl(result)
   const damageDetails = findDamageDetails(result)
+  const geniusPrompt = buildGeniusPrompt(damageDetails)
   const isVideo = file?.type.startsWith('video/')
   const progress = stage === 'optimizing' ? 30 : stage === 'uploading' ? 60 : 90
 
@@ -241,7 +265,6 @@ export default function MobileTireDamagePage() {
           className="hidden"
           type="file"
           accept={ACCEPTED_MEDIA}
-          capture="environment"
           onChange={(event) => chooseFile(event.target.files?.[0])}
         />
       </label>
@@ -385,6 +408,12 @@ export default function MobileTireDamagePage() {
               Model tidak mengirim detail luka terstruktur.
             </p>
           )}
+          <a
+            href={`/mobile/hero-genius?mode=tire-specialist&q=${encodeURIComponent(geniusPrompt)}`}
+            className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#eef2ff] px-4 text-sm font-black text-[#3730a3]"
+          >
+            <Sparkles className="size-4" /> Tanya HERO Genius
+          </a>
           {annotatedUrl ? (
             <>
               <img

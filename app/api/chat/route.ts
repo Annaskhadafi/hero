@@ -4,10 +4,22 @@ import { sendHeroGeniusChatAction } from "@/app/dashboard/hero-genius/actions";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const messages = body.messages || [];
+    const messages = Array.isArray(body.messages)
+      ? body.messages
+          .filter(
+            (message: unknown): message is { role: "user" | "assistant"; content: string } =>
+              !!message &&
+              typeof message === "object" &&
+              ((message as { role?: unknown }).role === "user" ||
+                (message as { role?: unknown }).role === "assistant") &&
+              typeof (message as { content?: unknown }).content === "string"
+          )
+          .map(({ role, content }) => ({ role, content }))
+      : [];
     const query = body.query || messages[messages.length - 1]?.content;
     const sessionId = body.sessionId || body.session_id;
     const topK = body.top_k || 4;
+    const mode = body.mode === "tire-specialist" ? "tire-specialist" : undefined;
 
     if (!query) {
       return NextResponse.json({ error: "Message/query is required" }, { status: 400 });
@@ -21,6 +33,7 @@ export async function POST(req: NextRequest) {
       top_k: topK,
       session_id: sessionId,
       document_id: documentId,
+      mode,
     });
 
     if (!res.success || !res.data) {

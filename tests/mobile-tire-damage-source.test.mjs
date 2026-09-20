@@ -10,6 +10,9 @@ test('mobile tire damage keeps Vision credentials server-side and enforces exist
   const downloadRoute = read('app/api/mobile/tire-damage/download/route.ts')
   const client = read('app/mobile/hse/tire-damage/page.tsx')
   const visionClient = read('lib/raray-vision/client.ts')
+  const chatRoute = read('app/api/chat/route.ts')
+  const geniusAction = read('app/dashboard/hero-genius/actions.ts')
+  const mobileGeniusChat = read('components/mobile/mobile-genius-chat.tsx')
 
   assert.match(route, /getCurrentMenuPermission\('hse_tire_inspection'\)/)
   assert.match(route, /ALLOWED_MEDIA_TYPES/)
@@ -28,6 +31,19 @@ test('mobile tire damage keeps Vision credentials server-side and enforces exist
   assert.match(client, /getUserMedia/)
   assert.match(client, /facingMode: \{ ideal: 'environment' \}/)
   assert.match(client, /Ambil Foto/)
+  assert.doesNotMatch(client, /capture="environment"/)
+  assert.match(client, /buildGeniusPrompt/)
+  assert.match(client, /Tanya HERO Genius/)
+  assert.match(client, /mode=tire-specialist/)
+  assert.match(mobileGeniusChat, /mode === "tire-specialist"/)
+  assert.match(chatRoute, /body\.mode === "tire-specialist"/)
+  assert.match(chatRoute, /role === "user" \|\|/)
+  assert.doesNotMatch(chatRoute, /role === "system"/)
+  assert.match(geniusAction, /spesialis Tire Inspection dan Tire Repair/)
+  assert.match(
+    geniusAction,
+    /Jika dokumen tidak membahas kasusnya, tetap jawab berdasarkan pengetahuan teknis AI/
+  )
   assert.match(client, /Unduh Gambar/)
   assert.doesNotMatch(client, /JSON\.stringify\(result, null, 2\)/)
   assert.match(downloadRoute, /Content-Disposition/)

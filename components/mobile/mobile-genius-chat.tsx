@@ -65,6 +65,7 @@ export function MobileGeniusChat({
   const searchParams = useSearchParams();
   const initialQuery = searchParams ? searchParams.get("q") : null;
   const docParam = searchParams ? searchParams.get("doc") : null;
+  const mode = searchParams ? searchParams.get("mode") : null;
   const hasSentInitialRef = useRef(false);
 
   const [sessionId, setSessionId] = useState<string>(() => `sess-${Date.now()}`);
@@ -208,6 +209,7 @@ export function MobileGeniusChat({
           messages: apiMessages,
           top_k: 4,
           session_id: sessionId,
+          mode: mode === "tire-specialist" ? mode : undefined,
         }),
       });
 
