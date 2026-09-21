@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
                 (message as { role?: unknown }).role === "assistant") &&
               typeof (message as { content?: unknown }).content === "string"
           )
-          .map(({ role, content }) => ({ role, content }))
+          .map(({ role, content }: { role: "user" | "assistant"; content: string }) => ({ role, content }))
       : [];
     const query = body.query || messages[messages.length - 1]?.content;
     const sessionId = body.sessionId || body.session_id;

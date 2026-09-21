@@ -3494,16 +3494,24 @@ Tim Human Capital`,
     recipientScope: 'requester',
     ccEmail: '',
     subject: 'Permohonan {{requestType}} Disetujui: {{requestNumber}}',
-    htmlContent: 'Halo {{employeeName}},<br><br>Permohonan {{requestType}} Anda dengan nomor tiket <b>{{requestNumber}}</b> telah <b>DISETUJUI</b> oleh {{approverName}}.<br><br><div style="margin: 16px 0;"><a href="{{dashboardLink}}" style="background-color: #16a34a; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Lihat Permohonan</a></div><br>Terima kasih.',
-    textContent: 'Halo {{employeeName}},\n\nPermohonan {{requestType}} Anda dengan nomor tiket {{requestNumber}} telah DISETUJUI oleh {{approverName}}.\n\nLihat permohonan:\n{{dashboardLink}}\n\nTerima kasih.',
+    htmlContent: 'Yth. {{employeeName}},<br><br>Permohonan APD Anda dengan nomor permohonan <b>{{requestNumber}}</b> telah <b>DISETUJUI</b> oleh {{approverName}}.<br><br><b>Detail Permohonan:</b><br>No. Permohonan: {{requestNumber}}<br>Kategori: {{requestType}}<br>Disetujui Oleh: {{approverName}}<br>Status: DISETUJUI<br><br>Demikian pemberitahuan ini disampaikan. Terima kasih.',
+    textContent: `Yth. {{employeeName}},
+
+Permohonan APD Anda dengan nomor permohonan {{requestNumber}} telah DISETUJUI oleh {{approverName}}.
+
+No. Permohonan: {{requestNumber}}
+Kategori: {{requestType}}
+Disetujui Oleh: {{approverName}}
+Status: DISETUJUI
+
+Demikian pemberitahuan ini disampaikan. Terima kasih.`,
     description: 'Notifikasi saat permohonan item HSE disetujui',
-    variables: ['employeeName', 'requestNumber', 'approverName', 'requestType', 'dashboardLink'],
+    variables: ['employeeName', 'requestNumber', 'approverName', 'requestType'],
     sampleValues: {
       employeeName: 'Budi Santoso',
       requestNumber: 'APD-2026-0001',
       approverName: 'Agus Subiyanto',
       requestType: 'APD',
-      dashboardLink: 'https://hero.chitraparatama.com/dashboard/apd',
     }
   },
   {
@@ -3817,15 +3825,100 @@ function escapeEmailHtml(value: string) {
     .replaceAll("'", '&#39;')
 }
 
-function formatEmailBody(value: string) {
-  return escapeEmailHtml(value.trim())
-    .replace(/\n{3,}/g, '\n\n')
-    .split('\n\n')
-    .map((paragraph) => {
-      const lines = paragraph.split('\n').filter(Boolean)
-      return `<p style="margin:0 0 14px;color:#334155;font-size:14px;line-height:1.75">${lines.join('<br />')}</p>`
-    })
-    .join('')
+function formatEmailBody(value: string, templateCode: string, templateType: string) {
+  const escaped = escapeEmailHtml(value.trim())
+  const paragraphs = escaped.replace(/\n{3,}/g, '\n\n').split('\n\n')
+
+  let hasCtaButton = false
+  const htmlParts: string[] = []
+
+  for (const paragraph of paragraphs) {
+    const lines = paragraph.split('\n').filter(Boolean)
+
+    const linkMatch = paragraph.match(/\{\{\s*(\w*(?:Link|Url|link|url))\s*\}\}/i)
+    if (linkMatch) {
+      hasCtaButton = true
+      const token = linkMatch[1]
+      const tokenLower = token.toLowerCase()
+
+      let btnLabel = 'Buka Inbox Approval'
+      if (tokenLower.includes('review') || tokenLower.includes('action')) {
+        btnLabel = 'Tinjau & Verifikasi di Inbox Approval'
+      } else if (tokenLower.includes('revisi') || tokenLower.includes('revision')) {
+        btnLabel = 'Buka & Perbaiki Pengajuan'
+      } else if (tokenLower.includes('dashboard')) {
+        btnLabel = 'Buka Dashboard HERO'
+      } else if (tokenLower.includes('onboarding')) {
+        btnLabel = 'Buka Formulir Onboarding'
+      } else if (tokenLower.includes('test')) {
+        btnLabel = 'Akses Halaman Ujian / Tes'
+      } else if (tokenLower.includes('invitation')) {
+        btnLabel = 'Aktivasi Akun HERO'
+      } else if (tokenLower.includes('verification')) {
+        btnLabel = 'Verifikasi Email Akun'
+      } else if (tokenLower.includes('report')) {
+        btnLabel = 'Lihat Laporan Lengkap'
+      } else if (tokenLower.includes('view') || tokenLower.includes('detail')) {
+        btnLabel = 'Lihat Detail di HERO'
+      } else if (templateType.toLowerCase() === 'approval' || templateType.toLowerCase() === 'reminder') {
+        btnLabel = 'Buka Inbox Approval'
+      }
+
+      const nonLinkLines = lines.filter(
+        (l) => !l.includes(`{{${token}}}`) && !l.includes(`{{ ${token} }}`)
+      )
+      if (nonLinkLines.length > 0) {
+        htmlParts.push(
+          `<p style="margin:0 0 14px;color:#334155;font-size:14px;line-height:1.75">${nonLinkLines.join('<br />')}</p>`
+        )
+      }
+
+      htmlParts.push(`
+<div style="text-align:center;margin:24px 0 20px">
+  <a href="{{${token}}}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:10px;font-size:14px;font-weight:700;box-shadow:0 4px 14px rgba(37,99,235,0.25)">
+    ${btnLabel} &rarr;
+  </a>
+</div>
+<p style="text-align:center;margin:0 0 18px;font-size:12px;color:#64748b">
+  Atau salin tautan: <span style="color:#2563eb;word-break:break-all">{{${token}}}</span>
+</p>`)
+    } else {
+      htmlParts.push(
+        `<p style="margin:0 0 14px;color:#334155;font-size:14px;line-height:1.75">${lines.join('<br />')}</p>`
+      )
+    }
+  }
+
+  if (!hasCtaButton && templateCode !== 'apd_request_approved') {
+    const isApprovalOrReminder =
+      templateType.toLowerCase() === 'approval' ||
+      templateType.toLowerCase() === 'reminder' ||
+      templateCode.includes('approval') ||
+      templateCode.includes('spl_') ||
+      templateCode.includes('leave_') ||
+      templateCode.includes('attendance_') ||
+      templateCode.includes('overtime_') ||
+      templateCode.includes('five_r_') ||
+      templateCode.includes('apd_') ||
+      templateCode.includes('form_wo_') ||
+      templateCode.includes('hse_') ||
+      templateCode.includes('hc_')
+
+    const token = isApprovalOrReminder ? 'approvalLink' : 'viewLink'
+    const btnLabel = isApprovalOrReminder ? 'Buka Inbox Approval' : 'Lihat Detail di HERO'
+
+    htmlParts.push(`
+<div style="text-align:center;margin:24px 0 20px">
+  <a href="{{${token}}}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:10px;font-size:14px;font-weight:700;box-shadow:0 4px 14px rgba(37,99,235,0.25)">
+    ${btnLabel} &rarr;
+  </a>
+</div>
+<p style="text-align:center;margin:0 0 18px;font-size:12px;color:#64748b">
+  Atau salin tautan: <span style="color:#2563eb;word-break:break-all">{{${token}}}</span>
+</p>`)
+  }
+
+  return htmlParts.join('')
 }
 
 function inferTemplateFeature(templateCode: string) {
@@ -3864,9 +3957,14 @@ function inferTemplateFeature(templateCode: string) {
   ]
   return prefixes.find(([prefix]) => templateCode.startsWith(prefix))?.[1] ?? 'Custom'
 }
+
 function buildUnifiedEmailHtml(preset: EmailTemplatePreset) {
   const feature = inferTemplateFeature(preset.templateCode)
-  let body = formatEmailBody(preset.textContent || preset.description || preset.subject)
+  let body = formatEmailBody(
+    preset.textContent || preset.description || preset.subject,
+    preset.templateCode,
+    preset.templateType
+  )
   if (preset.textContent.includes('{{tableContentText}}') || preset.htmlContent?.includes('{{tableContentHtml}}')) {
     body = body.replace(
       /<p[^>]*>\s*(\{\{\s*tableContent(Text|Html)\s*\}\})\s*<\/p>/gi,
@@ -3912,7 +4010,30 @@ ${body}
 }
 
 function buildUnifiedEmailText(preset: EmailTemplatePreset) {
-  return `PT Chitra Paratama — HERO Notification\n${preset.subject}\n\n${preset.textContent.trim()}\n\nEmail ini dikirim otomatis oleh sistem HERO PT Chitra Paratama. Mohon tidak membalas langsung email ini.`
+  let text = preset.textContent.trim()
+  const hasLinkInText = /\{\{\s*(\w*(?:Link|Url|link|url))\s*\}\}/i.test(text)
+
+  if (!hasLinkInText && preset.templateCode !== 'apd_request_approved') {
+    const isApprovalOrReminder =
+      preset.templateType.toLowerCase() === 'approval' ||
+      preset.templateType.toLowerCase() === 'reminder' ||
+      preset.templateCode.includes('approval') ||
+      preset.templateCode.includes('spl_') ||
+      preset.templateCode.includes('leave_') ||
+      preset.templateCode.includes('attendance_') ||
+      preset.templateCode.includes('overtime_') ||
+      preset.templateCode.includes('five_r_') ||
+      preset.templateCode.includes('apd_') ||
+      preset.templateCode.includes('form_wo_') ||
+      preset.templateCode.includes('hse_') ||
+      preset.templateCode.includes('hc_')
+
+    const linkVar = isApprovalOrReminder ? 'approvalLink' : 'viewLink'
+    const linkLabel = isApprovalOrReminder ? 'Buka Inbox Approval' : 'Lihat Detail'
+    text += `\n\n${linkLabel}: {{${linkVar}}}`
+  }
+
+  return `PT Chitra Paratama — HERO Notification\n${preset.subject}\n\n${text}\n\nEmail ini dikirim otomatis oleh sistem HERO PT Chitra Paratama. Mohon tidak membalas langsung email ini.`
 }
 
 function ensurePwaPushDeliveryChannel(channelStr: string): string {
@@ -3924,16 +4045,82 @@ function ensurePwaPushDeliveryChannel(channelStr: string): string {
 }
 
 function applyUnifiedEmailDesign(preset: EmailTemplatePreset): EmailTemplatePreset {
+  const isExcluded = preset.templateCode === 'apd_request_approved'
+  const isApprovalOrReminder =
+    !isExcluded &&
+    (preset.templateType.toLowerCase() === 'approval' ||
+      preset.templateType.toLowerCase() === 'reminder' ||
+      preset.templateCode.includes('approval') ||
+      preset.templateCode.includes('spl_') ||
+      preset.templateCode.includes('leave_') ||
+      preset.templateCode.includes('attendance_') ||
+      preset.templateCode.includes('overtime_') ||
+      preset.templateCode.includes('five_r_') ||
+      preset.templateCode.includes('apd_') ||
+      preset.templateCode.includes('form_wo_') ||
+      preset.templateCode.includes('hse_') ||
+      preset.templateCode.includes('hc_'))
+
+  const linkVarToAdd = isApprovalOrReminder ? 'approvalLink' : 'viewLink'
+  const hasAnyLinkVar = preset.variables.some((v) =>
+    [
+      'approvalLink',
+      'approvalUrl',
+      'viewLink',
+      'actionUrl',
+      'dashboardLink',
+      'reviewLink',
+      'revisiLink',
+      'onboardingLink',
+      'onboardingUrl',
+      'testLink',
+      'invitationLink',
+      'verificationLink',
+      'reportUrl',
+    ].includes(v)
+  )
+
+  const finalVariables = isExcluded || hasAnyLinkVar
+    ? preset.variables
+    : [...preset.variables, linkVarToAdd]
+
+  const finalSampleValues = isExcluded
+    ? preset.sampleValues
+    : {
+        ...preset.sampleValues,
+        approvalLink:
+          preset.sampleValues.approvalLink ||
+          preset.sampleValues.approvalUrl ||
+          preset.sampleValues.viewLink ||
+          'https://hero.chitraparatama.com/dashboard/approval',
+        viewLink:
+          preset.sampleValues.viewLink ||
+          preset.sampleValues.approvalLink ||
+          'https://hero.chitraparatama.com/dashboard/approval',
+        dashboardLink:
+          preset.sampleValues.dashboardLink ||
+          'https://hero.chitraparatama.com/dashboard',
+      }
+
   return {
     ...preset,
     deliveryChannel: ensurePwaPushDeliveryChannel(preset.deliveryChannel),
-    htmlContent: buildUnifiedEmailHtml(preset),
-    textContent: buildUnifiedEmailText(preset),
+    variables: finalVariables,
+    sampleValues: finalSampleValues,
+    htmlContent: buildUnifiedEmailHtml({
+      ...preset,
+      variables: finalVariables,
+      sampleValues: finalSampleValues,
+    }),
+    textContent: buildUnifiedEmailText({
+      ...preset,
+      variables: finalVariables,
+      sampleValues: finalSampleValues,
+    }),
   }
 }
 
 export const EMAIL_TEMPLATE_PRESETS: EmailTemplatePreset[] = RAW_EMAIL_TEMPLATE_PRESETS.map(applyUnifiedEmailDesign)
-
 
 export const EMAIL_TEMPLATE_PRESET_MAP = Object.fromEntries(
   EMAIL_TEMPLATE_PRESETS.map((preset) => [preset.templateCode, preset])

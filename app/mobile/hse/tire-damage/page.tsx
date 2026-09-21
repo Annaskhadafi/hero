@@ -155,7 +155,7 @@ export default function MobileTireDamagePage() {
   const streamRef = useRef<MediaStream | null>(null)
   const loading = stage !== 'idle'
 
-  useEffect(() => () => previewUrl && URL.revokeObjectURL(previewUrl), [previewUrl])
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }, [previewUrl])
   useEffect(() => {
     void fetch('/api/mobile/tire-damage/feedback', { cache: 'no-store' })
       .then((response) => response.ok ? response.json() as Promise<{ canEdit?: boolean }> : null)
@@ -247,7 +247,7 @@ export default function MobileTireDamagePage() {
       () => setElapsedSeconds(Math.ceil((performance.now() - startedAt) / 1000)),
       250
     )
-    let analyzeTimer: ReturnType<typeof setTimeout> | undefined
+    let analyzeTimer: ReturnType<typeof window.setTimeout> | undefined
     try {
       setStage(file.type.startsWith('image/') ? 'optimizing' : 'uploading')
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))

@@ -4121,7 +4121,6 @@ Email ini adalah notifikasi uji coba (test) untuk memvalidasi workflow Contract 
 ]
 
 const EMAIL_TEMPLATE_SEEDS = [
-  ...RAW_EMAIL_TEMPLATE_SEEDS,
   ...EMAIL_TEMPLATE_PRESETS.map((p) => ({
     name: p.name,
     templateCode: p.templateCode,
@@ -4134,6 +4133,7 @@ const EMAIL_TEMPLATE_SEEDS = [
     textContent: p.textContent,
     isActive: true,
   })),
+  ...RAW_EMAIL_TEMPLATE_SEEDS,
 ].reduce(
   (acc, current) => {
     if (!acc.some((item) => item.templateCode === current.templateCode)) {

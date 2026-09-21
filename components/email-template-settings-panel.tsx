@@ -94,8 +94,35 @@ const EMPTY_FORM = {
 };
 
 function renderTemplatePreview(content: string, values: Record<string, string>) {
+  const defaultApprovalUrl = "https://hero.chitraparatama.com/dashboard/approval";
+  const defaultDashboardUrl = "https://hero.chitraparatama.com/dashboard";
+  const defaultLink =
+    values.approvalLink ||
+    values.approvalUrl ||
+    values.actionUrl ||
+    values.viewLink ||
+    defaultApprovalUrl;
+
+  const resolvedValues: Record<string, string> = {
+    approvalLink: defaultLink,
+    approvalUrl: defaultLink,
+    actionUrl: defaultLink,
+    viewLink: values.viewLink || defaultLink,
+    dashboardLink: values.dashboardLink || defaultDashboardUrl,
+    reviewLink: values.reviewLink || defaultLink,
+    revisiLink: values.revisiLink || values.revisionLink || defaultLink,
+    revisionLink: values.revisionLink || values.revisiLink || defaultLink,
+    onboardingLink: values.onboardingLink || values.onboardingUrl || "https://hero.chitraparatama.com/onboarding",
+    onboardingUrl: values.onboardingUrl || values.onboardingLink || "https://hero.chitraparatama.com/onboarding",
+    testLink: values.testLink || "https://hero.chitraparatama.com/dashboard/hc/recruitment",
+    invitationLink: values.invitationLink || "https://hero.chitraparatama.com/auth/register",
+    verificationLink: values.verificationLink || "https://hero.chitraparatama.com/auth/verify",
+    reportUrl: values.reportUrl || "https://hero.chitraparatama.com/dashboard/reports",
+    ...values,
+  };
+
   return content.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (_match, token: string) => {
-    return values[token] ?? "";
+    return resolvedValues[token] ?? values[token] ?? "";
   });
 }
 

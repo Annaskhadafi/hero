@@ -73,8 +73,9 @@ export async function POST(request: NextRequest) {
     if (!predictionId || !feedback || !validDimension(imageWidth) || !validDimension(imageHeight))
       return NextResponse.json({ error: 'Prediction, feedback, dan dimensi gambar wajib valid.' }, { status: 400 })
 
-    const annotations = parseAnnotations(body.annotations, imageWidth, imageHeight).map((annotation) => ({
-      ...annotation,
+    const annotations: Annotation[] = parseAnnotations(body.annotations, imageWidth, imageHeight).map((annotation) => ({
+      shape: 'rectangle' as const,
+      label: annotation.label,
       x: annotation.x * imageWidth,
       y: annotation.y * imageHeight,
       width: annotation.width * imageWidth,

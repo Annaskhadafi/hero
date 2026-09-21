@@ -361,6 +361,35 @@ export function buildSopWinWorkflowEmailContent(input: {
 export async function resolveWorkflowTemplateContent(request: WorkflowTemplateContentRequest) {
   const template = await getActiveTemplate(request.templateCode)
   const rawVars = request.variables ?? {}
+
+  const defaultApprovalUrl = getAppUrl('/dashboard/approval')
+  const defaultDashboardUrl = getAppUrl('/dashboard')
+  const defaultLoginUrl = getAppUrl('/login')
+  const defaultAppUrl = getAppUrl()
+
+  const resolvedApprovalLink = (
+    rawVars.approvalLink ||
+    rawVars.approvalUrl ||
+    rawVars.actionUrl ||
+    rawVars.viewLink ||
+    rawVars.link ||
+    defaultApprovalUrl
+  ) as string
+
+  const resolvedViewLink = (
+    rawVars.viewLink ||
+    rawVars.approvalLink ||
+    rawVars.approvalUrl ||
+    rawVars.actionUrl ||
+    rawVars.link ||
+    defaultApprovalUrl
+  ) as string
+
+  const resolvedDashboardLink = (
+    rawVars.dashboardLink ||
+    defaultDashboardUrl
+  ) as string
+
   const variables: TemplateVariables = {
     ...rawVars,
     employeeName: rawVars.employeeName ?? rawVars.requesterName ?? rawVars.targetApproverName ?? rawVars.applicantName ?? '',
@@ -370,8 +399,21 @@ export async function resolveWorkflowTemplateContent(request: WorkflowTemplateCo
     sessionCode: rawVars.sessionCode ?? rawVars.splNumber ?? rawVars.permitNumber ?? '',
     splNumber: rawVars.splNumber ?? rawVars.sessionCode ?? rawVars.permitNumber ?? '',
     permitNumber: rawVars.permitNumber ?? rawVars.splNumber ?? rawVars.sessionCode ?? '',
-    approvalLink: rawVars.approvalLink ?? rawVars.viewLink ?? '',
-    viewLink: rawVars.viewLink ?? rawVars.approvalLink ?? '',
+    approvalLink: resolvedApprovalLink,
+    approvalUrl: resolvedApprovalLink,
+    actionUrl: resolvedApprovalLink,
+    viewLink: resolvedViewLink,
+    dashboardLink: resolvedDashboardLink,
+    reviewLink: (rawVars.reviewLink || resolvedApprovalLink) as string,
+    revisiLink: (rawVars.revisiLink || resolvedViewLink) as string,
+    onboardingLink: (rawVars.onboardingLink || rawVars.onboardingUrl || getAppUrl('/onboarding')) as string,
+    onboardingUrl: (rawVars.onboardingUrl || rawVars.onboardingLink || getAppUrl('/onboarding')) as string,
+    testLink: (rawVars.testLink || getAppUrl('/dashboard/hc/recruitment')) as string,
+    invitationLink: (rawVars.invitationLink || getAppUrl('/auth/register')) as string,
+    verificationLink: (rawVars.verificationLink || getAppUrl('/auth/verify')) as string,
+    reportUrl: (rawVars.reportUrl || getAppUrl('/dashboard/reports')) as string,
+    loginUrl: (rawVars.loginUrl || defaultLoginUrl) as string,
+    appUrl: (rawVars.appUrl || defaultAppUrl) as string,
     revertReason: rawVars.revertReason ?? rawVars.remarks ?? '',
     remarks: rawVars.remarks ?? rawVars.revertReason ?? '',
   }

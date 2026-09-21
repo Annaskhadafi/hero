@@ -105,6 +105,7 @@ export async function sendApdLevelApprovedEmail(params: {
 }) {
   const baseUrl = getPublicAppUrl()
   const dashboardLink = `${baseUrl}/dashboard/apd`
+  const approvalLink = `${baseUrl}/dashboard/approval`
   const isFinal = !params.nextLevelLabel
   const statusText = isFinal
     ? `telah <b>DISETUJUI SEPENUHNYA</b> oleh ${params.approverName} pada tahap <b>${params.currentLevelLabel}</b>.`
@@ -123,6 +124,8 @@ export async function sendApdLevelApprovedEmail(params: {
       nextLevelLabel: params.nextLevelLabel ?? '',
       isFinal: String(isFinal),
       dashboardLink,
+      approvalLink: isFinal ? dashboardLink : approvalLink,
+      viewLink: dashboardLink,
     },
     fallbackSubject: `[${params.requestType}] Tahap ${params.currentLevelLabel} Disetujui: ${params.requestNumber}`,
     fallbackHtml: `Halo ${params.requesterName},<br><br>Permohonan ${params.requestType} Anda dengan nomor tiket <b>${params.requestNumber}</b> ${statusText}<br><br><div style="margin: 16px 0;"><a href="${dashboardLink}" style="background-color: #16a34a; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Lihat Status Permohonan</a></div><br>Terima kasih.`,
@@ -153,6 +156,9 @@ export async function sendApdNextApproverEmail(params: {
       requestType: params.requestType,
       currentLevelLabel: params.currentLevelLabel,
       approvalLink,
+      approvalUrl: approvalLink,
+      actionUrl: approvalLink,
+      viewLink: approvalLink,
     },
     fallbackSubject: `[${params.requestType}] Review Diperlukan: ${params.requestNumber}`,
     fallbackHtml: `Halo ${params.nextApproverName},<br><br>Permohonan ${params.requestType} dari <b>${params.requesterName}</b> dengan nomor tiket <b>${params.requestNumber}</b> telah disetujui pada tahap sebelumnya dan memerlukan persetujuan Anda pada tahap <b>${params.currentLevelLabel}</b>.<br><br>Silakan buka tautan berikut untuk melakukan review:<br><div style="margin: 16px 0;"><a href="${approvalLink}" style="background-color: #2563eb; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Buka Inbox Approval</a></div><br><small style="color: #64748b;">Atau salin tautan: <a href="${approvalLink}">${approvalLink}</a></small><br><br>Terima kasih.`,
@@ -182,6 +188,9 @@ export async function sendApdRequestApprovedEmail(params: {
       approverName: params.approverName,
       requestType: params.requestType,
       dashboardLink,
+      approvalLink: dashboardLink,
+      viewLink: dashboardLink,
+      actionUrl: dashboardLink,
     },
     fallbackSubject: `Permohonan ${params.requestType} Disetujui: ${params.requestNumber}`,
     fallbackHtml: `Halo ${params.requesterName},<br><br>Permohonan ${params.requestType} Anda dengan nomor tiket <b>${params.requestNumber}</b> telah <b>DISETUJUI</b> oleh ${params.approverName}.<br><br><div style="margin: 16px 0;"><a href="${dashboardLink}" style="background-color: #16a34a; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Lihat Permohonan</a></div><br>Terima kasih.`,
@@ -212,6 +221,9 @@ export async function sendApdRequestRejectedEmail(params: {
       reason: params.reason,
       requestType: params.requestType,
       dashboardLink,
+      approvalLink: dashboardLink,
+      viewLink: dashboardLink,
+      actionUrl: dashboardLink,
     },
     fallbackSubject: `Permohonan ${params.requestType} Ditolak: ${params.requestNumber}`,
     fallbackHtml: `Halo ${params.requesterName},<br><br>Permohonan ${params.requestType} Anda dengan nomor tiket <b>${params.requestNumber}</b> telah <b>DITOLAK</b> oleh ${params.approverName} dengan alasan:<br><blockquote style="border-left: 4px solid #ef4444; padding-left: 12px; margin: 12px 0; color: #991b1b; background-color: #fef2f2; padding: 8px 12px; border-radius: 4px;"><i>${params.reason}</i></blockquote><br><div style="margin: 16px 0;"><a href="${dashboardLink}" style="background-color: #6b7280; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Buka Dashboard APD</a></div><br>Terima kasih.`,
@@ -245,6 +257,10 @@ export async function sendApdRequestRevertedEmail(params: {
       reason: params.reason,
       requestType: params.requestType,
       revisionLink,
+      revisiLink: revisionLink,
+      approvalLink: revisionLink,
+      viewLink: revisionLink,
+      actionUrl: revisionLink,
     },
     fallbackSubject: `[Perlu Revisi] Permohonan ${params.requestType}: ${params.requestNumber}`,
     fallbackHtml: `Halo ${params.requesterName},<br><br>Permohonan ${params.requestType} Anda dengan nomor tiket <b>${params.requestNumber}</b> telah <b>DIKEMBALIKAN UNTUK REVISI (Reverted)</b> oleh ${params.approverName} dengan catatan:<br><blockquote style="border-left: 4px solid #f59e0b; padding-left: 12px; margin: 12px 0; color: #b45309; background-color: #fffbeb; padding: 8px 12px; border-radius: 4px;"><i>${params.reason}</i></blockquote><br>Silakan perbaiki data permohonan melalui tautan di bawah ini:<br><div style="margin: 16px 0;"><a href="${revisionLink}" style="background-color: #d97706; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Revisi Permohonan Sekarang</a></div><br><small style="color: #64748b;">Atau salin tautan: <a href="${revisionLink}">${revisionLink}</a></small><br><br>Terima kasih.`,
@@ -257,12 +273,18 @@ export async function sendApdReplacementReminderEmail(params: {
   employeeName: string
   itemName: string
 }) {
+  const baseUrl = getPublicAppUrl()
+  const viewLink = `${baseUrl}/dashboard/apd`
+
   return sendWorkflowEmail({
     to: params.adminEmail,
     templateCode: "apd_reminder_replacement",
     variables: {
       employeeName: params.employeeName,
       itemName: params.itemName,
+      viewLink,
+      approvalLink: viewLink,
+      dashboardLink: viewLink,
     },
     fallbackSubject: `Pengingat Pergantian APD: ${params.itemName} (${params.employeeName})`,
     fallbackHtml: `Waktu pergantian ${params.itemName} untuk karyawan <b>${params.employeeName}</b> sudah dekat (Jadwal 8 Bulan). Silakan proses pergantian APD.`,
