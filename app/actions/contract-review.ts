@@ -985,6 +985,10 @@ export async function sendSingleContractReminder(employeeId: number) {
   const reviewLink = existingReview
     ? `${baseUrl}/dashboard/hc/contract-review/form/${existingReview.id}`
     : `${baseUrl}/dashboard/hc/contract-review/new?employeeId=${emp.id}&employeeSn=${normalizeSn(emp.employeeSn)}`
+  const pendingApproval = existingReview
+    ? (await getContractReviewReminderContext(existingReview)).pendingApproval
+    : null
+  const actionableLink = pendingApproval ? `${baseUrl}/review/${pendingApproval.approvalToken}` : reviewLink
 
   const template = settings.emailTemplates.reminder
   const body = template.body
@@ -995,10 +999,10 @@ export async function sendSingleContractReminder(employeeId: number) {
     .replace(/{{employeeSection}}/g, emp.sectionName || '-')
     .replace(/{{employeeSite}}/g, emp.siteName || '-')
     .replace(/{{contractEndDate}}/g, formatDisplayDate(contractEndDate))
-    .replace(/{{reviewLink}}/g, reviewLink)
+    .replace(/{{reviewLink}}/g, actionableLink)
     .replace(/{{approverName}}/g, targetName)
     .replace(/{{approvalStep}}/g, approverRoleTitle)
-    .replace(/{{approvalLink}}/g, reviewLink)
+    .replace(/{{approvalLink}}/g, actionableLink)
 
   const subject = template.subject
     .replace(/{{recipientName}}/g, targetName)
@@ -1020,10 +1024,10 @@ export async function sendSingleContractReminder(employeeId: number) {
       employeeSection: emp.sectionName || '-',
       employeeSite: emp.siteName || '-',
       contractEndDate: formatDisplayDate(contractEndDate),
-      reviewLink,
+      reviewLink: actionableLink,
       approverName: targetName,
       approvalStep: approverRoleTitle,
-      approvalLink: reviewLink,
+      approvalLink: actionableLink,
     },
   })
 
@@ -1048,7 +1052,7 @@ export async function sendSingleContractReminder(employeeId: number) {
     category: 'approval_requests',
     title: `Reminder masa kontrak ${emp.name}`,
     body: `${reminderType}: kontrak berakhir ${formatDisplayDate(contractEndDate)}. Silakan tindak lanjuti contract review (${approverRoleTitle}).`,
-    url: reviewLink,
+    url: actionableLink,
     tagPrefix: 'contract-review-reminder',
     metadata: {
       employeeId: emp.id,
@@ -1171,7 +1175,7 @@ export async function sendDueContractReviewReminders() {
       .replace(/{{employeeSection}}/g, employeeSection)
       .replace(/{{employeeSite}}/g, employeeSite)
       .replace(/{{contractEndDate}}/g, formatDisplayDate(contractEndDate))
-      .replace(/{{reviewLink}}/g, reviewLink)
+      .replace(/{{reviewLink}}/g, approvalLink)
       .replace(/{{approverName}}/g, pendingApproval.approverName)
       .replace(/{{approvalStep}}/g, `Step ${pendingApproval.stepOrder}`)
       .replace(/{{approvalLink}}/g, approvalLink)
@@ -1196,7 +1200,7 @@ export async function sendDueContractReviewReminders() {
         employeeSection,
         employeeSite,
         contractEndDate: formatDisplayDate(contractEndDate),
-        reviewLink,
+        reviewLink: approvalLink,
         approverName: pendingApproval.approverName,
         approvalStep: `Step ${pendingApproval.stepOrder}`,
         approvalLink,

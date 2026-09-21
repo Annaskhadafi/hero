@@ -76,3 +76,16 @@ test("contract review client form handles employeeId and employeeSn prefill from
   assert.match(formSource, /employeeIdParam/);
   assert.match(formSource, /autoPopulateSignatories/);
 });
+
+test("due contract review reminder links approvers to the token approval page", () => {
+  const source = read("app/actions/contract-review.ts");
+  const dueReminder = source.slice(source.indexOf("export async function sendDueContractReviewReminders()"));
+
+  assert.match(dueReminder, /const approvalLink = `\$\{baseUrl\}\/review\/\$\{pendingApproval\.approvalToken\}`/);
+  assert.match(dueReminder, /\.replace\(\/\{\{reviewLink\}\}\/g, approvalLink\)/);
+  assert.match(dueReminder, /reviewLink: approvalLink/);
+
+  const singleReminder = source.slice(source.indexOf("export async function sendSingleContractReminder"));
+  assert.match(singleReminder, /const actionableLink = pendingApproval \? `\$\{baseUrl\}\/review\/\$\{pendingApproval\.approvalToken\}` : reviewLink/);
+  assert.match(singleReminder, /\.replace\(\/\{\{reviewLink\}\}\/g, actionableLink\)/);
+});
