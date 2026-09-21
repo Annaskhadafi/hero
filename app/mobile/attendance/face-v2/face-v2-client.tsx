@@ -329,6 +329,7 @@ export function FaceAttendanceV2Client({
         setGps(position)
         setGpsLoading(false)
         setGpsError('')
+        setLocationPromptEvent(null)
       },
       () => {
         setGpsLoading(false)
@@ -340,7 +341,10 @@ export function FaceAttendanceV2Client({
 
   const getCurrentGps = useCallback((): Promise<GpsPosition> => {
     return new Promise((resolve, reject) => {
-      if (gps) return resolve(gps)
+      if (gps) {
+        setLocationPromptEvent(null)
+        return resolve(gps)
+      }
       if (!navigator.geolocation) return reject(new Error('GPS tidak didukung'))
       setGpsLoading(true)
       navigator.geolocation.getCurrentPosition(
@@ -354,6 +358,7 @@ export function FaceAttendanceV2Client({
           setGps(position)
           setGpsLoading(false)
           setGpsError('')
+          setLocationPromptEvent(null)
           resolve(position)
         },
         () => {
