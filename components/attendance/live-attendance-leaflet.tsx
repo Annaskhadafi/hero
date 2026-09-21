@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, useMemo } from 'react'
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, Tooltip, Circle, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -28,12 +28,49 @@ type Props = {
   refresh?: () => void
   canEdit?: boolean
   onSiteSaved?: () => void | Promise<void>
+  locationOnly?: boolean
+  focusSite?: Site
+  onMapCenterChange?: (center: { latitude: number; longitude: number }) => void
 }
 
-function MapController({ selectedRecord }: { selectedRecord: LiveAttendanceRecord | undefined }) {
+function MapCenterReporter({
+  onChange,
+}: {
+  onChange?: (center: { latitude: number; longitude: number }) => void
+}) {
+  const map = useMap()
+  const reportCenter = useCallback(() => {
+    if (!onChange) return
+    const center = map.getCenter()
+    onChange({ latitude: center.lat, longitude: center.lng })
+  }, [map, onChange])
+
+  useEffect(() => {
+    if (!onChange) return
+    reportCenter()
+    map.on('moveend', reportCenter)
+    return () => {
+      map.off('moveend', reportCenter)
+    }
+  }, [map, onChange, reportCenter])
+
+  return null
+}
+
+function MapController({
+  selectedRecord,
+  focusSite,
+}: {
+  selectedRecord: LiveAttendanceRecord | undefined
+  focusSite?: Site
+}) {
   const map = useMap()
 
   useEffect(() => {
+    if (focusSite) {
+      map.flyTo([focusSite.latitude, focusSite.longitude], 14, { duration: 1.1 })
+      return
+    }
     if (selectedRecord && selectedRecord.latitude && selectedRecord.longitude) {
       map.flyTo(
         [Number(selectedRecord.latitude), Number(selectedRecord.longitude)],
@@ -41,7 +78,7 @@ function MapController({ selectedRecord }: { selectedRecord: LiveAttendanceRecor
         { duration: 1.5 }
       )
     }
-  }, [selectedRecord, map])
+  }, [focusSite, selectedRecord, map])
 
   return null
 }
@@ -195,6 +232,9 @@ export default function LiveAttendanceLeaflet({
   refresh,
   canEdit = false,
   onSiteSaved,
+  locationOnly = false,
+  focusSite,
+  onMapCenterChange,
 }: Props) {
   const [mapReady, setMapReady] = useState(false)
   const mapCenterRef = useRef<[number, number]>([-2.5, 118])
@@ -210,7 +250,7 @@ export default function LiveAttendanceLeaflet({
     setMapReady(true)
   }, [records, selectedId])
 
-  const selectedRecord = records.find((r) => r.employeeId === selectedId)
+  const selectedRecord = locationOnly ? undefined : records.find((r) => r.employeeId === selectedId)
 
   if (!mapReady) return <div className="size-full animate-pulse bg-[#dceae6]" />
 
@@ -228,7 +268,8 @@ export default function LiveAttendanceLeaflet({
           className="saturate-[0.72]"
         />
 
-        <MapController selectedRecord={selectedRecord} />
+        <MapController selectedRecord={selectedRecord} focusSite={focusSite} />
+        <MapCenterReporter onChange={onMapCenterChange} />
 
         {/* Render Sites */}
         {sites.map((site) => (
@@ -236,7 +277,7 @@ export default function LiveAttendanceLeaflet({
         ))}
 
         {/* Render Employees */}
-        {records.map((record) => {
+        {!locationOnly && records.map((record) => {
           if (!record.latitude || !record.longitude) return null
 
           const lat = Number(record.latitude)

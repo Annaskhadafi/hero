@@ -49,6 +49,8 @@ type GpsPosition = {
   locationName?: string
 }
 
+type BoundaryStatus = 'inside' | 'outside' | 'unconfigured' | 'unknown'
+
 export interface ShiftOption {
   value: string
   label: string
@@ -192,6 +194,10 @@ export function FaceAttendanceV2Client({
   const [retryCount, setRetryCount] = useState(0)
   const [gps, setGps] = useState<GpsPosition | null>(null)
   const [gpsLoading, setGpsLoading] = useState(false)
+  const [gpsError, setGpsError] = useState('')
+  const [locationExplanation, setLocationExplanation] = useState('')
+  const [locationWarning, setLocationWarning] = useState('')
+  const [locationPromptEvent, setLocationPromptEvent] = useState<EventType | null>(null)
   const [calendarMonth, setCalendarMonth] = useState(
     () => new Date(new Date().getFullYear(), new Date().getMonth(), 1)
   )
@@ -322,8 +328,12 @@ export function FaceAttendanceV2Client({
         gpsRef.current = position
         setGps(position)
         setGpsLoading(false)
+        setGpsError('')
       },
-      () => setGpsLoading(false),
+      () => {
+        setGpsLoading(false)
+        setGpsError('GPS belum aktif. Aktifkan GPS atau isi keterangan lokasi untuk melanjutkan.')
+      },
       { enableHighAccuracy: true, timeout: GPS_TIMEOUT, maximumAge: 10000 }
     )
   }, [siteName])
@@ -343,10 +353,12 @@ export function FaceAttendanceV2Client({
           }
           setGps(position)
           setGpsLoading(false)
+          setGpsError('')
           resolve(position)
         },
         () => {
           setGpsLoading(false)
+          setGpsError('GPS belum aktif. Aktifkan GPS atau isi keterangan lokasi untuk melanjutkan.')
           reject(new Error('GPS tidak tersedia'))
         },
         { enableHighAccuracy: true, timeout: GPS_TIMEOUT, maximumAge: 10000 }
@@ -536,6 +548,7 @@ export function FaceAttendanceV2Client({
           longitude: position.longitude,
           accuracy: position.accuracy,
           clientRequestId: clientRequestIdRef.current,
+          locationExplanation: locationExplanation.trim(),
         }),
       })
 
@@ -581,6 +594,16 @@ export function FaceAttendanceV2Client({
         setSuccessRecord(data.attendanceRecord)
         setSuccessEmployee(data.employee || null)
         setSuccessPunctuality(data.punctuality || null)
+        const boundary = data.boundary as
+          | { status?: BoundaryStatus; message?: string; distanceMeters?: number | null; radiusMeters?: number | null }
+          | undefined
+        setLocationWarning(
+          boundary?.status === 'outside'
+            ? boundary.message || 'Anda berada di luar radius lokasi absensi.'
+            : boundary?.status === 'unknown'
+              ? 'GPS tidak tersedia. Absensi tersimpan dengan keterangan untuk ditinjau HR-GA.'
+              : ''
+        )
         setFlowState('success')
         if (data.attendanceRecord) {
           setLogs((prev) => [data.attendanceRecord, ...prev])
@@ -634,6 +657,7 @@ export function FaceAttendanceV2Client({
     selectedShift,
     flowState,
     getCurrentGps,
+    locationExplanation,
     stopCamera,
   ])
 
@@ -659,6 +683,13 @@ export function FaceAttendanceV2Client({
   }, [flowState, runRecognitionLoop])
 
   const startFlow = async (mode: EventType) => {
+    if (!gps && !locationExplanation.trim()) {
+      setSelectedEventType(mode)
+      setLocationPromptEvent(mode)
+      setGpsError('GPS belum aktif. Aktifkan GPS atau isi keterangan lokasi untuk melanjutkan.')
+      return
+    }
+    setLocationPromptEvent(null)
     setSelectedEventType(mode)
     clientRequestIdRef.current =
       typeof crypto !== 'undefined' && crypto.randomUUID
@@ -720,6 +751,7 @@ export function FaceAttendanceV2Client({
           accuracy: position.accuracy,
           clientRequestId: clientRequestIdRef.current,
           manualFallback: true,
+          locationExplanation: locationExplanation.trim(),
         }),
       })
       const data = await response.json()
@@ -741,6 +773,16 @@ export function FaceAttendanceV2Client({
       setSuccessRecord(data.attendanceRecord)
       setSuccessEmployee(data.employee || null)
       setSuccessPunctuality(data.punctuality || null)
+      const boundary = data.boundary as
+        | { status?: BoundaryStatus; message?: string }
+        | undefined
+      setLocationWarning(
+        boundary?.status === 'outside'
+          ? boundary.message || 'Anda berada di luar radius lokasi absensi.'
+          : boundary?.status === 'unknown'
+            ? 'GPS tidak tersedia. Absensi tersimpan dengan keterangan untuk ditinjau HR-GA.'
+            : ''
+      )
       setLogs((prev) => [data.attendanceRecord, ...prev])
       setFlowState('success')
     } catch (error) {
@@ -758,6 +800,17 @@ export function FaceAttendanceV2Client({
     setSuccessRecord(null)
     setSuccessEmployee(null)
     setSuccessPunctuality(null)
+    setLocationWarning('')
+    setLocationPromptEvent(null)
+  }
+
+  const refreshGps = async () => {
+    setGpsError('')
+    try {
+      await getCurrentGps()
+    } catch {
+      setGpsError('GPS belum aktif. Aktifkan GPS atau isi keterangan lokasi untuk melanjutkan.')
+    }
   }
 
   const isRegistered = Boolean(faceRarayRegisteredAt || faceRarayId)
@@ -1001,6 +1054,48 @@ export function FaceAttendanceV2Client({
                     : 'Pilih Check in untuk mulai bekerja atau Auto absensi.'}
                 </p>
               </div>
+              {locationPromptEvent ? (
+                <section className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm" role="alert">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="mt-0.5 size-5 shrink-0 text-amber-700" />
+                    <div>
+                      <p className="text-sm font-bold text-amber-950">
+                        GPS belum aktif untuk {locationPromptEvent === 'checked-in' ? 'Check In' : 'Check Out'}
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-amber-800">
+                        Aktifkan GPS agar lokasi absensi dapat divalidasi. Jika tetap lanjut tanpa GPS,
+                        keterangan wajib diisi dan akan diteruskan ke HR-GA.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void refreshGps()}
+                    disabled={gpsLoading}
+                    className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-amber-700 px-4 text-xs font-black text-white uppercase disabled:opacity-60"
+                  >
+                    {gpsLoading ? <Loader2 className="size-4 animate-spin" /> : <MapPin className="size-4" />}
+                    Aktifkan GPS
+                  </button>
+                  <div className="space-y-1.5">
+                    <label htmlFor="location-explanation" className="text-xs font-bold text-amber-950">
+                      Keterangan jika tetap lanjut tanpa GPS
+                    </label>
+                    <textarea
+                      id="location-explanation"
+                      value={locationExplanation}
+                      onChange={(event) => setLocationExplanation(event.target.value.slice(0, 500))}
+                      placeholder="Contoh: GPS perangkat bermasalah, saya berada di area kerja Site..."
+                      className="min-h-20 w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-amber-700"
+                    />
+                    <p className="text-right text-[10px] text-amber-700">{locationExplanation.length}/500</p>
+                  </div>
+                  {gpsError ? <p className="text-xs font-semibold text-rose-700">{gpsError}</p> : null}
+                  <p className="text-[11px] font-semibold text-amber-800">
+                    Isi keterangan, lalu tekan tombol {locationPromptEvent === 'checked-in' ? 'Check In' : 'Check Out'} lagi untuk melanjutkan.
+                  </p>
+                </section>
+              ) : null}
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
@@ -1405,6 +1500,13 @@ export function FaceAttendanceV2Client({
                 </span>
               </div>
             </div>
+
+            {locationWarning ? (
+              <div className="flex w-full max-w-sm items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-left text-xs text-amber-900" role="status">
+                <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-700" />
+                <span>{locationWarning}</span>
+              </div>
+            ) : null}
 
             <button
               type="button"

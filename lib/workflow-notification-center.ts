@@ -23,6 +23,7 @@ export async function notifyWorkflowBellRecipients(input: {
   url: string;
   tagPrefix?: string;
   metadata?: Record<string, unknown>;
+  sendPush?: boolean;
 }) {
   const recipientEmails = uniqueEmails(input.recipientEmails);
   if (recipientEmails.length === 0) {
@@ -62,7 +63,7 @@ export async function notifyWorkflowBellRecipients(input: {
     });
 
     const employee = await getEmployeeTargetByEmail(recipientEmail);
-    if (employee) {
+    if (employee && input.sendPush !== false) {
       try {
         await sendPushNotification({
           employeeId: employee.id,

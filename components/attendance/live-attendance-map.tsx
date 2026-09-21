@@ -23,9 +23,9 @@ import { id } from 'date-fns/locale'
 import {
   getLiveAttendanceLocationSettings,
   getLiveAttendanceMapData,
-  getSitesForMap,
   updateSiteRadiusFromMap,
 } from '@/app/actions/attendance'
+import { getPunctualityDetail } from '@/lib/timesheet/attendance-punctuality'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -36,6 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 
 const LiveAttendanceLeaflet = dynamic(() => import('./live-attendance-leaflet'), {
   ssr: false,
@@ -110,6 +111,15 @@ type LocationSetting = {
   nsClockOut: string | null
 }
 
+type AttendanceExceptionKind = 'late' | 'outside' | 'gps-off'
+
+type AttendanceException = {
+  record: LiveAttendanceRecord
+  kinds: AttendanceExceptionKind[]
+  distanceMeters: number | null
+  punctuality: string | null
+}
+
 function formatTime(value: string) {
   return new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit' }).format(
     new Date(value)
@@ -180,9 +190,11 @@ export function LiveAttendanceMap({ initialData, initialLocationSettings }: Prop
   const [statusFilter, setStatusFilter] = useState<'all' | 'live' | 'offline'>('all')
   const [refreshing, setRefreshing] = useState(false)
   const [targetDate, setTargetDate] = useState<Date>(new Date())
-  const [allSites, setAllSites] = useState<MapSite[]>([])
   const [manualSites, setManualSites] = useState<MapSite[]>([])
-  const [activeTab, setActiveTab] = useState<'map' | 'settings'>('map')
+  const [activeTab, setActiveTab] = useState<'map' | 'exceptions' | 'settings'>('map')
+  const [locationOnly, setLocationOnly] = useState(false)
+  const [siteFilter, setSiteFilter] = useState('all')
+  const [mapCenter, setMapCenter] = useState<Pick<MapSite, 'latitude' | 'longitude'> | null>(null)
   const [locationSettings, setLocationSettings] = useState<LocationSetting[]>(
     initialLocationSettings.success ? (initialLocationSettings.sites as LocationSetting[]) : []
   )
@@ -224,37 +236,22 @@ export function LiveAttendanceMap({ initialData, initialLocationSettings }: Prop
     refresh(next)
   }
 
-  const loadAllSites = async (isOpen: boolean) => {
-    if (isOpen && allSites.length === 0) {
-      const res = await getSitesForMap()
-      if (res.success) setAllSites(res.sites)
-    }
-  }
-
   const handleAddManualSite = (siteIdStr: string) => {
     const siteId = Number(siteIdStr)
-    const existingMapSites = data.success ? data.sites : []
+    const site = locationSettings.find((item) => item.id === siteId)
+    if (!site || site.latitude != null || site.longitude != null) return
+    if (manualSites.some((item) => item.id === siteId)) return
 
-    if (
-      manualSites.some((s) => s.id === siteId) ||
-      existingMapSites.some((s) => s.id === siteId)
-    ) {
-      return // Already on map
-    }
-
-    const site = allSites.find((s) => s.id === siteId)
-    if (site) {
-      setManualSites((prev) => [
-        ...prev,
-        {
-          id: site.id,
-          name: site.name,
-          latitude: site.latitude,
-          longitude: site.longitude,
-          radiusMeters: site.radiusMeters,
-        },
-      ])
-    }
+    setManualSites((prev) => [
+      ...prev,
+      {
+        id: site.id,
+        name: site.name,
+        latitude: mapCenter?.latitude ?? -2.5,
+        longitude: mapCenter?.longitude ?? 118,
+        radiusMeters: site.radiusMeters,
+      },
+    ])
   }
 
   const mergedSites = useMemo(() => {
@@ -270,6 +267,24 @@ export function LiveAttendanceMap({ initialData, initialLocationSettings }: Prop
 
   const records = data.success ? data.records : []
   const latestRecords = useMemo(() => latestByEmployee(records), [records])
+  const attendanceExceptions = useMemo(() => getAttendanceExceptions(records), [records])
+  const siteOptions = useMemo(
+    () =>
+      Array.from(
+        new Map(latestRecords.map((record) => [record.siteId, record.siteName])).entries()
+      ).sort(([, nameA], [, nameB]) => nameA.localeCompare(nameB, 'id')),
+    [latestRecords]
+  )
+  const unconfiguredSites = useMemo(
+    () => {
+      const manualSiteIds = new Set(manualSites.map((site) => site.id))
+      return locationSettings.filter(
+        (site) =>
+          !manualSiteIds.has(site.id) && (site.latitude == null || site.longitude == null)
+      )
+    },
+    [locationSettings, manualSites]
+  )
   const visibleRecords = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase()
     return latestRecords.filter((record) => {
@@ -280,14 +295,43 @@ export function LiveAttendanceMap({ initialData, initialLocationSettings }: Prop
           .includes(normalizedQuery)
       const isLive = statusIsLive(record)
       const matchesStatus = statusFilter === 'all' || (statusFilter === 'live' ? isLive : !isLive)
-      return matchesQuery && matchesStatus
+      const matchesSite = siteFilter === 'all' || String(record.siteId) === siteFilter
+      return matchesQuery && matchesStatus && matchesSite
     })
-  }, [latestRecords, query, statusFilter])
+  }, [latestRecords, query, siteFilter, statusFilter])
   const selected =
     visibleRecords.find((record) => record.employeeId === selectedId) ?? visibleRecords[0]
+  const focusedSite = useMemo(() => {
+    if (siteFilter === 'all') return undefined
+    const siteId = Number(siteFilter)
+    const mapSite = mergedSites.find((site) => site.id === siteId)
+    if (mapSite) return mapSite
+    const setting = locationSettings.find(
+      (site) => site.id === siteId && site.latitude != null && site.longitude != null
+    )
+    return setting
+      ? {
+          id: setting.id,
+          name: setting.name,
+          latitude: setting.latitude as number,
+          longitude: setting.longitude as number,
+          radiusMeters: setting.radiusMeters,
+        }
+      : undefined
+  }, [locationSettings, mergedSites, siteFilter])
   const liveCount = latestRecords.filter(statusIsLive).length
   const locationsCount = latestRecords.filter(hasValidCoordinates).length
   const scopeLabel = data.success && data.scope === 'global' ? 'Semua site' : 'Site Anda'
+
+  const handleSiteSaved = async () => {
+    const savedSiteId = editingSite?.id
+    setEditingSite(null)
+    await refresh()
+    await refreshLocationSettings()
+    if (savedSiteId != null) {
+      setManualSites((prev) => prev.filter((site) => site.id !== savedSiteId))
+    }
+  }
 
   return (
     <div className="space-y-5 p-4 lg:p-6">
@@ -395,6 +439,7 @@ export function LiveAttendanceMap({ initialData, initialLocationSettings }: Prop
         <>
         <div className="flex gap-2 rounded-xl border border-[#cfe3df] bg-white p-1 shadow-sm">
           <button type="button" onClick={() => setActiveTab('map')} className={`flex-1 rounded-lg px-4 py-2 text-sm font-semibold ${activeTab === 'map' ? 'bg-[#0a4f51] text-white' : 'text-[#557b7b]'}`}>Live Map</button>
+          <button type="button" onClick={() => setActiveTab('exceptions')} className={`flex-1 rounded-lg px-4 py-2 text-sm font-semibold ${activeTab === 'exceptions' ? 'bg-[#0a4f51] text-white' : 'text-[#557b7b]'}`}><ShieldCheck className="mr-2 inline size-4" />Keterlambatan / GPS Off ({attendanceExceptions.length})</button>
           <button type="button" onClick={() => setActiveTab('settings')} className={`flex-1 rounded-lg px-4 py-2 text-sm font-semibold ${activeTab === 'settings' ? 'bg-[#0a4f51] text-white' : 'text-[#557b7b]'}`}><Settings2 className="mr-2 inline size-4" />Pengaturan Lokasi</button>
         </div>
         {activeTab === 'settings' ? (
@@ -403,6 +448,13 @@ export function LiveAttendanceMap({ initialData, initialLocationSettings }: Prop
             canEdit={Boolean(canEdit)}
             onEdit={setEditingSite}
             onRefresh={refreshLocationSettings}
+          />
+        ) : activeTab === 'exceptions' ? (
+          <AttendanceExceptionsTable
+            exceptions={attendanceExceptions}
+            siteOptions={siteOptions}
+            formatTime={formatTime}
+            formatDate={formatDate}
           />
         ) : (
         <section className="grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(340px,0.8fr)]">
@@ -414,25 +466,34 @@ export function LiveAttendanceMap({ initialData, initialLocationSettings }: Prop
                   Marker menunjukkan aktivitas terbaru setiap user.
                 </p>
               </div>
-              <div className="flex items-center gap-2 text-xs text-[#6b8d8d]">
-                <Select onOpenChange={loadAllSites} onValueChange={handleAddManualSite}>
-                  <SelectTrigger className="h-8 w-[160px] text-xs">
-                    <SelectValue placeholder="Tambah Marka Site..." />
+              <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-[#6b8d8d]">
+                <Select onValueChange={handleAddManualSite}>
+                  <SelectTrigger className="h-9 w-[190px] text-xs">
+                    <SelectValue placeholder="Tambah lokasi belum diset" />
                   </SelectTrigger>
                   <SelectContent>
-                    {allSites.length === 0 ? (
+                    {unconfiguredSites.length === 0 ? (
                       <div className="text-muted-foreground p-2 text-center text-xs">
-                        Memuat site...
+                        Semua site sudah dikonfigurasi
                       </div>
                     ) : (
-                      allSites.map((site) => (
+                      unconfiguredSites.map((site) => (
                         <SelectItem key={site.id} value={site.id.toString()}>
-                          {site.name}
+                          {site.name}{!site.isActive ? ' · Nonaktif' : ''}
                         </SelectItem>
                       ))
                     )}
                   </SelectContent>
                 </Select>
+                <label className="flex min-h-9 items-center gap-2 rounded-lg border border-[#cfe3df] bg-[#f7fbfa] px-3 text-[#0a4f51]">
+                  <Switch
+                    checked={locationOnly}
+                    onCheckedChange={setLocationOnly}
+                    aria-label="Lihat lokasi saja"
+                    className="data-[state=checked]:bg-[#0a4f51]"
+                  />
+                  <span className="whitespace-nowrap font-semibold">Lihat lokasi saja</span>
+                </label>
                 <span className="ml-2 inline-flex size-2 rounded-full bg-[#25b88f]" /> Aktif
                 <span className="ml-2 inline-flex size-2 rounded-full bg-[#95a9b2]" /> Selesai /
                 offline
@@ -449,6 +510,9 @@ export function LiveAttendanceMap({ initialData, initialLocationSettings }: Prop
                 refresh={refresh}
                 canEdit={Boolean(canEdit)}
                 onSiteSaved={refreshLocationSettings}
+                locationOnly={locationOnly}
+                focusSite={focusedSite}
+                onMapCenterChange={setMapCenter}
               />
               <div className="pointer-events-none absolute inset-0 z-10 bg-[linear-gradient(135deg,rgba(245,251,249,0.18),transparent_44%,rgba(7,79,81,0.12))]" />
             </div>
@@ -465,7 +529,25 @@ export function LiveAttendanceMap({ initialData, initialLocationSettings }: Prop
                   className="h-10 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
                 />
               </div>
-              <div className="mt-3 grid grid-cols-3 gap-1 rounded-lg bg-[#edf6f3] p-1">
+                <div className="mt-3">
+                  <label className="mb-1 block text-[11px] font-semibold tracking-[0.12em] text-[#6b8d8d] uppercase">
+                    Filter lokasi
+                  </label>
+                  <Select value={siteFilter} onValueChange={setSiteFilter}>
+                    <SelectTrigger className="h-9 w-full border-[#cfe3df] bg-white text-xs">
+                      <SelectValue placeholder="Semua lokasi" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Semua lokasi</SelectItem>
+                      {siteOptions.map(([siteId, siteName]) => (
+                        <SelectItem key={siteId} value={String(siteId)}>
+                          {siteName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-1 rounded-lg bg-[#edf6f3] p-1">
                 {[
                   ['all', 'Semua'],
                   ['live', 'Aktif'],
@@ -585,10 +667,218 @@ export function LiveAttendanceMap({ initialData, initialLocationSettings }: Prop
           </div>
         </section>
         )}
-        {editingSite ? <LocationEditDialog site={editingSite} onClose={() => setEditingSite(null)} onSaved={async () => { setEditingSite(null); await refresh(); await refreshLocationSettings(); const refreshedSites = await getSitesForMap(); if (refreshedSites.success) setAllSites(refreshedSites.sites) }} saving={savingSite} setSaving={setSavingSite} /> : null}
+        {editingSite ? <LocationEditDialog site={editingSite} onClose={() => setEditingSite(null)} onSaved={handleSiteSaved} saving={savingSite} setSaving={setSavingSite} /> : null}
         </>
       )}
     </div>
+  )
+}
+
+function distanceMeters(
+  latitudeA: number,
+  longitudeA: number,
+  latitudeB: number,
+  longitudeB: number
+) {
+  const earthRadius = 6_371_000
+  const toRadians = (value: number) => (value * Math.PI) / 180
+  const deltaLatitude = toRadians(latitudeB - latitudeA)
+  const deltaLongitude = toRadians(longitudeB - longitudeA)
+  const latitudeFactor = Math.cos(toRadians((latitudeA + latitudeB) / 2))
+  return earthRadius * Math.sqrt(deltaLatitude ** 2 + (deltaLongitude * latitudeFactor) ** 2)
+}
+
+function getAttendanceDistance(record: LiveAttendanceRecord) {
+  const latitude = Number(record.latitude)
+  const longitude = Number(record.longitude)
+  const siteLatitude = Number(record.siteGeoLatitude)
+  const siteLongitude = Number(record.siteGeoLongitude)
+  if (
+    !hasValidCoordinates(record) ||
+    !Number.isFinite(siteLatitude) ||
+    !Number.isFinite(siteLongitude) ||
+    siteLatitude < -11.5 ||
+    siteLatitude > 6.5 ||
+    siteLongitude < 94 ||
+    siteLongitude > 142 ||
+    (siteLatitude === 0 && siteLongitude === 0)
+  ) {
+    return null
+  }
+  return Math.round(distanceMeters(latitude, longitude, siteLatitude, siteLongitude))
+}
+
+function latestRawByEmployee(records: LiveAttendanceRecord[]) {
+  const latest = new Map<number, LiveAttendanceRecord>()
+  for (const record of records) {
+    if (!latest.has(record.employeeId)) latest.set(record.employeeId, record)
+  }
+  return [...latest.values()]
+}
+
+function getAttendanceExceptions(records: LiveAttendanceRecord[]): AttendanceException[] {
+  return latestRawByEmployee(records).flatMap((record) => {
+    const punctuality = getPunctualityDetail(record.locationNote)
+    const distance = getAttendanceDistance(record)
+    const kinds: AttendanceExceptionKind[] = []
+    if (/Kehadiran:\s*Terlambat\b/i.test(punctuality ?? '')) kinds.push('late')
+    const gpsOff = record.gpsValid === false || !hasValidCoordinates(record)
+    if (gpsOff) kinds.push('gps-off')
+    else if (distance != null && distance > Math.max(0, record.siteRadiusMeters)) kinds.push('outside')
+    return kinds.length ? [{ record, kinds, distanceMeters: distance, punctuality }] : []
+  })
+}
+
+function AttendanceExceptionsTable({
+  exceptions,
+  siteOptions,
+  formatTime,
+  formatDate,
+}: {
+  exceptions: AttendanceException[]
+  siteOptions: [number, string][]
+  formatTime: (value: string) => string
+  formatDate: (value: string) => string
+}) {
+  const [kindFilter, setKindFilter] = useState<'all' | AttendanceExceptionKind>('all')
+  const [siteFilter, setSiteFilter] = useState('all')
+  const [query, setQuery] = useState('')
+  const filtered = exceptions.filter(({ record, kinds }) => {
+    const normalizedQuery = query.trim().toLowerCase()
+    const matchesQuery =
+      !normalizedQuery ||
+      `${record.employeeName} ${record.siteName} ${record.employeeJobTitle}`
+        .toLowerCase()
+        .includes(normalizedQuery)
+    return (
+      matchesQuery &&
+      (siteFilter === 'all' || String(record.siteId) === siteFilter) &&
+      (kindFilter === 'all' || kinds.includes(kindFilter))
+    )
+  })
+  const count = (kind: AttendanceExceptionKind) =>
+    exceptions.filter((exception) => exception.kinds.includes(kind)).length
+  const kindLabel: Record<AttendanceExceptionKind, string> = {
+    late: 'Terlambat',
+    outside: 'Di luar radius',
+    'gps-off': 'GPS mati',
+  }
+  const kindTone: Record<AttendanceExceptionKind, string> = {
+    late: 'bg-amber-50 text-amber-700',
+    outside: 'bg-rose-50 text-rose-700',
+    'gps-off': 'bg-slate-100 text-slate-700',
+  }
+
+  return (
+    <section className="space-y-4 rounded-[1.25rem] border border-[#cfe3df] bg-white p-4 shadow-[0_16px_40px_rgba(20,84,82,0.06)] lg:p-5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="text-[11px] font-semibold tracking-[0.16em] text-[#16736d] uppercase">
+            Keterlambatan & GPS Off
+          </p>
+          <h2 className="mt-1 text-xl font-semibold tracking-tight text-[#0a4f51]">
+            Pantauan attendance harian
+          </h2>
+          <p className="mt-1 text-sm text-[#6b8d8d]">
+            Status diambil dari event attendance terbaru tiap user.
+          </p>
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-center">
+          {(['late', 'outside', 'gps-off'] as AttendanceExceptionKind[]).map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              onClick={() => setKindFilter(kindFilter === kind ? 'all' : kind)}
+              className={`rounded-xl border px-3 py-2 transition ${kindFilter === kind ? 'border-[#0a4f51] ring-2 ring-[#d8ebe7]' : 'border-[#e2efec]'}`}
+            >
+              <span className="block text-lg font-semibold text-[#0a4f51]">{count(kind)}</span>
+              <span className="text-[11px] font-semibold text-[#6b8d8d]">{kindLabel[kind]}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="flex flex-1 items-center gap-2 rounded-lg border border-[#d8ebe7] bg-[#f7fbfa] px-3">
+          <Search className="size-4 text-[#6b8d8d]" />
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Cari user atau site"
+            className="h-10 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
+          />
+        </div>
+        <Select value={siteFilter} onValueChange={setSiteFilter}>
+          <SelectTrigger className="h-10 sm:w-[240px]">
+            <SelectValue placeholder="Semua lokasi" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Semua lokasi</SelectItem>
+            {siteOptions.map(([siteId, siteName]) => (
+              <SelectItem key={siteId} value={String(siteId)}>
+                {siteName}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="overflow-x-auto rounded-xl border border-[#e2efec]">
+        <table className="w-full min-w-[920px] text-left text-xs">
+          <thead className="bg-[#f2f8f6] text-[10px] tracking-[0.12em] text-[#557b7b] uppercase">
+            <tr>
+              {['Karyawan', 'Site', 'Status', 'GPS / Radius', 'Event terakhir'].map((label) => (
+                <th key={label} className="px-4 py-3">{label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-12 text-center text-sm text-[#6b8d8d]">
+                  Tidak ada pengecualian pada filter ini.
+                </td>
+              </tr>
+            ) : (
+              filtered.map(({ record, kinds, distanceMeters: distance, punctuality }) => (
+                <tr key={`${record.employeeId}-${record.id}`} className="border-t border-[#e2efec] align-top">
+                  <td className="px-4 py-3">
+                    <div className="font-semibold text-[#0a4f51]">{record.employeeName}</div>
+                    <div className="mt-1 text-[#6b8d8d]">{record.employeeJobTitle || 'Employee'}</div>
+                  </td>
+                  <td className="px-4 py-3 text-[#557b7b]">{record.siteName}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-1">
+                      {kinds.map((kind) => (
+                        <span key={kind} className={`rounded-full px-2 py-1 font-semibold ${kindTone[kind]}`}>
+                          {kindLabel[kind]}
+                        </span>
+                      ))}
+                    </div>
+                    {punctuality && kinds.includes('late') ? (
+                      <p className="mt-2 text-[#6b8d8d]">{punctuality.replace('Kehadiran: ', '')}</p>
+                    ) : null}
+                  </td>
+                  <td className="px-4 py-3 text-[#557b7b]">
+                    {kinds.includes('gps-off') ? (
+                      <span className="font-semibold text-slate-700">Koordinat tidak tersedia</span>
+                    ) : distance != null ? (
+                      <>{distance.toLocaleString('id-ID')} m dari titik · radius {record.siteRadiusMeters} m</>
+                    ) : (
+                      'Radius belum dapat dihitung'
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-[#557b7b]">
+                    <div className="font-semibold text-[#0a4f51]">{formatTime(record.eventTime)}</div>
+                    <div className="mt-1">{formatDate(record.eventTime)}</div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
   )
 }
 

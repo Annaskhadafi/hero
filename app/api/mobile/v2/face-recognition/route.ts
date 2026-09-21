@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { db } from '@/db'
-import { attendanceRecords, employees, sites } from '@/db/schema/hero'
-import { eq, desc } from 'drizzle-orm'
+import { attendanceRecords, employees, masterSections, sites } from '@/db/schema/hero'
+import { and, desc, eq, ilike, inArray } from 'drizzle-orm'
 import { authenticateMobileRequest } from '@/lib/mobile-auth'
 import { rarayVerifyFace, rarayCheckAntiSpoofUniFaceV2 } from '@/lib/raray-vision/client'
 import { syncFaceAttendanceToTimesheet } from '@/lib/timesheet/face-attendance-sync'
@@ -11,6 +11,7 @@ import { validateSiteBoundary } from '@/lib/location'
 import { uploadAttendancePhotoToS3, isS3UploadConfigured } from '@/lib/s3-storage'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
+import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 
 // --- Constants ---
 const ALLOWED_EVENT_TYPES = ['checked-in', 'checked-out', 'auto'] as const
@@ -47,6 +48,56 @@ async function saveAttendancePhoto(
   return `/uploads/face-attendance-v2/${filename}`
 }
 
+async function notifyHrGaLocationAlert(input: {
+  employeeName: string
+  siteName: string
+  eventType: string
+  boundaryStatus: 'outside' | 'unknown'
+  distanceMeters: number | null
+  radiusMeters: number | null
+  explanation: string
+}) {
+  const sections = await db
+    .select({ id: masterSections.id, headEmployeeId: masterSections.headEmployeeId })
+    .from(masterSections)
+    .where(and(eq(masterSections.isActive, true), ilike(masterSections.name, '%HR-GA%')))
+
+  if (sections.length === 0) return
+
+  const headIds = sections.map((section) => section.headEmployeeId).filter((id): id is number => id != null)
+  const recipients = await db
+    .select({ email: employees.email })
+    .from(employees)
+    .where(
+      and(
+        eq(employees.isActive, true),
+        headIds.length > 0
+          ? inArray(employees.id, headIds)
+          : inArray(employees.sectionId, sections.map((section) => section.id))
+      )
+    )
+
+  const distance = input.distanceMeters == null ? 'tidak tersedia' : `${input.distanceMeters} m`
+  const radius = input.radiusMeters == null ? 'tidak tersedia' : `${input.radiusMeters} m`
+  await notifyWorkflowBellRecipients({
+    recipientEmails: recipients.map((recipient) => recipient.email),
+    eventType: 'attendance_location_alert',
+    category: 'info',
+    title: input.boundaryStatus === 'outside' ? 'Attendance di luar lokasi' : 'GPS attendance tidak aktif',
+    body: `${input.employeeName} ${input.eventType === 'checked-in' ? 'check-in' : 'check-out'} di ${input.siteName}. Jarak: ${distance}; radius: ${radius}.${input.explanation ? ` Keterangan: ${input.explanation}` : ''}`,
+    url: '/dashboard/attendance/live-map',
+    tagPrefix: 'attendance-location-alert',
+    sendPush: false,
+    metadata: {
+      employeeName: input.employeeName,
+      siteName: input.siteName,
+      boundaryStatus: input.boundaryStatus,
+      distanceMeters: input.distanceMeters,
+      radiusMeters: input.radiusMeters,
+    },
+  })
+}
+
 export async function POST(request: NextRequest) {
   try {
     // 1. Parse JSON body
@@ -72,6 +123,7 @@ export async function POST(request: NextRequest) {
       clientRequestId,
       shiftCode,
       manualFallback,
+      locationExplanation,
     } = body as Record<string, unknown>
 
     const isManualFallback = manualFallback === true
@@ -129,6 +181,10 @@ export async function POST(request: NextRequest) {
       )
 
     const accuracyMeters = accuracy === undefined || accuracy === null ? null : Number(accuracy)
+    const explanation = typeof locationExplanation === 'string' ? locationExplanation.trim() : ''
+    if (explanation.length > 500) {
+      return errorResponse(400, 'VALIDATION_ERROR', 'Keterangan lokasi maksimal 500 karakter.', 'locationExplanation')
+    }
 
     // 4. Auth
     const authResult = await authenticateMobileRequest(request, empId)
@@ -139,6 +195,7 @@ export async function POST(request: NextRequest) {
     const [site] = await db
       .select({
         id: sites.id,
+        name: sites.name,
         geoLatitude: sites.geoLatitude,
         geoLongitude: sites.geoLongitude,
         geoRadiusMeters: sites.geoRadiusMeters,
@@ -151,7 +208,7 @@ export async function POST(request: NextRequest) {
     if (!site)
       return errorResponse(404, 'SITE_NOT_FOUND', 'Site absensi tidak ditemukan.', 'siteId')
 
-    // Keep boundary details for audit; checked-in events may be blocked by the site policy below.
+    // Keep boundary details for audit; outside GPS attendance remains allowed with a warning.
     const boundary = validateSiteBoundary(
       site,
       lat === 0 && lng === 0 ? null : lat,
@@ -260,23 +317,12 @@ export async function POST(request: NextRequest) {
       site.geoLongitude != null &&
       String(site.geoLatitude).trim() !== '' &&
       String(site.geoLongitude).trim() !== ''
-    if (resolvedEventType === 'checked-in' && site.allowOutsideAttendance === false) {
-      if (boundary.status === 'unknown' && siteHasConfiguredBoundary) {
-        return errorResponse(
-          422,
-          'GEOFENCE_GPS_REQUIRED',
-          'Absensi masuk ditolak karena lokasi GPS belum tersedia. Aktifkan GPS dan coba lagi.'
-        )
-      }
-      if (boundary.status === 'outside') {
-        const distance = boundary.distanceMeters === null ? '' : ` Jarak Anda ${boundary.distanceMeters}m.`
-        const radius = boundary.radiusMeters === null ? '' : ` Radius yang diizinkan ${boundary.radiusMeters}m.`
-        return errorResponse(
-          422,
-          'GEOFENCE_OUTSIDE',
-          `Absensi masuk ditolak karena Anda berada di luar lokasi yang dikonfigurasi.${distance}${radius}`
-        )
-      }
+    if (boundary.status === 'unknown' && siteHasConfiguredBoundary && !explanation) {
+      return errorResponse(
+        422,
+        'GEOFENCE_GPS_REQUIRED',
+        'GPS belum aktif. Aktifkan GPS atau isi keterangan lokasi sebelum melanjutkan.'
+      )
     }
 
     // Manual fallback is an explicit camera photo after repeated failed attempts.
@@ -411,6 +457,7 @@ export async function POST(request: NextRequest) {
         : boundary.status === 'outside'
           ? `[gps-outside] ${boundary.distanceMeters}m/${boundary.radiusMeters}m`
           : '[gps-unavailable]',
+      explanation ? `Keterangan lokasi: ${explanation}` : null,
       punctuality
         ? `Shift: ${punctuality.shiftCode.toUpperCase()} (masuk ${punctuality.scheduledClockIn})`
         : null,
@@ -471,6 +518,20 @@ export async function POST(request: NextRequest) {
       console.warn('[face-recognition-v2] Attendance timesheet sync warning (non-fatal):', syncError)
     }
 
+    if (boundary.status === 'outside' || boundary.status === 'unknown') {
+      void notifyHrGaLocationAlert({
+        employeeName: employee.name,
+        siteName: site.name,
+        eventType: resolvedEventType,
+        boundaryStatus: boundary.status,
+        distanceMeters: boundary.distanceMeters,
+        radiusMeters: boundary.radiusMeters,
+        explanation,
+      }).catch((notificationError) => {
+        console.warn('[face-recognition-v2] HR-GA location alert warning:', notificationError)
+      })
+    }
+
     // Return only after the Grid projection is synchronized.
     return NextResponse.json(
       {
@@ -493,6 +554,12 @@ export async function POST(request: NextRequest) {
               note: punctuality.note,
             }
           : null,
+        boundary: {
+          status: boundary.status,
+          distanceMeters: boundary.distanceMeters,
+          radiusMeters: boundary.radiusMeters,
+          message: boundary.message,
+        },
         attendanceRecord: {
           id: insertedRecord.id,
           eventType: insertedRecord.eventType,
