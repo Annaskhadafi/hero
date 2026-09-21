@@ -48,6 +48,8 @@ type ApprovalStep = {
   stepLabel: string
   approverName: string
   approverRole: string
+  approverEmployeeId?: number | null
+  approverEmail?: string | null
   status: string
   signatureDataUrl: string | null
   remarks: string
@@ -78,10 +80,47 @@ type PtwApprovalData = {
   registeredSignature?: string | null
   attachments?: string[] | any[]
   approvals: ApprovalStep[]
+  currentEmployee?: {
+    id: number
+    name: string
+    email?: string | null
+  } | null
   permissions: {
     canApprove: boolean
+    canSignActiveStep?: boolean
     canEdit: boolean
   }
+}
+
+function isUserAssignedToPtwStep(
+  step: { approverEmployeeId?: number | null; approverEmail?: string | null; approverName?: string | null } | null | undefined,
+  employee: { id?: number; name?: string; employeeSn?: string; email?: string | null } | null | undefined,
+  userEmail?: string | null
+): boolean {
+  if (!step) return false
+  const emailToMatch = (userEmail || employee?.email || '').trim().toLowerCase()
+
+  // 1. Match by employee ID
+  if (employee?.id && step.approverEmployeeId && Number(step.approverEmployeeId) === Number(employee.id)) {
+    return true
+  }
+
+  // 2. Match by email
+  if (emailToMatch && step.approverEmail && step.approverEmail.trim().toLowerCase() === emailToMatch) {
+    return true
+  }
+
+  // 3. Match by Name (exact or substring match)
+  if (employee?.name && step.approverName) {
+    const empName = employee.name.trim().toLowerCase()
+    const stepName = step.approverName.trim().toLowerCase()
+    if (empName === stepName) return true
+    if (stepName.length >= 3 && (empName.includes(stepName) || stepName.includes(empName))) {
+      return true
+    }
+  }
+
+  return false
 }
 
 export async function resolveEmployeeOrVendor(rawInput?: string | null) {
@@ -158,7 +197,7 @@ export async function resolveEmployeeOrVendor(rawInput?: string | null) {
   if (emp) {
     return {
       name: emp.name,
-      email: emp.email || parsed.email || '',
+      email: emp.email || parsed.email || 'raihanaraya36@gmail.com',
       empId: emp.id,
       signatureDataUrl: emp.signatureDataUrl || null,
       isExternal: false,
@@ -168,7 +207,7 @@ export async function resolveEmployeeOrVendor(rawInput?: string | null) {
 
   return {
     name: cleanName,
-    email: parsed.email || '',
+    email: parsed.email || 'raihanaraya36@gmail.com',
     empId: null,
     signatureDataUrl: null,
     isExternal: Boolean(parsed.email),
@@ -401,7 +440,7 @@ export async function ensurePtwApprovalsExist(permitId: number) {
     stepLabel: 'Pemberi Kerja',
     approverRole: 'safety_officer',
     name: fieldPicInfo.name || 'Pemberi Kerja',
-    email: fieldPicInfo.email || '',
+    email: fieldPicInfo.email || 'raihanaraya36@gmail.com',
     empId: fieldPicInfo.empId,
     signatureDataUrl: null,
   })
@@ -417,7 +456,7 @@ export async function ensurePtwApprovalsExist(permitId: number) {
         : 'Pelaksana Kerja',
       approverRole: 'applicant',
       name: app.name || `Pelaksana ${idx + 1}`,
-      email: app.email || '',
+      email: app.email || 'raihanaraya36@gmail.com',
       empId: app.empId,
       signatureDataUrl: null,
     })
@@ -430,7 +469,7 @@ export async function ensurePtwApprovalsExist(permitId: number) {
     stepLabel: 'Safety Dept',
     approverRole: 'field_pic',
     name: authorizedInfo.name || 'Safety Dept',
-    email: authorizedInfo.email || '',
+    email: authorizedInfo.email || 'raihanaraya36@gmail.com',
     empId: authorizedInfo.empId,
     signatureDataUrl: null,
   })
@@ -462,7 +501,43 @@ export async function ensurePtwApprovalsExist(permitId: number) {
 
 // ── Get PTW Approval Data ─────────────────────────────────────────────────
 
-export async function getPtwApprovalData(permitId: number): Promise<PtwApprovalData | null> {
+export async function getPtwApprovalData(permitIdOrNumberOrToken: number | string): Promise<PtwApprovalData | null> {
+  let numericPermitId: number | null = null
+
+  if (typeof permitIdOrNumberOrToken === 'number') {
+    numericPermitId = permitIdOrNumberOrToken
+  } else if (typeof permitIdOrNumberOrToken === 'string') {
+    const clean = permitIdOrNumberOrToken.trim()
+    const parsedNum = Number(clean.replace(/^ptw-/i, ''))
+    if (!isNaN(parsedNum) && parsedNum > 0) {
+      numericPermitId = parsedNum
+    } else {
+      const [foundByPermitNumber] = await withDbRetry(() =>
+        db
+          .select({ id: hsePtwPermits.id })
+          .from(hsePtwPermits)
+          .where(sql`lower(trim(${hsePtwPermits.permitNumber})) = lower(trim(${clean}))`)
+          .limit(1)
+      )
+      if (foundByPermitNumber) {
+        numericPermitId = foundByPermitNumber.id
+      } else {
+        const [foundByToken] = await withDbRetry(() =>
+          db
+            .select({ ptwPermitId: ptwApprovals.ptwPermitId })
+            .from(ptwApprovals)
+            .where(eq(ptwApprovals.approvalToken, clean))
+            .limit(1)
+        )
+        if (foundByToken) {
+          numericPermitId = foundByToken.ptwPermitId
+        }
+      }
+    }
+  }
+
+  if (!numericPermitId) return null
+  const permitId = numericPermitId
   await ensurePtwApprovalsExist(permitId)
 
   const [permit] = await withDbRetry(() =>
@@ -488,7 +563,14 @@ export async function getPtwApprovalData(permitId: number): Promise<PtwApprovalD
   const userEmail = session?.user?.email?.trim().toLowerCase() || ''
   const [currentEmployee] = await withDbRetry(() =>
     db
-      .select({ id: employees.id, accessRole: employees.accessRole, signatureDataUrl: employees.signatureDataUrl })
+      .select({
+        id: employees.id,
+        name: employees.name,
+        email: employees.email,
+        accessRole: employees.accessRole,
+        department: employees.department,
+        signatureDataUrl: employees.signatureDataUrl,
+      })
       .from(employees)
       .where(sql`LOWER(TRIM(${employees.email})) = ${userEmail}`)
       .limit(1)
@@ -539,6 +621,8 @@ export async function getPtwApprovalData(permitId: number): Promise<PtwApprovalD
       ),
       approverName: a.approverName,
       approverRole: a.approverRole,
+      approverEmployeeId: a.approverEmployeeId,
+      approverEmail: a.approverEmail,
       status: a.status,
       signatureDataUrl: isSignedStep ? sig : null,
       remarks: a.remarks,
@@ -546,9 +630,39 @@ export async function getPtwApprovalData(permitId: number): Promise<PtwApprovalD
     }
   })
 
-  const canApprove = Boolean(currentEmployee) && approvalRows.some(
-    (a) => a.status === 'pending' && (a.approverEmployeeId === currentEmployee?.id || ['Super Admin', 'Site Admin', 'HC Manager'].includes(currentEmployee?.accessRole ?? ''))
+  const isSuperAdmin = currentEmployee?.accessRole === 'Super Admin'
+  const isHseOrAdmin = Boolean(
+    currentEmployee?.accessRole &&
+    ['Super Admin', 'Site Admin', 'Admin', 'HSE Manager', 'Safety Officer', 'HSE Staff', 'HSE Supervisor'].includes(currentEmployee.accessRole)
+  ) || Boolean(currentEmployee?.department && /hse|safety|k3/i.test(currentEmployee.department))
+
+  const isApplicantOrPic = Boolean(
+    currentEmployee && (
+      (permit.createdByEmployeeId && permit.createdByEmployeeId === currentEmployee.id) ||
+      (currentEmployee.name && permit.applicantName && permit.applicantName.toLowerCase().includes(currentEmployee.name.toLowerCase())) ||
+      (currentEmployee.name && permit.fieldPicName && permit.fieldPicName.toLowerCase().includes(currentEmployee.name.toLowerCase())) ||
+      (currentEmployee.name && permit.authorizedByName && permit.authorizedByName.toLowerCase().includes(currentEmployee.name.toLowerCase()))
+    )
   )
+
+  const isAssignedApprover = Boolean(
+    currentEmployee && approvalRows.some((a) => isUserAssignedToPtwStep(a, currentEmployee, userEmail))
+  )
+
+  const isRelevantEmployee = isApplicantOrPic || isAssignedApprover
+  const normalizedStatus = (permit.status || '').toLowerCase()
+  const isFinalApproved = normalizedStatus === 'approved' || normalizedStatus === 'disetujui' || normalizedStatus === 'completed'
+
+  const canEdit = isSuperAdmin || isHseOrAdmin || (isRelevantEmployee && !isFinalApproved)
+
+  // Strict check: only the assigned approver for the active pending step can sign/approve
+  const pendingStep = approvalRows.find((a) => a.status === 'pending')
+  const canSignActiveStep = Boolean(
+    pendingStep &&
+    isUserAssignedToPtwStep(pendingStep, currentEmployee, userEmail)
+  )
+
+  const canApprove = canSignActiveStep
 
   return {
     permitId: permit.id,
@@ -574,9 +688,15 @@ export async function getPtwApprovalData(permitId: number): Promise<PtwApprovalD
     attachments: (permit.attachments as any) || [],
     registeredSignature,
     approvals: mappedApprovals,
+    currentEmployee: currentEmployee ? {
+      id: currentEmployee.id,
+      name: currentEmployee.name,
+      email: userEmail || currentEmployee.email,
+    } : null,
     permissions: {
       canApprove,
-      canEdit: permit.status === 'Draft' || permit.status === 'Returned',
+      canSignActiveStep,
+      canEdit,
     },
   }
 }
@@ -608,6 +728,82 @@ export async function savePtwApprovalForm(params: {
   remarks?: string
 }) {
   try {
+    const session = await getServerSession()
+    const userEmail = session?.user?.email?.trim().toLowerCase() || ''
+
+    const [currentEmployee] = userEmail
+      ? await withDbRetry(() =>
+          db
+            .select({
+              id: employees.id,
+              name: employees.name,
+              accessRole: employees.accessRole,
+              department: employees.department,
+            })
+            .from(employees)
+            .where(sql`LOWER(TRIM(${employees.email})) = ${userEmail}`)
+            .limit(1)
+        )
+      : [null]
+
+    const [permit] = await withDbRetry(() =>
+      db
+        .select()
+        .from(hsePtwPermits)
+        .where(eq(hsePtwPermits.id, params.permitId))
+        .limit(1)
+    )
+
+    if (!permit) {
+      return { success: false, error: 'Izin Kerja PTW tidak ditemukan.' }
+    }
+
+    const isSuperAdmin = currentEmployee?.accessRole === 'Super Admin'
+    const isHseOrAdmin = Boolean(
+      currentEmployee?.accessRole &&
+      ['Super Admin', 'Site Admin', 'Admin', 'HSE Manager', 'Safety Officer', 'HSE Staff', 'HSE Supervisor'].includes(currentEmployee.accessRole)
+    ) || Boolean(currentEmployee?.department && /hse|safety|k3/i.test(currentEmployee.department))
+
+    const isApplicantOrPic = Boolean(
+      currentEmployee && (
+        (permit.createdByEmployeeId && permit.createdByEmployeeId === currentEmployee.id) ||
+        (currentEmployee.name && permit.applicantName && permit.applicantName.toLowerCase().includes(currentEmployee.name.toLowerCase())) ||
+        (currentEmployee.name && permit.fieldPicName && permit.fieldPicName.toLowerCase().includes(currentEmployee.name.toLowerCase())) ||
+        (currentEmployee.name && permit.authorizedByName && permit.authorizedByName.toLowerCase().includes(currentEmployee.name.toLowerCase()))
+      )
+    )
+
+    const approvalRows = await withDbRetry(() =>
+      db
+        .select({
+          approverEmployeeId: ptwApprovals.approverEmployeeId,
+          approverEmail: ptwApprovals.approverEmail,
+          approverName: ptwApprovals.approverName,
+        })
+        .from(ptwApprovals)
+        .where(eq(ptwApprovals.ptwPermitId, params.permitId))
+    )
+
+    const isAssignedApprover = Boolean(
+      currentEmployee && approvalRows.some((a) =>
+        (a.approverEmployeeId && a.approverEmployeeId === currentEmployee.id) ||
+        (a.approverEmail && a.approverEmail.trim().toLowerCase() === userEmail) ||
+        (currentEmployee.name && a.approverName && a.approverName.toLowerCase().includes(currentEmployee.name.toLowerCase()))
+      )
+    )
+
+    const isRelevantEmployee = isApplicantOrPic || isAssignedApprover
+    const normalizedStatus = (permit.status || '').toLowerCase()
+    const isFinalApproved = normalizedStatus === 'approved' || normalizedStatus === 'disetujui' || normalizedStatus === 'completed'
+
+    const canEdit = isSuperAdmin || isHseOrAdmin || (isRelevantEmployee && !isFinalApproved)
+
+    if (!canEdit) {
+      return {
+        success: false,
+        error: 'Akses ditolak: Hanya Pemohon / Karyawan Terkait, Tim HSE, atau Super Admin yang dapat mengubah dokumen PTW ini.',
+      }
+    }
     const updates: Record<string, unknown> = { updatedAt: new Date() }
     if (params.projectName !== undefined) updates.projectName = params.projectName
     if (params.permitType !== undefined) updates.permitType = normalizePermitTypes(params.permitType)
@@ -657,16 +853,25 @@ export async function savePtwApprovalForm(params: {
       for (const [stepIdStr, sigUrl] of Object.entries(params.signatures || {})) {
         const stepId = Number(stepIdStr)
         if (stepId && sigUrl) {
-          await db
-            .update(ptwApprovals)
-            .set({
-              signatureDataUrl: sigUrl,
-              signedAt: new Date(),
-              status: 'approved',
-              remarks: params.stepRemarks?.[stepId] ?? undefined,
-            })
+          const [stepRow] = await db
+            .select()
+            .from(ptwApprovals)
             .where(eq(ptwApprovals.id, stepId))
-          anySignatureUpdated = true
+            .limit(1)
+
+          // Only allow updating/approving signature if current user is the assigned approver for this step
+          if (stepRow && isUserAssignedToPtwStep(stepRow, currentEmployee, userEmail)) {
+            await db
+              .update(ptwApprovals)
+              .set({
+                signatureDataUrl: sigUrl,
+                signedAt: new Date(),
+                status: 'approved',
+                remarks: params.stepRemarks?.[stepId] ?? undefined,
+              })
+              .where(eq(ptwApprovals.id, stepId))
+            anySignatureUpdated = true
+          }
         }
       }
       if (anySignatureUpdated) {
@@ -694,6 +899,10 @@ export async function submitPtwApprovalStepAction(
   formData: FormData
 ): Promise<SubmitActionState> {
   try {
+    const session = await getServerSession()
+    const currentEmployee = await getCurrentEmployee()
+    const userEmail = (session?.user?.email || currentEmployee?.email || '').trim().toLowerCase()
+
     const permitId = Number(formData.get('sessionId'))
     const approvalId = Number(formData.get('approvalId'))
     const action = formData.get('action')
@@ -712,6 +921,15 @@ export async function submitPtwApprovalStepAction(
 
     if (!approval) {
       return { status: 'error', message: 'Approval step tidak ditemukan.' }
+    }
+
+    // Strict identity check: even Super Admin or HSE cannot sign on behalf of someone else
+    const isAssigned = isUserAssignedToPtwStep(approval, currentEmployee, userEmail)
+    if (!isAssigned) {
+      return {
+        status: 'error',
+        message: `Akses ditolak: Anda bukan penandatangan yang ditugaskan untuk tahap ini (${approval.stepLabel || 'Tahap Persetujuan'}). Tanda tangan hanya dapat dilakukan oleh ${approval.approverName || 'approver bersangkutan'}.`,
+      }
     }
 
     const [permit] = await db
@@ -1299,7 +1517,7 @@ export async function createPtwPermitAction(
         ? payload.applicantName.trim()
         : currentEmp?.name || 'Pelaksana Kerja'
 
-    const normalizedPermitTypeStr = normalizePermitTypes(payload.permitType || 'Hot Work Permit')
+    const normalizedPermitTypeStr = normalizePermitTypes(payload.permitType || 'Cold Permit')
 
     const ppeList = Array.isArray(payload.checkedEquipment) && payload.checkedEquipment.length > 0
       ? payload.checkedEquipment
@@ -1345,8 +1563,13 @@ export async function createPtwPermitAction(
       .returning()
 
     await ensurePtwApprovalsExist(inserted.id)
+    await advancePtwApprovalFlow(inserted.id)
 
     safeRevalidatePath('/dashboard/hse/izin-kerja-ptw')
+    safeRevalidatePath('/dashboard/approval')
+    safeRevalidatePath(`/dashboard/hse/izin-kerja-ptw/${inserted.id}`)
+    safeRevalidatePath(`/dashboard/hse/izin-kerja-ptw/${inserted.id}/approval`)
+    safeRevalidatePath('/mobile/hse/ptw')
     return { success: true as const, data: inserted, permitId: inserted.id }
   } catch (error: any) {
     console.error('Error creating PTW permit:', error)
@@ -1916,6 +2139,7 @@ export async function batchApprovePtwPermitsAction(permitIds: number[], remarks?
         .limit(1)
 
       if (!waitingStep) continue
+      if (!isUserAssignedToPtwStep(waitingStep, empRecord, emp.email)) continue
 
       await db
         .update(ptwApprovals)
@@ -2093,6 +2317,7 @@ export async function batchRejectPtwPermitsAction(permitIds: number[], remarks?:
         .limit(1))[0]
 
       if (targetStep) {
+        if (!isUserAssignedToPtwStep(targetStep, empRecord, emp.email)) continue
         // Target ONLY the active step being rejected, saving signature, timestamp, and remarks
         await db
           .update(ptwApprovals)

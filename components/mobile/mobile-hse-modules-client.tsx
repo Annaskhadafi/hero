@@ -30,6 +30,8 @@ import {
   extractCheckedEquipment,
 } from '@/lib/ptw-helpers'
 import { PtwSubTypesEditor } from '@/components/ptw-sub-types-editor'
+import { PtwDocumentModal } from '@/components/ptw-document-modal'
+import { PtwDocumentQr } from '@/components/ptw-document-qr'
 
 type Access = { canView: boolean; canEdit: boolean; canDelete: boolean; canSelectAll?: boolean }
 type Incident = { id: number; title: string; category: string; severity: string; description: string; investigationStatus: string; incidentDate: Date; picName: string; rootCauseAnalysis: string; immediateCorrectiveAction: string; documentationUrl: string }
@@ -152,11 +154,13 @@ export function MobilePtwClient({
   const [form, setForm] = React.useState(initialForm)
   const [checkedEquipment, setCheckedEquipment] = React.useState<string[]>([])
   const [mobileSubTypes, setMobileSubTypes] = React.useState<Record<string, string[]>>(() => getDefaultSubTypes())
+  const [customPpeInput, setCustomPpeInput] = React.useState('')
 
   const resetForm = () => {
     setForm(initialForm)
     setCheckedEquipment([])
     setMobileSubTypes(getDefaultSubTypes())
+    setCustomPpeInput('')
     setEditingId(null)
   }
 
@@ -227,6 +231,18 @@ export function MobilePtwClient({
         ppe: isChecked ? prev.ppe.filter((p) => p !== item) : [...prev.ppe, item],
       }
     })
+  }
+
+  const handleAddCustomPpe = () => {
+    const trimmed = customPpeInput.trim()
+    if (!trimmed) return
+    if (!form.ppe.includes(trimmed)) {
+      setForm((prev) => ({
+        ...prev,
+        ppe: [...prev.ppe, trimmed],
+      }))
+    }
+    setCustomPpeInput('')
   }
 
   const toggleEquipmentItem = (itemLabel: string) => {
@@ -696,57 +712,101 @@ export function MobilePtwClient({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700">Status Approval</label>
-              <select
-                value={form.status}
-                onChange={(e) => setForm({ ...form, status: e.target.value })}
-                className="w-full h-9 rounded-xl border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="Pending Approval">Pending Approval</option>
-                <option value="Submitted">Submitted</option>
-                <option value="Approved">Approved</option>
-                <option value="Draft">Draft</option>
-              </select>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700">Risk Level</label>
-              <select
-                value={form.riskLevel}
-                onChange={(e) => setForm({ ...form, riskLevel: e.target.value })}
-                className="w-full h-9 rounded-xl border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="Low">Low</option>
-                <option value="Medium">Medium</option>
-                <option value="High">High</option>
-                <option value="Critical">Critical</option>
-              </select>
-            </div>
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-slate-700">Tingkat Risiko (Risk Level)</label>
+            <select
+              value={form.riskLevel}
+              onChange={(e) => setForm({ ...form, riskLevel: e.target.value })}
+              className="w-full h-9 rounded-xl border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="Low">Low</option>
+              <option value="Medium">Medium</option>
+              <option value="High">High</option>
+              <option value="Critical">Critical</option>
+            </select>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-700">APD Wajib (Multi-Select)</label>
-            <div className="flex flex-wrap gap-1 p-2 rounded-xl border border-slate-200 bg-slate-50/60">
-              {APD_OPTIONS.map((item) => {
-                const isChecked = form.ppe.includes(item)
-                return (
-                  <button
-                    type="button"
+          <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-extrabold text-slate-900">APD Wajib (Alat Pelindung Diri)</label>
+              <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                {form.ppe.length} APD Dipilih
+              </span>
+            </div>
+
+            {/* Selected APD Badges with Remove */}
+            <div className="flex flex-wrap gap-1 min-h-8 p-1.5 rounded-lg border border-slate-200 bg-white">
+              {form.ppe.length === 0 ? (
+                <span className="text-[11px] text-slate-400 italic">Belum ada APD dipilih.</span>
+              ) : (
+                form.ppe.map((item) => (
+                  <span
                     key={item}
-                    onClick={() => togglePpe(item)}
-                    className={cn(
-                      'inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-bold transition-all',
-                      isChecked
-                        ? 'bg-slate-900 text-white shadow-xs'
-                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
-                    )}
+                    className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold bg-slate-900 text-white shadow-2xs"
                   >
-                    {item} {isChecked && <span className="text-[10px]">×</span>}
-                  </button>
-                )
-              })}
+                    <span>{item}</span>
+                    <button
+                      type="button"
+                      onClick={() => togglePpe(item)}
+                      className="hover:text-rose-300 font-bold ml-0.5 text-xs"
+                      title={`Hapus ${item}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))
+              )}
+            </div>
+
+            {/* Custom APD Input */}
+            <div className="flex gap-1.5">
+              <Input
+                type="text"
+                placeholder="Tambah APD manual / khusus..."
+                value={customPpeInput}
+                onChange={(e) => setCustomPpeInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleAddCustomPpe()
+                  }
+                }}
+                className="h-8 rounded-lg border-slate-200 bg-white text-xs font-medium"
+              />
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleAddCustomPpe}
+                className="h-8 px-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shrink-0"
+              >
+                + Tambah
+              </Button>
+            </div>
+
+            {/* Preset APD Chips */}
+            <div className="space-y-1 pt-1 border-t border-slate-200">
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Pilihan Cepat Standar:</span>
+              <div className="flex flex-wrap gap-1">
+                {APD_OPTIONS.map((item) => {
+                  const isChecked = form.ppe.includes(item)
+                  return (
+                    <button
+                      type="button"
+                      key={item}
+                      onClick={() => togglePpe(item)}
+                      className={cn(
+                        'inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-bold transition-all',
+                        isChecked
+                          ? 'bg-blue-700 text-white shadow-2xs'
+                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                      )}
+                    >
+                      <span>{isChecked ? '✓' : '+'}</span>
+                      <span>{item}</span>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           </div>
 
@@ -992,64 +1052,15 @@ export function MobilePtwClient({
         </TabsContent>
       </Tabs>
 
-      {viewTarget ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-3 backdrop-blur-xs">
-          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl space-y-3">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-              <div>
-                <span className="font-mono text-xs font-bold text-blue-700">{viewTarget.permitNumber}</span>
-                <h3 className="text-sm font-extrabold text-slate-900">{viewTarget.projectName}</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setViewTarget(null)}
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-              >
-                <X className="size-5" />
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <PtwStatusBadge status={viewTarget.status} />
-              <PtwRiskBadge risk={viewTarget.riskLevel} />
-              <span className="text-xs font-semibold text-slate-700">{viewTarget.permitType}</span>
-            </div>
-
-            <div className="rounded-xl bg-slate-50 p-3 text-xs space-y-1.5 border border-slate-200">
-              <p><span className="font-bold text-slate-500">Lokasi:</span> <span className="font-semibold text-slate-900">{viewTarget.location} {viewTarget.area ? `(${viewTarget.area})` : ''}</span></p>
-              <p><span className="font-bold text-slate-500">Pelaksana:</span> <span className="font-semibold text-slate-900">{viewTarget.applicantName || '—'}</span></p>
-              <p><span className="font-bold text-slate-500">Pemberi Kerja:</span> <span className="font-semibold text-slate-900">{viewTarget.fieldPicName || '—'}</span></p>
-              <p><span className="font-bold text-slate-500">Safety Dept:</span> <span className="font-semibold text-slate-900">{viewTarget.authorizedByName || '—'}</span></p>
-            </div>
-
-            {viewTarget.description ? (
-              <div className="space-y-1">
-                <p className="text-xs font-bold text-slate-700">Deskripsi Pekerjaan:</p>
-                <p className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-800 whitespace-pre-wrap">
-                  {viewTarget.description}
-                </p>
-              </div>
-            ) : null}
-
-            {viewTarget.controlSteps ? (
-              <div className="space-y-1">
-                <p className="text-xs font-bold text-slate-700">Langkah Pengendalian / Checklist K3:</p>
-                <p className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-800 whitespace-pre-wrap">
-                  {viewTarget.controlSteps}
-                </p>
-              </div>
-            ) : null}
-
-            <Button
-              type="button"
-              className="w-full h-10 rounded-xl bg-slate-900 text-white font-bold text-xs"
-              onClick={() => setViewTarget(null)}
-            >
-              TUTUP DETAIL PTW
-            </Button>
-          </div>
-        </div>
-      ) : null}
+      {/* ── Floating Document Modal (Preview / Print / Zoom / Download) ── */}
+      {viewTarget && (
+        <PtwDocumentModal
+          isOpen={Boolean(viewTarget)}
+          onClose={() => setViewTarget(null)}
+          permitId={viewTarget.id}
+          fallbackRecord={viewTarget}
+        />
+      )}
     </div>
   )
 }

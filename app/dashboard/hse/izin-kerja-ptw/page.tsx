@@ -64,6 +64,7 @@ export default async function IzinKerjaPtwPage() {
           description: hsePtwPermits.description,
           controlSteps: hsePtwPermits.controlSteps,
           ppe: hsePtwPermits.ppe,
+          subTypes: hsePtwPermits.subTypes,
           gasTestRequired: hsePtwPermits.gasTestRequired,
           isolationRequired: hsePtwPermits.isolationRequired,
           createdByEmployeeId: hsePtwPermits.createdByEmployeeId,
@@ -208,8 +209,10 @@ export default async function IzinKerjaPtwPage() {
       description: r.description || '',
       controlSteps: r.controlSteps || '',
       ppe: Array.isArray(r.ppe) ? r.ppe : [],
+      subTypes: (r.subTypes as Record<string, string[]> | string[]) || {},
       gasTestRequired: Boolean(r.gasTestRequired),
       isolationRequired: Boolean(r.isolationRequired),
+      createdByEmployeeId: r.createdByEmployeeId ? Number(r.createdByEmployeeId) : null,
       approvals: apps,
     }
   })
@@ -229,6 +232,8 @@ export default async function IzinKerjaPtwPage() {
       currentEmployeeId={currentEmployee?.id ?? null}
       currentEmployeeEmail={normalizedEmail}
       currentEmployeeName={currentEmployee?.name || ''}
+      currentEmployeeRole={currentEmployee?.accessRole || ''}
+      currentEmployeeDepartment={currentEmployee?.department || ''}
       isAdmin={Boolean(isGlobalAdmin)}
     />
   )

@@ -65,6 +65,7 @@ import {
   batchRejectOvertimeRequestsAction,
 } from '@/app/dashboard/overtime-requests/actions'
 import {
+  getPtwApprovalData,
   singleApprovePtwPermitAction,
   singleRejectPtwPermitAction,
   singleRevertPtwPermitAction,
@@ -72,8 +73,19 @@ import {
   batchRevertPtwPermitsAction,
   batchRejectPtwPermitsAction,
 } from '@/app/dashboard/hse/izin-kerja-ptw/actions'
-import { EQUIPMENT_CHECKLIST_PER_TYPE, isItemChecked, getPermitSubTypes, cleanPtwDescription, extractCheckedEquipment } from '@/lib/ptw-helpers'
+import { PtwDocumentModal } from '@/components/ptw-document-modal'
+import { PtwDocumentQr } from '@/components/ptw-document-qr'
 import { PtwChecklistTable } from '@/components/ptw-checklist-table'
+import {
+  EQUIPMENT_CHECKLIST_PER_TYPE,
+  isItemChecked,
+  getPermitSubTypes,
+  cleanPtwDescription,
+  extractCheckedEquipment,
+  getDefaultSubTypes,
+  getActivePermitTypeKeys,
+  normalizePermitTypes,
+} from '@/lib/ptw-helpers'
 import { reviewSopWinDocumentRequestAction } from '@/app/dashboard/sop-win/actions'
 import { AdminDetailDrawer } from '@/components/admin/admin-detail-drawer'
 import { ApprovalRequestDetails } from '@/components/approval-request-details'
@@ -645,6 +657,7 @@ export function InboxTab({
     }
 
     for (const p of ptwItems) {
+      const isReverted = Boolean((p as any).isReverted)
       list.push({
         id: p.id,
         category: 'PTW',
@@ -660,6 +673,8 @@ export function InboxTab({
         dueAt: p.dueAt,
         submittedAt: p.submittedAt,
         url: p.url,
+        isReverted,
+        actionLabel: (p as any).actionLabel || (isReverted ? 'Revisi Dokumen' : 'Buka TTD ↗'),
         rawPtw: p,
       })
     }
@@ -2023,13 +2038,9 @@ export function InboxTab({
                     <TableCell className="align-top text-right">
                       {item.category === 'RFR' && item.rawRfr ? (
                         <RfrApprovalDialog item={item.rawRfr as any} />
-                      ) : (item as any).activityType === 'Work Order' ||
-                        (item as any).repairFormWo ||
-                        (item as any).title?.toLowerCase().includes('wo') ? (
+                      ) : item.category === 'FORM_WO' || (item.category === 'GENERAL' && ((item as any).repairFormWo || (item as any).activityType === 'Work Order' || (item as any).activityType === 'Form WO')) ? (
                         <FormWoApprovalDialog item={item as any} group={(item as any).rawGeneralGroup || item} />
-                      ) : (item as any).activityType === '5R Audit Report' ||
-                        (item as any).fiveRReport ||
-                        (item as any).title?.toLowerCase().includes('5r') ? (
+                      ) : item.category === 'QUALITY_5R' || (item.category === 'GENERAL' && ((item as any).fiveRReport || (item as any).activityType === '5R Audit Report')) ? (
                         <FiveRApprovalDialog item={item as any} group={(item as any).rawGeneralGroup || item} />
                       ) : (item as any).isReverted ? (
                         <Button
@@ -2826,37 +2837,32 @@ export function InboxTab({
                       {/* PTW */}
                       {currentBatchDoc.category === 'PTW' && currentBatchDoc.rawPtw && (() => {
                         const doc: any = currentBatchDoc.rawPtw
-                        const ptwApprovals = (doc as any).approvals || []
-                        const step1 = ptwApprovals.find((a: any) => a.stepOrder === 1 || a.approverRole === 'applicant')
-                        const step2 = ptwApprovals.find((a: any) => a.stepOrder === 2 || a.approverRole === 'safety_officer')
-                        const step3 = ptwApprovals.find((a: any) => a.stepOrder === 3 || a.approverRole === 'field_pic' || a.approverRole === 'authorized')
+                        const ptwApprovals: any[] = (doc as any).approvals || []
+                        const stepPemberi =
+                          ptwApprovals.find((a: any) => a.stepOrder === 1 || a.approverRole === 'pemberi_kerja' || a.approverRole === 'safety_officer' || a.level === 1) ||
+                          ptwApprovals[0]
+                        const stepSafety =
+                          ptwApprovals.find((a: any) => a.approverRole === 'safety_dept' || a.approverRole === 'authorized' || a.stepLabel?.toLowerCase().includes('safety') || a.stepLabel?.toLowerCase().includes('hse')) ||
+                          (ptwApprovals.length > 2 ? ptwApprovals[ptwApprovals.length - 1] : (ptwApprovals.find((a: any) => a.stepOrder === 3) || ptwApprovals[2]))
+                        const pelaksanaSteps = ptwApprovals.filter((a: any) => {
+                          if (stepPemberi && (a.id ? a.id === stepPemberi.id : a.stepOrder === stepPemberi.stepOrder)) return false
+                          if (stepSafety && (a.id ? a.id === stepSafety.id : a.stepOrder === stepSafety.stepOrder)) return false
+                          return true
+                        })
+                        const stepPelaksana = pelaksanaSteps[0] || ptwApprovals.find((a: any) => a.stepOrder === 2) || ptwApprovals[1]
 
-                        const remark1 = (step1 && step1.status === 'pending' && approvalRemarks[currentBatchDoc.id]) || step1?.remarks
-                        const remark2 = (step2 && step2.status === 'pending' && approvalRemarks[currentBatchDoc.id]) || step2?.remarks
-                        const remark3 = (step3 && step3.status === 'pending' && approvalRemarks[currentBatchDoc.id]) || step3?.remarks
+                        const step1 = stepPemberi
+                        const step2 = stepPelaksana
+                        const step3 = stepSafety
 
-                        const permitTypeNorm = (doc.permitType || '').toUpperCase()
-                        const activeTypes: string[] = []
-                        if (permitTypeNorm.includes('HOT')) activeTypes.push('HOT')
-                        if (permitTypeNorm.includes('CONFINED')) activeTypes.push('CONFINED')
-                        if (permitTypeNorm.includes('DIGGING')) activeTypes.push('DIGGING')
-                        if (permitTypeNorm.includes('COLD')) activeTypes.push('COLD')
-                        if (permitTypeNorm.includes('ELECTRICAL') || permitTypeNorm.includes('MECHANICAL')) activeTypes.push('ELECTRICAL')
+                        const remark1 = (step1 && step1.status === 'pending' && approvalRemarks[currentBatchDoc.id]) || step1?.remarks || 'Pekerjaan diizinkan sesuai SOP & JSA.'
+                        const remark2 = pelaksanaSteps.map((p: any) => p.remarks).filter(Boolean).join('; ') || (pelaksanaSteps.some((p: any) => p.status === 'pending') && approvalRemarks[currentBatchDoc.id]) || step2?.remarks || 'APD lengkap & checklist K3 terverifikasi.'
+                        const remark3 = (step3 && step3.status === 'pending' && approvalRemarks[currentBatchDoc.id]) || step3?.remarks || 'Monitoring berkala oleh Pengawas HSE.'
 
-                        const columnsToShow = activeTypes.length > 0 ? activeTypes : ['HOT', 'CONFINED', 'DIGGING', 'COLD', 'ELECTRICAL']
-                        const gridColsClass =
-                          columnsToShow.length === 1
-                            ? 'grid-cols-1'
-                            : columnsToShow.length === 2
-                            ? 'grid-cols-2'
-                            : columnsToShow.length === 3
-                            ? 'grid-cols-3'
-                            : columnsToShow.length === 4
-                            ? 'grid-cols-4'
-                            : 'grid-cols-5'
+
 
                         return (
-                          <div className="-mx-5 -my-9 text-slate-900 w-[1122px] min-h-[793px] flex flex-col justify-between">
+                          <div className="-mx-5 -my-9 text-slate-900 w-[1122px] min-h-[793px] flex flex-col justify-between bg-white font-sans">
                             {/* ── HEADER TABLE ── */}
                             <div className="grid grid-cols-[180px_1fr] border-b-2 border-slate-900">
                               <div className="flex items-center justify-center p-2 border-r-2 border-slate-900 bg-white">
@@ -2897,7 +2903,9 @@ export function InboxTab({
                               </div>
                               <div className="col-span-6 border-t border-slate-900 p-1.5 bg-blue-50/50">
                                 <span className="font-bold text-slate-800">Tipe Izin Kerja Terpilih :</span>{' '}
-                                <span className="font-semibold uppercase text-slate-900">{doc.permitType || 'Cold Permit'}</span>
+                                <span className="font-semibold uppercase text-slate-900">
+                                  {normalizePermitTypes(doc.permitType || (currentBatchDoc as any)?.rawPtw?.permitType || 'Cold Permit')}
+                                </span>
                               </div>
                             </div>
 
@@ -2916,10 +2924,9 @@ export function InboxTab({
 
                               return (
                                 <PtwChecklistTable
-                                  permitType={doc.permitType}
+                                  permitType={doc.permitType || (currentBatchDoc as any)?.rawPtw?.permitType}
                                   subTypes={(currentBatchDoc as any)?.rawPtw?.subTypes || (currentBatchDoc as any)?.subTypes || (doc as any)?.subTypes}
                                   checkedEquipment={checkedEquipment}
-                                  columnsToShow={columnsToShow}
                                 />
                               )
                             })()}
@@ -2962,7 +2969,7 @@ export function InboxTab({
                                     CATATAN PEMBERI KERJA
                                   </span>
                                   <div className="text-[7pt] text-slate-700 leading-snug break-words">
-                                    {remark2 || null}
+                                    {remark1 || null}
                                   </div>
                                 </div>
                               </div>
@@ -2974,7 +2981,7 @@ export function InboxTab({
                                     CATATAN PELAKSANA PEKERJAAN
                                   </span>
                                   <div className="text-[7pt] text-slate-700 leading-snug break-words">
-                                    {remark1 || null}
+                                    {remark2 || null}
                                   </div>
                                 </div>
                               </div>
@@ -2991,31 +2998,17 @@ export function InboxTab({
                                 </div>
                               </div>
 
-                              {/* 4. QR Code */}
-                              {(() => {
-                                const qrBaseUrl = 'https://hero.chitraparatama.com'
-                                const qrTargetUrl = `${qrBaseUrl}/review/ptw/${encodeURIComponent(doc.permitNumber)}`
-                                return (
-                                  <a
-                                    href={qrTargetUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white hover:bg-blue-50/50 cursor-pointer transition-colors no-underline text-slate-900"
-                                    title="Klik / Scan untuk membuka lampiran PTW"
-                                    suppressHydrationWarning
-                                  >
-                                    <img
-                                      src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrTargetUrl)}`}
-                                      alt="QR Code Lampiran PTW"
-                                      className="size-12 object-contain border border-slate-900 p-0.5 bg-white rounded shadow-2xs hover:scale-105 transition-transform"
-                                      suppressHydrationWarning
-                                    />
-                                    <span className="text-[6pt] font-bold text-slate-900 mt-0.5 uppercase text-center underline underline-offset-1" suppressHydrationWarning>
-                                      Klik / Scan QR
-                                    </span>
-                                  </a>
-                                )
-                              })()}
+                              {/* 4. QR Code Validasi Digital */}
+                              <div className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white">
+                                <PtwDocumentQr
+                                  permitId={doc.ptwId || doc.id}
+                                  permitNumber={doc.permitNumber || currentBatchDoc?.documentNumber}
+                                  fallbackRecord={doc}
+                                  imageClassName="size-12"
+                                  labelTitle="Scan / Klik PTW"
+                                  labelSubtitle="Dokumen Pendukung"
+                                />
+                              </div>
                             </div>
 
                             {/* ── MASA BERLAKU IKB ── */}
@@ -3076,31 +3069,47 @@ export function InboxTab({
                                 </div>
                               </div>
 
-                              {/* 2. PELAKSANA PEKERJAAN */}
+                              {/* 2. PELAKSANA KERJA */}
                               <div className="p-1.5 text-center flex flex-col justify-between">
-                                <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PELAKSANA PEKERJAAN</div>
-                                <div className="h-14 flex flex-col items-center justify-center my-1">
-                                  {step2?.signatureDataUrl ? (
-                                    <img src={step2.signatureDataUrl} alt="TTD" className="max-h-10 object-contain" />
-                                  ) : null}
-                                  {step2?.status === 'rejected' ? (
-                                    <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak ({formatTimestamp(step2?.signedAt)})</span>
-                                  ) : step2?.status === 'reverted' ? (
-                                    <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan ({formatTimestamp(step2?.signedAt)})</span>
-                                  ) : step2?.status === 'approved' && !step2?.signatureDataUrl ? (
-                                    <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui ({formatTimestamp(step2?.signedAt)})</span>
-                                  ) : !step2?.signatureDataUrl ? (
+                                <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PELAKSANA KERJA</div>
+                                <div className="min-h-14 flex flex-wrap items-center justify-center gap-2 my-1">
+                                  {pelaksanaSteps.length > 0 ? (
+                                    pelaksanaSteps.map((pStep: any, pIdx: number) => {
+                                      const pSig = pStep.signatureDataUrl
+                                      return (
+                                        <div key={pStep.id || pIdx} className="flex flex-col items-center justify-center text-center">
+                                          {pStep.status === 'rejected' ? (
+                                            <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak</span>
+                                          ) : pStep.status === 'reverted' ? (
+                                            <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan</span>
+                                          ) : pSig ? (
+                                            <img src={pSig} alt={`TTD ${pStep.approverName}`} className="max-h-10 object-contain" />
+                                          ) : pStep.status === 'approved' ? (
+                                            <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui</span>
+                                          ) : (
+                                            <span className="text-[6.5pt] text-slate-400 italic">(Belum Disetujui)</span>
+                                          )}
+                                          <span className="text-[6.5pt] text-slate-600 font-semibold mt-0.5">{pStep.approverName}</span>
+                                        </div>
+                                      )
+                                    })
+                                  ) : step2?.signatureDataUrl ? (
+                                    <div className="flex flex-col items-center justify-center text-center">
+                                      <img src={step2.signatureDataUrl} alt="TTD" className="max-h-10 object-contain" />
+                                      <span className="text-[6.5pt] text-slate-600 font-semibold mt-0.5">{step2.approverName || doc.applicantName}</span>
+                                    </div>
+                                  ) : (
                                     <span className="text-[7pt] text-slate-400 italic">(Belum Disetujui)</span>
-                                  ) : null}
+                                  )}
                                 </div>
-                                <div className="border-t border-slate-900 pt-1 font-bold">
-                                  {step2?.approverName || doc.applicantName || 'NAMA & TANDA TANGAN'}
+                                <div className="border-t border-slate-900 pt-1 font-bold text-[7.5pt] truncate" title={pelaksanaSteps.map((p: any) => p.approverName).join(', ') || doc.applicantName}>
+                                  {pelaksanaSteps.map((p: any) => p.approverName).join(', ') || doc.applicantName || 'NAMA & TANDA TANGAN'}
                                 </div>
                               </div>
 
-                              {/* 3. VERIFIKASI (SAFETY DEPT) */}
+                              {/* 3. SAFETY DEPT */}
                               <div className="p-1.5 text-center flex flex-col justify-between">
-                                <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">VERIFIKASI (SAFETY DEPT)</div>
+                                <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">SAFETY DEPT</div>
                                 <div className="h-14 flex flex-col items-center justify-center my-1">
                                   {step3?.status === 'rejected' ? (
                                     <>
@@ -4005,6 +4014,8 @@ export function HistoryTab({
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false)
   const [isLoadingHistoryDoc, setIsLoadingHistoryDoc] = useState(false)
   const [historyDocType, setHistoryDocType] = useState<'spl' | 'daily' | null>(null)
+  const [ptwModalPermitId, setPtwModalPermitId] = useState<number | string | null>(null)
+  const [isPtwModalOpen, setIsPtwModalOpen] = useState(false)
   const [previewZoom, setPreviewZoom] = useState(1.0)
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
   const [mobileSearchQuery, setMobileSearchQuery] = useState('')
@@ -4056,6 +4067,22 @@ export function HistoryTab({
       actType.includes('daily') ||
       title.includes('daily') ||
       title.includes('dar')
+
+    const isPtw =
+      actId.startsWith('ptw-') ||
+      actType.includes('ptw') ||
+      actType.includes('ijin') ||
+      actType.includes('izin') ||
+      title.includes('ptw') ||
+      title.includes('izin kerja')
+
+    if (isPtw) {
+      const rawId = actId.replace('ptw-', '').replace(/[^0-9]/g, '')
+      if (!rawId) return
+      setPtwModalPermitId(rawId)
+      setIsPtwModalOpen(true)
+      return
+    }
 
     if (isSpl) {
       const rawId = actId.replace('overtime-', '').replace(/[^0-9]/g, '')
@@ -4126,6 +4153,21 @@ export function HistoryTab({
       actType.includes('daily') ||
       title.includes('daily') ||
       title.includes('dar')
+    const isPtw =
+      actId.startsWith('ptw-') ||
+      actType.includes('ptw') ||
+      actType.includes('ijin') ||
+      actType.includes('izin') ||
+      title.includes('ptw') ||
+      title.includes('izin kerja')
+
+    if (isPtw) {
+      const rawId = actId.replace('ptw-', '').replace(/[^0-9]/g, '')
+      if (!rawId) return
+      setPtwModalPermitId(rawId)
+      setIsPtwModalOpen(true)
+      return
+    }
 
     if (isDaily) {
       const rawId = actId.replace('daily-', '').replace(/[^0-9]/g, '')
@@ -5148,6 +5190,12 @@ export function HistoryTab({
         )}
 
         {previewModalContent}
+
+        <PtwDocumentModal
+          isOpen={isPtwModalOpen}
+          onClose={() => setIsPtwModalOpen(false)}
+          permitId={ptwModalPermitId}
+        />
       </div>
     )
   }
@@ -5332,6 +5380,12 @@ export function HistoryTab({
       </Card>
 
       {previewModalContent}
+
+      <PtwDocumentModal
+        isOpen={isPtwModalOpen}
+        onClose={() => setIsPtwModalOpen(false)}
+        permitId={ptwModalPermitId}
+      />
     </>
   )
 }

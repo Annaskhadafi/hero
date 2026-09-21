@@ -33,6 +33,8 @@ import {
 import * as XLSX from 'xlsx'
 import { toast } from 'sonner'
 import { downloadElementAsPdf, downloadHtmlAsPdf, generateElementAsPdfBlob, generateHtmlAsPdfBlob, downloadFilesAsZip } from '@/lib/pdf-download'
+import { PtwDocumentModal } from '@/components/ptw-document-modal'
+import { PtwDocumentQr } from '@/components/ptw-document-qr'
 
 import { AdminPageShell } from '@/components/admin-page-shell'
 import { HcWorkspaceBanner, hcPrimaryActionClassName } from '@/components/hc/hc-workspace-banner'
@@ -121,6 +123,7 @@ export type PtwListingRow = {
   gasTestRequired?: boolean
   isolationRequired?: boolean
   hiradcReference?: string
+  createdByEmployeeId?: number | null
   approvals: Array<{
     stepOrder: number
     stepLabel: string
@@ -428,31 +431,17 @@ function PtwLandscapePdfSheet({
           </div>
         </div>
 
-        {/* 4. QR Code */}
-        {(() => {
-          const qrBaseUrl = typeof window !== 'undefined' && window.location?.origin
-            ? window.location.origin
-            : 'https://hero.chitraparatama.com'
-          const qrTargetUrl = `${qrBaseUrl}/review/ptw/${encodeURIComponent(doc.permitNumber)}`
-          return (
-            <a
-              href={qrTargetUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white hover:bg-blue-50/50 cursor-pointer transition-colors no-underline text-slate-900"
-              title="Klik / Scan untuk membuka lampiran PTW"
-            >
-              <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrTargetUrl)}`}
-                alt="QR Code Lampiran PTW"
-                className="size-12 object-contain border border-slate-900 p-0.5 bg-white rounded shadow-2xs hover:scale-105 transition-transform"
-              />
-              <span className="text-[6pt] font-bold text-slate-900 mt-0.5 uppercase text-center underline underline-offset-1">
-                Klik / Scan QR
-              </span>
-            </a>
-          )
-        })()}
+        {/* 4. QR Code Validasi Digital */}
+        <div className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white">
+          <PtwDocumentQr
+            permitId={doc.id}
+            permitNumber={doc.permitNumber}
+            fallbackRecord={doc}
+            imageClassName="size-12"
+            labelTitle="Scan / Klik PTW"
+            labelSubtitle="Dokumen Pendukung"
+          />
+        </div>
       </div>
 
       {/* ── MASA BERLAKU IKB ── */}
@@ -603,6 +592,8 @@ export function PtwListingClient({
   currentEmployeeId = null,
   currentEmployeeEmail = null,
   currentEmployeeName = '',
+  currentEmployeeRole = '',
+  currentEmployeeDepartment = '',
   isAdmin = false,
 }: {
   rows: PtwListingRow[]
@@ -611,6 +602,8 @@ export function PtwListingClient({
   currentEmployeeId?: number | null
   currentEmployeeEmail?: string | null
   currentEmployeeName?: string | null
+  currentEmployeeRole?: string
+  currentEmployeeDepartment?: string
   isAdmin?: boolean
 }) {
   const router = useRouter()
@@ -791,27 +784,50 @@ export function PtwListingClient({
   const [createOpen, setCreateOpen] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
   const [createForm, setCreateForm] = useState({
-    projectName: 'Perbaikan Silo Material Kering No. 3 & Corong Inlet',
+    projectName: '',
     hiradcReference: '',
     permitType: 'Cold Permit',
-    location: 'Silo Material Kering No. 3',
-    area: 'Tire Repair Bay - Sector Utara',
+    location: '',
+    area: '',
     startDate: new Date().toISOString().split('T')[0],
     startTime: '08:00',
     endDate: new Date().toISOString().split('T')[0],
     endTime: '17:00',
-    description: 'Mengeluarkan sisa material yang menggumpal di area corong silo bawah dan inspeksi manual keretakan dinding bagian dalam.',
-    controlSteps: '1. Gas test O2, LEL, H2S, CO sebelum masuk.\n2. Blower aktif selama pekerjaan.\n3. Hole watcher standby.\n4. Full body harness dan rescue line wajib.\n5. LOTO area inlet dan outlet.',
-    applicantName: 'Budi — Technician',
-    fieldPicName: 'Workshop Supervisor Tire Repair',
+    description: '',
+    controlSteps: '',
+    applicantName: '',
+    fieldPicName: '',
     status: 'Pending Approval',
-    authorizedByName: 'HSE Superintendent',
-    riskLevel: 'Critical',
-    ppe: ['Helmet', 'Safety Shoes', 'Respirator', 'Full Body Harness'],
+    authorizedByName: '',
+    riskLevel: 'Low',
+    ppe: ['Helmet', 'Safety Shoes'],
     additionalNotes: '',
     gasTestRequired: false,
     isolationRequired: false,
   })
+
+  // Custom APD Input State
+  const [customApdInput, setCustomApdInput] = useState('')
+
+  const toggleCreatePpe = (item: string) => {
+    setCreateForm((prev) => {
+      const exists = prev.ppe.includes(item)
+      return {
+        ...prev,
+        ppe: exists ? prev.ppe.filter((p) => p !== item) : [...prev.ppe, item],
+      }
+    })
+  }
+
+  const handleAddCustomPpe = () => {
+    const trimmed = customApdInput.trim()
+    if (!trimmed) return
+    if (!createForm.ppe.includes(trimmed)) {
+      setCreateForm((prev) => ({ ...prev, ppe: [...prev.ppe, trimmed] }))
+      toast.success(`APD "${trimmed}" berhasil ditambahkan!`)
+    }
+    setCustomApdInput('')
+  }
 
   // External Vendor Worker Form State
   const [vendorModalOpen, setVendorModalOpen] = useState(false)
@@ -874,9 +890,7 @@ export function PtwListingClient({
     }
   }
 
-  const [checkedEquipment, setCheckedEquipment] = useState<string[]>(() =>
-    getSharedDefaultEquipmentItems('Cold Permit')
-  )
+  const [checkedEquipment, setCheckedEquipment] = useState<string[]>([])
   const [createSubTypes, setCreateSubTypes] = useState<Record<string, string[]>>(() => getDefaultSubTypes())
 
   const getDefaultEquipmentItems = (permitTypeStr: string): string[] => {
@@ -1467,13 +1481,6 @@ export function PtwListingClient({
     }
   }
 
-  const toggleCreatePpe = (item: string) => {
-    setCreateForm((prev) => ({
-      ...prev,
-      ppe: prev.ppe.includes(item) ? prev.ppe.filter((p) => p !== item) : [...prev.ppe, item],
-    }))
-  }
-
   const handleGenerateTest = async () => {
     setIsGeneratingTest(true)
     try {
@@ -1512,27 +1519,27 @@ export function PtwListingClient({
     const defaultPermitType = 'Cold Permit'
     setAttachedFileName('')
     setCreateAttachments([])
-    setCheckedEquipment(getDefaultEquipmentItems(defaultPermitType))
+    setCheckedEquipment([])
     setCreateSubTypes(getDefaultSubTypes())
 
     setCreateForm({
-      projectName: 'Perbaikan Silo Material Kering No. 3 & Corong Inlet',
+      projectName: '',
       hiradcReference: '',
       permitType: defaultPermitType,
-      location: 'Silo Material Kering No. 3',
-      area: 'Tire Repair Bay - Sector Utara',
+      location: '',
+      area: '',
       startDate: new Date().toISOString().split('T')[0],
       startTime: '08:00',
       endDate: new Date().toISOString().split('T')[0],
       endTime: '17:00',
-      description: 'Mengeluarkan sisa material yang menggumpal di area corong silo bawah dan inspeksi manual keretakan dinding bagian dalam.',
-      controlSteps: '1. Gas test O2, LEL, H2S, CO sebelum masuk.\n2. Blower aktif selama pekerjaan.\n3. Hole watcher standby.\n4. Full body harness dan rescue line wajib.\n5. LOTO area inlet dan outlet.',
-      applicantName: 'Budi — Technician',
-      fieldPicName: 'Workshop Supervisor Tire Repair',
+      description: '',
+      controlSteps: '',
+      applicantName: '',
+      fieldPicName: '',
       status: 'Pending Approval',
-      authorizedByName: 'HSE Superintendent',
-      riskLevel: 'Critical',
-      ppe: ['Helmet', 'Safety Shoes', 'Respirator', 'Full Body Harness'],
+      authorizedByName: '',
+      riskLevel: 'Low',
+      ppe: ['Helmet', 'Safety Shoes'],
       additionalNotes: '',
       gasTestRequired: false,
       isolationRequired: false,
@@ -1788,17 +1795,43 @@ export function PtwListingClient({
                 </TableRow>
               ) : (
                 filteredRows.map((row) => {
-                  const applicantName = row.applicantName || 'Budi — Technician'
-                  const initials = applicantName
-                    .split('—')[0]
-                    .trim()
-                    .split(' ')
-                    .map((p) => p[0])
-                    .join('')
-                    .slice(0, 2)
-                    .toUpperCase() || 'PT'
+                  const applicantName = row.applicantName || '—'
+                  const initials = applicantName === '—'
+                    ? '—'
+                    : applicantName
+                        .split('—')[0]
+                        .trim()
+                        .split(' ')
+                        .map((p) => p[0])
+                        .join('')
+                        .slice(0, 2)
+                        .toUpperCase() || '—'
 
                   const isChecked = selectedIds.includes(row.id)
+
+                  const isHseOrAdmin = isAdmin || Boolean(
+                    currentEmployeeRole && ['Super Admin', 'Site Admin', 'Admin', 'HSE Manager', 'Safety Officer', 'HSE Staff', 'HSE Supervisor'].includes(currentEmployeeRole)
+                  ) || Boolean(currentEmployeeDepartment && /hse|safety|k3/i.test(currentEmployeeDepartment))
+
+                  const isApplicantOrPic = Boolean(
+                    (currentEmployeeId && row.createdByEmployeeId === currentEmployeeId) ||
+                    (currentEmployeeName && row.applicantName && row.applicantName.toLowerCase().includes(currentEmployeeName.toLowerCase())) ||
+                    (currentEmployeeName && row.fieldPicName && row.fieldPicName.toLowerCase().includes(currentEmployeeName.toLowerCase())) ||
+                    (currentEmployeeName && row.authorizedByName && row.authorizedByName.toLowerCase().includes(currentEmployeeName.toLowerCase()))
+                  )
+
+                  const isAssignedApprover = Boolean(
+                    row.approvals?.some((a) =>
+                      (currentEmployeeId && a.approverEmployeeId === currentEmployeeId) ||
+                      (currentEmployeeEmail && a.approverEmail?.toLowerCase() === currentEmployeeEmail.toLowerCase()) ||
+                      (currentEmployeeName && a.approverName && a.approverName.toLowerCase().includes(currentEmployeeName.toLowerCase()))
+                    )
+                  )
+
+                  const isRelevant = isApplicantOrPic || isAssignedApprover
+                  const isApproved = ['approved', 'disetujui', 'completed'].includes((row.status || '').toLowerCase())
+                  const canEditThisRow = isHseOrAdmin || (isRelevant && !isApproved)
+                  const canDeleteThisRow = isHseOrAdmin
 
                   return (
                     <TableRow
@@ -1807,7 +1840,13 @@ export function PtwListingClient({
                         'hover:bg-slate-50/60 transition-colors cursor-pointer border-b border-slate-100',
                         isChecked && 'bg-indigo-50/40'
                       )}
-                      onClick={() => router.push(`/dashboard/hse/izin-kerja-ptw/${row.id}/approval`)}
+                      onClick={() => {
+                        if (canEditThisRow || isAssignedApprover || isHseOrAdmin) {
+                          router.push(`/dashboard/hse/izin-kerja-ptw/${row.id}/approval`)
+                        } else {
+                          setPreviewPtwTarget(row)
+                        }
+                      }}
                     >
                       {/* Checkbox */}
                       <TableCell className="pl-3.5 py-2.5" onClick={(e) => e.stopPropagation()}>
@@ -1884,22 +1923,26 @@ export function PtwListingClient({
                           >
                             <Eye className="size-3 text-slate-500" /> VIEW
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-6.5 px-2 rounded-md text-[10.5px] font-bold gap-0.5 text-slate-700 border-slate-200 hover:bg-slate-100 shadow-2xs"
-                            onClick={() => router.push(`/dashboard/hse/izin-kerja-ptw/${row.id}/approval`)}
-                          >
-                            <Pencil className="size-3 text-slate-500" /> EDIT
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-6.5 px-2 rounded-md text-[10.5px] font-bold gap-0.5 text-rose-600 border-rose-200 hover:bg-rose-50 hover:border-rose-300 shadow-2xs"
-                            onClick={() => setDeleteTarget(row)}
-                          >
-                            <Trash2 className="size-3 text-rose-500" /> DELETE
-                          </Button>
+                          {canEditThisRow && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6.5 px-2 rounded-md text-[10.5px] font-bold gap-0.5 text-slate-700 border-slate-200 hover:bg-slate-100 shadow-2xs"
+                              onClick={() => router.push(`/dashboard/hse/izin-kerja-ptw/${row.id}/approval`)}
+                            >
+                              <Pencil className="size-3 text-slate-500" /> EDIT
+                            </Button>
+                          )}
+                          {canDeleteThisRow && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6.5 px-2 rounded-md text-[10.5px] font-bold gap-0.5 text-rose-600 border-rose-200 hover:bg-rose-50 hover:border-rose-300 shadow-2xs"
+                              onClick={() => setDeleteTarget(row)}
+                            >
+                              <Trash2 className="size-3 text-rose-500" /> DELETE
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -2120,53 +2163,13 @@ export function PtwListingClient({
         </DialogContent>
       </Dialog>
 
-      {/* PDF Quick Preview Dialog - Clean Light Theme */}
-      <Dialog open={Boolean(previewPtwTarget)} onOpenChange={(open) => !open && setPreviewPtwTarget(null)}>
-        <DialogContent className="max-w-[96vw] w-[1320px] max-h-[92vh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-2xl" showCloseButton={false}>
-          {/* Top Viewer Toolbar */}
-          <div className="bg-white px-5 py-3 flex items-center justify-between border-b border-slate-200 select-none text-slate-900 shrink-0">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="size-7 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
-                <FileCheck className="size-4" />
-              </div>
-              <span className="font-bold text-xs text-slate-900 truncate">
-                Permit to Work (PTW) • <span className="font-mono text-indigo-600">{previewPtwTarget?.permitNumber}</span>
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded-lg bg-slate-50 text-[11px] font-mono text-slate-600 border border-slate-200 font-semibold">
-                1 / 1
-              </span>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 text-xs rounded-xl font-medium gap-1.5 border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs"
-                disabled={isDownloadingPdf}
-                onClick={() => previewPtwTarget && handleDownloadPtwPdf(previewPtwTarget)}
-              >
-                <Download className="size-3.5" /> Unduh PDF
-              </Button>
-              <button
-                type="button"
-                onClick={() => setPreviewPtwTarget(null)}
-                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
-              >
-                <X className="size-4" />
-              </button>
-            </div>
-          </div>
-
-          {/* Viewer Canvas Area */}
-          {previewPtwTarget && (
-            <div className="flex-1 overflow-auto bg-slate-200/80 p-4 sm:p-6 flex justify-center items-start border-t border-slate-200">
-              <PtwLandscapePdfSheet
-                elementId="ptw-preview-sheet"
-                doc={previewPtwTarget}
-              />
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* PDF Floating Window Modal with Zoom, Pan, Print & Download */}
+      <PtwDocumentModal
+        isOpen={Boolean(previewPtwTarget)}
+        onClose={() => setPreviewPtwTarget(null)}
+        permitId={previewPtwTarget?.id}
+        fallbackRecord={previewPtwTarget}
+      />
 
       {/* ── 18-FIELD CREATE/EDIT PTW MODAL (Exact Screenshot Parity) ── */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -2274,7 +2277,7 @@ export function PtwListingClient({
               {/* Multi-select Chips Grid */}
               <div className="flex flex-wrap gap-1.5 pt-1">
                 {PERMIT_TYPE_OPTIONS.map((opt) => {
-                  const activeTypes = createForm.permitType ? createForm.permitType.split(', ').map(t => t.trim()) : []
+                  const activeTypes = getActivePermitTypeKeys(createForm.permitType)
                   const isSelected = activeTypes.includes(opt.value)
                   return (
                     <button
@@ -2555,21 +2558,8 @@ export function PtwListingClient({
               </div>
             </div>
 
-            {/* Field 14: Status Persetujuan & Risk Level */}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-slate-700">Status persetujuan</Label>
-              <select
-                className="w-full h-10 rounded-md border border-slate-200 bg-slate-50/70 px-3 py-1 text-xs shadow-sm font-semibold"
-                value={createForm.status}
-                onChange={(e) => setCreateForm({ ...createForm, status: e.target.value })}
-              >
-                <option value="Pending Approval">Pending Approval</option>
-                <option value="Submitted">Submitted</option>
-                <option value="Approved">Approved</option>
-                <option value="Draft">Draft</option>
-              </select>
-            </div>
-            <div className="space-y-1.5">
+            {/* Field: Risk Level */}
+            <div className="space-y-1.5 md:col-span-2">
               <Label className="text-xs font-semibold text-slate-700">Risk level</Label>
               <select
                 className="w-full h-10 rounded-md border border-slate-200 bg-slate-50/70 px-3 py-1 text-xs shadow-sm font-semibold"
@@ -2584,27 +2574,84 @@ export function PtwListingClient({
             </div>
 
             {/* Field APD Wajib */}
-            <div className="space-y-1.5 md:col-span-2">
-              <Label className="text-xs font-semibold text-slate-700">APD wajib</Label>
-              <div className="flex flex-wrap gap-1.5 p-2 rounded-lg border border-slate-200 bg-slate-50/70 min-h-10">
-                {APD_OPTIONS.map((item) => {
-                  const isChecked = createForm.ppe.includes(item)
-                  return (
-                    <button
-                      type="button"
+            <div className="space-y-2 md:col-span-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold text-slate-700">APD Wajib (Alat Pelindung Diri)</Label>
+                <span className="text-[10px] text-slate-500 font-medium">{createForm.ppe.length} APD Dipilih</span>
+              </div>
+
+              {/* Selected APD Badges */}
+              <div className="flex flex-wrap gap-1.5 p-2 rounded-lg border border-slate-200 bg-slate-50/70 min-h-11 items-center">
+                {createForm.ppe.length === 0 ? (
+                  <span className="text-xs text-slate-400 italic">Belum ada APD yang dipilih. Klik opsi standar di bawah atau ketik manual.</span>
+                ) : (
+                  createForm.ppe.map((item) => (
+                    <span
                       key={item}
-                      onClick={() => toggleCreatePpe(item)}
-                      className={cn(
-                        'inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-semibold transition-all',
-                        isChecked
-                          ? 'bg-slate-900 text-white shadow-xs'
-                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
-                      )}
+                      className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-bold bg-slate-900 text-white shadow-2xs"
                     >
-                      {item} {isChecked && <span className="text-[10px]">×</span>}
-                    </button>
-                  )
-                })}
+                      <span>{item}</span>
+                      <button
+                        type="button"
+                        onClick={() => toggleCreatePpe(item)}
+                        className="hover:text-rose-300 font-bold ml-0.5 text-xs leading-none"
+                        title={`Hapus ${item}`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))
+                )}
+              </div>
+
+              {/* Custom APD Input */}
+              <div className="flex gap-2 items-center">
+                <Input
+                  placeholder="Ketik APD kustom / manual lainnya (lalu tekan Enter atau tombol Tambah)..."
+                  value={customApdInput}
+                  onChange={(e) => setCustomApdInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      handleAddCustomPpe()
+                    }
+                  }}
+                  className="h-8 text-xs bg-white border-slate-200 flex-1"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleAddCustomPpe}
+                  className="h-8 px-3 text-xs font-bold border-teal-600 text-teal-700 hover:bg-teal-50 shrink-0 gap-1"
+                >
+                  <Plus className="size-3.5" /> + Tambah APD
+                </Button>
+              </div>
+
+              {/* Standard APD Quick Toggle Chips */}
+              <div className="pt-0.5">
+                <p className="text-[10px] font-semibold text-slate-400 mb-1">Opsi APD Standar Cepat:</p>
+                <div className="flex flex-wrap gap-1">
+                  {APD_OPTIONS.map((item) => {
+                    const isChecked = createForm.ppe.includes(item)
+                    return (
+                      <button
+                        type="button"
+                        key={item}
+                        onClick={() => toggleCreatePpe(item)}
+                        className={cn(
+                          'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium transition-all border',
+                          isChecked
+                            ? 'bg-teal-50 text-teal-800 border-teal-300 font-bold'
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                        )}
+                      >
+                        {isChecked ? '✓' : '+'} {item}
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
             </div>
 

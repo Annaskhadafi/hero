@@ -151,6 +151,23 @@ export function getActivePermitTypeKeys(permitTypeStr: string): string[] {
   return normalizedStr.split(', ').map((t) => t.trim()).filter(Boolean)
 }
 
+export function getPtwColumnKeys(permitTypeStr?: string | null): string[] {
+  if (!permitTypeStr) return ['COLD']
+  const keys = getActivePermitTypeKeys(permitTypeStr)
+  if (keys.length === 0) return ['COLD']
+
+  const result: string[] = []
+  for (const k of keys) {
+    const norm = normalizePermitType(k)
+    if (norm === 'Hot Work Permit') result.push('HOT')
+    else if (norm === 'Confined Space Permit') result.push('CONFINED')
+    else if (norm === 'Digging Permit') result.push('DIGGING')
+    else if (norm === 'Cold Permit') result.push('COLD')
+    else if (norm === 'Electrical/Mechanical') result.push('ELECTRICAL')
+  }
+  return Array.from(new Set(result))
+}
+
 export function getDefaultEquipmentItems(permitTypeStr: string): string[] {
   const keys = getActivePermitTypeKeys(permitTypeStr)
   const result: string[] = []
@@ -241,11 +258,18 @@ export function getPermitSubTypes(
   const normKey = normalizePermitType(permitType)
   if (customSubTypes) {
     if (!Array.isArray(customSubTypes) && typeof customSubTypes === 'object') {
-      if (Array.isArray(customSubTypes[normKey]) && customSubTypes[normKey].length > 0) {
+      if (normKey in customSubTypes && Array.isArray(customSubTypes[normKey])) {
         return customSubTypes[normKey]
       }
-      if (Array.isArray(customSubTypes[permitType]) && customSubTypes[permitType].length > 0) {
+      if (permitType in customSubTypes && Array.isArray(customSubTypes[permitType])) {
         return customSubTypes[permitType]
+      }
+      for (const [k, v] of Object.entries(customSubTypes)) {
+        if (Array.isArray(v)) {
+          if (normalizePermitType(k).toLowerCase() === normKey.toLowerCase()) {
+            return v
+          }
+        }
       }
     } else if (Array.isArray(customSubTypes) && customSubTypes.length > 0) {
       return customSubTypes

@@ -2021,38 +2021,47 @@ async function getDailyActivityInboxItems(
         canonicalRows.push({ ...row, stepStatus: 'reverted' })
       }
     } else {
-      const activeStep = steps.find(s => s.status === 'pending') || steps.find(s => s.status !== 'approved')
-      if (activeStep && activeStep.status === 'pending') {
-        processedSessionIds.add(row.sessionId)
-        const activeRow = rawRows.find(r => r.approvalId === activeStep.id) || row
-        canonicalRows.push(activeRow)
+      const activeStep = steps.find(s => s.status !== 'approved')
+      if (activeStep && (activeStep.status === 'pending' || activeStep.status === 'waiting')) {
+        const prevSteps = steps.filter((s) => s.stepOrder < activeStep.stepOrder)
+        const allPrevApproved = prevSteps.length === 0 || prevSteps.every((s) => ['approved', 'signed', 'completed'].includes((s.status || '').toLowerCase()))
+        if (allPrevApproved) {
+          processedSessionIds.add(row.sessionId)
+          const activeRow = rawRows.find(r => r.approvalId === activeStep.id) || row
+          canonicalRows.push(activeRow)
+        }
       }
     }
   }
 
   const filtered = canonicalRows.filter((row) => {
     const isReverted = row.stepStatus === 'reverted' || (row.sessionStatus || '').toLowerCase() === 'reverted'
+    const steps = allStepsMap.get(row.sessionId) || []
+
+    const rowAppEmail = normalizeMatchValue(row.approverEmail)
+    const rowAppName = normalizeMatchValue(row.approverName)
+    const rowReqEmail = normalizeMatchValue(row.employeeEmail)
+
+    const isStepMatchingUser = (s: any) => {
+      const sEmail = normalizeMatchValue(s.approverEmail)
+      const sName = normalizeMatchValue(s.approverName)
+      if (normalizedEmail && sEmail && (sEmail === normalizedEmail || normalizedEmail === 'chitra.operation.hero@gmail.com')) return true
+      if (currentEmployee?.id != null && s.approverEmployeeId === currentEmployee.id) return true
+      if (normalizedEmployeeName && sName && (sName === normalizedEmployeeName || sName.includes(normalizedEmployeeName) || normalizedEmployeeName.includes(sName))) return true
+      return false
+    }
 
     if (isReverted) {
       // Show ONLY to the original requester (employee)
       const emailMatches =
         normalizedEmail && (
-          normalizedEmail === normalizeMatchValue(row.employeeEmail) ||
-          normalizedEmail === "chitra.operation.hero@gmail.com"
+          normalizedEmail === rowReqEmail ||
+          normalizedEmail === 'chitra.operation.hero@gmail.com'
         )
       const empMatches = currentEmployee?.id != null && row.requesterEmployeeId === currentEmployee.id
       const nameMatches = normalizedEmployeeName && normalizeMatchValue(row.employeeName) === normalizedEmployeeName
       return emailMatches || empMatches || nameMatches
     }
-
-    if (isAdmin) {
-      return true
-    }
-
-    // Active Pending Step Approver
-    const rowAppEmail = normalizeMatchValue(row.approverEmail)
-    const rowAppName = normalizeMatchValue(row.approverName)
-    const rowReqEmail = normalizeMatchValue(row.employeeEmail)
 
     // Step 1: Karyawan Sign belongs to the requester
     const isStep1ForRequester =
@@ -2064,6 +2073,14 @@ async function getDailyActivityInboxItems(
     if (isStep1ForRequester) {
       return true
     }
+
+    // If user is requester and step > 1, do NOT show to requester unless they are explicitly designated for this step
+    if (normalizedEmail && rowReqEmail === normalizedEmail && row.stepOrder > 1 && rowAppEmail !== normalizedEmail) {
+      return false
+    }
+
+    const prevSteps = steps.filter((s: any) => s.stepOrder < row.stepOrder)
+    const userApprovedPrevious = prevSteps.some((s: any) => ['approved', 'signed', 'completed'].includes((s.status || '').toLowerCase()) && isStepMatchingUser(s))
 
     const emailMatches =
       normalizedEmail &&
@@ -2099,7 +2116,13 @@ async function getDailyActivityInboxItems(
     const genericApproverMatches =
       (!row.approverEmployeeId || !row.approverEmail || row.approverEmail === '') && isSupervisory
 
-    return emailMatches || employeeMatches || nameMatches || genericApproverMatches
+    const isDirectMatch = emailMatches || employeeMatches || nameMatches || genericApproverMatches
+
+    if (userApprovedPrevious && !isDirectMatch) {
+      return false
+    }
+
+    return isDirectMatch
   })
 
   const sessionIds = Array.from(new Set(filtered.map((r) => r.sessionId)))
@@ -2310,47 +2333,59 @@ async function getOvertimeInboxItems(
       }
     } else {
       const activeStep = steps.find(s => s.status === 'pending') || steps.find(s => s.status !== 'approved')
-      if (activeStep && activeStep.status === 'pending') {
-        processedSplIds.add(row.splId)
-        const activeRow = rawRows.find(r => r.approvalId === activeStep.id) || row
-        canonicalRows.push(activeRow)
+      if (activeStep && (activeStep.status === 'pending' || activeStep.status === 'waiting')) {
+        const prevSteps = steps.filter((s) => s.stepOrder < activeStep.stepOrder)
+        const allPrevApproved = prevSteps.length === 0 || prevSteps.every((s) => s.status === 'approved')
+        if (allPrevApproved) {
+          processedSplIds.add(row.splId)
+          const activeRow = rawRows.find(r => r.approvalId === activeStep.id) || row
+          canonicalRows.push(activeRow)
+        }
       }
     }
   }
 
   const filtered = canonicalRows.filter((row) => {
     const isReverted = row.stepStatus === 'reverted' || (row.splStatus || '').toLowerCase() === 'reverted'
+    const steps = allSplStepsMap.get(row.splId) || []
+
+    const rowAppEmail = normalizeMatchValue(row.approverEmail)
+    const rowAppName = normalizeMatchValue(row.approverName)
+    const rowReqEmail = normalizeMatchValue(row.requesterEmail)
+
+    const isStepMatchingUser = (s: any) => {
+      const sEmail = normalizeMatchValue(s.approverEmail)
+      const sName = normalizeMatchValue(s.approverName)
+      if (normalizedEmail && sEmail && (sEmail === normalizedEmail || normalizedEmail === 'chitra.operation.hero@gmail.com')) return true
+      if (currentEmployee?.id != null && s.approverEmployeeId === currentEmployee.id) return true
+      if (normalizedEmployeeName && sName && (sName === normalizedEmployeeName || sName.includes(normalizedEmployeeName) || normalizedEmployeeName.includes(sName))) return true
+      return false
+    }
 
     if (isReverted) {
       // Show ONLY to original requester
       const emailMatches =
         normalizedEmail && (
-          normalizedEmail === normalizeMatchValue(row.requesterEmail) ||
-          normalizedEmail === "chitra.operation.hero@gmail.com"
+          normalizedEmail === rowReqEmail ||
+          normalizedEmail === 'chitra.operation.hero@gmail.com'
         )
       const empMatches = currentEmployee?.id != null && row.requesterEmployeeId === currentEmployee.id
       const nameMatches = normalizedEmployeeName && normalizeMatchValue(row.requesterName) === normalizedEmployeeName
       return emailMatches || empMatches || nameMatches
     }
 
-    if (isAdmin) {
-      return true
-    }
-
-    // Active Pending Step Approver
-    const rowAppEmail = normalizeMatchValue(row.approverEmail);
-    const rowAppName = normalizeMatchValue(row.approverName);
-    const rowReqEmail = normalizeMatchValue(row.requesterEmail);
-
     // If logged-in user IS the requester, and they are NOT the active step approver, do NOT show in inbox
-    if (normalizedEmail && rowReqEmail === normalizedEmail && rowAppEmail !== normalizedEmail && !isAdmin) {
-      return false;
+    if (normalizedEmail && rowReqEmail === normalizedEmail && rowAppEmail !== normalizedEmail) {
+      return false
     }
+
+    const prevSteps = steps.filter((s: any) => s.stepOrder < row.stepOrder)
+    const userApprovedPrevious = prevSteps.some((s: any) => s.status === 'approved' && isStepMatchingUser(s))
 
     const emailMatches =
       normalizedEmail && (
         rowAppEmail === normalizedEmail ||
-        normalizedEmail === "chitra.operation.hero@gmail.com"
+        normalizedEmail === 'chitra.operation.hero@gmail.com'
       )
     const employeeMatches =
       currentEmployee?.id != null && row.approverEmployeeId === currentEmployee.id
@@ -2380,7 +2415,13 @@ async function getOvertimeInboxItems(
     const genericApproverMatches =
       (!row.approverEmployeeId || !row.approverEmail || row.approverEmail === '') && isSupervisory
 
-    return emailMatches || employeeMatches || nameMatches || genericApproverMatches
+    const isDirectMatch = emailMatches || employeeMatches || nameMatches || genericApproverMatches
+
+    if (userApprovedPrevious && !isDirectMatch) {
+      return false
+    }
+
+    return isDirectMatch
   })
 
   const splIds = Array.from(new Set(filtered.map((r) => r.splId)))
@@ -2390,7 +2431,10 @@ async function getOvertimeInboxItems(
         .select({
           id: overtimeCommandLetterParticipants.id,
           splId: overtimeCommandLetterParticipants.overtimeCommandLetterId,
+          employeeId: overtimeCommandLetterParticipants.employeeId,
           employeeName: employees.name,
+          employeeSn: employees.employeeSn,
+          jobTitle: employees.jobTitle,
           shiftCode: overtimeCommandLetterParticipants.shiftCode,
           rosterType: overtimeCommandLetterParticipants.rosterType,
           category: overtimeCommandLetterParticipants.category,
@@ -2423,15 +2467,15 @@ async function getOvertimeInboxItems(
     : []
 
   const lineItemsMap = new Map<number, any[]>()
-  for (const item of allLineItems) {
-    const list = lineItemsMap.get(item.splId) || []
-    list.push(item)
-    lineItemsMap.set(item.splId, list)
+  for (const it of allLineItems) {
+    const list = lineItemsMap.get(it.splId) || []
+    list.push(it)
+    lineItemsMap.set(it.splId, list)
   }
 
   return filtered.map((row) => {
     const workDate = row.workDate ? new Date(row.workDate) : (row.createdAt ? new Date(row.createdAt) : new Date())
-    const dueAt = new Date(workDate.getTime() + 24 * 60 * 60 * 1000)
+    const dueAt = row.plannedEndAt ? new Date(row.plannedEndAt) : new Date(workDate.getTime() + 24 * 60 * 60 * 1000)
     const approvals = allSplStepsMap.get(row.splId) || [
       {
         id: row.approvalId,
@@ -2452,31 +2496,27 @@ async function getOvertimeInboxItems(
     return {
       id: `overtime-${row.approvalId}`,
       category: 'OVERTIME' as const,
-      categoryLabel: 'Lembur (SPL)',
+      categoryLabel: 'Surat Perintah Lembur',
       approvalId: row.approvalId,
       approvalToken: row.approvalToken,
       splId: row.splId,
       documentNumber: row.splNumber,
-      title: `Surat Perintah Lembur: ${row.splTitle || row.splNumber}`,
-      employeeName: row.requesterName || 'Pemohon Lembur',
+      title: `Lembur: ${row.splTitle || 'Surat Perintah Lembur'} (${row.splNumber})`,
+      isReverted,
+      employeeName: row.requesterName || 'Pembuat SPL',
       department: row.requesterDepartment || '',
       section: row.requesterSection || '',
       siteName: row.siteName || 'Site Operasional',
       approverName: row.approverName,
       approverRole: row.approverRole,
       stepLabel: row.stepLabel || `Step ${row.stepOrder}`,
-      submittedAt: row.updatedAt ?? row.createdAt,
-      dueAt,
-      dueState: getContractReviewDueState(dueAt, new Date()),
-      url: isReverted
-        ? `/dashboard/overtime-requests/${row.splId}/approval`
-        : `/review/overtime/${row.approvalToken}`,
-      actionLabel: isReverted ? 'Revisi Dokumen' : 'Buka TTD ↗',
-      isReverted,
-      status: isReverted ? 'reverted' : 'pending',
       workDate,
       plannedStartAt: row.plannedStartAt,
       plannedEndAt: row.plannedEndAt,
+      submittedAt: row.updatedAt ?? row.createdAt,
+      dueAt,
+      dueState: getContractReviewDueState(dueAt, new Date()),
+      url: `/review/overtime/${row.approvalToken}`,
       requestNotes: row.requestNotes || '',
       approvals,
       participants,
@@ -2492,7 +2532,7 @@ async function getPtwInboxItems(
   const normalizedEmail = normalizeMatchValue(email)
   const normalizedEmployeeName = normalizeMatchValue(currentEmployee?.name)
 
-  const rows = await db
+  const rawRows = await db
     .select({
       approvalId: ptwApprovals.id,
       approvalToken: ptwApprovals.approvalToken,
@@ -2502,6 +2542,7 @@ async function getPtwInboxItems(
       approverRole: ptwApprovals.approverRole,
       stepOrder: ptwApprovals.stepOrder,
       stepLabel: ptwApprovals.stepLabel,
+      stepStatus: ptwApprovals.status,
       createdAt: ptwApprovals.createdAt,
       ptwId: hsePtwPermits.id,
       permitNumber: hsePtwPermits.permitNumber,
@@ -2515,61 +2556,176 @@ async function getPtwInboxItems(
       description: hsePtwPermits.description,
       controlSteps: hsePtwPermits.controlSteps,
       ppe: hsePtwPermits.ppe,
+      subTypes: hsePtwPermits.subTypes,
       gasTestRequired: hsePtwPermits.gasTestRequired,
       isolationRequired: hsePtwPermits.isolationRequired,
       startAt: hsePtwPermits.startAt,
       endAt: hsePtwPermits.endAt,
       updatedAt: hsePtwPermits.updatedAt,
+      permitStatus: hsePtwPermits.status,
     })
     .from(ptwApprovals)
     .innerJoin(
       hsePtwPermits,
       eq(ptwApprovals.ptwPermitId, hsePtwPermits.id)
     )
-    .where(inArray(ptwApprovals.status, ['pending', 'reverted']))
+    .where(
+      and(
+        ne(hsePtwPermits.status, 'Approved'),
+        or(
+          inArray(ptwApprovals.status, ['pending', 'reverted', 'waiting']),
+          inArray(hsePtwPermits.status, ['reverted', 'needs_revision', 'Reverted'])
+        )
+      )
+    )
     .orderBy(desc(ptwApprovals.createdAt))
 
-  const filtered = rows.filter((row) => {
+  const candidatePtwIds = [...new Set(rawRows.map((r) => r.ptwId))]
+  const allStepsMap = new Map<number, any[]>()
+
+  if (candidatePtwIds.length > 0) {
+    const candidateSteps = await db
+      .select({
+        id: ptwApprovals.id,
+        ptwPermitId: ptwApprovals.ptwPermitId,
+        stepOrder: ptwApprovals.stepOrder,
+        stepLabel: ptwApprovals.stepLabel,
+        status: ptwApprovals.status,
+        approverName: ptwApprovals.approverName,
+        approverRole: ptwApprovals.approverRole,
+        approverEmail: ptwApprovals.approverEmail,
+        approverEmployeeId: ptwApprovals.approverEmployeeId,
+        signatureDataUrl: ptwApprovals.signatureDataUrl,
+        remarks: ptwApprovals.remarks,
+        signedAt: ptwApprovals.signedAt,
+      })
+      .from(ptwApprovals)
+      .where(inArray(ptwApprovals.ptwPermitId, candidatePtwIds))
+      .orderBy(asc(ptwApprovals.stepOrder))
+
+    for (const s of candidateSteps) {
+      const list = allStepsMap.get(s.ptwPermitId) || []
+      list.push(s)
+      allStepsMap.set(s.ptwPermitId, list)
+    }
+  }
+
+  const canonicalRows: typeof rawRows = []
+  const processedPtwIds = new Set<number>()
+
+  for (const row of rawRows) {
+    if (processedPtwIds.has(row.ptwId)) continue
+
+    const permitStatusLower = (row.permitStatus || '').toLowerCase()
+    const steps = allStepsMap.get(row.ptwId) || []
+    steps.sort((a, b) => a.stepOrder - b.stepOrder)
+
+    if (permitStatusLower === 'reverted' || permitStatusLower === 'needs_revision' || steps.some((s) => s.status === 'reverted')) {
+      processedPtwIds.add(row.ptwId)
+      const revertedStep = steps.find((s) => s.status === 'reverted')
+      const targetStep = revertedStep || steps[0]
+      if (targetStep) {
+        const stepRow = rawRows.find((r) => r.approvalId === targetStep.id) || row
+        canonicalRows.push({ ...stepRow, stepStatus: 'reverted' })
+      } else {
+        canonicalRows.push({ ...row, stepStatus: 'reverted' })
+      }
+    } else {
+      const activeStep = steps.find((s) => s.status !== 'approved')
+      if (activeStep && (activeStep.status === 'pending' || activeStep.status === 'submitted')) {
+        const prevSteps = steps.filter((s) => s.stepOrder < activeStep.stepOrder)
+        const allPrevApproved = prevSteps.length === 0 || prevSteps.every((s) => s.status === 'approved')
+        if (allPrevApproved) {
+          processedPtwIds.add(row.ptwId)
+          const activeRow = rawRows.find((r) => r.approvalId === activeStep.id) || row
+          canonicalRows.push(activeRow)
+        }
+      }
+    }
+  }
+
+  const filtered = canonicalRows.filter((row) => {
+    const isReverted = row.stepStatus === 'reverted' || (row.permitStatus || '').toLowerCase() === 'reverted'
+    const steps = allStepsMap.get(row.ptwId) || []
+
     const rowAppEmail = normalizeMatchValue(row.approverEmail)
     const rowAppName = normalizeMatchValue(row.approverName)
 
-    const emailMatches =
-      normalizedEmail &&
-      rowAppEmail.length > 0 &&
-      rowAppEmail === normalizedEmail
+    const stepMatchesUser = (stepObj: { approverEmail?: string | null; approverEmployeeId?: number | null; approverName?: string | null }) => {
+      const sEmail = normalizeMatchValue(stepObj.approverEmail)
+      const sName = normalizeMatchValue(stepObj.approverName)
+      if (normalizedEmail && sEmail && sEmail === normalizedEmail) return true
+      if (currentEmployee?.id != null && stepObj.approverEmployeeId === currentEmployee.id) return true
+      if (normalizedEmployeeName && sName && (sName === normalizedEmployeeName || sName.replace(/y/g, 'i') === normalizedEmployeeName.replace(/y/g, 'i'))) return true
+      return false
+    }
 
-    const employeeMatches =
-      currentEmployee?.id != null && row.approverEmployeeId === currentEmployee.id
-
-    const nameMatches =
-      normalizedEmployeeName &&
-      rowAppName.length > 0 &&
-      (rowAppName === normalizedEmployeeName ||
-        rowAppName.replace(/y/g, 'i') === normalizedEmployeeName.replace(/y/g, 'i'))
-
-    const permitSignatoryMatches =
-      normalizedEmployeeName &&
-      ((row.stepOrder === 1 && row.applicantName && normalizeMatchValue(row.applicantName) === normalizedEmployeeName) ||
-        (row.stepOrder === 2 && row.fieldPicName && normalizeMatchValue(row.fieldPicName) === normalizedEmployeeName) ||
-        (row.stepOrder === 3 && row.authorizedByName && normalizeMatchValue(row.authorizedByName) === normalizedEmployeeName))
-
-    const isHseRole =
-      Boolean(
-        currentEmployee?.department?.toLowerCase().includes("safety") ||
-        currentEmployee?.department?.toLowerCase().includes("hse") ||
-        currentEmployee?.jobTitle?.toLowerCase().includes("safety") ||
-        currentEmployee?.jobTitle?.toLowerCase().includes("hse")
-      ) &&
-      (row.approverRole === "safety_officer" || row.approverRole === "authorized" || row.stepLabel?.toLowerCase().includes("hse") || row.stepLabel?.toLowerCase().includes("safety"))
-
-    const isAdminOrSuperUser = Boolean(
-      !currentEmployee ||
-      ['Super Admin', 'Site Admin', 'Admin', 'HC Manager', 'HSE Manager', 'Safety Officer', 'Site Manager'].includes(
-        currentEmployee?.accessRole || ''
+    if (isReverted) {
+      // Show ONLY to original applicant / requester (Step 1 applicant)
+      const applicantNameNorm = normalizeMatchValue(row.applicantName)
+      const isApplicantName = normalizedEmployeeName && applicantNameNorm && (
+        applicantNameNorm.includes(normalizedEmployeeName) ||
+        normalizedEmployeeName.includes(applicantNameNorm)
       )
+      const step1 = steps.find((s) => s.stepOrder === 1)
+      const isStep1User = step1 ? stepMatchesUser(step1) : false
+      return isApplicantName || isStep1User
+    }
+
+    // Check if the current active step is assigned to the logged-in user
+    const hasSpecificApprover = Boolean(
+      (row.approverEmployeeId != null && row.approverEmployeeId > 0) ||
+      (rowAppEmail && rowAppEmail.length > 3) ||
+      (rowAppName && rowAppName.length > 2)
     )
 
-    return emailMatches || employeeMatches || nameMatches || permitSignatoryMatches || isHseRole || isAdminOrSuperUser
+    let isDirectMatch = false
+
+    if (hasSpecificApprover) {
+      const emailMatches = normalizedEmail && rowAppEmail && rowAppEmail === normalizedEmail
+      const employeeMatches = currentEmployee?.id != null && row.approverEmployeeId != null && Number(row.approverEmployeeId) === Number(currentEmployee.id)
+      const nameMatches =
+        normalizedEmployeeName &&
+        rowAppName &&
+        (rowAppName === normalizedEmployeeName ||
+          rowAppName.replace(/y/g, 'i') === normalizedEmployeeName.replace(/y/g, 'i') ||
+          (rowAppName.length >= 4 && normalizedEmployeeName.includes(rowAppName)) ||
+          (normalizedEmployeeName.length >= 4 && rowAppName.includes(normalizedEmployeeName)))
+
+      isDirectMatch = Boolean(emailMatches || employeeMatches || nameMatches)
+    } else {
+      // Fallback only if no specific approver assigned to this step:
+      const isFirstStep = row.stepOrder === 1
+      const isLastStep = steps.length > 0 && row.stepOrder === steps[steps.length - 1].stepOrder
+
+      if (isFirstStep) {
+        const fieldPicNorm = normalizeMatchValue(row.fieldPicName)
+        isDirectMatch = Boolean(normalizedEmployeeName && fieldPicNorm && (fieldPicNorm.includes(normalizedEmployeeName) || normalizedEmployeeName.includes(fieldPicNorm)))
+      } else if (isLastStep) {
+        const authNameNorm = normalizeMatchValue(row.authorizedByName)
+        const isAuthName = Boolean(normalizedEmployeeName && authNameNorm && (authNameNorm.includes(normalizedEmployeeName) || normalizedEmployeeName.includes(authNameNorm)))
+        const isHseRole = Boolean(
+          currentEmployee?.department?.toLowerCase().includes("safety") ||
+          currentEmployee?.department?.toLowerCase().includes("hse") ||
+          currentEmployee?.jobTitle?.toLowerCase().includes("safety") ||
+          currentEmployee?.jobTitle?.toLowerCase().includes("hse")
+        )
+        isDirectMatch = isAuthName || isHseRole
+      } else {
+        const applicantNorm = normalizeMatchValue(row.applicantName)
+        isDirectMatch = Boolean(normalizedEmployeeName && applicantNorm && (applicantNorm.includes(normalizedEmployeeName) || normalizedEmployeeName.includes(applicantNorm)))
+      }
+    }
+
+    // If current user already approved a previous step in this PTW sequence, and is NOT the designated approver for this active step, DO NOT SHOW!
+    const prevSteps = steps.filter((s) => s.stepOrder < row.stepOrder)
+    const userApprovedPrevious = prevSteps.some((s) => s.status === 'approved' && stepMatchesUser(s))
+
+    if (userApprovedPrevious && !isDirectMatch) {
+      return false
+    }
+
+    return isDirectMatch
   })
 
   const ptwIds = Array.from(new Set(filtered.map((r) => r.ptwId)))
@@ -2584,6 +2740,8 @@ async function getPtwInboxItems(
             stepLabel: ptwApprovals.stepLabel,
             status: ptwApprovals.status,
             approverName: ptwApprovals.approverName,
+            approverEmail: ptwApprovals.approverEmail,
+            approverEmployeeId: ptwApprovals.approverEmployeeId,
             approverRole: ptwApprovals.approverRole,
             signatureDataUrl: ptwApprovals.signatureDataUrl,
             remarks: ptwApprovals.remarks,
@@ -2628,15 +2786,17 @@ async function getPtwInboxItems(
       documentNumber: row.permitNumber,
       title: `Izin Kerja: ${row.projectName} (${row.permitType})`,
       isReverted,
+      actionLabel: isReverted ? 'Revisi Dokumen' : 'Buka TTD ↗',
       employeeName: row.applicantName || 'Pelaksana Kerja',
       applicantName: row.applicantName || 'Pelaksana Kerja',
-      fieldPicName: row.fieldPicName || 'Safety Dept',
+      fieldPicName: row.fieldPicName || '',
       authorizedByName: row.authorizedByName || '',
       location: row.location ? `${row.location}${row.area ? ` - ${row.area}` : ''}` : 'Lokasi Proyek',
       permitType: row.permitType,
       description: row.description || '',
       controlSteps: row.controlSteps || '',
       ppe: row.ppe || ['Helmet', 'Safety Shoes', 'Safety Glasses'],
+      subTypes: (row.subTypes as Record<string, string[]> | string[]) || {},
       gasTestRequired: Boolean(row.gasTestRequired),
       isolationRequired: Boolean(row.isolationRequired),
       approverName: row.approverName,

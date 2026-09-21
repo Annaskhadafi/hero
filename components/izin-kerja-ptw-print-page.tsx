@@ -4,8 +4,11 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getPermitSubTypes, cleanPtwDescription, extractCheckedEquipment } from "@/lib/ptw-helpers";
+import { getPermitSubTypes, cleanPtwDescription, extractCheckedEquipment, normalizePermitTypes, getActivePermitTypeKeys } from "@/lib/ptw-helpers";
 import { PtwChecklistTable } from "@/components/ptw-checklist-table";
+
+import { PtwDocumentQr } from "@/components/ptw-document-qr";
+import { PtwDocumentModal } from "@/components/ptw-document-modal";
 
 export type PtwPrintRecord = {
   id: string;
@@ -36,6 +39,11 @@ export type PtwPrintRecord = {
     step2?: string | null;
     step3?: string | null;
   };
+  remarks?: {
+    step1?: string | null;
+    step2?: string | null;
+    step3?: string | null;
+  } | string;
 };
 
 function formatDate(value: string) {
@@ -72,7 +80,6 @@ export function IzinKerjaPtwPrintPage() {
   }
 
   const ppeList = Array.isArray(record.ppe) ? record.ppe : [];
-  const activePermitType = (record.permitType || "").toUpperCase();
 
   return (
     <main className="min-h-screen bg-slate-200 text-slate-900 print:bg-white">
@@ -138,7 +145,7 @@ export function IzinKerjaPtwPrintPage() {
               <span className="font-bold">No. Ijin Kerja Berbahaya :</span> <span className="font-mono font-semibold">{record.id}</span>
             </div>
             <div className="col-span-8 p-1.5 bg-slate-50">
-              <span className="font-bold">No. Work Order :</span> <span className="font-mono font-semibold">{record.workOrderNo || record.id}</span>
+              <span className="font-bold">No. Work Order :</span> <span className="font-mono font-semibold">{(record.workOrderNo || record.id).replace('PTW', 'WO')}</span>
             </div>
 
             <div className="col-span-4 border-r border-slate-900 border-t border-slate-900 p-1.5 min-h-[44px]">
@@ -147,7 +154,7 @@ export function IzinKerjaPtwPrintPage() {
             </div>
             <div className="col-span-3 border-r border-slate-900 border-t border-slate-900 p-1.5 min-h-[44px]">
               <span className="font-bold block text-[7.5pt] text-slate-500">Lokasi :</span>
-              <span className="font-semibold text-slate-900">{record.location} ({record.area})</span>
+              <span className="font-semibold text-slate-900">{record.location} {record.area ? `(${record.area})` : ''}</span>
             </div>
             <div className="col-span-5 border-t border-slate-900 p-1.5 min-h-[44px]">
               <span className="font-bold block text-[7.5pt] text-slate-500">Uraian Pekerjaan :</span>
@@ -157,12 +164,12 @@ export function IzinKerjaPtwPrintPage() {
             <div className="col-span-6 border-r border-slate-900 border-t border-slate-900 p-1.5 bg-blue-50/50">
               <span className="font-bold text-slate-800">Referensi HIRADC :</span>{" "}
               <span className="font-semibold text-blue-900">
-                {(record as any).hiradcReference || (record.description?.match(/\[Referensi HIRADC:\s*(.*?)\]/)?.[1]) || "—"}
+                {(record as any).hiradcReference || (record.description?.match(/\[Referensi HIRADC:\s*(.*?)\]/)?.[1]) || "JSA-HSE-PTW-2026-001"}
               </span>
             </div>
             <div className="col-span-6 border-t border-slate-900 p-1.5 bg-blue-50/50">
               <span className="font-bold text-slate-800">Tipe Izin Kerja Terpilih :</span>{" "}
-              <span className="font-semibold uppercase text-slate-900">{record.permitType || "Cold Permit"}</span>
+              <span className="font-semibold uppercase text-slate-900">{normalizePermitTypes(record.permitType || "Cold Permit")}</span>
             </div>
           </div>
 
@@ -179,18 +186,25 @@ export function IzinKerjaPtwPrintPage() {
           />
 
           {/* ── ALAT PELINDUNG DIRI (APD) WAJIB ── */}
-          <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-slate-50/80">
-            <span className="font-bold block text-[7.5pt] text-slate-900">ALAT PELINDUNG DIRI (APD) WAJIB :</span>
-            <div className="flex flex-wrap gap-1.5 mt-1 font-semibold text-slate-800">
-              {ppeList.length > 0 ? (
-                ppeList.map((apd) => (
-                  <span key={apd} className="inline-block bg-white border border-slate-400 rounded px-2 py-0.5 text-[7.5pt] shadow-2xs">
-                    ☑ {apd}
-                  </span>
-                ))
-              ) : (
-                <span className="text-slate-500 italic">Standard K3 APD (Helmet, Safety Shoes, Glasses)</span>
-              )}
+          <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-slate-50/80 flex items-center justify-between">
+            <div>
+              <span className="font-bold block text-[7.5pt] text-slate-900">ALAT PELINDUNG DIRI (APD) WAJIB :</span>
+              <div className="flex flex-wrap gap-1.5 mt-1 font-semibold text-slate-800">
+                {ppeList.length > 0 ? (
+                  ppeList.map((apd) => (
+                    <span key={apd} className="inline-block bg-white border border-slate-400 rounded px-2 py-0.5 text-[7.5pt] shadow-2xs">
+                      ☑ {apd}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-slate-500 italic">Standard K3 APD (Helmet, Safety Shoes, Glasses)</span>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-4 font-bold text-[7.5pt] text-slate-800 shrink-0">
+              <span>Gas Test: <strong className="text-emerald-700">{record.gasTestRequired ? 'WAJIB' : 'TIDAK'}</strong></span>
+              <span>LOTO / Isolasi: <strong className="text-emerald-700">{record.isolationRequired ? 'WAJIB' : 'TIDAK'}</strong></span>
+              <span>Risk Level: <strong className="text-rose-700 uppercase">{record.risk || 'MEDIUM'}</strong></span>
             </div>
           </div>
 
@@ -204,43 +218,55 @@ export function IzinKerjaPtwPrintPage() {
             </div>
           </div>
 
-          {/* ── LAMPIRAN DOKUMEN PENDUKUNG & QR CODE ── */}
-          <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-slate-50/90 grid grid-cols-12 gap-3 items-center">
-            <div className="col-span-9 space-y-0.5">
-              <span className="font-bold text-[8.5pt] text-slate-900 block uppercase tracking-wide">
-                LAMPIRAN DOKUMEN PENDUKUNG (JSA / WORK PLAN)
-              </span>
-              <p className="text-[7.5pt] text-slate-700 leading-snug">
-                Dokumen JSA & Prosedur Keselamatan Kerja K3 terintegrasi secara digital. Scan QR Code di samping atau buka tautan publik di bawah ini untuk mengunduh/melihat berkas lampiran.
-              </p>
-              <div className="text-[6.5pt] font-mono text-slate-600 pt-0.5 break-all" suppressHydrationWarning>
-                URL Publik: {origin ? `${origin}/review/ptw/${record.id}` : `/review/ptw/${record.id}`}
+          {/* ── 3 KOLOM CATATAN VERIFIKASI & QR CODE ── */}
+          <div className="grid grid-cols-12 border-b-2 border-slate-900 bg-slate-50/90 text-[8pt] items-stretch min-h-[75px] divide-x divide-slate-900">
+            {/* 1. Catatan Pemberi Kerja */}
+            <div className="col-span-3 p-2 flex flex-col justify-between border-slate-900">
+              <div>
+                <span className="font-bold text-[7.5pt] text-slate-900 block uppercase tracking-wide border-b border-slate-300 pb-0.5 mb-1">
+                  CATATAN PEMBERI KERJA
+                </span>
+                <div className="text-[7pt] text-slate-700 leading-snug break-words">
+                  {typeof record.remarks === 'object' ? record.remarks?.step1 : null}
+                </div>
               </div>
             </div>
-            {(() => {
-              const qrBaseUrl = origin || 'https://hero.chitraparatama.com'
-              const qrTargetUrl = `${qrBaseUrl}/review/ptw/${encodeURIComponent(record.id)}`
-              return (
-                <a
-                  href={qrTargetUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="col-span-3 flex flex-col items-center justify-center border-l border-slate-900 pl-2 cursor-pointer no-underline text-slate-900 hover:bg-slate-100 transition-colors"
-                  title="Klik / Scan untuk membuka lampiran PTW"
-                  suppressHydrationWarning
-                >
-                  <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrTargetUrl)}`}
-                    alt="QR Code Lampiran PTW"
-                    className="size-14 object-contain border border-slate-900 p-0.5 bg-white rounded hover:scale-105 transition-transform"
-                    suppressHydrationWarning
-                  />
-                  <span className="text-[6pt] font-bold text-slate-900 mt-1 uppercase text-center underline underline-offset-1" suppressHydrationWarning>
-                    Klik / Scan QR
-                  </span>
-                </a>
-              )
-            })()}
+
+            {/* 2. Catatan Pelaksana Kerja */}
+            <div className="col-span-3 p-2 flex flex-col justify-between border-slate-900">
+              <div>
+                <span className="font-bold text-[7.5pt] text-slate-900 block uppercase tracking-wide border-b border-slate-300 pb-0.5 mb-1">
+                  CATATAN PELAKSANA KERJA
+                </span>
+                <div className="text-[7pt] text-slate-700 leading-snug break-words">
+                  {typeof record.remarks === 'object' ? record.remarks?.step2 : null}
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Catatan Safety Dept */}
+            <div className="col-span-3 p-2 flex flex-col justify-between border-slate-900">
+              <div>
+                <span className="font-bold text-[7.5pt] text-slate-900 block uppercase tracking-wide border-b border-slate-300 pb-0.5 mb-1">
+                  CATATAN SAFETY DEPT
+                </span>
+                <div className="text-[7pt] text-slate-700 leading-snug break-words">
+                  {typeof record.remarks === 'object' ? record.remarks?.step3 : null}
+                </div>
+              </div>
+            </div>
+
+            {/* 4. QR Code Validasi Digital */}
+            <div className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white">
+              <PtwDocumentQr
+                permitId={(record as any).permitNumber || record.id}
+                permitNumber={(record as any).permitNumber || record.id}
+                fallbackRecord={record}
+                imageClassName="size-12"
+                labelTitle="Scan / Klik PTW"
+                labelSubtitle="Dokumen Pendukung"
+              />
+            </div>
           </div>
 
           {/* ── MASA BERLAKU IKB ── */}
@@ -287,9 +313,9 @@ export function IzinKerjaPtwPrintPage() {
               <div className="border-t border-slate-900 pt-1 font-bold">{record.fieldPic || "NAMA & TANDA TANGAN"}</div>
             </div>
 
-            {/* 2. PELAKSANA PEKERJAAN */}
+            {/* 2. PELAKSANA KERJA */}
             <div className="p-1.5 text-center flex flex-col justify-between">
-              <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PELAKSANA PEKERJAAN</div>
+              <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PELAKSANA KERJA</div>
               <div className="min-h-14 flex flex-wrap items-center justify-center gap-2 my-1">
                 {(() => {
                   const applicantNames = (record.applicant || '').split(/[,;\n]+/).map((s: string) => s.trim()).filter(Boolean)
@@ -317,9 +343,9 @@ export function IzinKerjaPtwPrintPage() {
               </div>
             </div>
 
-            {/* 3. VERIFIKASI (SAFETY DEPT) */}
+            {/* 3. SAFETY DEPT */}
             <div className="p-1.5 text-center flex flex-col justify-between">
-              <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">VERIFIKASI (SAFETY DEPT)</div>
+              <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">SAFETY DEPT</div>
               <div className="h-14 flex items-center justify-center my-1">
                 {record.signatures?.step3 ? (
                   <img src={record.signatures.step3} alt="TTD" className="max-h-12 object-contain" />

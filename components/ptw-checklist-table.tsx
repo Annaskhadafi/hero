@@ -4,6 +4,7 @@ import {
   EQUIPMENT_CHECKLIST_PER_TYPE,
   getPermitSubTypes,
   getActivePermitTypeKeys,
+  getPtwColumnKeys,
   normalizePermitType,
   isItemChecked,
 } from '@/lib/ptw-helpers'
@@ -68,32 +69,23 @@ export function PtwChecklistTable({
   subTypes,
   checkedEquipment = [],
   columnsToShow,
-  showAllColumns = true,
+  showAllColumns = false,
   className,
 }: PtwChecklistTableProps) {
   const activePermitKeys = React.useMemo(() => getActivePermitTypeKeys(permitType), [permitType])
 
   const activeCols = React.useMemo(() => {
-    if (columnsToShow && columnsToShow.length > 0) {
-      const filtered = PTW_COLUMNS.filter((col) => columnsToShow.includes(col.key))
-      return filtered.length > 0 ? filtered : PTW_COLUMNS
-    }
-
     if (showAllColumns) return PTW_COLUMNS
 
-    if (activePermitKeys.length > 0) {
-      const filtered = PTW_COLUMNS.filter((col) =>
-        activePermitKeys.some((k) => {
-          const normK = normalizePermitType(k)
-          const normCol = normalizePermitType(col.permitTypeKey)
-          return normK.toLowerCase() === normCol.toLowerCase()
-        })
-      )
-      return filtered.length > 0 ? filtered : PTW_COLUMNS
+    if (columnsToShow && columnsToShow.length > 0) {
+      const filtered = PTW_COLUMNS.filter((col) => columnsToShow.includes(col.key))
+      if (filtered.length > 0) return filtered
     }
 
-    return PTW_COLUMNS
-  }, [showAllColumns, columnsToShow, activePermitKeys])
+    const colKeys = getPtwColumnKeys(permitType)
+    const filtered = PTW_COLUMNS.filter((col) => colKeys.includes(col.key))
+    return filtered.length > 0 ? filtered : [PTW_COLUMNS.find((c) => c.key === 'COLD') || PTW_COLUMNS[0]]
+  }, [showAllColumns, columnsToShow, permitType])
 
   const isCheckedEquipmentProvided = checkedEquipment && checkedEquipment.length > 0
 

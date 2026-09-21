@@ -7,8 +7,9 @@ import {
   rejectPtwStepByToken,
   revertPtwStepByToken,
 } from '@/app/dashboard/hse/izin-kerja-ptw/actions'
-import { EQUIPMENT_CHECKLIST_PER_TYPE, getActivePermitTypeKeys, isItemChecked, getPermitSubTypes, cleanPtwDescription, extractCheckedEquipment } from '@/lib/ptw-helpers'
+import { EQUIPMENT_CHECKLIST_PER_TYPE, getActivePermitTypeKeys, isItemChecked, getPermitSubTypes, cleanPtwDescription, extractCheckedEquipment, normalizePermitTypes } from '@/lib/ptw-helpers'
 import { PtwChecklistTable } from '@/components/ptw-checklist-table'
+import { PtwDocumentQr } from '@/components/ptw-document-qr'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
@@ -640,7 +641,7 @@ export function PtwPublicApproval({
                   <span className="font-bold">No. Ijin Kerja Berbahaya :</span> <span className="font-mono font-semibold">{data?.permitNumber || 'PTW-DRAFT'}</span>
                 </div>
                 <div className="col-span-8 p-1.5 bg-slate-50">
-                  <span className="font-bold">No. Work Order :</span> <span className="font-mono font-semibold">{data?.permitNumber || 'PTW-DRAFT'}</span>
+                  <span className="font-bold">No. Work Order :</span> <span className="font-mono font-semibold">{(data?.permitNumber || 'PTW-DRAFT').replace('PTW', 'WO')}</span>
                 </div>
 
                 <div className="col-span-4 border-r border-slate-900 border-t border-slate-900 p-1.5 min-h-[44px]">
@@ -649,7 +650,7 @@ export function PtwPublicApproval({
                 </div>
                 <div className="col-span-3 border-r border-slate-900 border-t border-slate-900 p-1.5 min-h-[44px]">
                   <span className="font-bold block text-[7.5pt] text-slate-500">Lokasi :</span>
-                  <span className="font-semibold text-slate-900">{data?.location || '—'} ({data?.area || '—'})</span>
+                  <span className="font-semibold text-slate-900">{data?.location || '—'} {data?.area ? `(${data.area})` : ''}</span>
                 </div>
                 <div className="col-span-5 border-t border-slate-900 p-1.5 min-h-[44px]">
                   <span className="font-bold block text-[7.5pt] text-slate-500">Uraian Pekerjaan :</span>
@@ -659,12 +660,12 @@ export function PtwPublicApproval({
                 <div className="col-span-6 border-r border-slate-900 border-t border-slate-900 p-1.5 bg-blue-50/50">
                   <span className="font-bold text-slate-800">Referensi HIRADC :</span>{' '}
                   <span className="font-semibold text-blue-900">
-                    {data?.hiradcReference || (data?.description?.match(/\[Referensi HIRADC:\s*(.*?)\]/)?.[1]) || '—'}
+                    {data?.hiradcReference || (data?.description?.match(/\[Referensi HIRADC:\s*(.*?)\]/)?.[1]) || 'JSA-HSE-PTW-2026-001'}
                   </span>
                 </div>
                 <div className="col-span-6 border-t border-slate-900 p-1.5 bg-blue-50/50">
                   <span className="font-bold text-slate-800">Tipe Izin Kerja Terpilih :</span>{' '}
-                  <span className="font-semibold uppercase text-slate-900">{data?.permitType || 'Cold Permit'}</span>
+                  <span className="font-semibold uppercase text-slate-900">{normalizePermitTypes(data?.permitType || 'Cold Permit')}</span>
                 </div>
               </div>
 
@@ -681,18 +682,25 @@ export function PtwPublicApproval({
               />
 
               {/* ── ALAT PELINDUNG DIRI (APD) WAJIB ── */}
-              <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-slate-50/80">
-                <span className="font-bold block text-[7.5pt] text-slate-900">ALAT PELINDUNG DIRI (APD) WAJIB :</span>
-                <div className="flex flex-wrap gap-1.5 mt-1 font-semibold text-slate-800">
-                  {((Array.isArray(data?.ppe) && data.ppe.length > 0) || (Array.isArray(data?.safetyEquipments) && data.safetyEquipments.length > 0)) ? (
-                    (data.ppe || data.safetyEquipments).map((apd: string) => (
-                      <span key={apd} className="inline-block bg-white border border-slate-400 rounded px-2 py-0.5 text-[7.5pt] shadow-2xs">
-                        ☑ {apd}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-slate-500 italic">Standard K3 APD (Helmet, Safety Shoes, Glasses)</span>
-                  )}
+              <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-slate-50/80 flex items-center justify-between">
+                <div>
+                  <span className="font-bold block text-[7.5pt] text-slate-900">ALAT PELINDUNG DIRI (APD) WAJIB :</span>
+                  <div className="flex flex-wrap gap-1.5 mt-1 font-semibold text-slate-800">
+                    {((Array.isArray(data?.ppe) && data.ppe.length > 0) || (Array.isArray(data?.safetyEquipments) && data.safetyEquipments.length > 0)) ? (
+                      (data.ppe || data.safetyEquipments).map((apd: string) => (
+                        <span key={apd} className="inline-block bg-white border border-slate-400 rounded px-2 py-0.5 text-[7.5pt] shadow-2xs">
+                          ☑ {apd}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-slate-500 italic">Standard K3 APD (Helmet, Safety Shoes, Glasses)</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 font-bold text-[7.5pt] text-slate-800 shrink-0">
+                  <span>Gas Test: <strong className="text-emerald-700">{data?.gasTestRequired ? 'WAJIB' : 'TIDAK'}</strong></span>
+                  <span>LOTO / Isolasi: <strong className="text-emerald-700">{data?.isolationRequired ? 'WAJIB' : 'TIDAK'}</strong></span>
+                  <span>Risk Level: <strong className="text-rose-700 uppercase">{data?.riskLevel || 'MEDIUM'}</strong></span>
                 </div>
               </div>
 
@@ -795,40 +803,17 @@ export function PtwPublicApproval({
                   )
                 })()}
 
-                {/* 4. QR Code */}
-                {(() => {
-                  const qrBaseUrl = origin || 'https://hero.chitraparatama.com'
-                  const qrTargetUrl = `${qrBaseUrl}/review/ptw/${encodeURIComponent(data?.permitNumber || token)}`
-                  return (
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      onClick={(e) => {
-                        e.preventDefault()
-                        setIsAttachmentModalOpen(true)
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault()
-                          setIsAttachmentModalOpen(true)
-                        }
-                      }}
-                      className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white hover:bg-blue-50/70 cursor-pointer transition-colors no-underline text-slate-900 group"
-                      title="Klik untuk membuka pop up lampiran dokumen pendukung PTW / Scan QR"
-                      suppressHydrationWarning
-                    >
-                      <img
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrTargetUrl)}`}
-                        alt="QR Code Lampiran PTW"
-                        className="size-12 object-contain border border-slate-900 p-0.5 bg-white rounded shadow-2xs group-hover:scale-105 transition-transform"
-                        suppressHydrationWarning
-                      />
-                      <span className="text-[6pt] font-bold text-slate-900 mt-0.5 uppercase text-center underline underline-offset-1 group-hover:text-blue-700" suppressHydrationWarning>
-                        Klik / Scan QR
-                      </span>
-                    </div>
-                  )
-                })()}
+                {/* 4. QR Code Validasi Digital */}
+                <div className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white">
+                  <PtwDocumentQr
+                    permitId={data?.permitNumber || token}
+                    permitNumber={data?.permitNumber}
+                    fallbackRecord={data}
+                    imageClassName="size-12"
+                    labelTitle="Scan / Klik PTW"
+                    labelSubtitle="Dokumen Pendukung"
+                  />
+                </div>
               </div>
 
               {/* ── MASA BERLAKU IKB ── */}
@@ -844,7 +829,9 @@ export function PtwPublicApproval({
                     </div>
                     <div className="p-1 text-center">
                       <span className="font-bold block text-[7pt] text-slate-500 uppercase">WAKTU MULAI</span>
-                      <span className="font-semibold">08:00</span>
+                      <span className="font-semibold">
+                        {data?.startAt ? new Date(data.startAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '08:00'}
+                      </span>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 divide-x divide-slate-900">
@@ -854,7 +841,9 @@ export function PtwPublicApproval({
                     </div>
                     <div className="p-1 text-center">
                       <span className="font-bold block text-[7pt] text-slate-500 uppercase">WAKTU BERAKHIR</span>
-                      <span className="font-semibold">17:00</span>
+                      <span className="font-semibold">
+                        {data?.endAt ? new Date(data.endAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '17:00'}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -882,14 +871,20 @@ export function PtwPublicApproval({
                         PEMBERI KERJA
                       </div>
                       <div className="h-14 flex items-center justify-center my-1">
-                        {sigUrl ? (
+                        {s?.status === 'rejected' ? (
+                          <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak</span>
+                        ) : s?.status === 'reverted' ? (
+                          <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan</span>
+                        ) : sigUrl ? (
                           <img src={sigUrl} alt="TTD" className="max-h-12 object-contain" />
+                        ) : s?.status === 'approved' ? (
+                          <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui</span>
                         ) : (
                           <span className="text-[7pt] text-slate-400 italic">Ditandatangani Digital</span>
                         )}
                       </div>
                       <div className="border-t border-slate-900 pt-1 font-bold">
-                        {s?.approverName || data?.fieldPicName || 'NAMA & TANDA TANGAN'}
+                        {data?.fieldPicName || s?.approverName || 'NAMA & TANDA TANGAN'}
                       </div>
                     </div>
                   )
@@ -1017,14 +1012,20 @@ export function PtwPublicApproval({
                         VERIFIKASI (SAFETY DEPT)
                       </div>
                       <div className="h-14 flex items-center justify-center my-1">
-                        {sigUrl ? (
+                        {s?.status === 'rejected' ? (
+                          <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak</span>
+                        ) : s?.status === 'reverted' ? (
+                          <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan</span>
+                        ) : sigUrl ? (
                           <img src={sigUrl} alt="TTD" className="max-h-12 object-contain" />
+                        ) : s?.status === 'approved' ? (
+                          <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui</span>
                         ) : (
                           <span className="text-[7pt] text-slate-400 italic">Ditandatangani Digital</span>
                         )}
                       </div>
                       <div className="border-t border-slate-900 pt-1 font-bold">
-                        {s?.approverName || data?.authorizedByName || 'NAMA & TANDA TANGAN'}
+                        {data?.authorizedByName || s?.approverName || 'NAMA & TANDA TANGAN'}
                       </div>
                     </div>
                   )

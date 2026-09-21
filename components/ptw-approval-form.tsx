@@ -46,6 +46,8 @@ import {
 } from '@/lib/ptw-helpers'
 import { PtwSubTypesEditor } from '@/components/ptw-sub-types-editor'
 import { PtwChecklistTable } from '@/components/ptw-checklist-table'
+import { PtwDocumentModal } from '@/components/ptw-document-modal'
+import { PtwDocumentQr } from '@/components/ptw-document-qr'
 
 import { AdminPageShell } from '@/components/admin-page-shell'
 import { Badge } from '@/components/ui/badge'
@@ -80,6 +82,8 @@ type ApprovalStep = {
   stepLabel: string
   approverName: string
   approverRole: string
+  approverEmployeeId?: number | null
+  approverEmail?: string | null
   status: string
   signatureDataUrl: string | null
   remarks: string
@@ -111,8 +115,14 @@ type PtwApprovalData = {
   isolationRequired: boolean
   attachments?: string[] | any[]
   approvals: ApprovalStep[]
+  currentEmployee?: {
+    id: number
+    name: string
+    email?: string | null
+  } | null
   permissions: {
     canApprove: boolean
+    canSignActiveStep?: boolean
     canEdit: boolean
   }
 }
@@ -232,6 +242,7 @@ export function PtwApprovalForm({
   const [registeredSignature, setRegisteredSignature] = useState<string | null>((data as any)?.registeredSignature || null)
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState<boolean>(false)
   const [isAttachmentModalOpen, setIsAttachmentModalOpen] = useState<boolean>(false)
+  const [isDocModalOpen, setIsDocModalOpen] = useState<boolean>(false)
   const [origin, setOrigin] = useState<string>('')
 
   useEffect(() => {
@@ -273,7 +284,7 @@ export function PtwApprovalForm({
     }
     return ''
   })
-  const [permitType, setPermitType] = useState(data.permitType || 'Hot Work')
+  const [permitType, setPermitType] = useState(() => normalizePermitTypes(data.permitType || 'Cold Permit'))
   const [location, setLocation] = useState(data.location || '')
   const [area, setArea] = useState(data.area || '')
   const [startDate, setStartDate] = useState(formatDateInput(data.startAt) || new Date().toISOString().split('T')[0])
@@ -453,7 +464,13 @@ export function PtwApprovalForm({
     return dataUrl
   }
 
+  const canEdit = Boolean(data?.permissions?.canEdit)
+
   const handleSaveForm = () => {
+    if (!canEdit) {
+      toast.error('Akses ditolak: Dokumen PTW terkunci dan Anda tidak memiliki izin untuk mengubahnya.')
+      return
+    }
     startTransition(async () => {
       const startAt = startDate && startTime ? new Date(`${startDate}T${startTime}:00`) : undefined
       const endAt = endDate && endTime ? new Date(`${endDate}T${endTime}:00`) : undefined
@@ -489,7 +506,6 @@ export function PtwApprovalForm({
         ppe,
         subTypes: formSubTypes,
         attachments,
-        signatures: signaturesByStepId,
         stepRemarks,
       })
 
@@ -530,6 +546,7 @@ export function PtwApprovalForm({
         controlSteps: formattedControlSteps,
         additionalNotes,
         ppe,
+        subTypes: formSubTypes,
       })
 
       const fd = new FormData()
@@ -646,8 +663,12 @@ export function PtwApprovalForm({
   )
 
   const pemberiKerjaStep = approvalHistoryForDisplay.find((s) => s.stepOrder === 1 || s.approverRole === 'safety_officer' || s.approverRole === 'pemberi_kerja')
-  const pelaksanaSteps = approvalHistoryForDisplay.filter((s) => s.approverRole === 'applicant' || s.approverRole === 'pelaksana' || s.approverRole === 'pelaksana_kerja')
-  const safetyDeptStep = approvalHistoryForDisplay.find((s) => s.approverRole === 'field_pic' || s.approverRole === 'safety_dept' || s.approverRole === 'authorized' || s.stepOrder === approvalHistoryForDisplay.length)
+  const safetyDeptStep = approvalHistoryForDisplay.find((s) => s.approverRole === 'safety_dept' || s.approverRole === 'authorized' || s.stepLabel?.toLowerCase().includes('safety') || s.stepLabel?.toLowerCase().includes('hse') || (approvalHistoryForDisplay.length > 2 && s.stepOrder === approvalHistoryForDisplay.length))
+  const pelaksanaSteps = approvalHistoryForDisplay.filter((s) => {
+    if (pemberiKerjaStep && (s.id ? s.id === pemberiKerjaStep.id : s.stepOrder === pemberiKerjaStep.stepOrder)) return false
+    if (safetyDeptStep && (s.id ? s.id === safetyDeptStep.id : s.stepOrder === safetyDeptStep.stepOrder)) return false
+    return true
+  })
 
   const step1 = pemberiKerjaStep
   const step2 = pelaksanaSteps[0] || approvalHistoryForDisplay.find((s) => s.stepOrder === 2)
@@ -673,6 +694,19 @@ export function PtwApprovalForm({
   }
 
   const activeStep = approvalHistoryForDisplay.find((a) => a.id === activeStepId) || approvalHistoryForDisplay[0]
+
+  const isCurrentUserAssignedApprover = Boolean(
+    (data.currentEmployee && activeStep && (
+      (activeStep.approverEmployeeId && Number(activeStep.approverEmployeeId) === Number(data.currentEmployee.id)) ||
+      (activeStep.approverEmail && data.currentEmployee.email && activeStep.approverEmail.trim().toLowerCase() === data.currentEmployee.email.trim().toLowerCase()) ||
+      (data.currentEmployee.name && activeStep.approverName && (
+        data.currentEmployee.name.trim().toLowerCase() === activeStep.approverName.trim().toLowerCase() ||
+        (activeStep.approverName.trim().length >= 3 && data.currentEmployee.name.trim().toLowerCase().includes(activeStep.approverName.trim().toLowerCase())) ||
+        (data.currentEmployee.name.trim().length >= 3 && activeStep.approverName.trim().toLowerCase().includes(data.currentEmployee.name.trim().toLowerCase()))
+      ))
+    )) ||
+    (data.permissions?.canSignActiveStep && activeStep?.status === 'pending')
+  )
 
   return (
     <AdminPageShell
@@ -708,23 +742,43 @@ export function PtwApprovalForm({
         <div className="grid gap-6 xl:grid-cols-2">
           {/* ── LEFT: Form ── */}
           <div className={cn('flex flex-col gap-6 print:hidden', activeView === 'preview' ? 'hidden xl:flex' : 'flex')}>
+            {!canEdit && (
+              <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-xs text-amber-900 shadow-2xs">
+                <Lock className="size-4 text-amber-600 shrink-0" />
+                <div className="leading-relaxed">
+                  <span className="font-bold">Mode Hanya Baca (Read-Only):</span> Formulir pengajuan izin kerja ini telah terkunci. Pengeditan data hanya dapat dilakukan oleh Pemohon Terkait, Tim HSE, atau Super Admin.
+                </div>
+              </div>
+            )}
+
             {/* Top Action Bar (Contract Review Parity) */}
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-2 sm:gap-3">
               <Button asChild variant="outline">
                 <Link href="/dashboard/hse/izin-kerja-ptw">
                   <ArrowLeft className="mr-2 size-4" /> Kembali
                 </Link>
               </Button>
+              <Button
+                type="button"
+                onClick={() => setIsDocModalOpen(true)}
+                variant="outline"
+                className="gap-1.5 text-[#003461] border-sky-200 bg-sky-50/70 hover:bg-sky-100 font-bold"
+                title="Buka Pratinjau Dokumen PTW (Floating Window)"
+              >
+                <Eye className="size-4 text-[#003461]" /> Floating Window
+              </Button>
               <Button onClick={handleDownloadPdf} disabled={isDownloading} variant="secondary" className="gap-2">
                 <Download className="size-4" /> {isDownloading ? 'Mengunduh...' : 'Unduh PDF'}
               </Button>
-              <Button
-                onClick={handleSaveForm}
-                disabled={isPending}
-                className="ml-auto bg-slate-900 hover:bg-slate-800 text-white font-bold"
-              >
-                <Save className="mr-2 size-4" /> {isPending ? 'Menyimpan...' : 'Simpan Perubahan'}
-              </Button>
+              {canEdit && (
+                <Button
+                  onClick={handleSaveForm}
+                  disabled={isPending}
+                  className="ml-auto bg-slate-900 hover:bg-slate-800 text-white font-bold"
+                >
+                  <Save className="mr-2 size-4" /> {isPending ? 'Menyimpan...' : 'Simpan Perubahan'}
+                </Button>
+              )}
             </div>
 
             {/* ── 18-FIELD PERMIT DETAILS CARD ── */}
@@ -749,6 +803,7 @@ export function PtwApprovalForm({
                 </div>
               </CardHeader>
               <CardContent className="space-y-4 pt-4 text-xs">
+                <fieldset disabled={!canEdit} className="contents space-y-4">
                 {/* Field 1: Nama Proyek / Kontrak */}
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold text-slate-700">Nama proyek / kontrak</Label>
@@ -1016,8 +1071,8 @@ export function PtwApprovalForm({
                   />
                 </div>
 
-                {/* Row 1: Pemberi Kerja | Status persetujuan */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Row 1: Pemberi Kerja */}
+                <div className="grid grid-cols-1 gap-4">
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
                       <Label className="text-xs font-semibold text-slate-700">Nama pemberi kerja</Label>
@@ -1039,21 +1094,6 @@ export function PtwApprovalForm({
                       }))}
                       widthClassName="w-full"
                     />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">Status persetujuan</Label>
-                    <select
-                      value={status}
-                      onChange={(e) => setStatus(e.target.value)}
-                      className="w-full h-10 rounded-md border border-slate-200 bg-slate-50/70 px-3 py-1 text-xs shadow-sm font-semibold"
-                    >
-                      <option value="Pending Approval">Pending Approval</option>
-                      <option value="Submitted">Submitted</option>
-                      <option value="Approved">Approved</option>
-                      <option value="Rejected">Rejected</option>
-                      <option value="Draft">Draft</option>
-                    </select>
                   </div>
                 </div>
 
@@ -1368,6 +1408,7 @@ export function PtwApprovalForm({
                     </div>
                   )}
                 </div>
+                </fieldset>
               </CardContent>
             </Card>
 
@@ -1462,6 +1503,28 @@ export function PtwApprovalForm({
                     </div>
                   </div>
                 )}
+              </Card>
+            ) : !isCurrentUserAssignedApprover ? (
+              <Card className="rounded-[1.2rem] shadow-sm ring-1 ring-slate-200/70 p-5 bg-slate-50/80 border border-slate-200">
+                <div className="flex items-start gap-3.5">
+                  <div className="size-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 shrink-0 shadow-xs mt-0.5">
+                    <Lock className="size-5" />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-bold text-slate-900">
+                        Menunggu Tanda Tangan: {activeStep?.stepLabel}
+                      </h4>
+                      <Badge variant="outline" className="text-slate-500 border-slate-300 rounded-full px-2.5 py-0.5 font-bold text-[9px]">
+                        HAK AKSES DIBATASI
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      Tahap ini secara khusus ditugaskan kepada <span className="font-semibold text-slate-900">{activeStep?.approverName || 'Approver terkait'}</span>.
+                      Meskipun Anda memiliki akses kelola formulir PTW, Anda tidak dapat menandatangani atau menyetujui tahap ini atas nama pengguna lain.
+                    </p>
+                  </div>
+                </div>
               </Card>
             ) : (
               <Card className="rounded-[1.2rem] shadow-sm ring-1 ring-slate-200/70">
@@ -1649,7 +1712,7 @@ export function PtwApprovalForm({
                 </div>
                 <div className="col-span-6 border-t border-slate-900 p-1.5 bg-blue-50/50">
                   <span className="font-bold text-slate-800">Tipe Izin Kerja Terpilih :</span>{' '}
-                  <span className="font-semibold uppercase text-slate-900">{permitType || 'Cold Permit'}</span>
+                  <span className="font-semibold uppercase text-slate-900">{normalizePermitTypes(permitType || 'Cold Permit')}</span>
                 </div>
               </div>
 
@@ -1734,40 +1797,17 @@ export function PtwApprovalForm({
                   </div>
                 </div>
 
-                {/* 4. QR Code */}
-                {(() => {
-                  const qrBaseUrl = origin || 'https://hero.chitraparatama.com'
-                  const qrTargetUrl = `${qrBaseUrl}/review/ptw/${encodeURIComponent(data.permitNumber)}`
-                  return (
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      onClick={(e) => {
-                        e.preventDefault()
-                        setIsAttachmentModalOpen(true)
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault()
-                          setIsAttachmentModalOpen(true)
-                        }
-                      }}
-                      className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white hover:bg-blue-50/70 cursor-pointer transition-colors no-underline text-slate-900 group"
-                      title="Klik untuk membuka pop up lampiran dokumen pendukung PTW / Scan QR"
-                      suppressHydrationWarning
-                    >
-                      <img
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrTargetUrl)}`}
-                        alt="QR Code Lampiran PTW"
-                        className="size-12 object-contain border border-slate-900 p-0.5 bg-white rounded shadow-2xs group-hover:scale-105 transition-transform"
-                        suppressHydrationWarning
-                      />
-                      <span className="text-[6pt] font-bold text-slate-900 mt-0.5 uppercase text-center underline underline-offset-1 group-hover:text-blue-700" suppressHydrationWarning>
-                        Klik / Scan QR
-                      </span>
-                    </div>
-                  )
-                })()}
+                {/* 4. QR Code Validasi Digital */}
+                <div className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white">
+                  <PtwDocumentQr
+                    permitId={data.permitId}
+                    permitNumber={data.permitNumber}
+                    fallbackRecord={data}
+                    imageClassName="size-12"
+                    labelTitle="Scan / Klik PTW"
+                    labelSubtitle="Dokumen Pendukung"
+                  />
+                </div>
               </div>
 
               {/* ── MASA BERLAKU IKB ── */}
@@ -1823,12 +1863,12 @@ export function PtwApprovalForm({
                       <span className="text-[7pt] text-slate-400 italic">(Belum Disetujui)</span>
                     )}
                   </div>
-                  <div className="border-t border-slate-900 pt-1 font-bold">{selectedFieldPic || step1?.approverName || 'NAMA & TANDA TANGAN'}</div>
+                  <div className="border-t border-slate-900 pt-1 font-bold">{step1?.approverName || selectedFieldPic || 'NAMA & TANDA TANGAN'}</div>
                 </div>
 
-                {/* 2. PELAKSANA PEKERJAAN (MULTI) */}
+                {/* 2. PELAKSANA KERJA (MULTI) */}
                 <div className="p-1.5 text-center flex flex-col justify-between">
-                  <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PELAKSANA PEKERJAAN</div>
+                  <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PELAKSANA KERJA</div>
                   <div className="min-h-14 flex flex-wrap items-center justify-center gap-2 my-1">
                     {pelaksanaSteps.length > 0 ? (
                       pelaksanaSteps.map((pStep, pIdx) => {
@@ -1859,9 +1899,9 @@ export function PtwApprovalForm({
                   </div>
                 </div>
 
-                {/* 3. VERIFIKASI (SAFETY DEPT) */}
+                {/* 3. SAFETY DEPT */}
                 <div className="p-1.5 text-center flex flex-col justify-between">
-                  <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">VERIFIKASI (SAFETY DEPT)</div>
+                  <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">SAFETY DEPT</div>
                   <div className="h-14 flex flex-col items-center justify-center my-1">
                     {step3?.status === 'rejected' ? (
                       <>
@@ -1881,7 +1921,7 @@ export function PtwApprovalForm({
                       <span className="text-[7pt] text-slate-400 italic">(Belum Disetujui)</span>
                     )}
                   </div>
-                  <div className="border-t border-slate-900 pt-1 font-bold">{selectedAuthorized || step3?.approverName || 'NAMA & TANDA TANGAN'}</div>
+                  <div className="border-t border-slate-900 pt-1 font-bold">{step3?.approverName || selectedAuthorized || 'NAMA & TANDA TANGAN'}</div>
                 </div>
               </div>
 
@@ -2317,6 +2357,14 @@ export function PtwApprovalForm({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ── Floating Document Modal (Preview / Print / Zoom) ── */}
+      <PtwDocumentModal
+        isOpen={isDocModalOpen}
+        onClose={() => setIsDocModalOpen(false)}
+        permitId={data.permitId}
+        fallbackRecord={data}
+      />
     </AdminPageShell>
   )
 }

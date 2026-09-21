@@ -103,13 +103,13 @@ export const DEFAULT_OVERTIME_SETTINGS: OvertimeWorkflowSettings = {
 export const DEFAULT_PTW_SETTINGS: PtwWorkflowSettings = {
   approvalMatrix: {
     safetyOfficerName: 'Pemberi Kerja',
-    safetyOfficerEmail: 'hse.safety@chitraparatama.co.id',
+    safetyOfficerEmail: 'raihanaraya36@gmail.com',
     fieldPicName: 'Safety Dept',
-    fieldPicEmail: 'hse.safety@chitraparatama.co.id',
+    fieldPicEmail: 'raihanaraya36@gmail.com',
     authorizedByName: 'Authorized Official',
-    authorizedByEmail: 'hse.safety@chitraparatama.co.id',
+    authorizedByEmail: 'raihanaraya36@gmail.com',
     managerName: 'HSE Manager',
-    managerEmail: 'hse.manager@chitraparatama.co.id',
+    managerEmail: 'raihanaraya36@gmail.com',
     hoSites: ['HO', 'Head Office', 'Balikpapan HO'],
   },
   reminderDaysBefore: [1, 2, 3],

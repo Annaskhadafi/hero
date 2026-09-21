@@ -39,8 +39,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { SecurityUserRecord } from "@/lib/hero-admin";
-import { getPermitSubTypes, cleanPtwDescription, extractCheckedEquipment } from "@/lib/ptw-helpers";
+import { getPermitSubTypes, cleanPtwDescription, extractCheckedEquipment, getDefaultSubTypes, getActivePermitTypeKeys } from "@/lib/ptw-helpers";
 import { PtwChecklistTable } from "@/components/ptw-checklist-table";
+import { PtwDocumentModal } from "@/components/ptw-document-modal";
+import { PtwSubTypesEditor } from "@/components/ptw-sub-types-editor";
 
 type PermitStatus = "Draft" | "Pending Approval" | "Approved" | "Active" | "Closed" | "Rejected";
 type RiskLevel = "Low" | "Medium" | "High" | "Critical";
@@ -169,322 +171,27 @@ function splitLines(text: string) {
 
 function PtwDocumentDialog({ record }: { record: PtwRecord }) {
   const [open, setOpen] = useState(false);
-  const [attachmentModalOpen, setAttachmentModalOpen] = useState(false);
-  const [origin, setOrigin] = useState<string>("");
-
-  React.useEffect(() => {
-    setOrigin(window.location.origin);
-  }, []);
-
-  const openPrintPage = () => {
-    window.localStorage.setItem("hero-ptw-print-record", JSON.stringify(record));
-    window.open("/print/izin-kerja-ptw", "_blank", "noopener,noreferrer");
-  };
-
-  const ppeList = Array.isArray(record.ppe) ? record.ppe : [];
-  const activePermitType = (record.permitType || "").toUpperCase();
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <Button type="button" variant="outline" size="sm" className="h-8 gap-2" data-testid={`ptw-view-${record.id}`} onClick={() => setOpen(true)}><Eye className="size-4" /> View</Button>
-      <DialogContent className="ptw-print-dialog max-w-6xl max-h-[92vh] overflow-y-auto bg-slate-100 p-0 rounded-2xl">
-        <DialogHeader className="border-b bg-white px-6 py-4 no-print">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <DialogTitle className="text-base font-bold text-slate-900">IJIN KERJA BERBAHAYA (Work Permit) — Official Landscape</DialogTitle>
-              <DialogDescription className="text-xs text-slate-500">{record.projectName}</DialogDescription>
-            </div>
-            <div className="flex gap-2 pr-8">
-              <Button size="sm" className="gap-2 bg-[#0f172a] text-white hover:bg-[#1e293b]" onClick={openPrintPage}><Download className="size-4" /> Download Landscape PDF</Button>
-              <Button size="sm" variant="outline" className="gap-2" onClick={openPrintPage}><Printer className="size-4" /> Cetak Dokumen</Button>
-            </div>
-          </div>
-        </DialogHeader>
-        <div className="ptw-print-shell p-4 overflow-x-auto">
-          <article className="ptw-landscape-sheet w-full max-w-[1122px] min-h-[793px] mx-auto bg-white p-6 shadow-xl border-2 border-slate-900 text-slate-900 font-sans text-[8.5pt] flex flex-col justify-between">
-            {/* ── HEADER TABLE ── */}
-            <div className="grid grid-cols-[180px_1fr] border-b-2 border-slate-900">
-              <div className="flex items-center justify-center p-2 border-r-2 border-slate-900 bg-white">
-                <Image src="/cp_logo-removebg-preview.png" alt="Chitra Paratama" width={150} height={50} className="object-contain" />
-              </div>
-              <div className="bg-[#bfe6ff] flex items-center justify-center font-bold text-base tracking-wider uppercase py-2.5 text-slate-900">
-                IJIN KERJA BERBAHAYA ( Work Permit )
-              </div>
-            </div>
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-8 gap-2"
+        data-testid={`ptw-view-${record.id}`}
+        onClick={() => setOpen(true)}
+      >
+        <Eye className="size-4" /> View
+      </Button>
 
-            {/* ── FORM META FIELDS ── */}
-            <div className="grid grid-cols-12 border-b-2 border-slate-900 text-[8pt]">
-              <div className="col-span-4 border-r border-slate-900 p-1.5 bg-slate-50">
-                <span className="font-bold">No. Ijin Kerja Berbahaya :</span> <span className="font-mono font-semibold">{record.id}</span>
-              </div>
-              <div className="col-span-8 p-1.5 bg-slate-50">
-                <span className="font-bold">No. Work Order :</span> <span className="font-mono font-semibold">{record.id}</span>
-              </div>
-
-              <div className="col-span-4 border-r border-slate-900 border-t border-slate-900 p-1.5 min-h-[44px]">
-                <span className="font-bold block text-[7.5pt] text-slate-500">Nama Pekerja :</span>
-                <span className="font-semibold text-slate-900">{record.applicant || "-"}</span>
-              </div>
-              <div className="col-span-3 border-r border-slate-900 border-t border-slate-900 p-1.5 min-h-[44px]">
-                <span className="font-bold block text-[7.5pt] text-slate-500">Lokasi :</span>
-                <span className="font-semibold text-slate-900">{record.location} ({record.area})</span>
-              </div>
-              <div className="col-span-5 border-t border-slate-900 p-1.5 min-h-[44px]">
-                <span className="font-bold block text-[7.5pt] text-slate-500">Uraian Pekerjaan :</span>
-                <span className="font-semibold text-slate-900">{record.projectName || record.description || "-"}</span>
-              </div>
-
-              <div className="col-span-6 border-r border-slate-900 border-t border-slate-900 p-1.5 bg-blue-50/50">
-                <span className="font-bold text-slate-800">Referensi HIRADC :</span>{" "}
-                <span className="font-semibold text-blue-900">
-                  {(record as any).hiradcReference || (record.description?.match(/\[Referensi HIRADC:\s*(.*?)\]/)?.[1]) || "—"}
-                </span>
-              </div>
-              <div className="col-span-6 border-t border-slate-900 p-1.5 bg-blue-50/50">
-                <span className="font-bold text-slate-800">Tipe Izin Kerja Terpilih :</span>{" "}
-                <span className="font-semibold uppercase text-slate-900">{record.permitType || "Cold Permit"}</span>
-              </div>
-            </div>
-
-            {/* ── TABLE TITLE: JENIS PEKERJAAN ── */}
-            <div className="bg-[#e2e8f0] text-center font-bold uppercase text-[8.5pt] py-1 border-b-2 border-slate-900">
-              JENIS PEKERJAAN
-            </div>
-
-            {/* ── UNIFIED TABLE FOR PERMIT TYPES (PERFECT HORIZONTAL & BOTTOM ALIGNMENT) ── */}
-            <PtwChecklistTable
-              permitType={record.permitType}
-              subTypes={record.subTypes as any}
-              checkedEquipment={extractCheckedEquipment(record.controlSteps, (record as any).checkedEquipment, record.permitType)}
-            />
-
-            {/* ── ALAT PELINDUNG DIRI (APD) WAJIB ── */}
-            <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-slate-50/80">
-              <span className="font-bold block text-[7.5pt] text-slate-900">ALAT PELINDUNG DIRI (APD) WAJIB :</span>
-              <div className="flex flex-wrap gap-1.5 mt-1 font-semibold text-slate-800">
-                {ppeList.length > 0 ? (
-                  ppeList.map((apd) => (
-                    <span key={apd} className="inline-block bg-white border border-slate-400 rounded px-2 py-0.5 text-[7.5pt] shadow-2xs">
-                      ☑ {apd}
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-slate-500 italic">Standard K3 APD (Helmet, Safety Shoes, Glasses)</span>
-                )}
-              </div>
-            </div>
-
-            {/* ── DESKRIPSI PEKERJAAN ── */}
-            <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-white">
-              <span className="font-bold block text-[7.5pt] text-slate-900 uppercase tracking-wide">
-                DESKRIPSI PEKERJAAN :
-              </span>
-              <div className="text-[7.5pt] text-slate-700 mt-0.5 leading-relaxed whitespace-pre-wrap font-medium">
-                {cleanPtwDescription(record.description) || record.description || record.additionalNotes || (record as any).controlSteps || <span className="text-slate-400 italic text-[7pt]">— Tidak ada deskripsi pekerjaan —</span>}
-              </div>
-            </div>
-
-            {/* ── LAMPIRAN DOKUMEN PENDUKUNG & QR CODE ── */}
-            <div className="p-2.5 border-b-2 border-slate-900 text-[8pt] bg-slate-50/90 grid grid-cols-12 gap-3 items-center">
-              <div className="col-span-9 space-y-1">
-                <span className="font-bold text-[8.5pt] text-slate-900 block uppercase tracking-wide">
-                  LAMPIRAN DOKUMEN PENDUKUNG (JSA / WORK PLAN)
-                </span>
-                <p className="text-[7.5pt] text-slate-700 leading-snug">
-                  Dokumen JSA & Prosedur Keselamatan Kerja K3 terintegrasi secara digital. Scan QR Code di samping atau buka tautan publik di bawah ini untuk mengunduh/melihat berkas lampiran.
-                </p>
-                <div className="text-[6.5pt] font-mono text-slate-600 pt-0.5 break-all" suppressHydrationWarning>
-                  URL Publik: {origin ? `${origin}/review/ptw/${record.id}` : `/review/ptw/${record.id}`}
-                </div>
-              </div>
-              {(() => {
-                const qrBaseUrl = origin || 'https://hero.chitraparatama.com'
-                const qrTargetUrl = `${qrBaseUrl}/review/ptw/${encodeURIComponent(record.id)}`
-                return (
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    onClick={(e) => {
-                      e.preventDefault()
-                      setAttachmentModalOpen(true)
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        setAttachmentModalOpen(true)
-                      }
-                    }}
-                    className="col-span-3 flex flex-col items-center justify-center border-l border-slate-900 pl-2 cursor-pointer no-underline text-slate-900 hover:bg-slate-100 transition-colors group"
-                    title="Klik untuk membuka pop up lampiran dokumen pendukung PTW / Scan QR"
-                    suppressHydrationWarning
-                  >
-                    <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrTargetUrl)}`}
-                      alt="QR Code Lampiran PTW"
-                      className="size-14 object-contain border border-slate-900 p-0.5 bg-white rounded group-hover:scale-105 transition-transform"
-                      suppressHydrationWarning
-                    />
-                    <span className="text-[6pt] font-bold text-slate-900 mt-1 uppercase text-center underline underline-offset-1 group-hover:text-blue-700" suppressHydrationWarning>
-                      Klik / Scan QR
-                    </span>
-                  </div>
-                )
-              })()}
-            </div>
-
-            {/* ── MASA BERLAKU IKB ── */}
-            <div className="border-b-2 border-slate-900 text-[8pt]">
-              <div className="bg-slate-100 text-center font-bold uppercase py-0.5 border-b border-slate-900 text-[8pt]">
-                MASA BERLAKU IKB (IJIN KERJA BERBAHAYA)
-              </div>
-              <div className="grid grid-cols-2 divide-x divide-slate-900">
-                <div className="grid grid-cols-2 divide-x divide-slate-900 border-r border-slate-900">
-                  <div className="p-1 text-center">
-                    <span className="font-bold block text-[7pt] text-slate-500 uppercase">TANGGAL MULAI</span>
-                    <span className="font-semibold">{formatDate(record.startDate)}</span>
-                  </div>
-                  <div className="p-1 text-center">
-                    <span className="font-bold block text-[7pt] text-slate-500 uppercase">WAKTU MULAI</span>
-                    <span className="font-semibold">{record.startTime || "08:00"}</span>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 divide-x divide-slate-900">
-                  <div className="p-1 text-center">
-                    <span className="font-bold block text-[7pt] text-slate-500 uppercase">TANGGAL BERAKHIR</span>
-                    <span className="font-semibold">{formatDate(record.endDate)}</span>
-                  </div>
-                  <div className="p-1 text-center">
-                    <span className="font-bold block text-[7pt] text-slate-500 uppercase">WAKTU BERAKHIR</span>
-                    <span className="font-semibold">{record.endTime || "17:00"}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* ── VERIFIKASI & TANDA TANGAN (3 COLUMNS: Pemberi Kerja -> Pelaksana Kerja -> Safety Dept) ── */}
-            <div className="grid grid-cols-3 divide-x-2 divide-slate-900 border-b-2 border-slate-900 text-[8pt]">
-              {/* 1. PEMBERI KERJA */}
-              <div className="p-1.5 text-center flex flex-col justify-between">
-                <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PEMBERI KERJA</div>
-                <div className="h-14 flex items-center justify-center my-1 text-[7pt] text-slate-400 italic">
-                  Ditandatangani Digital
-                </div>
-                <div className="border-t border-slate-900 pt-1 font-bold">{record.fieldPic || "NAMA & TANDA TANGAN"}</div>
-              </div>
-
-              {/* 2. PELAKSANA PEKERJAAN */}
-              <div className="p-1.5 text-center flex flex-col justify-between">
-                <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PELAKSANA PEKERJAAN</div>
-                <div className="h-14 flex items-center justify-center my-1 text-[7pt] text-slate-400 italic">
-                  Ditandatangani Digital
-                </div>
-                <div className="border-t border-slate-900 pt-1 font-bold">{record.applicant || "NAMA & TANDA TANGAN"}</div>
-              </div>
-
-              {/* 3. VERIFIKASI (SAFETY DEPT) */}
-              <div className="p-1.5 text-center flex flex-col justify-between">
-                <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">VERIFIKASI (SAFETY DEPT)</div>
-                <div className="h-14 flex items-center justify-center my-1 text-[7pt] text-slate-400 italic">
-                  Ditandatangani Digital
-                </div>
-                <div className="border-t border-slate-900 pt-1 font-bold">{record.authorizedBy || "NAMA & TANDA TANGAN"}</div>
-              </div>
-            </div>
-
-            {/* ── CATATAN FOOTER ── */}
-            <div className="p-2 text-[7pt] space-y-0.5 bg-slate-50 flex items-start justify-between">
-              <div>
-                <span className="font-bold block text-slate-900">CATATAN :</span>
-                <div>1. Ijin kerja ini hanya berlaku untuk satu area kerja saja.</div>
-                <div>2. Ijin kerja ini selalu berada ditempat kerja</div>
-                <div>3. Dilarang melakukan pekerjaan sebelum ada ijin kerja</div>
-              </div>
-              <div className="text-right text-slate-500 font-mono text-[6.5pt] pt-1 shrink-0">
-                No. Form: CP-F-SHE-026 / P-HSE-SOP-031.00
-              </div>
-            </div>
-          </article>
-        </div>
-      </DialogContent>
-
-      {/* ── Floating Dialog Lampiran Dokumen Pendukung PTW ── */}
-      <Dialog open={attachmentModalOpen} onOpenChange={setAttachmentModalOpen}>
-        <DialogContent className="max-w-xl bg-white p-6 rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <FileText className="size-5 text-teal-600" />
-              Lampiran Dokumen Pendukung PTW
-            </DialogTitle>
-            <DialogDescription className="text-xs text-slate-500">
-              No. Izin Kerja: <span className="font-semibold text-slate-700">{record.id}</span> • {record.projectName || record.description || 'Izin Kerja Aman'}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-2">
-            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <FileText className="size-5 text-teal-600 shrink-0" />
-                <div>
-                  <p className="text-xs font-bold text-slate-800">{record.attachmentName || 'JSA_Tire_Repair_SOP.pdf'}</p>
-                  <p className="text-[10px] text-slate-400">Berkas Job Safety Analysis & Prosedur K3</p>
-                </div>
-              </div>
-              <a
-                href={origin ? `${origin}/review/ptw/${record.id}` : `/review/ptw/${record.id}`}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 text-xs font-bold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-3 py-1.5 rounded-lg border border-teal-200 transition-colors"
-              >
-                <Download className="size-3.5" /> Buka / Unduh
-              </a>
-            </div>
-
-            {/* QR Verification Link Box */}
-            {(() => {
-              const qrBaseUrl = origin || 'https://hero.chitraparatama.com'
-              const qrTargetUrl = `${qrBaseUrl}/review/ptw/${encodeURIComponent(record.id)}`
-              return (
-                <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 flex flex-col sm:flex-row items-center gap-3">
-                  <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrTargetUrl)}`}
-                    alt="QR Code PTW"
-                    className="size-16 object-contain border border-slate-300 p-0.5 bg-white rounded-lg shadow-2xs shrink-0"
-                    suppressHydrationWarning
-                  />
-                  <div className="text-center sm:text-left flex-1 min-w-0">
-                    <p className="text-xs font-bold text-slate-800">Scan QR Code Verifikasi Publik</p>
-                    <p className="text-[11px] text-slate-500 line-clamp-1 break-all mt-0.5" suppressHydrationWarning>
-                      {qrTargetUrl}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-2 mt-2 justify-center sm:justify-start">
-                      <a
-                        href={qrTargetUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-700 hover:underline"
-                      >
-                        Buka Halaman Review ↗
-                      </a>
-                    </div>
-                  </div>
-                </div>
-              )
-            })()}
-          </div>
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setAttachmentModalOpen(false)}
-            >
-              Tutup
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </Dialog>
+      <PtwDocumentModal
+        isOpen={open}
+        onClose={() => setOpen(false)}
+        permitId={record.id}
+        fallbackRecord={record}
+      />
+    </>
   );
 }
 
@@ -573,6 +280,12 @@ function PtwFormDialog({ record, userOptions, hiradcSources, onSave }: { record?
   const [status, setStatus] = useState<PermitStatus>(record?.status ?? "Pending Approval");
   const [risk, setRisk] = useState<RiskLevel>(record?.risk ?? "High");
   const [ppe, setPpe] = useState(record?.ppe ?? ["Helmet", "Safety Shoes"]);
+  const [subTypes, setSubTypes] = useState<Record<string, string[]>>(() => {
+    if (record?.subTypes && typeof record.subTypes === 'object' && !Array.isArray(record.subTypes)) {
+      return { ...getDefaultSubTypes(), ...record.subTypes }
+    }
+    return getDefaultSubTypes()
+  });
   const [hiradcReference, setHiradcReference] = useState("");
   const hiradcOptions = useMemo(() => Array.from(new Set(hiradcSources.map((source) => source.label))), [hiradcSources]);
 
@@ -589,19 +302,28 @@ function PtwFormDialog({ record, userOptions, hiradcSources, onSave }: { record?
     setRisk(mapHiradcRiskLevel(source.riskLevelBefore));
   };
   const save = () => {
-    onSave({ id: record?.id ?? `PTW-${Date.now().toString().slice(-6)}`, projectName: projectName || "New Permit to Work", permitType, location: location || "Workshop Tire Mining", area, startDate: startDate || new Date().toISOString().slice(0, 10), startTime, endDate: endDate || startDate || new Date().toISOString().slice(0, 10), endTime, applicant, fieldPic, authorizedBy, status, risk, description: description || "Deskripsi pekerjaan belum diisi.", controlSteps: controlSteps || "Checklist kontrol risiko belum diisi.", ppe, gasTestRequired: permitType === "Confined Space", isolationRequired: ["Electrical Isolation", "Hot Work", "Confined Space"].includes(permitType), attachmentName: record?.attachmentName ?? "JSA / Work Plan Attachment.pdf" });
+    onSave({ id: record?.id ?? `PTW-${Date.now().toString().slice(-6)}`, projectName: projectName || "New Permit to Work", permitType, location: location || "Workshop Tire Mining", area, startDate: startDate || new Date().toISOString().slice(0, 10), startTime, endDate: endDate || startDate || new Date().toISOString().slice(0, 10), endTime, applicant, fieldPic, authorizedBy, status, risk, description: description || "Deskripsi pekerjaan belum diisi.", controlSteps: controlSteps || "Checklist kontrol risiko belum diisi.", ppe, subTypes, gasTestRequired: permitType === "Confined Space", isolationRequired: ["Electrical Isolation", "Hot Work", "Confined Space"].includes(permitType), attachmentName: record?.attachmentName ?? "JSA / Work Plan Attachment.pdf" });
     setOpen(false);
   };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       {isEdit ? <Button type="button" variant="outline" size="sm" className="h-8 gap-2" data-testid={`ptw-edit-${record?.id}`} onClick={() => setOpen(true)}><Pencil className="size-4" /> Edit</Button> : <Button type="button" className="h-10 gap-2 bg-blue-600 text-white hover:bg-blue-700" data-testid="ptw-add" onClick={() => setOpen(true)}><Plus className="size-4" /> Pengajuan Izin Baru</Button>}
-      <DialogContent className="max-w-4xl bg-white">
+      <DialogContent className="max-w-4xl bg-white max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{isEdit ? "Edit Izin Kerja Aman (PTW)" : "Pengajuan Izin Kerja Aman (PTW)"}</DialogTitle><DialogDescription>Field PTW dibuat lebih lengkap untuk kontrol pekerjaan berisiko di workshop mining.</DialogDescription></DialogHeader>
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2 md:col-span-2"><Label>Nama proyek / kontrak</Label><Input value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="Ketik nama proyek / kontrak" /></div>
           <div className="space-y-2 md:col-span-2"><Label>Referensi HIRADC</Label><Combobox value={hiradcReference} onChange={applyHiradcReference} options={hiradcOptions} placeholder="Pilih HIRADC / ketik custom" className="h-10 bg-white" allowCustom /><p className="text-xs font-medium text-slate-500">Pilih aktivitas HIRADC untuk autofill, atau ketik custom dan isi manual deskripsi pekerjaan serta kontrol risiko.</p></div>
-          <div className="space-y-2"><Label>Tipe izin kerja</Label><Combobox value={permitType} onChange={setPermitType} options={permitTypes} placeholder="Pilih / tambah tipe PTW" className="h-10 bg-white" allowCustom /></div>
+          <div className="space-y-2 md:col-span-2"><Label>Tipe izin kerja</Label><Combobox value={permitType} onChange={setPermitType} options={permitTypes} placeholder="Pilih / tambah tipe PTW" className="h-10 bg-white" allowCustom /></div>
+          
+          <div className="md:col-span-2">
+            <PtwSubTypesEditor
+              activePermitTypes={getActivePermitTypeKeys(permitType)}
+              subTypes={subTypes}
+              onChange={setSubTypes}
+            />
+          </div>
+
           <div className="space-y-2"><Label>Lokasi spesifik</Label><Input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Contoh: Area Tangki T-102" /></div>
           <div className="space-y-2"><Label>Area kerja</Label><Input value={area} onChange={(event) => setArea(event.target.value)} /></div>
           <div className="space-y-2"><Label>Tgl mulai</Label><Input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></div>
@@ -612,7 +334,6 @@ function PtwFormDialog({ record, userOptions, hiradcSources, onSave }: { record?
           <div className="space-y-2 md:col-span-2"><Label>Kontrol risiko / checklist keamanan</Label><Textarea value={controlSteps} onChange={(event) => setControlSteps(event.target.value)} placeholder="Sebutkan langkah pencegahan, isolasi, gas test, APD" /></div>
           <div className="space-y-2"><Label>Nama pemohon</Label><Combobox value={applicant} onChange={setApplicant} options={userOptions} placeholder="Pilih user pemohon" className="h-10 bg-white" allowCustom={false} /></div>
           <div className="space-y-2"><Label>Nama PIC lapangan</Label><Combobox value={fieldPic} onChange={setFieldPic} options={userOptions} placeholder="Pilih PIC lapangan" className="h-10 bg-white" allowCustom={false} /></div>
-          <div className="space-y-2"><Label>Status persetujuan</Label><Select value={status} onValueChange={(value) => setStatus(value as PermitStatus)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{statusOptions.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select></div>
           <div className="space-y-2"><Label>Disetujui oleh</Label><Combobox value={authorizedBy} onChange={setAuthorizedBy} options={userOptions} placeholder="Pilih HSE Manager / Supervisor" className="h-10 bg-white" allowCustom={false} /></div>
           <div className="space-y-2"><Label>Risk level</Label><Select value={risk} onValueChange={(value) => setRisk(value as RiskLevel)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{riskOptions.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select></div>
           <div className="space-y-2"><Label>APD wajib</Label><PpeMultiSelect value={ppe} onChange={setPpe} /></div>
