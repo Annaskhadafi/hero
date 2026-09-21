@@ -6,6 +6,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { Clock3, ShieldCheck, Save, LockKeyhole, Pencil } from 'lucide-react'
 import { updateSiteRadiusFromMap } from '@/app/actions/attendance'
+import type { LiveAttendanceRecord, MapSite } from './live-attendance-map'
 
 // Setup default icon to fix missing icon issue in nextjs/leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl
@@ -15,8 +16,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 })
 
-type LiveAttendanceRecord = any
-type Site = any
+type Site = MapSite
 
 type Props = {
   records: LiveAttendanceRecord[]
@@ -26,6 +26,8 @@ type Props = {
   formatTime: (time: string) => string
   sites?: Site[]
   refresh?: () => void
+  canEdit?: boolean
+  onSiteSaved?: () => void | Promise<void>
 }
 
 function MapController({ selectedRecord }: { selectedRecord: LiveAttendanceRecord | undefined }) {
@@ -44,12 +46,19 @@ function MapController({ selectedRecord }: { selectedRecord: LiveAttendanceRecor
   return null
 }
 
-function SiteMarker({ site, refresh }: { site: Site; refresh?: () => void }) {
+function SiteMarker({ site, refresh, canEdit, onSiteSaved }: { site: Site; refresh?: () => void; canEdit: boolean; onSiteSaved?: () => void | Promise<void> }) {
   const [position, setPosition] = useState([site.latitude, site.longitude] as [number, number])
   const [radius, setRadius] = useState(site.radiusMeters)
   const [saving, setSaving] = useState(false)
   const [editing, setEditing] = useState(false)
   const markerRef = useRef<any>(null)
+
+  useEffect(() => {
+    if (!editing) {
+      setPosition([site.latitude, site.longitude])
+      setRadius(site.radiusMeters)
+    }
+  }, [editing, site.latitude, site.longitude, site.radiusMeters])
 
   const iconHtml = `<div style="position:relative;display:flex;width:48px;height:48px;align-items:center;justify-content:center;border-radius:12px;border:3px solid white;box-shadow:0 20px 25px -5px rgba(0,0,0,0.1);background-color:#0a4f51;transition:transform 0.15s"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg></div>`
   const customIcon = L.divIcon({
@@ -67,6 +76,7 @@ function SiteMarker({ site, refresh }: { site: Site; refresh?: () => void }) {
       if (res.success) {
         setEditing(false)
         refresh?.()
+        await onSiteSaved?.()
       } else if (!res.success) {
         alert(res.error)
       }
@@ -116,7 +126,7 @@ function SiteMarker({ site, refresh }: { site: Site; refresh?: () => void }) {
           </p>
 
           <div className="space-y-3">
-            <div className={editing ? '' : 'pointer-events-none opacity-60'}>
+              <div className={editing ? '' : 'pointer-events-none opacity-60'}>
               <label className="mb-1 block text-xs font-semibold text-[#0a4f51]">
                 Radius Site (Meter)
               </label>
@@ -128,7 +138,7 @@ function SiteMarker({ site, refresh }: { site: Site; refresh?: () => void }) {
               />
             </div>
 
-            {!editing ? (
+            {!editing && canEdit ? (
               <button
                 onClick={() => setEditing(true)}
                 className="flex w-full items-center justify-center gap-2 rounded-md bg-[#0a4f51] px-3 py-2 text-sm font-semibold text-white hover:bg-[#083c3e]"
@@ -136,7 +146,7 @@ function SiteMarker({ site, refresh }: { site: Site; refresh?: () => void }) {
                 <Pencil className="size-4" />
                 Edit Lokasi & Radius
               </button>
-            ) : (
+            ) : editing ? (
               <div className="flex gap-2">
                 <button
                   onClick={() => {
@@ -158,7 +168,7 @@ function SiteMarker({ site, refresh }: { site: Site; refresh?: () => void }) {
                   {saving ? 'Menyimpan...' : 'Simpan'}
                 </button>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       </Popup>
@@ -183,6 +193,8 @@ export default function LiveAttendanceLeaflet({
   formatTime,
   sites = [],
   refresh,
+  canEdit = false,
+  onSiteSaved,
 }: Props) {
   const [mapReady, setMapReady] = useState(false)
   const mapCenterRef = useRef<[number, number]>([-2.5, 118])
@@ -190,7 +202,7 @@ export default function LiveAttendanceLeaflet({
   // Center map on the first valid record on mount if no selected id
   useEffect(() => {
     if (!selectedId && records.length > 0) {
-      const firstValid = records.find((r: any) => r.latitude && r.longitude)
+    const firstValid = records.find((r) => r.latitude && r.longitude)
       if (firstValid) {
         mapCenterRef.current = [Number(firstValid.latitude), Number(firstValid.longitude)]
       }
@@ -198,7 +210,7 @@ export default function LiveAttendanceLeaflet({
     setMapReady(true)
   }, [records, selectedId])
 
-  const selectedRecord = records.find((r: any) => r.employeeId === selectedId)
+  const selectedRecord = records.find((r) => r.employeeId === selectedId)
 
   if (!mapReady) return <div className="size-full animate-pulse bg-[#dceae6]" />
 
@@ -220,7 +232,7 @@ export default function LiveAttendanceLeaflet({
 
         {/* Render Sites */}
         {sites.map((site) => (
-          <SiteMarker key={`site-${site.id}`} site={site} refresh={refresh} />
+          <SiteMarker key={`site-${site.id}`} site={site} refresh={refresh} canEdit={canEdit} onSiteSaved={onSiteSaved} />
         ))}
 
         {/* Render Employees */}

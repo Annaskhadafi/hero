@@ -321,6 +321,7 @@ async function ensureHeroSiteLocationColumns() {
       alter table hero_sites add column if not exists geo_latitude text not null default '';
       alter table hero_sites add column if not exists geo_longitude text not null default '';
       alter table hero_sites add column if not exists geo_radius_meters integer not null default 500;
+      alter table hero_sites add column if not exists allow_outside_attendance boolean not null default true;
     `)
     siteLocationColumnsChecked = true
   } catch (err) {

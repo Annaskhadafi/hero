@@ -8,6 +8,7 @@ import {
   timesheetFieldBreakPlans,
   timesheetSchedulingPlans,
   timesheetSchedulingPlansV2,
+  timesheetSchedulingConfigs,
 } from '@/db/schema/timesheet'
 import { uploadFile } from '@/app/actions/upload'
 import { auth } from '@/lib/auth'
@@ -42,7 +43,7 @@ import {
 } from '@/lib/legacy-approval-engine'
 import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
-import { eq, and, gte, lte, desc, sql, asc, inArray, not } from 'drizzle-orm'
+import { eq, and, gte, lte, desc, sql, asc, inArray } from 'drizzle-orm'
 import { endOfDay, startOfDay, subHours } from 'date-fns'
 import { addMonths, format, getDaysInMonth } from 'date-fns'
 import { getTimezoneDateParts } from '@/lib/indonesia-timezone'
@@ -1383,8 +1384,8 @@ export async function getLiveAttendanceMapData(dateStr?: string) {
   // Ambil semua site yang sudah punya kordinat tersimpan agar selalu muncul di peta
   const siteConditions = [
     eq(sites.isActive, true),
-    not(eq(sites.geoLatitude, '')),
-    not(eq(sites.geoLongitude, '')),
+    sql`CASE WHEN ${sites.geoLatitude} ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN ${sites.geoLatitude}::double precision BETWEEN -90 AND 90 ELSE false END`,
+    sql`CASE WHEN ${sites.geoLongitude} ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN ${sites.geoLongitude}::double precision BETWEEN -180 AND 180 ELSE false END`,
   ]
   if (!hasGlobalDataAccess(access)) {
     if (employee.siteId) {
@@ -1405,7 +1406,13 @@ export async function getLiveAttendanceMapData(dateStr?: string) {
     .from(sites)
     .where(and(...siteConditions))
 
-  const allSitesMap = new Map()
+  const allSitesMap = new Map<number, {
+    id: number
+    name: string
+    latitude: number
+    longitude: number
+    radiusMeters: number
+  }>()
 
   // Masukkan saved sites terlebih dahulu
   for (const s of savedSites) {
@@ -1418,28 +1425,6 @@ export async function getLiveAttendanceMapData(dateStr?: string) {
     })
   }
 
-  // Tambahkan site dari records sebagai fallback jika belum ada di savedSites
-  for (const r of records) {
-    if (!r.siteId || allSitesMap.has(r.siteId)) continue
-
-    let lat = Number(r.siteGeoLatitude)
-    let lng = Number(r.siteGeoLongitude)
-
-    // Jika Site belum pernah di-set kordinatnya, gunakan kordinat absen pertama sebagai titik awal
-    if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
-      lat = Number(r.latitude) || -2.5
-      lng = Number(r.longitude) || 118
-    }
-
-    allSitesMap.set(r.siteId, {
-      id: r.siteId,
-      name: r.siteName ?? `Site ${r.siteId}`,
-      latitude: lat,
-      longitude: lng,
-      radiusMeters: r.siteRadiusMeters ?? 500,
-    })
-  }
-
   return {
     success: true as const,
     scope: hasGlobalDataAccess(access)
@@ -1448,6 +1433,7 @@ export async function getLiveAttendanceMapData(dateStr?: string) {
         ? ('own' as const)
         : ('site' as const),
     generatedAt: new Date().toISOString(),
+    canEdit: access.canEdit,
     records: records.map((record) => ({
       ...record,
       eventTime: record.eventTime.toISOString(),
@@ -1459,31 +1445,129 @@ export async function getLiveAttendanceMapData(dateStr?: string) {
   }
 }
 
+export async function getLiveAttendanceLocationSettings() {
+  const [employee, access] = await Promise.all([
+    getCurrentEmployee(),
+    getCurrentMenuPermission('attendance_live_map'),
+  ])
+
+  if (!employee || !access.canView) {
+    return { success: false as const, sites: [], canEdit: false, scope: 'own' as const }
+  }
+
+  const conditions = hasGlobalDataAccess(access)
+    ? []
+    : [employee.siteId ? eq(sites.id, employee.siteId) : eq(sites.id, -1)]
+  const rows = await db
+    .select({
+      id: sites.id,
+      name: sites.name,
+      isActive: sites.isActive,
+      location: sites.location,
+      geoLatitude: sites.geoLatitude,
+      geoLongitude: sites.geoLongitude,
+      geoRadiusMeters: sites.geoRadiusMeters,
+      allowOutsideAttendance: sites.allowOutsideAttendance,
+      configId: timesheetSchedulingConfigs.id,
+      scheduleType: timesheetSchedulingConfigs.scheduleType,
+      rosterType: timesheetSchedulingConfigs.rosterType,
+      timezone: timesheetSchedulingConfigs.timezone,
+      fieldBreakConfig: timesheetSchedulingConfigs.fieldBreakConfig,
+    })
+    .from(sites)
+    .leftJoin(timesheetSchedulingConfigs, eq(timesheetSchedulingConfigs.siteId, sites.id))
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(asc(sites.name))
+
+  return {
+    success: true as const,
+    canEdit: access.canEdit,
+    scope: hasGlobalDataAccess(access) ? ('global' as const) : ('site' as const),
+    sites: rows.map((row) => {
+      const config = row.fieldBreakConfig && typeof row.fieldBreakConfig === 'object'
+        ? (row.fieldBreakConfig as Record<string, unknown>)
+        : null
+      const readClock = (key: string) => typeof config?.[key] === 'string' ? config[key] as string : null
+      const latitude = row.geoLatitude.trim() ? Number(row.geoLatitude) : Number.NaN
+      const longitude = row.geoLongitude.trim() ? Number(row.geoLongitude) : Number.NaN
+      return {
+        id: row.id,
+        name: row.name,
+        isActive: row.isActive,
+        location: row.location,
+        latitude: Number.isFinite(latitude) && latitude >= -90 && latitude <= 90 && !(latitude === 0 && longitude === 0) ? latitude : null,
+        longitude: Number.isFinite(longitude) && longitude >= -180 && longitude <= 180 && !(latitude === 0 && longitude === 0) ? longitude : null,
+        radiusMeters: row.geoRadiusMeters,
+        allowOutsideAttendance: row.allowOutsideAttendance,
+        scheduleConfigured: row.configId != null,
+        scheduleType: row.scheduleType,
+        rosterType: row.rosterType,
+        timezone: row.timezone,
+        dsClockIn: readClock('dayShiftClockIn'),
+        dsClockOut: readClock('dayShiftClockOut'),
+        nsClockIn: readClock('nightShiftClockIn'),
+        nsClockOut: readClock('nightShiftClockOut'),
+      }
+    }),
+  }
+}
+
 export async function updateSiteRadiusFromMap(
   siteId: number,
   radius: number,
   lat?: number,
-  lng?: number
+  lng?: number,
+  allowOutsideAttendance?: boolean
 ) {
   const [employee, access] = await Promise.all([
     getCurrentEmployee(),
     getCurrentMenuPermission('attendance_live_map'),
   ])
 
-  if (!employee || !hasGlobalDataAccess(access)) {
+  if (!employee || !access.canEdit) {
     return {
       success: false,
-      error: 'Anda tidak memiliki akses global untuk mengubah setting radius.',
+      error: 'Anda tidak memiliki akses untuk mengubah setting lokasi.',
     }
   }
+  if (!hasGlobalDataAccess(access) && access.dataScope !== 'site') {
+    return { success: false, error: 'Scope own tidak dapat mengubah pengaturan site bersama.' }
+  }
+  if (allowOutsideAttendance !== undefined && typeof allowOutsideAttendance !== 'boolean') {
+    return { success: false, error: 'Kebijakan outside check-in tidak valid.' }
+  }
 
-  if (!radius || radius < 10) return { success: false, error: 'Radius tidak valid (minimal 10m).' }
+  if (!Number.isInteger(radius) || radius < 10 || radius > 100_000) {
+    return { success: false, error: 'Radius tidak valid (10-100000m).' }
+  }
+  if ((lat === undefined) !== (lng === undefined)) {
+    return { success: false, error: 'Koordinat latitude dan longitude wajib lengkap.' }
+  }
+  if (
+    lat !== undefined &&
+    lng !== undefined &&
+    (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180 || (lat === 0 && lng === 0))
+  ) {
+    return { success: false, error: 'Koordinat tidak valid.' }
+  }
 
-  const payload: any = { geoRadiusMeters: radius }
+  const siteCondition = hasGlobalDataAccess(access)
+    ? eq(sites.id, siteId)
+    : and(eq(sites.id, siteId), eq(sites.id, employee.siteId))
+  const [site] = await db.select({ id: sites.id }).from(sites).where(siteCondition).limit(1)
+  if (!site) return { success: false, error: 'Site tidak ditemukan atau di luar scope Anda.' }
+
+  const payload: {
+    geoRadiusMeters: number
+    geoLatitude?: string
+    geoLongitude?: string
+    allowOutsideAttendance?: boolean
+  } = { geoRadiusMeters: radius }
   if (lat !== undefined && lng !== undefined) {
     payload.geoLatitude = lat.toString()
     payload.geoLongitude = lng.toString()
   }
+  if (allowOutsideAttendance !== undefined) payload.allowOutsideAttendance = allowOutsideAttendance
 
   await db.update(sites).set(payload).where(eq(sites.id, siteId))
 
@@ -1498,7 +1582,11 @@ export async function getSitesForMap() {
 
   if (!employee || !access.canView) return { success: false, sites: [] }
 
-  const conditions = [eq(sites.isActive, true)]
+  const conditions = [
+    eq(sites.isActive, true),
+    sql`CASE WHEN ${sites.geoLatitude} ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN ${sites.geoLatitude}::double precision BETWEEN -90 AND 90 ELSE false END`,
+    sql`CASE WHEN ${sites.geoLongitude} ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN ${sites.geoLongitude}::double precision BETWEEN -180 AND 180 ELSE false END`,
+  ]
   if (!hasGlobalDataAccess(access)) {
     if (employee.siteId) {
       conditions.push(eq(sites.id, employee.siteId))
@@ -1519,7 +1607,16 @@ export async function getSitesForMap() {
     .where(and(...conditions))
     .orderBy(sites.name)
 
-  return { success: true, sites: data }
+  return {
+    success: true,
+    sites: data.map((site) => ({
+      id: site.id,
+      name: site.name,
+      latitude: Number(site.geoLatitude),
+      longitude: Number(site.geoLongitude),
+      radiusMeters: site.geoRadiusMeters ?? 500,
+    })),
+  }
 }
 
 export async function bulkDeleteAttendancePermissionRequests(ids: number[]) {

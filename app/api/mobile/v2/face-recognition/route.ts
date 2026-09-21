@@ -142,6 +142,7 @@ export async function POST(request: NextRequest) {
         geoLatitude: sites.geoLatitude,
         geoLongitude: sites.geoLongitude,
         geoRadiusMeters: sites.geoRadiusMeters,
+        allowOutsideAttendance: sites.allowOutsideAttendance,
       })
       .from(sites)
       .where(eq(sites.id, sId))
@@ -150,7 +151,7 @@ export async function POST(request: NextRequest) {
     if (!site)
       return errorResponse(404, 'SITE_NOT_FOUND', 'Site absensi tidak ditemukan.', 'siteId')
 
-    // GPS is a validation signal, not a hard blocker: outside-radius punches remain auditable.
+    // Keep boundary details for audit; checked-in events may be blocked by the site policy below.
     const boundary = validateSiteBoundary(
       site,
       lat === 0 && lng === 0 ? null : lat,
@@ -252,6 +253,30 @@ export async function POST(request: NextRequest) {
         `eventType must be one of: ${ALLOWED_EVENT_TYPES.join(', ')}.`,
         'eventType'
       )
+    }
+
+    const siteHasConfiguredBoundary =
+      site.geoLatitude != null &&
+      site.geoLongitude != null &&
+      String(site.geoLatitude).trim() !== '' &&
+      String(site.geoLongitude).trim() !== ''
+    if (resolvedEventType === 'checked-in' && site.allowOutsideAttendance === false) {
+      if (boundary.status === 'unknown' && siteHasConfiguredBoundary) {
+        return errorResponse(
+          422,
+          'GEOFENCE_GPS_REQUIRED',
+          'Absensi masuk ditolak karena lokasi GPS belum tersedia. Aktifkan GPS dan coba lagi.'
+        )
+      }
+      if (boundary.status === 'outside') {
+        const distance = boundary.distanceMeters === null ? '' : ` Jarak Anda ${boundary.distanceMeters}m.`
+        const radius = boundary.radiusMeters === null ? '' : ` Radius yang diizinkan ${boundary.radiusMeters}m.`
+        return errorResponse(
+          422,
+          'GEOFENCE_OUTSIDE',
+          `Absensi masuk ditolak karena Anda berada di luar lokasi yang dikonfigurasi.${distance}${radius}`
+        )
+      }
     }
 
     // Manual fallback is an explicit camera photo after repeated failed attempts.

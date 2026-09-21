@@ -543,6 +543,12 @@ export function FaceAttendanceV2Client({
 
       if (!response.ok) {
         const code = data?.error?.code
+        if (code === 'GEOFENCE_OUTSIDE' || code === 'GEOFENCE_GPS_REQUIRED') {
+          stopCamera()
+          setFlowState('failed')
+          setErrorMessage(data?.error?.message || 'Anda berada di luar lokasi absensi yang dikonfigurasi.')
+          return
+        }
         if (code === 'NO_FACE_REGISTRATION_V2') {
           stopCamera()
           setFlowState('not-registered')
@@ -717,6 +723,15 @@ export function FaceAttendanceV2Client({
         }),
       })
       const data = await response.json()
+      if (
+        data?.error?.code === 'GEOFENCE_OUTSIDE' ||
+        data?.error?.code === 'GEOFENCE_GPS_REQUIRED'
+      ) {
+        stopCamera()
+        setFlowState('failed')
+        setErrorMessage(data.error.message || 'Anda berada di luar lokasi absensi yang dikonfigurasi.')
+        return
+      }
       if (!response.ok || !data.success || !data.attendanceRecord) {
         throw new Error(data?.error?.message || data?.error || 'Foto manual gagal disimpan.')
       }

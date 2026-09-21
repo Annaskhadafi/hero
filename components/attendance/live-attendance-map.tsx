@@ -14,12 +14,18 @@ import {
   ChevronLeft,
   ChevronRight,
   Calendar,
-  Plus,
+  Settings2,
+  ExternalLink,
 } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { format, addDays, subDays, isSameDay } from 'date-fns'
 import { id } from 'date-fns/locale'
-import { getLiveAttendanceMapData, getSitesForMap } from '@/app/actions/attendance'
+import {
+  getLiveAttendanceLocationSettings,
+  getLiveAttendanceMapData,
+  getSitesForMap,
+  updateSiteRadiusFromMap,
+} from '@/app/actions/attendance'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -36,7 +42,7 @@ const LiveAttendanceLeaflet = dynamic(() => import('./live-attendance-leaflet'),
   loading: () => <div className="size-full animate-pulse bg-[#dceae6]" />,
 })
 
-type LiveAttendanceRecord = {
+export type LiveAttendanceRecord = {
   id: number
   employeeId: number
   employeeName: string
@@ -45,6 +51,8 @@ type LiveAttendanceRecord = {
   siteName: string
   siteLocation: string
   siteRadiusMeters: number
+  siteGeoLatitude: string | null
+  siteGeoLongitude: string | null
   eventType: string
   eventTime: string
   status: string
@@ -57,9 +65,11 @@ type LiveAttendanceRecord = {
 type LiveAttendanceData =
   | {
       success: true
-      scope: 'global' | 'site'
+      scope: 'global' | 'site' | 'own'
       generatedAt: string
+      canEdit: boolean
       records: LiveAttendanceRecord[]
+      sites: MapSite[]
     }
   | {
       success: false
@@ -70,9 +80,35 @@ type LiveAttendanceData =
 
 type Props = {
   initialData: Awaited<ReturnType<typeof getLiveAttendanceMapData>>
+  initialLocationSettings: Awaited<ReturnType<typeof getLiveAttendanceLocationSettings>>
 }
 
-type MapCenter = { latitude: number; longitude: number }
+export type MapSite = {
+  id: number
+  name: string
+  latitude: number
+  longitude: number
+  radiusMeters: number
+}
+
+type LocationSetting = {
+  id: number
+  name: string
+  isActive: boolean
+  location: string
+  latitude: number | null
+  longitude: number | null
+  radiusMeters: number
+  allowOutsideAttendance: boolean
+  scheduleConfigured: boolean
+  scheduleType: string | null
+  rosterType: string | null
+  timezone: string | null
+  dsClockIn: string | null
+  dsClockOut: string | null
+  nsClockIn: string | null
+  nsClockOut: string | null
+}
 
 function formatTime(value: string) {
   return new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit' }).format(
@@ -137,15 +173,22 @@ function getRadiusInfo(record: LiveAttendanceRecord) {
   }
 }
 
-export function LiveAttendanceMap({ initialData }: Props) {
+export function LiveAttendanceMap({ initialData, initialLocationSettings }: Props) {
   const [data, setData] = useState<LiveAttendanceData>(initialData as LiveAttendanceData)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'live' | 'offline'>('all')
   const [refreshing, setRefreshing] = useState(false)
   const [targetDate, setTargetDate] = useState<Date>(new Date())
-  const [allSites, setAllSites] = useState<any[]>([])
-  const [manualSites, setManualSites] = useState<any[]>([])
+  const [allSites, setAllSites] = useState<MapSite[]>([])
+  const [manualSites, setManualSites] = useState<MapSite[]>([])
+  const [activeTab, setActiveTab] = useState<'map' | 'settings'>('map')
+  const [locationSettings, setLocationSettings] = useState<LocationSetting[]>(
+    initialLocationSettings.success ? (initialLocationSettings.sites as LocationSetting[]) : []
+  )
+  const [editingSite, setEditingSite] = useState<LocationSetting | null>(null)
+  const [savingSite, setSavingSite] = useState(false)
+  const canEdit = data.success && data.canEdit && data.scope !== 'own' && initialLocationSettings.success && initialLocationSettings.canEdit
 
   const refresh = async (date: Date = targetDate) => {
     setRefreshing(true)
@@ -155,6 +198,11 @@ export function LiveAttendanceMap({ initialData }: Props) {
     } finally {
       setRefreshing(false)
     }
+  }
+
+  const refreshLocationSettings = async () => {
+    const refreshed = await getLiveAttendanceLocationSettings()
+    if (refreshed.success) setLocationSettings(refreshed.sites as LocationSetting[])
   }
 
   useEffect(() => {
@@ -185,11 +233,11 @@ export function LiveAttendanceMap({ initialData }: Props) {
 
   const handleAddManualSite = (siteIdStr: string) => {
     const siteId = Number(siteIdStr)
-    const existingMapSites = data.success && (data as any).sites ? (data as any).sites : []
+    const existingMapSites = data.success ? data.sites : []
 
     if (
       manualSites.some((s) => s.id === siteId) ||
-      existingMapSites.some((s: any) => s.id === siteId)
+      existingMapSites.some((s) => s.id === siteId)
     ) {
       return // Already on map
     }
@@ -201,16 +249,16 @@ export function LiveAttendanceMap({ initialData }: Props) {
         {
           id: site.id,
           name: site.name,
-          latitude: Number(site.geoLatitude) || -2.5,
-          longitude: Number(site.geoLongitude) || 118,
-          radiusMeters: site.geoRadiusMeters || 500,
+          latitude: site.latitude,
+          longitude: site.longitude,
+          radiusMeters: site.radiusMeters,
         },
       ])
     }
   }
 
   const mergedSites = useMemo(() => {
-    const mapSites = data.success && (data as any).sites ? (data as any).sites : []
+    const mapSites = data.success ? data.sites : []
     const combined = [...mapSites]
     manualSites.forEach((ms) => {
       if (!combined.some((cs) => cs.id === ms.id)) {
@@ -344,6 +392,19 @@ export function LiveAttendanceMap({ initialData }: Props) {
           </p>
         </section>
       ) : (
+        <>
+        <div className="flex gap-2 rounded-xl border border-[#cfe3df] bg-white p-1 shadow-sm">
+          <button type="button" onClick={() => setActiveTab('map')} className={`flex-1 rounded-lg px-4 py-2 text-sm font-semibold ${activeTab === 'map' ? 'bg-[#0a4f51] text-white' : 'text-[#557b7b]'}`}>Live Map</button>
+          <button type="button" onClick={() => setActiveTab('settings')} className={`flex-1 rounded-lg px-4 py-2 text-sm font-semibold ${activeTab === 'settings' ? 'bg-[#0a4f51] text-white' : 'text-[#557b7b]'}`}><Settings2 className="mr-2 inline size-4" />Pengaturan Lokasi</button>
+        </div>
+        {activeTab === 'settings' ? (
+          <LocationSettingsTable
+            sites={locationSettings}
+            canEdit={Boolean(canEdit)}
+            onEdit={setEditingSite}
+            onRefresh={refreshLocationSettings}
+          />
+        ) : (
         <section className="grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(340px,0.8fr)]">
           <div className="overflow-hidden rounded-[1.25rem] border border-[#cfe3df] bg-white shadow-[0_16px_40px_rgba(20,84,82,0.08)]">
             <div className="flex flex-col gap-3 border-b border-[#d8ebe7] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -386,6 +447,8 @@ export function LiveAttendanceMap({ initialData }: Props) {
                 formatTime={formatTime}
                 sites={mergedSites}
                 refresh={refresh}
+                canEdit={Boolean(canEdit)}
+                onSiteSaved={refreshLocationSettings}
               />
               <div className="pointer-events-none absolute inset-0 z-10 bg-[linear-gradient(135deg,rgba(245,251,249,0.18),transparent_44%,rgba(7,79,81,0.12))]" />
             </div>
@@ -521,7 +584,86 @@ export function LiveAttendanceMap({ initialData }: Props) {
             ) : null}
           </div>
         </section>
+        )}
+        {editingSite ? <LocationEditDialog site={editingSite} onClose={() => setEditingSite(null)} onSaved={async () => { setEditingSite(null); await refresh(); await refreshLocationSettings(); const refreshedSites = await getSitesForMap(); if (refreshedSites.success) setAllSites(refreshedSites.sites) }} saving={savingSite} setSaving={setSavingSite} /> : null}
+        </>
       )}
     </div>
   )
+}
+
+function LocationSettingsTable({
+  sites,
+  canEdit,
+  onEdit,
+  onRefresh,
+}: {
+  sites: LocationSetting[]
+  canEdit: boolean
+  onEdit: (site: LocationSetting) => void
+  onRefresh: () => Promise<void>
+}) {
+  return (
+    <section className="overflow-x-auto rounded-[1.25rem] border border-[#cfe3df] bg-white p-4 shadow-[0_16px_40px_rgba(20,84,82,0.06)]">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div><h2 className="text-base font-semibold text-[#0a4f51]">Konfigurasi per Site</h2><p className="text-xs text-[#6b8d8d]">Data jadwal berasal dari Scheduling Setup.</p></div>
+        <Button variant="outline" size="sm" onClick={() => void onRefresh()}>Refresh</Button>
+      </div>
+      <table className="w-full min-w-[1180px] text-left text-xs">
+        <thead className="bg-[#f2f8f6] text-[10px] tracking-[0.12em] text-[#557b7b] uppercase"><tr>{['Site / Status', 'Lokasi & Geofence', 'Outside Check-in', 'Schedule', 'Roster', 'Timezone', 'DS In / Out', 'NS In / Out', 'Aksi'].map((label) => <th key={label} className="px-3 py-3">{label}</th>)}</tr></thead>
+        <tbody>{sites.map((site) => {
+          const locationConfigured = site.latitude != null && site.longitude != null
+          return <tr key={site.id} className="border-t border-[#e2efec] align-top">
+            <td className="px-3 py-3"><div className="font-semibold text-[#0a4f51]">{site.name}</div><div className={`mt-1 inline-flex rounded-full px-2 py-1 ${site.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{site.isActive ? 'Aktif' : 'Nonaktif'}</div></td>
+            <td className="px-3 py-3 text-[#557b7b]">{locationConfigured ? <>{site.latitude}, {site.longitude}<br />Radius {site.radiusMeters} m</> : <span className="font-semibold text-amber-700">Belum dikonfigurasi</span>}</td>
+            <td className="px-3 py-3">{site.allowOutsideAttendance ? 'Diizinkan' : 'Diblokir'}</td>
+            <td className="px-3 py-3">{site.scheduleConfigured ? site.scheduleType : <span className="font-semibold text-amber-700">Belum dikonfigurasi</span>}</td>
+            <td className="px-3 py-3">{site.scheduleConfigured ? site.rosterType : '-'}</td>
+            <td className="px-3 py-3">{site.scheduleConfigured ? site.timezone : '-'}</td>
+            <td className="px-3 py-3">{site.scheduleConfigured ? `${site.dsClockIn ?? '-'} / ${site.dsClockOut ?? '-'}` : '-'}</td>
+            <td className="px-3 py-3">{site.scheduleConfigured ? `${site.nsClockIn ?? '-'} / ${site.nsClockOut ?? '-'}` : '-'}</td>
+            <td className="px-3 py-3">{canEdit ? <Button size="sm" variant="outline" onClick={() => onEdit(site)}>Edit lokasi</Button> : <span className="text-[#8aa2a2]">Read-only</span>}</td>
+          </tr>
+        })}</tbody>
+      </table>
+    </section>
+  )
+}
+
+function LocationEditDialog({
+  site,
+  onClose,
+  onSaved,
+  saving,
+  setSaving,
+}: {
+  site: LocationSetting
+  onClose: () => void
+  onSaved: () => Promise<void>
+  saving: boolean
+  setSaving: (value: boolean) => void
+}) {
+  const [latitude, setLatitude] = useState(site.latitude?.toString() ?? '')
+  const [longitude, setLongitude] = useState(site.longitude?.toString() ?? '')
+  const [radius, setRadius] = useState(String(site.radiusMeters))
+  const [allowOutside, setAllowOutside] = useState(site.allowOutsideAttendance)
+  const save = async () => {
+    setSaving(true)
+    try {
+      const parsedLatitude = latitude.trim() ? Number(latitude) : undefined
+      const parsedLongitude = longitude.trim() ? Number(longitude) : undefined
+      const result = await updateSiteRadiusFromMap(site.id, Number(radius), parsedLatitude, parsedLongitude, allowOutside)
+      if (!result.success) { alert(result.error); return }
+      await onSaved()
+    } finally { setSaving(false) }
+  }
+
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 p-4" role="dialog" aria-modal="true">
+    <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"><div className="flex items-start justify-between"><div><h2 className="text-lg font-semibold text-[#0a4f51]">Edit lokasi · {site.name}</h2><p className="mt-1 text-xs text-[#6b8d8d]">Jadwal tetap dikelola di <a className="font-semibold underline" href="/dashboard/scheduling-timesheet/setup">Scheduling Setup <ExternalLink className="inline size-3" /></a>.</p></div><button type="button" onClick={onClose} aria-label="Tutup">×</button></div>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2"><label className="text-xs font-semibold text-[#0a4f51]">Latitude<input className="mt-1 w-full rounded-md border px-3 py-2 text-sm" value={latitude} onChange={(e) => setLatitude(e.target.value)} /></label><label className="text-xs font-semibold text-[#0a4f51]">Longitude<input className="mt-1 w-full rounded-md border px-3 py-2 text-sm" value={longitude} onChange={(e) => setLongitude(e.target.value)} /></label></div>
+      <label className="mt-3 block text-xs font-semibold text-[#0a4f51]">Radius (meter)<input type="number" min="10" className="mt-1 w-full rounded-md border px-3 py-2 text-sm" value={radius} onChange={(e) => setRadius(e.target.value)} /></label>
+      <label className="mt-4 flex items-center gap-2 text-sm text-[#0a4f51]"><input type="checkbox" checked={allowOutside} onChange={(e) => setAllowOutside(e.target.checked)} /> Izinkan check-in di luar geofence</label>
+      <div className="mt-5 flex justify-end gap-2"><Button variant="outline" onClick={onClose} disabled={saving}>Batal</Button><Button onClick={() => void save()} disabled={saving}>{saving ? 'Menyimpan...' : 'Simpan'}</Button></div>
+    </div>
+  </div>
 }

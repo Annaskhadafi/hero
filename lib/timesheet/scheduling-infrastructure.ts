@@ -43,6 +43,7 @@ export async function ensureSchedulingTimesheetTables() {
         msa_type text not null default 'staff-nonstaff',
         meals_type text not null default 'field-break',
         overtime_type text not null default 'five-hour',
+        timezone text not null default 'WITA',
         field_break_config jsonb,
         allowance_variables jsonb not null default '[]'::jsonb,
         overtime_variables jsonb not null default '[]'::jsonb,
@@ -58,6 +59,9 @@ export async function ensureSchedulingTimesheetTables() {
     `)
       await tx.execute(
         sql`alter table hero_timesheet_scheduling_configs add column if not exists overtime_config jsonb;`
+      )
+      await tx.execute(
+        sql`alter table hero_timesheet_scheduling_configs add column if not exists timezone text not null default 'WITA';`
       )
       await tx.execute(
         sql`alter table hero_timesheet_scheduling_configs add column if not exists pdf_config jsonb;`

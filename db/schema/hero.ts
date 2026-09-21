@@ -31,6 +31,7 @@ export const sites = pgTable('hero_sites', {
   geoLatitude: text('geo_latitude').notNull().default(''),
   geoLongitude: text('geo_longitude').notNull().default(''),
   geoRadiusMeters: integer('geo_radius_meters').notNull().default(500),
+  allowOutsideAttendance: boolean('allow_outside_attendance').notNull().default(true),
   customerName: text('customer_name').notNull(),
   contractNumber: text('contract_number').notNull(),
   headEmployeeId: integer('head_employee_id'),
