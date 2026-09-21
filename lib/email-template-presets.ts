@@ -3473,9 +3473,9 @@ Tim Human Capital`,
     deliveryChannel: 'email,bell',
     recipientScope: 'approver',
     ccEmail: '',
-    subject: 'Permohonan {{requestType}} Baru: {{requestNumber}}',
-    htmlContent: 'Halo {{approverName}},<br><br>Karyawan <b>{{employeeName}}</b> telah mengajukan permohonan {{requestType}} dengan nomor tiket <b>{{requestNumber}}</b>.<br><br>Silakan buka tautan berikut untuk melakukan review dan persetujuan:<br><div style="margin: 16px 0;"><a href="{{approvalLink}}" style="background-color: #2563eb; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Buka Inbox Approval</a></div><br><small style="color: #64748b;">Atau salin tautan: <a href="{{approvalLink}}">{{approvalLink}}</a></small><br><br>Terima kasih.',
-    textContent: 'Halo {{approverName}},\n\nKaryawan {{employeeName}} telah mengajukan permohonan {{requestType}} dengan nomor tiket {{requestNumber}}.\n\nSilakan review dan setujui melalui tautan berikut:\n{{approvalLink}}\n\nTerima kasih.',
+    subject: 'Permohonan {{requestType}} Baru: {{requestNumber}} - {{employeeName}}',
+    htmlContent: 'Yth. {{approverName}},<br><br>Karyawan <b>{{employeeName}}</b> telah mengajukan permohonan <b>{{requestType}}</b> dengan nomor permohonan <b>{{requestNumber}}</b> yang memerlukan peninjauan dan persetujuan Anda.<br><br><b>Detail Permohonan:</b><br>No. Permohonan: {{requestNumber}}<br>Kategori: {{requestType}}<br>Pemohon: {{employeeName}}<br><br>Silakan buka tautan berikut untuk melakukan review dan memberikan persetujuan:<br><div style="margin: 16px 0;"><a href="{{approvalLink}}" style="background-color: #2563eb; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Buka Inbox Approval</a></div><br><small style="color: #64748b;">Atau salin tautan: <a href="{{approvalLink}}">{{approvalLink}}</a></small><br><br>Demikian pemberitahuan ini disampaikan. Terima kasih.',
+    textContent: 'Yth. {{approverName}},\n\nKaryawan {{employeeName}} telah mengajukan permohonan {{requestType}} dengan nomor permohonan {{requestNumber}} yang memerlukan peninjauan dan persetujuan Anda.\n\nDetail Permohonan:\nNo. Permohonan: {{requestNumber}}\nKategori: {{requestType}}\nPemohon: {{employeeName}}\n\nSilakan tinjau dan berikan persetujuan melalui tautan berikut:\n{{approvalLink}}\n\nDemikian pemberitahuan ini disampaikan. Terima kasih.',
     description: 'Notifikasi saat permohonan item HSE baru diajukan',
     variables: ['employeeName', 'requestNumber', 'approverName', 'requestType', 'approvalLink'],
     sampleValues: {
@@ -3522,17 +3522,27 @@ Demikian pemberitahuan ini disampaikan. Terima kasih.`,
     recipientScope: 'requester',
     ccEmail: '',
     subject: 'Permohonan {{requestType}} Ditolak: {{requestNumber}}',
-    htmlContent: 'Halo {{employeeName}},<br><br>Permohonan {{requestType}} Anda dengan nomor tiket <b>{{requestNumber}}</b> telah <b>DITOLAK</b> oleh {{approverName}} dengan alasan:<br><blockquote style="border-left: 4px solid #ef4444; padding-left: 12px; margin: 12px 0; color: #991b1b; background-color: #fef2f2; padding: 8px 12px; border-radius: 4px;"><i>{{reason}}</i></blockquote><br><div style="margin: 16px 0;"><a href="{{dashboardLink}}" style="background-color: #6b7280; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Buka Dashboard APD</a></div><br>Terima kasih.',
-    textContent: 'Halo {{employeeName}},\n\nPermohonan {{requestType}} Anda dengan nomor tiket {{requestNumber}} telah DITOLAK oleh {{approverName}} dengan alasan:\n{{reason}}\n\nLihat status:\n{{dashboardLink}}\n\nTerima kasih.',
+    htmlContent: 'Yth. {{employeeName}},<br><br>Permohonan {{requestType}} Anda dengan nomor permohonan <b>{{requestNumber}}</b> telah <b>DITOLAK</b> oleh {{approverName}} dengan alasan sebagai berikut:<br><blockquote style="border-left: 4px solid #ef4444; padding-left: 12px; margin: 12px 0; color: #991b1b; background-color: #fef2f2; padding: 8px 12px; border-radius: 4px;"><i>{{reason}}</i></blockquote><br><b>Detail Permohonan:</b><br>No. Permohonan: {{requestNumber}}<br>Kategori: {{requestType}}<br>Ditolak Oleh: {{approverName}}<br>Status: DITOLAK<br><br>Demikian pemberitahuan ini disampaikan. Terima kasih.',
+    textContent: `Yth. {{employeeName}},
+
+Permohonan {{requestType}} Anda dengan nomor permohonan {{requestNumber}} telah DITOLAK oleh {{approverName}} dengan alasan:
+{{reason}}
+
+Detail Permohonan:
+No. Permohonan: {{requestNumber}}
+Kategori: {{requestType}}
+Ditolak Oleh: {{approverName}}
+Status: DITOLAK
+
+Demikian pemberitahuan ini disampaikan. Terima kasih.`,
     description: 'Notifikasi saat permohonan item HSE ditolak',
-    variables: ['employeeName', 'requestNumber', 'approverName', 'reason', 'requestType', 'dashboardLink'],
+    variables: ['employeeName', 'requestNumber', 'approverName', 'reason', 'requestType'],
     sampleValues: {
       employeeName: 'Budi Santoso',
       requestNumber: 'APD-2026-0001',
       approverName: 'Agus Subiyanto',
       reason: 'Barang sedang tidak tersedia',
       requestType: 'APD',
-      dashboardLink: 'https://hero.chitraparatama.com/dashboard/apd',
     }
   },
   {
@@ -3543,8 +3553,8 @@ Demikian pemberitahuan ini disampaikan. Terima kasih.`,
     recipientScope: 'requester',
     ccEmail: '',
     subject: '[Perlu Revisi] Permohonan {{requestType}}: {{requestNumber}}',
-    htmlContent: 'Halo {{employeeName}},<br><br>Permohonan {{requestType}} Anda dengan nomor tiket <b>{{requestNumber}}</b> telah <b>DIKEMBALIKAN UNTUK REVISI (Reverted)</b> oleh {{approverName}} dengan catatan:<br><blockquote style="border-left: 4px solid #f59e0b; padding-left: 12px; margin: 12px 0; color: #b45309; background-color: #fffbeb; padding: 8px 12px; border-radius: 4px;"><i>{{reason}}</i></blockquote><br>Silakan perbaiki data permohonan melalui tautan di bawah ini:<br><div style="margin: 16px 0;"><a href="{{revisionLink}}" style="background-color: #d97706; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Revisi Permohonan Sekarang</a></div><br><small style="color: #64748b;">Atau salin tautan: <a href="{{revisionLink}}">{{revisionLink}}</a></small><br><br>Terima kasih.',
-    textContent: 'Halo {{employeeName}},\n\nPermohonan {{requestType}} Anda dengan nomor tiket {{requestNumber}} telah DIKEMBALIKAN UNTUK REVISI (Reverted) oleh {{approverName}} dengan catatan:\n{{reason}}\n\nSilakan perbaiki melalui tautan berikut:\n{{revisionLink}}\n\nTerima kasih.',
+    htmlContent: 'Yth. {{employeeName}},<br><br>Permohonan {{requestType}} Anda dengan nomor permohonan <b>{{requestNumber}}</b> telah <b>DIKEMBALIKAN UNTUK REVISI (Reverted)</b> oleh {{approverName}} dengan catatan sebagai berikut:<br><blockquote style="border-left: 4px solid #f59e0b; padding-left: 12px; margin: 12px 0; color: #b45309; background-color: #fffbeb; padding: 8px 12px; border-radius: 4px;"><i>{{reason}}</i></blockquote><br>Silakan perbaiki data permohonan melalui tautan di bawah ini:<br><div style="margin: 16px 0;"><a href="{{revisionLink}}" style="background-color: #2563eb; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Revisi Permohonan Sekarang</a></div><br><small style="color: #64748b;">Atau salin tautan: <a href="{{revisionLink}}">{{revisionLink}}</a></small><br><br>Demikian pemberitahuan ini disampaikan. Terima kasih.',
+    textContent: 'Yth. {{employeeName}},\n\nPermohonan {{requestType}} Anda dengan nomor permohonan {{requestNumber}} telah DIKEMBALIKAN UNTUK REVISI (Reverted) oleh {{approverName}} dengan catatan:\n{{reason}}\n\nSilakan perbaiki data permohonan melalui tautan berikut:\n{{revisionLink}}\n\nDemikian pemberitahuan ini disampaikan. Terima kasih.',
     description: 'Notifikasi saat permohonan APD dikembalikan oleh approver untuk diperbaiki/revisi',
     variables: ['employeeName', 'requestNumber', 'approverName', 'reason', 'requestType', 'revisionLink'],
     sampleValues: {
@@ -3564,8 +3574,8 @@ Demikian pemberitahuan ini disampaikan. Terima kasih.`,
     recipientScope: 'admin',
     ccEmail: '',
     subject: 'Pengingat Pergantian APD: {{itemName}} ({{employeeName}})',
-    htmlContent: 'Waktu pergantian {{itemName}} untuk karyawan {{employeeName}} sudah dekat (Jadwal 8 Bulan). Silakan proses pergantian APD.',
-    textContent: 'Waktu pergantian {{itemName}} untuk karyawan {{employeeName}} sudah dekat (Jadwal 8 Bulan). Silakan proses pergantian APD.',
+    htmlContent: 'Yth. Bapak/Ibu Tim HSE & PIC APD,<br><br>Diberitahukan bahwa jadwal pergantian berkala APD untuk karyawan <b>{{employeeName}}</b> (Item: <b>{{itemName}}</b>) telah memasuki batas waktu penggantian (Siklus 8 Bulan).<br><br>Mohon untuk segera memproses pergantian dan pengadaan APD terkait.<br><br>Demikian pemberitahuan ini disampaikan. Terima kasih.',
+    textContent: 'Yth. Bapak/Ibu Tim HSE & PIC APD,\n\nDiberitahukan bahwa jadwal pergantian berkala APD untuk karyawan {{employeeName}} (Item: {{itemName}}) telah memasuki batas waktu penggantian (Siklus 8 Bulan).\n\nMohon untuk segera memproses pergantian dan pengadaan APD terkait.\n\nDemikian pemberitahuan ini disampaikan. Terima kasih.',
     description: 'Notifikasi pengingat pergantian APD untuk admin',
     variables: ['employeeName', 'itemName'],
     sampleValues: {
@@ -3581,8 +3591,8 @@ Demikian pemberitahuan ini disampaikan. Terima kasih.`,
     recipientScope: 'approver',
     ccEmail: 'muhammad.akbar@chitraparatama.co.id',
     subject: '[{{requestType}}] Permohonan Baru: {{requestNumber}} - {{employeeName}}',
-    htmlContent: 'Halo {{approverName}},<br><br>Karyawan <b>{{employeeName}}</b> (Section: {{sectionName}}) telah mengajukan permohonan <b>{{requestType}}</b> dengan nomor tiket <b>{{requestNumber}}</b> yang memerlukan persetujuan Anda sebagai Section Head.<br><br>Silakan buka tautan berikut untuk melakukan review dan persetujuan:<br><div style="margin: 16px 0;"><a href="{{approvalLink}}" style="background-color: #2563eb; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Buka Inbox Approval</a></div><br><small style="color: #64748b;">Atau salin tautan: <a href="{{approvalLink}}">{{approvalLink}}</a></small><br><br>CC: Muhammad Taufik Akbar<br>Terima kasih.',
-    textContent: 'Halo {{approverName}},\n\nKaryawan {{employeeName}} (Section: {{sectionName}}) telah mengajukan permohonan {{requestType}} dengan nomor tiket {{requestNumber}} yang memerlukan persetujuan Anda sebagai Section Head.\n\nSilakan review dan setujui melalui tautan berikut:\n{{approvalLink}}\n\nCC: Muhammad Taufik Akbar\nTerima kasih.',
+    htmlContent: 'Yth. {{approverName}},<br><br>Karyawan <b>{{employeeName}}</b> (Section: {{sectionName}}) telah mengajukan permohonan <b>{{requestType}}</b> dengan nomor tiket <b>{{requestNumber}}</b> yang memerlukan persetujuan Anda sebagai Section Head.<br><br><b>Detail Permohonan:</b><br>No. Permohonan: {{requestNumber}}<br>Kategori: {{requestType}}<br>Pemohon: {{employeeName}}<br>Section: {{sectionName}}<br><br>Silakan buka tautan berikut untuk melakukan review dan memberikan persetujuan:<br><div style="margin: 16px 0;"><a href="{{approvalLink}}" style="background-color: #2563eb; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Buka Inbox Approval</a></div><br><small style="color: #64748b;">Atau salin tautan: <a href="{{approvalLink}}">{{approvalLink}}</a></small><br><br>Demikian pemberitahuan ini disampaikan. Terima kasih.',
+    textContent: 'Yth. {{approverName}},\n\nKaryawan {{employeeName}} (Section: {{sectionName}}) telah mengajukan permohonan {{requestType}} dengan nomor tiket {{requestNumber}} yang memerlukan persetujuan Anda sebagai Section Head.\n\nDetail Permohonan:\nNo. Permohonan: {{requestNumber}}\nKategori: {{requestType}}\nPemohon: {{employeeName}}\nSection: {{sectionName}}\n\nSilakan review dan berikan persetujuan melalui tautan berikut:\n{{approvalLink}}\n\nDemikian pemberitahuan ini disampaikan. Terima kasih.',
     description: 'Notifikasi saat permohonan Material atau Tools baru diajukan ke Section Head dengan CC ke Muhammad Taufik Akbar',
     variables: ['employeeName', 'requestNumber', 'approverName', 'requestType', 'sectionName', 'approvalLink'],
     sampleValues: {
@@ -3602,8 +3612,8 @@ Demikian pemberitahuan ini disampaikan. Terima kasih.`,
     recipientScope: 'requester',
     ccEmail: 'muhammad.akbar@chitraparatama.co.id',
     subject: '[{{requestType}}] Permohonan Disetujui: {{requestNumber}}',
-    htmlContent: 'Halo {{employeeName}},<br><br>Permohonan <b>{{requestType}}</b> Anda dengan nomor tiket <b>{{requestNumber}}</b> telah <b>DISETUJUI</b> oleh Section Head ({{approverName}}).<br><br>Lihat status permohonan di dashboard:<br><div style="margin: 16px 0;"><a href="{{dashboardLink}}" style="background-color: #16a34a; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Lihat Permohonan</a></div><br>Notifikasi ini juga telah diteruskan ke Muhammad Taufik Akbar.<br><br>Terima kasih.',
-    textContent: 'Halo {{employeeName}},\n\nPermohonan {{requestType}} Anda dengan nomor tiket {{requestNumber}} telah DISETUJUI oleh Section Head ({{approverName}}).\n\nLihat status permohonan:\n{{dashboardLink}}\n\nNotifikasi ini juga telah diteruskan ke Muhammad Taufik Akbar.\n\nTerima kasih.',
+    htmlContent: 'Yth. {{employeeName}},<br><br>Permohonan <b>{{requestType}}</b> Anda dengan nomor tiket <b>{{requestNumber}}</b> telah <b>DISETUJUI</b> oleh Section Head ({{approverName}}).<br><br><b>Detail Permohonan:</b><br>No. Permohonan: {{requestNumber}}<br>Kategori: {{requestType}}<br>Disetujui Oleh: {{approverName}}<br>Status: DISETUJUI<br><br>Lihat status permohonan di dashboard:<br><div style="margin: 16px 0;"><a href="{{dashboardLink}}" style="background-color: #2563eb; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Lihat Permohonan</a></div><br><small style="color: #64748b;">Atau salin tautan: <a href="{{dashboardLink}}">{{dashboardLink}}</a></small><br><br>Demikian pemberitahuan ini disampaikan. Terima kasih.',
+    textContent: 'Yth. {{employeeName}},\n\nPermohonan {{requestType}} Anda dengan nomor tiket {{requestNumber}} telah DISETUJUI oleh Section Head ({{approverName}}).\n\nDetail Permohonan:\nNo. Permohonan: {{requestNumber}}\nKategori: {{requestType}}\nDisetujui Oleh: {{approverName}}\nStatus: DISETUJUI\n\nLihat status permohonan:\n{{dashboardLink}}\n\nDemikian pemberitahuan ini disampaikan. Terima kasih.',
     description: 'Notifikasi saat permohonan Material atau Tools disetujui oleh Section Head dengan CC ke Muhammad Taufik Akbar',
     variables: ['employeeName', 'requestNumber', 'approverName', 'requestType', 'sectionName', 'dashboardLink'],
     sampleValues: {
@@ -3889,7 +3899,7 @@ function formatEmailBody(value: string, templateCode: string, templateType: stri
     }
   }
 
-  if (!hasCtaButton && templateCode !== 'apd_request_approved') {
+  if (!hasCtaButton && templateCode !== 'apd_request_approved' && templateCode !== 'apd_request_rejected') {
     const isApprovalOrReminder =
       templateType.toLowerCase() === 'approval' ||
       templateType.toLowerCase() === 'reminder' ||
@@ -4013,7 +4023,7 @@ function buildUnifiedEmailText(preset: EmailTemplatePreset) {
   let text = preset.textContent.trim()
   const hasLinkInText = /\{\{\s*(\w*(?:Link|Url|link|url))\s*\}\}/i.test(text)
 
-  if (!hasLinkInText && preset.templateCode !== 'apd_request_approved') {
+  if (!hasLinkInText && preset.templateCode !== 'apd_request_approved' && preset.templateCode !== 'apd_request_rejected') {
     const isApprovalOrReminder =
       preset.templateType.toLowerCase() === 'approval' ||
       preset.templateType.toLowerCase() === 'reminder' ||
@@ -4045,7 +4055,7 @@ function ensurePwaPushDeliveryChannel(channelStr: string): string {
 }
 
 function applyUnifiedEmailDesign(preset: EmailTemplatePreset): EmailTemplatePreset {
-  const isExcluded = preset.templateCode === 'apd_request_approved'
+  const isExcluded = preset.templateCode === 'apd_request_approved' || preset.templateCode === 'apd_request_rejected'
   const isApprovalOrReminder =
     !isExcluded &&
     (preset.templateType.toLowerCase() === 'approval' ||
