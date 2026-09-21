@@ -693,7 +693,9 @@ export function InboxTab({
         dueState: cr.dueState,
         dueAt: cr.dueAt,
         submittedAt: cr.submittedAt,
-        url: cr.url,
+        url: viewMode === 'mobile' && cr.url?.startsWith('/review/')
+          ? cr.url.replace('/review/', '/mobile/review/')
+          : cr.url,
         rawContractReview: cr,
       })
     }

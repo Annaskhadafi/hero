@@ -33,6 +33,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   if (isMobileUserAgent(headerStore.get('user-agent'))) {
+    const mobileContractReviewPath = dashboardPath.replace(
+      /^\/dashboard\/hc\/contract-review(?=\/|$)/,
+      '/mobile/hc/contract-review',
+    )
+    if (mobileContractReviewPath !== dashboardPath) {
+      redirect(mobileContractReviewPath)
+    }
     redirect('/mobile')
   }
 

@@ -66,14 +66,18 @@ test("contract review public approval exposes productivity tab with token-limite
 test("contract review pending approvals appear in mobile inbox and reminder uses settings", () => {
   const approvalWorkspaceSource = read("lib/approval-workspace.ts");
   const mobileApprovalSource = read("components/mobile/mobile-approval-center.tsx");
+  const approvalWorkbenchSource = read("components/approval-workbench.tsx");
+  const mobileReviewPageSource = read("app/mobile/review/[token]/page.tsx");
   const contractReviewSource = read("app/actions/contract-review.ts");
   const contractReviewPageSource = read("app/dashboard/hc/contract-review/client-page.tsx");
 
   assert.match(approvalWorkspaceSource, /getContractReviewInboxItems/);
   assert.match(approvalWorkspaceSource, /contractReviewInboxItems/);
   assert.match(approvalWorkspaceSource, /hcContractReviewApprovals/);
-  assert.match(mobileApprovalSource, /Buka TTD Contract Review/);
   assert.match(mobileApprovalSource, /contractReviewItems/);
+  assert.match(approvalWorkbenchSource, /mobile\/review/);
+  assert.match(approvalWorkbenchSource, /Buka TTD/);
+  assert.match(mobileReviewPageSource, /ContractReviewPublicPage/);
   assert.match(contractReviewSource, /reminderDaysBefore/);
   assert.match(contractReviewSource, /new Set\(settings\.reminderDaysBefore\)/);
   assert.match(contractReviewPageSource, /Reminder Days Before/);
@@ -83,7 +87,7 @@ test("contract review public approval layout is mobile friendly", () => {
   const publicApprovalSource = read("app/review/[token]/public-approval.tsx");
 
   assert.match(publicApprovalSource, /flex-col items-stretch gap-4 xl:flex-row/);
-  assert.match(publicApprovalSource, /w-full shrink-0 space-y-4 xl:sticky/);
+  assert.match(publicApprovalSource, /isMobileRoute/);
   assert.match(publicApprovalSource, /touch-none rounded-lg bg-white/);
   assert.match(publicApprovalSource, /overflow-x-auto pb-2/);
   assert.match(publicApprovalSource, /h-\[72vh\].*sm:h-\[86vh\]/);

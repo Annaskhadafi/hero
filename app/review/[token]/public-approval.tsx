@@ -1,5 +1,6 @@
 'use client'
 
+import { usePathname } from 'next/navigation'
 import { useRef, useState, useTransition } from 'react'
 import SignatureCanvas from 'react-signature-canvas'
 import { approveContractReviewStep } from '@/app/actions/contract-review'
@@ -46,6 +47,8 @@ function hasVisibleCanvasInk(canvas: HTMLCanvasElement) {
 }
 
 export function ContractReviewPublicApproval({ token, approval, review, allApprovals, employee }: PublicApprovalProps) {
+  const pathname = usePathname()
+  const isMobileRoute = pathname.startsWith('/mobile/review/')
   const signatureRef = useRef<SignatureCanvas | null>(null)
   const [remarks, setRemarks] = useState(approval.remarks || '')
   const [error, setError] = useState('')
@@ -453,12 +456,12 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
   )
 
   return (
-    <main className="min-h-screen bg-slate-50 px-3 py-4 sm:px-4 sm:py-6">
+    <main className={isMobileRoute ? 'min-h-dvh bg-slate-50 px-2 py-3' : 'min-h-screen bg-slate-50 px-3 py-4 sm:px-4 sm:py-6'}>
       <div className="mx-auto flex w-full max-w-[1800px] flex-col items-stretch gap-4 xl:flex-row xl:items-start">
         {/* ── KIRI: Header + Status + TTD ── */}
-        <div className="w-full shrink-0 space-y-4 xl:sticky xl:top-6 xl:w-[380px]">
+        <div className={isMobileRoute ? 'w-full shrink-0 space-y-3' : 'w-full shrink-0 space-y-4 xl:sticky xl:top-6 xl:w-[380px]'}>
           {/* Header */}
-          <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/70">
+          <section className={isMobileRoute ? 'rounded-xl bg-white p-3 shadow-sm ring-1 ring-slate-200/70' : 'rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/70'}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Contract Review Approval</p>
@@ -470,7 +473,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
           </section>
 
           {/* Status Approval */}
-          <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200/70 sm:p-5">
+          <section className={isMobileRoute ? 'rounded-xl bg-white p-3 shadow-sm ring-1 ring-slate-200/70' : 'rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200/70 sm:p-5'}>
             <h2 className="text-sm font-semibold text-slate-950 mb-3">Status Approval</h2>
             <div className="max-h-[44vh] space-y-2 overflow-y-auto pr-1 xl:max-h-none xl:overflow-visible xl:pr-0">
               {approvalHistoryForDisplay.map((step: any, idx: number) => (
@@ -510,7 +513,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
           </section>
 
           {/* TTD Digital */}
-          <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/70">
+          <section className={isMobileRoute ? 'rounded-xl bg-white p-3 shadow-sm ring-1 ring-slate-200/70' : 'rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/70'}>
             <h2 className="text-sm font-semibold text-slate-950 mb-3">TTD Digital</h2>
             {done ? (
               <div className="space-y-3">
@@ -574,7 +577,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
             ) : (
               <div className="space-y-3">
                 <div className="rounded-xl border border-slate-200 bg-white p-2">
-                  <SignatureCanvas ref={signatureRef} onEnd={updateSignaturePreview} canvasProps={{ className: 'h-44 w-full touch-none rounded-lg bg-white sm:h-40' }} />
+                  <SignatureCanvas ref={signatureRef} onEnd={updateSignaturePreview} canvasProps={{ className: isMobileRoute ? 'h-36 w-full touch-none rounded-lg bg-white' : 'h-44 w-full touch-none rounded-lg bg-white sm:h-40' }} />
                 </div>
                 <Textarea value={remarks} onChange={(event) => setRemarks(event.target.value)} placeholder="Catatan opsional..." rows={2} />
                 {error ? <p className="text-sm font-medium text-red-600">{error}</p> : null}
@@ -592,7 +595,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
         </div>
 
         {/* ── KANAN: Preview Surat + Produktivitas ── */}
-        <div className="min-w-0 flex-1 rounded-[1.1rem] bg-slate-100 p-2 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)] print:hidden sm:p-4">
+        <div className={isMobileRoute ? 'min-w-0 flex-1 rounded-xl bg-slate-100 p-1.5 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)] print:hidden' : 'min-w-0 flex-1 rounded-[1.1rem] bg-slate-100 p-2 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(66,71,80,0.06)] print:hidden sm:p-4'}>
           <Tabs defaultValue="letter" className="flex flex-col gap-4">
             <TabsList className="grid h-auto w-full grid-cols-2 bg-white">
               <TabsTrigger value="letter">Preview Surat</TabsTrigger>

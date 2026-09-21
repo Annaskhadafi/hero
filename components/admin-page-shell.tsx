@@ -1,3 +1,5 @@
+import { cn } from '@/lib/utils'
+
 export function AdminPageShell({
   eyebrow = '',
   title = '',
@@ -5,6 +7,7 @@ export function AdminPageShell({
   badge,
   actions,
   header,
+  compact = false,
   children,
 }: {
   eyebrow?: string
@@ -13,20 +16,21 @@ export function AdminPageShell({
   badge?: string
   actions?: React.ReactNode
   header?: React.ReactNode
+  compact?: boolean
   children: React.ReactNode
 }) {
   const showHeader = title ? true : Boolean(header)
 
   return (
-    <div className="space-y-4 p-4 lg:p-5">
+    <div className={cn('space-y-4', compact ? 'p-0' : 'p-4 lg:p-5')}>
       {showHeader ? (
-        <header className="admin-daily-card overflow-hidden rounded-[1.1rem] print:hidden no-print">
+        <header className={cn('admin-daily-card overflow-hidden rounded-[1.1rem] print:hidden no-print', compact && 'rounded-xl')}>
           {header ? (
             header
           ) : (
             <div className="flex flex-col gap-3 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
-                <h1 className="font-display text-foreground max-w-4xl text-[1.9rem] leading-tight font-semibold [text-wrap:balance] sm:text-[2rem]">
+                <h1 className={cn('font-display text-foreground max-w-4xl leading-tight font-semibold [text-wrap:balance]', compact ? 'text-[1.45rem] sm:text-[1.65rem]' : 'text-[1.9rem] sm:text-[2rem]')}>
                   {title}
                 </h1>
                 <span className="sr-only">

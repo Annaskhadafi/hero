@@ -89,3 +89,17 @@ test("due contract review reminder links approvers to the token approval page", 
   assert.match(singleReminder, /const actionableLink = pendingApproval \? `\$\{baseUrl\}\/review\/\$\{pendingApproval\.approvalToken\}` : reviewLink/);
   assert.match(singleReminder, /\.replace\(\/\{\{reviewLink\}\}\/g, actionableLink\)/);
 });
+
+test("mobile contract review keeps the form URL instead of falling back to mobile dashboard", () => {
+  const dashboardLayout = read("app/dashboard/layout.tsx");
+  const mobilePage = read("app/mobile/hc/contract-review/[[...path]]/page.tsx");
+  const formSource = read("app/dashboard/hc/contract-review/form/client-form.tsx");
+
+  assert.match(dashboardLayout, /mobileContractReviewPath/);
+  assert.match(dashboardLayout, /'\/mobile\/hc\/contract-review'/);
+  assert.match(mobilePage, /path\[0\] !== 'form'/);
+  assert.match(mobilePage, /ContractReviewClientForm/);
+  assert.match(formSource, /pathname\.startsWith\('\/mobile\/'\)/);
+  assert.match(formSource, /id="contract-review-preview"/);
+  assert.match(formSource, /isMobileRoute && "block max-md:p-2"/);
+});

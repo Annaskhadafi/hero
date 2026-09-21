@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition, useEffect, useMemo, useRef } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Save, Printer, ArrowLeft, Plus, Trash2 } from "lucide-react"
 import SignatureCanvas from "react-signature-canvas"
 
@@ -27,6 +27,8 @@ type MasterHeadMap = {
 
 export function ContractReviewClientForm({ employees, orgNodes = [], initialData, approvalSettings, approvalHistory, masterHeadMap }: { employees: any[], orgNodes?: any[], initialData?: any, approvalSettings?: any, approvalHistory?: any[], masterHeadMap?: MasterHeadMap }) {
   const router = useRouter()
+  const pathname = usePathname()
+  const isMobileRoute = pathname.startsWith('/mobile/')
   const searchParams = useSearchParams()
   const mode = searchParams.get("mode")
   const employeeSnParam = searchParams.get("employeeSn")
@@ -446,7 +448,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
       }
       const res = await saveContractReview(payload as any)
       if (res.success) {
-        router.push("/dashboard/hc/contract-review")
+        router.push(pathname.startsWith('/mobile/') ? '/mobile/dashboard' : "/dashboard/hc/contract-review")
       } else {
         alert("Gagal menyimpan: " + res.error)
       }
@@ -837,18 +839,19 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
       eyebrow="HC • Form" 
       title="Contract & Probation Review" 
       description="Lengkapi evaluasi karyawan."
+      compact={isMobileRoute}
     >
       <div className={cn("grid gap-6", isPrintMode ? "xl:grid-cols-1" : "xl:grid-cols-2")}>
         {/* KIRI: Form Input */}
         <div className={cn("flex flex-col gap-6 print:hidden", isPrintMode && "hidden")}>
-          <div className="flex gap-4">
-            <Button variant="outline" onClick={() => router.back()}>
+          <div className={cn("flex gap-4", isMobileRoute && "sticky bottom-2 z-20 flex-wrap gap-2 rounded-2xl bg-white/95 p-1.5 shadow-lg backdrop-blur") }>
+            <Button variant="outline" className={cn("min-h-10", isMobileRoute && "min-h-9 px-3 text-xs")} onClick={() => router.back()}>
               <ArrowLeft className="mr-2 size-4" /> Kembali
             </Button>
-            <Button onClick={handlePrint} variant="secondary">
+            <Button onClick={handlePrint} variant="secondary" className={cn("min-h-10", isMobileRoute && "min-h-9 px-3 text-xs")}>
               <Printer className="mr-2 size-4" /> Print / Save PDF
             </Button>
-            <Button onClick={handleSave} disabled={isPending} className="ml-auto">
+            <Button onClick={handleSave} disabled={isPending} className={cn("ml-auto min-h-10", isMobileRoute && "min-h-9 px-3 text-xs max-sm:flex-1")}>
               <Save className="mr-2 size-4" /> {isPending ? "Menyimpan..." : "Simpan Form"}
             </Button>
           </div>
@@ -862,7 +865,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
               <div className="space-y-2">
                 <Label>Tujuan Review</Label>
                 <Select value={form.reviewType} onValueChange={(val) => setForm({ ...form, reviewType: val })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="probation">Probationary Review</SelectItem>
                     <SelectItem value="contract">Contract Review</SelectItem>
@@ -919,7 +922,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
           <CardContent>
             <div className="space-y-4">
               {form.performanceActivities.map((act: any, idx: number) => (
-                <div key={idx} className="flex items-start gap-4">
+                <div key={idx} className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-start">
                   <div className="flex-1 space-y-2">
                     <Label>Aktivitas</Label>
                     <Textarea 
@@ -931,7 +934,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
                       }} 
                     />
                   </div>
-                  <div className="w-[200px] space-y-2">
+                  <div className="w-full space-y-2 sm:w-[200px]">
                     <Label>Achievement</Label>
                     <Select 
                       value={act.achievement} 
@@ -941,7 +944,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
                         setForm({ ...form, performanceActivities: newArr })
                       }}
                     >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="below">Below Requirement</SelectItem>
                         <SelectItem value="meet">Meet Requirement</SelectItem>
@@ -963,7 +966,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
                   <Button 
                     variant="ghost" 
                     size="icon" 
-                    className="mt-8"
+                    className="mt-0 self-end sm:mt-8"
                     onClick={() => {
                       const newArr = form.performanceActivities.filter((_: any, i: number) => i !== idx)
                       setForm({ ...form, performanceActivities: newArr })
@@ -1000,14 +1003,14 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
                 { label: "Customer Orientation", achKey: "compCustomerAch", remKey: "compCustomerRemark" },
                 { label: "Teamwork", achKey: "compTeamworkAch", remKey: "compTeamworkRemark" },
               ].map((comp, idx) => (
-                <div key={idx} className="flex gap-4 items-start">
-                  <div className="w-[30%] pt-2 font-medium">{comp.label}</div>
-                  <div className="w-[200px]">
+                <div key={idx} className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-start">
+                  <div className="w-full pt-2 font-medium sm:w-[30%]">{comp.label}</div>
+                  <div className="w-full sm:w-[200px]">
                     <Select 
                       value={(form as any)[comp.achKey]} 
                       onValueChange={(val) => setForm({ ...form, [comp.achKey]: val })}
                     >
-                      <SelectTrigger><SelectValue placeholder="Pilih..." /></SelectTrigger>
+                    <SelectTrigger className="w-full"><SelectValue placeholder="Pilih..." /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="below">Below</SelectItem>
                         <SelectItem value="meet">Meet</SelectItem>
@@ -1037,7 +1040,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
               <div className="space-y-2">
                 <Label>Rekomendasi</Label>
                 <Select value={form.recommendation} onValueChange={(val) => setForm({ ...form, recommendation: val })}>
-                  <SelectTrigger><SelectValue placeholder="Pilih Rekomendasi" /></SelectTrigger>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Pilih Rekomendasi" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="confirm_permanent">Confirm to Permanent</SelectItem>
                     <SelectItem value="contract_extended">Contract Extended</SelectItem>
@@ -1139,7 +1142,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
               <div className="space-y-2 col-span-2">
                 <Label>Letter Issuance by HR</Label>
                 <Select value={form.letterIssuance} onValueChange={(val) => setForm({ ...form, letterIssuance: val })}>
-                  <SelectTrigger><SelectValue placeholder="Pilih Surat Keluaran" /></SelectTrigger>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Pilih Surat Keluaran" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="permanent_confirmation">Permanent Confirmation</SelectItem>
                     <SelectItem value="contract_extension">Contract Extension</SelectItem>
@@ -1240,7 +1243,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
           </div>
         </div>
       ) : (
-      <div className="rounded-[1.1rem] bg-slate-100 p-4 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)] print:hidden overflow-auto">
+      <div id="contract-review-preview" className={cn("rounded-[1.1rem] bg-slate-100 p-4 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)] print:hidden overflow-auto", isMobileRoute && "block max-md:p-2")}>
         <Tabs defaultValue="letter" className="flex flex-col gap-4">
           <TabsList className="grid w-full grid-cols-2 bg-white">
             <TabsTrigger value="letter">Preview Surat</TabsTrigger>
