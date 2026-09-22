@@ -15,7 +15,15 @@ import {
 } from '@/components/ui/dialog'
 import { format } from 'date-fns'
 
-export function SizeInputCell({ assetId, initialSize }: { assetId: number; initialSize: string }) {
+export function SizeInputCell({
+  employeeId,
+  assetId,
+  initialSize,
+}: {
+  employeeId: number
+  assetId?: number | null
+  initialSize: string
+}) {
   const [size, setSize] = useState(initialSize || '')
   const [isSaving, setIsSaving] = useState(false)
 
@@ -23,7 +31,7 @@ export function SizeInputCell({ assetId, initialSize }: { assetId: number; initi
     if (size === initialSize) return
     setIsSaving(true)
     try {
-      await updateAssetSize(assetId, size)
+      await updateAssetSize({ assetId, employeeId, size })
       toast.success('Ukuran sepatu berhasil disimpan')
     } catch (err) {
       toast.error('Gagal menyimpan ukuran sepatu')
@@ -56,10 +64,12 @@ export interface AttachmentItem {
 }
 
 export function AttachmentCell({
+  employeeId,
   assetId,
   initialUrl,
 }: {
-  assetId: number
+  employeeId: number
+  assetId?: number | null
   initialUrl: string | null
 }) {
   const [isUploading, setIsUploading] = useState(false)
@@ -112,7 +122,11 @@ export function AttachmentCell({
         const newItem: AttachmentItem = { url: data.url, date: new Date().toISOString() }
         const newAttachments = [newItem, ...attachments]
 
-        await updateAssetAttachment(assetId, JSON.stringify(newAttachments))
+        await updateAssetAttachment({
+          assetId,
+          employeeId,
+          attachmentUrl: JSON.stringify(newAttachments),
+        })
 
         setAttachments(newAttachments)
         toast.success('Bukti penerimaan berhasil diupload')
@@ -136,7 +150,11 @@ export function AttachmentCell({
       const newAttachments = attachments.filter((_, idx) => idx !== indexToDelete)
 
       const payload = newAttachments.length > 0 ? JSON.stringify(newAttachments) : null
-      await updateAssetAttachment(assetId, payload)
+      await updateAssetAttachment({
+        assetId,
+        employeeId,
+        attachmentUrl: payload,
+      })
 
       setAttachments(newAttachments)
       toast.success('Foto berhasil dihapus')

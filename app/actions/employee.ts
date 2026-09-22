@@ -256,6 +256,7 @@ export async function createEmployee(data: {
   });
 
   revalidatePath("/dashboard/hc/employee");
+  revalidatePath("/dashboard/apd/inventory/safety-shoes");
   return created;
 }
 
@@ -300,27 +301,11 @@ export async function updateEmployee(id: number, data: {
     setData.directManagerId = ids.length > 0 ? ids[0] : null;
   } else if (data.directManagerId !== undefined) {
     setData.directManagerId = data.directManagerId;
-    setData.directManagerIds = JSON.stringify(data.directManagerId ? [data.directManagerId] : []);
+    setData.directManagerIds = data.directManagerId ? JSON.stringify([data.directManagerId]) : '[]';
   }
 
-  if (data.departmentId !== undefined) {
-    setData.departmentId = data.departmentId;
-    if (data.departmentId) {
-      const [dept] = await db.select({ name: masterDepartments.name }).from(masterDepartments).where(eq(masterDepartments.id, data.departmentId)).limit(1);
-      if (dept) setData.department = dept.name;
-    } else {
-      setData.department = '';
-    }
-  }
-  if (data.sectionId !== undefined) {
-    setData.sectionId = data.sectionId;
-    if (data.sectionId) {
-      const [sec] = await db.select({ name: masterSections.name }).from(masterSections).where(eq(masterSections.id, data.sectionId)).limit(1);
-      if (sec) setData.section = sec.name;
-    } else {
-      setData.section = '';
-    }
-  }
+  if (data.departmentId !== undefined) setData.departmentId = data.departmentId;
+  if (data.sectionId !== undefined) setData.sectionId = data.sectionId;
   if (data.siteId !== undefined) setData.siteId = data.siteId;
   if (data.positionId !== undefined) setData.positionId = data.positionId;
   if (data.joinDate !== undefined) setData.joinDate = data.joinDate;
@@ -332,21 +317,26 @@ export async function updateEmployee(id: number, data: {
   if (data.manpower !== undefined) setData.manpower = data.manpower;
 
   if (data.lastMcuDate !== undefined) {
-    if (data.lastMcuDate) {
-      // Find latest MCU to update, or insert new
-      const latestMcu = await db.select().from(employeeMcu).where(eq(employeeMcu.employeeId, id)).orderBy(desc(employeeMcu.mcuDate)).limit(1);
-      if (latestMcu.length > 0) {
-        await db.update(employeeMcu).set({ mcuDate: data.lastMcuDate }).where(eq(employeeMcu.id, latestMcu[0].id));
-      } else {
-        await db.insert(employeeMcu).values({
-          employeeId: id,
-          mcuDate: data.lastMcuDate,
-          paketMcu: "",
-        });
+    const latestMcu = await db
+      .select()
+      .from(employeeMcu)
+      .where(eq(employeeMcu.employeeId, id))
+      .orderBy(desc(employeeMcu.mcuDate))
+      .limit(1);
+
+    if (latestMcu.length > 0) {
+      if (data.lastMcuDate) {
+        await db
+          .update(employeeMcu)
+          .set({ mcuDate: data.lastMcuDate })
+          .where(eq(employeeMcu.id, latestMcu[0].id));
       }
-    } else {
-      // If cleared, maybe we do nothing or clear the latest? Usually deleting MCU records is handled in MCU module.
-      // We'll leave it as is if it's cleared.
+    } else if (data.lastMcuDate) {
+      await db.insert(employeeMcu).values({
+        employeeId: id,
+        mcuDate: data.lastMcuDate,
+        paketMcu: "",
+      });
     }
   }
 
@@ -392,6 +382,7 @@ export async function updateEmployee(id: number, data: {
   });
 
   revalidatePath("/dashboard/hc/employee");
+  revalidatePath("/dashboard/apd/inventory/safety-shoes");
   return updated;
 }
 
@@ -410,6 +401,7 @@ export async function deleteEmployee(id: number) {
     .returning();
 
   revalidatePath("/dashboard/hc/employee");
+  revalidatePath("/dashboard/apd/inventory/safety-shoes");
   return deleted;
 }
 
@@ -447,5 +439,6 @@ export async function bulkUpdateEmployees(ids: number[], data: Record<string, an
   }
 
   revalidatePath("/dashboard/hc/employee");
+  revalidatePath("/dashboard/apd/inventory/safety-shoes");
   return ids.length;
 }

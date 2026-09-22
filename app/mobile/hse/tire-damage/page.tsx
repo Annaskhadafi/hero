@@ -247,7 +247,7 @@ export default function MobileTireDamagePage() {
       () => setElapsedSeconds(Math.ceil((performance.now() - startedAt) / 1000)),
       250
     )
-    let analyzeTimer: ReturnType<typeof window.setTimeout> | undefined
+    let analyzeTimer: any
     try {
       setStage(file.type.startsWith('image/') ? 'optimizing' : 'uploading')
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))

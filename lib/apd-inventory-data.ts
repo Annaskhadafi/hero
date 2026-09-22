@@ -1,6 +1,6 @@
 import { db } from "@/db";
-import { employeeAssets, employees, sites, masterDepartments } from "@/db/schema/hero";
-import { eq, desc, ilike, and } from "drizzle-orm";
+import { employeeAssets, employees, sites, masterDepartments, masterSections } from "@/db/schema/hero";
+import { eq, desc, ilike, and, or, sql } from "drizzle-orm";
 
 export type ApdInventoryHistoryItem = {
   id: number;
@@ -81,42 +81,66 @@ export async function fetchApdInventory() {
   return Array.from(map.values());
 }
 
+export type SafetyShoesRecordItem = {
+  id: number;
+  assignedAt: Date;
+  size?: string | null;
+  attachmentUrl?: string | null;
+};
+
 export type SafetyShoesMatrixRow = {
   employeeId: number;
   employeeName: string;
   employeeSn: string;
   departmentName: string;
+  sectionName: string;
   siteName: string;
   size: string | null;
   attachmentUrl: string | null;
   history: Record<string, Date[]>;
+  records: SafetyShoesRecordItem[];
   latestAssetId: number | null;
 };
 
 export async function fetchSafetyShoesMatrix() {
-  // 1. Get all safety shoes assets first
+  // 1. Get all active employees from hero_employees (Single Source of Truth)
+  const allEmployees = await db
+    .select({
+      id: employees.id,
+      name: employees.name,
+      employeeSn: employees.employeeSn,
+      siteId: employees.siteId,
+      siteName: sites.name,
+      departmentName: sql<string | null>`coalesce(${masterDepartments.name}, ${employees.department})`.as('department_name'),
+      sectionName: sql<string | null>`coalesce(${masterSections.name}, ${employees.section})`.as('section_name'),
+      isActive: employees.isActive,
+    })
+    .from(employees)
+    .leftJoin(sites, eq(employees.siteId, sites.id))
+    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+    .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+    .where(
+      and(
+        eq(employees.isActive, true),
+        or(
+          ilike(masterDepartments.name, "%central service%"),
+          ilike(employees.department, "%central service%")
+        )
+      )
+    )
+    .orderBy(employees.name);
+
+  // 2. Get all safety shoes assets
   const assets = await db
     .select({
       id: employeeAssets.id,
       employeeId: employeeAssets.employeeId,
-      employeeName: employees.name,
-      employeeSn: employees.employeeSn,
-      siteName: sites.name,
-      departmentName: masterDepartments.name,
       size: employeeAssets.size,
       attachmentUrl: employeeAssets.attachmentUrl,
       assignedAt: employeeAssets.assignedAt,
     })
     .from(employeeAssets)
-    .leftJoin(employees, eq(employeeAssets.employeeId, employees.id))
-    .leftJoin(sites, eq(employees.siteId, sites.id))
-    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
-    .where(
-      and(
-        ilike(employeeAssets.itemName, "%sepatu safety%"),
-        ilike(masterDepartments.name, "%central service%")
-      )
-    )
+    .where(ilike(employeeAssets.itemName, "%sepatu safety%"))
     .orderBy(desc(employeeAssets.assignedAt));
 
   const currentYear = new Date().getFullYear();
@@ -125,45 +149,57 @@ export async function fetchSafetyShoesMatrix() {
   
   const employeeMap = new Map<number, SafetyShoesMatrixRow>();
 
-  // 2. Build map ONLY for employees who have at least one safety shoe asset
+  // 3. Initialize matrix rows for all active employees
+  for (const emp of allEmployees) {
+    const history: Record<string, Date[]> = {};
+    for (let y = currentYear; y >= minYear; y--) {
+      history[y.toString()] = [];
+    }
+    employeeMap.set(emp.id, {
+      employeeId: emp.id,
+      employeeName: emp.name || "",
+      employeeSn: emp.employeeSn || "",
+      departmentName: emp.departmentName || "-",
+      sectionName: emp.sectionName || "-",
+      siteName: emp.siteName || "Unassigned",
+      size: null,
+      attachmentUrl: null,
+      history,
+      records: [],
+      latestAssetId: null,
+    });
+  }
+
+  // 4. Map safety shoes assets to employees
   for (const asset of assets) {
     if (!asset.employeeId) continue;
-    
-    if (!employeeMap.has(asset.employeeId)) {
-      const history: Record<string, Date[]> = {};
-      for (let y = currentYear; y >= minYear; y--) {
-        history[y.toString()] = [];
-      }
-      employeeMap.set(asset.employeeId, {
-        employeeId: asset.employeeId,
-        employeeName: asset.employeeName || "",
-        employeeSn: asset.employeeSn || "",
-        departmentName: asset.departmentName || "",
-        siteName: asset.siteName || "",
-        size: null,
-        attachmentUrl: null,
-        history,
-        latestAssetId: null,
-      });
-    }
+    const row = employeeMap.get(asset.employeeId);
+    if (!row) continue;
 
-    const row = employeeMap.get(asset.employeeId)!;
-    
-    // The first one we process is the latest due to orderBy desc, so we use its size & attachment
     if (row.latestAssetId === null) {
       row.latestAssetId = asset.id;
       row.size = asset.size;
       row.attachmentUrl = asset.attachmentUrl;
+    } else if (!row.size && asset.size) {
+      row.size = asset.size;
     }
 
-    const assetYear = asset.assignedAt.getFullYear();
-    // Add to history if not exists
-    if (!row.history[assetYear.toString()]) {
-       row.history[assetYear.toString()] = [];
-    }
-    // Only keep up to 2 records per year (latest ones, due to ordering)
-    if (row.history[assetYear.toString()].length < 2) {
-      row.history[assetYear.toString()].push(asset.assignedAt);
+    if (asset.assignedAt) {
+      const assignedDate = new Date(asset.assignedAt);
+      row.records.push({
+        id: asset.id,
+        assignedAt: assignedDate,
+        size: asset.size,
+        attachmentUrl: asset.attachmentUrl,
+      });
+
+      const assetYear = assignedDate.getFullYear();
+      if (!row.history[assetYear.toString()]) {
+        row.history[assetYear.toString()] = [];
+      }
+      if (row.history[assetYear.toString()].length < 2) {
+        row.history[assetYear.toString()].push(assignedDate);
+      }
     }
   }
 
