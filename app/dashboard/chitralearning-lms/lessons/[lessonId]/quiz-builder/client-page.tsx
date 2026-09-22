@@ -14,6 +14,8 @@ import { toast } from 'sonner'
 import { createQuizQuestion, updateQuizQuestion, deleteQuizQuestion } from './actions'
 import { useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
+import { resolveClientUploadUrl } from '@/lib/client-url'
+import { replaceS3UrlsInHtml } from '@/lib/resolve-upload-url'
 
 const IMAGE_MAX_SIZE = 5 * 1024 * 1024 // 5MB
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
@@ -74,7 +76,7 @@ export function QuizBuilderClient({ lesson, questions }: { lesson: any, question
       formData.append('file', file)
       const res = await uploadFile(formData)
       if (!res.success || !res.url) throw new Error(res.error || 'Upload gagal')
-      setImageUrl(res.readableUrl || res.url)
+      setImageUrl(res.url)
       toast.success('Gambar terupload')
     } catch {
       toast.error('Gagal upload gambar')
@@ -120,13 +122,12 @@ export function QuizBuilderClient({ lesson, questions }: { lesson: any, question
   const openEditDialog = (q: any) => {
     setEditingQuestion(q)
     setQuestionType(q.questionType || 'single_choice')
-    setQuestionText(q.questionText)
-    setQuestionImageUrl(q.questionImageUrl || '')
-    setOptionA(q.optionA); setOptionAImageUrl(q.optionAImageUrl || '')
-    setOptionB(q.optionB); setOptionBImageUrl(q.optionBImageUrl || '')
-    setOptionC(q.optionC); setOptionCImageUrl(q.optionCImageUrl || '')
-    setOptionD(q.optionD); setOptionDImageUrl(q.optionDImageUrl || '')
-    setOptionD(q.optionD); setOptionDImageUrl(q.optionDImageUrl || '')
+    setQuestionText(replaceS3UrlsInHtml(q.questionText || ''))
+    setQuestionImageUrl(resolveClientUploadUrl(q.questionImageUrl || ''))
+    setOptionA(q.optionA); setOptionAImageUrl(resolveClientUploadUrl(q.optionAImageUrl || ''))
+    setOptionB(q.optionB); setOptionBImageUrl(resolveClientUploadUrl(q.optionBImageUrl || ''))
+    setOptionC(q.optionC); setOptionCImageUrl(resolveClientUploadUrl(q.optionCImageUrl || ''))
+    setOptionD(q.optionD); setOptionDImageUrl(resolveClientUploadUrl(q.optionDImageUrl || ''))
     setCorrectOption(q.correctOption)
     
     if (q.questionType === 'image_matching') {
@@ -257,12 +258,12 @@ export function QuizBuilderClient({ lesson, questions }: { lesson: any, question
                     </div>
                     <div className="font-medium text-slate-900 [&_img]:mt-2 [&_img]:max-h-48 [&_img]:rounded-md [&_img]:border [&_img]:border-slate-200 [&_img]:object-contain">
                       <span className="text-slate-400 mr-2">{index + 1}.</span>
-                      <span dangerouslySetInnerHTML={{ __html: q.questionText }} />
+                      <span dangerouslySetInnerHTML={{ __html: replaceS3UrlsInHtml(q.questionText) }} />
                     </div>
                     {q.questionImageUrl && (
                       <div className="h-32 w-48 bg-slate-100 rounded-md overflow-hidden relative">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={q.questionImageUrl} alt="Question" className="object-cover w-full h-full" />
+                        <img src={resolveClientUploadUrl(q.questionImageUrl)} alt="Question" className="object-cover w-full h-full" />
                       </div>
                     )}
                     
@@ -308,7 +309,7 @@ export function QuizBuilderClient({ lesson, questions }: { lesson: any, question
                               <div><span className="font-bold mr-2">{key}.</span>{text}</div>
                               {imageUrl ? (
                                 // eslint-disable-next-line @next/next/no-img-element
-                                <img src={String(imageUrl)} alt={`Opsi ${key}`} className="h-24 w-full rounded-md object-cover" />
+                                <img src={resolveClientUploadUrl(String(imageUrl))} alt={`Opsi ${key}`} className="h-24 w-full rounded-md object-cover" />
                               ) : null}
                             </div>
                           )
@@ -556,7 +557,7 @@ function ImageUrlField({
       {value && (
         <div className="relative w-fit">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={value} alt={label} className="h-28 max-w-full rounded-md border border-slate-200 object-cover" />
+          <img src={resolveClientUploadUrl(value)} alt={label} className="h-28 max-w-full rounded-md border border-slate-200 object-cover" />
           <Button type="button" variant="secondary" size="icon" className="absolute -right-2 -top-2 h-7 w-7" onClick={() => onChange('')}>
             <X className="h-4 w-4" />
           </Button>
@@ -587,7 +588,7 @@ function OptionField({
       {imageUrl && (
         <div className="relative">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={imageUrl} alt={label} className="h-28 w-full rounded-md border border-slate-200 object-cover" />
+          <img src={resolveClientUploadUrl(imageUrl)} alt={label} className="h-28 w-full rounded-md border border-slate-200 object-cover" />
           <Button type="button" variant="secondary" size="icon" className="absolute right-2 top-2 h-7 w-7" onClick={() => onImageChange('')}>
             <X className="h-4 w-4" />
           </Button>

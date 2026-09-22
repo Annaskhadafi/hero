@@ -37,11 +37,11 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Rich
       try {
         // Upload via centralized action (which handles S3 if configured)
         const res = await uploadFile(formData);
-        if (res.success && res.readableUrl) {
+        if (res.success && res.url) {
           const quill = quillRef.current?.getEditor();
           if (quill) {
             const range = quill.getSelection(true);
-            quill.insertEmbed(range.index, "image", res.readableUrl);
+            quill.insertEmbed(range.index, "image", res.url);
           }
         } else {
           alert("Gagal upload gambar: " + res.error);

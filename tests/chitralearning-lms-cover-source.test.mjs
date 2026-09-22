@@ -20,6 +20,9 @@ test("LMS course covers use browser image loading and uploaded root files stay r
   const completeButton = read("components/lms/lms-lesson-complete-button.tsx");
   const uploadAction = read("app/actions/upload.ts");
   const curriculumBuilder = read("components/lms/lms-curriculum-builder.tsx");
+  const quizBuilder = read("app/dashboard/chitralearning-lms/lessons/[lessonId]/quiz-builder/client-page.tsx");
+  const onlineAssignmentQuizBuilder = read("app/dashboard/chitralearning-lms/online-assignments/[id]/quiz-builder/client-page.tsx");
+  const richTextEditor = read("components/ui/rich-text-editor.tsx");
   const questionsLibrary = read("components/lms/questions-library-dialog.tsx");
   const lmsPresignRoute = read("app/api/uploads/lms-presign/route.ts");
   const notifications = read("lib/chitralearning-lms/notifications.ts");
@@ -83,6 +86,11 @@ test("LMS course covers use browser image loading and uploaded root files stay r
   assert.match(curriculumBuilder, /setQuestions\(\(current\) => \[\.\.\.current, \.\.\.copiedQuestions\]\)/);
   assert.match(curriculumBuilder, /view\.officeapps\.live\.com\/op\/embed\.aspx/);
   assert.match(curriculumBuilder, /<DocumentMaterialPreview fileUrl=\{fileUrl\} \/>/);
+  assert.match(curriculumBuilder, /setVideoUrl\(result\.url\)/);
+  assert.match(curriculumBuilder, /resolveClientUploadUrl/);
+  assert.match(quizBuilder, /setImageUrl\(res\.url\)/);
+  assert.match(onlineAssignmentQuizBuilder, /setImageUrl\(res\.url\)/);
+  assert.match(richTextEditor, /quill\.insertEmbed\(range\.index, "image", res\.url\)/);
   assert.match(uploadAction, /application\/vnd\.openxmlformats-officedocument\.presentationml\.presentation/);
   assert.match(uploadAction, /OFFICE_EXTENSIONS = new Set\(\["doc", "docx", "ppt", "pptx"\]\)/);
   assert.match(curriculumBuilder, /fetch\('\/api\/uploads\/lms-presign'/);

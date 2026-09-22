@@ -41,6 +41,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { uploadFile } from '@/app/actions/upload'
+import { resolveClientUploadUrl } from '@/lib/client-url'
+import { replaceS3UrlsInHtml } from '@/lib/resolve-upload-url'
 import { createLesson, deleteLesson, deleteQuizQuestion, duplicateLesson, reorderCurriculum, updateLesson } from '@/app/dashboard/chitralearning-lms/actions'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -536,7 +538,7 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
       formData.append('file', file)
       const result = await uploadFile(formData)
       if (result.success && result.url) {
-        setVideoUrl(result.readableUrl || result.url)
+        setVideoUrl(result.url)
         toast.success('Video terupload')
       } else {
         toast.error(result.error || 'Gagal upload video')
@@ -730,11 +732,11 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
                                   <div className="min-w-0 flex-1 space-y-3">
                                     <div className="font-medium text-slate-950 [&_img]:mt-2 [&_img]:max-h-48 [&_img]:rounded-md [&_img]:border [&_img]:border-slate-200 [&_img]:object-contain">
                                       <span className="mr-2 text-slate-400">{index + 1}.</span>
-                                      <span dangerouslySetInnerHTML={{ __html: question.questionText }} />
+                                      <span dangerouslySetInnerHTML={{ __html: replaceS3UrlsInHtml(question.questionText) }} />
                                     </div>
                                     {question.questionImageUrl ? (
                                       // eslint-disable-next-line @next/next/no-img-element
-                                      <img src={question.questionImageUrl} alt="Gambar pertanyaan" className="h-32 w-56 rounded-md border border-slate-200 object-cover" />
+                                      <img src={resolveClientUploadUrl(question.questionImageUrl)} alt="Gambar pertanyaan" className="h-32 w-56 rounded-md border border-slate-200 object-cover" />
                                     ) : null}
                                     <div className="grid gap-2 text-sm md:grid-cols-2">
                                       {[
@@ -758,7 +760,7 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
                                           </div>
                                           {imageUrl ? (
                                             // eslint-disable-next-line @next/next/no-img-element
-                                            <img src={String(imageUrl)} alt={`Opsi ${key}`} className="h-24 w-full rounded-md object-cover" />
+                                            <img src={resolveClientUploadUrl(String(imageUrl))} alt={`Opsi ${key}`} className="h-24 w-full rounded-md object-cover" />
                                           ) : null}
                                         </div>
                                       ))}
