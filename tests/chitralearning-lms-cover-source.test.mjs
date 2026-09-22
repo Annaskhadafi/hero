@@ -23,6 +23,7 @@ test("LMS course covers use browser image loading and uploaded root files stay r
   const quizBuilder = read("app/dashboard/chitralearning-lms/lessons/[lessonId]/quiz-builder/client-page.tsx");
   const onlineAssignmentQuizBuilder = read("app/dashboard/chitralearning-lms/online-assignments/[id]/quiz-builder/client-page.tsx");
   const richTextEditor = read("components/ui/rich-text-editor.tsx");
+  const lmsImageUpload = read("lib/lms-image-upload.ts");
   const questionsLibrary = read("components/lms/questions-library-dialog.tsx");
   const lmsPresignRoute = read("app/api/uploads/lms-presign/route.ts");
   const notifications = read("lib/chitralearning-lms/notifications.ts");
@@ -91,6 +92,9 @@ test("LMS course covers use browser image loading and uploaded root files stay r
   assert.match(quizBuilder, /setImageUrl\(res\.url\)/);
   assert.match(onlineAssignmentQuizBuilder, /setImageUrl\(res\.url\)/);
   assert.match(richTextEditor, /quill\.insertEmbed\(range\.index, "image", res\.url\)/);
+  assert.match(richTextEditor, /uploadLmsImage\(file\)/);
+  assert.match(lmsImageUpload, /request\.open\('PUT', ticket\.uploadUrl\)/);
+  assert.match(lmsPresignRoute, /IMAGE_TYPES/);
   assert.match(uploadAction, /application\/vnd\.openxmlformats-officedocument\.presentationml\.presentation/);
   assert.match(uploadAction, /OFFICE_EXTENSIONS = new Set\(\["doc", "docx", "ppt", "pptx"\]\)/);
   assert.match(curriculumBuilder, /fetch\('\/api\/uploads\/lms-presign'/);

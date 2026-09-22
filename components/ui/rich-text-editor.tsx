@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useMemo, useRef, useCallback } from "react";
 import "react-quill-new/dist/quill.snow.css";
 import { uploadFile } from "@/app/actions/upload";
+import { uploadLmsImage } from "@/lib/lms-image-upload";
 
 // Dynamically import our wrapper to ensure Quill is registered with blotFormatter
 const ReactQuill = dynamic(() => import("./quill-wrapper"), {
@@ -35,8 +36,8 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Rich
       formData.append("file", file);
 
       try {
-        // Upload via centralized action (which handles S3 if configured)
-        const res = await uploadFile(formData);
+        const directUrl = await uploadLmsImage(file);
+        const res = directUrl ? { success: true as const, url: directUrl } : await uploadFile(formData);
         if (res.success && res.url) {
           const quill = quillRef.current?.getEditor();
           if (quill) {
@@ -44,7 +45,7 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Rich
             quill.insertEmbed(range.index, "image", res.url);
           }
         } else {
-          alert("Gagal upload gambar: " + res.error);
+          alert("Gagal upload gambar: " + ("error" in res ? res.error : "Gagal upload gambar"));
         }
       } catch (error) {
         console.error("Upload error:", error);

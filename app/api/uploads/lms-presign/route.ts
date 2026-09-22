@@ -13,6 +13,8 @@ const MATERIAL_TYPES = new Set([
   "application/vnd.ms-powerpoint",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 ]);
+const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
+const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 function extensionOf(fileName: string) {
   return fileName.split(".").pop()?.toLowerCase() ?? "";
@@ -27,6 +29,10 @@ export async function POST(request: Request) {
     const { fileName, contentType } = await request.json();
     const extension = typeof fileName === "string" ? extensionOf(fileName) : "";
     const type = typeof contentType === "string" ? contentType : "application/octet-stream";
+
+    if (IMAGE_EXTENSIONS.has(extension) && IMAGE_TYPES.has(type)) {
+      return Response.json(await createDirectS3UploadUrl(fileName, type, "upload"));
+    }
 
     if (!MATERIAL_EXTENSIONS.has(extension) || (type !== "application/octet-stream" && !MATERIAL_TYPES.has(type))) {
       return Response.json({ error: "File materi harus ZIP, PDF, Word, atau PowerPoint." }, { status: 400 });

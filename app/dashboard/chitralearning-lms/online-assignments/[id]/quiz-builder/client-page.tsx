@@ -16,6 +16,7 @@ import { useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { resolveClientUploadUrl } from '@/lib/client-url'
 import { replaceS3UrlsInHtml } from '@/lib/resolve-upload-url'
+import { uploadLmsImage } from '@/lib/lms-image-upload'
 
 const IMAGE_MAX_SIZE = 5 * 1024 * 1024 // 5MB
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
@@ -69,11 +70,16 @@ export function OnlineAssignmentQuizBuilder({ campaignId, initialQuestions }: { 
     if (err) { toast.error(err); return }
     setUploadingField(fieldKey)
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      const res = await uploadFile(formData)
-      if (!res.success || !res.url) throw new Error(res.error || 'Upload gagal')
-      setImageUrl(res.url)
+      const directUrl = await uploadLmsImage(file)
+      if (directUrl) {
+        setImageUrl(directUrl)
+      } else {
+        const formData = new FormData()
+        formData.append('file', file)
+        const res = await uploadFile(formData)
+        if (!res.success || !res.url) throw new Error(res.error || 'Upload gagal')
+        setImageUrl(res.url)
+      }
       toast.success('Gambar terupload')
     } catch {
       toast.error('Gagal upload gambar')
