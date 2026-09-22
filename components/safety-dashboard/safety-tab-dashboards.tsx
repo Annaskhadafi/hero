@@ -743,29 +743,27 @@ export function PerformanceDashboard({ data }: { data: SafetyData }) {
 
 // 6. Man Hours
 export function ManHoursDashboard({ data }: { data: SafetyData }) {
-  const siteChartData = data.charts.manHoursByLocation
+  // Sort by highest manHours descending so top contributing sites are immediately clear
+  const siteChartData = [...data.charts.manHoursByLocation].sort((a, b) => b.manHours - a.manHours)
 
   const globalInitial = data.globalStartData?.initialManHours ?? 0
   const totalActual = data.globalStartData?.totalActualMonthlyManHours ?? siteChartData.reduce((acc, curr) => acc + curr.manHours, 0)
   const hasStartData = globalInitial > 0
 
-  // Inject Saldo Awal as first entry in chart when available
-  const chartData = hasStartData
-    ? [{ location: 'Saldo Awal (s/d 2025)', manHours: globalInitial, target: 0, isStartData: true }, ...siteChartData]
-    : siteChartData
-
   const chartConfig = {
-    manHours: { label: 'Safe Hours', color: PREMIUM_COLORS.green },
-    target: { label: 'Target Safe Hours', color: PREMIUM_COLORS.orange },
+    manHours: { label: 'Safe Hours', color: '#10b981' },
   }
 
   // Use kpis.safeManHours = globalStartData (s/d 2025) + sum of all site actuals (2026+)
   const totalManHours = data.kpis.safeManHours
   const formattedTotal = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(totalManHours)
 
+  // Height adapts cleanly for single bar per location (36px per site, min 450px)
+  const chartHeight = Math.max(450, siteChartData.length * 36)
+
   return (
     <div className="grid gap-6 xl:grid-cols-4">
-      <div className="xl:col-span-1">
+      <div className="xl:col-span-1 space-y-4">
         <KpiCard
           title="Total Safe Man Hours"
           value={formattedTotal}
@@ -783,92 +781,103 @@ export function ManHoursDashboard({ data }: { data: SafetyData }) {
           icon={Clock}
           color={PREMIUM_COLORS.green}
         />
+
+        <div className="rounded-xl border border-border/50 bg-card p-4 shadow-sm">
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Ringkasan Site</h4>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Total Lokasi:</span>
+              <span className="font-bold">{siteChartData.length} Site</span>
+            </div>
+            {siteChartData.length > 0 && (
+              <div className="flex justify-between items-center pt-1 border-t border-border/40">
+                <span className="text-muted-foreground">Pencapaian Tertinggi:</span>
+                <span className="font-bold text-emerald-600 text-right">
+                  {siteChartData[0]?.location}<br/>
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    ({new Intl.NumberFormat('id-ID').format(siteChartData[0]?.manHours || 0)} jam)
+                  </span>
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
+
       <Card className="border-border/40 bg-card/30 shadow-sm xl:col-span-3">
         <CardHeader className="bg-[#1e40af] pb-4 text-white">
           <CardTitle className="text-lg font-bold text-white">
             Man Hours Achievement by Location
           </CardTitle>
           <CardDescription className="text-white/80">
-            {hasStartData
-              ? `Saldo awal s/d 2025 + aktual per lokasi. Total: ${new Intl.NumberFormat('id-ID').format(totalManHours)} jam.`
-              : 'Benchmarking achieved safe working hours against set targets per site.'}
+            Peringkat pencapaian jam kerja selamat per lokasi kerja (Total Akumulasi Sistem: {formattedTotal} jam).
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          {chartData.length > 0 ? (
-            <ChartContainer config={chartConfig} className="h-[320px] w-full">
-              <ComposedChart data={chartData} margin={{ top: 30, right: 0, left: 10, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorManHours" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--color-manHours)" stopOpacity={1} />
-                    <stop offset="100%" stopColor="var(--color-manHours)" stopOpacity={0.4} />
-                  </linearGradient>
-                  <linearGradient id="colorStartData" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#6366f1" stopOpacity={1} />
-                    <stop offset="100%" stopColor="#6366f1" stopOpacity={0.4} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  vertical={false}
-                  stroke="hsl(var(--border))"
-                  strokeOpacity={0.5}
-                />
-                <XAxis
-                  dataKey="location"
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fontWeight: 'bold', fontSize: 11 }}
-                />
-                <YAxis
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fill: 'hsl(var(--muted-foreground))' }}
-                  allowDecimals={false}
-                  tickFormatter={(v: number) => v >= 1000000 ? `${(v/1000000).toFixed(1)}jt` : v >= 1000 ? `${(v/1000).toFixed(0)}rb` : `${v}`}
-                />
-                <ChartTooltip
-                  cursor={{ fill: 'hsl(var(--muted)/0.3)' }}
-                  content={<ChartTooltipContent formatter={(val: unknown) => new Intl.NumberFormat('id-ID').format(Number(val))} />}
-                />
-                <ChartLegend
-                  content={<ChartLegendContent />}
-                  wrapperStyle={{ paddingTop: '20px' }}
-                />
-                <Bar
-                  dataKey="manHours"
-                  fill="url(#colorManHours)"
-                  radius={[6, 6, 0, 0]}
-                  maxBarSize={90}
-                  animationDuration={1500}
-                  // Color "Saldo Awal" bar differently; extract only valid SVG rect props to avoid React DOM attribute warnings
-                  shape={(props: any) => {
-                    const { x, y, width, height, radius, isStartData } = props
-                    const fill = isStartData ? 'url(#colorStartData)' : 'url(#colorManHours)'
-                    const r = Array.isArray(radius) ? radius[0] : (radius || 0)
-                    return <rect x={x} y={y} width={width} height={height} rx={r} ry={r} fill={fill} />
-                  }}
+        <CardContent className="pt-6">
+          {siteChartData.length > 0 ? (
+            <div className="w-full">
+              <ChartContainer config={chartConfig} style={{ height: `${chartHeight}px` }} className="w-full">
+                <BarChart
+                  data={siteChartData}
+                  layout="vertical"
+                  margin={{ top: 10, right: 80, left: 10, bottom: 20 }}
                 >
-                  <LabelList
-                    dataKey="manHours"
-                    position="top"
-                    formatter={(val: number) => val > 0 ? new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(val) : ''}
-                    style={{ fill: 'currentColor', fontSize: 11, fontWeight: 'bold' }}
+                  <defs>
+                    <linearGradient id="colorManHoursH" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.85} />
+                      <stop offset="100%" stopColor="#059669" stopOpacity={1} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    horizontal={false}
+                    stroke="hsl(var(--border))"
+                    strokeOpacity={0.5}
                   />
-                </Bar>
-                <Line
-                  type="monotone"
-                  dataKey="target"
-                  stroke="var(--color-target)"
-                  strokeWidth={4}
-                  strokeDasharray="6 6"
-                  dot={{ r: 6, fill: 'var(--color-target)' }}
-                  activeDot={{ r: 8 }}
-                  animationDuration={1500}
-                />
-              </ComposedChart>
-            </ChartContainer>
+                  <XAxis
+                    type="number"
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(v: number) => v >= 1000000 ? `${(v/1000000).toFixed(1)}jt` : v >= 1000 ? `${(v/1000).toFixed(0)}rb` : `${v}`}
+                  />
+                  <YAxis
+                    dataKey="location"
+                    type="category"
+                    tickLine={false}
+                    axisLine={false}
+                    width={180}
+                    tick={{ fontSize: 12, fontWeight: 500, fill: 'currentColor' }}
+                  />
+                  <ChartTooltip
+                    cursor={{ fill: 'hsl(var(--muted)/0.3)' }}
+                    content={
+                      <ChartTooltipContent
+                        formatter={(val: unknown) => (
+                          <span className="font-medium">
+                            {new Intl.NumberFormat('id-ID').format(Number(val))} jam
+                          </span>
+                        )}
+                      />
+                    }
+                  />
+                  <Bar
+                    dataKey="manHours"
+                    name="Safe Hours"
+                    fill="url(#colorManHoursH)"
+                    radius={[0, 4, 4, 0]}
+                    barSize={18}
+                    animationDuration={1500}
+                  >
+                    <LabelList
+                      dataKey="manHours"
+                      position="right"
+                      formatter={(val: number) => val > 0 ? new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(val) : ''}
+                      style={{ fill: 'currentColor', fontSize: 11, fontWeight: 'bold' }}
+                    />
+                  </Bar>
+                </BarChart>
+              </ChartContainer>
+            </div>
           ) : (
             <div className="text-muted-foreground bg-muted/10 border-border/50 flex h-[320px] items-center justify-center rounded-xl border border-dashed text-sm font-medium">
               No data available
