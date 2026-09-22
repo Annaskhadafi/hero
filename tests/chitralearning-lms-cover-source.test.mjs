@@ -24,6 +24,7 @@ test("LMS course covers use browser image loading and uploaded root files stay r
   const onlineAssignmentQuizBuilder = read("app/dashboard/chitralearning-lms/online-assignments/[id]/quiz-builder/client-page.tsx");
   const richTextEditor = read("components/ui/rich-text-editor.tsx");
   const lmsImageUpload = read("lib/lms-image-upload.ts");
+  const s3Storage = read("lib/s3-storage.ts");
   const questionsLibrary = read("components/lms/questions-library-dialog.tsx");
   const lmsPresignRoute = read("app/api/uploads/lms-presign/route.ts");
   const notifications = read("lib/chitralearning-lms/notifications.ts");
@@ -102,6 +103,7 @@ test("LMS course covers use browser image loading and uploaded root files stay r
   assert.match(curriculumBuilder, /Upload materi \{uploadProgress\}%/);
   assert.match(lmsPresignRoute, /createDirectS3UploadUrl/);
   assert.match(lmsPresignRoute, /lms-materials/);
+  assert.doesNotMatch(s3Storage, /export async function createDirectS3UploadUrl[\s\S]{0,600}ACL:/);
   assert.doesNotMatch(lmsPresignRoute, /MAX_FILE_SIZE/);
   assert.match(questionsLibrary, /const result = await copyInternalLmsQuestionsAction/);
   assert.match(questionsLibrary, /onSuccess\?\.\(result\.questions \|\| \[\]\)/);

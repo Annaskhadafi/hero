@@ -255,7 +255,6 @@ export async function createDirectS3UploadUrl(
       Bucket: serverEnv.s3BucketName,
       Key: key,
       ContentType: contentType,
-      ACL: "public-read",
     }),
     { expiresIn: 15 * 60 },
   );
