@@ -36,3 +36,12 @@ test('face v2 client component syncs logs state when todayLogs prop updates', ()
   assert.match(clientSource, /const currentEventType = logs\[0\]\?\.eventType \?\? lastEventType/)
   assert.match(clientSource, /currentEventType === 'checked-in'/)
 })
+
+test('face v2 refreshes GPS instead of submitting the cached position', () => {
+  const clientSource = read('app/mobile/attendance/face-v2/face-v2-client.tsx')
+
+  assert.match(clientSource, /navigator\.geolocation\.watchPosition/)
+  assert.ok((clientSource.match(/maximumAge: 0/g) || []).length >= 2)
+  assert.match(clientSource, /position = await getCurrentGps\(\)/)
+  assert.doesNotMatch(clientSource, /gpsRef/)
+})

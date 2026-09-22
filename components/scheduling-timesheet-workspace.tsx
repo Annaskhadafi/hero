@@ -167,6 +167,7 @@ import {
   updatePunctualityInNote,
   type SiteAttendanceClockConfig,
 } from '@/lib/timesheet/attendance-punctuality'
+import { selectAttendancePunches } from '@/lib/timesheet/attendance-selection'
 import {
   DEFAULT_QUOTATION_BILLING_STATUS_CONFIG,
   normalizeQuotationBillingStatusConfig,
@@ -198,6 +199,9 @@ type SiteOption = {
   customerName: string
   headEmployeeId?: number | null
   timezone?: string | null
+  geoLatitude?: string | null
+  geoLongitude?: string | null
+  geoRadiusMeters?: number | null
 }
 
 type FieldBreakTimelineView = 'month' | 'quarter' | 'semester' | 'year'
@@ -2126,73 +2130,6 @@ export function SchedulingTimesheetWorkspace({
       }
     })
   }
-  const attendanceByCell = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        clockIn?: AttendanceRealRecord
-        clockOut?: AttendanceRealRecord
-        records: AttendanceRealRecord[]
-      }
-    >()
-
-    const effectiveTz = effectiveSiteClockConfig.timezone
-
-    // Group records by cell key first
-    const grouped = new Map<string, AttendanceRealRecord[]>()
-    for (const record of attendanceRecords) {
-      if (siteId !== 'all' && record.siteId != null && String(record.siteId) !== siteId) {
-        // Match if employee belongs to this site
-        const emp = employees.find((e) => e.id === record.employeeId)
-        if (emp && String(emp.siteId) !== siteId) {
-          continue
-        }
-      }
-      const dateStr = getLocalDateStr(record.eventTime, effectiveTz)
-      if (!dateStr || !dateStr.startsWith(period)) continue
-      const day = dayFromDate(dateStr, period)
-      if (!day) continue
-      const key = attendanceKey(record.employeeId, day)
-      const list = grouped.get(key) ?? []
-      list.push(record)
-      grouped.set(key, list)
-    }
-
-    for (const [key, records] of grouped.entries()) {
-      const sorted = [...records].sort((a, b) => a.eventTime.localeCompare(b.eventTime))
-
-      // Find the latest explicit OUT record (searching backwards from most recent)
-      const explicitOut = [...sorted].reverse().find((r) => {
-        const ev = normalizeLocation(r.eventType)
-        return ev.includes('out') || ev.includes('pulang') || ev.includes('checkout')
-      })
-
-      // Find the corresponding IN record prior to or equal to explicitOut (or fallback to first punch)
-      const explicitIn = explicitOut
-        ? ([...sorted].reverse().find((r) => {
-            const ev = normalizeLocation(r.eventType)
-            const isOut = ev.includes('out') || ev.includes('pulang') || ev.includes('checkout')
-            return !isOut && r.eventTime <= explicitOut.eventTime
-          }) ?? sorted[0])
-        : sorted[0]
-
-      const last = sorted[sorted.length - 1]
-      const firstTime = new Date(explicitIn.eventTime).getTime()
-      const lastTime = new Date(last.eventTime).getTime()
-      const isValidOut =
-        explicitOut ??
-        (last !== explicitIn && lastTime - firstTime >= 30 * 60 * 1000 ? last : undefined)
-
-      map.set(key, {
-        clockIn: explicitIn,
-        clockOut: isValidOut,
-        records: sorted,
-      })
-    }
-
-    return map
-  }, [attendanceRecords, employees, period, site, effectiveSiteClockConfig.timezone, siteId])
-
   // Face-attendance sync already resolves overnight punches into the workday
   // cell (for example 19:00 -> 06:00). Keep that row authoritative over the
   // raw-punch heuristic below, which only knows each punch's calendar date.
@@ -2622,6 +2559,78 @@ export function SchedulingTimesheetWorkspace({
       visibleEmployees,
     ]
   )
+
+  const attendanceByCell = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        clockIn?: AttendanceRealRecord
+        clockOut?: AttendanceRealRecord
+        records: AttendanceRealRecord[]
+      }
+    >()
+
+    const effectiveTz = effectiveSiteClockConfig.timezone
+
+    // Group records by cell key first
+    const grouped = new Map<string, AttendanceRealRecord[]>()
+    for (const record of attendanceRecords) {
+      if (siteId !== 'all' && record.siteId != null && String(record.siteId) !== siteId) {
+        // Match if employee belongs to this site
+        const emp = employees.find((e) => e.id === record.employeeId)
+        if (emp && String(emp.siteId) !== siteId) {
+          continue
+        }
+      }
+      const dateStr = getLocalDateStr(record.eventTime, effectiveTz)
+      if (!dateStr || !dateStr.startsWith(period)) continue
+      const day = dayFromDate(dateStr, period)
+      if (!day) continue
+      const key = attendanceKey(record.employeeId, day)
+      const list = grouped.get(key) ?? []
+      list.push(record)
+      grouped.set(key, list)
+    }
+
+    for (const [key, records] of grouped.entries()) {
+      const recordSite = sites.find((item) => item.id === records[0]?.siteId)
+      const clockConfig =
+        recordSite
+          ? resolveSiteAttendanceClockConfig(
+              recordSite,
+              schedulingConfigs.find((config) => config.siteId === recordSite.id)
+            )
+          : effectiveSiteClockConfig
+      const recordDay = dayFromDate(getLocalDateStr(records[0].eventTime, clockConfig.timezone), period)
+      const scheduleCode =
+        recordDay == null
+          ? undefined
+          : rows.find((row) => row.employee.id === records[0]?.employeeId)?.schedule[recordDay - 1]
+      const selected = selectAttendancePunches(records, {
+        site: recordSite,
+        scheduledClockIn: resolveConfiguredShiftClockIn(scheduleCode, clockConfig),
+        timeZone: clockConfig.timezone,
+      })
+
+      map.set(key, {
+        clockIn: selected.checkIn ?? undefined,
+        clockOut: selected.checkOut ?? undefined,
+        records: [...records].sort((a, b) => a.eventTime.localeCompare(b.eventTime)),
+      })
+    }
+
+    return map
+  }, [
+    attendanceRecords,
+    employees,
+    period,
+    site,
+    sites,
+    schedulingConfigs,
+    rows,
+    effectiveSiteClockConfig,
+    siteId,
+  ])
 
   function renderRosterTable(
     tableRows: typeof rows,

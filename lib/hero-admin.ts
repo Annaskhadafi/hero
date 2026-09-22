@@ -6466,6 +6466,9 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
         customerName: sites.customerName,
         headEmployeeId: sites.headEmployeeId,
         timezone: sites.timezone,
+        geoLatitude: sites.geoLatitude,
+        geoLongitude: sites.geoLongitude,
+        geoRadiusMeters: sites.geoRadiusMeters,
       })
       .from(sites)
       .where(eq(sites.isActive, true))

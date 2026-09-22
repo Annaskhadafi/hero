@@ -173,7 +173,6 @@ export function FaceAttendanceV2Client({
   const isSendingRef = useRef(false)
   const clientRequestIdRef = useRef<string>('')
   const retryCountRef = useRef(0)
-  const gpsRef = useRef<GpsPosition | null>(null)
 
   const [flowState, setFlowState] = useState<FlowState>('idle')
   const [selectedEventType, setSelectedEventType] = useState<EventType>('auto')
@@ -313,11 +312,11 @@ export function FaceAttendanceV2Client({
     return () => clearInterval(timer)
   }, [])
 
-  // GPS prefetch on mount
+  // Keep the displayed location fresh while the attendance page stays open.
   useEffect(() => {
     if (!navigator.geolocation) return
     setGpsLoading(true)
-    navigator.geolocation.getCurrentPosition(
+    const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         const position = {
           latitude: pos.coords.latitude,
@@ -325,7 +324,6 @@ export function FaceAttendanceV2Client({
           accuracy: Math.round(pos.coords.accuracy),
           locationName: `${siteName}`,
         }
-        gpsRef.current = position
         setGps(position)
         setGpsLoading(false)
         setGpsError('')
@@ -335,16 +333,14 @@ export function FaceAttendanceV2Client({
         setGpsLoading(false)
         setGpsError('GPS belum aktif. Aktifkan GPS atau isi keterangan lokasi untuk melanjutkan.')
       },
-      { enableHighAccuracy: true, timeout: GPS_TIMEOUT, maximumAge: 10000 }
+      { enableHighAccuracy: true, timeout: GPS_TIMEOUT, maximumAge: 0 }
     )
+
+    return () => navigator.geolocation.clearWatch(watchId)
   }, [siteName])
 
   const getCurrentGps = useCallback((): Promise<GpsPosition> => {
     return new Promise((resolve, reject) => {
-      if (gps) {
-        setLocationPromptEvent(null)
-        return resolve(gps)
-      }
       if (!navigator.geolocation) return reject(new Error('GPS tidak didukung'))
       setGpsLoading(true)
       navigator.geolocation.getCurrentPosition(
@@ -366,10 +362,10 @@ export function FaceAttendanceV2Client({
           setGpsError('GPS belum aktif. Aktifkan GPS atau isi keterangan lokasi untuk melanjutkan.')
           reject(new Error('GPS tidak tersedia'))
         },
-        { enableHighAccuracy: true, timeout: GPS_TIMEOUT, maximumAge: 10000 }
+        { enableHighAccuracy: true, timeout: GPS_TIMEOUT, maximumAge: 0 }
       )
     })
-  }, [gps, siteName])
+  }, [siteName])
 
   const stopCamera = useCallback(() => {
     if (scanLoopRef.current) {
@@ -538,7 +534,14 @@ export function FaceAttendanceV2Client({
     setFlowState('verifying')
 
     try {
-      const position = gpsRef.current || gps || { latitude: 0, longitude: 0, accuracy: 0 }
+      let position: GpsPosition
+      try {
+        // Do not submit the last cached home position after the device moved.
+        position = await getCurrentGps()
+      } catch (error) {
+        if (!locationExplanation.trim()) throw error
+        position = { latitude: 0, longitude: 0, accuracy: 0 }
+      }
 
       const response = await fetch('/api/mobile/v2/face-recognition', {
         method: 'POST',

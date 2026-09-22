@@ -3,6 +3,8 @@ import { attendanceRecords, sites } from '@/db/schema/hero'
 import { timesheetAttendanceRealOverrides, timesheetSchedulingConfigs } from '@/db/schema/timesheet'
 import { and, eq, gte, lt, ne } from 'drizzle-orm'
 import { ensureSchedulingTimesheetTables } from '@/lib/timesheet/scheduling-infrastructure'
+import { getSiteAttendanceClockConfig } from '@/lib/timesheet/site-attendance-punctuality'
+import { selectAttendancePunches } from '@/lib/timesheet/attendance-selection'
 import {
   derivePeriodAndDayInTimezone,
   formatTimeHHMMInTimezone,
@@ -133,7 +135,12 @@ export async function syncFaceAttendanceToTimesheet(
   await ensureSchedulingTimesheetTables()
 
   const [siteRow] = await db
-    .select({ id: sites.id })
+    .select({
+      id: sites.id,
+      geoLatitude: sites.geoLatitude,
+      geoLongitude: sites.geoLongitude,
+      geoRadiusMeters: sites.geoRadiusMeters,
+    })
     .from(sites)
     .where(eq(sites.id, siteId))
     .limit(1)
@@ -145,6 +152,7 @@ export async function syncFaceAttendanceToTimesheet(
 
   const siteTimezone = explicitTimezone || (await getSiteTimezone(siteId))
   const tzInfo = normalizeIndonesiaTimezone(siteTimezone)
+  const siteClockConfig = await getSiteAttendanceClockConfig(siteId)
 
   console.log(
     `[face-sync] Syncing attendance: employee=${employeeId}, site=${siteId}, date=${eventDate.toISOString()}, tz=${tzInfo.code}`
@@ -189,10 +197,15 @@ export async function syncFaceAttendanceToTimesheet(
 
   // Find yesterday's night check-in punch (MUST be a check-in event, local hour >= 15 or < 05)
   const prevCheckInPunches = prevSorted.filter((r) => !isCheckOutEvent(r.eventType))
-  const prevNightPunch = prevCheckInPunches.find((r) => {
+  const prevNightCandidates = prevCheckInPunches.filter((r) => {
     const h = getTimezoneDateParts(r.eventTime, tzInfo.code).hours
     return h >= 15 || h < 5
   })
+  const prevNightPunch = selectAttendancePunches(prevNightCandidates, {
+    site: siteRow,
+    scheduledClockIn: siteClockConfig.nightShiftClockIn,
+    timeZone: tzInfo.iana,
+  }).checkIn
 
   // Only proceed if yesterday did NOT have an earlier day-shift check-in (h between 5 and 15)
   const prevHasDayShiftIn = prevCheckInPunches.some((r) => {
@@ -216,7 +229,10 @@ export async function syncFaceAttendanceToTimesheet(
       )
 
       if (morningCheckoutPunches.length > 0) {
-        const morningCheckout = morningCheckoutPunches[morningCheckoutPunches.length - 1]
+        const morningCheckout = selectAttendancePunches(morningCheckoutPunches, {
+          site: siteRow,
+          timeZone: tzInfo.iana,
+        }).checkOut!
 
         const prevClockIn = formatTimeHHMMInTimezone(prevNightPunch.eventTime, tzInfo.code)
         const prevClockOut = formatTimeHHMMInTimezone(morningCheckout.eventTime, tzInfo.code)
@@ -312,11 +328,26 @@ export async function syncFaceAttendanceToTimesheet(
   let syncNote = todayOwnPunches[0].locationNote || ''
 
   if (checkInPunches.length > 0) {
-    const firstCheckIn = checkInPunches[0]
-    const firstCheckInHours = getTimezoneDateParts(firstCheckIn.eventTime, tzInfo.code).hours
-    clockIn = formatTimeHHMMInTimezone(firstCheckIn.eventTime, tzInfo.code)
-    isNightShift = firstCheckInHours >= 15 || firstCheckInHours < 5
-    syncNote = firstCheckIn.locationNote || syncNote
+    const dayCandidates = checkInPunches.filter((record) => {
+      const hour = getTimezoneDateParts(record.eventTime, tzInfo.code).hours
+      return hour >= 5 && hour < 15
+    })
+    const nightCandidates = checkInPunches.filter((record) => !dayCandidates.includes(record))
+    const shiftCandidates = dayCandidates.length > 0 ? dayCandidates : nightCandidates
+    const selectedCheckIn = selectAttendancePunches(shiftCandidates, {
+      site: siteRow,
+      scheduledClockIn:
+        dayCandidates.length > 0
+          ? siteClockConfig.dayShiftClockIn
+          : siteClockConfig.nightShiftClockIn,
+      timeZone: tzInfo.iana,
+    }).checkIn
+    if (selectedCheckIn) {
+      const selectedCheckInHours = getTimezoneDateParts(selectedCheckIn.eventTime, tzInfo.code).hours
+      clockIn = formatTimeHHMMInTimezone(selectedCheckIn.eventTime, tzInfo.code)
+      isNightShift = selectedCheckInHours >= 15 || selectedCheckInHours < 5
+      syncNote = selectedCheckIn.locationNote || syncNote
+    }
   }
 
   let clockOut = ''
@@ -336,12 +367,13 @@ export async function syncFaceAttendanceToTimesheet(
         )
       )
 
-    const explicitNextOut = overnightRecords
-      .filter((r) => isCheckOutEvent(r.eventType))
-      .sort((a, b) => a.eventTime.getTime() - b.eventTime.getTime())
+    const explicitNextOut = overnightRecords.filter((r) => isCheckOutEvent(r.eventType))
 
     if (explicitNextOut.length > 0) {
-      const lastOvernight = explicitNextOut[explicitNextOut.length - 1]
+      const lastOvernight = selectAttendancePunches(explicitNextOut, {
+        site: siteRow,
+        timeZone: tzInfo.iana,
+      }).checkOut!
       clockOut = formatTimeHHMMInTimezone(lastOvernight.eventTime, tzInfo.code)
 
       // Ensure Day T+1 override does not retain orphan attendance if it has no own shift punches (>= 10:00)
@@ -381,19 +413,21 @@ export async function syncFaceAttendanceToTimesheet(
     } else {
       // Only an explicit checkout closes the shift on same evening
       if (checkOutPunches.length > 0) {
-        clockOut = formatTimeHHMMInTimezone(
-          checkOutPunches[checkOutPunches.length - 1].eventTime,
-          tzInfo.code
-        )
+        const selectedCheckOut = selectAttendancePunches(checkOutPunches, {
+          site: siteRow,
+          timeZone: tzInfo.iana,
+        }).checkOut
+        if (selectedCheckOut) clockOut = formatTimeHHMMInTimezone(selectedCheckOut.eventTime, tzInfo.code)
       }
     }
   } else {
     // Day Shift (or missing check-in where only check-outs exist)
     if (checkOutPunches.length > 0) {
-      clockOut = formatTimeHHMMInTimezone(
-        checkOutPunches[checkOutPunches.length - 1].eventTime,
-        tzInfo.code
-      )
+      const selectedCheckOut = selectAttendancePunches(checkOutPunches, {
+        site: siteRow,
+        timeZone: tzInfo.iana,
+      }).checkOut
+      if (selectedCheckOut) clockOut = formatTimeHHMMInTimezone(selectedCheckOut.eventTime, tzInfo.code)
     }
   }
 
