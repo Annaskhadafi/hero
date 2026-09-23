@@ -231,7 +231,7 @@ export async function uploadProfilePhotoToS3(file: File) {
   };
 }
 
-export async function uploadAnyFileToS3(file: File, prefixOverride?: string) {
+export async function uploadAnyFileToS3(file: File, prefixOverride?: string, abortSignal?: AbortSignal) {
   const contentType = file.type || "application/octet-stream";
   const extension = getObjectExtension(contentType, file.name);
   const prefix = prefixOverride || serverEnv.s3UploadPrefix || "upload";
@@ -250,6 +250,7 @@ export async function uploadAnyFileToS3(file: File, prefixOverride?: string) {
         CacheControl: "public, max-age=31536000, immutable",
         ACL: "public-read",
       }),
+      { abortSignal },
     );
   } catch (aclError: any) {
     // If bucket owner enforced disables ACLs, retry without ACL
@@ -262,6 +263,7 @@ export async function uploadAnyFileToS3(file: File, prefixOverride?: string) {
           ContentType: contentType,
           CacheControl: "public, max-age=31536000, immutable",
         }),
+        { abortSignal },
       );
     } else {
       throw aclError;

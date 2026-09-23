@@ -13,7 +13,8 @@ import { randomUUID } from 'crypto'
 async function uploadPublicSignature(file: File): Promise<{ success: boolean; url?: string; error?: string }> {
   try {
     if (isS3UploadConfigured()) {
-      const result = await uploadAnyFileToS3(file)
+      // ponytail: bound this guest upload; tune the limit if storage latency warrants it.
+      const result = await uploadAnyFileToS3(file, undefined, AbortSignal.timeout(20_000))
       const readableUrl = await getS3ObjectReadUrl(result.url)
       return { success: true, url: readableUrl || result.url }
     }
@@ -31,7 +32,12 @@ async function uploadPublicSignature(file: File): Promise<{ success: boolean; ur
     return { success: true, url: publicUrl }
   } catch (err) {
     console.error('Error uploading public signature:', err)
-    return { success: false, error: 'Gagal mengupload tanda tangan' }
+    return {
+      success: false,
+      error: err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')
+        ? 'Upload tanda tangan terlalu lama. Silakan coba lagi.'
+        : 'Gagal mengupload tanda tangan',
+    }
   }
 }
 
