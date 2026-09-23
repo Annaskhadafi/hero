@@ -65,6 +65,13 @@ test("stage 5 wires HSE workflows to email notifications", () => {
   assert.match(ptwSource, /notifyWorkflowBellRecipients/);
 });
 
+test("public safety induction does not block the save response on email delivery", () => {
+  const inductionSource = read("app/actions/safety-induction.ts");
+
+  assert.match(inductionSource, /void sendHseSafetyEmail\(/);
+  assert.doesNotMatch(inductionSource, /await sendHseSafetyEmail\(/);
+});
+
 test("hse templates are included in seed and preset registries", () => {
   const seedSource = read("lib/hero-admin.ts");
   const presetSource = read("lib/email-template-presets.ts");

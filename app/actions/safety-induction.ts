@@ -77,7 +77,8 @@ export async function submitSafetyInduction(formData: FormData) {
       ],
     })
 
-    await sendHseSafetyEmail({
+    // ponytail: email delivery is best-effort so guest submission is not blocked by SMTP.
+    void sendHseSafetyEmail({
       templateCode: 'hse_safety_induction_submitted',
       templateName: 'HSE Safety Induction Submitted',
       variables: {
@@ -89,6 +90,8 @@ export async function submitSafetyInduction(formData: FormData) {
       fallbackSubject: `Safety induction baru: ${record.fullName}`,
       fallbackHtml: emailContent.html,
       fallbackText: emailContent.text,
+    }).catch((error) => {
+      console.warn(`[Safety Induction] Email notification failed for ${record.id}:`, error)
     })
 
     revalidatePath('/dashboard/safety-induction')

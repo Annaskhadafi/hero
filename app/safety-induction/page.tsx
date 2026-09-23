@@ -54,15 +54,20 @@ export default function SafetyInductionPage() {
     const formData = new FormData(e.currentTarget)
     formData.append('signature', signature)
 
-    const result = await submitSafetyInduction(formData)
-    
-    if (result.success) {
-      setIsSuccess(true)
-      toast.success('Data Safety Induction berhasil disubmit')
-    } else {
-      toast.error(result.error || 'Terjadi kesalahan')
+    try {
+      const result = await submitSafetyInduction(formData)
+
+      if (result.success) {
+        setIsSuccess(true)
+        toast.success('Data Safety Induction berhasil disubmit')
+      } else {
+        toast.error(result.error || 'Terjadi kesalahan')
+      }
+    } catch {
+      toast.error('Gagal menyimpan data. Silakan coba lagi.')
+    } finally {
+      setIsSubmitting(false)
     }
-    setIsSubmitting(false)
   }
 
   if (isSuccess) {
