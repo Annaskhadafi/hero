@@ -1,4 +1,4 @@
-import { Pool } from "pg"
+import { Pool } from 'pg'
 
 /**
  * Secondary connection to onechitranewdb — source of truth for customers.
@@ -12,18 +12,21 @@ declare global {
 function getOnechitaPool() {
   if (globalThis._onechitaPool) return globalThis._onechitaPool
 
+  const connectionString = process.env.ONECHITRA_DB_URL?.trim()
+  if (!connectionString) {
+    throw new Error('ONECHITRA_DB_URL is required to connect to One Chitra.')
+  }
+
   const pool = new Pool({
-    connectionString:
-      process.env.ONECHITRA_DB_URL ||
-      "postgresql://onechitranewdb:Wusthochq2018-@31.97.187.38:5475/onechitranewdb",
+    connectionString,
     ssl: false,
     max: 5,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 3000, // 3s fast timeout to prevent blocking page rendering
   })
 
-  pool.on("error", (err) => {
-    console.error("[onechitra-db] pool error:", err.message)
+  pool.on('error', (err) => {
+    console.error('[onechitra-db] pool error:', err.message)
   })
 
   globalThis._onechitaPool = pool

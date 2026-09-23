@@ -1,11 +1,12 @@
-import { Pool } from "pg";
-import { parseMonthYearToYearMonth } from "./cs-forecast-daily-report";
+import { Pool } from 'pg'
+import { parseMonthYearToYearMonth } from './cs-forecast-daily-report'
 
-const SAP_DB_URL =
-  process.env.SAP_DB_URL?.trim() ||
-  "postgresql://onechitranewdb:Wusthochq2018-@31.97.187.38:5475/onechitranewdb";
+const SAP_DB_URL = process.env.SAP_DB_URL?.trim() || process.env.ONECHITRA_DB_URL?.trim()
+if (!SAP_DB_URL) {
+  throw new Error('SAP_DB_URL or ONECHITRA_DB_URL is required to connect to the SAP database.')
+}
 
-let sapPool: Pool | null = null;
+let sapPool: Pool | null = null
 
 function getSapPool() {
   if (!sapPool) {
@@ -13,31 +14,32 @@ function getSapPool() {
       connectionString: SAP_DB_URL,
       connectionTimeoutMillis: 10000,
       max: 5,
-    });
+    })
   }
-  return sapPool;
+  return sapPool
 }
 
 export interface SapRevenueRow {
-  customerName: string;
-  salesman: string;
-  revenueInDocCurr: number;
-  revenueInLocCurr: number;
-  revType: string;
-  billingDate: string;
+  customerName: string
+  salesman: string
+  revenueInDocCurr: number
+  revenueInLocCurr: number
+  revType: string
+  billingDate: string
 }
 
 export async function fetchSapRevenue(monthYear: string): Promise<{
-  service: { idr: number; usd: number };
-  repair: { idr: number; usd: number };
-  retread: { idr: number; usd: number };
-  rows: SapRevenueRow[];
+  service: { idr: number; usd: number }
+  repair: { idr: number; usd: number }
+  retread: { idr: number; usd: number }
+  rows: SapRevenueRow[]
 }> {
   try {
-    const pool = getSapPool();
+    const pool = getSapPool()
 
     // monthYear format: "July 2026" → convert to date range
-    const result = await pool.query(`
+    const result = await pool.query(
+      `
       SELECT
         COALESCE(customer_name, '') AS "customerName",
         COALESCE(salesman, '') AS "salesman",
@@ -51,75 +53,78 @@ export async function fetchSapRevenue(monthYear: string): Promise<{
         AND TO_CHAR(billing_date, 'YYYY-MM') = $1
         AND LOWER(TRIM(rev_type)) IN ('repair', 'service', 'retread job')
       ORDER BY billing_date DESC
-    `, [monthYearToKey(monthYear)]);
+    `,
+      [monthYearToKey(monthYear)]
+    )
 
-    const rows = result.rows as SapRevenueRow[];
+    const rows = result.rows as SapRevenueRow[]
 
-    const service = { idr: 0, usd: 0 };
-    const repair = { idr: 0, usd: 0 };
-    const retread = { idr: 0, usd: 0 };
+    const service = { idr: 0, usd: 0 }
+    const repair = { idr: 0, usd: 0 }
+    const retread = { idr: 0, usd: 0 }
 
     rows.forEach((r) => {
-      const idr = Number(r.revenueInDocCurr) || 0;
-      const usd = Number(r.revenueInLocCurr) || 0;
-      const revType = r.revType.toLowerCase().trim();
+      const idr = Number(r.revenueInDocCurr) || 0
+      const usd = Number(r.revenueInLocCurr) || 0
+      const revType = r.revType.toLowerCase().trim()
 
-      if (revType.includes("repair")) {
-        repair.idr += idr;
-        repair.usd += usd;
-      } else if (revType.includes("service")) {
-        service.idr += idr;
-        service.usd += usd;
-      } else if (revType.includes("retread")) {
-        retread.idr += idr;
-        retread.usd += usd;
+      if (revType.includes('repair')) {
+        repair.idr += idr
+        repair.usd += usd
+      } else if (revType.includes('service')) {
+        service.idr += idr
+        service.usd += usd
+      } else if (revType.includes('retread')) {
+        retread.idr += idr
+        retread.usd += usd
       }
-    });
+    })
 
-    return { service, repair, retread, rows };
+    return { service, repair, retread, rows }
   } catch (error) {
-    console.error("[SAP DB] Failed to fetch revenue:", error);
+    console.error('[SAP DB] Failed to fetch revenue:', error)
     return {
       service: { idr: 0, usd: 0 },
       repair: { idr: 0, usd: 0 },
       retread: { idr: 0, usd: 0 },
       rows: [],
-    };
+    }
   }
 }
 
 function monthYearToKey(monthYear: string): string {
-  if (!monthYear) return monthYear;
-  const parsed = parseMonthYearToYearMonth(monthYear);
+  if (!monthYear) return monthYear
+  const parsed = parseMonthYearToYearMonth(monthYear)
   if (parsed) {
-    return `${parsed.year}-${String(parsed.month).padStart(2, "0")}`;
+    return `${parsed.year}-${String(parsed.month).padStart(2, '0')}`
   }
-  return monthYear;
+  return monthYear
 }
 
 export interface SapInvoiceRow {
-  billingDate: string;
-  billingNo: string;
-  customer: string;
-  customerName: string;
-  materialNo: string;
-  materialDesc: string;
-  qty: number;
-  uom: string;
-  revenueIdr: number;
-  revenueUsd: number;
-  revType: string;
-  salesman: string;
-  poNo: string;
-  c: string;
-  cancelled: string;
-  inco2: string;
+  billingDate: string
+  billingNo: string
+  customer: string
+  customerName: string
+  materialNo: string
+  materialDesc: string
+  qty: number
+  uom: string
+  revenueIdr: number
+  revenueUsd: number
+  revType: string
+  salesman: string
+  poNo: string
+  c: string
+  cancelled: string
+  inco2: string
 }
 
 export async function fetchSapInvoices(monthYear: string): Promise<SapInvoiceRow[]> {
   try {
-    const pool = getSapPool();
-    const result = await pool.query(`
+    const pool = getSapPool()
+    const result = await pool.query(
+      `
       SELECT
         COALESCE(billing_date::text, '') AS "billingDate",
         COALESCE(billing_no, '') AS "billingNo",
@@ -142,17 +147,19 @@ export async function fetchSapInvoices(monthYear: string): Promise<SapInvoiceRow
         AND TO_CHAR(billing_date, 'YYYY-MM') = $1
         AND LOWER(TRIM(rev_type)) IN ('repair', 'service', 'retread job')
       ORDER BY billing_date DESC, billing_no
-    `, [monthYearToKey(monthYear)]);
+    `,
+      [monthYearToKey(monthYear)]
+    )
 
-    return result.rows.map(r => {
-      let bNo = r.billingNo || '';
+    return result.rows.map((r) => {
+      let bNo = r.billingNo || ''
       if (bNo.endsWith('.0')) {
-        bNo = bNo.slice(0, -2);
+        bNo = bNo.slice(0, -2)
       }
-      return { ...r, billingNo: bNo };
-    }) as SapInvoiceRow[];
+      return { ...r, billingNo: bNo }
+    }) as SapInvoiceRow[]
   } catch (error) {
-    console.error("[SAP DB] Failed to fetch invoices:", error);
-    return [];
+    console.error('[SAP DB] Failed to fetch invoices:', error)
+    return []
   }
 }

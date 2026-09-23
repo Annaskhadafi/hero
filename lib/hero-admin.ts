@@ -427,11 +427,22 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'Genius AI',
+    title: 'Dokumentasi & Blueprint',
+    url: '/dashboard/documentation',
+    iconName: 'book',
+    resource: 'system_documentation',
+    sortOrder: 0,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Genius AI',
     title: 'Peta Fitur & Blueprint',
     url: '/dashboard/feature-map',
     iconName: 'map-2',
     resource: 'system_blueprint_map',
-    sortOrder: 0,
+    sortOrder: 1,
     isVisible: true,
     openInNewTab: false,
   },
@@ -502,6 +513,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     iconName: 'database',
     resource: 'central-service-assets',
     sortOrder: 2,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Central Service',
+    groupLabel: 'Assets',
+    title: 'SAP Asset Inventory',
+    url: '/dashboard/central-service/sap-assets',
+    iconName: 'database',
+    resource: 'sap_asset_inventory',
+    sortOrder: 3,
     isVisible: true,
     openInNewTab: false,
   },
@@ -4362,6 +4385,16 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
       canDelete: true,
       canSelectAll: true,
       dataScope: 'global',
+    }
+  }
+
+  if (resource === 'sap_asset_inventory') {
+    return {
+      canView: false,
+      canEdit: false,
+      canDelete: false,
+      canSelectAll: false,
+      dataScope: 'own',
     }
   }
 
