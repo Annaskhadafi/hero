@@ -14,13 +14,8 @@ import { toast } from 'sonner'
 import { createOnlineAssignmentQuestionAction, updateOnlineAssignmentQuestionAction, deleteOnlineAssignmentQuestionAction } from '@/app/dashboard/chitralearning-lms/actions'
 import { useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
-<<<<<<< HEAD
-import { resolveClientUploadUrl } from '@/lib/client-url'
-import { replaceS3UrlsInHtml } from '@/lib/resolve-upload-url'
-import { uploadLmsImage } from '@/lib/lms-image-upload'
-=======
 import { resolveUploadUrl, replaceS3UrlsInHtml } from '@/lib/resolve-upload-url'
->>>>>>> a5e8579b (fix(lms): resolve quiz image upload, URL resolution, and uncropped aspect rendering)
+import { uploadLmsImage } from '@/lib/lms-image-upload'
 
 const IMAGE_MAX_SIZE = 5 * 1024 * 1024 // 5MB
 const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'avif', 'jfif']
@@ -88,7 +83,7 @@ export function OnlineAssignmentQuizBuilder({ campaignId, initialQuestions }: { 
         if (!res.success || (!res.readableUrl && !res.url)) {
           throw new Error(res.error || 'Upload gagal')
         }
-        setImageUrl(res.readableUrl || res.url || '')
+        setImageUrl(res.url)
       }
       toast.success('Gambar terupload')
     } catch (err: any) {
@@ -143,12 +138,12 @@ export function OnlineAssignmentQuizBuilder({ campaignId, initialQuestions }: { 
   const openEditDialog = (q: any) => {
     setEditingQuestion(q)
     setQuestionType(q.questionType || 'single_choice')
-    setQuestionText(replaceS3UrlsInHtml(q.questionText || ''))
-    setQuestionImageUrl(resolveClientUploadUrl(q.questionImageUrl || ''))
-    setOptionA(q.optionA); setOptionAImageUrl(resolveClientUploadUrl(q.optionAImageUrl || ''))
-    setOptionB(q.optionB); setOptionBImageUrl(resolveClientUploadUrl(q.optionBImageUrl || ''))
-    setOptionC(q.optionC); setOptionCImageUrl(resolveClientUploadUrl(q.optionCImageUrl || ''))
-    setOptionD(q.optionD); setOptionDImageUrl(resolveClientUploadUrl(q.optionDImageUrl || ''))
+    setQuestionText(q.questionText || '')
+    setQuestionImageUrl(q.questionImageUrl || '')
+    setOptionA(q.optionA || ''); setOptionAImageUrl(q.optionAImageUrl || '')
+    setOptionB(q.optionB || ''); setOptionBImageUrl(q.optionBImageUrl || '')
+    setOptionC(q.optionC || ''); setOptionCImageUrl(q.optionCImageUrl || '')
+    setOptionD(q.optionD || ''); setOptionDImageUrl(q.optionDImageUrl || '')
     setCorrectOption(q.correctOption)
     
     if (q.questionType === 'image_matching') {
@@ -282,11 +277,7 @@ export function OnlineAssignmentQuizBuilder({ campaignId, initialQuestions }: { 
                     {q.questionImageUrl && (
                       <div className="my-2 max-w-lg rounded-lg overflow-hidden border border-slate-200 bg-slate-50 p-1">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-<<<<<<< HEAD
-                        <img src={resolveClientUploadUrl(q.questionImageUrl)} alt="Question" className="object-cover w-full h-full" />
-=======
                         <img src={resolveUploadUrl(q.questionImageUrl)} alt="Question" className="max-h-72 w-auto max-w-full rounded object-contain" />
->>>>>>> a5e8579b (fix(lms): resolve quiz image upload, URL resolution, and uncropped aspect rendering)
                       </div>
                     )}
                     
@@ -330,15 +321,10 @@ export function OnlineAssignmentQuizBuilder({ campaignId, initialQuestions }: { 
                             <div key={key} className={`space-y-2 p-2 rounded-md ${isCorrect ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' : 'bg-slate-50 border border-slate-100'}`}>
                               <div><span className="font-bold mr-2">{key}.</span>{text}</div>
                               {imageUrl ? (
-<<<<<<< HEAD
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={resolveClientUploadUrl(String(imageUrl))} alt={`Opsi ${key}`} className="h-24 w-full rounded-md object-cover" />
-=======
                                 <div className="mt-2">
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
                                   <img src={resolveUploadUrl(String(imageUrl))} alt={`Opsi ${key}`} className="max-h-40 w-auto max-w-full rounded-md border border-slate-200 object-contain bg-white p-1" />
                                 </div>
->>>>>>> a5e8579b (fix(lms): resolve quiz image upload, URL resolution, and uncropped aspect rendering)
                               ) : null}
                             </div>
                           )
@@ -587,13 +573,8 @@ function ImageUrlField({
       {value ? (
         <div className="relative w-fit mt-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-<<<<<<< HEAD
-          <img src={resolveClientUploadUrl(value)} alt={label} className="h-28 max-w-full rounded-md border border-slate-200 object-cover" />
-          <Button type="button" variant="secondary" size="icon" className="absolute -right-2 -top-2 h-7 w-7" onClick={() => onChange('')}>
-=======
           <img src={resolveUploadUrl(value)} alt={label} className="max-h-48 max-w-full rounded-md border border-slate-200 object-contain bg-slate-50 p-1" />
           <Button type="button" variant="secondary" size="icon" className="absolute -right-2 -top-2 h-7 w-7 rounded-full shadow-sm bg-white hover:bg-slate-100" onClick={() => onChange('')}>
->>>>>>> a5e8579b (fix(lms): resolve quiz image upload, URL resolution, and uncropped aspect rendering)
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -625,13 +606,8 @@ function OptionField({
       {imageUrl ? (
         <div className="relative mt-2 w-fit">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-<<<<<<< HEAD
-          <img src={resolveClientUploadUrl(imageUrl)} alt={label} className="h-28 w-full rounded-md border border-slate-200 object-cover" />
-          <Button type="button" variant="secondary" size="icon" className="absolute right-2 top-2 h-7 w-7" onClick={() => onImageChange('')}>
-=======
           <img src={resolveUploadUrl(imageUrl)} alt={label} className="max-h-40 max-w-full rounded-md border border-slate-200 object-contain bg-slate-50 p-1" />
           <Button type="button" variant="secondary" size="icon" className="absolute right-2 top-2 h-7 w-7 rounded-full shadow-sm bg-white hover:bg-slate-100" onClick={() => onImageChange('')}>
->>>>>>> a5e8579b (fix(lms): resolve quiz image upload, URL resolution, and uncropped aspect rendering)
             <X className="h-4 w-4" />
           </Button>
         </div>

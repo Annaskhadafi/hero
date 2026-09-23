@@ -40,14 +40,12 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Rich
       try {
         const directUrl = await uploadLmsImage(file).catch(() => null);
         const res = directUrl ? { success: true as const, url: directUrl } : await uploadFile(formData);
-        const targetUrl = res.success ? (("readableUrl" in res && res.readableUrl) || res.url) : null;
-        if (res.success && targetUrl) {
+        if (res.success && res.url) {
           const quill = quillRef.current?.getEditor();
           if (quill) {
-            const range = quill.getSelection(true);
-            const index = range ? range.index : quill.getLength();
-            quill.insertEmbed(index, "image", targetUrl);
-            quill.setSelection(index + 1);
+            const range = quill.getSelection(true) || { index: quill.getLength() };
+            quill.insertEmbed(range.index, "image", res.url);
+            quill.setSelection(range.index + 1);
           }
           toast.success("Gambar berhasil disisipkan");
         } else {
