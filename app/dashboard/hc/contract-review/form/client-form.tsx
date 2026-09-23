@@ -2,10 +2,10 @@
 
 import { useState, useTransition, useEffect, useMemo, useRef } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { Save, Printer, ArrowLeft, Plus, Trash2 } from "lucide-react"
+import { Save, Printer, ArrowLeft, Plus, Trash2, Send } from "lucide-react"
 import SignatureCanvas from "react-signature-canvas"
 
-import { saveContractReview } from "@/app/actions/contract-review"
+import { resendContractReviewApprovalEmail, saveContractReview } from "@/app/actions/contract-review"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -34,6 +34,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
   const employeeSnParam = searchParams.get("employeeSn")
   const employeeIdParam = searchParams.get("employeeId")
   const isPrintMode = mode === "print"
+  const isEmbeddedPrintPreview = isPrintMode && searchParams.get("embedded") === "1"
   
   const { setOpen } = useSidebar()
   const hasAutoClosed = useRef(false)
@@ -47,6 +48,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
   }, [setOpen])
 
   const [isPending, startTransition] = useTransition()
+  const [isResending, startResend] = useTransition()
   const leaderSigRef = useRef<SignatureCanvas | null>(null)
   const [previewLeaderSig, setPreviewLeaderSig] = useState<string>(initialData?.leaderSignatureDataUrl || '')
 
@@ -455,10 +457,24 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     })
   }
 
+  const handleResendApprovalEmail = () => {
+    if (!initialData?.id) return
+
+    startResend(async () => {
+      const result = await resendContractReviewApprovalEmail(initialData.id)
+      if (result.success) {
+        alert(result.message)
+      } else {
+        alert(`Gagal mengirim email: ${result.error}`)
+      }
+    })
+  }
+
   const handlePrint = () => {
     // Get both pages' HTML
     const page1Html = document.querySelector('#pdf-page-1')?.innerHTML || ''
     const page2Html = document.querySelector('#pdf-page-2')?.innerHTML || ''
+    const page3Html = document.querySelector('#pdf-page-3')?.innerHTML || ''
     const letterheadUrl = new URL('/ChitraParatama_Stationery_Letterhead_jkt.jpg', window.location.origin).toString()
     const printWindow = window.open('', '_blank', 'width=900,height=1200')
 
@@ -530,6 +546,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
             .gap-2 { gap: 0.5rem; }
             .gap-8 { gap: 2rem; }
             .break-inside-avoid { break-inside: avoid; }
+            tr, table, .break-inside-avoid { break-inside: avoid; page-break-inside: avoid; }
             .break-before-auto { break-before: auto; }
             .text-gray-500 { color: #6b7280; }
             input[type="checkbox"] { margin-right: 4px; }
@@ -540,6 +557,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
           <main>
             <div class="page">${page1Html}</div>
             <div class="page">${page2Html}</div>
+            <div class="page">${page3Html}</div>
           </main>
           <script>
             const closeAfterPrint = () => setTimeout(() => window.close(), 250);
@@ -558,7 +576,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
   }
 
   const pdfPreviewPage1 = (
-    <div className="pdf-wrapper-content relative z-10 outline-none text-[9pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '40mm', paddingBottom: '35mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
+    <div className="pdf-wrapper-content relative z-10 outline-none text-[9pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '40mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
       <h1 className="text-center font-bold text-[11pt] mb-3">EMPLOYEE PROBATION/CONTRACT REVIEW</h1>
 
       <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1">
@@ -632,9 +650,13 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
         </tbody>
       </table>
 
-      <div className="font-bold ml-4 mb-1 mt-1">B. Related Competency ( Knowledge & Behavior)</div>
-      
-      <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1">
+    </div>
+  )
+
+  const pdfPreviewPage2 = (
+    <div className="pdf-wrapper-content relative z-10 outline-none text-[9pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '40mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
+      <div className="font-bold ml-4 mb-1">B. Related Competency ( Knowledge & Behavior)</div>
+      <table className="w-full border-collapse border border-black mb-2 break-inside-avoid [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1">
         <thead>
           <tr className="bg-slate-50 text-center">
             <th className="w-[45%]">Activities</th>
@@ -643,43 +665,22 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
           </tr>
         </thead>
         <tbody>
-          <tr>
-            <td className="font-bold">Discipline</td>
-            <td className="text-center capitalize">{form.compDisciplineAch}</td>
-            <td>{form.compDisciplineRemark}</td>
-          </tr>
-          <tr>
-            <td className="font-bold">Professional Skill and Knowledge</td>
-            <td className="text-center capitalize">{form.compSkillAch}</td>
-            <td>{form.compSkillRemark}</td>
-          </tr>
-          <tr>
-            <td className="font-bold">Achieving Result</td>
-            <td className="text-center capitalize">{form.compResultAch}</td>
-            <td>{form.compResultRemark}</td>
-          </tr>
-          <tr>
-            <td className="font-bold">Concern for Order, Quality and Accuracy</td>
-            <td className="text-center capitalize">{form.compQualityAch}</td>
-            <td>{form.compQualityRemark}</td>
-          </tr>
-          <tr>
-            <td className="font-bold">Customer Orientation ( internal / external )</td>
-            <td className="text-center capitalize">{form.compCustomerAch}</td>
-            <td>{form.compCustomerRemark}</td>
-          </tr>
-          <tr>
-            <td className="font-bold">Teamwork</td>
-            <td className="text-center capitalize">{form.compTeamworkAch}</td>
-            <td>{form.compTeamworkRemark}</td>
-          </tr>
+          {[
+            ['Discipline', form.compDisciplineAch, form.compDisciplineRemark],
+            ['Professional Skill and Knowledge', form.compSkillAch, form.compSkillRemark],
+            ['Achieving Result', form.compResultAch, form.compResultRemark],
+            ['Concern for Order, Quality and Accuracy', form.compQualityAch, form.compQualityRemark],
+            ['Customer Orientation ( internal / external )', form.compCustomerAch, form.compCustomerRemark],
+            ['Teamwork', form.compTeamworkAch, form.compTeamworkRemark],
+          ].map(([label, achievement, remark]) => (
+            <tr key={label}>
+              <td className="font-bold">{label}</td>
+              <td className="text-center capitalize">{achievement}</td>
+              <td>{remark}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
-    </div>
-  )
-
-  const pdfPreviewPage2 = (
-    <div className="pdf-wrapper-content relative z-10 outline-none text-[9pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '40mm', paddingBottom: '35mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
       <table className="w-full border-collapse border border-black mb-4 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 break-inside-avoid">
         <thead>
           <tr className="bg-slate-50 text-left">
@@ -737,6 +738,11 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
         </label>
       </div>
 
+    </div>
+  )
+
+  const pdfPreviewPage3 = (
+    <div className="pdf-wrapper-content relative z-10 outline-none text-[9pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '40mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
       <div className="font-bold mb-4 break-before-auto break-inside-avoid">Signatories</div>
       
       <div className="grid grid-cols-2 gap-x-8 gap-y-10 mb-8 break-inside-avoid">
@@ -834,6 +840,22 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     </div>
   )
 
+  if (isEmbeddedPrintPreview) {
+    return (
+      <div className="fixed inset-0 z-[9999] flex flex-col gap-8 overflow-auto bg-slate-100 p-4">
+        {[pdfPreviewPage1, pdfPreviewPage2, pdfPreviewPage3].map((page, index) => (
+          <div
+            key={index}
+            className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
+          >
+            <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
+            {page}
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   return (
     <AdminPageShell 
       eyebrow="HC • Form" 
@@ -851,6 +873,11 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
             <Button onClick={handlePrint} variant="secondary" className={cn("min-h-10", isMobileRoute && "min-h-9 px-3 text-xs")}>
               <Printer className="mr-2 size-4" /> Print / Save PDF
             </Button>
+            {initialData?.id && (
+              <Button onClick={handleResendApprovalEmail} disabled={isResending} variant="outline" className={cn("min-h-10", isMobileRoute && "min-h-9 px-3 text-xs")}>
+                <Send className="mr-2 size-4" /> {isResending ? "Mengirim..." : "Kirim Email Approval"}
+              </Button>
+            )}
             <Button onClick={handleSave} disabled={isPending} className={cn("ml-auto min-h-10", isMobileRoute && "min-h-9 px-3 text-xs max-sm:flex-1")}>
               <Save className="mr-2 size-4" /> {isPending ? "Menyimpan..." : "Simpan Form"}
             </Button>
@@ -1226,7 +1253,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
 
       {/* KANAN: PDF Preview */}
       {isPrintMode ? (
-        <div className="flex flex-col gap-8 overflow-auto rounded-[1.1rem] bg-slate-100 p-4 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)]">
+        <div className="contract-review-print flex flex-col gap-8 overflow-auto rounded-[1.1rem] bg-slate-100 p-4 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)]">
           <div
             id="pdf-page-1"
             className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
@@ -1240,6 +1267,13 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
           >
             <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
             {pdfPreviewPage2}
+          </div>
+          <div
+            id="pdf-page-3"
+            className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
+          >
+            <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
+            {pdfPreviewPage3}
           </div>
         </div>
       ) : (
@@ -1263,6 +1297,13 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
             >
               <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
               {pdfPreviewPage2}
+            </div>
+            <div
+              id="pdf-page-3"
+              className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
+            >
+              <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
+              {pdfPreviewPage3}
             </div>
           </TabsContent>
           <TabsContent value="productivity" className="m-0">

@@ -23,6 +23,7 @@ import {
 import {
   deleteContractReview,
   generateTestContractReview,
+  resendContractReviewApprovalEmail,
   saveContractReviewSettings,
   sendDueContractReviewReminders,
   sendSingleContractReminder,
@@ -85,11 +86,13 @@ export function ContractReviewClientPage({
   const [activeTab, setActiveTab] = useState<string>("reviews")
   const [rows, setRows] = useState(reviews)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [previewReviewId, setPreviewReviewId] = useState<number | null>(null)
   const [settingsForm, setSettingsForm] = useState(settings)
   const [testLinks, setTestLinks] = useState<Array<{ step: number; role: string; name: string; url: string }> | null>(null)
   const [isTestRunning, setIsTestRunning] = useState(false)
   const [isReminderRunning, setIsReminderRunning] = useState(false)
   const [sendingReminderId, setSendingReminderId] = useState<number | null>(null)
+  const [resendingReviewId, setResendingReviewId] = useState<number | null>(null)
 
   // Multi-select state
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<number[]>([])
@@ -101,6 +104,18 @@ export function ContractReviewClientPage({
   const [reviewStatusFilter, setReviewStatusFilter] = useState<string>("all")
 
   const access = { canView: true, canEdit: true, canDelete: true }
+
+  const approvalRoleLabel = (role: string | null) => {
+    const labels: Record<string, string> = {
+      pjo_or_te_initial: 'PJO / TE',
+      section_head_initial: 'Section Head',
+      employee: 'Karyawan',
+      section_head_confirmation: 'Section Head Confirmation',
+      central_service_manager: 'Department Head',
+      hr: 'HR',
+    }
+    return role ? labels[role] || role.replaceAll('_', ' ') : ''
+  }
 
   const employeeOptions = employees.map((emp: any) => ({
     value: String(emp.id),
@@ -188,6 +203,20 @@ export function ContractReviewClientPage({
       router.refresh()
     } else {
       toast.error(res.error || `Gagal mengirim reminder untuk ${empName}`)
+    }
+  }
+
+  const handleResendApprovalEmail = async (reviewId: number) => {
+    if (!confirm('Kirim ulang email approval sekarang?')) return
+
+    setResendingReviewId(reviewId)
+    const result = await resendContractReviewApprovalEmail(reviewId)
+    setResendingReviewId(null)
+
+    if (result.success) {
+      toast.success('Berhasil dikirim', { description: result.message })
+    } else {
+      toast.error(result.error || 'Gagal mengirim ulang email approval')
     }
   }
 
@@ -344,12 +373,13 @@ export function ContractReviewClientPage({
                   <TableHead>Rekomendasi</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Aksi</TableHead>
+                  <TableHead>Step Approval Sampai Dimana</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {rows.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">Belum ada data review.</TableCell>
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">Belum ada data review.</TableCell>
                   </TableRow>
                 )}
                 {rows.map((row) => {
@@ -367,13 +397,45 @@ export function ContractReviewClientPage({
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <EnterpriseActionButtons 
-                          access={access} 
-                          labels={{ view: "Print Preview", edit: "Edit", delete: "Hapus" }} 
-                          onView={() => router.push(`/dashboard/hc/contract-review/${row.id}?mode=print`)} 
-                          onEdit={() => router.push(`/dashboard/hc/contract-review/${row.id}`)} 
-                          onDelete={() => handleDelete(row.id)} 
-                        />
+                        <div className="flex items-center justify-end gap-1">
+                          <EnterpriseActionButtons
+                            access={access}
+                            labels={{ view: "Print Preview", edit: "Edit", delete: "Hapus" }}
+                            onView={() => setPreviewReviewId(row.id)}
+                            onEdit={() => router.push(`/dashboard/hc/contract-review/${row.id}`)}
+                            onDelete={() => handleDelete(row.id)}
+                          />
+                          {row.approvalStep && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="size-8 text-sky-700 hover:bg-sky-50 hover:text-sky-800"
+                              title="Resend email approval"
+                              aria-label={`Resend email approval untuk ${emp?.name || row.employeeNameStr || 'review'}`}
+                              disabled={resendingReviewId === row.id}
+                              onClick={() => handleResendApprovalEmail(row.id)}
+                            >
+                              <Send className="size-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="min-w-[190px]">
+                        {row.status === 'draft' ? (
+                          <span className="text-muted-foreground">Belum submit</span>
+                        ) : row.status === 'completed' ? (
+                          <span className="font-medium">Selesai ({row.approvalCompletedSteps || row.approvalTotalSteps || 0}/{row.approvalTotalSteps || 0})</span>
+                        ) : row.approvalStep ? (
+                          <div className="space-y-0.5">
+                            <div className="font-semibold">Step {row.approvalStep}/{row.approvalTotalSteps}</div>
+                            <div className="text-xs text-muted-foreground">
+                              Menunggu: {row.approvalApproverName || '-'}{row.approvalApproverRole ? ` · ${approvalRoleLabel(row.approvalApproverRole)}` : ''}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">Belum ada step aktif</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   )
@@ -839,6 +901,22 @@ export function ContractReviewClientPage({
           <DialogFooter>
             <Button variant="outline" onClick={() => setTestLinks(null)}>Tutup</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={previewReviewId !== null} onOpenChange={(open) => { if (!open) setPreviewReviewId(null) }}>
+        <DialogContent className="z-[10000] flex h-[92vh] w-[96vw] max-w-[1400px] flex-col overflow-hidden p-0">
+          <DialogHeader className="border-b px-6 py-4">
+            <DialogTitle>Preview Contract Review</DialogTitle>
+            <DialogDescription>Preview dokumen Contract Review sebelum dicetak atau disimpan sebagai PDF.</DialogDescription>
+          </DialogHeader>
+          {previewReviewId !== null && (
+            <iframe
+              title="Preview Contract Review"
+              src={`/dashboard/hc/contract-review/${previewReviewId}?mode=print&embedded=1`}
+              className="h-[calc(92vh-88px)] w-full flex-none border-0 bg-slate-100"
+            />
+          )}
         </DialogContent>
       </Dialog>
     </AdminPageShell>

@@ -103,3 +103,64 @@ test("mobile contract review keeps the form URL instead of falling back to mobil
   assert.match(formSource, /id="contract-review-preview"/);
   assert.match(formSource, /isMobileRoute && "block max-md:p-2"/);
 });
+
+test("new contract reviews notify the first pending approver", () => {
+  const source = read("app/actions/contract-review.ts");
+  const insertStart = source.indexOf("const [inserted]");
+  const insertBranch = source.slice(insertStart, source.indexOf("revalidatePath('/dashboard/hc/contract-review')", insertStart));
+
+  assert.match(source, /async function sendPendingContractReviewApprovalEmail/);
+  assert.match(insertBranch, /await sendPendingContractReviewApprovalEmail\(saved\)/);
+  assert.match(source, /templateCode: 'contract_review_approval_notification'/);
+});
+
+test("contract review approval email resend is permission-protected and logs pre-transport failures", () => {
+  const source = read("app/actions/contract-review.ts");
+  const formSource = read("app/dashboard/hc/contract-review/form/client-form.tsx");
+
+  assert.match(source, /export async function resendContractReviewApprovalEmail/);
+  assert.match(source, /getCurrentMenuPermission\('hc_contract_review'\)/);
+  assert.match(source, /if \(!access\.canEdit\)/);
+  assert.match(source, /logEmailDeliveryRecord/);
+  assert.match(source, /SMTP belum dikonfigurasi atau tidak aktif/);
+  assert.match(formSource, /resendContractReviewApprovalEmail/);
+  assert.match(formSource, /Kirim Email Approval/);
+});
+
+test("contract review list exposes the current approval step", () => {
+  const source = read("app/actions/contract-review.ts");
+  const clientSource = read("app/dashboard/hc/contract-review/client-page.tsx");
+
+  assert.match(source, /approvalStep: currentApproval\?\.stepOrder/);
+  assert.match(source, /approvalTotalSteps: reviewApprovals\.length/);
+  assert.match(clientSource, /Step Approval Sampai Dimana/);
+  assert.match(clientSource, /Step \{row\.approvalStep\}\/\{row\.approvalTotalSteps\}/);
+  assert.match(clientSource, /Menunggu: \{row\.approvalApproverName/);
+  assert.match(clientSource, /resendContractReviewApprovalEmail/);
+  assert.match(clientSource, /Resend email approval/);
+  assert.match(clientSource, /Kirim ulang email approval sekarang/);
+  assert.match(clientSource, /toast\.success\('Berhasil dikirim'/);
+});
+
+test("contract review print preview opens in a modal", () => {
+  const clientSource = read("app/dashboard/hc/contract-review/client-page.tsx");
+  const formSource = read("app/dashboard/hc/contract-review/form/client-form.tsx");
+
+  assert.match(clientSource, /previewReviewId/);
+  assert.match(clientSource, /onView=\{\(\) => setPreviewReviewId\(row\.id\)\}/);
+  assert.match(clientSource, /Preview Contract Review/);
+  assert.match(clientSource, /\?mode=print&embedded=1/);
+  assert.match(formSource, /isEmbeddedPrintPreview/);
+  assert.match(formSource, /fixed inset-0 z-\[9999\] flex flex-col gap-8/);
+});
+
+test("contract review print preview keeps competency and signatures on separate A4 pages", () => {
+  const source = read("app/dashboard/hc/contract-review/form/client-form.tsx");
+  const page2 = source.slice(source.indexOf("const pdfPreviewPage2"), source.indexOf("const pdfPreviewPage3"));
+
+  assert.match(source, /const page3Html/);
+  assert.match(source, /id="pdf-page-3"/);
+  assert.match(page2, /B\. Related Competency/);
+  assert.match(page2, /break-inside-avoid/);
+  assert.match(source, /paddingBottom: '45mm'/);
+});

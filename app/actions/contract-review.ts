@@ -18,13 +18,13 @@ import { centralServiceEmployees } from '@/db/schema/central-service'
 import { and, asc, desc, eq, isNotNull, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { randomUUID } from 'crypto'
-import { sendEmailViaSmtp, type EmailTransportSettings } from '@/lib/email-delivery'
+import { logEmailDeliveryRecord, sendEmailViaSmtp, type EmailTransportSettings } from '@/lib/email-delivery'
 import { headers } from 'next/headers'
 import { getHumanCapitalPolicyCcRecipients } from '@/lib/human-capital-email'
 import { resolveWorkflowTemplateContent } from '@/lib/workflow-email'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import { getServerSession } from '@/lib/auth-session'
-import { getCurrentEmployeeAccessRole } from '@/lib/hero-access'
+import { getCurrentEmployeeAccessRole, getCurrentMenuPermission } from '@/lib/hero-access'
 
 async function getBaseUrl(): Promise<string> {
   let baseUrl = process.env.NEXT_PUBLIC_APP_URL
@@ -72,11 +72,47 @@ async function sendContractReviewEmail(params: {
   templateCode: string
   variables?: Record<string, string>
 }) {
+  const templateName = `Contract Review #${params.reviewId}`
+  const recipient = params.to?.trim() || '(recipient kosong)'
+  const logPreTransportFailure = async (errorMessage: string, fromEmail?: string | null) => {
+    try {
+      await logEmailDeliveryRecord({
+        toEmail: recipient,
+        fromEmail,
+        templateName,
+        templateCode: params.templateCode,
+        subject: params.subject,
+        status: 'failed',
+        errorMessage,
+        htmlContent: params.body.replace(/\n/g, '<br/>'),
+        textContent: params.body,
+      })
+    } catch (loggingError) {
+      console.error('[contract-review] Failed to write email delivery log:', loggingError)
+    }
+  }
+
+  if (!params.to?.trim()) {
+    const errorMessage = 'Email penerima approval belum diisi.'
+    await logPreTransportFailure(errorMessage)
+    return { sent: false, error: errorMessage }
+  }
+
   const smtpSettings = await getSmtpSettings()
   if (!smtpSettings) {
-    console.warn('[contract-review] SMTP not configured, email not sent')
-    return
+    const errorMessage = 'SMTP belum dikonfigurasi atau tidak aktif.'
+    console.warn(`[contract-review] ${errorMessage}`)
+    await logPreTransportFailure(errorMessage)
+    return { sent: false, error: errorMessage }
   }
+
+  if (!smtpSettings.host.trim() || !smtpSettings.fromEmail.trim()) {
+    const errorMessage = !smtpSettings.host.trim() ? 'Host SMTP belum diisi.' : 'From Email belum diisi.'
+    await logPreTransportFailure(errorMessage, smtpSettings.fromEmail)
+    return { sent: false, error: errorMessage }
+  }
+
+  let smtpAttempted = false
   try {
     const hcPolicyCc = await getHumanCapitalPolicyCcRecipients()
     const resolvedTemplate = await resolveWorkflowTemplateContent({
@@ -87,6 +123,7 @@ async function sendContractReviewEmail(params: {
       fallbackHtml: params.body.replace(/\n/g, '<br/>'),
       fallbackText: params.body,
     })
+    smtpAttempted = true
     await sendEmailViaSmtp(smtpSettings, {
       to: params.to,
       cc: resolvedTemplate.ccList,
@@ -94,10 +131,16 @@ async function sendContractReviewEmail(params: {
       text: resolvedTemplate.text,
       html: resolvedTemplate.html,
       templateCode: params.templateCode,
-      templateName: `Contract Review #${params.reviewId}`,
+      templateName,
     })
+    return { sent: true as const }
   } catch (error: any) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown SMTP error'
+    if (!smtpAttempted) {
+      await logPreTransportFailure(errorMessage, smtpSettings.fromEmail)
+    }
     console.error('[contract-review] Email send failed:', error)
+    return { sent: false as const, error: errorMessage }
   }
 }
 
@@ -661,6 +704,59 @@ async function getContractReviewReminderContext(review: typeof hcEmployeeContrac
     employeeSection,
     employeeSite,
     employeeSn,
+  }
+}
+
+async function sendPendingContractReviewApprovalEmail(review: typeof hcEmployeeContractReviews.$inferSelect) {
+  const { pendingApproval, employeeSection, employeeSite, employeeSn } = await getContractReviewReminderContext(review)
+  if (!pendingApproval || pendingApproval.status !== 'pending') {
+    return {
+      sent: false as const,
+      skipped: true as const,
+      error: 'Tidak ada approval Contract Review yang masih pending.',
+      recipient: null,
+      step: undefined,
+    }
+  }
+
+  const settings = await getContractReviewSettings()
+  const template = settings.emailTemplates.approverSignature
+  const baseUrl = await getBaseUrl()
+  const employeeName = review.employeeNameStr || 'Employee'
+  const approvalLink = `${baseUrl}/review/${pendingApproval.approvalToken}`
+  const variables = {
+    approverName: pendingApproval.approverName,
+    employeeName,
+    employeeSn,
+    employeeSection,
+    employeeSite,
+    approvalStep: `Step ${pendingApproval.stepOrder}`,
+    approvalLink,
+  }
+  const body = template.body
+    .replace(/{{approverName}}/g, variables.approverName)
+    .replace(/{{employeeName}}/g, variables.employeeName)
+    .replace(/{{employeeSn}}/g, variables.employeeSn)
+    .replace(/{{employeeSection}}/g, variables.employeeSection)
+    .replace(/{{employeeSite}}/g, variables.employeeSite)
+    .replace(/{{approvalStep}}/g, variables.approvalStep)
+    .replace(/{{approvalLink}}/g, variables.approvalLink)
+
+  const result = await sendContractReviewEmail({
+    to: pendingApproval.approverEmail,
+    subject: template.subject
+      .replace(/{{employeeName}}/g, variables.employeeName)
+      .replace(/{{employeeSn}}/g, variables.employeeSn),
+    body,
+    reviewId: review.id,
+    templateCode: 'contract_review_approval_notification',
+    variables,
+  })
+
+  return {
+    ...result,
+    recipient: pendingApproval.approverEmail?.trim() || null,
+    step: pendingApproval.stepOrder,
   }
 }
 
@@ -1376,8 +1472,32 @@ export async function sendDueContractReviewReminders() {
 export async function getContractReviews() {
   try {
     await ensureContractReviewWorkflowTables()
-    const records = await db.select().from(hcEmployeeContractReviews).orderBy(desc(hcEmployeeContractReviews.createdAt))
-    return { success: true, data: records }
+    const [records, approvals] = await Promise.all([
+      db.select().from(hcEmployeeContractReviews).orderBy(desc(hcEmployeeContractReviews.createdAt)),
+      db.select().from(hcContractReviewApprovals).orderBy(asc(hcContractReviewApprovals.stepOrder)),
+    ])
+    const approvalsByReview = new Map<number, typeof approvals>()
+    for (const approval of approvals) {
+      const reviewApprovals = approvalsByReview.get(approval.reviewId) ?? []
+      reviewApprovals.push(approval)
+      approvalsByReview.set(approval.reviewId, reviewApprovals)
+    }
+
+    return {
+      success: true,
+      data: records.map((record) => {
+        const reviewApprovals = approvalsByReview.get(record.id) ?? []
+        const currentApproval = reviewApprovals.find((approval) => approval.status === 'pending')
+        return {
+          ...record,
+          approvalStep: currentApproval?.stepOrder ?? null,
+          approvalTotalSteps: reviewApprovals.length,
+          approvalApproverName: currentApproval?.approverName ?? null,
+          approvalApproverRole: currentApproval?.approverRole ?? null,
+          approvalCompletedSteps: reviewApprovals.filter((approval) => approval.status === 'approved').length,
+        }
+      }),
+    }
   } catch (error: any) {
     console.error('Error fetching contract reviews:', error)
     return { success: false, error: error.message }
@@ -1392,6 +1512,47 @@ export async function getContractReviewById(id: number) {
   } catch (error: any) {
     console.error('Error fetching contract review:', error)
     return { success: false, error: error.message }
+  }
+}
+
+export async function resendContractReviewApprovalEmail(reviewId: number) {
+  try {
+    const session = await getServerSession()
+    if (!session?.user) {
+      return { success: false, error: 'Unauthorized: Sesi login diperlukan.' }
+    }
+
+    const access = await getCurrentMenuPermission('hc_contract_review')
+    if (!access.canEdit) {
+      return { success: false, error: 'Forbidden: Anda tidak memiliki izin mengirim ulang email Contract Review.' }
+    }
+
+    const [review] = await db
+      .select()
+      .from(hcEmployeeContractReviews)
+      .where(eq(hcEmployeeContractReviews.id, reviewId))
+      .limit(1)
+    if (!review) return { success: false, error: 'Review Contract Review tidak ditemukan.' }
+
+    const result = await sendPendingContractReviewApprovalEmail(review)
+    if (result.sent) {
+      return {
+        success: true,
+        message: `Email approval step ${result.step} terkirim ke ${result.recipient}.`,
+        recipient: result.recipient,
+        step: result.step,
+      }
+    }
+
+    return {
+      success: false,
+      error: result.error || 'Email approval tidak terkirim.',
+      recipient: result.recipient,
+      step: result.step,
+    }
+  } catch (error: any) {
+    console.error('Error resending contract review approval email:', error)
+    return { success: false, error: error.message || 'Gagal mengirim ulang email approval.' }
   }
 }
 
@@ -1437,46 +1598,8 @@ export async function saveContractReview(data: Partial<typeof hcEmployeeContract
 
           if (nextStep) {
             await db.update(hcContractReviewApprovals).set({ status: 'pending' }).where(eq(hcContractReviewApprovals.id, nextStep.id))
-            // Send email to next approver
-            const reviewId = data.id as number
-            const [rev] = await db.select().from(hcEmployeeContractReviews).where(eq(hcEmployeeContractReviews.id, reviewId)).limit(1)
-            let employeeSection = '', employeeSite = '', employeeSn = ''
-            if (rev?.employeeId) {
-              const [hrEmp] = await db.select({ employeeId: employees.employeeSn }).from(employees).where(eq(employees.id, rev.employeeId)).limit(1)
-              if (hrEmp) {
-                const sn = normalizeSn(hrEmp.employeeId)
-                employeeSn = sn
-                const [csEmp] = await db.select({ section: centralServiceEmployees.section, siteName: centralServiceEmployees.siteName }).from(centralServiceEmployees).where(or(eq(centralServiceEmployees.employeeSn, sn), eq(centralServiceEmployees.employeeSn, `EMP-${sn}`))).limit(1)
-                if (csEmp) { employeeSection = csEmp.section || ''; employeeSite = csEmp.siteName || '' }
-              }
-            }
-            const settings = await getContractReviewSettings()
-            const template = settings.emailTemplates.approverSignature
-            const baseUrl = await getBaseUrl()
-            const body = template.body
-              .replace(/{{approverName}}/g, nextStep.approverName)
-              .replace(/{{employeeName}}/g, rev?.employeeNameStr || saved?.employeeNameStr || 'Employee')
-              .replace(/{{employeeSn}}/g, employeeSn)
-              .replace(/{{employeeSection}}/g, employeeSection)
-              .replace(/{{employeeSite}}/g, employeeSite)
-              .replace(/{{approvalStep}}/g, `Step ${nextStep.stepOrder}`)
-              .replace(/{{approvalLink}}/g, `${baseUrl}/review/${nextStep.approvalToken}`)
-            await sendContractReviewEmail({
-              to: nextStep.approverEmail,
-              subject: template.subject.replace(/{{employeeName}}/g, rev?.employeeNameStr || 'Employee').replace(/{{employeeSn}}/g, employeeSn),
-              body,
-              reviewId,
-              templateCode: 'contract_review_approval_notification',
-              variables: {
-                approverName: nextStep.approverName,
-                employeeName: rev?.employeeNameStr || saved?.employeeNameStr || 'Employee',
-                employeeSn,
-                employeeSection,
-                employeeSite,
-                approvalStep: `Step ${nextStep.stepOrder}`,
-                approvalLink: `${baseUrl}/review/${nextStep.approvalToken}`,
-              },
-            })
+            const [review] = await db.select().from(hcEmployeeContractReviews).where(eq(hcEmployeeContractReviews.id, data.id as number)).limit(1)
+            if (review) await sendPendingContractReviewApprovalEmail(review)
           } else {
             await db.update(hcEmployeeContractReviews).set({ status: 'completed', updatedAt: new Date() }).where(eq(hcEmployeeContractReviews.id, data.id))
           }
@@ -1500,6 +1623,7 @@ export async function saveContractReview(data: Partial<typeof hcEmployeeContract
         await db.insert(hcContractReviewApprovals).values(stepsWithSig as any)
         await db.update(hcEmployeeContractReviews).set({ status: 'in_progress' }).where(eq(hcEmployeeContractReviews.id, inserted.id))
         saved = { ...inserted, status: 'in_progress' }
+        await sendPendingContractReviewApprovalEmail(saved)
       }
     }
 
@@ -1618,55 +1742,8 @@ export async function approveContractReviewStep(
 
     if (nextApproval) {
       await db.update(hcContractReviewApprovals).set({ status: 'pending' }).where(eq(hcContractReviewApprovals.id, nextApproval.id))
-      // Send email to next approver
       const [review] = await db.select().from(hcEmployeeContractReviews).where(eq(hcEmployeeContractReviews.id, approval.reviewId)).limit(1)
-
-      // Fetch employee section/site for email variables
-      let employeeSection = ''
-      let employeeSite = ''
-      let employeeSn = ''
-      if (review?.employeeId) {
-        const [hrEmp] = await db.select({ employeeId: employees.employeeSn }).from(employees).where(eq(employees.id, review.employeeId)).limit(1)
-        if (hrEmp) {
-          const sn = normalizeSn(hrEmp.employeeId)
-          employeeSn = sn
-          const [csEmp] = await db.select({ section: centralServiceEmployees.section, siteName: centralServiceEmployees.siteName }).from(centralServiceEmployees).where(or(eq(centralServiceEmployees.employeeSn, sn), eq(centralServiceEmployees.employeeSn, `EMP-${sn}`))).limit(1)
-          if (csEmp) {
-            employeeSection = csEmp.section || ''
-            employeeSite = csEmp.siteName || ''
-          }
-        }
-      }
-
-      const settings = await getContractReviewSettings()
-      const template = settings.emailTemplates.approverSignature
-      const baseUrl = await getBaseUrl()
-      const body = template.body
-        .replace(/{{approverName}}/g, nextApproval.approverName)
-        .replace(/{{employeeName}}/g, review?.employeeNameStr || 'Employee')
-        .replace(/{{employeeSn}}/g, employeeSn)
-        .replace(/{{employeeSection}}/g, employeeSection)
-        .replace(/{{employeeSite}}/g, employeeSite)
-        .replace(/{{approvalStep}}/g, `Step ${nextApproval.stepOrder}`)
-        .replace(/{{approvalLink}}/g, `${baseUrl}/review/${nextApproval.approvalToken}`)
-      await sendContractReviewEmail({
-        to: nextApproval.approverEmail,
-        subject: template.subject
-          .replace(/{{employeeName}}/g, review?.employeeNameStr || 'Employee')
-          .replace(/{{employeeSn}}/g, employeeSn),
-        body,
-        reviewId: approval.reviewId,
-        templateCode: 'contract_review_approval_notification',
-        variables: {
-          approverName: nextApproval.approverName,
-          employeeName: review?.employeeNameStr || 'Employee',
-          employeeSn,
-          employeeSection,
-          employeeSite,
-          approvalStep: `Step ${nextApproval.stepOrder}`,
-          approvalLink: `${baseUrl}/review/${nextApproval.approvalToken}`,
-        },
-      })
+      if (review) await sendPendingContractReviewApprovalEmail(review)
     } else {
       // Final step completed — update contract dates based on recommendation
       const [review] = await db.select().from(hcEmployeeContractReviews).where(eq(hcEmployeeContractReviews.id, approval.reviewId)).limit(1)
