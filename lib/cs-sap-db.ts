@@ -1,17 +1,20 @@
 import { Pool } from 'pg'
 import { parseMonthYearToYearMonth } from './cs-forecast-daily-report'
 
-const SAP_DB_URL = process.env.SAP_DB_URL?.trim() || process.env.ONECHITRA_DB_URL?.trim()
-if (!SAP_DB_URL) {
-  throw new Error('SAP_DB_URL or ONECHITRA_DB_URL is required to connect to the SAP database.')
-}
-
 let sapPool: Pool | null = null
+
+function getSapDatabaseUrl() {
+  const databaseUrl = process.env.SAP_DB_URL?.trim() || process.env.ONECHITRA_DB_URL?.trim()
+  if (!databaseUrl) {
+    throw new Error('SAP_DB_URL or ONECHITRA_DB_URL is required to connect to the SAP database.')
+  }
+  return databaseUrl
+}
 
 function getSapPool() {
   if (!sapPool) {
     sapPool = new Pool({
-      connectionString: SAP_DB_URL,
+      connectionString: getSapDatabaseUrl(),
       connectionTimeoutMillis: 10000,
       max: 5,
     })
