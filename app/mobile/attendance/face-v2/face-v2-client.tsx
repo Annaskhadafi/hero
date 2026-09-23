@@ -92,6 +92,12 @@ interface Props {
 const MAX_AUTO_RETRY = 8
 const CAPTURE_INTERVAL = 1000
 const GPS_TIMEOUT = 15000
+const EMPTY_SHIFT_OPTIONS: ShiftOption[] = []
+const EMPTY_TODAY_LOGS: TodayLog[] = []
+const EMPTY_ROSTER_CALENDAR: { days: MobileRosterDay[]; timezone: string } = {
+  days: [],
+  timezone: 'WITA',
+}
 
 function formatClock(date: Date) {
   const h24 = date.getHours()
@@ -162,9 +168,9 @@ export function FaceAttendanceV2Client({
   suggestedEventType,
   lastEventType,
   lastEventTime,
-  shiftOptions = [],
-  todayLogs = [],
-  rosterCalendar = { days: [], timezone: 'WITA' },
+  shiftOptions = EMPTY_SHIFT_OPTIONS,
+  todayLogs = EMPTY_TODAY_LOGS,
+  rosterCalendar = EMPTY_ROSTER_CALENDAR,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)

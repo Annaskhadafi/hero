@@ -32,6 +32,8 @@ test('face recognition v2 route revalidates mobile attendance paths', () => {
 test('face v2 client component syncs logs state when todayLogs prop updates', () => {
   const clientSource = read('app/mobile/attendance/face-v2/face-v2-client.tsx')
 
+  assert.match(clientSource, /const EMPTY_TODAY_LOGS: TodayLog\[\] = \[\]/)
+  assert.match(clientSource, /todayLogs = EMPTY_TODAY_LOGS/)
   assert.match(clientSource, /useEffect\(\(\) => \{\s*setLogs\(todayLogs\)\s*\}, \[todayLogs\]\)/)
   assert.match(clientSource, /const currentEventType = logs\[0\]\?\.eventType \?\? lastEventType/)
   assert.match(clientSource, /currentEventType === 'checked-in'/)
