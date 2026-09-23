@@ -9,7 +9,8 @@ import {
 } from '@/app/dashboard/hse/izin-kerja-ptw/actions'
 import { EQUIPMENT_CHECKLIST_PER_TYPE, getActivePermitTypeKeys, isItemChecked, getPermitSubTypes, cleanPtwDescription, extractCheckedEquipment, normalizePermitTypes } from '@/lib/ptw-helpers'
 import { PtwChecklistTable } from '@/components/ptw-checklist-table'
-import { PtwDocumentQr } from '@/components/ptw-document-qr'
+import { PtwDocumentQr, parseAttachmentsList, type PtwAttachmentItem } from '@/components/ptw-document-qr'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
@@ -36,6 +37,8 @@ import {
   Printer,
   Eye,
   FileText,
+  File,
+  ExternalLink,
   CheckSquare,
   Square,
   ShieldCheck,
@@ -110,10 +113,17 @@ export function PtwPublicApproval({
 
   // States
   const [isAttachmentModalOpen, setIsAttachmentModalOpen] = useState(false)
+  const [previewDoc, setPreviewDoc] = useState<{
+    url: string
+    name: string
+    isPdf: boolean
+    isOffice: boolean
+  } | null>(null)
   const [zoomImage, setZoomImage] = useState<{ url: string; title: string } | null>(null)
   const [imageScale, setImageScale] = useState<number>(1)
   const [imageRotation, setImageRotation] = useState<number>(0)
   const [origin, setOrigin] = useState('')
+  const parsedAttachments = parseAttachmentsList(data?.attachments)
   useEffect(() => {
     if (typeof window !== 'undefined') setOrigin(window.location.origin)
   }, [])
@@ -449,61 +459,115 @@ export function PtwPublicApproval({
             ) : null}
 
             {/* Attachment Documents Card */}
-            {data?.attachments && Array.isArray(data.attachments) && data.attachments.length > 0 && (
+            {parsedAttachments.length > 0 && (
               <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs space-y-3">
-                <div className="flex items-center gap-2">
-                  <FileText className="size-4 text-teal-600" />
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                    Lampiran Dokumen Pendukung ({data.attachments.length})
-                  </h3>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FileText className="size-4 text-teal-600" />
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                      Lampiran Dokumen Pendukung ({parsedAttachments.length})
+                    </h3>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsAttachmentModalOpen(true)}
+                    className="h-7 text-xs font-bold text-teal-700 hover:text-teal-900 hover:bg-teal-50 px-2"
+                  >
+                    Lihat Semua
+                  </Button>
                 </div>
                 <div className="space-y-2">
-                  {data.attachments.map((att: any, idx: number) => {
-                    let name = 'Dokumen Lampiran'
-                    let url = ''
-                    if (typeof att === 'object' && att !== null) {
-                      name = att.name || name
-                      url = att.url || ''
-                    } else if (typeof att === 'string') {
-                      if (att.includes('||')) {
-                        const [n, ...rest] = att.split('||')
-                        name = n
-                        url = rest.join('||')
-                      } else {
-                        try {
-                          const p = JSON.parse(att)
-                          name = p.name || name
-                          url = p.url || ''
-                        } catch {
-                          name = att.split('/').pop() || att
-                          url = att.startsWith('http') || att.startsWith('data:') ? att : ''
-                        }
-                      }
-                    }
+                  {parsedAttachments.slice(0, 5).map((att: PtwAttachmentItem, idx: number) => {
                     return (
                       <div
                         key={idx}
-                        className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 bg-slate-50/80 text-xs"
+                        className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 bg-slate-50/80 text-xs gap-2"
                       >
                         <div className="flex items-center gap-2 min-w-0">
-                          <FileText className="size-4 text-teal-600 shrink-0" />
-                          <span className="font-semibold text-slate-800 truncate">{name}</span>
+                          {att.isImg ? (
+                            <span className="p-1 rounded bg-amber-100 text-amber-700 shrink-0 font-mono text-[10px] font-bold">
+                              IMG
+                            </span>
+                          ) : att.isPdf ? (
+                            <span className="p-1 rounded bg-red-100 text-red-700 shrink-0 font-mono text-[10px] font-bold">
+                              PDF
+                            </span>
+                          ) : att.isExcel ? (
+                            <span className="p-1 rounded bg-emerald-100 text-emerald-700 shrink-0 font-mono text-[10px] font-bold">
+                              XLS
+                            </span>
+                          ) : att.isWord ? (
+                            <span className="p-1 rounded bg-blue-100 text-blue-700 shrink-0 font-mono text-[10px] font-bold">
+                              DOC
+                            </span>
+                          ) : (
+                            <FileText className="size-4 text-teal-600 shrink-0" />
+                          )}
+                          <span className="font-semibold text-slate-800 truncate" title={att.name}>
+                            {att.name}
+                          </span>
                         </div>
-                        {url ? (
-                          <a
-                            href={url}
-                            target="_blank"
-                            rel="noreferrer"
-                            download={name}
-                            className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-2.5 py-1 rounded-lg border border-teal-200 transition-colors shrink-0"
-                          >
-                            <Download className="size-3.5" />
-                            Unduh / Buka
-                          </a>
-                        ) : null}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {att.isImg && att.url ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setZoomImage({ url: att.url, title: att.name })
+                                setImageScale(1)
+                                setImageRotation(0)
+                              }}
+                              className="h-7 px-2 text-[11px] font-bold text-teal-700 hover:text-teal-900 bg-white hover:bg-teal-50 border-teal-200"
+                            >
+                              <Eye className="size-3 mr-1" /> Preview
+                            </Button>
+                          ) : att.url ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setPreviewDoc({
+                                  url: att.url,
+                                  name: att.name,
+                                  isPdf: att.isPdf,
+                                  isOffice: att.isWord || att.isExcel || att.isPpt,
+                                })
+                              }}
+                              className="h-7 px-2 text-[11px] font-bold text-teal-700 hover:text-teal-900 bg-white hover:bg-teal-50 border-teal-200"
+                            >
+                              <Eye className="size-3 mr-1" /> Preview
+                            </Button>
+                          ) : null}
+                          {att.url && (
+                            <a
+                              href={att.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              download={att.name}
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-2 py-1 rounded-md border border-teal-200 transition-colors"
+                            >
+                              <Download className="size-3" /> Unduh
+                            </a>
+                          )}
+                        </div>
                       </div>
                     )
                   })}
+                  {parsedAttachments.length > 5 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsAttachmentModalOpen(true)}
+                      className="w-full text-xs text-slate-600 hover:text-slate-900 h-8 mt-1 border-dashed"
+                    >
+                      + {parsedAttachments.length - 5} lampiran lainnya...
+                    </Button>
+                  )}
                 </div>
               </div>
             )}
@@ -1126,7 +1190,7 @@ export function PtwPublicApproval({
 
       {/* ── Floating Dialog Lampiran Dokumen Pendukung PTW ── */}
       <Dialog open={isAttachmentModalOpen} onOpenChange={setIsAttachmentModalOpen}>
-        <DialogContent className="max-w-2xl bg-white max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl bg-white max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
               <FileText className="size-5 text-teal-600" />
@@ -1139,36 +1203,14 @@ export function PtwPublicApproval({
 
           <div className="space-y-4 py-2">
             {/* Attachment list */}
-            {data?.attachments && Array.isArray(data.attachments) && data.attachments.length > 0 ? (
+            {parsedAttachments.length > 0 ? (
               <div className="space-y-3">
                 <div className="text-xs font-semibold text-slate-700">
-                  File Terlampir ({data.attachments.length})
+                  File Terlampir ({parsedAttachments.length})
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {data.attachments.map((att: any, idx: number) => {
-                    let name = 'Dokumen Lampiran'
-                    let url = ''
-                    if (typeof att === 'object' && att !== null) {
-                      name = att.name || name
-                      url = att.url || ''
-                    } else if (typeof att === 'string') {
-                      if (att.includes('||')) {
-                        const [n, ...rest] = att.split('||')
-                        name = n
-                        url = rest.join('||')
-                      } else {
-                        try {
-                          const p = JSON.parse(att)
-                          name = p.name || name
-                          url = p.url || ''
-                        } catch {
-                          name = att.split('/').pop() || att
-                          url = att.startsWith('http') || att.startsWith('data:') ? att : ''
-                        }
-                      }
-                    }
-                    const isImg = url && (url.startsWith('data:image') || /\.(jpg|jpeg|png|webp|gif)$/i.test(name || url))
+                  {parsedAttachments.map((att: PtwAttachmentItem, idx: number) => {
                     return (
                       <div
                         key={idx}
@@ -1176,29 +1218,44 @@ export function PtwPublicApproval({
                       >
                         <div className="flex items-start gap-2.5 min-w-0">
                           <div className="p-2 rounded-lg bg-white border border-slate-200 shrink-0">
-                            <FileText className="size-5 text-teal-600" />
+                            {att.isImg ? (
+                              <span className="text-xs font-bold text-amber-600 font-mono">IMG</span>
+                            ) : att.isPdf ? (
+                              <span className="text-xs font-bold text-red-600 font-mono">PDF</span>
+                            ) : att.isExcel ? (
+                              <FileSpreadsheet className="size-5 text-emerald-600" />
+                            ) : att.isWord ? (
+                              <FileText className="size-5 text-blue-600" />
+                            ) : (
+                              <File className="size-5 text-teal-600" />
+                            )}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="text-xs font-bold text-slate-800 truncate" title={name}>
-                              {name}
+                            <p className="text-xs font-bold text-slate-800 truncate" title={att.name}>
+                              {att.name}
                             </p>
-                            <p className="text-[10px] text-slate-500">Lampiran Dokumen #{idx + 1}</p>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
+                                {att.ext ? att.ext.toUpperCase() : 'FILE'}
+                              </Badge>
+                              <span className="text-[10px] text-slate-500">#{idx + 1}</span>
+                            </div>
                           </div>
                         </div>
 
-                        {isImg && url ? (
+                        {att.isImg && att.url ? (
                           <div
                             className="group relative rounded-lg overflow-hidden border border-slate-200 bg-white max-h-48 flex items-center justify-center p-1 cursor-pointer"
                             onClick={() => {
-                              setZoomImage({ url, title: name })
+                              setZoomImage({ url: att.url, title: att.name })
                               setImageScale(1)
                               setImageRotation(0)
                             }}
                             title="Klik untuk melihat & memperbesar gambar"
                           >
                             <img
-                              src={url}
-                              alt={name}
+                              src={att.url}
+                              alt={att.name}
                               className="max-h-44 w-full object-contain rounded transition-transform duration-200 group-hover:scale-105"
                             />
                             <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 text-white text-xs font-semibold backdrop-blur-[1px] rounded-lg">
@@ -1209,13 +1266,13 @@ export function PtwPublicApproval({
                         ) : null}
 
                         <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-200/60">
-                          {isImg && url && (
+                          {att.isImg && att.url && (
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
                               onClick={() => {
-                                setZoomImage({ url, title: name })
+                                setZoomImage({ url: att.url, title: att.name })
                                 setImageScale(1)
                                 setImageRotation(0)
                               }}
@@ -1224,15 +1281,33 @@ export function PtwPublicApproval({
                               <ZoomIn className="size-3.5" /> Zoom
                             </Button>
                           )}
-                          {url ? (
+                          {!att.isImg && att.url && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setPreviewDoc({
+                                  url: att.url,
+                                  name: att.name,
+                                  isPdf: att.isPdf,
+                                  isOffice: att.isWord || att.isExcel || att.isPpt,
+                                })
+                              }}
+                              className="inline-flex items-center gap-1 text-xs font-bold text-teal-700 hover:text-teal-900 bg-white hover:bg-teal-50 px-2.5 py-1.5 rounded-lg border border-teal-200"
+                            >
+                              <Eye className="size-3.5" /> Preview
+                            </Button>
+                          )}
+                          {att.url ? (
                             <a
-                              href={url}
+                              href={att.url}
                               target="_blank"
                               rel="noreferrer"
-                              download={name}
+                              download={att.name}
                               className="inline-flex items-center gap-1 text-xs font-bold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-3 py-1.5 rounded-lg border border-teal-200 transition-colors"
                             >
-                              <Download className="size-3.5" /> Unduh / Buka
+                              <Download className="size-3.5" /> Unduh
                             </a>
                           ) : (
                             <span className="text-xs text-slate-400 italic">File tersimpan</span>
@@ -1264,6 +1339,101 @@ export function PtwPublicApproval({
               Tutup
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Document Viewer Modal (PDF / Office Live / Generic) ── */}
+      <Dialog
+        open={Boolean(previewDoc)}
+        onOpenChange={(v) => {
+          if (!v) setPreviewDoc(null)
+        }}
+      >
+        <DialogContent className="max-w-5xl w-[95vw] h-[90vh] flex flex-col p-0 gap-0 overflow-hidden bg-white">
+          <DialogHeader className="p-4 border-b border-slate-200 flex flex-row items-center justify-between space-y-0">
+            <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-4">
+              <div className="p-2 rounded-lg bg-teal-50 border border-teal-200 shrink-0">
+                {previewDoc?.isPdf ? (
+                  <FileText className="size-5 text-red-600" />
+                ) : (
+                  <FileSpreadsheet className="size-5 text-teal-600" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <DialogTitle className="text-sm font-bold text-slate-900 truncate">
+                  {previewDoc?.name || 'Preview Dokumen'}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-slate-500 truncate">
+                  {previewDoc?.isPdf
+                    ? 'Dokumen PDF terintegrasi'
+                    : previewDoc?.isOffice
+                    ? 'Office Online Viewer'
+                    : 'Dokumen Lampiran PTW'}
+                </DialogDescription>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {previewDoc?.url && (
+                <a
+                  href={previewDoc.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  download={previewDoc.name}
+                  className="inline-flex items-center gap-1 text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 px-3 py-1.5 rounded-lg shadow-xs transition-colors"
+                >
+                  <Download className="size-3.5" /> Unduh Dokumen
+                </a>
+              )}
+              {previewDoc?.url && (
+                <a
+                  href={previewDoc.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-xs font-bold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  <ExternalLink className="size-3.5" /> Tab Baru
+                </a>
+              )}
+            </div>
+          </DialogHeader>
+          <div className="flex-1 w-full bg-slate-100 relative overflow-hidden">
+            {previewDoc?.isPdf ? (
+              <iframe
+                src={`${previewDoc.url}#toolbar=1&navpanes=1`}
+                className="w-full h-full border-none"
+                title={previewDoc.name}
+              />
+            ) : previewDoc?.isOffice && previewDoc.url.startsWith('http') ? (
+              <iframe
+                src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(
+                  previewDoc.url
+                )}`}
+                className="w-full h-full border-none"
+                title={previewDoc.name}
+              />
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full p-6 text-center space-y-3">
+                <FileText className="size-12 text-slate-400" />
+                <div>
+                  <p className="text-sm font-bold text-slate-800">{previewDoc?.name}</p>
+                  <p className="text-xs text-slate-500 max-w-sm mt-1">
+                    Pratinjau langsung di dalam browser mungkin tidak didukung untuk tipe file ini, silakan klik tombol unduh atau buka tab baru.
+                  </p>
+                </div>
+                {previewDoc?.url && (
+                  <a
+                    href={previewDoc.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    download={previewDoc.name}
+                    className="inline-flex items-center gap-2 text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 px-4 py-2 rounded-lg"
+                  >
+                    <Download className="size-4" /> Unduh Dokumen Sekarang
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 

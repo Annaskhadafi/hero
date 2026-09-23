@@ -25,8 +25,14 @@ import {
   ZoomIn,
   ZoomOut,
   Building2,
+  Image as ImageIcon,
+  FileSpreadsheet,
+  Presentation,
+  ExternalLink,
+  FileCheck,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 import { downloadElementAsPdf } from '@/lib/pdf-download'
 import {
   PERMIT_TYPE_OPTIONS,
@@ -324,22 +330,82 @@ export function PtwApprovalForm({
     }
   }
 
-  const parseAttachment = (att: string | { name: string; url?: string }) => {
+  const [previewDoc, setPreviewDoc] = useState<{
+    url: string
+    name: string
+    ext: string
+    isPdf: boolean
+    isWord: boolean
+    isExcel: boolean
+    isPpt: boolean
+  } | null>(null)
+
+  const parseAttachment = (att: string | { name?: string; url?: string; fileUrl?: string; path?: string }) => {
+    let name = 'Dokumen Pendukung'
+    let rawUrl = ''
+
     if (typeof att === 'object' && att !== null) {
-      return { name: att.name || 'Dokumen Pendukung', url: att.url || '' }
-    }
-    if (typeof att === 'string') {
-      if (att.includes('||')) {
-        const [name, ...rest] = att.split('||')
-        return { name, url: rest.join('||') }
+      name = att.name || 'Dokumen Pendukung'
+      rawUrl = att.url || att.fileUrl || att.path || ''
+    } else if (typeof att === 'string') {
+      const trimmed = att.trim()
+      if (trimmed.includes('||')) {
+        const [n, ...rest] = trimmed.split('||')
+        name = n.trim() || name
+        rawUrl = rest.join('||').trim()
+      } else {
+        try {
+          const parsed = JSON.parse(trimmed)
+          name = parsed.name || name
+          rawUrl = parsed.url || parsed.fileUrl || parsed.path || ''
+        } catch {
+          if (trimmed.startsWith('data:') || trimmed.startsWith('http') || trimmed.startsWith('/')) {
+            rawUrl = trimmed
+            const segment = trimmed.split('?')[0].split('/').pop() || ''
+            if (segment && !trimmed.startsWith('data:')) name = decodeURIComponent(segment)
+          } else {
+            name = trimmed
+            rawUrl = trimmed
+          }
+        }
       }
-      try {
-        const parsed = JSON.parse(att)
-        if (parsed.name) return { name: parsed.name, url: parsed.url || '' }
-      } catch {}
-      return { name: att.split('/').pop() || att, url: att.startsWith('http') || att.startsWith('data:') ? att : '' }
     }
-    return { name: 'Dokumen Pendukung', url: '' }
+
+    let url = rawUrl
+    if (url && !url.startsWith('data:') && !url.startsWith('blob:')) {
+      url = resolveUploadUrl(url)
+    }
+
+    const lowerName = (name || '').toLowerCase()
+    const lowerUrl = (url || '').toLowerCase()
+    const extMatch = lowerName.match(/\.([a-z0-9]+)$/) || lowerUrl.match(/\.([a-z0-9]+)(?:\?|#|$)/)
+    const ext = extMatch
+      ? extMatch[1]
+      : lowerUrl.startsWith('data:image')
+      ? 'png'
+      : lowerUrl.startsWith('data:application/pdf')
+      ? 'pdf'
+      : ''
+
+    const isImg = Boolean(
+      lowerUrl.startsWith('data:image') ||
+        ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg', 'bmp', 'avif'].includes(ext)
+    )
+    const isPdf = Boolean(lowerUrl.startsWith('data:application/pdf') || ext === 'pdf')
+    const isWord =
+      ['doc', 'docx'].includes(ext) ||
+      lowerUrl.includes('application/msword') ||
+      lowerUrl.includes('wordprocessingml')
+    const isExcel =
+      ['xls', 'xlsx', 'csv'].includes(ext) ||
+      lowerUrl.includes('spreadsheetml') ||
+      lowerUrl.includes('excel')
+    const isPpt =
+      ['ppt', 'pptx'].includes(ext) ||
+      lowerUrl.includes('presentationml') ||
+      lowerUrl.includes('powerpoint')
+
+    return { name, url, isImg, isPdf, isWord, isExcel, isPpt, ext }
   }
 
   // External Vendor Worker Form State
@@ -464,6 +530,39 @@ export function PtwApprovalForm({
     return dataUrl
   }
 
+  const approvalHistoryForDisplay = (data?.approvals?.length
+    ? data.approvals
+    : [
+        { id: 1, stepOrder: 1, stepLabel: 'Pemberi Kerja', approverName: selectedFieldPic || 'Pemberi Kerja', approverRole: 'safety_officer', status: 'pending', signatureDataUrl: null, remarks: '', signedAt: null },
+        ...((selectedApplicant || 'Pelaksana Kerja').split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean).length > 0
+          ? (selectedApplicant || 'Pelaksana Kerja').split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean)
+          : ['Pelaksana Kerja']
+        ).map((appName, idx, arr) => {
+          const parsed = parseApplicantEntry(appName)
+          return {
+            id: 2 + idx,
+            stepOrder: 2 + idx,
+            stepLabel: arr.length > 1 ? `Pelaksana Kerja ${idx + 1}` : 'Pelaksana Kerja',
+            approverName: parsed.name || appName,
+            approverRole: 'applicant',
+            status: 'waiting',
+            signatureDataUrl: null,
+            remarks: '',
+            signedAt: null,
+          }
+        }),
+        { id: 99, stepOrder: 99, stepLabel: 'Safety Dept', approverName: selectedAuthorized || 'Safety Dept', approverRole: 'field_pic', status: 'waiting', signatureDataUrl: null, remarks: '', signedAt: null },
+      ]
+  )
+
+  const isReverted = Boolean(
+    data.status?.toLowerCase() === 'reverted' ||
+    data.status?.toLowerCase() === 'revisi' ||
+    status?.toLowerCase() === 'reverted' ||
+    status?.toLowerCase() === 'revisi' ||
+    approvalHistoryForDisplay.some((s) => s.status === 'reverted')
+  )
+
   const canEdit = Boolean(data?.permissions?.canEdit)
 
   const handleSaveForm = () => {
@@ -498,7 +597,7 @@ export function PtwApprovalForm({
         applicantName: selectedApplicant,
         fieldPicName: selectedFieldPic,
         authorizedByName: selectedAuthorized,
-        status,
+        status: isReverted ? 'In Progress' : status,
         riskLevel,
         description: finalDescription,
         controlSteps: formattedControlSteps,
@@ -510,12 +609,48 @@ export function PtwApprovalForm({
       })
 
       if (res.success) {
-        toast.success('Izin Kerja Aman (PTW) berhasil disimpan')
-        router.refresh()
+        if (isReverted) {
+          toast.success('Izin Kerja (PTW) berhasil direvisi dan dikirim ulang untuk persetujuan!')
+          router.push('/dashboard/hse/izin-kerja-ptw')
+        } else {
+          toast.success('Izin Kerja Aman (PTW) berhasil disimpan')
+          router.refresh()
+        }
       } else {
         toast.error('Gagal menyimpan: ' + (res.error || 'Terjadi kesalahan'))
       }
     })
+  }
+
+  const pemberiKerjaStep = approvalHistoryForDisplay.find((s) => s.stepOrder === 1 || s.approverRole === 'safety_officer' || s.approverRole === 'pemberi_kerja')
+  const safetyDeptStep = approvalHistoryForDisplay.find((s) => s.approverRole === 'safety_dept' || s.approverRole === 'authorized' || s.stepLabel?.toLowerCase().includes('safety') || s.stepLabel?.toLowerCase().includes('hse') || (approvalHistoryForDisplay.length > 2 && s.stepOrder === approvalHistoryForDisplay.length))
+  const pelaksanaSteps = approvalHistoryForDisplay.filter((s) => {
+    if (pemberiKerjaStep && (s.id ? s.id === pemberiKerjaStep.id : s.stepOrder === pemberiKerjaStep.stepOrder)) return false
+    if (safetyDeptStep && (s.id ? s.id === safetyDeptStep.id : s.stepOrder === safetyDeptStep.stepOrder)) return false
+    return true
+  })
+
+  const step1 = pemberiKerjaStep
+  const step2 = pelaksanaSteps[0] || approvalHistoryForDisplay.find((s) => s.stepOrder === 2)
+  const step3 = safetyDeptStep
+
+  const isStep1Locked = Boolean(step1?.status === 'approved' || step1?.signatureDataUrl || data.status === 'Approved')
+  const isStep2Locked = Boolean(pelaksanaSteps.some((p) => p.status === 'approved' || p.signatureDataUrl) || data.status === 'Approved')
+  const isStep3Locked = Boolean(step3?.status === 'approved' || step3?.signatureDataUrl || data.status === 'Approved')
+
+  const step1Sig = (step1 && signaturesByStepId[step1.id]) || step1?.signatureDataUrl || (activeStepId === step1?.id && previewSig ? previewSig : null)
+  const step2Sig = (step2 && signaturesByStepId[step2.id]) || step2?.signatureDataUrl || (activeStepId === step2?.id && previewSig ? previewSig : null)
+  const step3Sig = (step3 && signaturesByStepId[step3.id]) || step3?.signatureDataUrl || (activeStepId === step3?.id && previewSig ? previewSig : null)
+
+  function renderApprovalMeta(step?: (typeof approvalHistoryForDisplay)[number] | null, sigDateOverride?: Date | string | null) {
+    if (!step) return null
+    const dateToUse = sigDateOverride || step.signedAt
+    return (
+      <div className="mt-1 text-[6.5pt] text-gray-500">
+        <div>{dateToUse ? fmtDt(dateToUse) : 'Belum Ditandatangani'}</div>
+        {step.remarks ? <div className="italic text-gray-400">"{step.remarks}"</div> : null}
+      </div>
+    )
   }
 
   const handleApproveStep = (stepId: number) => {
@@ -637,62 +772,6 @@ export function PtwApprovalForm({
     }
   }
 
-  const approvalHistoryForDisplay = (data?.approvals?.length
-    ? data.approvals
-    : [
-        { id: 1, stepOrder: 1, stepLabel: 'Pemberi Kerja', approverName: selectedFieldPic || 'Pemberi Kerja', approverRole: 'safety_officer', status: 'pending', signatureDataUrl: null, remarks: '', signedAt: null },
-        ...((selectedApplicant || 'Pelaksana Kerja').split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean).length > 0
-          ? (selectedApplicant || 'Pelaksana Kerja').split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean)
-          : ['Pelaksana Kerja']
-        ).map((appName, idx, arr) => {
-          const parsed = parseApplicantEntry(appName)
-          return {
-            id: 2 + idx,
-            stepOrder: 2 + idx,
-            stepLabel: arr.length > 1 ? `Pelaksana Kerja ${idx + 1}` : 'Pelaksana Kerja',
-            approverName: parsed.name || appName,
-            approverRole: 'applicant',
-            status: 'waiting',
-            signatureDataUrl: null,
-            remarks: '',
-            signedAt: null,
-          }
-        }),
-        { id: 99, stepOrder: 99, stepLabel: 'Safety Dept', approverName: selectedAuthorized || 'Safety Dept', approverRole: 'field_pic', status: 'waiting', signatureDataUrl: null, remarks: '', signedAt: null },
-      ]
-  )
-
-  const pemberiKerjaStep = approvalHistoryForDisplay.find((s) => s.stepOrder === 1 || s.approverRole === 'safety_officer' || s.approverRole === 'pemberi_kerja')
-  const safetyDeptStep = approvalHistoryForDisplay.find((s) => s.approverRole === 'safety_dept' || s.approverRole === 'authorized' || s.stepLabel?.toLowerCase().includes('safety') || s.stepLabel?.toLowerCase().includes('hse') || (approvalHistoryForDisplay.length > 2 && s.stepOrder === approvalHistoryForDisplay.length))
-  const pelaksanaSteps = approvalHistoryForDisplay.filter((s) => {
-    if (pemberiKerjaStep && (s.id ? s.id === pemberiKerjaStep.id : s.stepOrder === pemberiKerjaStep.stepOrder)) return false
-    if (safetyDeptStep && (s.id ? s.id === safetyDeptStep.id : s.stepOrder === safetyDeptStep.stepOrder)) return false
-    return true
-  })
-
-  const step1 = pemberiKerjaStep
-  const step2 = pelaksanaSteps[0] || approvalHistoryForDisplay.find((s) => s.stepOrder === 2)
-  const step3 = safetyDeptStep
-
-  const isStep1Locked = Boolean(step1?.status === 'approved' || step1?.signatureDataUrl || data.status === 'Approved')
-  const isStep2Locked = Boolean(pelaksanaSteps.some((p) => p.status === 'approved' || p.signatureDataUrl) || data.status === 'Approved')
-  const isStep3Locked = Boolean(step3?.status === 'approved' || step3?.signatureDataUrl || data.status === 'Approved')
-
-  const step1Sig = (step1 && signaturesByStepId[step1.id]) || step1?.signatureDataUrl || (activeStepId === step1?.id && previewSig ? previewSig : null)
-  const step2Sig = (step2 && signaturesByStepId[step2.id]) || step2?.signatureDataUrl || (activeStepId === step2?.id && previewSig ? previewSig : null)
-  const step3Sig = (step3 && signaturesByStepId[step3.id]) || step3?.signatureDataUrl || (activeStepId === step3?.id && previewSig ? previewSig : null)
-
-  function renderApprovalMeta(step?: (typeof approvalHistoryForDisplay)[number] | null, sigDateOverride?: Date | string | null) {
-    if (!step) return null
-    const dateToUse = sigDateOverride || step.signedAt
-    return (
-      <div className="mt-1 text-[6.5pt] text-gray-500">
-        <div>{dateToUse ? fmtDt(dateToUse) : 'Belum Ditandatangani'}</div>
-        {step.remarks ? <div className="italic text-gray-400">"{step.remarks}"</div> : null}
-      </div>
-    )
-  }
-
   const activeStep = approvalHistoryForDisplay.find((a) => a.id === activeStepId) || approvalHistoryForDisplay[0]
 
   const isCurrentUserAssignedApprover = Boolean(
@@ -742,7 +821,15 @@ export function PtwApprovalForm({
         <div className="grid gap-6 xl:grid-cols-2">
           {/* ── LEFT: Form ── */}
           <div className={cn('flex flex-col gap-6 print:hidden', activeView === 'preview' ? 'hidden xl:flex' : 'flex')}>
-            {!canEdit && (
+            {isReverted && (
+              <div className="flex items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-950 shadow-2xs">
+                <RotateCcw className="size-4 text-amber-600 shrink-0" />
+                <div className="leading-relaxed">
+                  <span className="font-bold">Status Dokumen: Perlu Revisi.</span> Silakan perbarui isian formulir di bawah ini, lalu klik tombol kuning <span className="font-bold text-amber-900">"REVISI DAN KIRIM ULANG"</span> untuk mengirimkan kembali ke alur persetujuan.
+                </div>
+              </div>
+            )}
+            {!canEdit && !isReverted && (
               <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-xs text-amber-900 shadow-2xs">
                 <Lock className="size-4 text-amber-600 shrink-0" />
                 <div className="leading-relaxed">
@@ -774,9 +861,24 @@ export function PtwApprovalForm({
                 <Button
                   onClick={handleSaveForm}
                   disabled={isPending}
-                  className="ml-auto bg-slate-900 hover:bg-slate-800 text-white font-bold"
+                  className={cn(
+                    'ml-auto font-bold tracking-wide transition-all shadow-sm active:scale-95 text-xs',
+                    isReverted
+                      ? 'bg-amber-400 hover:bg-amber-500 text-slate-900 border border-amber-500/80 shadow-amber-200/50'
+                      : 'bg-slate-900 hover:bg-slate-800 text-white'
+                  )}
                 >
-                  <Save className="mr-2 size-4" /> {isPending ? 'Menyimpan...' : 'Simpan Perubahan'}
+                  {isReverted ? (
+                    <>
+                      <RotateCcw className="mr-2 size-4" />
+                      {isPending ? 'MENGIRIM ULANG...' : 'REVISI DAN KIRIM ULANG'}
+                    </>
+                  ) : (
+                    <>
+                      <Save className="mr-2 size-4" />
+                      {isPending ? 'MENYIMPAN...' : 'SIMPAN PERUBAHAN'}
+                    </>
+                  )}
                 </Button>
               )}
             </div>
@@ -1504,6 +1606,27 @@ export function PtwApprovalForm({
                   </div>
                 )}
               </Card>
+            ) : isReverted ? (
+              <Card className="rounded-[1.2rem] shadow-sm ring-1 ring-amber-300 bg-amber-50/60 p-5 border border-amber-200">
+                <div className="flex items-start gap-3.5">
+                  <div className="size-10 rounded-full bg-amber-400 flex items-center justify-center text-slate-900 shrink-0 shadow-xs mt-0.5 font-bold">
+                    <RotateCcw className="size-5 text-slate-900" />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-bold text-amber-950">
+                        Dokumen Sedang Dalam Tahap Revisi
+                      </h4>
+                      <Badge className="bg-amber-200 text-amber-900 border-amber-300 rounded-full px-2.5 py-0.5 font-bold text-[9px]">
+                        PERLU REVISI
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-amber-900 leading-relaxed">
+                      Dokumen izin kerja ini telah dikembalikan untuk revisi. Silakan ubah data atau lampiran pada formulir di sebelah kiri, kemudian klik tombol kuning <span className="font-bold text-amber-950">"REVISI DAN KIRIM ULANG"</span> di bagian atas untuk mengirimkan kembali ke verifikasi pemohon / approver.
+                    </p>
+                  </div>
+                </div>
+              </Card>
             ) : !isCurrentUserAssignedApprover ? (
               <Card className="rounded-[1.2rem] shadow-sm ring-1 ring-slate-200/70 p-5 bg-slate-50/80 border border-slate-200">
                 <div className="flex items-start gap-3.5">
@@ -1846,16 +1969,10 @@ export function PtwApprovalForm({
                   <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PEMBERI KERJA</div>
                   <div className="h-14 flex flex-col items-center justify-center my-1">
                     {step1?.status === 'rejected' ? (
-                      <>
-                        {(step1Sig || step1?.signatureDataUrl) && <img src={(step1Sig || step1?.signatureDataUrl) ?? ''} alt="TTD" className="max-h-8 object-contain" />}
-                        <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak</span>
-                      </>
+                      <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak</span>
                     ) : step1?.status === 'reverted' ? (
-                      <>
-                        {(step1Sig || step1?.signatureDataUrl) && <img src={(step1Sig || step1?.signatureDataUrl) ?? ''} alt="TTD" className="max-h-8 object-contain" />}
-                        <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan</span>
-                      </>
-                    ) : (step1Sig || step1?.signatureDataUrl) ? (
+                      <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan</span>
+                    ) : step1?.status === 'approved' && (step1Sig || step1?.signatureDataUrl) ? (
                       <img src={(step1Sig || step1?.signatureDataUrl) ?? ''} alt="TTD" className="max-h-12 object-contain" />
                     ) : step1?.status === 'approved' ? (
                       <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui</span>
@@ -1872,16 +1989,17 @@ export function PtwApprovalForm({
                   <div className="min-h-14 flex flex-wrap items-center justify-center gap-2 my-1">
                     {pelaksanaSteps.length > 0 ? (
                       pelaksanaSteps.map((pStep, pIdx) => {
-                        const pSig = (signaturesByStepId[pStep.id]) || pStep.signatureDataUrl || (activeStepId === pStep.id && previewSig ? previewSig : null)
+                        const isApproved = pStep.status === 'approved'
+                        const pSig = isApproved ? ((signaturesByStepId[pStep.id]) || pStep.signatureDataUrl || (activeStepId === pStep.id && previewSig ? previewSig : null)) : null
                         return (
                           <div key={pStep.id || pIdx} className="flex flex-col items-center justify-center text-center">
                             {pStep.status === 'rejected' ? (
                               <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak</span>
                             ) : pStep.status === 'reverted' ? (
                               <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan</span>
-                            ) : pSig ? (
+                            ) : isApproved && pSig ? (
                               <img src={pSig} alt={`TTD ${pStep.approverName}`} className="max-h-10 object-contain" />
-                            ) : pStep.status === 'approved' ? (
+                            ) : isApproved ? (
                               <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui</span>
                             ) : (
                               <span className="text-[6.5pt] text-slate-400 italic">(Belum Disetujui)</span>
@@ -1904,16 +2022,10 @@ export function PtwApprovalForm({
                   <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">SAFETY DEPT</div>
                   <div className="h-14 flex flex-col items-center justify-center my-1">
                     {step3?.status === 'rejected' ? (
-                      <>
-                        {(step3Sig || step3?.signatureDataUrl) && <img src={(step3Sig || step3?.signatureDataUrl) ?? ''} alt="TTD" className="max-h-8 object-contain" />}
-                        <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak</span>
-                      </>
+                      <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak</span>
                     ) : step3?.status === 'reverted' ? (
-                      <>
-                        {(step3Sig || step3?.signatureDataUrl) && <img src={(step3Sig || step3?.signatureDataUrl) ?? ''} alt="TTD" className="max-h-8 object-contain" />}
-                        <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan</span>
-                      </>
-                    ) : (step3Sig || step3?.signatureDataUrl) ? (
+                      <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan</span>
+                    ) : step3?.status === 'approved' && (step3Sig || step3?.signatureDataUrl) ? (
                       <img src={(step3Sig || step3?.signatureDataUrl) ?? ''} alt="TTD" className="max-h-12 object-contain" />
                     ) : step3?.status === 'approved' ? (
                       <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui</span>
@@ -2134,27 +2246,69 @@ export function PtwApprovalForm({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {attachments.map((att, idx) => {
                     const parsed = parseAttachment(att)
-                    const isImg = parsed.url && (parsed.url.startsWith('data:image') || /\.(jpg|jpeg|png|webp|gif)$/i.test(parsed.name || parsed.url))
+                    const icon = parsed.isImg ? (
+                      <ImageIcon className="size-5 text-purple-600" />
+                    ) : parsed.isPdf ? (
+                      <FileText className="size-5 text-rose-600" />
+                    ) : parsed.isWord ? (
+                      <FileText className="size-5 text-blue-600" />
+                    ) : parsed.isExcel ? (
+                      <FileSpreadsheet className="size-5 text-emerald-600" />
+                    ) : parsed.isPpt ? (
+                      <Presentation className="size-5 text-amber-600" />
+                    ) : (
+                      <FileText className="size-5 text-teal-600" />
+                    )
+
+                    const badgeLabel = parsed.isImg
+                      ? 'GAMBAR'
+                      : parsed.isPdf
+                      ? 'PDF'
+                      : parsed.isWord
+                      ? 'WORD'
+                      : parsed.isExcel
+                      ? 'EXCEL'
+                      : parsed.isPpt
+                      ? 'PPT'
+                      : parsed.ext ? parsed.ext.toUpperCase() : 'BERKAS'
+
+                    const badgeColor = parsed.isImg
+                      ? 'bg-purple-50 text-purple-700 border-purple-200'
+                      : parsed.isPdf
+                      ? 'bg-rose-50 text-rose-700 border-rose-200'
+                      : parsed.isWord
+                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                      : parsed.isExcel
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : parsed.isPpt
+                      ? 'bg-amber-50 text-amber-700 border-amber-200'
+                      : 'bg-slate-50 text-slate-700 border-slate-200'
+
                     return (
                       <div
                         key={idx}
-                        className="flex flex-col justify-between p-3 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-50 transition-colors gap-2"
+                        className="flex flex-col justify-between p-3 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-50 transition-colors gap-2.5 shadow-2xs"
                       >
                         <div className="flex items-start gap-2.5 min-w-0">
-                          <div className="p-2 rounded-lg bg-white border border-slate-200 shrink-0">
-                            <FileText className="size-5 text-teal-600" />
+                          <div className="p-2 rounded-lg bg-white border border-slate-200 shrink-0 shadow-2xs">
+                            {icon}
                           </div>
                           <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <span className={`text-[9px] font-bold px-1.5 py-0.25 rounded border ${badgeColor}`}>
+                                {badgeLabel}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-medium">#{idx + 1}</span>
+                            </div>
                             <p className="text-xs font-bold text-slate-800 truncate" title={parsed.name}>
                               {parsed.name}
                             </p>
-                            <p className="text-[10px] text-slate-500">Lampiran Dokumen #{idx + 1}</p>
                           </div>
                         </div>
 
-                        {isImg && parsed.url ? (
+                        {parsed.isImg && parsed.url ? (
                           <div
-                            className="group relative rounded-lg overflow-hidden border border-slate-200 bg-white max-h-48 flex items-center justify-center p-1 cursor-pointer"
+                            className="group relative rounded-lg overflow-hidden border border-slate-200 bg-white max-h-40 flex items-center justify-center p-1 cursor-pointer"
                             onClick={() => {
                               setZoomImage({ url: parsed.url!, title: parsed.name })
                               setImageScale(1)
@@ -2165,7 +2319,7 @@ export function PtwApprovalForm({
                             <img
                               src={parsed.url}
                               alt={parsed.name}
-                              className="max-h-44 w-full object-contain rounded transition-transform duration-200 group-hover:scale-105"
+                              className="max-h-36 w-full object-contain rounded transition-transform duration-200 group-hover:scale-105"
                             />
                             <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 text-white text-xs font-semibold backdrop-blur-[1px] rounded-lg">
                               <ZoomIn className="size-4" />
@@ -2174,20 +2328,33 @@ export function PtwApprovalForm({
                           </div>
                         ) : null}
 
-                        <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-200/60">
-                          {isImg && parsed.url && (
+                        <div className="flex items-center justify-end gap-2 pt-1.5 border-t border-slate-200/60">
+                          {parsed.url && (
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
                               onClick={() => {
-                                setZoomImage({ url: parsed.url!, title: parsed.name })
-                                setImageScale(1)
-                                setImageRotation(0)
+                                if (parsed.isImg && parsed.url) {
+                                  setZoomImage({ url: parsed.url, title: parsed.name })
+                                  setImageScale(1)
+                                  setImageRotation(0)
+                                } else {
+                                  setPreviewDoc({
+                                    url: parsed.url,
+                                    name: parsed.name,
+                                    ext: parsed.ext,
+                                    isPdf: parsed.isPdf,
+                                    isWord: parsed.isWord,
+                                    isExcel: parsed.isExcel,
+                                    isPpt: parsed.isPpt,
+                                  })
+                                }
                               }}
-                              className="inline-flex items-center gap-1 text-xs font-bold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200"
+                              className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200 cursor-pointer h-8"
                             >
-                              <ZoomIn className="size-3.5" /> Zoom
+                              <Eye className="size-3.5 text-teal-600" />
+                              <span>Lihat</span>
                             </Button>
                           )}
                           {parsed.url ? (
@@ -2196,9 +2363,10 @@ export function PtwApprovalForm({
                               target="_blank"
                               rel="noreferrer"
                               download={parsed.name}
-                              className="inline-flex items-center gap-1 text-xs font-bold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-3 py-1.5 rounded-lg border border-teal-200 transition-colors"
+                              className="inline-flex items-center gap-1 text-xs font-bold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-3 py-1.5 rounded-lg border border-teal-200 transition-colors h-8"
                             >
-                              <Download className="size-3.5" /> Unduh / Buka
+                              <Download className="size-3.5" />
+                              <span>Unduh</span>
                             </a>
                           ) : (
                             <span className="text-xs text-slate-400 italic">File tersimpan</span>
@@ -2353,6 +2521,137 @@ export function PtwApprovalForm({
                 className="max-h-[68vh] w-auto max-w-full rounded object-contain"
                 draggable={false}
               />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── INTERACTIVE DOCUMENT VIEWER MODAL (PDF / Office / Text) ── */}
+      <Dialog open={!!previewDoc} onOpenChange={(open) => !open && setPreviewDoc(null)}>
+        <DialogContent className="max-w-5xl w-[96vw] h-[92vh] p-0 overflow-hidden flex flex-col bg-slate-900 text-white border-slate-800 z-[130] rounded-2xl shadow-2xl">
+          <div className="flex items-center justify-between px-4 py-3 bg-slate-950 border-b border-slate-800 shrink-0">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="p-1.5 rounded-md bg-slate-800 border border-slate-700 shrink-0">
+                {previewDoc?.isPdf ? (
+                  <FileText className="size-4 text-rose-400" />
+                ) : previewDoc?.isWord ? (
+                  <FileText className="size-4 text-blue-400" />
+                ) : previewDoc?.isExcel ? (
+                  <FileSpreadsheet className="size-4 text-emerald-400" />
+                ) : previewDoc?.isPpt ? (
+                  <Presentation className="size-4 text-amber-400" />
+                ) : (
+                  <FileText className="size-4 text-teal-400" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-100 truncate max-w-md" title={previewDoc?.name}>
+                  {previewDoc?.name}
+                </p>
+                <p className="text-[10px] text-slate-400">
+                  {previewDoc?.isPdf
+                    ? 'Dokumen PDF'
+                    : previewDoc?.isWord
+                    ? 'Dokumen Microsoft Word'
+                    : previewDoc?.isExcel
+                    ? 'Lembar Kerja Excel'
+                    : previewDoc?.isPpt
+                    ? 'Presentasi PowerPoint'
+                    : 'Pratinjau Berkas Dokumen'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {previewDoc?.url && (
+                <>
+                  <a
+                    href={previewDoc.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors"
+                    title="Buka di Tab Baru"
+                  >
+                    <ExternalLink className="size-3.5" />
+                    <span className="hidden sm:inline">Tab Baru</span>
+                  </a>
+                  <a
+                    href={previewDoc.url}
+                    download={previewDoc.name}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-500 text-white transition-colors"
+                    title="Unduh Berkas Asli"
+                  >
+                    <Download className="size-3.5" />
+                    <span>Unduh</span>
+                  </a>
+                </>
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setPreviewDoc(null)}
+                className="size-8 p-0 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg cursor-pointer ml-1"
+                title="Tutup"
+              >
+                <X className="size-4" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-hidden bg-slate-950 flex flex-col items-center justify-center relative">
+            {previewDoc?.isPdf ? (
+              <iframe
+                src={previewDoc.url}
+                title={previewDoc.name}
+                className="w-full h-full border-0 bg-slate-900"
+              />
+            ) : (previewDoc?.isWord || previewDoc?.isExcel || previewDoc?.isPpt) &&
+              previewDoc.url.startsWith('http') ? (
+              <iframe
+                src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(
+                  previewDoc.url
+                )}`}
+                title={previewDoc.name}
+                className="w-full h-full border-0 bg-white"
+              />
+            ) : (
+              <div className="p-8 text-center max-w-md space-y-4 bg-slate-900/60 rounded-2xl border border-slate-800">
+                <div className="size-16 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center mx-auto text-teal-400">
+                  <FileCheck className="size-8" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-bold text-slate-100">{previewDoc?.name}</h4>
+                  <p className="text-xs text-slate-400">
+                    Berkas ini siap diunduh atau dibuka menggunakan aplikasi pembaca dokumen di perangkat Anda.
+                  </p>
+                </div>
+                {previewDoc?.url && (
+                  <div className="flex items-center justify-center gap-3 pt-2">
+                    <a
+                      href={previewDoc.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      download={previewDoc.name}
+                      className="inline-flex items-center gap-2 text-xs font-bold px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white transition-colors shadow-lg"
+                    >
+                      <Download className="size-4" />
+                      <span>Unduh Berkas</span>
+                    </a>
+                    <a
+                      href={previewDoc.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-2 text-xs font-semibold px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors"
+                    >
+                      <ExternalLink className="size-4" />
+                      <span>Buka Langsung</span>
+                    </a>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </DialogContent>

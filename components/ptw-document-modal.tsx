@@ -143,7 +143,7 @@ export function PtwDocumentModal({
     if (!isOpen || !data) return
     const permitNumber = data?.permitNumber || data?.documentNumber || (cleanPermitId ? (String(cleanPermitId).startsWith('PTW') ? String(cleanPermitId) : `PTW-${cleanPermitId}`) : 'PTW')
     const origin = typeof window !== 'undefined' ? window.location.origin : 'https://hero.chitraparatama.com'
-    const targetUrl = `${origin}/review/ptw/${encodeURIComponent(permitNumber)}`
+    const targetUrl = `${origin}/ptw-evidence/${encodeURIComponent(permitNumber)}`
     setTargetVerifyUrl(targetUrl)
 
     QRCode.toDataURL(targetUrl, {
@@ -690,15 +690,23 @@ export function PtwDocumentModal({
                     <div className="my-1 flex flex-wrap items-center justify-center gap-2 min-h-12 w-full">
                       {pelaksanaSteps.length > 0 ? (
                         pelaksanaSteps.map((pStep: any, pIdx: number) => {
-                          const pSig = pStep.signatureDataUrl || pStep.signatureUrl
                           const isSigned = ['approved', 'completed', 'signed'].includes((pStep.status || '').toLowerCase())
+                          const pSig = isSigned ? (pStep.signatureDataUrl || pStep.signatureUrl) : null
                           return (
                             <div key={pStep.id || pIdx} className="flex flex-col items-center justify-center text-center">
-                              {pSig ? (
+                              {isSigned && pSig ? (
                                 <img src={pSig} alt={`TTD ${pStep.approverName}`} className="max-h-10 max-w-[100px] object-contain" />
                               ) : isSigned ? (
                                 <span className="text-emerald-700 font-bold text-[6.5pt] bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
                                   ✓ Disetujui
+                                </span>
+                              ) : (pStep.status || '').toLowerCase() === 'reverted' ? (
+                                <span className="text-amber-700 font-bold text-[6.5pt] bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                  ↺ Dikembalikan
+                                </span>
+                              ) : (pStep.status || '').toLowerCase() === 'rejected' ? (
+                                <span className="text-rose-700 font-bold text-[6.5pt] bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
+                                  ✗ Ditolak
                                 </span>
                               ) : (
                                 <span className="text-slate-400 italic text-[6.5pt]">(Belum Disetujui)</span>

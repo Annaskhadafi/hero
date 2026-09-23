@@ -67,6 +67,7 @@ export default async function IzinKerjaPtwPage() {
           subTypes: hsePtwPermits.subTypes,
           gasTestRequired: hsePtwPermits.gasTestRequired,
           isolationRequired: hsePtwPermits.isolationRequired,
+          attachments: hsePtwPermits.attachments,
           createdByEmployeeId: hsePtwPermits.createdByEmployeeId,
         })
         .from(hsePtwPermits)

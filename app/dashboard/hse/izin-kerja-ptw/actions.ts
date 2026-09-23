@@ -304,17 +304,18 @@ export async function advancePtwApprovalFlow(permitId: number) {
       .limit(1)
 
     if (step1?.approverEmail) {
-      try {
-        await sendPtwCompletedEmail({
-          permitId,
-          permitNumber: permit?.permitNumber || '',
-          projectName: permit?.projectName || 'Izin Kerja PTW',
-          applicantEmail: step1.approverEmail,
-          applicantName: permit?.applicantName || step1.approverName || 'Pemohon',
-        })
-      } catch (err) {
-        console.error('Error sending PTW completed email:', err)
-      }
+      const completedPromise = sendPtwCompletedEmail({
+        permitId,
+        permitNumber: permit?.permitNumber || '',
+        projectName: permit?.projectName || 'Izin Kerja PTW',
+        applicantEmail: step1.approverEmail,
+        applicantName: permit?.applicantName || step1.approverName || 'Pemohon',
+      }).catch((err) => console.error('Error sending PTW completed email:', err))
+
+      await Promise.race([
+        completedPromise,
+        new Promise((resolve) => setTimeout(resolve, 2000)),
+      ])
     }
     return
   }
@@ -346,38 +347,40 @@ export async function advancePtwApprovalFlow(permitId: number) {
       .limit(1)
 
     if (targetStep.approverEmail) {
-      try {
-        await sendPtwStepApprovalEmail({
-          permitId,
-          permitNumber: permit?.permitNumber || '',
-          projectName: permit?.projectName || 'Izin Kerja PTW',
-          location: permit?.location,
-          permitType: permit?.permitType,
-          applicantName: permit?.applicantName || 'Pemohon',
-          approverName: targetStep.approverName || 'Approver',
-          approverEmail: targetStep.approverEmail,
-          approvalStep: targetStep.stepLabel,
-          approvalToken: targetStep.approvalToken,
-        })
+      const emailPromise = sendPtwStepApprovalEmail({
+        permitId,
+        permitNumber: permit?.permitNumber || '',
+        projectName: permit?.projectName || 'Izin Kerja PTW',
+        location: permit?.location,
+        permitType: permit?.permitType,
+        applicantName: permit?.applicantName || 'Pemohon',
+        approverName: targetStep.approverName || 'Approver',
+        approverEmail: targetStep.approverEmail,
+        approvalStep: targetStep.stepLabel,
+        approvalToken: targetStep.approvalToken,
+      }).catch((err) => console.error('Error sending step approval email in advancePtwApprovalFlow:', err))
 
-        const docId = permit?.permitNumber || String(permitId)
-        const bellUrl = targetStep.approverEmployeeId
-          ? `/dashboard/approval?openDoc=${encodeURIComponent(docId)}`
-          : `/review/ptw/${targetStep.approvalToken}`
+      const docId = permit?.permitNumber || String(permitId)
+      const bellUrl = targetStep.approverEmployeeId
+        ? `/dashboard/approval?openDoc=${encodeURIComponent(docId)}`
+        : `/review/ptw/${targetStep.approvalToken}`
 
-        await notifyWorkflowBellRecipients({
-          recipientEmails: [targetStep.approverEmail],
-          eventType: 'hse_ptw_approval_needed',
-          category: 'approval_requests',
-          title: `Approval PTW - ${targetStep.stepLabel}`,
-          body: `Izin Kerja PTW #${permit?.permitNumber || ''} memerlukan approval/tanda tangan Anda pada tahap ${targetStep.stepLabel}.`,
-          url: bellUrl,
-          tagPrefix: 'hse-ptw-approval',
-          metadata: { permitId, stepOrder: targetStep.stepOrder, token: targetStep.approvalToken },
-        }).catch((err) => console.error('Error notifying approver bell in advancePtwApprovalFlow:', err))
-      } catch (err) {
-        console.error('Error sending step approval email in advancePtwApprovalFlow:', err)
-      }
+      const bellPromise = notifyWorkflowBellRecipients({
+        recipientEmails: [targetStep.approverEmail],
+        eventType: 'hse_ptw_approval_needed',
+        category: 'approval_requests',
+        title: `Approval PTW - ${targetStep.stepLabel}`,
+        body: `Izin Kerja PTW #${permit?.permitNumber || ''} memerlukan approval/tanda tangan Anda pada tahap ${targetStep.stepLabel}.`,
+        url: bellUrl,
+        tagPrefix: 'hse-ptw-approval',
+        metadata: { permitId, stepOrder: targetStep.stepOrder, token: targetStep.approvalToken },
+      }).catch((err) => console.error('Error notifying approver bell in advancePtwApprovalFlow:', err))
+
+      // Wait maximum 2.5s for fast responses, otherwise let them complete asynchronously
+      await Promise.race([
+        Promise.allSettled([emailPromise, bellPromise]),
+        new Promise((resolve) => setTimeout(resolve, 2500)),
+      ])
     }
   }
 }
@@ -598,8 +601,8 @@ export async function getPtwApprovalData(permitIdOrNumberOrToken: number | strin
   }
 
   const mappedApprovals = approvalRows.map((a) => {
-    const isSignedStep = a.status === 'approved' || a.status === 'signed' || a.status === 'completed' || Boolean(a.signedAt)
-    let sig = a.signatureDataUrl || null
+    const isSignedStep = a.status === 'approved' || a.status === 'signed' || a.status === 'completed'
+    let sig = isSignedStep ? (a.signatureDataUrl || null) : null
     if (!sig && isSignedStep) {
       if (a.approverEmployeeId && empSigMapById.has(a.approverEmployeeId)) {
         sig = empSigMapById.get(a.approverEmployeeId)!
@@ -626,7 +629,7 @@ export async function getPtwApprovalData(permitIdOrNumberOrToken: number | strin
       status: a.status,
       signatureDataUrl: isSignedStep ? sig : null,
       remarks: a.remarks,
-      signedAt: a.signedAt,
+      signedAt: isSignedStep ? a.signedAt : null,
     }
   })
 
@@ -814,20 +817,63 @@ export async function savePtwApprovalForm(params: {
     if (params.applicantName !== undefined) updates.applicantName = params.applicantName
     if (params.fieldPicName !== undefined) updates.fieldPicName = params.fieldPicName
     if (params.authorizedByName !== undefined) updates.authorizedByName = params.authorizedByName
-    if (params.status !== undefined) updates.status = params.status
     if (params.riskLevel !== undefined) updates.riskLevel = params.riskLevel
     if (params.description !== undefined) updates.description = params.description
     if (params.controlSteps !== undefined) updates.controlSteps = params.controlSteps
     if (params.additionalNotes !== undefined) updates.additionalNotes = params.additionalNotes
-    
     if (params.ppe !== undefined) updates.ppe = params.ppe
     if (params.subTypes !== undefined) updates.subTypes = params.subTypes
     if (params.attachments !== undefined) updates.attachments = params.attachments
+
+    const isRevertedPermit =
+      permit.status?.toLowerCase() === 'reverted' ||
+      permit.status?.toLowerCase() === 'revisi' ||
+      params.status === 'In Progress'
+
+    if (params.status !== undefined) {
+      updates.status = params.status
+    } else if (isRevertedPermit) {
+      updates.status = 'In Progress'
+    }
 
     await db
       .update(hsePtwPermits)
       .set(updates)
       .where(eq(hsePtwPermits.id, params.permitId))
+
+    if (isRevertedPermit) {
+      // 1. Ensure Step 1 (Pemberi Kerja / Creator) is approved upon revision
+      await db
+        .update(ptwApprovals)
+        .set({
+          status: 'approved',
+          signedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(ptwApprovals.ptwPermitId, params.permitId),
+            eq(ptwApprovals.stepOrder, 1)
+          )
+        )
+
+      // 2. Reset reverted steps to waiting and clear any invalid signatures
+      await db
+        .update(ptwApprovals)
+        .set({
+          status: 'waiting',
+          signatureDataUrl: null,
+          signedAt: null,
+        })
+        .where(
+          and(
+            eq(ptwApprovals.ptwPermitId, params.permitId),
+            eq(ptwApprovals.status, 'reverted')
+          )
+        )
+
+      // 3. Advance approval flow so that the next approver (e.g. Step 2 - Anisah) becomes pending and receives notifications
+      await advancePtwApprovalFlow(params.permitId)
+    }
 
     await syncPtwApproverNames(
       params.permitId,
@@ -945,14 +991,14 @@ export async function submitPtwApprovalStepAction(
     if (action === 'revert') {
       const now = new Date()
 
-      // 1. Mark reverting step as reverted, saving remarks, timestamp, and signature
+      // 1. Mark reverting step as reverted, saving remarks, clearing signature
       await db
         .update(ptwApprovals)
         .set({
           status: 'reverted',
           remarks: remarks || 'Dokumen PTW dikembalikan untuk revisi.',
-          signedAt: now,
-          ...(signatureDataUrl ? { signatureDataUrl } : {}),
+          signatureDataUrl: null,
+          signedAt: null,
         })
         .where(eq(ptwApprovals.id, approval.id))
 

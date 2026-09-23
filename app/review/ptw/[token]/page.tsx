@@ -68,14 +68,18 @@ export default async function PtwPublicPage({ params }: PageProps) {
     }
   }
 
-  // If user is already logged in, redirect straight to Inbox Approval
+  const isReverted = restData.status === 'Reverted' || (restData as any).isReverted
+  const targetUrl = isReverted
+    ? `/dashboard/hse/izin-kerja-ptw/${restData.permitId}/approval`
+    : `/dashboard/approval?openDoc=${encodeURIComponent(docIdentifier)}`
+
+  // If user is already logged in, redirect straight
   if (session?.user) {
-    redirect(`/dashboard/approval?openDoc=${encodeURIComponent(docIdentifier)}`)
+    redirect(targetUrl)
   }
 
   // If this step is for an internal employee who is not logged in, redirect to login page with return URL
   if (isInternalHeroUser) {
-    const targetUrl = `/dashboard/approval?openDoc=${encodeURIComponent(docIdentifier)}`
     redirect(`/auth/login?callbackUrl=${encodeURIComponent(targetUrl)}`)
   }
 

@@ -658,6 +658,10 @@ export function InboxTab({
 
     for (const p of ptwItems) {
       const isReverted = Boolean((p as any).isReverted)
+      const ptwId = (p as any).ptwId || String(p.id).replace('ptw-', '')
+      const redirectUrl = isReverted
+        ? `/dashboard/hse/izin-kerja-ptw/${ptwId}/approval`
+        : p.url
       list.push({
         id: p.id,
         category: 'PTW',
@@ -672,7 +676,8 @@ export function InboxTab({
         dueState: p.dueState,
         dueAt: p.dueAt,
         submittedAt: p.submittedAt,
-        url: p.url,
+        url: redirectUrl,
+        ptwId,
         isReverted,
         actionLabel: (p as any).actionLabel || (isReverted ? 'Revisi Dokumen' : 'Buka TTD ↗'),
         rawPtw: p,
@@ -997,17 +1002,39 @@ export function InboxTab({
 
   const currentBatchDoc = selectedItems[batchReviewIndex] || null
 
-  const isAllSelected = categoryFilteredItems.length > 0 && categoryFilteredItems.every((it) => selectedIds.has(it.id))
+  const isItemApprovable = (it: any) => {
+    if (!it) return false
+    if (it.isReverted || (it as any).isRejected) return false
+    const label = (it.actionLabel || '').toLowerCase()
+    if (label.includes('revisi') || label.includes('ditolak')) return false
+    return true
+  }
+
+  const approvableItems = useMemo(() => {
+    return categoryFilteredItems.filter(isItemApprovable)
+  }, [categoryFilteredItems])
+
+  const isAllSelected = approvableItems.length > 0 && approvableItems.every((it) => selectedIds.has(it.id))
 
   const handleToggleSelectAll = () => {
     if (isAllSelected) {
       setSelectedIds(new Set())
     } else {
-      setSelectedIds(new Set(categoryFilteredItems.map((it) => it.id)))
+      setSelectedIds(new Set(approvableItems.map((it) => it.id)))
     }
   }
 
-  const handleToggleSelect = (id: string) => {
+  const handleToggleSelect = (itemOrId: string | any) => {
+    const item = typeof itemOrId === 'string'
+      ? allUnifiedItems.find((it) => it.id === itemOrId)
+      : itemOrId
+    const id = typeof itemOrId === 'string' ? itemOrId : itemOrId?.id
+
+    if (item && !isItemApprovable(item)) {
+      toast.warning('Dokumen dalam status revisi/ditolak tidak dapat dipilih untuk batch approval.')
+      return
+    }
+
     const next = new Set(selectedIds)
     if (next.has(id)) next.delete(id)
     else next.add(id)
@@ -1520,15 +1547,19 @@ export function InboxTab({
     })
   }, [allUnifiedItems, selectedCategory, mobileSearch])
 
+  const mobileApprovableItems = useMemo(() => {
+    return filteredMobileItems.filter(isItemApprovable)
+  }, [filteredMobileItems])
+
   const isAllMobileSelected =
-    filteredMobileItems.length > 0 &&
-    filteredMobileItems.every((item) => selectedIds.has(item.id))
+    mobileApprovableItems.length > 0 &&
+    mobileApprovableItems.every((item) => selectedIds.has(item.id))
 
   const handleToggleMobileSelectAll = () => {
     if (isAllMobileSelected) {
       setSelectedIds(new Set())
     } else {
-      setSelectedIds(new Set(filteredMobileItems.map((item) => item.id)))
+      setSelectedIds(new Set(mobileApprovableItems.map((item) => item.id)))
     }
   }
 
@@ -1618,14 +1649,21 @@ export function InboxTab({
 
       {/* Select All & Batch Actions */}
       <div className="flex items-center justify-between bg-white border border-slate-200/80 rounded-2xl px-4 py-3 shadow-xs">
-        <label className="flex items-center gap-2.5 text-xs font-bold text-slate-700 cursor-pointer select-none">
+        <label className={cn(
+          "flex items-center gap-2.5 text-xs font-bold select-none",
+          mobileApprovableItems.length === 0 ? "text-slate-400 cursor-not-allowed" : "text-slate-700 cursor-pointer"
+        )}>
           <input
             type="checkbox"
             checked={isAllMobileSelected}
+            disabled={mobileApprovableItems.length === 0}
             onChange={handleToggleMobileSelectAll}
-            className="size-4.5 rounded border-slate-300 text-[#003461] focus:ring-[#003461] cursor-pointer"
+            className={cn(
+              "size-4.5 rounded border-slate-300 text-[#003461] focus:ring-[#003461]",
+              mobileApprovableItems.length === 0 ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
+            )}
           />
-          <span>Pilih Semua ({filteredMobileItems.length})</span>
+          <span>Pilih Semua ({mobileApprovableItems.length})</span>
         </label>
 
         {selectedIds.size > 0 && (
@@ -1683,12 +1721,22 @@ export function InboxTab({
                 {/* Top Row: Checkbox, Badge, Doc Number, Status Badge */}
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => handleToggleSelect(item.id)}
-                      className="size-4.5 rounded border-slate-300 text-[#003461] focus:ring-[#003461] cursor-pointer shrink-0"
-                    />
+                    {isItemApprovable(item) ? (
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => handleToggleSelect(item)}
+                        className="size-4.5 rounded border-slate-300 text-[#003461] focus:ring-[#003461] cursor-pointer shrink-0"
+                      />
+                    ) : (
+                      <input
+                        type="checkbox"
+                        disabled
+                        checked={false}
+                        title="Dokumen dalam status revisi / tidak dapat diapprove batch"
+                        className="size-4.5 rounded border-slate-200 text-slate-300 bg-slate-100 cursor-not-allowed opacity-40 shrink-0"
+                      />
+                    )}
                     <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                       <span
                         className={cn(
@@ -1780,7 +1828,7 @@ export function InboxTab({
                           : item.category === 'TOOLS'
                           ? `/mobile/tools`
                           : item.category === 'PTW'
-                          ? `/mobile/hse/ptw`
+                          ? `/dashboard/hse/izin-kerja-ptw/${(item as any).ptwId || (item as any).rawPtw?.ptwId || String(item.id).replace('ptw-', '')}/approval`
                           : item.category === 'SOP_WIN' || item.category === 'SOP_WIN_REQUEST'
                           ? `/mobile/sop-win`
                           : item.url || '#'
@@ -1896,7 +1944,7 @@ export function InboxTab({
               <div className="flex items-center gap-2 text-indigo-900 font-bold text-xs sm:text-sm tracking-tight">
                 <Check className="size-4 text-[#4F46E5] stroke-[3] shrink-0" />
                 <span>
-                  {selectedIds.size} dari {categoryFilteredItems.length} aktivitas terpilih
+                  {selectedIds.size} dari {approvableItems.length} aktivitas terpilih
                 </span>
               </div>
 
@@ -1948,9 +1996,17 @@ export function InboxTab({
                   <input
                     type="checkbox"
                     checked={isAllSelected}
+                    disabled={approvableItems.length === 0}
                     onChange={handleToggleSelectAll}
-                    className="size-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                    title="Pilih Semua"
+                    className={cn(
+                      "size-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500",
+                      approvableItems.length === 0 ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
+                    )}
+                    title={
+                      approvableItems.length === 0
+                        ? "Tidak ada dokumen yang dapat diapprove batch"
+                        : "Pilih Semua Dokumen yang Dapat Diapprove"
+                    }
                   />
                 </TableHead>
                 <TableHead>Tipe & Requester</TableHead>
@@ -1964,6 +2020,7 @@ export function InboxTab({
             <TableBody>
               {categoryFilteredItems.map((item) => {
                 const isSelected = selectedIds.has(item.id)
+                const canSelect = isItemApprovable(item)
                 return (
                   <TableRow
                     key={item.id}
@@ -1977,12 +2034,22 @@ export function InboxTab({
                     )}
                   >
                     <TableCell className="align-middle">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => handleToggleSelect(item.id)}
-                        className="size-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                      />
+                      {canSelect ? (
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleSelect(item)}
+                          className="size-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                        />
+                      ) : (
+                        <input
+                          type="checkbox"
+                          disabled
+                          checked={false}
+                          title="Dokumen dalam status revisi / tidak dapat diapprove batch"
+                          className="size-4 rounded border-slate-200 text-slate-300 bg-slate-100 cursor-not-allowed opacity-40"
+                        />
+                      )}
                     </TableCell>
                     <TableCell className="align-top">
                       <div className="space-y-1">
@@ -3077,16 +3144,17 @@ export function InboxTab({
                                 <div className="h-10 flex flex-wrap items-center justify-center gap-1.5 my-0.5">
                                   {pelaksanaSteps.length > 0 ? (
                                     pelaksanaSteps.map((pStep: any, pIdx: number) => {
-                                      const pSig = pStep.signatureDataUrl
+                                      const isApproved = pStep.status === 'approved'
+                                      const pSig = isApproved ? pStep.signatureDataUrl : null
                                       return (
                                         <div key={pStep.id || pIdx} className="flex flex-col items-center justify-center text-center">
                                           {pStep.status === 'rejected' ? (
                                             <span className="text-[6pt] font-bold text-rose-600">✗ Ditolak</span>
                                           ) : pStep.status === 'reverted' ? (
                                             <span className="text-[6pt] font-bold text-amber-600">↺ Dikembalikan</span>
-                                          ) : pSig ? (
+                                          ) : isApproved && pSig ? (
                                             <img src={pSig} alt={`TTD ${pStep.approverName}`} className="max-h-8 object-contain" />
-                                          ) : pStep.status === 'approved' ? (
+                                          ) : isApproved ? (
                                             <span className="text-[6pt] font-bold text-emerald-600">✓ Disetujui</span>
                                           ) : (
                                             <span className="text-[6pt] text-slate-400 italic">(Belum Disetujui)</span>
@@ -3095,7 +3163,7 @@ export function InboxTab({
                                         </div>
                                       )
                                     })
-                                  ) : step2?.signatureDataUrl ? (
+                                  ) : step2?.status === 'approved' && step2?.signatureDataUrl ? (
                                     <div className="flex flex-col items-center justify-center text-center">
                                       <img src={step2.signatureDataUrl} alt="TTD" className="max-h-8 object-contain" />
                                       <span className="text-[6pt] text-slate-600 font-semibold mt-0.5">{step2.approverName || doc.applicantName}</span>

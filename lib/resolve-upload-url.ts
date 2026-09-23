@@ -48,7 +48,10 @@ export function extractS3ObjectKeyFromUrl(objectUrl: string | null | undefined):
 
 export function resolveUploadUrl(url: string | null | undefined): string {
   if (!url) return "";
-  const trimmed = url.trim();
+  let trimmed = url.trim();
+
+  // Strip localhost / 127.0.0.1 domain prefix if present
+  trimmed = trimmed.replace(/^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?/i, "");
 
   // 1. Already relative /api/uploads/
   if (trimmed.startsWith("/api/uploads/")) {
@@ -58,6 +61,9 @@ export function resolveUploadUrl(url: string | null | undefined): string {
   // 2. Relative /uploads/
   if (trimmed.startsWith("/uploads/")) {
     return `/api${trimmed}`;
+  }
+  if (trimmed.startsWith("uploads/")) {
+    return `/api/${trimmed}`;
   }
 
   // 3. Extract key using extractS3ObjectKeyFromUrl

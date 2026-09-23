@@ -2561,6 +2561,7 @@ async function getPtwInboxItems(
       isolationRequired: hsePtwPermits.isolationRequired,
       startAt: hsePtwPermits.startAt,
       endAt: hsePtwPermits.endAt,
+      attachments: hsePtwPermits.attachments,
       updatedAt: hsePtwPermits.updatedAt,
       permitStatus: hsePtwPermits.status,
     })
@@ -2807,7 +2808,10 @@ async function getPtwInboxItems(
       submittedAt: row.updatedAt ?? row.createdAt,
       dueAt,
       dueState: getContractReviewDueState(dueAt, new Date()),
-      url: `/review/ptw/${row.approvalToken}`,
+      url: isReverted
+        ? `/dashboard/hse/izin-kerja-ptw/${row.ptwId}/approval`
+        : `/review/ptw/${row.approvalToken}`,
+      attachments: (row.attachments as any) || [],
       approvals,
     }
   })
@@ -3493,6 +3497,7 @@ export async function getApprovalCenterData(email: string) {
             applicantName: hsePtwPermits.applicantName,
             applicantEmail: employees.email,
             applicantId: hsePtwPermits.createdByEmployeeId,
+            attachments: hsePtwPermits.attachments,
           })
           .from(hsePtwPermits)
           .leftJoin(employees, eq(hsePtwPermits.createdByEmployeeId, employees.id))
