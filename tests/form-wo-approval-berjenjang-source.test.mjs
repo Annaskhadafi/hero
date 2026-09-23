@@ -167,7 +167,7 @@ test('signature position synchronization and role alignment for SPV vs Team Bill
 
 test('live synchronization of No WO CP across document preview, approval drawer, PDF, and actions', () => {
   const previewSource = read('components/form-wo-document-preview-dialog.tsx')
-  assert.match(previewSource, /const docNoWo = doc\.noWoTerbit \|\| doc\.noWoCp \|\| doc\.idWo \|\| ''/)
+  assert.match(previewSource, /const docNoWo = String\(doc\.noWoTerbit \|\| doc\.noWoCp \|\| doc\.idWo \|\| ''\)/)
   assert.match(previewSource, /noWoCp: r\.noWoCp \|\| docNoWo \|\| ''/)
   assert.match(previewSource, /No\. WO Terbit:/)
   assert.match(previewSource, /{row\.noWoCp \|\| docNoWo \|\| '-'}/)
@@ -184,6 +184,22 @@ test('live synchronization of No WO CP across document preview, approval drawer,
   const pdfSource = read('lib/form-wo-pdf.ts')
   assert.match(pdfSource, /const docNoWo = data\.noWoTerbit \|\| \(data as any\)\.noWoCp \|\| data\.idWo \|\| ''/)
   assert.match(pdfSource, /row\.noWoCp \|\| docNoWo \|\| '-'/)
+})
+
+test('Form WO exports and prints every item across paginated A4 output', () => {
+  const pdfSource = read('lib/form-wo-pdf.ts')
+  assert.match(pdfSource, /itemsList\.map\(\(r\)/)
+    assert.match(pdfSource, /const pageContentBottom = 42/)
+    assert.match(pdfSource, /finalBlockReserve = 180/)
+    assert.match(pdfSource, /rowWouldCrossFooter/)
+  assert.match(pdfSource, /pdfDoc\.addPage\(\[width, height\]\)/)
+  assert.match(pdfSource, /drawItemsTableHeader\(page, height - 40, true\)/)
+
+  const previewSource = read('components/form-wo-document-preview-dialog.tsx')
+  assert.match(previewSource, /max-height: none !important/)
+  assert.match(previewSource, /overflow: visible !important/)
+  assert.match(previewSource, /display: table-header-group !important/)
+  assert.match(previewSource, /break-inside: avoid !important/)
 })
 
 test('approval-workspace.ts isolates step role categories to prevent approved items from leaking back into previous approver inbox', () => {

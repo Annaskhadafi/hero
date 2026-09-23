@@ -772,11 +772,12 @@ export function FormWoDocumentPreviewDialog({
       @page :right {
         size: landscape !important;
       }
-      html, body { 
+      html, body {
         margin: 0 !important; 
         padding: 0 !important;
         width: 297mm !important;
-        height: 210mm !important;
+        min-height: 210mm !important;
+        height: auto !important;
         -webkit-print-color-adjust: exact !important; 
         print-color-adjust: exact !important; 
       }
@@ -788,20 +789,35 @@ export function FormWoDocumentPreviewDialog({
           visibility: visible;
         }
         .print-area {
-          position: fixed !important;
-          inset: 0 !important;
+          position: relative !important;
+          inset: auto !important;
           margin: 0 !important;
           padding: 6mm 10mm 6mm 10mm !important;
           width: 297mm !important;
-          height: 210mm !important;
+          height: auto !important;
           max-width: 297mm !important;
-          max-height: 210mm !important;
+          max-height: none !important;
           box-shadow: none !important;
           border: none !important;
-          overflow: hidden !important;
-          page-break-after: avoid !important;
+          overflow: visible !important;
+          display: block !important;
+          page-break-after: auto !important;
           page-break-before: avoid !important;
+          page-break-inside: auto !important;
+        }
+        .print-area table {
+          page-break-inside: auto !important;
+        }
+        .print-area thead {
+          display: table-header-group !important;
+        }
+        .print-area tr {
           page-break-inside: avoid !important;
+          break-inside: avoid !important;
+        }
+        .print-area > div:last-child {
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
         }
       }
     `,

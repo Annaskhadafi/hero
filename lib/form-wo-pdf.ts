@@ -224,12 +224,26 @@ async function loadSignatureImageBytes(
 
 export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
   const pdfDoc = await PDFDocument.create()
-  const page = pdfDoc.addPage([841.89, 595.28]) // A4 Landscape (Width: 841.89, Height: 595.28)
+  let page = pdfDoc.addPage([841.89, 595.28]) // A4 Landscape (Width: 841.89, Height: 595.28)
   const { width, height } = page.getSize()
 
   const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica)
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
   const fontMono = await pdfDoc.embedFont(StandardFonts.Courier)
+
+  const drawFooter = (targetPage: any) => {
+    const printTimestamp = `${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Makassar' }).replace(':', '.')} WITA`
+    targetPage.drawText(
+      `Dokumen resmi PT Chitra Paratama dicetak otomatis melalui HERO System pada ${printTimestamp}`,
+      {
+        x: 36,
+        y: 20,
+        size: 6.5,
+        font: fontRegular,
+        color: rgb(0.6, 0.65, 0.7),
+      },
+    )
+  }
 
   // Top Title Bar: Only the clean Logo on left
   const logoPath = path.join(process.cwd(), 'public', 'cp_logo-removebg-preview.png')
@@ -556,30 +570,11 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
 
   curY -= metaBoxH + 16
 
-  // Section: Rincian Permintaan Pekerjaan (Items Table)
-  page.drawText('RINCIAN PERMINTAAN PEKERJAAN (ITEMS)', {
-    x: 36,
-    y: curY,
-    size: 8,
-    font: fontBold,
-    color: rgb(0.3, 0.35, 0.4),
-  })
-  curY -= 12
-
-  // Table Headers
+  // Items table layout. Continuation pages repeat the table header so every
+  // exported page remains readable when a form contains many items.
   const tableX = 36
   const tableW = width - 72
   const thH = 20
-
-  page.drawRectangle({
-    x: tableX,
-    y: curY - thH,
-    width: tableW,
-    height: thH,
-    color: rgb(0.93, 0.95, 0.97),
-    borderColor: rgb(0.75, 0.8, 0.85),
-    borderWidth: 1,
-  })
 
   const isService = data.jenisPengajuan === 'service'
   const isCk =
@@ -633,46 +628,72 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
           { label: 'NO PO', w: 50 },
           { label: 'PO DATE', w: 55 },
           { label: 'NO WO CP', w: 50 },
-          { label: 'PRICE / AMOUNT', w: 119.89, align: 'right' },
+           { label: 'PRICE / AMOUNT', w: 119.89, align: 'right' },
         ]
 
-  let curColX = tableX
-  for (let cIdx = 0; cIdx < columns.length; cIdx++) {
-    const col = columns[cIdx]
-    const textX =
-      col.align === 'right'
-        ? curColX + col.w - 4 - fontBold.widthOfTextAtSize(col.label, 6.5)
-        : col.align === 'center'
-          ? curColX + (col.w - fontBold.widthOfTextAtSize(col.label, 6.5)) / 2
-          : curColX + 4
-    page.drawText(col.label, {
-      x: textX,
-      y: curY - 13,
-      size: 6.5,
-      font: fontBold,
-      color: rgb(0.2, 0.25, 0.3),
+  const drawItemsTableHeader = (targetPage: any, topY: number, continuation = false) => {
+    targetPage.drawText(
+      continuation ? 'RINCIAN PERMINTAAN PEKERJAAN (ITEMS - LANJUTAN)' : 'RINCIAN PERMINTAAN PEKERJAAN (ITEMS)',
+      {
+        x: tableX,
+        y: topY,
+        size: 8,
+        font: fontBold,
+        color: rgb(0.3, 0.35, 0.4),
+      },
+    )
+
+    const headerY = topY - 12
+    targetPage.drawRectangle({
+      x: tableX,
+      y: headerY - thH,
+      width: tableW,
+      height: thH,
+      color: rgb(0.93, 0.95, 0.97),
+      borderColor: rgb(0.75, 0.8, 0.85),
+      borderWidth: 1,
     })
 
-    // Vertical border line between header columns
-    if (cIdx > 0) {
-      page.drawLine({
-        start: { x: curColX, y: curY },
-        end: { x: curColX, y: curY - thH },
-        thickness: 1,
-        color: rgb(0.75, 0.8, 0.85),
+    let curColX = tableX
+    for (let cIdx = 0; cIdx < columns.length; cIdx++) {
+      const col = columns[cIdx]
+      const textX =
+        col.align === 'right'
+          ? curColX + col.w - 4 - fontBold.widthOfTextAtSize(col.label, 6.5)
+          : col.align === 'center'
+            ? curColX + (col.w - fontBold.widthOfTextAtSize(col.label, 6.5)) / 2
+            : curColX + 4
+      targetPage.drawText(col.label, {
+        x: textX,
+        y: headerY - 13,
+        size: 6.5,
+        font: fontBold,
+        color: rgb(0.2, 0.25, 0.3),
       })
+
+      if (cIdx > 0) {
+        targetPage.drawLine({
+          start: { x: curColX, y: headerY },
+          end: { x: curColX, y: headerY - thH },
+          thickness: 1,
+          color: rgb(0.75, 0.8, 0.85),
+        })
+      }
+
+      curColX += col.w
     }
 
-    curColX += col.w
+    return headerY - thH
   }
 
-  curY -= thH
+  curY = drawItemsTableHeader(page, curY)
 
-  // Render Table Rows (up to 8 rows max per page)
+  // Render every row and use the available page height instead of a fixed row
+  // count. Reserve the final block so total/signatures never collide with the footer.
   let totalAmountCalculated = 0
   const renderRows =
     itemsList.length > 0
-      ? itemsList.slice(0, 8).map((r) => ({ ...r, noWoCp: r.noWoCp || docNoWo || '-' }))
+      ? itemsList.map((r) => ({ ...r, noWoCp: r.noWoCp || docNoWo || '-' }))
       : [
           {
             customer: data.customer || '-',
@@ -693,9 +714,24 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
           },
         ]
 
+  const pageContentBottom = 42
+  // ponytail: conservative reserve for total + signature boxes; derive exact
+  // layout only after rows are rendered, while keeping pagination single-pass.
+  const finalBlockReserve = 180
   for (let idx = 0; idx < renderRows.length; idx++) {
-    const row = renderRows[idx]
     const rowH = 18
+    const isLastRow = idx === renderRows.length - 1
+    const rowWouldCrossFooter = curY - rowH < pageContentBottom
+    const lastRowWouldCrowdFinalBlock =
+      isLastRow && curY - rowH - finalBlockReserve < pageContentBottom
+
+    if (rowWouldCrossFooter || lastRowWouldCrowdFinalBlock) {
+      drawFooter(page)
+      page = pdfDoc.addPage([width, height])
+      curY = drawItemsTableHeader(page, height - 40, true)
+    }
+
+    const row = renderRows[idx]
     const priceNum =
       typeof row.price === 'number'
         ? row.price
@@ -1127,18 +1163,7 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
     }
   }
 
-  // Bottom Footer / Timestamp
-  const printTimestamp = `${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Makassar' }).replace(':', '.')} WITA`
-  page.drawText(
-    `Dokumen resmi PT Chitra Paratama dicetak otomatis melalui HERO System pada ${printTimestamp}`,
-    {
-      x: 36,
-      y: 20,
-      size: 6.5,
-      font: fontRegular,
-      color: rgb(0.6, 0.65, 0.7),
-    }
-  )
+  drawFooter(page)
 
   const pdfBytes = await pdfDoc.save()
   return Buffer.from(pdfBytes)
