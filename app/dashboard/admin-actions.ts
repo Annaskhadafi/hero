@@ -5147,12 +5147,8 @@ async function applyApprovalDecision(params: {
         }
       }
 
-      if (result.allApproved) {
-        // Notify HSE
-        if (summaryDetails) {
-          await sendSummaryApprovedEmail(summaryDetails).catch(console.error)
-        }
-      }
+      // Note: approveSummaryStep already handles notification bell and centralized email dispatch
+      // based on hero_apd_summary_notification_config when allApproved is true.
     } else {
       // Rejected or needs correction
       await db
@@ -5466,6 +5462,14 @@ async function applyApprovalDecision(params: {
               tagPrefix: 'apd',
             }).catch(console.error)
           }
+        }
+
+        // Auto-transition to Summary APD draft
+        try {
+          const { syncApprovedApdRequestToSummary } = await import('@/lib/summary-engine')
+          await syncApprovedApdRequestToSummary(approval.apdRequestId)
+        } catch (syncErr) {
+          console.error('[admin-actions] Failed to auto-sync APD request to summary:', syncErr)
         }
       }
 

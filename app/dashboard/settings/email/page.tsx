@@ -4,6 +4,7 @@ import {
   BarChart3,
   Bell,
   CalendarClock,
+  FileSpreadsheet,
   FileText,
   History,
   Mail,
@@ -18,6 +19,7 @@ import {
 import { EmailDeliveryLogTable } from "@/components/email-delivery-log-table";
 import { HseSafetyNotificationSettingsPanel } from "@/components/hse-safety-notification-settings-panel";
 import { ApdNotificationSettingsPanel } from "@/components/apd-notification-settings-panel";
+import { ApdSummaryNotificationSettingsPanel } from "@/components/apd-summary-notification-settings-panel";
 import { HumanCapitalNotificationSettingsPanel } from "@/components/human-capital-notification-settings-panel";
 import { AttendanceNotificationSettingsPanel } from "@/components/attendance-notification-settings-panel";
 import { FormWoNotificationSettingsPanel } from "@/components/form-wo-notification-settings-panel";
@@ -53,6 +55,7 @@ import {
   getActiveEmployeesForSelect,
   getPwaPushSettingsData,
   getApdNotificationConfigData,
+  getApdSummaryNotificationConfigData,
   getFormWoNotificationConfigData,
 } from "@/lib/hero-admin";
 
@@ -126,13 +129,14 @@ export default async function EmailSettingsPage() {
     redirect("/dashboard");
   }
 
-  const [logs, notifications, smtpSettings, templates, pwaPushSettings, hseSafetyConfig, attendanceConfig, humanCapitalConfig, csForecastConfig, apdConfig, formWoConfig, employees, session] = await Promise.all([
+  const [logs, notifications, smtpSettings, templates, pwaPushSettings, hseSafetyConfig, apdSummaryConfig, attendanceConfig, humanCapitalConfig, csForecastConfig, apdConfig, formWoConfig, employees, session] = await Promise.all([
     getEmailDeliveryLogsData(),
     getNotificationCenterData(),
     getEmailSmtpSettingsData(),
     getEmailTemplatesData(),
     getPwaPushSettingsData(),
     getHseSafetyNotificationConfigData(),
+    getApdSummaryNotificationConfigData(),
     getAttendanceNotificationConfigData(),
     getHumanCapitalNotificationConfigData(),
     getCsForecastDailyReportConfigData(),
@@ -196,6 +200,10 @@ export default async function EmailSettingsPage() {
             <ShieldAlert className="size-4" />
             HSE Safety
           </TabsTrigger>
+          <TabsTrigger value="apd-summary">
+            <FileSpreadsheet className="size-4" />
+            Summary APD
+          </TabsTrigger>
           <TabsTrigger value="hc">
             <Users className="size-4" />
             Human Capital
@@ -254,6 +262,10 @@ export default async function EmailSettingsPage() {
 
         <TabsContent value="hse">
           <HseSafetyNotificationSettingsPanel config={hseSafetyConfig} employees={employees} />
+        </TabsContent>
+
+        <TabsContent value="apd-summary">
+          <ApdSummaryNotificationSettingsPanel config={apdSummaryConfig} employees={employees} />
         </TabsContent>
 
         <TabsContent value="hc">

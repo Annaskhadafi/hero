@@ -1,18 +1,17 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   CheckCircle2,
+  Clock,
   Download,
-  ExternalLink,
   FilePenLine,
   Loader2,
   Maximize2,
-  Minimize2,
   Printer,
-  Search,
+  Trash2,
   ZoomIn,
   ZoomOut,
   X,
@@ -20,9 +19,10 @@ import {
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
-import { submitSummaryAction } from '@/app/dashboard/summary/actions';
+import { submitSummaryAction, deleteSummaryDraftAction } from '@/app/dashboard/summary/actions';
 import { downloadElementAsPdf } from '@/lib/pdf-download';
 import { SummaryApprovalDialog } from './summary-approval-dialog';
+import { QTY_ONLY_COLUMNS, SAFETY_SHOES_COL } from '@/lib/summary-constants';
 
 type SummaryData = {
   id: number;
@@ -33,6 +33,7 @@ type SummaryData = {
   sectionName: string;
   departmentName: string;
   generatedByName: string;
+  generatedByJobTitle?: string;
   targetSite?: string;
   submitterSignatureUrl: string | null;
   items: Array<{
@@ -42,11 +43,15 @@ type SummaryData = {
     itemName: string;
     quantity: number;
     requestType: string;
+    remarks?: string;
   }>;
   approvals: Array<{
+    id?: number;
     level: number;
+    approverEmployeeId?: number;
     approverName: string;
     approverJobTitle?: string;
+    approverSectionName?: string | null;
     status: string;
     signatureUrl: string | null;
     decisionNote: string | null;
@@ -54,48 +59,15 @@ type SummaryData = {
   }>;
 };
 
-// Columns that are just QTY
-const QTY_ONLY_COLUMNS = [
-  'Helmet', 'Safety Glasses', 'Masker Kain', 'Ear Plug',
-  '3M Cartridge', 'Hand Glove (Kabel)', 'Hand Glove (Knit)',
-  'Respirator Fullset', 'Hand Glove (Cotton)', 'Tool Box', 'Neck Guard',
-  'Head Gear', 'Hard Helmet',
-];
-
-// Safety Shoes has QTY + SIZE + Masa Pakai
-const SAFETY_SHOES_COL = 'Safety Shoes';
-
-const APD_COLUMNS = [...QTY_ONLY_COLUMNS, SAFETY_SHOES_COL];
-
 export function SummaryPreview({ data }: { data: SummaryData }) {
   const router = useRouter();
   const [showApprovalDialog, setShowApprovalDialog] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [isZoomModalOpen, setIsZoomModalOpen] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
-  const containerRef = useRef<HTMLDivElement>(null);
   const exportRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
-
-  // Measure container and scale down document to fit mobile / small screens
-  useEffect(() => {
-    const updateScale = () => {
-      if (containerRef.current) {
-        const availableWidth = containerRef.current.clientWidth;
-        const targetWidth = 1000; // base width of summary sheet
-        if (availableWidth < targetWidth) {
-          setScale(availableWidth / targetWidth);
-        } else {
-          setScale(1);
-        }
-      }
-    };
-
-    updateScale();
-    window.addEventListener('resize', updateScale);
-    return () => window.removeEventListener('resize', updateScale);
-  }, []);
 
   const handlePrintInPlace = () => {
     setPrinting(true);
@@ -155,30 +127,67 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
     }
   };
 
+  const handleDeleteDraft = async () => {
+    if (!confirm('Apakah Anda yakin ingin menghapus draft summary ini? Pengajuan yang terkait akan dikembalikan ke antrean.')) {
+      return;
+    }
+    setDeleting(true);
+    const toastId = toast.loading('Menghapus draft summary...');
+    try {
+      const res = await deleteSummaryDraftAction(data.id);
+      if (res.success) {
+        toast.success('Summary berhasil dihapus', { id: toastId });
+        router.push('/dashboard/summary');
+        router.refresh();
+      } else {
+        toast.error(res.error || 'Gagal menghapus draft summary', { id: toastId });
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Terjadi kesalahan sistem', { id: toastId });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const formatSiteName = (site?: string | null) => {
+    if (!site) return '';
+    const trimmed = site.trim();
+    if (/^vale/i.test(trimmed)) return 'Vale';
+    return trimmed;
+  };
+
   // Group items by employee
   const groupedByEmployee = data.items.reduce((acc, item) => {
     if (!acc[item.employeeName]) {
       acc[item.employeeName] = {
         name: item.employeeName,
         sn: item.employeeSn,
-        site: item.siteName,
-        items: {} as Record<string, number>,
+        site: formatSiteName(item.siteName),
+        remarks: item.remarks || '',
+        items: {} as Record<string, any>,
       };
     }
-    acc[item.employeeName].items[item.itemName] = (acc[item.employeeName].items[item.itemName] || 0) + item.quantity;
+    if (item.remarks && !acc[item.employeeName].remarks) {
+      acc[item.employeeName].remarks = item.remarks;
+    }
+    if (item.itemName === 'Safety Shoes Size') {
+      acc[item.employeeName].items[item.itemName] = item.remarks || item.requestType || '';
+    } else {
+      acc[item.employeeName].items[item.itemName] = (Number(acc[item.employeeName].items[item.itemName]) || 0) + item.quantity;
+    }
     return acc;
-  }, {} as Record<string, { name: string; sn: string; site: string; items: Record<string, number> }>);
+  }, {} as Record<string, { name: string; sn: string; site: string; remarks: string; items: Record<string, any> }>);
 
   const employees = Object.values(groupedByEmployee);
-
-  // Get unique sites
   const sites = [...new Set(employees.map(e => e.site))];
 
-  // Calculate totals per column
-  const totals = APD_COLUMNS.reduce((acc, col) => {
-    acc[col] = employees.reduce((sum, emp) => sum + (emp.items[col] || 0), 0);
-    return acc;
-  }, {} as Record<string, number>);
+  const allCols = [...QTY_ONLY_COLUMNS, SAFETY_SHOES_COL];
+  const totals: Record<string, number> = {};
+  for (const col of allCols) {
+    totals[col] = employees.reduce((s, e) => s + (Number(e.items[col]) || 0), 0);
+  }
+
+  const deptHead = data.approvals.find(a => a.level === 2);
 
   const handleSubmit = async (signatureUrl: string) => {
     try {
@@ -194,223 +203,274 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
     }
   };
 
-  const today = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+  const getStatusBadge = () => {
+    switch (data.status) {
+      case 'draft':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+            <Clock className="size-3.5 text-amber-600" />
+            Draft (Belum Disubmit)
+          </span>
+        );
+      case 'pending':
+      case 'pending_approval':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+            <Clock className="size-3.5 text-blue-600" />
+            Menunggu Persetujuan
+          </span>
+        );
+      case 'approved':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+            <CheckCircle2 className="size-3.5 text-emerald-600" />
+            Disetujui (Approved)
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">
+            {data.status}
+          </span>
+        );
+    }
+  };
 
-  // Renders the exact A4 Landscape document content
-  const renderDocumentContent = () => (
-    <div className="w-[1000px] bg-white border border-slate-300 shadow-sm text-slate-800 select-none overflow-hidden" style={{ minHeight: '620px' }}>
+  const th: React.CSSProperties = { border: '1px solid #000', padding: '3px 2px', fontSize: '7pt', background: '#f2f4f7', textAlign: 'center', fontWeight: 'bold', lineHeight: '1.15' };
+  const td: React.CSSProperties = { border: '1px solid #000', padding: '3px 2px', fontSize: '7pt', textAlign: 'center', lineHeight: '1.2' };
+  const tdL: React.CSSProperties = { ...td, textAlign: 'left', paddingLeft: '4px' };
+  const thVert: React.CSSProperties = { ...th, fontSize: '5.8pt', padding: '2px 0px', whiteSpace: 'nowrap', overflow: 'hidden', height: '90px' };
+
+  const fmtDate = (d: Date) => new Date(d).toLocaleString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+  // Standard total rows: 10 rows
+  const targetTotalRows = 10;
+  const displayLimit = Math.max(employees.length, targetTotalRows);
+  const emptyRowCount = Math.max(0, targetTotalRows - employees.length);
+
+  // Renders the document sheet (identical to print document)
+  const renderDocumentContent = (isForExport = false) => (
+    <div className={`w-full bg-white text-black select-none ${isForExport ? 'w-[1050px] p-8' : 'p-6 sm:p-8 min-w-[950px]'}`} style={{ fontFamily: 'Arial, sans-serif' }}>
       {/* Header */}
-      <div className="bg-white px-8 pt-6 pb-4">
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <img src="/cp_logo-removebg-preview.png" alt="Chitra Paratama" className="h-14 w-auto object-contain" />
-          </div>
-          <div className="text-right">
-            <div className="text-base font-bold text-gray-900 uppercase">
-              Summary Permintaan Barang Safety
-              {data.targetSite === 'VALE' && <span className="text-orange-600"> (Khusus VALE)</span>}
-              {data.targetSite === 'GABUNGAN' && <span className="text-blue-600"> (Gabungan Site)</span>}
-            </div>
-            <div className="text-sm font-semibold text-gray-700 mt-0.5">{data.sectionName}</div>
-          </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <img src="/cp_logo-removebg-preview.png" alt="Chitra Paratama" style={{ height: '38px', width: 'auto' }} />
         </div>
-        <div className="text-xs text-gray-700 space-y-0.5">
-          <div><span className="font-semibold">Tanggal Pengajuan:</span> {data.generatedAt ? new Date(data.generatedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : today}</div>
-          <div><span className="font-semibold">Department &amp; Lokasi:</span> {data.departmentName} — {sites.join(', ')}</div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: '11.5pt', fontWeight: 'bold', textTransform: 'uppercase', lineHeight: '1.2' }}>
+            Summary Permintaan Barang Safety
+            {data.targetSite === 'VALE' && <span style={{ color: '#ea580c' }}> (Vale)</span>}
+            {data.targetSite === 'GABUNGAN' && <span style={{ color: '#2563eb' }}> (Gabungan Site)</span>}
+          </div>
+          <div style={{ fontSize: '9pt', fontWeight: 'bold', marginTop: '2px', color: '#333' }}>{data.sectionName}</div>
         </div>
+      </div>
+
+      <div style={{ fontSize: '7.5pt', marginBottom: '8px', lineHeight: '1.3', color: '#111' }}>
+        <div><strong>Tanggal Pengajuan:</strong> {data.generatedAt ? new Date(data.generatedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}</div>
+        <div><strong>Department &amp; Lokasi:</strong> {data.departmentName} — {sites.join(', ')}</div>
       </div>
 
       {/* Table */}
-      <div className="px-6 pb-4">
-        <table className="w-full border-collapse border border-gray-800 text-[11px]">
-          <thead>
-            {/* Row 1: Main headers */}
-            <tr className="bg-gray-100">
-              <th className="border border-gray-800 px-1 py-1.5 text-center font-bold" rowSpan={2} style={{ width: 30 }}>No</th>
-              <th className="border border-gray-800 px-2 py-1.5 text-left font-bold" rowSpan={2} style={{ width: 140 }}>Nama Karyawan</th>
-              <th className="border border-gray-800 px-1 py-1.5 text-center font-bold" rowSpan={2} style={{ width: 55 }}>SN</th>
-              <th className="border border-gray-800 px-1 py-1.5 text-center font-bold" rowSpan={2} style={{ width: 75 }}>Site</th>
-              {QTY_ONLY_COLUMNS.map((col) => (
-                <th key={col} className="border border-gray-800 px-0.5 py-1 text-center font-bold text-[9px]" rowSpan={2} style={{ minWidth: 36, writingMode: 'vertical-rl', textOrientation: 'mixed', transform: 'rotate(180deg)', maxHeight: 100 }}>
-                  {col}
-                </th>
-              ))}
-              {/* Safety Shoes: parent header */}
-              <th className="border border-gray-800 px-1 py-1 text-center font-bold text-[10px]" colSpan={3}>{SAFETY_SHOES_COL}</th>
-            </tr>
-            {/* Row 2: Safety Shoes sub-headers */}
-            <tr className="bg-gray-100 text-[9px]">
-              <th className="border border-gray-800 px-0.5 py-1 text-center font-bold" style={{ minWidth: 28 }}>QTY</th>
-              <th className="border border-gray-800 px-0.5 py-1 text-center font-bold" style={{ minWidth: 28 }}>Size</th>
-              <th className="border border-gray-800 px-0.5 py-1 text-center font-bold" style={{ minWidth: 40 }}>Masa Pakai</th>
-            </tr>
-          </thead>
-          <tbody>
-            {employees.map((emp, idx) => (
-              <tr key={idx} className="hover:bg-gray-50">
-                <td className="border border-gray-800 px-1 py-2 text-center">{idx + 1}</td>
-                <td className="border border-gray-800 px-2 py-2 whitespace-nowrap font-medium">{emp.name}</td>
-                <td className="border border-gray-800 px-1 py-2 text-center text-[9px] font-mono">{emp.sn}</td>
-                <td className="border border-gray-800 px-1 py-2 text-center text-[9px]">{emp.site}</td>
-                {QTY_ONLY_COLUMNS.map((col) => (
-                  <td key={col} className="border border-gray-800 px-0.5 py-2 text-center font-semibold">
-                    {emp.items[col] || ''}
-                  </td>
-                ))}
-                {/* Safety Shoes: QTY */}
-                <td className="border border-gray-800 px-0.5 py-2 text-center font-semibold">{emp.items['Safety Shoes'] || ''}</td>
-                {/* Safety Shoes: SIZE */}
-                <td className="border border-gray-800 px-0.5 py-2 text-center text-[9px]">{emp.items['Safety Shoes Size'] || ''}</td>
-                {/* Safety Shoes: Masa Pakai */}
-                <td className="border border-gray-800 px-0.5 py-2 text-center text-[9px]">{emp.items['Safety Shoes Masa Pakai'] || ''}</td>
-              </tr>
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '8px', tableLayout: 'fixed' }}>
+        <thead>
+          <tr>
+            <th style={{ ...th, width: '24px' }} rowSpan={2}>No</th>
+            <th style={{ ...th, width: '110px' }} rowSpan={2}>Nama Karyawan</th>
+            <th style={{ ...th, width: '42px' }} rowSpan={2}>SN</th>
+            <th style={{ ...th, width: '46px' }} rowSpan={2}>Site</th>
+            {QTY_ONLY_COLUMNS.map(c => (
+              <th key={c} style={thVert} rowSpan={2}>
+                <div style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', margin: 'auto', maxHeight: '86px', fontSize: '5.8pt', whiteSpace: 'nowrap', lineHeight: '1' }}>
+                  {c}
+                </div>
+              </th>
             ))}
-            {/* Empty rows to fill 8 */}
-            {Array.from({ length: Math.max(0, 8 - employees.length) }).map((_, i) => (
-              <tr key={`empty-${i}`}>
-                <td className="border border-gray-800 px-1 py-2 text-center">{employees.length + i + 1}</td>
-                {Array.from({ length: QTY_ONLY_COLUMNS.length + 6 }).map((_, j) => (
-                  <td key={j} className="border border-gray-800 px-1 py-2">&nbsp;</td>
-                ))}
-              </tr>
-            ))}
-            {/* Total Qty row */}
-            <tr className="bg-gray-100 font-bold">
-              <td className="border border-gray-800 px-2 py-2 text-center" colSpan={4}>Total Qty</td>
-              {QTY_ONLY_COLUMNS.map((col) => (
-                <td key={col} className="border border-gray-800 px-0.5 py-2 text-center font-bold">
-                  {totals[col] || ''}
-                </td>
+            <th style={th} colSpan={2}>{SAFETY_SHOES_COL}</th>
+            <th style={{ ...th, width: '85px' }} rowSpan={2}>Remarks</th>
+          </tr>
+          <tr>
+            <th style={{ ...th, width: '22px' }}>QTY</th>
+            <th style={{ ...th, width: '26px' }}>Size</th>
+          </tr>
+        </thead>
+        <tbody>
+          {employees.slice(0, displayLimit).map((e, i) => (
+            <tr key={i} style={{ height: '18px' }}>
+              <td style={td}>{i + 1}</td>
+              <td style={{ ...tdL, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</td>
+              <td style={td}>{e.sn}</td>
+              <td style={{ ...td, fontSize: '6.5pt', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.site}</td>
+              {QTY_ONLY_COLUMNS.map(c => (
+                <td key={c} style={td}>{e.items[c] || ''}</td>
               ))}
-              <td className="border border-gray-800 px-0.5 py-2 text-center font-bold">{totals['Safety Shoes'] || ''}</td>
-              <td className="border border-gray-800 px-0.5 py-2 text-center">—</td>
-              <td className="border border-gray-800 px-1 py-2 text-center">—</td>
+              <td style={td}>{e.items['Safety Shoes'] || ''}</td>
+              <td style={td}>{e.items['Safety Shoes Size'] || ''}</td>
+              <td style={{ ...tdL, fontSize: '6pt', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'normal', wordBreak: 'break-word' }}>{e.remarks || '—'}</td>
             </tr>
-          </tbody>
-        </table>
-      </div>
+          ))}
+          {Array.from({ length: emptyRowCount }).map((_, i) => (
+            <tr key={`e${i}`} style={{ height: '18px' }}>
+              <td style={td}>{employees.length + i + 1}</td>
+              {Array.from({ length: QTY_ONLY_COLUMNS.length + 6 }).map((_, j) => (
+                <td key={j} style={td}></td>
+              ))}
+            </tr>
+          ))}
+          <tr style={{ background: '#e5e7eb', fontWeight: 'bold', height: '19px' }}>
+            <td style={td} colSpan={4}>Total Qty</td>
+            {QTY_ONLY_COLUMNS.map(c => (
+              <td key={c} style={td}>{totals[c] || ''}</td>
+            ))}
+            <td style={td}>{totals['Safety Shoes'] || ''}</td>
+            <td style={td}>—</td>
+            <td style={td}>—</td>
+          </tr>
+        </tbody>
+      </table>
 
-      {/* Signature section */}
-      <div className="px-8 py-6 border-t border-gray-200">
-        <div className="grid grid-cols-3 gap-8">
-          {/* Diajukan Oleh */}
-          <div className="text-center">
-            <div className="text-xs font-bold mb-2 text-gray-800">Diajukan Oleh,</div>
-            <div className="mb-2 flex items-end justify-center" style={{ minHeight: '65px' }}>
-              <div className="w-40 border-b border-gray-400 pb-1">
-                {data.submitterSignatureUrl ? (
-                  <img src={data.submitterSignatureUrl} alt="TTD" className="h-14 w-auto mx-auto object-contain" />
-                ) : (
-                  <div className="h-14 flex items-center justify-center text-[10px] text-gray-400 italic">Belum ditandatangani</div>
-                )}
-              </div>
-            </div>
-            <div className="text-[11px] text-gray-600 font-medium">({data.sectionName})</div>
-            <div className="text-xs font-bold text-gray-900 mt-0.5">{data.generatedByName}</div>
-            {data.generatedAt && (
-              <div className="text-[9px] text-gray-500 mt-0.5">{new Date(data.generatedAt).toLocaleString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
-            )}
-          </div>
+      {/* Signatures */}
+      {(() => {
+        const level1Approvals = data.approvals.filter(a => a.level === 1);
+        const hasMultipleL1 = level1Approvals.length > 1;
+        const colCount = hasMultipleL1 ? 4 : 3;
 
-          {/* Diperiksa Oleh */}
-          <div className="text-center">
-            <div className="text-xs font-bold mb-2 text-gray-800">Diperiksa Oleh,</div>
-            <div className="mb-2 flex items-end justify-center" style={{ minHeight: '65px' }}>
-              <div className="w-40 border-b border-gray-400 pb-1">
-                {data.approvals.find(a => a.level === 1)?.signatureUrl ? (
-                  <img src={data.approvals.find(a => a.level === 1)!.signatureUrl!} alt="TTD" className="h-14 w-auto mx-auto object-contain" />
-                ) : (
-                  <div className="h-14 flex items-center justify-center text-[10px] text-amber-600/70 italic font-semibold">Menunggu Approval</div>
-                )}
-              </div>
-            </div>
-            <div className="text-[11px] text-gray-600 font-medium">(Section Head — {data.sectionName})</div>
-            <div className="text-xs font-bold text-gray-900 mt-0.5">{data.approvals.find(a => a.level === 1)?.approverName || '...'}</div>
-            {data.approvals.find(a => a.level === 1)?.reviewedAt && (
-              <div className="text-[9px] text-gray-500 mt-0.5">{new Date(data.approvals.find(a => a.level === 1)!.reviewedAt!).toLocaleString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
-            )}
-            {data.approvals.find(a => a.level === 1)?.decisionNote && (
-              <div className="text-[9px] text-slate-600 mt-0.5 italic">"{data.approvals.find(a => a.level === 1)!.decisionNote}"</div>
-            )}
-          </div>
+        const isAutoDefaultNote = (msg?: string | null) => {
+          if (!msg) return true;
+          const lower = msg.trim().toLowerCase();
+          return (
+            lower === '' ||
+            lower === '-' ||
+            lower === '—' ||
+            lower === 'keputusan approve' ||
+            lower === 'keputusan approve.' ||
+            lower === 'apd disetujui.' ||
+            lower === 'apd disetujui' ||
+            lower === 'pengajuan disetujui.' ||
+            lower === 'pengajuan disetujui' ||
+            lower === 'approved' ||
+            lower === 'disetujui' ||
+            lower === 'ok' ||
+            (lower.startsWith('keputusan ') && lower.endsWith('approve'))
+          );
+        };
 
-          {/* Disetujui Oleh */}
-          <div className="text-center">
-            <div className="text-xs font-bold mb-2 text-gray-800">Disetujui Oleh,</div>
-            <div className="mb-2 flex items-end justify-center" style={{ minHeight: '65px' }}>
-              <div className="w-40 border-b border-gray-400 pb-1">
-                {data.approvals.find(a => a.level === 2)?.signatureUrl ? (
-                  <img src={data.approvals.find(a => a.level === 2)!.signatureUrl!} alt="TTD" className="h-14 w-auto mx-auto object-contain" />
-                ) : (
-                  <div className="h-14 flex items-center justify-center text-[10px] text-amber-600/70 italic font-semibold">Menunggu Approval</div>
-                )}
+        return (
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${colCount}, 1fr)`, gap: '12px', textAlign: 'center', marginTop: '6px' }}>
+            {/* Diajukan Oleh */}
+            <div>
+              <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '3px' }}>Diajukan Oleh,</div>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '3px', height: '44px' }}>
+                <div style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px' }}>
+                  {data.submitterSignatureUrl && <img src={data.submitterSignatureUrl} alt="TTD" style={{ maxHeight: '40px', maxWidth: '120px' }} />}
+                </div>
               </div>
+              <div style={{ fontSize: '7.5pt', fontWeight: 'bold' }}>{data.generatedByName}</div>
+              <div style={{ fontSize: '6.5pt', color: '#444' }}>Pembuat Dokumen ({data.sectionName})</div>
+              {data.generatedAt && (
+                <div style={{ fontSize: '5.5pt', color: '#777', marginTop: '1px' }}>{fmtDate(data.generatedAt)}</div>
+              )}
             </div>
-            <div className="text-[11px] text-gray-600 font-medium">(Department Head — {data.departmentName})</div>
-            <div className="text-xs font-bold text-gray-900 mt-0.5">{data.approvals.find(a => a.level === 2)?.approverName || '...'}</div>
-            {data.approvals.find(a => a.level === 2)?.reviewedAt && (
-              <div className="text-[9px] text-gray-500 mt-0.5">{new Date(data.approvals.find(a => a.level === 2)!.reviewedAt!).toLocaleString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
+
+            {/* Diperiksa Oleh (Parallel Level 1 Approvers) */}
+            {level1Approvals.length > 0 ? (
+              level1Approvals.map((appr, idx) => {
+                const roleDisplay = (() => {
+                  if (appr.approverJobTitle?.toLowerCase().includes('mvc') || appr.approverSectionName?.toLowerCase().includes('mvc')) {
+                    return 'Section Head Service MVC';
+                  }
+                  if (appr.approverJobTitle?.toLowerCase().includes('others') || appr.approverSectionName?.toLowerCase().includes('others')) {
+                    return 'Section Head Service Others';
+                  }
+                  const isServiceRole =
+                    appr.approverJobTitle?.toLowerCase().includes('section head service') ||
+                    appr.approverJobTitle?.toLowerCase().includes('head section service');
+                  return isServiceRole
+                    ? appr.approverJobTitle
+                    : `${appr.approverJobTitle || 'Section Head'}${appr.approverSectionName ? ` (${appr.approverSectionName})` : ` (${data.sectionName})`}`;
+                })();
+                return (
+                  <div key={appr.id || idx}>
+                    <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '3px' }}>Diperiksa Oleh,</div>
+                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '3px', height: '44px' }}>
+                      <div style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px' }}>
+                        {appr.signatureUrl && <img src={appr.signatureUrl} alt="TTD" style={{ maxHeight: '40px', maxWidth: '120px' }} />}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '7.5pt', fontWeight: 'bold' }}>{appr.approverName || '.............'}</div>
+                    <div style={{ fontSize: '6.5pt', color: '#444' }}>{roleDisplay}</div>
+                    {appr.reviewedAt && (
+                      <div style={{ fontSize: '5.5pt', color: '#777', marginTop: '1px' }}>{fmtDate(appr.reviewedAt)}</div>
+                    )}
+                    {appr.decisionNote && !isAutoDefaultNote(appr.decisionNote) && (
+                      <div style={{ fontSize: '5.5pt', color: '#777', marginTop: '1px', fontStyle: 'italic' }}>Catatan: {appr.decisionNote}</div>
+                    )}
+                  </div>
+                );
+              })
+            ) : (
+              <div>
+                <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '3px' }}>Diperiksa Oleh,</div>
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '3px', height: '44px' }}>
+                  <div style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px' }}></div>
+                </div>
+                <div style={{ fontSize: '7.5pt', fontWeight: 'bold' }}>.............</div>
+                <div style={{ fontSize: '6.5pt', color: '#444' }}>(Section Head — {data.sectionName})</div>
+              </div>
             )}
-            {data.approvals.find(a => a.level === 2)?.decisionNote && (
-              <div className="text-[9px] text-slate-600 mt-0.5 italic">"{data.approvals.find(a => a.level === 2)!.decisionNote}"</div>
-            )}
+
+            {/* Disetujui Oleh (Department Head) */}
+            <div>
+              <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '3px' }}>Disetujui Oleh,</div>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '3px', height: '44px' }}>
+                <div style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px' }}>
+                  {deptHead?.signatureUrl && <img src={deptHead.signatureUrl} alt="TTD" style={{ maxHeight: '40px', maxWidth: '120px' }} />}
+                </div>
+              </div>
+              <div style={{ fontSize: '7.5pt', fontWeight: 'bold' }}>{deptHead?.approverName || '.............'}</div>
+              <div style={{ fontSize: '6.5pt', color: '#444' }}>({deptHead?.approverJobTitle || 'Department Head'} — {data.departmentName})</div>
+              {deptHead?.reviewedAt && (
+                <div style={{ fontSize: '5.5pt', color: '#777', marginTop: '1px' }}>{fmtDate(deptHead.reviewedAt)}</div>
+              )}
+              {deptHead?.decisionNote && !isAutoDefaultNote(deptHead.decisionNote) && (
+                <div style={{ fontSize: '5.5pt', color: '#777', marginTop: '1px', fontStyle: 'italic' }}>Catatan: {deptHead.decisionNote}</div>
+              )}
+            </div>
           </div>
-        </div>
-      </div>
+        );
+      })()}
     </div>
   );
 
-  const computeFitScale = () => {
-    if (typeof window === 'undefined') return 1;
-    const padding = window.innerWidth < 640 ? 16 : 48;
-    const availableWidth = window.innerWidth - padding;
-    return Math.min(1, Math.max(0.25, Number((availableWidth / 1000).toFixed(3))));
-  };
-
-  const openZoomModal = () => {
-    const fit = computeFitScale();
-    setZoomLevel(fit);
-    setIsZoomModalOpen(true);
-  };
-
   return (
-    <div className="space-y-4">
+    <div className="space-y-5 max-w-7xl mx-auto">
       {/* Top Action Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 bg-white p-2.5 sm:p-3.5 rounded-2xl border border-slate-200/80 shadow-xs">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => router.push('/dashboard/summary')}
-          className="hidden sm:inline-flex h-8.5 gap-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 rounded-xl"
-        >
-          <ArrowLeft className="size-3.5" />
-          <span>Kembali ke Daftar Summary</span>
-        </Button>
-
-        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 w-full sm:w-auto justify-end">
-          {/* Download PDF Button */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+        <div className="flex items-center gap-3">
           <Button
             variant="outline"
             size="sm"
-            onClick={handleDownloadPdf}
-            disabled={downloading}
-            className="flex-1 sm:flex-initial h-8.5 gap-1.5 text-xs font-bold bg-white text-slate-700 hover:bg-slate-50 border-slate-200/80 rounded-xl shadow-2xs cursor-pointer"
+            onClick={() => router.push('/dashboard/summary')}
+            className="h-9 gap-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer"
           >
-            {downloading ? (
-              <Loader2 className="size-3.5 animate-spin text-blue-600" />
-            ) : (
-              <Download className="size-3.5 text-blue-600" />
-            )}
-            <span>{downloading ? 'Mengunduh...' : 'Download PDF'}</span>
+            <ArrowLeft className="size-4" />
+            <span>Daftar Summary</span>
           </Button>
 
-          {/* Cetak PDF (Hanya di Desktop) */}
+          <div className="flex items-center gap-2">
+            <span className="font-mono font-bold text-sm text-slate-900">{data.summaryNumber}</span>
+            {getStatusBadge()}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Cetak PDF */}
           <Button
             variant="outline"
             size="sm"
             onClick={handlePrintInPlace}
             disabled={printing}
-            className="hidden sm:inline-flex h-8.5 gap-1.5 text-xs font-bold border-slate-200/80 bg-white text-slate-700 hover:bg-slate-50 rounded-xl shadow-2xs"
+            className="h-9 gap-1.5 text-xs font-semibold border-slate-200 bg-white text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer shadow-2xs"
           >
             {printing ? (
               <Loader2 className="size-3.5 animate-spin text-emerald-600" />
@@ -420,164 +480,136 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
             <span>Cetak PDF</span>
           </Button>
 
-          {/* Tanda Tangan Submit (Draft) */}
+          {/* Download PDF */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDownloadPdf}
+            disabled={downloading}
+            className="h-9 gap-1.5 text-xs font-semibold bg-white text-slate-700 hover:bg-slate-50 border-slate-200 rounded-xl shadow-2xs cursor-pointer"
+          >
+            {downloading ? (
+              <Loader2 className="size-3.5 animate-spin text-blue-600" />
+            ) : (
+              <Download className="size-3.5 text-blue-600" />
+            )}
+            <span>Download PDF</span>
+          </Button>
+
+          {/* Hapus Draft / Pending */}
+          {(data.status === 'draft' || data.status === 'pending' || data.status === 'pending_approval') && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDeleteDraft}
+              disabled={deleting}
+              className="h-9 gap-1.5 text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200 rounded-xl shadow-2xs cursor-pointer"
+            >
+              {deleting ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="size-3.5" />
+              )}
+              <span>Hapus Summary</span>
+            </Button>
+          )}
+
+          {/* Submit Approval */}
           {data.status === 'draft' && (
             <Button
               size="sm"
               onClick={() => setShowApprovalDialog(true)}
-              className="h-8.5 gap-1.5 text-xs font-bold bg-[#003461] text-white hover:bg-[#00274a] rounded-xl shadow-xs"
+              className="h-9 gap-1.5 text-xs font-bold bg-[#003461] text-white hover:bg-[#00274a] rounded-xl shadow-xs cursor-pointer"
             >
               <FilePenLine className="size-3.5" />
               <span>Tanda Tangan &amp; Submit</span>
             </Button>
           )}
+
+          {/* Fullscreen Button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setZoomLevel(1);
+              setIsZoomModalOpen(true);
+            }}
+            className="h-9 px-2.5 text-slate-500 hover:text-slate-900 rounded-xl"
+            title="Tampilkan Ukuran Penuh"
+          >
+            <Maximize2 className="size-4" />
+          </Button>
         </div>
       </div>
 
-      {/* Main Preview Container with Scaled Viewport & Click-to-Zoom */}
-      <div className="relative rounded-2xl border border-slate-200/80 bg-slate-50/50 p-2 sm:p-4 shadow-xs overflow-hidden">
-        {/* Helper Badge / Bar */}
-        <div className="mb-2 flex items-center justify-between px-1 text-xs text-slate-500">
-          <span className="font-semibold text-slate-600 flex items-center gap-1">
-            <span className="size-2 rounded-full bg-emerald-500 inline-block" />
-            Pratinjau Dokumen Summary ({data.summaryNumber})
-          </span>
-          <button
-            type="button"
-            onClick={openZoomModal}
-            className="inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1 text-xs font-bold text-[#003461] border border-slate-200 shadow-2xs hover:bg-blue-50/50 transition cursor-pointer"
-          >
-            <Maximize2 className="size-3" />
-            <span>Klik untuk Perbesar</span>
-          </button>
-        </div>
-
-        {/* Scaled Preview Area */}
-        <div
-          ref={containerRef}
-          onClick={openZoomModal}
-          className="relative w-full cursor-zoom-in rounded-xl bg-white shadow-sm overflow-hidden flex justify-center border border-slate-200/70 hover:ring-2 hover:ring-[#003461]/30 transition group"
-          style={{ height: scale < 1 ? `${630 * scale + 20}px` : 'auto' }}
-        >
-          {/* Overlay on hover */}
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-900/0 group-hover:bg-slate-900/10 transition-colors pointer-events-none">
-            <div className="rounded-full bg-white/95 px-3.5 py-1.5 text-xs font-bold text-slate-800 shadow-md border border-slate-200 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5">
-              <Maximize2 className="size-3.5 text-[#003461]" />
-              <span>Ketuk untuk Memperbesar</span>
-            </div>
-          </div>
-
-          <div
-            style={{
-              transform: `scale(${scale})`,
-              transformOrigin: 'top center',
-              width: '1000px',
-              transition: 'transform 0.15s ease-out',
-            }}
-          >
-            {renderDocumentContent()}
-          </div>
-        </div>
+      {/* Main Document Paper Sheet */}
+      <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-x-auto">
+        {renderDocumentContent(false)}
       </div>
 
       {/* Fullscreen Zoom Lightbox Dialog */}
       {isZoomModalOpen && (
         <div className="fixed inset-0 z-50 flex flex-col bg-slate-950/95 backdrop-blur-md animate-in fade-in duration-200">
-          {/* Top Bar - Ultra-compact on mobile to prevent clipping */}
-          <div className="flex items-center justify-between gap-1.5 border-b border-white/10 bg-slate-900/90 px-2.5 py-2 sm:px-4 sm:py-3 text-white">
-            {/* Left: Summary Number */}
-            <div className="flex items-center gap-1.5 min-w-0 shrink">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 hidden xs:inline">Preview</span>
-              <span className="text-xs font-mono font-bold truncate max-w-[85px] sm:max-w-none">{data.summaryNumber}</span>
+          {/* Top Bar */}
+          <div className="flex items-center justify-between gap-2 border-b border-white/10 bg-slate-900/90 px-4 py-3 text-white">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">Preview Dokumen</span>
+              <span className="text-xs font-mono font-bold">{data.summaryNumber}</span>
             </div>
 
-            {/* Center: Zoom Controls */}
-            <div className="flex items-center gap-1 shrink-0">
+            {/* Zoom Controls */}
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
-                onClick={() => setZoomLevel((z) => Math.max(0.25, Number((z - 0.1).toFixed(2))))}
-                className="flex size-7 sm:size-8 items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-white transition cursor-pointer active:scale-95"
+                onClick={() => setZoomLevel((z: number) => Math.max(0.4, Number((z - 0.1).toFixed(2))))}
+                className="flex size-8 items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-white transition cursor-pointer"
                 title="Zoom Out"
               >
-                <ZoomOut className="size-3.5 sm:size-4" />
+                <ZoomOut className="size-4" />
               </button>
-              <span className="min-w-9 sm:min-w-12 text-center text-[10px] sm:text-xs font-mono font-bold">
+              <span className="min-w-12 text-center text-xs font-mono font-bold">
                 {Math.round(zoomLevel * 100)}%
               </span>
               <button
                 type="button"
-                onClick={() => setZoomLevel((z) => Math.min(2.5, Number((z + 0.1).toFixed(2))))}
-                className="flex size-7 sm:size-8 items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-white transition cursor-pointer active:scale-95"
+                onClick={() => setZoomLevel((z: number) => Math.min(2.0, Number((z + 0.1).toFixed(2))))}
+                className="flex size-8 items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-white transition cursor-pointer"
                 title="Zoom In"
               >
-                <ZoomIn className="size-3.5 sm:size-4" />
+                <ZoomIn className="size-4" />
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  const fit = computeFitScale();
-                  setZoomLevel((z) => (Math.abs(z - 1) < 0.05 ? fit : 1));
-                }}
-                className="rounded-lg bg-white/10 px-2 py-1 text-[10px] sm:text-xs font-bold text-white hover:bg-white/20 transition cursor-pointer active:scale-95"
-                title="Toggle Fit / 100%"
+                onClick={() => setZoomLevel(1)}
+                className="rounded-lg bg-white/10 px-2.5 py-1 text-xs font-bold text-white hover:bg-white/20 transition cursor-pointer"
               >
-                {Math.abs(zoomLevel - 1) < 0.05 ? 'Fit' : '100%'}
+                100%
               </button>
             </div>
 
-            {/* Right: Actions & Close */}
-            <div className="flex items-center gap-1.5 shrink-0">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleDownloadPdf}
-                disabled={downloading}
-                className="h-7 sm:h-8 px-2 sm:px-3 gap-1 text-[11px] sm:text-xs font-bold bg-white text-slate-900 border-0 rounded-lg cursor-pointer active:scale-95"
-              >
-                {downloading ? (
-                  <Loader2 className="size-3.5 animate-spin text-slate-900" />
-                ) : (
-                  <Download className="size-3.5 text-[#003461]" />
-                )}
-                <span className="hidden sm:inline">{downloading ? 'Mengunduh...' : 'Download'}</span>
-              </Button>
-              <button
-                type="button"
-                onClick={() => setIsZoomModalOpen(false)}
-                className="flex size-7 sm:size-8 items-center justify-center rounded-lg bg-white/10 hover:bg-rose-600 text-white transition cursor-pointer active:scale-95"
-                title="Tutup Preview"
-              >
-                <X className="size-4" />
-              </button>
-            </div>
+            {/* Close */}
+            <button
+              type="button"
+              onClick={() => setIsZoomModalOpen(false)}
+              className="flex size-8 items-center justify-center rounded-lg bg-white/10 hover:bg-rose-600 text-white transition cursor-pointer"
+              title="Tutup"
+            >
+              <X className="size-4" />
+            </button>
           </div>
 
-          {/* Scrollable Viewport with auto-centering & full-bleed document container */}
-          <div className="flex-1 overflow-auto p-2 sm:p-6 flex items-start justify-center">
+          {/* Scrollable Viewport */}
+          <div className="flex-1 overflow-auto p-6 flex items-start justify-center">
             <div
               style={{
-                width: `${1000 * zoomLevel}px`,
-                height: `${630 * zoomLevel}px`,
-                minWidth: `${1000 * zoomLevel}px`,
-                minHeight: `${630 * zoomLevel}px`,
-                position: 'relative',
-                transition: 'width 0.12s ease-out, height 0.12s ease-out',
+                transform: `scale(${zoomLevel})`,
+                transformOrigin: 'top center',
+                width: '1050px',
+                transition: 'transform 0.1s ease-out',
               }}
+              className="rounded-xl shadow-2xl bg-white overflow-hidden my-4"
             >
-              <div
-                style={{
-                  transform: `scale(${zoomLevel})`,
-                  transformOrigin: 'top left',
-                  width: '1000px',
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  transition: 'transform 0.12s ease-out',
-                }}
-                className="rounded-lg shadow-2xl bg-white"
-              >
-                {renderDocumentContent()}
-              </div>
+              {renderDocumentContent(true)}
             </div>
           </div>
         </div>
@@ -593,13 +625,12 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
         />
       )}
 
-      {/* Dedicated high-res off-screen container for crisp A4 Landscape PDF capture */}
+      {/* High-res off-screen container for crisp PDF capture */}
       <div style={{ position: 'fixed', left: '-9999px', top: '0', zIndex: -9999, overflow: 'hidden' }}>
-        <div ref={exportRef} className="w-[1000px] bg-white">
-          {renderDocumentContent()}
+        <div ref={exportRef} className="w-[1050px] bg-white">
+          {renderDocumentContent(true)}
         </div>
       </div>
     </div>
   );
 }
-

@@ -30,6 +30,7 @@ export const apdSummaryItems = pgTable('hero_apd_summary_items', {
   itemName: text('item_name').notNull(),
   quantity: integer('quantity').notNull().default(1),
   requestType: text('request_type').notNull().default('baru'),
+  remarks: text('remarks').notNull().default(''),
 });
 
 // Summary approvals

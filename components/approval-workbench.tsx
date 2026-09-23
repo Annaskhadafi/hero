@@ -445,6 +445,7 @@ export function InboxTab({
   // Signature state
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null)
   const [currentUserName, setCurrentUserName] = useState<string | null>(null)
+  const [currentUserEmployeeId, setCurrentUserEmployeeId] = useState<string | null>(null)
   const [isMissingSignatureDialogOpen, setIsMissingSignatureDialogOpen] = useState(false)
   const [isAccessSettingsOpen, setIsAccessSettingsOpen] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -465,6 +466,9 @@ export function InboxTab({
           if (res.employeeName) {
             setCurrentUserName(res.employeeName)
           }
+          if (res.employeeSn) {
+            setCurrentUserEmployeeId(res.employeeSn)
+          }
         }
       } catch (e) {
         console.error(e)
@@ -472,37 +476,6 @@ export function InboxTab({
     }
     loadSig()
   }, [])
-
-  useEffect(() => {
-    function handleIframeMsg(e: MessageEvent) {
-      if (e.data && e.data.type === 'readyForSignature') {
-        const iframe = document.querySelector('#unified-batch-preview-sheet iframe') as HTMLIFrameElement
-        if (iframe?.contentWindow && signatureDataUrl) {
-          iframe.contentWindow.postMessage({ type: 'previewSignature', dataUrl: signatureDataUrl }, '*')
-        }
-      }
-    }
-    window.addEventListener('message', handleIframeMsg)
-    return () => window.removeEventListener('message', handleIframeMsg)
-  }, [signatureDataUrl])
-
-  useEffect(() => {
-    const sendToIframe = () => {
-      const iframe = document.querySelector('#unified-batch-preview-sheet iframe') as HTMLIFrameElement
-      if (iframe?.contentWindow) {
-        iframe.contentWindow.postMessage({ type: 'previewSignature', dataUrl: signatureDataUrl || '' }, '*')
-      }
-    }
-    sendToIframe()
-    const t1 = setTimeout(sendToIframe, 150)
-    const t2 = setTimeout(sendToIframe, 500)
-    const t3 = setTimeout(sendToIframe, 1200)
-    return () => {
-      clearTimeout(t1)
-      clearTimeout(t2)
-      clearTimeout(t3)
-    }
-  }, [signatureDataUrl, isBatchReviewOpen, batchReviewIndex])
 
   // Canvas drawing handlers
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
@@ -1016,6 +989,55 @@ export function InboxTab({
 
   const isAllSelected = approvableItems.length > 0 && approvableItems.every((it) => selectedIds.has(it.id))
 
+  useEffect(() => {
+    function handleIframeMsg(e: MessageEvent) {
+      if (e.data && e.data.type === 'readyForSignature') {
+        const iframe = document.querySelector('#unified-batch-preview-sheet iframe') as HTMLIFrameElement
+        if (iframe?.contentWindow && signatureDataUrl) {
+          iframe.contentWindow.postMessage(
+            {
+              type: 'previewSignature',
+              dataUrl: signatureDataUrl,
+              approverEmployeeId: currentBatchDoc?.approverEmployeeId || currentUserEmployeeId,
+              approverName: currentBatchDoc?.approverName || currentUserName,
+              level: currentBatchDoc?.level,
+            },
+            '*'
+          )
+        }
+      }
+    }
+    window.addEventListener('message', handleIframeMsg)
+    return () => window.removeEventListener('message', handleIframeMsg)
+  }, [signatureDataUrl, currentBatchDoc, currentUserEmployeeId, currentUserName])
+
+  useEffect(() => {
+    const sendToIframe = () => {
+      const iframe = document.querySelector('#unified-batch-preview-sheet iframe') as HTMLIFrameElement
+      if (iframe?.contentWindow) {
+        iframe.contentWindow.postMessage(
+          {
+            type: 'previewSignature',
+            dataUrl: signatureDataUrl || '',
+            approverEmployeeId: currentBatchDoc?.approverEmployeeId || currentUserEmployeeId,
+            approverName: currentBatchDoc?.approverName || currentUserName,
+            level: currentBatchDoc?.level,
+          },
+          '*'
+        )
+      }
+    }
+    sendToIframe()
+    const t1 = setTimeout(sendToIframe, 150)
+    const t2 = setTimeout(sendToIframe, 500)
+    const t3 = setTimeout(sendToIframe, 1200)
+    return () => {
+      clearTimeout(t1)
+      clearTimeout(t2)
+      clearTimeout(t3)
+    }
+  }, [signatureDataUrl, isBatchReviewOpen, batchReviewIndex, currentBatchDoc, currentUserEmployeeId, currentUserName])
+
   const handleToggleSelectAll = () => {
     if (isAllSelected) {
       setSelectedIds(new Set())
@@ -1483,12 +1505,23 @@ export function InboxTab({
     if (!item) return
     setIsDownloadingPdf(true)
     try {
+      const isSummary =
+        (item.category as any) === 'SUMMARY' ||
+        Boolean(item.rawGeneralGroup?.items?.some((i: any) => i.activityType === 'Summary APD' || i.title?.toLowerCase().includes('summary')))
+      
+      const isLandscape =
+        (item.category as any) === 'PTW' ||
+        (item.category as any) === 'FORM_WO' ||
+        isSummary
+
       const el = document.querySelector('#unified-batch-preview-sheet') as HTMLElement
       if (!el) {
         toast.error('Elemen preview dokumen tidak ditemukan.')
         return
       }
-      await downloadElementAsPdf(el, `${item.category}_${item.documentNumber || item.id}.pdf`)
+      await downloadElementAsPdf(el, `${item.category}_${item.documentNumber || item.id}.pdf`, {
+        orientation: isLandscape ? 'landscape' : 'portrait'
+      })
       toast.success(`PDF ${item.documentNumber} berhasil diunduh.`)
     } catch (e) {
       console.error(e)
@@ -2156,9 +2189,20 @@ export function InboxTab({
           onOpenChange={(open) => !open && setIsBatchReviewOpen(false)}
         >
           {(() => {
+            const isSummaryDoc =
+              (currentBatchDoc?.category as any) === 'SUMMARY' ||
+              Boolean(
+                currentBatchDoc?.rawGeneralGroup?.items?.some(
+                  (i: any) =>
+                    i.activityType === 'Summary APD' ||
+                    i.title?.toLowerCase().includes('summary')
+                )
+              )
+
             const isLandscapeDoc =
               (currentBatchDoc?.category as any) === 'PTW' ||
               (currentBatchDoc?.category as any) === 'FORM_WO' ||
+              isSummaryDoc ||
               Boolean((currentBatchDoc as any)?.rawFormWo) ||
               Boolean(currentBatchDoc?.rawGeneralGroup?.items?.some((i: any) => i.repairFormWo || i.activityType === 'Form WO' || (i as any).requestKindLabel === 'Form WO'))
 
@@ -2346,7 +2390,9 @@ export function InboxTab({
 
                     {/* 1. PDF Letterhead Document Preview Container (Draggable & Scalable) */}
                     {currentBatchDoc && (() => {
-                      const baseScale = isLandscapeDoc ? 0.62 : (viewMode === 'mobile' ? 0.48 : 0.80)
+                      const baseScale = isLandscapeDoc
+                        ? (viewMode === 'mobile' ? 0.32 : 0.58)
+                        : (viewMode === 'mobile' ? 0.48 : 0.80)
                       const effectiveScale = baseScale * viewerZoom
                       const originalHeightMm = isLandscapeDoc ? 210 : 297
                       const marginOffsetMm = -Math.round(originalHeightMm * (1 - effectiveScale))
@@ -2361,7 +2407,7 @@ export function InboxTab({
                           onTouchMove={handleTouchMove}
                           onTouchEnd={handleTouchEnd}
                           className={cn(
-                            "relative flex justify-center items-start overflow-auto p-3 sm:p-4 w-full min-h-[560px] select-none rounded-2xl border border-slate-300/80 bg-slate-300/50 shadow-inner",
+                            "relative flex justify-center items-start overflow-hidden p-2 sm:p-4 w-full min-h-[300px] sm:min-h-[560px] select-none rounded-2xl border border-slate-300/80 bg-slate-300/50 shadow-inner",
                             isDragging ? "cursor-grabbing" : "cursor-grab"
                           )}
                           title="Klik dan tahan untuk menggeser preview dokumen"
@@ -3620,9 +3666,46 @@ export function InboxTab({
                             i.activityType === 'Summary APD'
                         ) || currentBatchDoc.rawGeneralGroup?.items?.[0]
                         if (!apdItem) return null
-                        const printUrl = apdItem.activityType === 'Summary APD'
+                        const isSummary =
+                          apdItem.activityType === 'Summary APD' ||
+                          (currentBatchDoc?.category as any) === 'SUMMARY' ||
+                          apdItem?.title?.toLowerCase().includes('summary')
+                        const printUrl = isSummary
                           ? `/print/summary/${apdItem.activityId}?embed=1`
                           : `/print/apd/${apdItem.activityId}?embed=1`
+
+                        if (isSummary) {
+                          return (
+                            <div className="w-[297mm] h-[210mm] min-h-[210mm] max-h-[210mm] overflow-hidden flex justify-center p-0 m-0">
+                              <iframe
+                                src={printUrl}
+                                className="w-[297mm] min-h-[210mm] h-[210mm] border-0 bg-white shadow-none p-0 m-0 block"
+                                title="Preview Dokumen Summary APD"
+                                onLoad={(e) => {
+                                  const iframe = e.target as HTMLIFrameElement
+                                  const sendSig = () => {
+                                    if (signatureDataUrl && iframe?.contentWindow) {
+                                      iframe.contentWindow.postMessage(
+                                        {
+                                          type: 'previewSignature',
+                                          dataUrl: signatureDataUrl,
+                                          approverEmployeeId: (apdItem as any)?.approverEmployeeId || currentBatchDoc?.approverEmployeeId || currentUserEmployeeId,
+                                          approverName: (apdItem as any)?.approverName || currentBatchDoc?.approverName || currentUserName,
+                                          level: (apdItem as any)?.level || currentBatchDoc?.level,
+                                        },
+                                        '*'
+                                      )
+                                    }
+                                  }
+                                  sendSig()
+                                  setTimeout(sendSig, 200)
+                                  setTimeout(sendSig, 600)
+                                  setTimeout(sendSig, 1200)
+                                }}
+                              />
+                            </div>
+                          )
+                        }
 
                         return (
                           <div className="w-[210mm] h-[297mm] min-h-[297mm] max-h-[297mm] overflow-hidden flex justify-center p-0 m-0">

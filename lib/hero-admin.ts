@@ -41,6 +41,7 @@ import {
   hcNotificationConfig,
   hseSafetyNotificationConfig,
   apdNotificationConfig,
+  apdSummaryNotificationConfig,
   materialToolsNotificationConfig,
   attendanceNotificationConfig,
   formWoNotificationConfig,
@@ -7766,6 +7767,38 @@ export async function getApdNotificationConfigData() {
       serviceCcEmail: 'otoleeh123@gmail.com',
       repairCcEmail: 'zahiriarjun@gmail.com',
       teCcEmail: 'abian.husain@chitraparatama.co.id',
+      isActive: true,
+      updatedAt: new Date(),
+    }
+  )
+}
+
+export async function getApdSummaryNotificationConfigData() {
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "hero_apd_summary_notification_config" (
+        "id" serial PRIMARY KEY NOT NULL,
+        "recipient_emails" text DEFAULT '' NOT NULL,
+        "cc_emails" text DEFAULT '' NOT NULL,
+        "is_active" boolean DEFAULT true NOT NULL,
+        "updated_at" timestamp DEFAULT now() NOT NULL
+      )
+    `)
+  } catch {
+    // DDL bypass
+  }
+
+  const [config] = await db
+    .select()
+    .from(apdSummaryNotificationConfig)
+    .orderBy(desc(apdSummaryNotificationConfig.updatedAt))
+    .limit(1)
+
+  return (
+    config ?? {
+      id: 0,
+      recipientEmails: '',
+      ccEmails: '',
       isActive: true,
       updatedAt: new Date(),
     }

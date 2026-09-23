@@ -16,30 +16,7 @@ import { SignaturePad } from "@/components/signature-pad";
 import { getUserSignatureAction, saveUserSignatureAction } from "@/app/actions/user-signature";
 import { FiveRCameraModal } from "@/components/five-r/five-r-camera-modal";
 import { SearchableEmployeeSelect } from "@/components/searchable-employee-select";
-import type { ApdRequestCategory } from "@/lib/apd-status";
-import type { ApproverOption } from "@/lib/apd-data";
-
-const APD_ITEMS = [
-  "Safety Glasses",
-  "Masker",
-  "Ear Plug",
-  "Sarung Tangan Ansel",
-  "Safety Shoes",
-  "Safety Boot Petrova",
-  "Helmet Kuning",
-  "Helmet Putih",
-  "Padlock Merah",
-  "Padlock Kuning",
-  "Sisor",
-  "Tali Kacamata",
-  "Chin Strap",
-  "Dalaman Helm",
-  "Kaos Tangan Dotting",
-  "Safety Goggles",
-  "Apron",
-  "Face Shield Helmet",
-  "Sunbrim Helmet",
-];
+import { type ApdRequestCategory, APD_ITEMS, type ApproverOption } from "@/lib/apd-status";
 
 type ApdItemInput = {
   id: string;

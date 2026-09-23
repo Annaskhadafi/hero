@@ -6,6 +6,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import {
   apdNotificationConfig,
+  apdSummaryNotificationConfig,
   materialToolsNotificationConfig,
   attendanceNotificationConfig,
   formWoNotificationConfig,
@@ -118,6 +119,12 @@ const emailTemplateTestSchema = z.object({
 });
 
 const hseSafetyNotificationSchema = z.object({
+  recipientEmails: z.string().trim().default(""),
+  ccEmails: z.string().trim().default(""),
+  isActive: z.preprocess((value) => value === "true" || value === true, z.boolean()),
+});
+
+const apdSummaryNotificationSchema = z.object({
   recipientEmails: z.string().trim().default(""),
   ccEmails: z.string().trim().default(""),
   isActive: z.preprocess((value) => value === "true" || value === true, z.boolean()),
@@ -926,6 +933,58 @@ export async function saveHseSafetyNotificationConfigAction(
       status: "error",
       message:
         error instanceof Error ? error.message : "Gagal menyimpan penerima HSE Safety.",
+    };
+  }
+}
+
+export async function saveApdSummaryNotificationConfigAction(
+  _state: EmailSettingsActionState = INITIAL_STATE,
+  formData: FormData,
+): Promise<EmailSettingsActionState> {
+  await ensureHeroGovernanceSeedData();
+
+  const parsed = apdSummaryNotificationSchema.safeParse(Object.fromEntries(formData.entries()));
+
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: parsed.error.issues[0]?.message ?? "Konfigurasi penerima Summary APD belum valid.",
+    };
+  }
+
+  try {
+    const [existing] = await db
+      .select({ id: apdSummaryNotificationConfig.id })
+      .from(apdSummaryNotificationConfig)
+      .limit(1);
+
+    const values = {
+      recipientEmails: parsed.data.recipientEmails,
+      ccEmails: parsed.data.ccEmails,
+      isActive: parsed.data.isActive,
+      updatedAt: new Date(),
+    };
+
+    if (existing) {
+      await db
+        .update(apdSummaryNotificationConfig)
+        .set(values)
+        .where(eq(apdSummaryNotificationConfig.id, existing.id));
+    } else {
+      await db.insert(apdSummaryNotificationConfig).values(values);
+    }
+
+    revalidatePath("/dashboard/settings/email");
+
+    return {
+      status: "success",
+      message: "Pengaturan penerima Summary APD berhasil disimpan.",
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message:
+        error instanceof Error ? error.message : "Gagal menyimpan pengaturan Summary APD.",
     };
   }
 }

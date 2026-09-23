@@ -20,6 +20,14 @@ import {
   AlertTriangle,
   HelpCircle,
   ChevronDown,
+  GitFork,
+  User,
+  UserCheck,
+  ShieldCheck,
+  ArrowRight,
+  Info,
+  Layers,
+  Split,
 } from 'lucide-react'
 
 import {
@@ -533,6 +541,9 @@ function WorkflowBuilderDialog({
   const [selectedMenuKey, setSelectedMenuKey] = useState<string>(
     initial?.templateKey ?? data.builderOptions.menus[0]?.key ?? ''
   )
+  const [formMode, setFormMode] = useState<string>(initial?.mode ?? (initial?.templateKey?.includes('summary') ? 'parallel_all' : 'sequential'))
+  const [validationError, setValidationError] = useState<string | null>(null)
+  const [stepToDelete, setStepToDelete] = useState<{ id: string; label: string } | null>(null)
   const selectedMenu =
     data.builderOptions.menus.find((menu) => menu.key === selectedMenuKey) ?? data.builderOptions.menus[0]
   const employeeOptions = data.builderOptions.employees
@@ -645,7 +656,15 @@ function WorkflowBuilderDialog({
     [employeeOptions]
   )
 
-  type ApprovalStep = { id: string; label: string; type: 'section' | 'employee' }
+  type ApprovalStep = {
+    id: string
+    label: string
+    type: 'section' | 'employee'
+    isParallel?: boolean
+    parallelGroup?: string
+    approvalMode?: 'sequential' | 'parallel_all' | 'parallel_any'
+    virtualEmployeeId?: string
+  }
   type SiteData = { key: string; siteId: string; departmentId: string; values: Record<string, string> }
 
   // RFR uses department-based assignment instead of site-based
@@ -675,11 +694,12 @@ function WorkflowBuilderDialog({
     },
     {
       key: "summary-apd-2-step",
-      name: "Summary APD (Section Head & Department Head)",
+      name: "Summary APD (Paralel: Head Section MVC & Others ➔ Dept Head)",
       steps: [
         { id: "step-0", label: "Section", type: "section" as const },
-        { id: "step-1", label: "Section Head", type: "employee" as const },
-        { id: "step-2", label: "Department Head", type: "employee" as const },
+        { id: "step-1", label: "Head Section MVC", type: "employee" as const, isParallel: true, parallelGroup: 'diperiksa', approvalMode: 'parallel_all' as const },
+        { id: "step-2", label: "Head Section Others", type: "employee" as const, isParallel: true, parallelGroup: 'diperiksa', approvalMode: 'parallel_all' as const },
+        { id: "step-3", label: "Department Head", type: "employee" as const },
       ]
     },
     {
@@ -737,7 +757,11 @@ function WorkflowBuilderDialog({
     const newSteps = preset.steps.map(s => ({
       id: s.id,
       label: s.label,
-      type: s.type
+      type: s.type,
+      isParallel: (s as any).isParallel,
+      parallelGroup: (s as any).parallelGroup,
+      approvalMode: (s as any).approvalMode,
+      virtualEmployeeId: (s as any).virtualEmployeeId,
     }))
     setApprovalSteps(newSteps)
 
@@ -745,16 +769,15 @@ function WorkflowBuilderDialog({
       const autoRows: any[] = []
       let rIndex = 0
       for (const sec of csSectionsList) {
-        const secHeadId = SECTION_HEAD_BY_SEC_ID[sec.id.toString()] ?? (sec.headEmployeeId ? String(sec.headEmployeeId) : '')
-        const deptHeadId = sec.departmentId ? (DEPARTMENT_HEAD_BY_DEPT_ID[sec.departmentId.toString()] ?? '972') : '972'
         autoRows.push({
           key: `site-sum-${rIndex++}-${sec.id}`,
           siteId: '0',
           departmentId: sec.departmentId ? sec.departmentId.toString() : '2',
           values: {
             'step-0': sec.id.toString(),
-            'step-1': secHeadId,
-            'step-2': deptHeadId,
+            'step-1': '955', // Apriyanto - Head Section MVC
+            'step-2': '15',  // Junaidi - Head Section Others
+            'step-3': '972', // Budi Raharjo - Department Head
           },
         })
       }
@@ -892,8 +915,9 @@ function WorkflowBuilderDialog({
 
   const summaryApdDefaults: ApprovalStep[] = [
     { id: 'step-0', label: 'Section', type: 'section' },
-    { id: 'step-1', label: 'Section Head', type: 'employee' },
-    { id: 'step-2', label: 'Department Head', type: 'employee' },
+    { id: 'step-1', label: 'Head Section MVC', type: 'employee', isParallel: true, parallelGroup: 'diperiksa', approvalMode: 'parallel_all' },
+    { id: 'step-2', label: 'Head Section Others', type: 'employee', isParallel: true, parallelGroup: 'diperiksa', approvalMode: 'parallel_all' },
+    { id: 'step-3', label: 'Department Head', type: 'employee' },
   ]
 
   const apdDefaults: ApprovalStep[] = [
@@ -947,6 +971,32 @@ function WorkflowBuilderDialog({
               : isApd
                 ? apdDefaults
                 : generalDefaults
+
+    if (isSummary) {
+      const filteredExisting = (initial?.globalSteps || []).filter((gs) => {
+        const l = (gs.label ?? '').toLowerCase().trim()
+        return (
+          !isSectionStep(l) &&
+          l !== 'pemohon' &&
+          l !== 'yang memohon' &&
+          l !== 'requestor' &&
+          l !== 'submitted' &&
+          l !== 'submitter'
+        )
+      })
+      if (filteredExisting.length >= 3) {
+        const existing = filteredExisting.map((gs, i) => ({
+          id: `step-${i + 1}`,
+          label: gs.label ?? '',
+          type: 'employee' as const,
+          isParallel: (gs.label || '').toLowerCase().includes('section') || (gs.label || '').toLowerCase().includes('mvc') || (gs.label || '').toLowerCase().includes('other'),
+          parallelGroup: 'diperiksa',
+          approvalMode: 'parallel_all' as const,
+        }))
+        return [{ id: 'step-0', label: 'Section', type: 'section' as const }, ...existing]
+      }
+      return summaryApdDefaults
+    }
 
     if (isMaterialTools) {
       const isLegacyApd =
@@ -1238,25 +1288,29 @@ function WorkflowBuilderDialog({
           if (!sec) continue // only include Central Services sections
           seenSectionIds.add(secId)
 
-          const defaultSecHead = (sec.headEmployeeId ? String(sec.headEmployeeId) : '') || SECTION_HEAD_BY_SEC_ID[secId] || ''
           const defaultDeptHead = sec.departmentId ? (DEPARTMENT_HEAD_BY_DEPT_ID[sec.departmentId.toString()] ?? '972') : '972'
 
+          // Step 1: Head Section MVC
           const step1Val =
-            sa.sectionHeadId != null
-              ? String(sa.sectionHeadId)
-              : (sa as any).values?.['step-1']
-                ? String((sa as any).values['step-1'])
-                : (sa as any).steps?.[0]?.employeeId
-                  ? String((sa as any).steps[0].employeeId)
-                  : defaultSecHead
+            (sa as any).values?.['step-1'] && (sa as any).values?.['step-1'] !== '0'
+              ? String((sa as any).values['step-1'])
+              : '955' // Apriyanto
 
+          // Step 2: Head Section Others
+          const rawStep2 = (sa as any).values?.['step-2']
           const step2Val =
+            rawStep2 && rawStep2 !== '0' && rawStep2 !== '972' && rawStep2 !== '10'
+              ? String(rawStep2)
+              : '15' // Junaidi
+
+          // Step 3: Department Head
+          const step3Val =
             sa.departmentHeadId != null
               ? String(sa.departmentHeadId)
-              : (sa as any).values?.['step-2']
-                ? String((sa as any).values['step-2'])
-                : (sa as any).steps?.[1]?.employeeId
-                  ? String((sa as any).steps[1].employeeId)
+              : (sa as any).values?.['step-3']
+                ? String((sa as any).values['step-3'])
+                : rawStep2 === '972' || rawStep2 === '10'
+                  ? String(rawStep2)
                   : defaultDeptHead
 
           autoRows.push({
@@ -1267,6 +1321,7 @@ function WorkflowBuilderDialog({
               'step-0': secId,
               'step-1': step1Val,
               'step-2': step2Val,
+              'step-3': step3Val,
             },
           })
         }
@@ -1275,7 +1330,6 @@ function WorkflowBuilderDialog({
 
       // Default: generate 1 clean row per Central Services section
       for (const sec of csSectionsList) {
-        const secHeadId = (sec.headEmployeeId ? String(sec.headEmployeeId) : '') || SECTION_HEAD_BY_SEC_ID[sec.id.toString()] || ''
         const deptHeadId = sec.departmentId ? (DEPARTMENT_HEAD_BY_DEPT_ID[sec.departmentId.toString()] ?? '972') : '972'
         autoRows.push({
           key: `site-sum-${rIndex++}-${sec.id}`,
@@ -1283,8 +1337,9 @@ function WorkflowBuilderDialog({
           departmentId: sec.departmentId ? sec.departmentId.toString() : '2',
           values: {
             'step-0': sec.id.toString(),
-            'step-1': secHeadId,
-            'step-2': deptHeadId,
+            'step-1': '955', // Apriyanto - Head Section MVC
+            'step-2': '15',  // Junaidi - Head Section Others
+            'step-3': deptHeadId, // Budi Raharjo - Department Head
           },
         })
       }
@@ -1441,6 +1496,25 @@ function WorkflowBuilderDialog({
       return autoRows
     }
 
+    if (menuKeyLower.includes('summary')) {
+      const autoRows: SiteData[] = []
+      let rIndex = 0
+      for (const sec of csSectionsList) {
+        autoRows.push({
+          key: `site-sum-${rIndex++}-${sec.id}`,
+          siteId: '0',
+          departmentId: sec.departmentId ? sec.departmentId.toString() : '2',
+          values: {
+            'step-0': sec.id.toString(),
+            'step-1': '955', // Apriyanto - Head Section MVC
+            'step-2': '15',  // Junaidi - Head Section Others
+            'step-3': '972', // Budi Raharjo - Department Head
+          },
+        })
+      }
+      return autoRows
+    }
+
     if (menuKeyLower.includes('apd')) {
       return MASTER_CATEGORIZED_SITES.map((site, index) => {
         const isAdminCp = site.category === 'Admin CP'
@@ -1571,7 +1645,6 @@ function WorkflowBuilderDialog({
         const autoRows: SiteData[] = []
         let rIndex = 0
         for (const sec of csSectionsList) {
-          const secHeadId = SECTION_HEAD_BY_SEC_ID[sec.id.toString()] ?? (sec.headEmployeeId ? String(sec.headEmployeeId) : '')
           const deptHeadId = sec.departmentId ? (DEPARTMENT_HEAD_BY_DEPT_ID[sec.departmentId.toString()] ?? '972') : '972'
           autoRows.push({
             key: `site-sum-${rIndex++}-${sec.id}`,
@@ -1579,8 +1652,9 @@ function WorkflowBuilderDialog({
             departmentId: sec.departmentId ? sec.departmentId.toString() : '2',
             values: {
               'step-0': sec.id.toString(),
-              'step-1': secHeadId,
-              'step-2': deptHeadId,
+              'step-1': '955', // Apriyanto - Head Section MVC
+              'step-2': '15',  // Junaidi - Head Section Others
+              'step-3': deptHeadId, // Budi Raharjo - Department Head
             },
           })
         }
@@ -1591,7 +1665,6 @@ function WorkflowBuilderDialog({
 
       const sec = csSectionsList.find((s) => s.id.toString() === pendingSiteId)
       if (sec) {
-        const secHeadId = SECTION_HEAD_BY_SEC_ID[sec.id.toString()] ?? (sec.headEmployeeId ? String(sec.headEmployeeId) : '')
         const deptHeadId = sec.departmentId ? (DEPARTMENT_HEAD_BY_DEPT_ID[sec.departmentId.toString()] ?? '972') : '972'
         setSiteData((prev) => [
           ...prev,
@@ -1601,8 +1674,9 @@ function WorkflowBuilderDialog({
             departmentId: sec.departmentId ? sec.departmentId.toString() : '2',
             values: {
               'step-0': sec.id.toString(),
-              'step-1': secHeadId,
-              'step-2': deptHeadId,
+              'step-1': '955', // Apriyanto - Head Section MVC
+              'step-2': '15',  // Junaidi - Head Section Others
+              'step-3': deptHeadId, // Budi Raharjo - Department Head
             },
           },
         ])
@@ -1795,7 +1869,8 @@ function WorkflowBuilderDialog({
   }
 
   return (
-    <Dialog>
+    <>
+      <Dialog>
       <DialogTrigger asChild>
         {trigger ?? (
           <Button className="h-9">
@@ -1892,16 +1967,15 @@ function WorkflowBuilderDialog({
                     const autoRows: any[] = []
                     let rIndex = 0
                     for (const sec of csSectionsList) {
-                      const secHeadId = SECTION_HEAD_BY_SEC_ID[sec.id.toString()] ?? (sec.headEmployeeId ? String(sec.headEmployeeId) : '')
-                      const deptHeadId = sec.departmentId ? (DEPARTMENT_HEAD_BY_DEPT_ID[sec.departmentId.toString()] ?? '972') : '972'
                       autoRows.push({
                         key: `site-sum-${rIndex++}-${sec.id}`,
                         siteId: '0',
                         departmentId: sec.departmentId ? sec.departmentId.toString() : '2',
                         values: {
                           'step-0': sec.id.toString(),
-                          'step-1': secHeadId,
-                          'step-2': deptHeadId,
+                          'step-1': '955', // Apriyanto - Head Section MVC
+                          'step-2': '15',  // Junaidi - Head Section Others
+                          'step-3': '972', // Budi Raharjo - Department Head
                         },
                       })
                     }
@@ -1964,11 +2038,16 @@ function WorkflowBuilderDialog({
               <Input name="activityName" defaultValue={initial?.name ? (isClone ? `${initial.name} - Salinan` : initial.name) : (selectedMenu?.label ?? '')} required />
             </label>
             <label className="space-y-1.5 text-sm font-medium">
-              Mode
-              <select name="mode" defaultValue={initial?.mode ?? 'sequential'} className="border-border/70 bg-muted/30 h-11 w-full rounded-lg border px-3 text-sm">
-                <option value="sequential">Sequential</option>
-                <option value="parallel_all">Parallel All</option>
-                <option value="parallel_any">Parallel Any</option>
+              Mode Approval
+              <select
+                name="mode"
+                value={formMode}
+                onChange={(e) => setFormMode(e.target.value)}
+                className="border-border/70 bg-muted/30 h-11 w-full rounded-lg border px-3 text-sm font-medium"
+              >
+                <option value="sequential">Sequential (Berurutan)</option>
+                <option value="parallel_all">Parallel All (AND - Semua Wajib Setuju)</option>
+                <option value="parallel_any">Parallel Any (OR - Salah Satu Cukup)</option>
               </select>
             </label>
             <label className="space-y-1.5 text-sm font-medium">
@@ -1988,39 +2067,232 @@ function WorkflowBuilderDialog({
             </label>
           </div>
 
+          {/* Visual Workflow Architecture / Parallel Canvas */}
+          {(isSummaryMenu() || approvalSteps.some((s) => s.isParallel) || formMode.includes('parallel')) && (
+            <div className="rounded-xl border border-slate-200 bg-gradient-to-b from-slate-50/80 via-white to-slate-50/40 p-4 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-primary/10 rounded-lg text-primary">
+                    <GitFork className="size-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-semibold text-slate-900">Visual Flow Architecture</h4>
+                      {isSummaryMenu() ? (
+                        <Badge className="bg-primary/10 text-primary border-primary/20 text-[11px] font-medium hover:bg-primary/15">
+                          APD Summary Flow (3 Stages • Parallel Review)
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-[11px]">
+                          {formMode === 'parallel_any' ? 'Parallel Any (OR)' : 'Parallel All (AND)'}
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Visualisasi alur persetujuan: Pengajuan (Submitter) ➔ Pemeriksaan Serentak (Parallel) ➔ Persetujuan Final (Dept Head).
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs py-1 px-2.5 flex items-center gap-1.5 font-medium">
+                    <CheckCircle2 className="size-3.5" /> Single Source of Truth
+                  </Badge>
+                </div>
+              </div>
+
+              <div className="pt-4 pb-2">
+                <div className="grid grid-cols-1 lg:grid-cols-11 gap-3 items-center">
+                  {/* Node 1: Diajukan Oleh */}
+                  <div className="lg:col-span-3 rounded-lg border border-slate-200 bg-white p-3.5 shadow-xs relative hover:border-slate-300 transition-colors">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Tahap 1</span>
+                      <Badge variant="outline" className="text-[10px] bg-slate-100/80 text-slate-700 font-normal">Otomatis</Badge>
+                    </div>
+                    <div className="font-semibold text-sm text-slate-900 flex items-center gap-1.5">
+                      <User className="size-4 text-slate-700" />
+                      Diajukan Oleh
+                    </div>
+                    <div className="mt-2.5 rounded-md bg-slate-50 border border-slate-100 p-2.5 text-xs">
+                      <div className="font-medium text-slate-800">Akun Login Submitter</div>
+                      <div className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                        Nama dan data terbaca otomatis saat user men-generate dan men-submit summary APD
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Connector 1 -> 2 */}
+                  <div className="lg:col-span-1 flex flex-col items-center justify-center text-slate-400">
+                    <div className="hidden lg:flex flex-col items-center">
+                      <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Submit</span>
+                      <ArrowRight className="size-5 text-slate-400" />
+                    </div>
+                    <div className="lg:hidden flex items-center justify-center py-1">
+                      <ArrowDown className="size-4 text-slate-400" />
+                    </div>
+                  </div>
+
+                  {/* Node 2: Diperiksa Oleh (Parallel) */}
+                  <div className="lg:col-span-4 rounded-xl border-2 border-indigo-200 bg-indigo-50/50 p-3.5 shadow-xs relative">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">Tahap 2</span>
+                        <Badge className="bg-indigo-600 text-white text-[10px] py-0 px-2 font-medium">Paralel Review</Badge>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Badge variant="outline" className="text-[10px] font-semibold bg-white text-indigo-900 border-indigo-200">
+                          {formMode === 'parallel_any' ? 'OR (Salah Satu Cukup)' : 'AND (Semua Wajib Approve)'}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="font-semibold text-xs text-indigo-950 mb-2.5 flex items-center justify-between">
+                      <span>Diperiksa Oleh (Level 1)</span>
+                      <span className="text-[10px] font-normal text-indigo-600">Inbox & Notif Terkirim Serentak</span>
+                    </div>
+
+                    {/* 2 Parallel Slots */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="rounded-lg border border-indigo-200 bg-white p-2.5 shadow-xs">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-bold text-indigo-700">Slot A</span>
+                          <span className="text-[10px] text-muted-foreground font-mono">Level 1.1</span>
+                        </div>
+                        <div className="font-medium text-xs text-slate-900">Head Section MVC</div>
+                        <div className="text-[11px] text-indigo-600 font-mono mt-1 flex items-center gap-1">
+                          <UserCheck className="size-3" />
+                          <span>Apriyanto (#955)</span>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-indigo-200 bg-white p-2.5 shadow-xs">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-bold text-indigo-700">Slot B</span>
+                          <span className="text-[10px] text-muted-foreground font-mono">Level 1.2</span>
+                        </div>
+                        <div className="font-medium text-xs text-slate-900">Head Section Others</div>
+                        <div className="text-[11px] text-indigo-600 font-mono mt-1 flex items-center gap-1">
+                          <UserCheck className="size-3" />
+                          <span>Junaidi (#15)</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-2.5 text-[10px] text-indigo-900 bg-indigo-100/70 border border-indigo-200/50 rounded-md px-2.5 py-1.5 flex items-center gap-1.5">
+                      <Info className="size-3.5 text-indigo-600 shrink-0" />
+                      <span>Status tetap "Menunggu Diperiksa" sampai kedua Head Section menandatangani dokumen.</span>
+                    </div>
+                  </div>
+
+                  {/* Connector 2 -> 3 */}
+                  <div className="lg:col-span-1 flex flex-col items-center justify-center text-slate-400">
+                    <div className="hidden lg:flex flex-col items-center">
+                      <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Signed</span>
+                      <ArrowRight className="size-5 text-slate-400" />
+                    </div>
+                    <div className="lg:hidden flex items-center justify-center py-1">
+                      <ArrowDown className="size-4 text-slate-400" />
+                    </div>
+                  </div>
+
+                  {/* Node 3: Disetujui Oleh (Final) */}
+                  <div className="lg:col-span-2 rounded-lg border border-emerald-200 bg-emerald-50/40 p-3.5 shadow-xs relative hover:border-emerald-300 transition-colors">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Tahap 3</span>
+                      <Badge className="bg-emerald-600 text-white text-[10px] py-0 px-2 font-medium">Final Approval</Badge>
+                    </div>
+                    <div className="font-semibold text-xs text-emerald-950 flex items-center gap-1.5">
+                      <ShieldCheck className="size-4 text-emerald-600" />
+                      Disetujui Oleh
+                    </div>
+                    <div className="mt-2.5 rounded-md bg-white border border-emerald-200 p-2.5 text-xs">
+                      <div className="font-medium text-slate-800">Department Head</div>
+                      <div className="text-[11px] text-emerald-700 font-mono mt-1 flex items-center gap-1">
+                        <UserCheck className="size-3" />
+                        <span>Budi Raharjo (#972)</span>
+                      </div>
+                      <div className="text-[10px] text-muted-foreground mt-1">
+                        Ter-trigger otomatis setelah tahap paralel selesai
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <section className="rounded-lg border bg-white p-3 space-y-4">
             <div>
               <div className="mb-2 flex items-center justify-between">
-                <h3 className="font-display text-base font-semibold">Langkah Approval</h3>
+                <div>
+                  <h3 className="font-display text-base font-semibold">Langkah Approval</h3>
+                  <p className="text-muted-foreground text-xs">
+                    Atur urutan dan tipe langkah approval. Langkah dapat diatur berurutan atau paralel.
+                  </p>
+                </div>
                 <Button type="button" size="sm" variant="outline" onClick={addStep} className="h-8 px-2 text-xs">
                   <Plus className="size-3" /> Tambah Langkah
                 </Button>
               </div>
-              <p className="text-muted-foreground mb-2 text-xs">Atur urutan langkah approval. Isi nama kolom, lalu geser posisi dengan panah. Urutan ini berlaku untuk semua site.</p>
               {approvalSteps.some((s) => s.type !== 'section') ? (
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   {approvalSteps
                     .filter((s) => s.type !== 'section')
                     .map((step, idx) => {
                       const realIdx = approvalSteps.findIndex((s) => s.id === step.id)
+                      const isParallelStep = Boolean(step.isParallel)
                       return (
-                        <div key={step.id} className="flex items-center gap-2">
-                          <span className="w-5 text-center text-xs font-medium text-muted-foreground">{idx + 1}.</span>
+                        <div key={step.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-100 bg-slate-50/50 p-2">
+                          <span className="w-5 text-center text-xs font-bold text-slate-500">{idx + 1}.</span>
                           <Input
-                            placeholder="Nama langkah (misal: HSE Team, Safety Officer)"
+                            placeholder="Nama langkah (misal: Head Section MVC, Dept Head)"
                             value={step.label}
                             onChange={(e) => updateStepLabel(step.id, e.target.value)}
-                            className="h-8 flex-1 text-xs"
+                            className="h-8 flex-1 min-w-[180px] text-xs bg-white"
                           />
-                          <Button type="button" size="sm" variant="ghost" onClick={() => moveStep(step.id, -1)} disabled={realIdx <= 1} className="h-7 w-7 p-0">
-                            <ArrowUp className="size-3" />
-                          </Button>
-                          <Button type="button" size="sm" variant="ghost" onClick={() => moveStep(step.id, 1)} disabled={realIdx === approvalSteps.length - 1} className="h-7 w-7 p-0">
-                            <ArrowDown className="size-3" />
-                          </Button>
-                          <button type="button" onClick={() => removeStep(step.id)} className="text-muted-foreground hover:text-destructive disabled:opacity-30 disabled:cursor-not-allowed">
-                            <X className="size-3.5" />
+                          
+                          {/* Parallel Toggle Button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setApprovalSteps((prev) =>
+                                prev.map((s) =>
+                                  s.id === step.id
+                                    ? {
+                                        ...s,
+                                        isParallel: !s.isParallel,
+                                        parallelGroup: !s.isParallel ? 'diperiksa' : undefined,
+                                        approvalMode: !s.isParallel ? 'parallel_all' : 'sequential',
+                                      }
+                                    : s
+                                )
+                              )
+                            }}
+                            className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium border transition-colors ${
+                              isParallelStep
+                                ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
+                                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                            }`}
+                            title="Klik untuk mengubah mode Berurutan / Paralel"
+                          >
+                            <Split className="size-3" />
+                            <span>{isParallelStep ? 'Paralel (AND)' : 'Berurutan'}</span>
                           </button>
+
+                          <div className="flex items-center gap-1">
+                            <Button type="button" size="sm" variant="ghost" onClick={() => moveStep(step.id, -1)} disabled={realIdx <= 1} className="h-7 w-7 p-0">
+                              <ArrowUp className="size-3" />
+                            </Button>
+                            <Button type="button" size="sm" variant="ghost" onClick={() => moveStep(step.id, 1)} disabled={realIdx === approvalSteps.length - 1} className="h-7 w-7 p-0">
+                              <ArrowDown className="size-3" />
+                            </Button>
+                            <button
+                              type="button"
+                              onClick={() => setStepToDelete({ id: step.id, label: step.label || `Langkah ${idx + 1}` })}
+                              className="text-muted-foreground hover:text-destructive p-1 rounded transition-colors"
+                              title="Hapus langkah"
+                            >
+                              <X className="size-3.5" />
+                            </button>
+                          </div>
                         </div>
                       )
                     })}
@@ -2116,8 +2388,13 @@ function WorkflowBuilderDialog({
                           .filter((step) => (isFiveRMenu || isSummaryMenu()) ? step.type !== 'section' : true)
                           .map((step) => (
                             <th key={step.id} className="pb-2 pr-3">
-                              <div className="flex items-center gap-1">
+                              <div className="flex items-center gap-1.5">
                                 <span>{step.label || '(Kosong)'}</span>
+                                {step.isParallel && (
+                                  <span className="rounded bg-indigo-50 border border-indigo-200 px-1 py-0.2 text-[9px] font-semibold text-indigo-700">
+                                    Paralel
+                                  </span>
+                                )}
                                 {siteData.length > 1 && (
                                   <button
                                     type="button"
@@ -2300,20 +2577,87 @@ function WorkflowBuilderDialog({
             <Textarea name="notes" defaultValue={initial?.notes ?? ''} placeholder="Catatan maintenance workflow..." />
           </label>
 
+          {/* Validation & Server Error Messages */}
+          {validationError && (
+            <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <AlertTriangle className="size-4 shrink-0 text-red-600" />
+              <span>{validationError}</span>
+            </div>
+          )}
+
           {state.message ? (
             <p className={state.status === 'success' ? 'text-sm text-emerald-700' : 'text-sm text-red-700'}>
               {state.message}
             </p>
           ) : null}
           <div className="flex justify-end">
-            <Button type="submit" disabled={isPending}>
+            <Button
+              type="submit"
+              disabled={isPending}
+              onClick={(e) => {
+                setValidationError(null)
+                const empSteps = approvalSteps.filter((s) => s.type !== 'section')
+                if (empSteps.length === 0) {
+                  e.preventDefault()
+                  setValidationError('Minimal satu langkah approval bertipe karyawan wajib ada.')
+                  return
+                }
+                if (siteData.length === 0) {
+                  e.preventDefault()
+                  setValidationError('Minimal satu konfigurasi site/section wajib ditambahkan.')
+                  return
+                }
+                for (const row of siteData) {
+                  for (const st of empSteps) {
+                    if (!row.values[st.id] || row.values[st.id] === '' || row.values[st.id] === '0') {
+                      e.preventDefault()
+                      setValidationError(`Slot approver "${st.label || 'Langkah'}" belum diisi. Mohon lengkapi seluruh pejabat pada semua baris.`)
+                      return
+                    }
+                  }
+                }
+              }}
+            >
               {isPending ? 'Menyimpan...' : initial?.matrixId ? 'Update Workflow' : 'Simpan Workflow'}
             </Button>
           </div>
         </form>
       </DialogContent>
     </Dialog>
-  )
+
+    {/* Delete Step Confirmation Modal */}
+    <Dialog open={!!stepToDelete} onOpenChange={(o) => { if (!o) setStepToDelete(null) }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-destructive">
+            <AlertTriangle className="size-5" /> Hapus Langkah Approval?
+          </DialogTitle>
+          <DialogDescription className="pt-2 text-sm text-slate-600">
+            Apakah Anda yakin ingin menghapus langkah <strong>"{stepToDelete?.label}"</strong>? Seluruh penugasan pejabat pada kolom ini di semua baris site/section akan dihapus.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex justify-end gap-2 pt-3">
+          <Button type="button" variant="outline" size="sm" onClick={() => setStepToDelete(null)}>
+            Batal
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            onClick={() => {
+              if (stepToDelete) {
+                removeStep(stepToDelete.id)
+                setStepToDelete(null)
+              }
+            }}
+          >
+            Hapus Langkah
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  </>
+)
 }
 
 function PresetBuilderDialog({

@@ -25,7 +25,8 @@ import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { generateSummaryAction } from '@/app/dashboard/summary/actions';
+import { generateSummaryAction, deleteSummaryDraftAction } from '@/app/dashboard/summary/actions';
+import { SummaryGeneratorModal } from '@/components/summary/summary-generator-modal';
 import type { SectionWithSummary } from '@/components/summary/summary-list';
 
 interface MobileSummaryClientProps {
@@ -35,11 +36,12 @@ interface MobileSummaryClientProps {
 
 export function MobileSummaryClient({ sections, currentEmployeeId = 0 }: MobileSummaryClientProps) {
   const router = useRouter();
-  const [generating, setGenerating] = useState<string | null>(null);
+  const [generatorModalSection, setGeneratorModalSection] = useState<SectionWithSummary | null>(null);
   const [search, setSearch] = useState('');
   const [selectedSite, setSelectedSite] = useState<'all' | 'GABUNGAN' | 'VALE'>('all');
   const [selectedStatus, setSelectedStatus] = useState<'all' | 'uncreated' | 'draft' | 'pending' | 'approved'>('all');
   const [printingId, setPrintingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const handlePrintInPlace = (summaryId: number) => {
     setPrintingId(summaryId);
@@ -75,22 +77,22 @@ export function MobileSummaryClient({ sections, currentEmployeeId = 0 }: MobileS
     document.body.appendChild(iframe);
   };
 
-  const handleGenerate = async (section: SectionWithSummary) => {
-    const generateId = `${section.id}-${section.targetSite}`;
-    setGenerating(generateId);
+  const handleDeleteDraft = async (summaryId: number) => {
+    if (!confirm('Apakah Anda yakin ingin menghapus draft summary ini?')) return;
+    setDeletingId(summaryId);
+    const toastId = toast.loading('Menghapus draft summary...');
     try {
-      const empId = currentEmployeeId || 5;
-      const result = await generateSummaryAction(section.id, empId, section.targetSite);
-      if (result.success && 'summaryId' in result && result.summaryId) {
-        toast.success(`Summary untuk section ${section.name} berhasil dibuat!`);
-        router.push(`/mobile/summary?preview=${result.summaryId}`);
+      const res = await deleteSummaryDraftAction(summaryId);
+      if (res.success) {
+        toast.success('Draft summary berhasil dihapus', { id: toastId });
+        router.refresh();
       } else {
-        toast.error(result.error || 'Gagal generate summary');
+        toast.error(res.error || 'Gagal menghapus draft', { id: toastId });
       }
     } catch (err: any) {
-      toast.error(err.message || 'Terjadi kesalahan sistem saat generate summary');
+      toast.error(err.message || 'Terjadi kesalahan sistem', { id: toastId });
     } finally {
-      setGenerating(null);
+      setDeletingId(null);
     }
   };
 
@@ -99,7 +101,7 @@ export function MobileSummaryClient({ sections, currentEmployeeId = 0 }: MobileS
       No: idx + 1,
       Section: sec.name,
       'Kode Section': sec.code || '-',
-      'Target Site': sec.targetSite === 'VALE' ? 'Khusus VALE' : 'Gabungan Site Lain',
+      'Target Site': sec.targetSite === 'VALE' ? 'Vale' : 'Gabungan Site',
       'Approved Requests': sec.approvedCount,
       'Status Summary': sec.summaryStatus
         ? sec.summaryStatus.toUpperCase()
@@ -280,7 +282,7 @@ export function MobileSummaryClient({ sections, currentEmployeeId = 0 }: MobileS
               selectedSite === 'VALE' ? 'bg-white text-orange-700 shadow-xs font-bold' : 'hover:text-slate-900'
             }`}
           >
-            Khusus VALE
+            Vale
           </button>
           <button
             type="button"
@@ -289,7 +291,7 @@ export function MobileSummaryClient({ sections, currentEmployeeId = 0 }: MobileS
               selectedSite === 'GABUNGAN' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'hover:text-slate-900'
             }`}
           >
-            Site Lain
+            Gabungan Site
           </button>
         </div>
 
@@ -336,7 +338,6 @@ export function MobileSummaryClient({ sections, currentEmployeeId = 0 }: MobileS
           <div className="space-y-2.5">
             {filtered.map((section) => {
               const isVale = section.targetSite === 'VALE';
-              const isGenerating = generating === `${section.id}-${section.targetSite}`;
               const isPrinting = printingId === section.summaryId;
 
               return (
@@ -358,7 +359,7 @@ export function MobileSummaryClient({ sections, currentEmployeeId = 0 }: MobileS
                               : 'bg-slate-100 text-slate-800 border-slate-200'
                           }`}
                         >
-                          {isVale ? 'VALE' : 'GABUNGAN'}
+                          {isVale ? 'Vale' : 'Gabungan Site'}
                         </span>
                       </div>
                     </div>
@@ -375,22 +376,12 @@ export function MobileSummaryClient({ sections, currentEmployeeId = 0 }: MobileS
                       {/* Generate button if no summary created yet */}
                       {section.approvedCount > 0 && !section.summaryStatus && (
                         <Button
-                          onClick={() => handleGenerate(section)}
-                          disabled={!!isGenerating}
+                          onClick={() => setGeneratorModalSection(section)}
                           size="sm"
                           className="h-8 bg-[#003461] hover:bg-[#00274a] text-white text-xs font-semibold px-3 active:scale-95 transition-transform"
                         >
-                          {isGenerating ? (
-                            <>
-                              <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                              Membuat...
-                            </>
-                          ) : (
-                            <>
-                              <Sparkles className="mr-1.5 size-3.5 text-amber-300" />
-                              Generate
-                            </>
-                          )}
+                          <Sparkles className="mr-1.5 size-3.5 text-amber-300" />
+                          Generate
                         </Button>
                       )}
 
@@ -406,6 +397,24 @@ export function MobileSummaryClient({ sections, currentEmployeeId = 0 }: MobileS
                             <Eye className="mr-1.5 size-3.5" />
                             Preview
                           </Link>
+                        </Button>
+                      )}
+
+                      {/* Delete Draft button */}
+                      {section.summaryId && section.summaryStatus === 'draft' && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDeleteDraft(section.summaryId!)}
+                          disabled={deletingId === section.summaryId}
+                          className="h-8 px-2 text-xs border-rose-200 text-rose-600 hover:bg-rose-50 active:scale-95"
+                        >
+                          {deletingId === section.summaryId ? (
+                            <Loader2 className="size-3 animate-spin" />
+                          ) : (
+                            <AlertCircle className="size-3" />
+                          )}
+                          Hapus
                         </Button>
                       )}
 
@@ -434,6 +443,19 @@ export function MobileSummaryClient({ sections, currentEmployeeId = 0 }: MobileS
           </div>
         )}
       </section>
+
+      {/* Summary Generator Modal */}
+      {generatorModalSection && (
+        <SummaryGeneratorModal
+          isOpen={Boolean(generatorModalSection)}
+          onClose={() => setGeneratorModalSection(null)}
+          section={generatorModalSection}
+          currentEmployeeId={currentEmployeeId}
+          onSuccess={(summaryId) => {
+            router.push(`/mobile/summary?preview=${summaryId}`);
+          }}
+        />
+      )}
     </div>
   );
 }

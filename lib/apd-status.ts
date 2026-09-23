@@ -27,3 +27,37 @@ export function normalizeApdRequestCategory(value: string): ApdRequestCategory |
     ? (category as ApdRequestCategory)
     : null;
 }
+
+export const APD_ITEMS = [
+  "Safety Glasses",
+  "Masker",
+  "Ear Plug",
+  "Sarung Tangan Ansel",
+  "Safety Shoes",
+  "Safety Boot Petrova",
+  "Helmet Kuning",
+  "Helmet Putih",
+  "Padlock Merah",
+  "Padlock Kuning",
+  "Sisor",
+  "Tali Kacamata",
+  "Chin Strap",
+  "Dalaman Helm",
+  "Kaos Tangan Dotting",
+  "Safety Goggles",
+  "Apron",
+  "Face Shield Helmet",
+  "Sunbrim Helmet",
+] as const;
+
+export type ApproverOption = {
+  id: number;
+  name: string;
+  role?: string;
+  employeeSn?: string | null;
+  email?: string;
+  jobTitle?: string;
+  departmentName?: string | null;
+  sectionName?: string | null;
+};
+

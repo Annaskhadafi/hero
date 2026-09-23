@@ -17,13 +17,15 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  Trash2,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { generateSummaryAction } from '@/app/dashboard/summary/actions';
+import { generateSummaryAction, deleteSummaryDraftAction } from '@/app/dashboard/summary/actions';
+import { SummaryGeneratorModal } from './summary-generator-modal';
 
 export type SectionWithSummary = {
   id: number;
@@ -35,6 +37,7 @@ export type SectionWithSummary = {
   approvedCount: number;
   summaryStatus: string | null;
   summaryId: number | null;
+  latestActivityAt?: Date | null;
 };
 
 interface SummaryListProps {
@@ -44,11 +47,12 @@ interface SummaryListProps {
 
 export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProps) {
   const router = useRouter();
-  const [generating, setGenerating] = useState<string | null>(null);
+  const [generatorModalSection, setGeneratorModalSection] = useState<SectionWithSummary | null>(null);
   const [search, setSearch] = useState('');
   const [selectedSite, setSelectedSite] = useState<'all' | 'GABUNGAN' | 'VALE'>('all');
   const [selectedStatus, setSelectedStatus] = useState<'all' | 'uncreated' | 'draft' | 'pending' | 'approved'>('all');
   const [printingId, setPrintingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const handlePrintInPlace = (summaryId: number) => {
     setPrintingId(summaryId);
@@ -84,22 +88,22 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
     document.body.appendChild(iframe);
   };
 
-  const handleGenerate = async (section: SectionWithSummary) => {
-    const generateId = `${section.id}-${section.targetSite}`;
-    setGenerating(generateId);
+  const handleDeleteDraft = async (summaryId: number) => {
+    if (!confirm('Apakah Anda yakin ingin menghapus draft summary ini?')) return;
+    setDeletingId(summaryId);
+    const toastId = toast.loading('Menghapus draft summary...');
     try {
-      const empId = currentEmployeeId || 5;
-      const result = await generateSummaryAction(section.id, empId, section.targetSite);
-      if (result.success && 'summaryId' in result && result.summaryId) {
-        toast.success(`Summary untuk section ${section.name} berhasil dibuat!`);
-        router.push(`/dashboard/summary?preview=${result.summaryId}`);
+      const res = await deleteSummaryDraftAction(summaryId);
+      if (res.success) {
+        toast.success('Draft summary berhasil dihapus', { id: toastId });
+        router.refresh();
       } else {
-        toast.error(result.error || 'Gagal generate summary');
+        toast.error(res.error || 'Gagal menghapus draft', { id: toastId });
       }
     } catch (err: any) {
-      toast.error(err.message || 'Terjadi kesalahan sistem saat generate summary');
+      toast.error(err.message || 'Terjadi kesalahan sistem', { id: toastId });
     } finally {
-      setGenerating(null);
+      setDeletingId(null);
     }
   };
 
@@ -172,7 +176,7 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
       No: idx + 1,
       Section: s.name,
       Kode: s.code || '-',
-      'Target Site': s.targetSite === 'VALE' ? 'Khusus VALE' : 'Gabungan Site Lain',
+      'Target Site': s.targetSite === 'VALE' ? 'Vale' : 'Gabungan Site',
       'Approved Request': `${s.approvedCount} Permintaan`,
       'Status Summary': s.summaryStatus ? s.summaryStatus.toUpperCase() : 'BELUM DIBUAT',
       'Summary ID': s.summaryId ?? '-',
@@ -262,8 +266,8 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
               className="h-8 rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-400"
             >
               <option value="all">Semua Target Site</option>
-              <option value="GABUNGAN">Gabungan Site Lain</option>
-              <option value="VALE">Khusus VALE</option>
+              <option value="GABUNGAN">Gabungan Site</option>
+              <option value="VALE">Vale</option>
             </select>
 
             {/* Status Summary Filter */}
@@ -329,7 +333,6 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
               ) : (
                 filtered.map((section, idx) => {
                   const isVale = section.targetSite === 'VALE';
-                  const isGenerating = generating === `${section.id}-${section.targetSite}`;
                   const isPrinting = printingId === section.summaryId;
 
                   return (
@@ -352,7 +355,7 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
                               : 'bg-slate-100 text-slate-800 border-slate-200'
                           }`}
                         >
-                          {isVale ? 'Khusus VALE' : 'Gabungan Site Lain'}
+                          {isVale ? 'Vale' : 'Gabungan Site'}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center">
@@ -369,21 +372,11 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
                           {section.approvedCount > 0 && !section.summaryStatus && (
                             <Button
                               size="sm"
-                              onClick={() => handleGenerate(section)}
-                              disabled={isGenerating}
-                              className="h-7 px-2.5 text-xs bg-slate-900 text-white hover:bg-slate-800 shadow-xs cursor-pointer gap-1 font-medium"
+                              onClick={() => setGeneratorModalSection(section)}
+                              className="h-7 px-2.5 text-xs bg-blue-600 text-white hover:bg-blue-700 shadow-xs cursor-pointer gap-1 font-semibold"
                             >
-                              {isGenerating ? (
-                                <>
-                                  <Loader2 className="size-3 animate-spin" />
-                                  Proses...
-                                </>
-                              ) : (
-                                <>
-                                  <Plus className="size-3.5" />
-                                  Generate
-                                </>
-                              )}
+                              <Sparkles className="size-3.5" />
+                              Buat Summary
                             </Button>
                           )}
 
@@ -397,6 +390,25 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
                             >
                               <Eye className="size-3.5 text-slate-500" />
                               Lihat
+                            </Button>
+                          )}
+
+                          {/* Delete Draft / Pending button */}
+                          {section.summaryId && (section.summaryStatus === 'draft' || section.summaryStatus === 'pending') && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDeleteDraft(section.summaryId!)}
+                              disabled={deletingId === section.summaryId}
+                              className="h-7 px-2 text-xs border-rose-200 text-rose-600 hover:bg-rose-50 shadow-xs cursor-pointer gap-1 font-medium"
+                              title="Hapus Summary"
+                            >
+                              {deletingId === section.summaryId ? (
+                                <Loader2 className="size-3 animate-spin" />
+                              ) : (
+                                <Trash2 className="size-3" />
+                              )}
+                              Hapus
                             </Button>
                           )}
 
@@ -427,6 +439,19 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
           </table>
         </div>
       </div>
+
+      {/* Summary Generator Modal */}
+      {generatorModalSection && (
+        <SummaryGeneratorModal
+          isOpen={Boolean(generatorModalSection)}
+          onClose={() => setGeneratorModalSection(null)}
+          section={generatorModalSection}
+          currentEmployeeId={currentEmployeeId}
+          onSuccess={(summaryId) => {
+            router.push(`/dashboard/summary?preview=${summaryId}`);
+          }}
+        />
+      )}
     </div>
   );
 }

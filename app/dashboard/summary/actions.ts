@@ -1,21 +1,60 @@
 'use server';
 
-import { generateSummary, submitSummary, approveSummaryStep, getSummaryDetails } from '@/lib/summary-engine';
+import {
+  generateSummary,
+  submitSummary,
+  approveSummaryStep,
+  getSummaryDetails,
+  getPendingRequestsForSection,
+  deleteSummaryDraft,
+  type GenerateSummaryOptions,
+} from '@/lib/summary-engine';
 import { sendSummaryApprovedEmail, sendSummaryPendingApprovalEmail } from '@/lib/summary-email';
 import { revalidatePath } from 'next/cache';
 
-export async function generateSummaryAction(sectionId: number, employeeId: number, targetSite: string) {
+export async function getPendingRequestsAction(sectionId: number, targetSite: string) {
   try {
-    const result = await generateSummary(sectionId, employeeId, targetSite);
+    const requests = await getPendingRequestsForSection(sectionId, targetSite);
+    return { success: true, requests };
+  } catch (error: any) {
+    console.error('Get pending requests error:', error);
+    return { success: false, error: error.message || 'Gagal mengambil data pengajuan' };
+  }
+}
+
+export async function generateSummaryAction(
+  sectionId: number,
+  employeeId: number,
+  targetSite: string,
+  options?: GenerateSummaryOptions
+) {
+  try {
+    const result = await generateSummary(sectionId, employeeId, targetSite, options);
     if ('error' in result) {
       return { success: false, error: result.error };
     }
     revalidatePath('/dashboard/summary');
     revalidatePath('/mobile/summary');
     return { success: true, ...result };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Generate summary error:', error);
-    return { success: false, error: 'Gagal generate summary' };
+    return { success: false, error: error.message || 'Gagal generate summary' };
+  }
+}
+
+export async function deleteSummaryDraftAction(summaryId: number) {
+  try {
+    const result = await deleteSummaryDraft(summaryId);
+    if ('error' in result) {
+      return { success: false, error: result.error };
+    }
+    revalidatePath('/dashboard/summary');
+    revalidatePath('/mobile/summary');
+    revalidatePath('/dashboard/approval');
+    return { success: true };
+  } catch (error: any) {
+    console.error('Delete summary draft error:', error);
+    return { success: false, error: error.message || 'Gagal menghapus summary' };
   }
 }
 
@@ -26,21 +65,13 @@ export async function submitSummaryAction(summaryId: number, signatureUrl: strin
       return { success: false, error: result.error };
     }
 
-    // Send email to first approver (Section Head)
-    const summaryDetails = await getSummaryDetails(summaryId);
-    if (summaryDetails && summaryDetails.approvals.length > 0) {
-      const firstApprover = summaryDetails.approvals[0];
-      if (firstApprover.approverEmployeeId) {
-        await sendSummaryPendingApprovalEmail(summaryDetails, firstApprover.approverEmployeeId, 1).catch(console.error);
-      }
-    }
-
     revalidatePath('/dashboard/summary');
     revalidatePath('/mobile/summary');
+    revalidatePath('/dashboard/approval');
     return { success: true };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Submit summary error:', error);
-    return { success: false, error: 'Gagal submit summary' };
+    return { success: false, error: error.message || 'Gagal submit summary' };
   }
 }
 
@@ -54,30 +85,12 @@ export async function approveSummaryAction(
   try {
     const result = await approveSummaryStep(summaryId, level, approverEmployeeId, signatureUrl, decisionNote);
 
-    if (result.allApproved) {
-      // Send email to HSE: summary fully approved
-      const summaryDetails = await getSummaryDetails(summaryId);
-      if (summaryDetails) {
-        await sendSummaryApprovedEmail(summaryDetails).catch(console.error);
-      }
-    } else {
-      // Send email to next approver
-      const summaryDetails = await getSummaryDetails(summaryId);
-      if (summaryDetails) {
-        const nextLevel = level + 1;
-        const nextApprover = summaryDetails.approvals.find((a) => a.level === nextLevel);
-        if (nextApprover?.approverEmployeeId) {
-          await sendSummaryPendingApprovalEmail(summaryDetails, nextApprover.approverEmployeeId, nextLevel).catch(console.error);
-        }
-      }
-    }
-
     revalidatePath('/dashboard/summary');
     revalidatePath('/mobile/summary');
     revalidatePath('/dashboard/approval');
     return { success: true, allApproved: result.allApproved };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Approve summary error:', error);
-    return { success: false, error: 'Gagal approve summary' };
+    return { success: false, error: error.message || 'Gagal approve summary' };
   }
 }

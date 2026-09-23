@@ -1,7 +1,8 @@
 import { db } from "@/db";
 import { apdRequests, apdRequestItems, employees, masterDepartments, masterSections, sites, approvals } from "@/db/schema/hero";
 import { eq, desc, and, asc, sql } from "drizzle-orm";
-import type { ApdRequestCategory } from "@/lib/apd-status";
+import { type ApdRequestCategory, APD_ITEMS, type ApproverOption } from "@/lib/apd-status";
+export { APD_ITEMS, type ApproverOption };
 
 let apdSchemaReady: Promise<void> | null = null;
 
@@ -147,17 +148,6 @@ export async function fetchApdItemOptions(category: ApdRequestCategory) {
 
   return [...new Set(rows.map((row) => row.itemType.trim().toUpperCase()).filter(Boolean))].sort();
 }
-
-export type ApproverOption = {
-  id: number;
-  name: string;
-  role?: string;
-  employeeSn?: string | null;
-  email?: string;
-  jobTitle?: string;
-  departmentName?: string | null;
-  sectionName?: string | null;
-};
 
 export async function fetchApproverOptions(): Promise<ApproverOption[]> {
   await ensureApdRequestSchema();

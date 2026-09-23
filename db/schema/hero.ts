@@ -2808,6 +2808,14 @@ export const apdNotificationConfig = pgTable('hero_apd_notification_config', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
+export const apdSummaryNotificationConfig = pgTable('hero_apd_summary_notification_config', {
+  id: serial('id').primaryKey(),
+  recipientEmails: text('recipient_emails').notNull().default(''),
+  ccEmails: text('cc_emails').notNull().default(''),
+  isActive: boolean('is_active').notNull().default(true),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
 export const materialToolsNotificationConfig = pgTable('hero_material_tools_notification_config', {
   id: serial('id').primaryKey(),
   recipientEmails: text('recipient_emails').notNull().default(''),

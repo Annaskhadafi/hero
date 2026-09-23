@@ -1094,7 +1094,7 @@ function getCurrentStepLabel(row: ApprovalRecordRow, route: ApprovalRouteResolut
     return (route as any).nodeLabel.trim()
   }
 
-  return `Level ${row.level} Review`
+  return `Step ${row.level} Review`
 }
 
 function enrichApprovalRow(row: ApprovalRecordRow, now: Date): ApprovalQueueItem {

@@ -44,6 +44,10 @@ type WorkflowStudioActionState = {
 const approvalStepSchema = z.object({
   id: z.string(),
   label: z.string().trim().min(1),
+  type: z.string().optional(),
+  isParallel: z.boolean().optional(),
+  parallelGroup: z.string().optional(),
+  approvalMode: z.string().optional(),
 })
 
 const siteApprovalEntrySchema = z.object({
@@ -335,11 +339,50 @@ export async function saveWorkflowStudioApprovalAction(
         )
       }
 
+      // Calculate stepOrder and approvalMode for each non-section step
+      let currentStepOrder = 1
+      let currentParallelGroup: string | null = null
+      const stepMetaMap = new Map<string, { stepOrder: number; approvalMode: string }>()
+
+      for (const s of parsedSteps.filter((step) => !sectionStepIds.has(step.id))) {
+        const isParallel = Boolean(s.isParallel)
+        const group = s.parallelGroup ?? (isParallel ? 'parallel_stage' : null)
+        const mode = s.approvalMode ?? (isParallel ? 'parallel_all' : payload.mode)
+
+        if (isParallel && group) {
+          if (currentParallelGroup && currentParallelGroup === group) {
+            stepMetaMap.set(s.id, { stepOrder: currentStepOrder, approvalMode: mode })
+          } else {
+            if (currentParallelGroup !== null) {
+              currentStepOrder++
+            }
+            currentParallelGroup = group
+            stepMetaMap.set(s.id, { stepOrder: currentStepOrder, approvalMode: mode })
+          }
+        } else {
+          if (currentParallelGroup !== null) {
+            currentStepOrder++
+            currentParallelGroup = null
+          }
+          stepMetaMap.set(s.id, { stepOrder: currentStepOrder, approvalMode: mode })
+          currentStepOrder++
+        }
+      }
+
       for (const entry of parsedSiteEntries) {
         const allApprovers = parsedSteps
           .filter((step) => !sectionStepIds.has(step.id))
-          .map((step) => ({ role: step.label, employeeId: entry.values[step.id] }))
-          .filter((a): a is { role: string; employeeId: number } => a.employeeId != null && validEmployeeIds.has(a.employeeId))
+          .map((step) => {
+            const meta = stepMetaMap.get(step.id) ?? { stepOrder: 1, approvalMode: payload.mode }
+            return {
+              id: step.id,
+              role: step.label,
+              employeeId: entry.values[step.id],
+              stepOrder: meta.stepOrder,
+              approvalMode: meta.approvalMode,
+            }
+          })
+          .filter((a): a is { id: string; role: string; employeeId: number; stepOrder: number; approvalMode: string } => a.employeeId != null && validEmployeeIds.has(a.employeeId))
 
         if (allApprovers.length === 0) continue
 
@@ -418,7 +461,7 @@ export async function saveWorkflowStudioApprovalAction(
               canDelegate: true,
               slaHours: 24,
               label: `${approver.role} - ${employeeName}`,
-              sortOrder: index + 1,
+              sortOrder: approver.stepOrder,
               isActive: true,
               updatedAt: now,
             })
@@ -428,10 +471,10 @@ export async function saveWorkflowStudioApprovalAction(
             .insert(approvalMatrixSteps)
             .values({
               matrixId: matrix.id,
-              stepOrder: index + 1,
+              stepOrder: approver.stepOrder,
               label: approver.role,
               nodeId: node.id,
-              approvalMode: payload.mode,
+              approvalMode: approver.approvalMode,
               slaHours: 24,
               canDelegate: true,
               isRequired: true,
@@ -443,9 +486,9 @@ export async function saveWorkflowStudioApprovalAction(
             workflowVersionId: version.id,
             branchId: branch.id,
             approvalMatrixStepId: step.id,
-            stepOrder: index + 1,
+            stepOrder: approver.stepOrder,
             label: approver.role,
-            approvalMode: payload.mode,
+            approvalMode: approver.approvalMode,
             assignmentSource: 'matrix',
             isRequired: true,
             updatedAt: now,

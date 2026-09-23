@@ -68,11 +68,12 @@ export async function generateElementAsPdfBlob(
   let x = 0
   let y = 0
 
-  if (!isLandscape && Math.abs(canvasRatio - pageRatio) > 0.01) {
+  // Maintain exact aspect ratio to prevent stretching / distortion
+  if (Math.abs(canvasRatio - pageRatio) > 0.01) {
     if (canvasRatio > pageRatio) {
       imgWidth = pdfWidth
       imgHeight = pdfWidth / canvasRatio
-      y = (pdfHeight - imgHeight) / 2
+      y = isLandscape ? Math.min(8, (pdfHeight - imgHeight) / 2) : (pdfHeight - imgHeight) / 2
     } else {
       imgHeight = pdfHeight
       imgWidth = pdfHeight * canvasRatio
