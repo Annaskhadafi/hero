@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { CheckCircle2, AlertCircle, RotateCcw } from 'lucide-react'
 import { submitInternalLmsQuizAction, submitOnlineAssignmentQuizAction } from '@/app/dashboard/chitralearning-lms/actions'
+import { resolveUploadUrl, replaceS3UrlsInHtml } from '@/lib/resolve-upload-url'
 
 export interface QuizQuestion {
   id: number
@@ -38,7 +39,8 @@ interface LmsQuizPlayerProps {
   submitAction?: (formData: FormData) => Promise<{ success: boolean; score: number; passed: boolean }>
 }
 
-function QuizHtml({ html, className = '' }: { html: string; className?: string }) {
+function QuizHtml({ html: rawHtml, className = '' }: { html: string; className?: string }) {
+  const html = replaceS3UrlsInHtml(rawHtml)
   return (
     <div
       className={`prose prose-slate max-w-none break-words [&_img]:my-4 [&_img]:max-h-[360px] [&_img]:rounded-xl [&_img]:border [&_img]:border-slate-200 [&_img]:object-contain ${className}`}
@@ -231,7 +233,7 @@ export function LmsQuizPlayer({ courseId, lessonId, testPhase, questions, nextLe
         <div className="mb-8">
           {question.questionImageUrl && (
             <img
-              src={question.questionImageUrl}
+              src={resolveUploadUrl(question.questionImageUrl)}
               alt="Gambar pertanyaan"
               className="mb-4 max-h-[360px] rounded-xl border border-slate-200 object-contain"
             />
@@ -272,7 +274,7 @@ export function LmsQuizPlayer({ courseId, lessonId, testPhase, questions, nextLe
                   <QuizHtml html={option.text} />
                   {option.imageUrl && (
                     <img
-                      src={option.imageUrl}
+                      src={resolveUploadUrl(option.imageUrl)}
                       alt={`Gambar opsi ${option.id}`}
                       className="mt-3 max-h-48 rounded-lg border border-slate-200 object-contain"
                     />
@@ -345,7 +347,7 @@ export function LmsQuizPlayer({ courseId, lessonId, testPhase, questions, nextLe
                   <QuizHtml html={option.text} />
                   {option.imageUrl && (
                     <img
-                      src={option.imageUrl}
+                      src={resolveUploadUrl(option.imageUrl)}
                       alt={`Gambar opsi ${option.id}`}
                       className="mt-3 max-h-48 rounded-lg border border-slate-200 object-contain"
                     />

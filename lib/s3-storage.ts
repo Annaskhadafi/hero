@@ -198,16 +198,32 @@ export async function uploadProfilePhotoToS3(file: File) {
 
   const client = getS3Client();
 
-  await client.send(
-    new PutObjectCommand({
-      Bucket: serverEnv.s3BucketName,
-      Key: key,
-      Body: buffer,
-      ContentType: contentType,
-      CacheControl: "public, max-age=31536000, immutable",
-      ACL: "public-read",
-    }),
-  );
+  try {
+    await client.send(
+      new PutObjectCommand({
+        Bucket: serverEnv.s3BucketName,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+        CacheControl: "public, max-age=31536000, immutable",
+        ACL: "public-read",
+      }),
+    );
+  } catch (aclError: any) {
+    if (aclError?.name === "AccessControlListNotSupported" || String(aclError?.message || "").includes("ACL")) {
+      await client.send(
+        new PutObjectCommand({
+          Bucket: serverEnv.s3BucketName,
+          Key: key,
+          Body: buffer,
+          ContentType: contentType,
+          CacheControl: "public, max-age=31536000, immutable",
+        }),
+      );
+    } else {
+      throw aclError;
+    }
+  }
 
   return {
     key,
@@ -224,16 +240,33 @@ export async function uploadAnyFileToS3(file: File, prefixOverride?: string) {
 
   const client = getS3Client();
 
-  await client.send(
-    new PutObjectCommand({
-      Bucket: serverEnv.s3BucketName,
-      Key: key,
-      Body: buffer,
-      ContentType: contentType,
-      CacheControl: "public, max-age=31536000, immutable",
-      ACL: "public-read",
-    }),
-  );
+  try {
+    await client.send(
+      new PutObjectCommand({
+        Bucket: serverEnv.s3BucketName,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+        CacheControl: "public, max-age=31536000, immutable",
+        ACL: "public-read",
+      }),
+    );
+  } catch (aclError: any) {
+    // If bucket owner enforced disables ACLs, retry without ACL
+    if (aclError?.name === "AccessControlListNotSupported" || String(aclError?.message || "").includes("ACL")) {
+      await client.send(
+        new PutObjectCommand({
+          Bucket: serverEnv.s3BucketName,
+          Key: key,
+          Body: buffer,
+          ContentType: contentType,
+          CacheControl: "public, max-age=31536000, immutable",
+        }),
+      );
+    } else {
+      throw aclError;
+    }
+  }
 
   return {
     key,

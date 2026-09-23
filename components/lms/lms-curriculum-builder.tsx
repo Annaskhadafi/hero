@@ -42,7 +42,6 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { uploadFile } from '@/app/actions/upload'
 import { resolveClientUploadUrl } from '@/lib/client-url'
-import { replaceS3UrlsInHtml } from '@/lib/resolve-upload-url'
 import { createLesson, deleteLesson, deleteQuizQuestion, duplicateLesson, reorderCurriculum, updateLesson } from '@/app/dashboard/chitralearning-lms/actions'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -50,6 +49,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { resolveUploadUrl, replaceS3UrlsInHtml } from '@/lib/resolve-upload-url'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
@@ -735,8 +735,10 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
                                       <span dangerouslySetInnerHTML={{ __html: replaceS3UrlsInHtml(question.questionText) }} />
                                     </div>
                                     {question.questionImageUrl ? (
-                                      // eslint-disable-next-line @next/next/no-img-element
-                                      <img src={resolveClientUploadUrl(question.questionImageUrl)} alt="Gambar pertanyaan" className="h-32 w-56 rounded-md border border-slate-200 object-cover" />
+                                      <div className="my-2 max-w-lg rounded-lg overflow-hidden border border-slate-200 bg-slate-50 p-1">
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img src={resolveUploadUrl(question.questionImageUrl)} alt="Gambar pertanyaan" className="max-h-72 w-auto max-w-full rounded object-contain" />
+                                      </div>
                                     ) : null}
                                     <div className="grid gap-2 text-sm md:grid-cols-2">
                                       {[
@@ -759,8 +761,10 @@ export function LmsCurriculumBuilder({ courseId, initialSections, initialQuestio
                                             {value}
                                           </div>
                                           {imageUrl ? (
-                                            // eslint-disable-next-line @next/next/no-img-element
-                                            <img src={resolveClientUploadUrl(String(imageUrl))} alt={`Opsi ${key}`} className="h-24 w-full rounded-md object-cover" />
+                                            <div className="mt-2">
+                                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                                              <img src={resolveUploadUrl(String(imageUrl))} alt={`Opsi ${key}`} className="max-h-40 w-auto max-w-full rounded-md border border-slate-200 object-contain bg-white p-1" />
+                                            </div>
                                           ) : null}
                                         </div>
                                       ))}

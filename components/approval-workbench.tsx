@@ -2279,7 +2279,7 @@ export function InboxTab({
 
                     {/* 1. PDF Letterhead Document Preview Container (Draggable & Scalable) */}
                     {currentBatchDoc && (() => {
-                      const baseScale = isLandscapeDoc ? 0.58 : (viewMode === 'mobile' ? 0.48 : 0.80)
+                      const baseScale = isLandscapeDoc ? 0.62 : (viewMode === 'mobile' ? 0.48 : 0.80)
                       const effectiveScale = baseScale * viewerZoom
                       const originalHeightMm = isLandscapeDoc ? 210 : 297
                       const marginOffsetMm = -Math.round(originalHeightMm * (1 - effectiveScale))
@@ -2294,7 +2294,7 @@ export function InboxTab({
                           onTouchMove={handleTouchMove}
                           onTouchEnd={handleTouchEnd}
                           className={cn(
-                            "relative flex justify-center items-start overflow-hidden p-3 sm:p-4 w-full min-h-[560px] select-none rounded-2xl border border-slate-300/80 bg-slate-300/50 shadow-inner",
+                            "relative flex justify-center items-start overflow-auto p-3 sm:p-4 w-full min-h-[560px] select-none rounded-2xl border border-slate-300/80 bg-slate-300/50 shadow-inner",
                             isDragging ? "cursor-grabbing" : "cursor-grab"
                           )}
                           title="Klik dan tahan untuk menggeser preview dokumen"
@@ -2302,7 +2302,7 @@ export function InboxTab({
                           <div
                             id="unified-batch-preview-sheet"
                             className={cn(
-                              "relative mx-auto shrink-0 bg-white shadow-xl border border-slate-200 rounded-sm origin-top",
+                              "relative mx-auto shrink-0 bg-white shadow-xl border border-slate-200 rounded-sm origin-top box-border",
                               isDragging ? "transition-none" : "transition-transform duration-150 ease-out",
                               isLandscapeDoc ? "w-[297mm] min-h-[210mm]" : "w-[210mm] min-h-[297mm]"
                             )}
@@ -2864,46 +2864,46 @@ export function InboxTab({
 
 
                         return (
-                          <div className="-mx-5 -my-9 text-slate-900 w-[1122px] min-h-[793px] flex flex-col justify-between bg-white font-sans">
+                          <div className="text-slate-900 w-full min-h-[210mm] flex flex-col justify-between bg-white font-sans border-2 border-slate-900 box-border">
                             {/* ── HEADER TABLE ── */}
-                            <div className="grid grid-cols-[180px_1fr] border-b-2 border-slate-900">
-                              <div className="flex items-center justify-center p-2 border-r-2 border-slate-900 bg-white">
-                                <img src="/cp_logo-removebg-preview.png" alt="Chitra Paratama" className="h-12 object-contain" />
+                            <div className="grid grid-cols-[160px_1fr] border-b-2 border-slate-900">
+                              <div className="flex items-center justify-center p-1.5 border-r-2 border-slate-900 bg-white">
+                                <img src="/cp_logo-removebg-preview.png" alt="Chitra Paratama" className="h-9 object-contain" />
                               </div>
-                              <div className="bg-[#bfe6ff] flex items-center justify-center font-bold text-base tracking-wider uppercase py-2.5 text-slate-900">
+                              <div className="bg-[#bfe6ff] flex items-center justify-center font-bold text-sm tracking-wider uppercase py-1.5 text-slate-900">
                                 IJIN KERJA BERBAHAYA ( Work Permit )
                               </div>
                             </div>
 
                             {/* ── FORM META FIELDS ── */}
-                            <div className="grid grid-cols-12 border-b-2 border-slate-900 text-[8pt]">
-                              <div className="col-span-4 border-r border-slate-900 p-1.5 bg-slate-50">
+                            <div className="grid grid-cols-12 border-b-2 border-slate-900 text-[7.5pt] leading-tight">
+                              <div className="col-span-4 border-r border-slate-900 p-1 bg-slate-50">
                                 <span className="font-bold">No. Ijin Kerja Berbahaya :</span> <span className="font-mono font-semibold">{doc?.permitNumber || currentBatchDoc?.documentNumber || '—'}</span>
                               </div>
-                              <div className="col-span-8 p-1.5 bg-slate-50">
+                              <div className="col-span-8 p-1 bg-slate-50">
                                 <span className="font-bold">No. Work Order :</span> <span className="font-mono font-semibold">{(doc?.permitNumber || currentBatchDoc?.documentNumber || '').replace('PTW', 'WO')}</span>
                               </div>
 
-                              <div className="col-span-4 border-r border-slate-900 border-t border-slate-900 p-1.5 min-h-[44px]">
-                                <span className="font-bold block text-[7.5pt] text-slate-500">Nama Pekerja :</span>
+                              <div className="col-span-4 border-r border-slate-900 border-t border-slate-900 p-1">
+                                <span className="font-bold block text-[7pt] text-slate-500">Nama Pekerja :</span>
                                 <span className="font-semibold text-slate-900">{doc.applicantName || '—'}</span>
                               </div>
-                              <div className="col-span-3 border-r border-slate-900 border-t border-slate-900 p-1.5 min-h-[44px]">
-                                <span className="font-bold block text-[7.5pt] text-slate-500">Lokasi :</span>
+                              <div className="col-span-3 border-r border-slate-900 border-t border-slate-900 p-1">
+                                <span className="font-bold block text-[7pt] text-slate-500">Lokasi :</span>
                                 <span className="font-semibold text-slate-900">{doc.location} {doc.area ? `(${doc.area})` : ''}</span>
                               </div>
-                              <div className="col-span-5 border-t border-slate-900 p-1.5 min-h-[44px]">
-                                <span className="font-bold block text-[7.5pt] text-slate-500">Uraian Pekerjaan :</span>
-                                <span className="font-semibold text-slate-900">{doc.projectName || doc.description || '—'}</span>
+                              <div className="col-span-5 border-t border-slate-900 p-1">
+                                <span className="font-bold block text-[7pt] text-slate-500">Uraian Pekerjaan :</span>
+                                <span className="font-semibold text-slate-900 truncate block">{doc.projectName || doc.description || '—'}</span>
                               </div>
 
-                              <div className="col-span-6 border-r border-slate-900 border-t border-slate-900 p-1.5 bg-blue-50/50">
+                              <div className="col-span-6 border-r border-slate-900 border-t border-slate-900 p-1 bg-blue-50/50">
                                 <span className="font-bold text-slate-800">Referensi HIRADC :</span>{' '}
                                 <span className="font-semibold text-blue-900">
                                   {doc.hiradcReference || (doc.description?.match(/\[Referensi HIRADC:\s*(.*?)\]/)?.[1]) || 'JSA-HSE-PTW-2026-001'}
                                 </span>
                               </div>
-                              <div className="col-span-6 border-t border-slate-900 p-1.5 bg-blue-50/50">
+                              <div className="col-span-6 border-t border-slate-900 p-1 bg-blue-50/50">
                                 <span className="font-bold text-slate-800">Tipe Izin Kerja Terpilih :</span>{' '}
                                 <span className="font-semibold uppercase text-slate-900">
                                   {normalizePermitTypes(doc.permitType || (currentBatchDoc as any)?.rawPtw?.permitType || 'Cold Permit')}
@@ -2912,7 +2912,7 @@ export function InboxTab({
                             </div>
 
                             {/* ── TABLE TITLE: JENIS PEKERJAAN ── */}
-                            <div className="bg-[#e2e8f0] text-center font-bold uppercase text-[8.5pt] py-1 border-b-2 border-slate-900">
+                            <div className="bg-[#e2e8f0] text-center font-bold uppercase text-[8pt] py-0.5 border-b-2 border-slate-900">
                               JENIS PEKERJAAN
                             </div>
 
@@ -2934,18 +2934,18 @@ export function InboxTab({
                             })()}
 
                             {/* ── ALAT PELINDUNG DIRI (APD) WAJIB ── */}
-                            <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-slate-50/80 flex items-center justify-between">
+                            <div className="p-1 border-b-2 border-slate-900 text-[7.5pt] bg-slate-50/80 flex items-center justify-between">
                               <div>
-                                <span className="font-bold block text-[7.5pt] text-slate-900">ALAT PELINDUNG DIRI (APD) WAJIB :</span>
-                                <div className="flex flex-wrap gap-1.5 mt-1 font-semibold text-slate-800">
+                                <span className="font-bold inline-block mr-2 text-[7pt] text-slate-900">ALAT PELINDUNG DIRI (APD) WAJIB :</span>
+                                <div className="inline-flex flex-wrap gap-1 font-semibold text-slate-800">
                                   {(doc.ppe && doc.ppe.length > 0 ? doc.ppe : ['Helmet', 'Safety Shoes', 'Respirator', 'Full Body Harness']).map((apd: string) => (
-                                    <span key={apd} className="inline-block bg-white border border-slate-400 rounded px-2 py-0.5 text-[7.5pt] shadow-2xs">
+                                    <span key={apd} className="inline-block bg-white border border-slate-400 rounded px-1.5 py-0.25 text-[7pt] shadow-2xs">
                                       ☑ {apd}
                                     </span>
                                   ))}
                                 </div>
                               </div>
-                              <div className="flex items-center gap-4 font-bold text-[7.5pt] text-slate-800 shrink-0">
+                              <div className="flex items-center gap-3 font-bold text-[7pt] text-slate-800 shrink-0">
                                 <span>Gas Test: <strong className="text-emerald-700">{doc.gasTestRequired ? 'WAJIB' : 'TIDAK'}</strong></span>
                                 <span>LOTO / Isolasi: <strong className="text-emerald-700">{doc.isolationRequired ? 'WAJIB' : 'TIDAK'}</strong></span>
                                 <span>Risk Level: <strong className="text-rose-700 uppercase">{doc.riskLevel || 'MEDIUM'}</strong></span>
@@ -2953,60 +2953,60 @@ export function InboxTab({
                             </div>
 
                             {/* ── DESKRIPSI PEKERJAAN ── */}
-                            <div className="p-2 border-b-2 border-slate-900 text-[8pt] bg-white">
-                              <span className="font-bold block text-[7.5pt] text-slate-900 uppercase tracking-wide">
+                            <div className="p-1 border-b-2 border-slate-900 text-[7.5pt] bg-white">
+                              <span className="font-bold block text-[7pt] text-slate-900 uppercase tracking-wide">
                                 DESKRIPSI PEKERJAAN :
                               </span>
-                              <div className="text-[7.5pt] text-slate-700 mt-0.5 leading-relaxed whitespace-pre-wrap font-medium">
+                              <div className="text-[7pt] text-slate-700 mt-0.5 leading-tight whitespace-pre-wrap font-medium line-clamp-2">
                                 {cleanPtwDescription(doc?.description || (currentBatchDoc as any)?.rawPtw?.description) || doc?.description || (doc as any)?.additionalNotes || (currentBatchDoc as any)?.rawPtw?.additionalNotes || doc?.controlSteps || <span className="text-slate-400 italic text-[7pt]">— Tidak ada deskripsi pekerjaan —</span>}
                               </div>
                             </div>
 
                             {/* ── 3 KOLOM CATATAN VERIFIKASI & QR CODE ── */}
-                            <div className="grid grid-cols-12 border-b-2 border-slate-900 bg-slate-50/90 text-[8pt] items-stretch min-h-[75px] divide-x divide-slate-900">
+                            <div className="grid grid-cols-12 border-b-2 border-slate-900 bg-slate-50/90 text-[7.5pt] items-stretch min-h-[55px] divide-x divide-slate-900">
                               {/* 1. Catatan Pemberi Kerja */}
-                              <div className="col-span-3 p-2 flex flex-col justify-between border-slate-900">
+                              <div className="col-span-3 p-1 flex flex-col justify-between">
                                 <div>
-                                  <span className="font-bold text-[7.5pt] text-slate-900 block uppercase tracking-wide border-b border-slate-300 pb-0.5 mb-1">
+                                  <span className="font-bold text-[7pt] text-slate-900 block uppercase tracking-wide border-b border-slate-300 pb-0.5 mb-0.5">
                                     CATATAN PEMBERI KERJA
                                   </span>
-                                  <div className="text-[7pt] text-slate-700 leading-snug break-words">
+                                  <div className="text-[6.5pt] text-slate-700 leading-tight break-words">
                                     {remark1 || null}
                                   </div>
                                 </div>
                               </div>
 
                               {/* 2. Catatan Pelaksana Pekerjaan */}
-                              <div className="col-span-3 p-2 flex flex-col justify-between border-slate-900">
+                              <div className="col-span-3 p-1 flex flex-col justify-between">
                                 <div>
-                                  <span className="font-bold text-[7.5pt] text-slate-900 block uppercase tracking-wide border-b border-slate-300 pb-0.5 mb-1">
+                                  <span className="font-bold text-[7pt] text-slate-900 block uppercase tracking-wide border-b border-slate-300 pb-0.5 mb-0.5">
                                     CATATAN PELAKSANA PEKERJAAN
                                   </span>
-                                  <div className="text-[7pt] text-slate-700 leading-snug break-words">
+                                  <div className="text-[6.5pt] text-slate-700 leading-tight break-words">
                                     {remark2 || null}
                                   </div>
                                 </div>
                               </div>
 
                               {/* 3. Catatan Safety Dept */}
-                              <div className="col-span-3 p-2 flex flex-col justify-between border-slate-900">
+                              <div className="col-span-3 p-1 flex flex-col justify-between">
                                 <div>
-                                  <span className="font-bold text-[7.5pt] text-slate-900 block uppercase tracking-wide border-b border-slate-300 pb-0.5 mb-1">
+                                  <span className="font-bold text-[7pt] text-slate-900 block uppercase tracking-wide border-b border-slate-300 pb-0.5 mb-0.5">
                                     CATATAN SAFETY DEPT
                                   </span>
-                                  <div className="text-[7pt] text-slate-700 leading-snug break-words">
+                                  <div className="text-[6.5pt] text-slate-700 leading-tight break-words">
                                     {remark3 || null}
                                   </div>
                                 </div>
                               </div>
 
                               {/* 4. QR Code Validasi Digital */}
-                              <div className="col-span-3 flex flex-col items-center justify-center p-1.5 border-slate-900 bg-white">
+                              <div className="col-span-3 flex flex-col items-center justify-center p-1 border-slate-900 bg-white">
                                 <PtwDocumentQr
                                   permitId={doc.ptwId || doc.id}
                                   permitNumber={doc.permitNumber || currentBatchDoc?.documentNumber}
                                   fallbackRecord={doc}
-                                  imageClassName="size-12"
+                                  imageClassName="size-9"
                                   labelTitle="Scan / Klik PTW"
                                   labelSubtitle="Dokumen Pendukung"
                                 />
@@ -3014,138 +3014,138 @@ export function InboxTab({
                             </div>
 
                             {/* ── MASA BERLAKU IKB ── */}
-                            <div className="border-b-2 border-slate-900 text-[8pt]">
-                              <div className="bg-slate-100 text-center font-bold uppercase py-0.5 border-b border-slate-900 text-[8pt]">
+                            <div className="border-b-2 border-slate-900 text-[7.5pt]">
+                              <div className="bg-slate-100 text-center font-bold uppercase py-0.5 border-b border-slate-900 text-[7pt]">
                                 MASA BERLAKU IKB (IJIN KERJA BERBAHAYA)
                               </div>
                               <div className="grid grid-cols-2 divide-x divide-slate-900">
                                 <div className="grid grid-cols-2 divide-x divide-slate-900 border-r border-slate-900">
-                                  <div className="p-1 text-center">
-                                    <span className="font-bold block text-[7pt] text-slate-500 uppercase">TANGGAL MULAI</span>
-                                    <span className="font-semibold">{formatDate(doc.startAt)}</span>
+                                  <div className="p-0.5 text-center">
+                                    <span className="font-bold block text-[6.5pt] text-slate-500 uppercase">TANGGAL MULAI</span>
+                                    <span className="font-semibold text-[7pt]">{formatDate(doc.startAt)}</span>
                                   </div>
-                                  <div className="p-1 text-center">
-                                    <span className="font-bold block text-[7pt] text-slate-500 uppercase">WAKTU MULAI</span>
-                                    <span className="font-semibold">{formatPtwTime(doc.startAt)}</span>
+                                  <div className="p-0.5 text-center">
+                                    <span className="font-bold block text-[6.5pt] text-slate-500 uppercase">WAKTU MULAI</span>
+                                    <span className="font-semibold text-[7pt]">{formatPtwTime(doc.startAt)}</span>
                                   </div>
                                 </div>
                                 <div className="grid grid-cols-2 divide-x divide-slate-900">
-                                  <div className="p-1 text-center">
-                                    <span className="font-bold block text-[7pt] text-slate-500 uppercase">TANGGAL BERAKHIR</span>
-                                    <span className="font-semibold">{formatDate(doc.endAt)}</span>
+                                  <div className="p-0.5 text-center">
+                                    <span className="font-bold block text-[6.5pt] text-slate-500 uppercase">TANGGAL BERAKHIR</span>
+                                    <span className="font-semibold text-[7pt]">{formatDate(doc.endAt)}</span>
                                   </div>
-                                  <div className="p-1 text-center">
-                                    <span className="font-bold block text-[7pt] text-slate-500 uppercase">WAKTU BERAKHIR</span>
-                                    <span className="font-semibold">{formatPtwTime(doc.endAt)}</span>
+                                  <div className="p-0.5 text-center">
+                                    <span className="font-bold block text-[6.5pt] text-slate-500 uppercase">WAKTU BERAKHIR</span>
+                                    <span className="font-semibold text-[7pt]">{formatPtwTime(doc.endAt)}</span>
                                   </div>
                                 </div>
                               </div>
                             </div>
 
                             {/* ── VERIFIKASI & TANDA TANGAN (3 COLUMNS: Pemberi Kerja -> Pelaksana Kerja -> Safety Dept) ── */}
-                            <div className="grid grid-cols-3 divide-x-2 divide-slate-900 border-b-2 border-slate-900 text-[8pt]">
+                            <div className="grid grid-cols-3 divide-x-2 divide-slate-900 border-b-2 border-slate-900 text-[7.5pt]">
                               {/* 1. PEMBERI KERJA */}
-                              <div className="p-1.5 text-center flex flex-col justify-between">
-                                <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PEMBERI KERJA</div>
-                                <div className="h-14 flex flex-col items-center justify-center my-1">
+                              <div className="p-1 text-center flex flex-col justify-between">
+                                <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7pt] uppercase">PEMBERI KERJA</div>
+                                <div className="h-10 flex flex-col items-center justify-center my-0.5">
                                   {step1?.status === 'rejected' ? (
                                     <>
-                                      {step1?.signatureDataUrl && <img src={step1.signatureDataUrl} alt="TTD" className="max-h-8 object-contain" />}
-                                      <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak ({formatTimestamp(step1?.signedAt)})</span>
+                                      {step1?.signatureDataUrl && <img src={step1.signatureDataUrl} alt="TTD" className="max-h-7 object-contain" />}
+                                      <span className="text-[6pt] font-bold text-rose-600">✗ Ditolak ({formatTimestamp(step1?.signedAt)})</span>
                                     </>
                                   ) : step1?.status === 'reverted' ? (
                                     <>
-                                      {step1?.signatureDataUrl && <img src={step1.signatureDataUrl} alt="TTD" className="max-h-8 object-contain" />}
-                                      <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan ({formatTimestamp(step1?.signedAt)})</span>
+                                      {step1?.signatureDataUrl && <img src={step1.signatureDataUrl} alt="TTD" className="max-h-7 object-contain" />}
+                                      <span className="text-[6pt] font-bold text-amber-600">↺ Dikembalikan ({formatTimestamp(step1?.signedAt)})</span>
                                     </>
                                   ) : step1?.signatureDataUrl ? (
-                                    <img src={step1.signatureDataUrl} alt="TTD" className="max-h-12 object-contain" />
+                                    <img src={step1.signatureDataUrl} alt="TTD" className="max-h-9 object-contain" />
                                   ) : step1?.status === 'approved' ? (
-                                    <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui ({formatTimestamp(step1?.signedAt)})</span>
+                                    <span className="text-[6pt] font-bold text-emerald-600">✓ Disetujui ({formatTimestamp(step1?.signedAt)})</span>
                                   ) : (
-                                    <span className="text-[7pt] text-slate-400 italic">(Belum Disetujui)</span>
+                                    <span className="text-[6.5pt] text-slate-400 italic">(Belum Disetujui)</span>
                                   )}
                                 </div>
-                                <div className="border-t border-slate-900 pt-1 font-bold">
+                                <div className="border-t border-slate-900 pt-0.5 font-bold text-[7pt]">
                                   {step1?.approverName || doc.fieldPicName || 'NAMA & TANDA TANGAN'}
                                 </div>
                               </div>
 
                               {/* 2. PELAKSANA KERJA */}
-                              <div className="p-1.5 text-center flex flex-col justify-between">
-                                <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">PELAKSANA KERJA</div>
-                                <div className="min-h-14 flex flex-wrap items-center justify-center gap-2 my-1">
+                              <div className="p-1 text-center flex flex-col justify-between">
+                                <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7pt] uppercase">PELAKSANA KERJA</div>
+                                <div className="h-10 flex flex-wrap items-center justify-center gap-1.5 my-0.5">
                                   {pelaksanaSteps.length > 0 ? (
                                     pelaksanaSteps.map((pStep: any, pIdx: number) => {
                                       const pSig = pStep.signatureDataUrl
                                       return (
                                         <div key={pStep.id || pIdx} className="flex flex-col items-center justify-center text-center">
                                           {pStep.status === 'rejected' ? (
-                                            <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak</span>
+                                            <span className="text-[6pt] font-bold text-rose-600">✗ Ditolak</span>
                                           ) : pStep.status === 'reverted' ? (
-                                            <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan</span>
+                                            <span className="text-[6pt] font-bold text-amber-600">↺ Dikembalikan</span>
                                           ) : pSig ? (
-                                            <img src={pSig} alt={`TTD ${pStep.approverName}`} className="max-h-10 object-contain" />
+                                            <img src={pSig} alt={`TTD ${pStep.approverName}`} className="max-h-8 object-contain" />
                                           ) : pStep.status === 'approved' ? (
-                                            <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui</span>
+                                            <span className="text-[6pt] font-bold text-emerald-600">✓ Disetujui</span>
                                           ) : (
-                                            <span className="text-[6.5pt] text-slate-400 italic">(Belum Disetujui)</span>
+                                            <span className="text-[6pt] text-slate-400 italic">(Belum Disetujui)</span>
                                           )}
-                                          <span className="text-[6.5pt] text-slate-600 font-semibold mt-0.5">{pStep.approverName}</span>
+                                          <span className="text-[6pt] text-slate-600 font-semibold mt-0.5">{pStep.approverName}</span>
                                         </div>
                                       )
                                     })
                                   ) : step2?.signatureDataUrl ? (
                                     <div className="flex flex-col items-center justify-center text-center">
-                                      <img src={step2.signatureDataUrl} alt="TTD" className="max-h-10 object-contain" />
-                                      <span className="text-[6.5pt] text-slate-600 font-semibold mt-0.5">{step2.approverName || doc.applicantName}</span>
+                                      <img src={step2.signatureDataUrl} alt="TTD" className="max-h-8 object-contain" />
+                                      <span className="text-[6pt] text-slate-600 font-semibold mt-0.5">{step2.approverName || doc.applicantName}</span>
                                     </div>
                                   ) : (
-                                    <span className="text-[7pt] text-slate-400 italic">(Belum Disetujui)</span>
+                                    <span className="text-[6.5pt] text-slate-400 italic">(Belum Disetujui)</span>
                                   )}
                                 </div>
-                                <div className="border-t border-slate-900 pt-1 font-bold text-[7.5pt] truncate" title={pelaksanaSteps.map((p: any) => p.approverName).join(', ') || doc.applicantName}>
+                                <div className="border-t border-slate-900 pt-0.5 font-bold text-[7pt] truncate" title={pelaksanaSteps.map((p: any) => p.approverName).join(', ') || doc.applicantName}>
                                   {pelaksanaSteps.map((p: any) => p.approverName).join(', ') || doc.applicantName || 'NAMA & TANDA TANGAN'}
                                 </div>
                               </div>
 
                               {/* 3. SAFETY DEPT */}
-                              <div className="p-1.5 text-center flex flex-col justify-between">
-                                <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7.5pt] uppercase">SAFETY DEPT</div>
-                                <div className="h-14 flex flex-col items-center justify-center my-1">
+                              <div className="p-1 text-center flex flex-col justify-between">
+                                <div className="bg-[#bfe6ff] font-bold py-0.5 border-b border-slate-900 text-[7pt] uppercase">SAFETY DEPT</div>
+                                <div className="h-10 flex flex-col items-center justify-center my-0.5">
                                   {step3?.status === 'rejected' ? (
                                     <>
-                                      {step3?.signatureDataUrl && <img src={step3.signatureDataUrl} alt="TTD" className="max-h-8 object-contain" />}
-                                      <span className="text-[6.5pt] font-bold text-rose-600">✗ Ditolak ({formatTimestamp(step3?.signedAt)})</span>
+                                      {step3?.signatureDataUrl && <img src={step3.signatureDataUrl} alt="TTD" className="max-h-7 object-contain" />}
+                                      <span className="text-[6pt] font-bold text-rose-600">✗ Ditolak ({formatTimestamp(step3?.signedAt)})</span>
                                     </>
                                   ) : step3?.status === 'reverted' ? (
                                     <>
-                                      {step3?.signatureDataUrl && <img src={step3.signatureDataUrl} alt="TTD" className="max-h-8 object-contain" />}
-                                      <span className="text-[6.5pt] font-bold text-amber-600">↺ Dikembalikan ({formatTimestamp(step3?.signedAt)})</span>
+                                      {step3?.signatureDataUrl && <img src={step3.signatureDataUrl} alt="TTD" className="max-h-7 object-contain" />}
+                                      <span className="text-[6pt] font-bold text-amber-600">↺ Dikembalikan ({formatTimestamp(step3?.signedAt)})</span>
                                     </>
                                   ) : step3?.signatureDataUrl ? (
-                                    <img src={step3.signatureDataUrl} alt="TTD" className="max-h-12 object-contain" />
+                                    <img src={step3.signatureDataUrl} alt="TTD" className="max-h-9 object-contain" />
                                   ) : step3?.status === 'approved' ? (
-                                    <span className="text-[6.5pt] font-bold text-emerald-600">✓ Disetujui ({formatTimestamp(step3?.signedAt)})</span>
+                                    <span className="text-[6pt] font-bold text-emerald-600">✓ Disetujui ({formatTimestamp(step3?.signedAt)})</span>
                                   ) : (
-                                    <span className="text-[7pt] text-slate-400 italic">(Belum Disetujui)</span>
+                                    <span className="text-[6.5pt] text-slate-400 italic">(Belum Disetujui)</span>
                                   )}
                                 </div>
-                                <div className="border-t border-slate-900 pt-1 font-bold">
+                                <div className="border-t border-slate-900 pt-0.5 font-bold text-[7pt]">
                                   {step3?.approverName || doc.authorizedByName || 'NAMA & TANDA TANGAN'}
                                 </div>
                               </div>
                             </div>
 
                             {/* ── CATATAN FOOTER ── */}
-                            <div className="p-2 text-[7pt] space-y-0.5 bg-slate-50 flex items-start justify-between">
+                            <div className="p-1.5 text-[6.5pt] space-y-0.5 bg-slate-50 flex items-start justify-between">
                               <div>
                                 <span className="font-bold block text-slate-900">CATATAN :</span>
                                 <div>1. Ijin kerja ini hanya berlaku untuk satu area kerja saja.</div>
                                 <div>2. Ijin kerja ini selalu berada ditempat kerja</div>
                                 <div>3. Dilarang melakukan pekerjaan sebelum ada ijin kerja</div>
                               </div>
-                              <div className="text-right text-slate-500 font-mono text-[6.5pt] pt-1 shrink-0">
+                              <div className="text-right text-slate-500 font-mono text-[6pt] pt-1 shrink-0">
                                 No. Form: CP-F-SHE-026 / P-HSE-SOP-031.00
                               </div>
                             </div>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Plus, Trash2, Edit2, Upload, Loader2, Image as ImageIcon, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,15 +14,23 @@ import { toast } from 'sonner'
 import { createOnlineAssignmentQuestionAction, updateOnlineAssignmentQuestionAction, deleteOnlineAssignmentQuestionAction } from '@/app/dashboard/chitralearning-lms/actions'
 import { useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
+<<<<<<< HEAD
 import { resolveClientUploadUrl } from '@/lib/client-url'
 import { replaceS3UrlsInHtml } from '@/lib/resolve-upload-url'
 import { uploadLmsImage } from '@/lib/lms-image-upload'
+=======
+import { resolveUploadUrl, replaceS3UrlsInHtml } from '@/lib/resolve-upload-url'
+>>>>>>> a5e8579b (fix(lms): resolve quiz image upload, URL resolution, and uncropped aspect rendering)
 
 const IMAGE_MAX_SIZE = 5 * 1024 * 1024 // 5MB
-const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'avif', 'jfif']
 
 function validateImageFile(file: File): string | null {
-  if (!ACCEPTED_TYPES.includes(file.type)) return 'Hanya file gambar (JPG, PNG, WebP, GIF) yang diizinkan.'
+  const isImageMime = (file.type.startsWith('image/') || file.type === 'application/octet-stream') && file.type !== 'image/svg+xml'
+  const ext = file.name.split('.').pop()?.toLowerCase() || ''
+  const isImageExt = IMAGE_EXTENSIONS.includes(ext)
+
+  if (!isImageMime && !isImageExt) return 'Hanya file gambar (JPG, PNG, WebP, GIF, BMP) yang diizinkan.'
   if (file.size > IMAGE_MAX_SIZE) return `Ukuran gambar maks 5MB. File Anda ${(file.size / 1024 / 1024).toFixed(1)}MB.`
   return null
 }
@@ -70,26 +78,37 @@ export function OnlineAssignmentQuizBuilder({ campaignId, initialQuestions }: { 
     if (err) { toast.error(err); return }
     setUploadingField(fieldKey)
     try {
-      const directUrl = await uploadLmsImage(file)
+      const directUrl = await uploadLmsImage(file).catch(() => null)
       if (directUrl) {
         setImageUrl(directUrl)
       } else {
         const formData = new FormData()
         formData.append('file', file)
         const res = await uploadFile(formData)
-        if (!res.success || !res.url) throw new Error(res.error || 'Upload gagal')
-        setImageUrl(res.url)
+        if (!res.success || (!res.readableUrl && !res.url)) {
+          throw new Error(res.error || 'Upload gagal')
+        }
+        setImageUrl(res.readableUrl || res.url || '')
       }
       toast.success('Gambar terupload')
-    } catch {
-      toast.error('Gagal upload gambar')
+    } catch (err: any) {
+      console.error('Upload error:', err)
+      toast.error(err?.message || 'Gagal upload gambar')
     } finally {
       setUploadingField(null)
     }
   }
 
   const handlePasteImage = async (event: React.ClipboardEvent, fieldKey: string, setImageUrl: (url: string) => void) => {
-    const file = Array.from(event.clipboardData.files).find(f => f.type.startsWith('image/'))
+    const files = Array.from(event.clipboardData.files || [])
+    let file = files.find(f => f.type.startsWith('image/'))
+    if (!file && event.clipboardData.items) {
+      const items = Array.from(event.clipboardData.items)
+      const imageItem = items.find(item => item.type.startsWith('image/'))
+      if (imageItem) {
+        file = imageItem.getAsFile() || undefined
+      }
+    }
     if (!file) return
     event.preventDefault()
     await doUpload(file, fieldKey, setImageUrl)
@@ -97,9 +116,9 @@ export function OnlineAssignmentQuizBuilder({ campaignId, initialQuestions }: { 
 
   const handleFileInput = async (event: React.ChangeEvent<HTMLInputElement>, fieldKey: string, setImageUrl: (url: string) => void) => {
     const file = event.target.files?.[0]
+    event.target.value = ''
     if (!file) return
     await doUpload(file, fieldKey, setImageUrl)
-    event.target.value = ''
   }
 
   const openAddDialog = () => {
@@ -261,9 +280,13 @@ export function OnlineAssignmentQuizBuilder({ campaignId, initialQuestions }: { 
                       <span dangerouslySetInnerHTML={{ __html: replaceS3UrlsInHtml(q.questionText) }} />
                     </div>
                     {q.questionImageUrl && (
-                      <div className="h-32 w-48 bg-slate-100 rounded-md overflow-hidden relative">
+                      <div className="my-2 max-w-lg rounded-lg overflow-hidden border border-slate-200 bg-slate-50 p-1">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
+<<<<<<< HEAD
                         <img src={resolveClientUploadUrl(q.questionImageUrl)} alt="Question" className="object-cover w-full h-full" />
+=======
+                        <img src={resolveUploadUrl(q.questionImageUrl)} alt="Question" className="max-h-72 w-auto max-w-full rounded object-contain" />
+>>>>>>> a5e8579b (fix(lms): resolve quiz image upload, URL resolution, and uncropped aspect rendering)
                       </div>
                     )}
                     
@@ -307,8 +330,15 @@ export function OnlineAssignmentQuizBuilder({ campaignId, initialQuestions }: { 
                             <div key={key} className={`space-y-2 p-2 rounded-md ${isCorrect ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' : 'bg-slate-50 border border-slate-100'}`}>
                               <div><span className="font-bold mr-2">{key}.</span>{text}</div>
                               {imageUrl ? (
+<<<<<<< HEAD
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img src={resolveClientUploadUrl(String(imageUrl))} alt={`Opsi ${key}`} className="h-24 w-full rounded-md object-cover" />
+=======
+                                <div className="mt-2">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={resolveUploadUrl(String(imageUrl))} alt={`Opsi ${key}`} className="max-h-40 w-auto max-w-full rounded-md border border-slate-200 object-contain bg-white p-1" />
+                                </div>
+>>>>>>> a5e8579b (fix(lms): resolve quiz image upload, URL resolution, and uncropped aspect rendering)
                               ) : null}
                             </div>
                           )
@@ -540,27 +570,34 @@ function ImageUrlField({
 }: {
   label: string; value: string; onChange: (v: string) => void
   onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void
-  onPaste: (e: React.ClipboardEvent) => void; uploading: boolean; inputId: string
+  onPaste: (e: React.ClipboardEvent) => void; uploading: boolean; inputId?: string
 }) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   return (
     <div className="space-y-2" onPaste={onPaste}>
       <Label>{label}</Label>
       <div className="flex gap-2 items-center">
         <Input value={value} onChange={e => onChange(e.target.value)} placeholder="URL gambar, upload, atau paste..." />
-        <Input type="file" className="hidden" id={inputId} onChange={onUpload} accept="image/jpeg,image/png,image/webp,image/gif" />
-        <Button type="button" variant="outline" onClick={() => document.getElementById(inputId)?.click()} disabled={uploading}>
+        <Input ref={fileInputRef} type="file" className="hidden" id={inputId} onChange={onUpload} accept="image/*" />
+        <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
           {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
         </Button>
       </div>
-      {value && (
-        <div className="relative w-fit">
+      {value ? (
+        <div className="relative w-fit mt-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
+<<<<<<< HEAD
           <img src={resolveClientUploadUrl(value)} alt={label} className="h-28 max-w-full rounded-md border border-slate-200 object-cover" />
           <Button type="button" variant="secondary" size="icon" className="absolute -right-2 -top-2 h-7 w-7" onClick={() => onChange('')}>
+=======
+          <img src={resolveUploadUrl(value)} alt={label} className="max-h-48 max-w-full rounded-md border border-slate-200 object-contain bg-slate-50 p-1" />
+          <Button type="button" variant="secondary" size="icon" className="absolute -right-2 -top-2 h-7 w-7 rounded-full shadow-sm bg-white hover:bg-slate-100" onClick={() => onChange('')}>
+>>>>>>> a5e8579b (fix(lms): resolve quiz image upload, URL resolution, and uncropped aspect rendering)
             <X className="h-4 w-4" />
           </Button>
         </div>
-      )}
+      ) : null}
     </div>
   )
 }
@@ -570,28 +607,35 @@ function OptionField({
 }: {
   label: string; value: string; imageUrl: string; onChange: (v: string) => void
   onImageChange: (v: string) => void; onImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void
-  onPaste: (e: React.ClipboardEvent) => void; inputId: string; uploading: boolean; required?: boolean
+  onPaste: (e: React.ClipboardEvent) => void; inputId?: string; uploading: boolean; required?: boolean
 }) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   return (
     <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3" onPaste={onPaste}>
       <Label>{label}</Label>
       <Input value={value} onChange={e => onChange(e.target.value)} required={required && !imageUrl} placeholder="Teks jawaban" />
       <div className="flex gap-2">
         <Input value={imageUrl} onChange={e => onImageChange(e.target.value)} placeholder="URL gambar jawaban" />
-        <Input type="file" className="hidden" id={inputId} onChange={onImageUpload} accept="image/jpeg,image/png,image/webp,image/gif" />
-        <Button type="button" variant="outline" onClick={() => document.getElementById(inputId)?.click()} disabled={uploading}>
+        <Input ref={fileInputRef} type="file" className="hidden" id={inputId} onChange={onImageUpload} accept="image/*" />
+        <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
           {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
         </Button>
       </div>
-      {imageUrl && (
-        <div className="relative">
+      {imageUrl ? (
+        <div className="relative mt-2 w-fit">
           {/* eslint-disable-next-line @next/next/no-img-element */}
+<<<<<<< HEAD
           <img src={resolveClientUploadUrl(imageUrl)} alt={label} className="h-28 w-full rounded-md border border-slate-200 object-cover" />
           <Button type="button" variant="secondary" size="icon" className="absolute right-2 top-2 h-7 w-7" onClick={() => onImageChange('')}>
+=======
+          <img src={resolveUploadUrl(imageUrl)} alt={label} className="max-h-40 max-w-full rounded-md border border-slate-200 object-contain bg-slate-50 p-1" />
+          <Button type="button" variant="secondary" size="icon" className="absolute right-2 top-2 h-7 w-7 rounded-full shadow-sm bg-white hover:bg-slate-100" onClick={() => onImageChange('')}>
+>>>>>>> a5e8579b (fix(lms): resolve quiz image upload, URL resolution, and uncropped aspect rendering)
             <X className="h-4 w-4" />
           </Button>
         </div>
-      )}
+      ) : null}
     </div>
   )
 }

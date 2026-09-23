@@ -90,16 +90,20 @@ export async function uploadFile(formData: FormData) {
       return { success: false, error: "Document size max 10MB." };
     }
     if (isS3UploadConfigured()) {
-      const result =
-        uploadTarget === "attendance"
-          ? await uploadAttendancePhotoToS3(file)
-          : await uploadAnyFileToS3(file);
-      const proxyUrl = `/api/uploads/${result.key}`;
-      const readableUrl = (await getS3ObjectReadUrl(result.url)) || proxyUrl;
-      return { success: true, url: proxyUrl, readableUrl };
+      try {
+        const result =
+          uploadTarget === "attendance"
+            ? await uploadAttendancePhotoToS3(file)
+            : await uploadAnyFileToS3(file);
+        const proxyUrl = `/api/uploads/${result.key}`;
+        const readableUrl = (await getS3ObjectReadUrl(result.url)) || proxyUrl;
+        return { success: true, url: proxyUrl, readableUrl };
+      } catch (s3Error) {
+        console.warn("S3 Upload failed, falling back to local storage:", s3Error);
+      }
     }
 
-    // Local fallback storage when S3 is not configured
+    // Local fallback storage when S3 is not configured or failed
     const uploadDir = join(process.cwd(), "public", "uploads");
     await mkdir(uploadDir, { recursive: true });
 
@@ -113,9 +117,9 @@ export async function uploadFile(formData: FormData) {
 
     const publicUrl = `/api/uploads/${uniqueName}`;
     return { success: true, url: publicUrl, readableUrl: publicUrl };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Upload error:", error);
-    return { success: false, error: "Failed to upload file to Object Storage" };
+    return { success: false, error: error?.message || "Failed to upload file to Object Storage" };
   }
 }
 

@@ -129,13 +129,15 @@ export function PtwChecklistTable({
                   key={col.key}
                   colSpan={3}
                   className={cn(
-                    'p-1.5 space-y-0.5 border-b border-slate-900 align-top text-[7.5pt] bg-white leading-tight',
+                    'p-1 border-b border-slate-900 align-top text-[6.5pt] bg-white leading-tight',
                     cIdx > 0 ? 'border-l-2 border-slate-900' : ''
                   )}
                 >
-                  {items.map((st) => (
-                    <div key={st}>- {st}</div>
-                  ))}
+                  <div className={cn("grid gap-x-1.5 gap-y-0.5", items.length > 3 ? "grid-cols-2" : "grid-cols-1")}>
+                    {items.map((st) => (
+                      <div key={st} className="truncate">• {st}</div>
+                    ))}
+                  </div>
                 </td>
               )
             })}

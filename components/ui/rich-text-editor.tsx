@@ -6,6 +6,8 @@ import "react-quill-new/dist/quill.snow.css";
 import { uploadFile } from "@/app/actions/upload";
 import { uploadLmsImage } from "@/lib/lms-image-upload";
 
+import { toast } from "sonner";
+
 // Dynamically import our wrapper to ensure Quill is registered with blotFormatter
 const ReactQuill = dynamic(() => import("./quill-wrapper"), {
   ssr: false,
@@ -36,20 +38,24 @@ export function RichTextEditor({ value, onChange, placeholder, className }: Rich
       formData.append("file", file);
 
       try {
-        const directUrl = await uploadLmsImage(file);
+        const directUrl = await uploadLmsImage(file).catch(() => null);
         const res = directUrl ? { success: true as const, url: directUrl } : await uploadFile(formData);
-        if (res.success && res.url) {
+        const targetUrl = res.success ? (("readableUrl" in res && res.readableUrl) || res.url) : null;
+        if (res.success && targetUrl) {
           const quill = quillRef.current?.getEditor();
           if (quill) {
             const range = quill.getSelection(true);
-            quill.insertEmbed(range.index, "image", res.url);
+            const index = range ? range.index : quill.getLength();
+            quill.insertEmbed(index, "image", targetUrl);
+            quill.setSelection(index + 1);
           }
+          toast.success("Gambar berhasil disisipkan");
         } else {
-          alert("Gagal upload gambar: " + ("error" in res ? res.error : "Gagal upload gambar"));
+          toast.error("Gagal upload gambar: " + ("error" in res && res.error ? res.error : "Gagal mengunggah file"));
         }
       } catch (error) {
         console.error("Upload error:", error);
-        alert("Terjadi kesalahan saat mengupload gambar.");
+        toast.error("Terjadi kesalahan saat mengupload gambar.");
       }
     };
   }, []);
