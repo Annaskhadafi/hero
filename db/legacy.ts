@@ -6,9 +6,9 @@ declare global {
   var legacyDbPool: Pool | undefined
 }
 
-let legacyDbInstance: ReturnType<typeof drizzle> | undefined
+let legacyDbInstance: ReturnType<typeof drizzle<typeof schema>> | undefined
 
-function getLegacyDb() {
+function getLegacyDb(): ReturnType<typeof drizzle<typeof schema>> {
   if (legacyDbInstance) return legacyDbInstance
 
   const legacyDatabaseUrl = process.env.SAP_DB_URL?.trim() || process.env.ONECHITRA_DB_URL?.trim()
@@ -34,11 +34,10 @@ function getLegacyDb() {
   return legacyDbInstance
 }
 
-export const legacyDb = new Proxy(
-  {},
-  {
-    get(_target, property, receiver) {
-      return Reflect.get(getLegacyDb(), property, receiver)
-    },
-  }
-) as ReturnType<typeof drizzle>
+export const legacyDb = new Proxy({} as ReturnType<typeof drizzle<typeof schema>>, {
+  get(_target, property, receiver) {
+    const instance = getLegacyDb()
+    const value = Reflect.get(instance as object, property, receiver)
+    return typeof value === 'function' ? value.bind(instance) : value
+  },
+})

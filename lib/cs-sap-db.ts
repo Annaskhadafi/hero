@@ -12,6 +12,11 @@ function getSapDatabaseUrl() {
 }
 
 function getSapPool() {
+  const SAP_DB_URL = process.env.SAP_DB_URL?.trim() || process.env.ONECHITRA_DB_URL?.trim()
+  if (!SAP_DB_URL) {
+    throw new Error('SAP_DB_URL or ONECHITRA_DB_URL is required to connect to the SAP database.')
+  }
+
   if (!sapPool) {
     sapPool = new Pool({
       connectionString: getSapDatabaseUrl(),
