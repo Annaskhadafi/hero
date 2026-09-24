@@ -402,8 +402,17 @@ function readDraft<T>(key: string) {
   }
 }
 
-function writeDraft<T>(key: string, value: T) {
-  window.localStorage.setItem(key, JSON.stringify(value))
+function writeDraft<T>(key: string, value: T): { ok: true } | { ok: false; error: string } {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value))
+    return { ok: true }
+  } catch (error) {
+    const detail = error instanceof Error && error.message.trim() ? ` (${error.message.trim()})` : ''
+    return {
+      ok: false,
+      error: `Draft tidak dapat disimpan di perangkat ini. Penyimpanan browser mungkin diblokir atau penuh${detail}.`,
+    }
+  }
 }
 
 function clearDraft(key: string) {
@@ -1985,7 +1994,10 @@ export function MobileDailyActivityForm({
   }
 
   useEffect(() => {
-    writeDraft(ACTIVITY_DRAFT_STORAGE_KEY, draftPayload)
+    const result = writeDraft(ACTIVITY_DRAFT_STORAGE_KEY, draftPayload)
+    if (!result.ok) {
+      console.warn('[MobileDailyActivityForm] Draft autosave failed:', result.error)
+    }
   }, [draftPayload])
 
   function validatePayload() {
@@ -3553,10 +3565,16 @@ export function MobileDailyActivityForm({
             variant="outline"
             className="h-14 rounded-2xl border-0 bg-[#eaf4fb] text-[#003f78]"
             onClick={() => {
-              writeDraft(ACTIVITY_DRAFT_STORAGE_KEY, draftPayload)
+              const result = writeDraft(ACTIVITY_DRAFT_STORAGE_KEY, draftPayload)
+              if (!result.ok) {
+                setSubmitState({ kind: 'error', message: result.error })
+                toast.error(result.error, { duration: 5000 })
+                return
+              }
+
               setSubmitState({
                 kind: 'success',
-                message: 'Draft activity disimpan ke local storage.',
+                message: 'Draft activity disimpan ke perangkat ini.',
               })
             }}
           >

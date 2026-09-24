@@ -6,7 +6,7 @@ import { ArrowLeft, Clock3, UserRound } from "lucide-react";
 import { MobileDailyActivityForm } from "@/components/mobile/mobile-daily-activity-form";
 import { db } from "@/db";
 import { employees, masterSections, masterDepartments, sites } from "@/db/schema/hero";
-import { and, eq, isNull, ne, asc } from "drizzle-orm";
+import { and, asc, eq, ne } from "drizzle-orm";
 import { getActivityPagePurpose } from "@/lib/activity-navigation";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityEmployeeData } from "@/lib/daily-activity";
@@ -116,8 +116,8 @@ export default async function MobileActivityInputPage({
 
   const hierarchy = resolveEmployeeApproverHierarchy(data.employee.id, hierarchyEmployees);
 
-  // Team members must belong to the same site AND section as the account so
-  // "tambah anggota" (team logging) only offers colleagues in the same scope.
+  // Team members must belong to the same site as the account. A site team can
+  // span sections, while the server still enforces the site boundary on save.
   const teamMembers = await safeQuery(
     () =>
       db
@@ -135,9 +135,6 @@ export default async function MobileActivityInputPage({
           and(
             eq(employees.isActive, true),
             eq(employees.siteId, data.employee.siteId),
-            data.employee.sectionId != null
-              ? eq(employees.sectionId, data.employee.sectionId)
-              : isNull(employees.sectionId),
             ne(employees.id, data.employee.id)
           )
         )

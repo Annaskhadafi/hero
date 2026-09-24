@@ -47,6 +47,7 @@ export type ResolvedApprovalStep = {
     | 'fallback_node'
     | 'escalation'
     | 'legacy_manager'
+    | 'legacy_site_head'
     | 'legacy_site_pjo'
     | 'legacy_site_foreman'
     | 'apd_site_pjo'
@@ -424,6 +425,48 @@ async function resolveLegacyFallbackRoute(
           escalationLabel: null,
         },
       ],
+    }
+  }
+
+  if (context.transactionType === 'activity' && context.siteHeadEmployeeId) {
+    const [siteHead] = await db
+      .select({ id: employees.id, name: employees.name })
+      .from(employees)
+      .where(
+        and(
+          eq(employees.id, context.siteHeadEmployeeId),
+          eq(employees.siteId, context.siteId),
+          eq(employees.isActive, true)
+        )
+      )
+      .limit(1)
+
+    if (siteHead) {
+      return {
+        matrixId: null,
+        matrixName: null,
+        structureId: null,
+        structureName: null,
+        transactionType: context.transactionType,
+        warnings,
+        steps: [
+          {
+            stepOrder: 1,
+            label: 'Site Head',
+            approverName: siteHead.name,
+            approverEmployeeId: siteHead.id,
+            approverNodeId: null,
+            approvalMatrixStepId: null,
+            approvalMode: 'sequential',
+            resolutionSource: 'legacy_site_head',
+            canDelegate: true,
+            slaHours: 24,
+            nodeLabel: null,
+            fallbackLabel: null,
+            escalationLabel: null,
+          },
+        ],
+      }
     }
   }
 

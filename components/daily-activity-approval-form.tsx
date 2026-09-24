@@ -805,28 +805,42 @@ export function DailyActivityApprovalForm({
       const selectedSuperior = employeesProp.find((e) => String(e.id) === selectedSuperiorId)
       const selectedManager = employeesProp.find((e) => String(e.id) === selectedManagerId)
 
-      await saveDailyActivityApprovalForm({
-        sessionId: data.sessionId,
-        employeeId: profileForm.employeeId ? Number(profileForm.employeeId) : undefined,
-        workDate: profileForm.workDate || undefined,
-        shiftCode: profileForm.shiftCode || undefined,
-        customerName: profileForm.customerName?.trim() || undefined,
-        items: itemsList,
-        itemRemarks,
-        leaderEmployeeId: selectedLeader ? selectedLeader.id : undefined,
-        leaderName: selectedLeader?.name || undefined,
-        leaderEmail: selectedLeader?.email || undefined,
-        leaderTitle: leaderTitle || selectedLeader?.rank || selectedLeader?.position || undefined,
-        superiorEmployeeId: selectedSuperior ? selectedSuperior.id : undefined,
-        superiorName: selectedSuperior?.name || undefined,
-        superiorEmail: selectedSuperior?.email || undefined,
-        superiorTitle: superiorTitle || selectedSuperior?.rank || selectedSuperior?.position || undefined,
-        managerEmployeeId: selectedManager ? selectedManager.id : undefined,
-        managerName: selectedManager?.name || undefined,
-        managerEmail: selectedManager?.email || undefined,
-        managerTitle: managerTitle || selectedManager?.rank || selectedManager?.position || undefined,
-        teamMemberEmployeeIds: isTeamLog ? selectedTeamMemberIds : [],
-      })
+      let saveResult: Awaited<ReturnType<typeof saveDailyActivityApprovalForm>>
+      try {
+        saveResult = await saveDailyActivityApprovalForm({
+          sessionId: data.sessionId,
+          employeeId: profileForm.employeeId ? Number(profileForm.employeeId) : undefined,
+          workDate: profileForm.workDate || undefined,
+          shiftCode: profileForm.shiftCode || undefined,
+          customerName: profileForm.customerName?.trim() || undefined,
+          items: itemsList,
+          itemRemarks,
+          leaderEmployeeId: selectedLeader ? selectedLeader.id : undefined,
+          leaderName: selectedLeader?.name || undefined,
+          leaderEmail: selectedLeader?.email || undefined,
+          leaderTitle: leaderTitle || selectedLeader?.rank || selectedLeader?.position || undefined,
+          superiorEmployeeId: selectedSuperior ? selectedSuperior.id : undefined,
+          superiorName: selectedSuperior?.name || undefined,
+          superiorEmail: selectedSuperior?.email || undefined,
+          superiorTitle: superiorTitle || selectedSuperior?.rank || selectedSuperior?.position || undefined,
+          managerEmployeeId: selectedManager ? selectedManager.id : undefined,
+          managerName: selectedManager?.name || undefined,
+          managerEmail: selectedManager?.email || undefined,
+          managerTitle: managerTitle || selectedManager?.rank || selectedManager?.position || undefined,
+          teamMemberEmployeeIds: isTeamLog ? selectedTeamMemberIds : [],
+        })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Tidak dapat menghubungi server.'
+        toast.error(`Gagal menyimpan DAR: ${message}`, { duration: 5000 })
+        return
+      }
+
+      if (!saveResult.success) {
+        toast.error(`Gagal menyimpan DAR: ${saveResult.error || 'Periksa field yang belum lengkap.'}`, {
+          duration: 5000,
+        })
+        return
+      }
 
       const fd = new FormData()
       fd.set('sessionId', String(data.sessionId))

@@ -5605,6 +5605,33 @@ export async function saveDailyActivityApprovalForm(payload: {
   teamMemberEmployeeIds?: number[]
 }) {
   try {
+    const [existingSession] = await db
+      .select({
+        id: dailyActivitySessions.id,
+        status: dailyActivitySessions.status,
+        sessionCode: dailyActivitySessions.sessionCode,
+        workDate: dailyActivitySessions.workDate,
+        employeeId: dailyActivitySessions.employeeId,
+        siteId: dailyActivitySessions.siteId,
+      })
+      .from(dailyActivitySessions)
+      .where(eq(dailyActivitySessions.id, payload.sessionId))
+      .limit(1)
+
+    if (!existingSession) {
+      return {
+        success: false as const,
+        error: 'DAR tidak ditemukan atau sudah dihapus. Muat ulang halaman lalu coba lagi.',
+      }
+    }
+
+    if ((existingSession.status || '').toLowerCase() === 'rejected') {
+      return {
+        success: false as const,
+        error: 'Aksi ditolak: Dokumen yang sudah ditolak (rejected) tidak dapat diedit atau diajukan ulang. Silakan buat dokumen baru.',
+      }
+    }
+
     // 1. Update session header if employeeId / workDate / shiftCode provided
     const sessionUpdates: Record<string, any> = { updatedAt: new Date() }
     if (payload.employeeId) {
@@ -5687,26 +5714,6 @@ export async function saveDailyActivityApprovalForm(payload: {
             .set({ customerName: custTrimmed })
             .where(eq(sites.id, targetSiteId))
         }
-      }
-    }
-
-    const [existingSession] = await db
-      .select({
-        id: dailyActivitySessions.id,
-        status: dailyActivitySessions.status,
-        sessionCode: dailyActivitySessions.sessionCode,
-        workDate: dailyActivitySessions.workDate,
-        employeeId: dailyActivitySessions.employeeId,
-        siteId: dailyActivitySessions.siteId,
-      })
-      .from(dailyActivitySessions)
-      .where(eq(dailyActivitySessions.id, payload.sessionId))
-      .limit(1)
-
-    if (existingSession && (existingSession.status || '').toLowerCase() === 'rejected') {
-      return {
-        success: false as const,
-        error: 'Aksi ditolak: Dokumen yang sudah ditolak (rejected) tidak dapat diedit atau diajukan ulang. Silakan buat dokumen baru.',
       }
     }
 
@@ -6618,6 +6625,27 @@ export async function createDailyActivitySessionAction(input: {
       return { success: false as const, error: 'Karyawan tidak ditemukan.' }
     }
 
+    if (allEmps.length !== allEmployeeIds.length) {
+      const missingIds = allEmployeeIds.filter((id) => !allEmps.some((employee) => employee.id === id))
+      return {
+        success: false as const,
+        error: `Anggota tim tidak ditemukan: ${missingIds.join(', ')}.`,
+      }
+    }
+
+    const invalidSiteMember = allEmps.find(
+      (employee) =>
+        employee.id !== targetEmpId &&
+        primaryEmp.siteId != null &&
+        employee.siteId !== primaryEmp.siteId
+    )
+    if (invalidSiteMember) {
+      return {
+        success: false as const,
+        error: `Anggota tim ${invalidSiteMember.name} tidak berada di site yang sama dengan pemohon.`,
+      }
+    }
+
     const workflowSettings = await getDailyActivityWorkflowSettings()
     let primaryCreatedSessionId: number | null = null
 
@@ -6841,17 +6869,22 @@ export async function createDailyActivitySessionAction(input: {
       const [found] = await db
         .select({ id: employees.id, name: employees.name, email: employees.email })
         .from(employees)
-        .where(eq(employees.id, leaderEmpId))
+        .where(and(eq(employees.id, leaderEmpId), eq(employees.isActive, true)))
         .limit(1)
       if (found) {
         leaderName = found.name
         leaderEmail = found.email || ''
+      } else {
+        leaderEmpId = null
+        leaderName = undefined
       }
-    } else if (emp.directManagerId) {
+    }
+
+    if (!leaderEmpId && emp.directManagerId) {
       const [found] = await db
         .select({ id: employees.id, name: employees.name, email: employees.email })
         .from(employees)
-        .where(eq(employees.id, emp.directManagerId))
+        .where(and(eq(employees.id, emp.directManagerId), eq(employees.isActive, true)))
         .limit(1)
       if (found) {
         leaderEmpId = found.id
@@ -6906,6 +6939,20 @@ export async function createDailyActivitySessionAction(input: {
           leaderName = siteLeader.name
           leaderEmail = siteLeader.email || ''
         }
+      }
+    }
+
+    if (!leaderEmpId && emp.siteId) {
+      const [siteHead] = await db
+        .select({ id: employees.id, name: employees.name, email: employees.email })
+        .from(sites)
+        .innerJoin(employees, and(eq(employees.id, sites.headEmployeeId), eq(employees.isActive, true)))
+        .where(eq(sites.id, emp.siteId))
+        .limit(1)
+      if (siteHead) {
+        leaderEmpId = siteHead.id
+        leaderName = siteHead.name
+        leaderEmail = siteHead.email || ''
       }
     }
 
