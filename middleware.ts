@@ -11,7 +11,7 @@ export function middleware(request: NextRequest) {
     .replace(/izin[%20\s_-]*kerja[%20\s_-]*ptw/gi, 'izin-kerja-ptw')
     .replace(/izin[%20\s_-]+kerja(?!\-ptw)/gi, 'izin-kerja-ptw')
     .replace(/activity[%20\s_]+hub/gi, 'activity-hub')
-    .replace(/daily[-_%20\s]*activity/gi, 'activity-hub')
+    .replace(/daily[%20\s_]+activity/gi, 'daily-activity')
     .replace(/my[%20\s_]+day/gi, 'my-day')
     .replace(/schedule[%20\s_]+v2/gi, 'schedule-v2')
     .replace(/field[%20\s_]+break/gi, 'field-break')

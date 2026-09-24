@@ -2,7 +2,7 @@ import { and, eq, or, sql } from 'drizzle-orm'
 
 import { db } from '@/db'
 import { user as authUser } from '@/db/schema/auth'
-import { employees, navbarMenuItems, roleMenuPermissions, securityRoles } from '@/db/schema/hero'
+import { employees, navbarMenuItems, roleMenuPermissions, securityRoles, sites } from '@/db/schema/hero'
 import { getServerSession } from '@/lib/auth-session'
 
 export type HeroMenuPermission = {
@@ -71,10 +71,144 @@ export async function getCurrentEmployeeAccessRole(): Promise<string> {
   return ''
 }
 
+export function isLeadershipOrManagerialRole(roleName?: string | null): boolean {
+  if (!roleName) return false
+  if (isSuperAdminRole(roleName)) return true
+  const normalized = roleName.toLowerCase().trim()
+  if (
+    normalized === 'field team' ||
+    normalized.includes('field team') ||
+    normalized === 'mechanic' ||
+    normalized === 'technician'
+  ) {
+    return false
+  }
+  const leadershipRoleKeywords = [
+    'pjo',
+    'manager',
+    'head',
+    'director',
+    'admin',
+    'central services',
+    'supervisor',
+    'spv',
+    'coordinator',
+    'leader',
+    'hse',
+  ]
+  return leadershipRoleKeywords.some((keyword) => normalized.includes(keyword))
+}
+
+export function isLeadershipOrManagerialTitle(
+  jobTitle?: string | null,
+  role?: string | null
+): boolean {
+  const text = `${jobTitle || ''} ${role || ''}`.toLowerCase()
+  const keywords = [
+    'pjo',
+    'head',
+    'manager',
+    'director',
+    'supervisor',
+    'spv',
+    'coordinator',
+    'leader',
+    'gm',
+    'general manager',
+    'admin',
+    'bod',
+    'executive',
+  ]
+  return keywords.some((kw) => text.includes(kw))
+}
+
+export async function canAccessDailyActivityMonitoring(
+  userEmail?: string | null,
+  userId?: string | null,
+  roleName?: string | null
+): Promise<boolean> {
+  // 1. Super Admin always allowed
+  if (roleName && isSuperAdminRole(roleName)) return true
+
+  // 2. Direct check on roleName if leadership role
+  if (roleName && isLeadershipOrManagerialRole(roleName)) return true
+
+  if (!userEmail && !userId) return false
+
+  // 3. Check employee record (jobTitle, role, accessRole)
+  const [emp] = await db
+    .select({
+      id: employees.id,
+      jobTitle: employees.jobTitle,
+      role: employees.role,
+      accessRole: employees.accessRole,
+    })
+    .from(employees)
+    .where(
+      or(
+        userId ? eq(employees.authUserId, userId) : undefined,
+        userEmail ? sql`lower(${employees.email}) = lower(${userEmail})` : undefined
+      )
+    )
+    .limit(1)
+
+  if (!emp) return false
+
+  // If user has an explicit leadership accessRole in DB
+  if (isLeadershipOrManagerialRole(emp.accessRole)) return true
+
+  // If user has leadership job title or employee role
+  if (isLeadershipOrManagerialTitle(emp.jobTitle, emp.role)) return true
+
+  // 4. Check if employee is designated Site Head (PJO Site) in sites table
+  const [siteHead] = await db
+    .select({ id: sites.id })
+    .from(sites)
+    .where(eq(sites.headEmployeeId, emp.id))
+    .limit(1)
+
+  if (siteHead) return true
+
+  // 5. Check if employee has direct subordinates (acting as Atasan / Head)
+  const [hasSubordinate] = await db
+    .select({ id: employees.id })
+    .from(employees)
+    .where(eq(employees.directManagerId, emp.id))
+    .limit(1)
+
+  if (hasSubordinate) return true
+
+  return false
+}
+
 export async function getMenuPermissionForRole(
   roleName: string | null,
   resource: string
 ): Promise<HeroMenuPermission> {
+  if (resource === 'tire_service') {
+    return {
+      roleName: roleName || 'User',
+      canView: true,
+      canEdit: true,
+      canDelete: false,
+      canSelectAll: false,
+      dataScope: 'global',
+    }
+  }
+
+  if (resource === 'daily_activity') {
+    // Khusus untuk PJO, Head Section, Head Department, keatas
+    const isLeadership = isLeadershipOrManagerialRole(roleName)
+    return {
+      roleName: roleName || 'User',
+      canView: isLeadership,
+      canEdit: isLeadership,
+      canDelete: false,
+      canSelectAll: isLeadership,
+      dataScope: 'global' as const,
+    }
+  }
+
   if (!roleName) {
     return {
       roleName: null,
@@ -144,8 +278,26 @@ export async function getMenuPermissionForRole(
   }
 }
 
-export async function getCurrentMenuPermission(resource: string) {
+export async function getCurrentMenuPermission(resource: string): Promise<HeroMenuPermission> {
+  const session = await getServerSession()
   const roleName = await getCurrentEmployeeAccessRole()
+
+  if (resource === 'daily_activity') {
+    const canAccess = await canAccessDailyActivityMonitoring(
+      session?.user?.email,
+      session?.user?.id,
+      roleName
+    )
+    return {
+      roleName: roleName || 'User',
+      canView: canAccess,
+      canEdit: canAccess,
+      canDelete: false,
+      canSelectAll: canAccess,
+      dataScope: 'global' as const,
+    }
+  }
+
   return getMenuPermissionForRole(roleName, resource)
 }
 

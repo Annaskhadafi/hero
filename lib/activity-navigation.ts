@@ -1,4 +1,5 @@
 export const activityMenuLabels = {
+  dashboard: "Daily Activity",
   input: "Input Aktivitas Harian",
   teamBoard: "Monitoring Tim & SPL",
   library: "Kamus Aktivitas",
@@ -8,6 +9,10 @@ export const activityMenuLabels = {
 } as const;
 
 export const activityHubTabs = [
+  {
+    label: activityMenuLabels.dashboard,
+    href: "/dashboard/daily-activity",
+  },
   {
     label: activityMenuLabels.input,
     href: "/dashboard/activity-hub/my-day",

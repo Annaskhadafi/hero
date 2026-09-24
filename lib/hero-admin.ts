@@ -591,6 +591,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'Aktivitas Harian',
+    groupLabel: 'Monitoring & Site Operation',
+    title: 'Daily Activity',
+    url: '/dashboard/daily-activity',
+    iconName: 'checklist',
+    resource: 'daily_activity',
+    sortOrder: 0,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Aktivitas Harian',
     groupLabel: 'Section Head - Input Pekerjaan',
     title: 'Input Aktivitas Harian',
     url: '/dashboard/activity-hub/my-day',
@@ -4422,6 +4434,29 @@ const QUALITY_CPI_RESOURCES = new Set([
 ])
 
 function getDefaultMenuPermission(roleName: string, resource: string) {
+  // Daily Activity monitoring: khusus untuk PJO, Head Section, Head Department, keatas
+  if (resource === 'daily_activity') {
+    const isLeadership = [
+      'Super Admin',
+      'Manager',
+      'PJO SITE',
+      'Site Admin',
+      'CENTRAL SERVICES',
+      'HC Manager',
+      'Quality & CPI Manager',
+      'HSE',
+      'BALIKPAPAN',
+    ].includes(roleName)
+
+    return {
+      canView: isLeadership,
+      canEdit: isLeadership,
+      canDelete: false,
+      canSelectAll: isLeadership,
+      dataScope: 'global' as const,
+    }
+  }
+
   // Always permit core resources for all roles
   if (
     [

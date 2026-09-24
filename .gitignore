@@ -89,3 +89,6 @@ backup-*.json
 test-results/
 playwright-report/
 
+
+/tmp/
+/public/uploads/cache/
