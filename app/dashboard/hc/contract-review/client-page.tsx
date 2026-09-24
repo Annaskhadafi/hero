@@ -295,19 +295,30 @@ export function ContractReviewClientPage({
     return () => observer.disconnect()
   }, [filteredReviewRows.length, visibleReviewCount])
 
+  // Keep employees with an active review in the Daftar Review tab only.
+  const monitoringEmployees = useMemo(() => {
+    const activeReviewEmployeeIds = new Set(
+      rows
+        .filter((row) => ['draft', 'in_progress'].includes(String(row.status || '').toLowerCase()))
+        .map((row) => row.employeeId)
+        .filter((id): id is number => typeof id === 'number')
+    )
+    return expiringEmployees.filter((employee) => !activeReviewEmployeeIds.has(employee.id))
+  }, [expiringEmployees, rows])
+
   // Monitoring stats
   const stats = useMemo(() => {
-    const total = expiringEmployees.length
-    const overdue = expiringEmployees.filter((e) => e.urgency === "overdue").length
-    const critical = expiringEmployees.filter((e) => e.urgency === "critical").length
-    const warning = expiringEmployees.filter((e) => e.urgency === "warning").length
-    const unreviewed = expiringEmployees.filter((e) => !e.latestReview).length
+    const total = monitoringEmployees.length
+    const overdue = monitoringEmployees.filter((e) => e.urgency === "overdue").length
+    const critical = monitoringEmployees.filter((e) => e.urgency === "critical").length
+    const warning = monitoringEmployees.filter((e) => e.urgency === "warning").length
+    const unreviewed = monitoringEmployees.filter((e) => !e.latestReview).length
     return { total, overdue, critical, warning, unreviewed }
-  }, [expiringEmployees])
+  }, [monitoringEmployees])
 
   // Filtered monitoring employees
   const filteredExpiringEmployees = useMemo(() => {
-    return expiringEmployees.filter((emp) => {
+    return monitoringEmployees.filter((emp) => {
       // Search
       if (monitoringSearch.trim()) {
         const q = monitoringSearch.toLowerCase()
@@ -340,7 +351,7 @@ export function ContractReviewClientPage({
 
       return true
     })
-  }, [expiringEmployees, monitoringSearch, urgencyFilter, reviewStatusFilter])
+  }, [monitoringEmployees, monitoringSearch, urgencyFilter, reviewStatusFilter])
 
   // Checkbox helpers
   const allFilteredSelected =

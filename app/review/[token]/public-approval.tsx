@@ -160,12 +160,63 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
   const allVals = [...aVals, ...bVals]
   const achievementScore = allVals.length > 0 ? allVals.reduce((sum: number, val: string) => sum + (val === 'exceed' ? 115 : val === 'meet' ? 100 : 80), 0) / allVals.length : 0
 
+  const estimateActivityWeight = (item: any) => Math.max(1, Math.ceil(Math.max(String(item?.activity || '').length / 42, String(item?.remark || '').length / 52)))
+  const firstPageActivities = (() => {
+    const budget = 7
+    const selected: any[] = []
+    let used = 0
+    for (const item of review.performanceActivities ?? []) {
+      const weight = estimateActivityWeight(item)
+      if (selected.length > 0 && used + weight > budget) break
+      if (selected.length === 0 && weight > budget) break
+      selected.push(item)
+      used += weight
+    }
+    return selected
+  })()
+  const overflowActivities = (review.performanceActivities ?? []).slice(firstPageActivities.length)
+  const overflowChunkSize = 3
+  const performanceOverflowChunks = Array.from({ length: Math.ceil(overflowActivities.length / overflowChunkSize) }, (_, index) => overflowActivities.slice(index * overflowChunkSize, index * overflowChunkSize + overflowChunkSize))
+  const competencyRows = [
+    ['Discipline', review.compDisciplineAch, review.compDisciplineRemark],
+    ['Professional Skill and Knowledge', review.compSkillAch, review.compSkillRemark],
+    ['Achieving Result', review.compResultAch, review.compResultRemark],
+    ['Concern for Order, Quality and Accuracy', review.compQualityAch, review.compQualityRemark],
+    ['Customer Orientation ( internal / external )', review.compCustomerAch, review.compCustomerRemark],
+    ['Teamwork', review.compTeamworkAch, review.compTeamworkRemark],
+  ]
+  const firstPageCompetencyRows = firstPageActivities.length <= 2 ? competencyRows.slice(0, 3) : []
+
+  const renderPerformanceTable = (items: any[], keyPrefix: string) => (
+    <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5 text-center">
+      <thead>
+        <tr className="bg-slate-50">
+          <th className="w-[45%]">Activities</th>
+          <th className="w-[30%]">Achievement<br/>( Below/ Meet/ Exceed<br/>Requirement )</th>
+          <th className="w-[25%]">Remark</th>
+        </tr>
+      </thead>
+      <tbody>
+        {items.map((item: any, i: number) => (
+          <tr key={`${keyPrefix}-${i}`}>
+            <td className="text-left">{item.activity || '\u00A0'}</td>
+            <td className="capitalize">{item.achievement || '\u00A0'}</td>
+            <td className="text-left">{item.remark || '\u00A0'}</td>
+          </tr>
+        ))}
+        {items.length === 0 && Array(5).fill(0).map((_, i) => (
+          <tr key={`${keyPrefix}-empty-${i}`}><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+        ))}
+      </tbody>
+    </table>
+  )
+
   // PDF Page 1: Details, Profile, Performance, Competency
   const pdfPage1 = (
-    <div className="relative z-10 text-[9pt] font-sans leading-tight text-black" style={{ paddingTop: '40mm', paddingBottom: '35mm', paddingLeft: '20mm', paddingRight: '20mm', minHeight: '297mm', height: 'auto', overflow: 'visible' }}>
+    <div className="relative z-10 text-[8pt] font-sans leading-tight text-black" style={{ paddingTop: '42mm', paddingBottom: '20mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
       <h1 className="text-center font-bold text-[11pt] mb-3">EMPLOYEE PROBATION/CONTRACT REVIEW</h1>
 
-      <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1">
+      <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
         <tbody>
           <tr><td colSpan={2} className="font-bold bg-slate-50">Details</td></tr>
           <tr>
@@ -197,69 +248,63 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
         </tbody>
       </table>
 
-      <div className="mb-1 font-bold">Progress made towards probation/contract period</div>
-      <div className="font-bold ml-4 mb-1">A. Performance</div>
-      <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-center">
-        <thead>
-          <tr className="bg-slate-50">
-            <th className="w-[45%]">Activities</th>
-            <th className="w-[30%]">Achievement<br/>( Below/ Meet/ Exceed<br/>Requirement )</th>
-            <th className="w-[25%]">Remark</th>
-          </tr>
-        </thead>
-        <tbody>
-          {(review.performanceActivities ?? []).length > 0 ? (
-            review.performanceActivities.map((item: any, i: number) => (
-              <tr key={i}>
-                <td className="text-left">{item.activity || '\u00A0'}</td>
-                <td className="capitalize">{item.achievement || '\u00A0'}</td>
-                <td>{item.remark || '\u00A0'}</td>
-              </tr>
-            ))
-          ) : (
-            <>
-              <tr><td>{'\u00A0'}</td><td>{'\u00A0'}</td><td>{'\u00A0'}</td></tr>
-              <tr><td>{'\u00A0'}</td><td>{'\u00A0'}</td><td>{'\u00A0'}</td></tr>
-              <tr><td>{'\u00A0'}</td><td>{'\u00A0'}</td><td>{'\u00A0'}</td></tr>
-            </>
-          )}
-        </tbody>
-      </table>
+      {firstPageActivities.length > 0 ? (
+        <><div className="mb-1 font-bold">Progress made towards probation/contract period</div><div className="font-bold ml-4 mb-1">A. Performance</div>{renderPerformanceTable(firstPageActivities, 'first')}</>
+      ) : null}
+      {firstPageCompetencyRows.length > 0 ? (
+        <>
+          <div className="font-bold ml-4 mb-1 mt-1">B. Related Competency ( Knowledge & Behavior )</div>
+          <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
+            <thead><tr className="bg-slate-50 text-center"><th className="w-[45%]">Activities</th><th className="w-[30%]">Achievement<br/>( Below/ Meet/ Exceed<br/>Requirement )</th><th className="w-[25%]">Remark</th></tr></thead>
+            <tbody>{firstPageCompetencyRows.map(([label, achievement, remark]) => <tr key={label}><td className="font-bold">{label}</td><td className="text-center capitalize">{achievement || '\u00A0'}</td><td>{remark || '\u00A0'}</td></tr>)}</tbody>
+          </table>
+        </>
+      ) : null}
+    </div>
+  )
 
-      <div className="font-bold ml-4 mb-1 mt-1">B. Related Competency ( Knowledge & Behavior )</div>
-      <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1">
-        <thead>
-          <tr className="bg-slate-50 text-center">
-            <th className="w-[45%]">Activities</th>
-            <th className="w-[30%]">Achievement<br/>( Below/ Meet/ Exceed<br/>Requirement )</th>
-            <th className="w-[25%]">Remark</th>
-          </tr>
-        </thead>
-        <tbody>
-          {[
-            { label: 'Discipline', ach: review.compDisciplineAch, rem: review.compDisciplineRemark },
-            { label: 'Professional Skill and Knowledge', ach: review.compSkillAch, rem: review.compSkillRemark },
-            { label: 'Achieving Result', ach: review.compResultAch, rem: review.compResultRemark },
-            { label: 'Concern for Order, Quality and Accuracy', ach: review.compQualityAch, rem: review.compQualityRemark },
-            { label: 'Customer Orientation ( internal / external )', ach: review.compCustomerAch, rem: review.compCustomerRemark },
-            { label: 'Teamwork', ach: review.compTeamworkAch, rem: review.compTeamworkRemark },
-          ].map((c, i) => (
-            <tr key={i}>
-              <td className="font-bold">{c.label}</td>
-              <td className="text-center capitalize">{c.ach || '\u00A0'}</td>
-              <td>{c.rem || '\u00A0'}</td>
-            </tr>
-          ))}
-        </tbody>
+  const packCompetencyAfterPerformance = performanceOverflowChunks.length > 0
+  const pdfPerformancePages = performanceOverflowChunks.map((chunk, index) => (
+    <div key={`performance-page-${index}`} className="relative z-10 text-[8pt] font-sans leading-tight text-black" style={{ paddingTop: '42mm', paddingBottom: '20mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
+      <div className="mb-1 font-bold">Progress made towards probation/contract period</div>
+      <div className="font-bold ml-4 mb-1">A. Performance (lanjutan)</div>
+      {renderPerformanceTable(chunk, `overflow-${index}`)}
+      {packCompetencyAfterPerformance && index === performanceOverflowChunks.length - 1 ? (
+        <>
+          <div className="font-bold ml-4 mb-1 mt-1">B. Related Competency (lanjutan)</div>
+          <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
+            <thead><tr className="bg-slate-50 text-center"><th className="w-[45%]">Activities</th><th className="w-[30%]">Achievement<br/>( Below/ Meet/ Exceed<br/>Requirement )</th><th className="w-[25%]">Remark</th></tr></thead>
+            <tbody>{competencyRows.slice(firstPageCompetencyRows.length).map(([label, achievement, remark]) => <tr key={label}><td className="font-bold">{label}</td><td className="text-center capitalize">{achievement || '\u00A0'}</td><td>{remark || '\u00A0'}</td></tr>)}</tbody>
+          </table>
+        </>
+      ) : null}
+    </div>
+  ))
+
+  // PDF Page 2: First competency rows
+  const competencyPage2Rows = packCompetencyAfterPerformance ? [] : competencyRows.slice(firstPageCompetencyRows.length, firstPageCompetencyRows.length + 3)
+  const competencyOverflowRows = packCompetencyAfterPerformance ? [] : competencyRows.slice(firstPageCompetencyRows.length + 3)
+  const pdfPage2 = (
+    <div className="relative z-10 text-[8pt] font-sans leading-tight text-black" style={{ paddingTop: '42mm', paddingBottom: '20mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
+      <div className="font-bold ml-4 mb-1">B. Related Competency ( Knowledge & Behavior )</div>
+      <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
+        <thead><tr className="bg-slate-50 text-center"><th className="w-[45%]">Activities</th><th className="w-[30%]">Achievement<br/>( Below/ Meet/ Exceed<br/>Requirement )</th><th className="w-[25%]">Remark</th></tr></thead>
+        <tbody>{competencyPage2Rows.map(([label, achievement, remark]) => <tr key={label}><td className="font-bold">{label}</td><td className="text-center capitalize">{achievement || '\u00A0'}</td><td>{remark || '\u00A0'}</td></tr>)}</tbody>
       </table>
     </div>
   )
 
-  // PDF Page 2: Achievement, Signatories, Letter Issuance
-  const pdfPage2 = (
-    <div className="relative z-10 text-[9pt] font-sans leading-tight text-black" style={{ paddingTop: '40mm', paddingBottom: '35mm', paddingLeft: '20mm', paddingRight: '20mm', minHeight: '297mm', height: 'auto', overflow: 'visible' }}>
+  const pdfCompetencyPage = (
+    <div className="relative z-10 text-[8pt] font-sans leading-tight text-black" style={{ paddingTop: '42mm', paddingBottom: '20mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
+      {competencyOverflowRows.length > 0 ? <>
+        <div className="font-bold ml-4 mb-1">B. Related Competency (lanjutan)</div>
+        <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
+          <thead><tr className="bg-slate-50 text-center"><th className="w-[45%]">Activities</th><th className="w-[30%]">Achievement<br/>( Below/ Meet/ Exceed<br/>Requirement )</th><th className="w-[25%]">Remark</th></tr></thead>
+          <tbody>{competencyOverflowRows.map(([label, achievement, remark]) => <tr key={label}><td className="font-bold">{label}</td><td className="text-center capitalize">{achievement || '\u00A0'}</td><td>{remark || '\u00A0'}</td></tr>)}</tbody>
+        </table>
+      </> : null}
       <div className="font-bold ml-4 mb-1">Achievement Definition</div>
-      <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1">
+      <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
         <tbody>
           <tr>
             <td className="w-[25%] text-center"><input type="checkbox" checked={achievementScore >= 106} readOnly /> Exceed Requirement (106% - 125%)</td>
@@ -343,6 +388,12 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
         </label>
       </div>
 
+    </div>
+  )
+
+  // PDF Page 3: Signatories and HR letter issuance
+  const pdfPage3 = (
+    <div className="relative z-10 text-[8pt] font-sans leading-tight text-black" style={{ paddingTop: '42mm', paddingBottom: '20mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
       <div className="font-bold mb-4">Signatories</div>
       <div className="grid grid-cols-2 gap-x-8 gap-y-10 mb-8">
         {review.leaderName && (
@@ -526,15 +577,21 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                 {approvalHistoryForDisplay.every((s: any) => s.status === 'approved') && (
                   <Button type="button" size="sm" className="w-full" onClick={() => {
                     // Sync values to attributes for print
-                    document.querySelectorAll('#pdf-page-2 input[type="checkbox"]').forEach((el: any) => {
-                      if (el.checked) el.setAttribute('checked', 'checked')
-                      else el.removeAttribute('checked')
+                    const pageElements = Array.from(document.querySelectorAll<HTMLElement>('[data-contract-review-page]'))
+                    pageElements.forEach((page) => {
+                      page.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach((el) => {
+                        if (el.checked) el.setAttribute('checked', 'checked')
+                        else el.removeAttribute('checked')
+                      })
+                      page.querySelectorAll<HTMLInputElement>('input[type="number"]').forEach((el) => {
+                        el.setAttribute('value', el.value)
+                      })
                     })
-                    document.querySelectorAll('#pdf-page-2 input[type="number"]').forEach((el: any) => {
-                      el.setAttribute('value', el.value)
+                    const pageHtml = pageElements.map((page) => {
+                      const copy = page.cloneNode(true) as HTMLElement
+                      copy.querySelectorAll('img[alt="Chitra Paratama letterhead"]').forEach((image) => image.remove())
+                      return copy.innerHTML
                     })
-                    const page1 = document.querySelector('#pdf-page-1')?.innerHTML || ''
-                    const page2 = document.querySelector('#pdf-page-2')?.innerHTML || ''
                     const letterheadUrl = new URL('/ChitraParatama_Stationery_Letterhead_jkt.jpg', window.location.origin).toString()
                     const printWindow = window.open('', '_blank', 'width=900,height=1200')
                     if (!printWindow) return
@@ -543,8 +600,8 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                         @page { size: A4 portrait; margin: 0; }
                         * { box-sizing: border-box; margin: 0; padding: 0; }
                         body { font-family: 'Manrope', 'Inter', Arial, sans-serif; }
-                        .page { width: 210mm; min-height: 297mm; height: auto; position: relative; page-break-after: always; overflow: visible; background-size: 100% 100%; background-repeat: no-repeat; background-position: top center; }
-                        .content { position: relative; z-index: 10; padding: 18mm 12mm 15mm 12mm; font-size: 7pt; line-height: 1.2; min-height: 297mm; height: auto; overflow: visible; }
+                        .page { width: 210mm; height: 297mm; position: relative; page-break-after: always; overflow: hidden; background-size: 100% 100%; background-repeat: no-repeat; background-position: top center; }
+                        .content { position: relative; z-index: 10; width: 210mm; height: 297mm; overflow: hidden; }
                         table { width: 100%; border-collapse: collapse; margin-bottom: 0.5rem; }
                         td, th { border: 1px solid black; padding: 2px 4px; font-size: 7pt; }
                         th { font-weight: bold; background: #f8fafc; }
@@ -568,8 +625,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                         .w-full { width: 100%; }
                       </style>
                     </head><body>
-                      <div class="page" style="background-image: url('${letterheadUrl}')"><div class="content">${page1}</div></div>
-                      <div class="page" style="background-image: url('${letterheadUrl}')"><div class="content">${page2}</div></div>
+                      ${pageHtml.map((html) => `<div class="page" style="background-image: url('${letterheadUrl}')"><div class="content">${html}</div></div>`).join('')}
                       <script>setTimeout(() => { window.print(); }, 300);</script>
                     </body></html>`)
                     printWindow.document.close()
@@ -614,17 +670,33 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
               <div className="flex min-w-max flex-col gap-6">
               <div
                 id="pdf-page-1"
-                className="relative mx-auto shrink-0 min-h-[297mm] h-auto w-[210mm] overflow-visible bg-white shadow-sm"
-                style={{ backgroundImage: 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)', backgroundSize: '100% 100%' }}
+                data-contract-review-page="true"
+                className="relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
               >
+                <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
                 {pdfPage1}
               </div>
-              <div
+              {pdfPerformancePages.map((page, index) => (
+                <div key={`performance-page-${index}`} id={`pdf-page-performance-${index}`} data-contract-review-page="true" className="relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm">
+                  <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
+                  {page}
+                </div>
+              ))}
+              {!packCompetencyAfterPerformance ? <div
                 id="pdf-page-2"
-                className="relative mx-auto shrink-0 min-h-[297mm] h-auto w-[210mm] overflow-visible bg-white shadow-sm"
-                style={{ backgroundImage: 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)', backgroundSize: '100% 100%' }}
+                data-contract-review-page="true"
+                className="relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
               >
+                <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
                 {pdfPage2}
+              </div> : null}
+              <div id="pdf-page-competency" data-contract-review-page="true" className="relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm">
+                <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
+                {pdfCompetencyPage}
+              </div>
+              <div id="pdf-page-3" data-contract-review-page="true" className="relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm">
+                <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
+                {pdfPage3}
               </div>
               </div>
             </TabsContent>

@@ -698,6 +698,35 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
   })()
   const overflowActivities = form.performanceActivities.slice(firstPageActivities.length)
   const performanceOverflowChunks = Array.from({ length: Math.ceil(overflowActivities.length / 2) }, (_, index) => overflowActivities.slice(index * 2, index * 2 + 2))
+  const competencyRows = [
+    ['Discipline', form.compDisciplineAch, form.compDisciplineRemark],
+    ['Professional Skill and Knowledge', form.compSkillAch, form.compSkillRemark],
+    ['Achieving Result', form.compResultAch, form.compResultRemark],
+    ['Concern for Order, Quality and Accuracy', form.compQualityAch, form.compQualityRemark],
+    ['Customer Orientation ( internal / external )', form.compCustomerAch, form.compCustomerRemark],
+    ['Teamwork', form.compTeamworkAch, form.compTeamworkRemark],
+  ]
+  const firstPageCompetencyRows = firstPageActivities.length <= 2 ? competencyRows.slice(0, 3) : []
+  const renderAchievementBlock = () => (
+    <>
+      <div className="font-bold mb-2">Achievement Definition</div>
+      <table className="w-full border-collapse border border-black mb-4 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
+        <tbody>
+          <tr><td className="w-1/3"><label className="flex items-center gap-2"><input type="checkbox" readOnly checked={achCategory === "exceed"} />Exceed Requirement (106% - 125%)</label></td><td className="w-2/3">Performance of the employee is exceeding target and He/She consistently <b>demonstrates right attitude and behavior</b> which are aligned with the competency</td></tr>
+          <tr><td><label className="flex items-center gap-2"><input type="checkbox" readOnly checked={achCategory === "meet"} />Meet Requirement (95% - 105%)</label></td><td>Performance of the employee is meeting target and in overall He/She <b>demonstrates attitude and behavior</b> which are aligned with the competency</td></tr>
+          <tr><td><label className="flex items-center gap-2"><input type="checkbox" readOnly checked={achCategory === "below"} />Below Requirement (&lt; 95%)</label></td><td>Performance of the employee is not meeting target and He/She still <b>demonstrating some attitudes and/ or behaviors which are not aligned</b> with the competency</td></tr>
+        </tbody>
+      </table>
+      <div className="font-bold mb-2">Recommendation</div>
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'confirm_permanent'} readOnly />Confirm to Permanent</label>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'terminate_probation'} readOnly />Unsuccessful Probationary (termination)</label>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'contract_extended'} readOnly />Contract Extended <span className="border-b border-black w-12 inline-block text-center">{form.contractExtendedMonths || '\u00A0'}</span> months</label>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'contract_ended'} readOnly />Contract ended</label>
+      </div>
+    </>
+  )
+  const packCompetencyAfterPerformance = performanceOverflowChunks.length === 1
   const renderPerformanceTable = (items: any[], keyPrefix: string) => (
     <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-center">
       <thead>
@@ -723,7 +752,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
   )
 
   const pdfPreviewPage1 = (
-    <div className="pdf-wrapper-content relative z-10 outline-none text-[9pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '40mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
+    <div className="pdf-wrapper-content relative z-10 outline-none text-[8pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '42mm', paddingBottom: '20mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
       <h1 className="text-center font-bold text-[11pt] mb-3">EMPLOYEE PROBATION/CONTRACT REVIEW</h1>
 
       <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1">
@@ -772,29 +801,42 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
         <><div className="mb-1 font-bold">Progress made towards probation/contract period</div><div className="font-bold ml-4 mb-1">A. Performance</div>{renderPerformanceTable(firstPageActivities, 'first')}</>
       ) : null}
 
+      {firstPageCompetencyRows.length > 0 ? (
+        <>
+          <div className="font-bold ml-4 mb-1 mt-1">B. Related Competency ( Knowledge & Behavior )</div>
+          <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1">
+            <thead><tr className="bg-slate-50 text-center"><th className="w-[45%]">Activities</th><th className="w-[30%]">Achievement<br/>( Below/ Meet/ Exceed<br/>Requirement )</th><th className="w-[25%]">Remark</th></tr></thead>
+            <tbody>{firstPageCompetencyRows.map(([label, achievement, remark]) => <tr key={label}><td className="font-bold">{label}</td><td className="text-center capitalize">{achievement || '\u00A0'}</td><td>{remark || '\u00A0'}</td></tr>)}</tbody>
+          </table>
+        </>
+      ) : null}
+
     </div>
   )
 
   const pdfPreviewPerformancePages = performanceOverflowChunks.map((chunk, index) => (
-    <div key={`performance-page-${index}`} className="pdf-wrapper-content relative z-10 outline-none text-[9pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '40mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
+    <div key={`performance-page-${index}`} className="pdf-wrapper-content relative z-10 outline-none text-[8pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '42mm', paddingBottom: '20mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
       <div className="mb-1 font-bold">Progress made towards probation/contract period</div>
       <div className="font-bold ml-4 mb-1">A. Performance (lanjutan)</div>
       {renderPerformanceTable(chunk, `overflow-${index}`)}
+      {packCompetencyAfterPerformance && index === performanceOverflowChunks.length - 1 ? (
+        <>
+          <div className="font-bold ml-4 mb-1 mt-1">B. Related Competency (lanjutan)</div>
+          <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
+            <thead><tr className="bg-slate-50 text-center"><th className="w-[45%]">Activities</th><th className="w-[30%]">Achievement<br/>( Below/ Meet/ Exceed<br/>Requirement )</th><th className="w-[25%]">Remark</th></tr></thead>
+            <tbody>{competencyRows.slice(firstPageCompetencyRows.length).map(([label, achievement, remark]) => <tr key={label}><td className="font-bold">{label}</td><td className="text-center capitalize">{achievement || '\u00A0'}</td><td>{remark || '\u00A0'}</td></tr>)}</tbody>
+          </table>
+        </>
+      ) : null}
     </div>
   ))
 
-  const competencyRows = [
-    ['Discipline', form.compDisciplineAch, form.compDisciplineRemark],
-    ['Professional Skill and Knowledge', form.compSkillAch, form.compSkillRemark],
-    ['Achieving Result', form.compResultAch, form.compResultRemark],
-    ['Concern for Order, Quality and Accuracy', form.compQualityAch, form.compQualityRemark],
-    ['Customer Orientation ( internal / external )', form.compCustomerAch, form.compCustomerRemark],
-    ['Teamwork', form.compTeamworkAch, form.compTeamworkRemark],
-  ]
-  const competencyOverflowRows = competencyRows.slice(3)
+  const competencyPage2Rows = packCompetencyAfterPerformance ? [] : competencyRows.slice(firstPageCompetencyRows.length, firstPageCompetencyRows.length + 3)
+  const competencyOverflowRows = packCompetencyAfterPerformance ? [] : competencyRows.slice(firstPageCompetencyRows.length + 3)
+  const pdfAchievementBlock = renderAchievementBlock()
 
   const pdfPreviewPage2 = (
-    <div className="pdf-wrapper-content relative z-10 outline-none text-[9pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '40mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
+    <div className="pdf-wrapper-content relative z-10 outline-none text-[8pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '42mm', paddingBottom: '20mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
       <div className="font-bold ml-4 mb-1">B. Related Competency ( Knowledge & Behavior)</div>
       <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1">
         <thead>
@@ -805,7 +847,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
           </tr>
         </thead>
         <tbody>
-          {competencyRows.slice(0, 3).map(([label, achievement, remark]) => (
+          {competencyPage2Rows.map(([label, achievement, remark]) => (
             <tr key={label}>
               <td className="font-bold">{label}</td>
               <td className="text-center capitalize">{achievement}</td>
@@ -814,50 +856,27 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
           ))}
         </tbody>
       </table>
+      {firstPageCompetencyRows.length > 0 ? pdfAchievementBlock : null}
     </div>
   )
 
   const pdfPreviewCompetencyPage = (
-    <div className="pdf-wrapper-content relative z-10 outline-none text-[9pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '40mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
-      <div className="font-bold ml-4 mb-1">B. Related Competency (lanjutan)</div>
-      <table className="w-full border-collapse border border-black mb-4 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1">
-        <thead>
-          <tr className="bg-slate-50 text-center">
-            <th className="w-[45%]">Activities</th>
-            <th className="w-[30%]">Achievement<br/>( Below/ Meet/ Exceed<br/>Requirement )</th>
-            <th className="w-[25%]">Remark</th>
-          </tr>
-        </thead>
-        <tbody>
-          {competencyOverflowRows.map(([label, achievement, remark]) => (
-            <tr key={label}>
-              <td className="font-bold">{label}</td>
-              <td className="text-center capitalize">{achievement}</td>
-              <td>{remark}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <div className="font-bold mb-2">Achievement Definition</div>
-      <table className="w-full border-collapse border border-black mb-4 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1">
-        <tbody>
-          <tr><td className="w-1/3"><label className="flex items-center gap-2"><input type="checkbox" readOnly checked={achCategory === "exceed"} />Exceed Requirement (106% - 125%)</label></td><td className="w-2/3">Performance of the employee is exceeding target and He/She consistently <b>demonstrates right attitude and behavior</b> which are aligned with the competency</td></tr>
-          <tr><td><label className="flex items-center gap-2"><input type="checkbox" readOnly checked={achCategory === "meet"} />Meet Requirement (95% - 105%)</label></td><td>Performance of the employee is meeting target and in overall He/She <b>demonstrates attitude and behavior</b> which are aligned with the competency</td></tr>
-          <tr><td><label className="flex items-center gap-2"><input type="checkbox" readOnly checked={achCategory === "below"} />Below Requirement (&#60; 95%)</label></td><td>Performance of the employee is not meeting target and He/She still <b>demonstrating some attitudes and/ or behaviors which are not aligned</b> with the competency</td></tr>
-        </tbody>
-      </table>
-      <div className="font-bold mb-2">Recommendation</div>
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'confirm_permanent'} readOnly />Confirm to Permanent</label>
-        <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'terminate_probation'} readOnly />Unsuccessful Probationary (termination)</label>
-        <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'contract_extended'} readOnly />Contract Extended <span className="border-b border-black w-12 inline-block text-center">{form.contractExtendedMonths || '\u00A0'}</span> months</label>
-        <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'contract_ended'} readOnly />Contract ended</label>
-      </div>
+    <div className="pdf-wrapper-content relative z-10 outline-none text-[8pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '42mm', paddingBottom: '20mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
+      {competencyOverflowRows.length > 0 ? (
+        <>
+          <div className="font-bold ml-4 mb-1">B. Related Competency (lanjutan)</div>
+          <table className="w-full border-collapse border border-black mb-4 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
+            <thead><tr className="bg-slate-50 text-center"><th className="w-[45%]">Activities</th><th className="w-[30%]">Achievement<br/>( Below/ Meet/ Exceed<br/>Requirement )</th><th className="w-[25%]">Remark</th></tr></thead>
+            <tbody>{competencyOverflowRows.map(([label, achievement, remark]) => <tr key={label}><td className="font-bold">{label}</td><td className="text-center capitalize">{achievement}</td><td>{remark}</td></tr>)}</tbody>
+          </table>
+        </>
+      ) : null}
+      {packCompetencyAfterPerformance || firstPageCompetencyRows.length === 0 ? pdfAchievementBlock : null}
     </div>
   )
 
   const pdfPreviewPage3 = (
-    <div className="pdf-wrapper-content relative z-10 outline-none text-[9pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '40mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
+    <div className="pdf-wrapper-content relative z-10 outline-none text-[8pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '42mm', paddingBottom: '20mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
       <div className="font-bold mb-4 break-before-auto break-inside-avoid">Signatories</div>
       
       <div className="grid grid-cols-2 gap-x-8 gap-y-10 mb-8 break-inside-avoid">
@@ -958,7 +977,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
   if (isEmbeddedPrintPreview) {
     return (
       <div className="fixed inset-0 z-[9999] flex flex-col gap-8 overflow-auto bg-slate-100 p-4">
-        {[pdfPreviewPage1, ...pdfPreviewPerformancePages, pdfPreviewPage2, pdfPreviewCompetencyPage, pdfPreviewPage3].map((page, index) => (
+        {[pdfPreviewPage1, ...pdfPreviewPerformancePages, ...(packCompetencyAfterPerformance ? [pdfPreviewCompetencyPage] : [pdfPreviewPage2, ...(competencyOverflowRows.length > 0 || firstPageCompetencyRows.length === 0 ? [pdfPreviewCompetencyPage] : [])]), pdfPreviewPage3].map((page, index) => (
           <div
             key={index}
             className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
@@ -1462,20 +1481,18 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
               {page}
             </div>
           ))}
-          <div
-            id="pdf-page-2"
-            className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
-          >
-            <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-            {pdfPreviewPage2}
-          </div>
-          <div
-            id="pdf-page-competency"
-            className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
-          >
-            <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-            {pdfPreviewCompetencyPage}
-          </div>
+          {!packCompetencyAfterPerformance ? (
+            <div id="pdf-page-2" className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm">
+              <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
+              {pdfPreviewPage2}
+            </div>
+          ) : null}
+          {packCompetencyAfterPerformance || competencyOverflowRows.length > 0 || firstPageCompetencyRows.length === 0 ? (
+            <div id="pdf-page-competency" className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm">
+              <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
+              {pdfPreviewCompetencyPage}
+            </div>
+          ) : null}
           <div
             id="pdf-page-3"
             className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
@@ -1505,20 +1522,18 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
                 {page}
               </div>
             ))}
-            <div
-              id="pdf-page-2"
-              className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
-            >
-              <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-              {pdfPreviewPage2}
-            </div>
-            <div
-              id="pdf-page-competency"
-              className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
-            >
-              <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-              {pdfPreviewCompetencyPage}
-            </div>
+            {!packCompetencyAfterPerformance ? (
+              <div id="pdf-page-2" className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm">
+                <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
+                {pdfPreviewPage2}
+              </div>
+            ) : null}
+            {packCompetencyAfterPerformance || competencyOverflowRows.length > 0 || firstPageCompetencyRows.length === 0 ? (
+              <div id="pdf-page-competency" className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm">
+                <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
+                {pdfPreviewCompetencyPage}
+              </div>
+            ) : null}
             <div
               id="pdf-page-3"
               className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
