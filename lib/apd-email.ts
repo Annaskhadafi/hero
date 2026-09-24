@@ -1,6 +1,13 @@
 import { sendWorkflowEmail } from "@/lib/workflow-email"
 import { getPublicAppUrl } from "@/lib/auth-config"
 
+export function resolveApdCategoryBadge(requestType?: string): string {
+  const upper = (requestType || "").trim().toUpperCase()
+  if (upper === "MATERIAL" || upper.includes("MATERIAL")) return "MATERIAL"
+  if (upper === "TOOLS" || upper.includes("TOOL")) return "TOOLS"
+  return "APD"
+}
+
 export async function sendApdRequestSubmittedEmail(params: {
   employeeName: string
   requestNumber: string
@@ -11,6 +18,7 @@ export async function sendApdRequestSubmittedEmail(params: {
 }) {
   const baseUrl = getPublicAppUrl()
   const approvalLink = `${baseUrl}/dashboard/approval`
+  const categoryBadge = resolveApdCategoryBadge(params.requestType)
 
   return sendWorkflowEmail({
     to: params.approverEmail,
@@ -21,6 +29,7 @@ export async function sendApdRequestSubmittedEmail(params: {
       requestNumber: params.requestNumber,
       approverName: params.approverName,
       requestType: params.requestType,
+      categoryBadge,
       approvalLink,
       approvalUrl: approvalLink,
       actionUrl: approvalLink,
@@ -44,6 +53,7 @@ export async function sendMaterialToolsRequestSubmittedEmail(params: {
   const baseUrl = getPublicAppUrl()
   const approvalLink = `${baseUrl}/dashboard/approval`
   const cc = params.ccEmails ?? ['muhammad.akbar@chitraparatama.co.id']
+  const categoryBadge = resolveApdCategoryBadge(params.requestType)
 
   return sendWorkflowEmail({
     to: params.approverEmail,
@@ -54,6 +64,7 @@ export async function sendMaterialToolsRequestSubmittedEmail(params: {
       requestNumber: params.requestNumber,
       approverName: params.approverName,
       requestType: params.requestType,
+      categoryBadge,
       sectionName: params.sectionName ?? "-",
       approvalLink,
       approvalUrl: approvalLink,
@@ -79,6 +90,7 @@ export async function sendMaterialToolsApprovedEmail(params: {
   const baseUrl = getPublicAppUrl()
   const dashboardLink = `${baseUrl}/dashboard/apd`
   const cc = params.ccEmails ?? ["muhammad.akbar@chitraparatama.co.id"]
+  const categoryBadge = resolveApdCategoryBadge(params.requestType)
 
   return sendWorkflowEmail({
     to: params.requesterEmail,
@@ -89,6 +101,7 @@ export async function sendMaterialToolsApprovedEmail(params: {
       requestNumber: params.requestNumber,
       approverName: params.approverName,
       requestType: params.requestType,
+      categoryBadge,
       sectionName: params.sectionName ?? "-",
       dashboardLink,
       approvalLink: dashboardLink,
@@ -116,6 +129,7 @@ export async function sendApdLevelApprovedEmail(params: {
   const dashboardLink = `${baseUrl}/dashboard/apd`
   const approvalLink = `${baseUrl}/dashboard/approval`
   const isFinal = !params.nextLevelLabel
+  const categoryBadge = resolveApdCategoryBadge(params.requestType)
   const statusText = isFinal
     ? `telah <b>DISETUJUI SEPENUHNYA</b> oleh ${params.approverName} pada tahap <b>${params.currentLevelLabel}</b>.`
     : `telah disetujui pada tahap <b>${params.currentLevelLabel}</b> oleh ${params.approverName} dan sedang menunggu persetujuan pada tahap <b>${params.nextLevelLabel}</b>.`
@@ -129,6 +143,7 @@ export async function sendApdLevelApprovedEmail(params: {
       requestNumber: params.requestNumber,
       approverName: params.approverName,
       requestType: params.requestType,
+      categoryBadge,
       currentLevelLabel: params.currentLevelLabel,
       nextLevelLabel: params.nextLevelLabel ?? '',
       isFinal: String(isFinal),
@@ -154,6 +169,7 @@ export async function sendApdNextApproverEmail(params: {
 }) {
   const baseUrl = getPublicAppUrl()
   const approvalLink = `${baseUrl}/dashboard/approval`
+  const categoryBadge = resolveApdCategoryBadge(params.requestType)
 
   return sendWorkflowEmail({
     to: params.nextApproverEmail,
@@ -164,6 +180,7 @@ export async function sendApdNextApproverEmail(params: {
       employeeName: params.requesterName,
       requestNumber: params.requestNumber,
       requestType: params.requestType,
+      categoryBadge,
       currentLevelLabel: params.currentLevelLabel,
       approvalLink,
       approvalUrl: approvalLink,
@@ -187,6 +204,7 @@ export async function sendApdRequestApprovedEmail(params: {
 }) {
   const baseUrl = getPublicAppUrl()
   const dashboardLink = `${baseUrl}/dashboard/apd`
+  const categoryBadge = resolveApdCategoryBadge(params.requestType)
 
   return sendWorkflowEmail({
     to: params.requesterEmail,
@@ -197,6 +215,7 @@ export async function sendApdRequestApprovedEmail(params: {
       requestNumber: params.requestNumber,
       approverName: params.approverName,
       requestType: params.requestType,
+      categoryBadge,
       dashboardLink,
       approvalLink: dashboardLink,
       viewLink: dashboardLink,
@@ -219,6 +238,7 @@ export async function sendApdRequestRejectedEmail(params: {
 }) {
   const baseUrl = getPublicAppUrl()
   const dashboardLink = `${baseUrl}/dashboard/apd`
+  const categoryBadge = resolveApdCategoryBadge(params.requestType)
 
   return sendWorkflowEmail({
     to: params.requesterEmail,
@@ -230,6 +250,7 @@ export async function sendApdRequestRejectedEmail(params: {
       approverName: params.approverName,
       reason: params.reason,
       requestType: params.requestType,
+      categoryBadge,
       dashboardLink,
       approvalLink: dashboardLink,
       viewLink: dashboardLink,
@@ -255,6 +276,7 @@ export async function sendApdRequestRevertedEmail(params: {
   const revisionLink = params.requestId
     ? `${baseUrl}/dashboard/apd/new?edit=${params.requestId}&category=${params.requestType?.toLowerCase()}`
     : `${baseUrl}/dashboard/apd`
+  const categoryBadge = resolveApdCategoryBadge(params.requestType)
 
   return sendWorkflowEmail({
     to: params.requesterEmail,
@@ -266,6 +288,7 @@ export async function sendApdRequestRevertedEmail(params: {
       approverName: params.approverName,
       reason: params.reason,
       requestType: params.requestType,
+      categoryBadge,
       revisionLink,
       revisiLink: revisionLink,
       approvalLink: revisionLink,

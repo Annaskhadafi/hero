@@ -390,6 +390,31 @@ export async function resolveWorkflowTemplateContent(request: WorkflowTemplateCo
     defaultDashboardUrl
   ) as string
 
+  const rawRequestType = String(
+    rawVars.requestType ||
+    rawVars.requestCategory ||
+    rawVars.category ||
+    rawVars.categoryBadge ||
+    ''
+  ).trim().toUpperCase()
+
+  let defaultCategoryBadge = ''
+  if (rawRequestType === 'MATERIAL' || rawRequestType.includes('MATERIAL')) {
+    defaultCategoryBadge = 'MATERIAL'
+  } else if (rawRequestType === 'TOOLS' || rawRequestType.includes('TOOL')) {
+    defaultCategoryBadge = 'TOOLS'
+  } else if (rawRequestType === 'APD' || rawRequestType.includes('APD')) {
+    defaultCategoryBadge = 'APD'
+  } else if (request.templateCode?.startsWith('material_tools_')) {
+    defaultCategoryBadge = rawRequestType || 'MATERIAL'
+  } else if (request.templateCode?.startsWith('apd_request_')) {
+    defaultCategoryBadge = rawRequestType || 'APD'
+  } else {
+    defaultCategoryBadge = (rawVars.categoryBadge || rawVars.badgeText || '') as string
+  }
+
+  const resolvedCategoryBadge = (rawVars.categoryBadge || defaultCategoryBadge || '') as string
+
   const variables: TemplateVariables = {
     ...rawVars,
     employeeName: rawVars.employeeName ?? rawVars.requesterName ?? rawVars.targetApproverName ?? rawVars.applicantName ?? '',
@@ -399,6 +424,7 @@ export async function resolveWorkflowTemplateContent(request: WorkflowTemplateCo
     sessionCode: rawVars.sessionCode ?? rawVars.splNumber ?? rawVars.permitNumber ?? '',
     splNumber: rawVars.splNumber ?? rawVars.sessionCode ?? rawVars.permitNumber ?? '',
     permitNumber: rawVars.permitNumber ?? rawVars.splNumber ?? rawVars.sessionCode ?? '',
+    categoryBadge: resolvedCategoryBadge,
     approvalLink: resolvedApprovalLink,
     approvalUrl: resolvedApprovalLink,
     actionUrl: resolvedApprovalLink,
@@ -421,7 +447,14 @@ export async function resolveWorkflowTemplateContent(request: WorkflowTemplateCo
     ? uniqueEmails(splitEmails(request.cc))
     : uniqueEmails([...splitEmails(template?.ccEmail), ...splitEmails(request.cc)])
   const subject = renderTemplate(template?.subject || request.fallbackSubject, variables)
-  const html = renderTemplate(template?.htmlContent || request.fallbackHtml || '', variables, true)
+  let rawHtml = template?.htmlContent || request.fallbackHtml || ''
+  if (resolvedCategoryBadge && (request.templateCode?.startsWith('apd_request_') || request.templateCode?.startsWith('material_tools_'))) {
+    rawHtml = rawHtml.replace(
+      /(<div style="display:inline-block;margin-bottom:14px;border-radius:999px;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;padding:6px 10px;font-size:11px;font-weight:800;letter-spacing:\.08em;text-transform:uppercase">)(?:HSE Safety|HSE SAFETY|Custom)(<\/div>)/gi,
+      `$1{{categoryBadge}}$2`
+    )
+  }
+  const html = renderTemplate(rawHtml, variables, true)
   const text = renderTemplate(template?.textContent || request.fallbackText, variables)
 
   return {

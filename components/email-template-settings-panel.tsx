@@ -103,7 +103,19 @@ function renderTemplatePreview(content: string, values: Record<string, string>) 
     values.viewLink ||
     defaultApprovalUrl;
 
+  const reqType = String(values.requestType || values.category || "").trim().toUpperCase();
+  const defaultCategoryBadge =
+    values.categoryBadge ||
+    (reqType === "MATERIAL" || reqType.includes("MATERIAL")
+      ? "MATERIAL"
+      : reqType === "TOOLS" || reqType.includes("TOOL")
+      ? "TOOLS"
+      : reqType === "APD" || reqType.includes("APD")
+      ? "APD"
+      : "");
+
   const resolvedValues: Record<string, string> = {
+    categoryBadge: defaultCategoryBadge,
     approvalLink: defaultLink,
     approvalUrl: defaultLink,
     actionUrl: defaultLink,

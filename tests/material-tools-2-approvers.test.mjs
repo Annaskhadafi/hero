@@ -94,3 +94,30 @@ test('Mobile request pages pass approverOptions to ApdRequestForm', () => {
   assert.ok(materialContent.includes('approverOptions={approverOptions}'), 'Mobile material page must pass approverOptions')
   assert.ok(apdContent.includes('approverOptions={approverOptions}'), 'Mobile apd page must pass approverOptions')
 })
+
+test('lib/apd-email.ts defines resolveApdCategoryBadge and passes categoryBadge in email variables', () => {
+  const apdEmailPath = path.join(process.cwd(), 'lib/apd-email.ts')
+  const content = fs.readFileSync(apdEmailPath, 'utf8')
+
+  assert.ok(content.includes('export function resolveApdCategoryBadge'), 'Must export resolveApdCategoryBadge')
+  assert.ok(content.includes('categoryBadge = resolveApdCategoryBadge'), 'Must calculate categoryBadge')
+  assert.ok(content.includes('categoryBadge,'), 'Must pass categoryBadge in sendWorkflowEmail variables')
+})
+
+test('lib/workflow-email.ts dynamically resolves categoryBadge and replaces legacy badges in templates', () => {
+  const wfEmailPath = path.join(process.cwd(), 'lib/workflow-email.ts')
+  const content = fs.readFileSync(wfEmailPath, 'utf8')
+
+  assert.ok(content.includes('resolvedCategoryBadge'), 'Must resolve categoryBadge')
+  assert.ok(content.includes('categoryBadge: resolvedCategoryBadge'), 'Must inject categoryBadge to template variables')
+  assert.ok(content.includes('rawHtml.replace('), 'Must replace legacy static badge with dynamic categoryBadge in HTML')
+})
+
+test('lib/email-template-presets.ts uses dynamic categoryBadge in APD and Material/Tools unified templates', () => {
+  const presetsPath = path.join(process.cwd(), 'lib/email-template-presets.ts')
+  const content = fs.readFileSync(presetsPath, 'utf8')
+
+  assert.ok(content.includes('badgeContent = isDynamicBadge ? \'{{categoryBadge}}\' :'), 'Must use {{categoryBadge}} for APD/Material/Tools')
+  assert.ok(content.includes('categoryBadge: \'MATERIAL\''), 'Must have MATERIAL sample badge for material_tools presets')
+  assert.ok(content.includes('categoryBadge: \'APD\''), 'Must have APD sample badge for apd presets')
+})

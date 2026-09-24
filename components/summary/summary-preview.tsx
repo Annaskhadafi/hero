@@ -1,12 +1,11 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   CheckCircle2,
   Clock,
-  Download,
   FilePenLine,
   Loader2,
   Maximize2,
@@ -20,7 +19,6 @@ import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { submitSummaryAction, deleteSummaryDraftAction } from '@/app/dashboard/summary/actions';
-import { downloadElementAsPdf } from '@/lib/pdf-download';
 import { SummaryApprovalDialog } from './summary-approval-dialog';
 import { QTY_ONLY_COLUMNS, SAFETY_SHOES_COL } from '@/lib/summary-constants';
 
@@ -63,11 +61,9 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
   const router = useRouter();
   const [showApprovalDialog, setShowApprovalDialog] = useState(false);
   const [printing, setPrinting] = useState(false);
-  const [downloading, setDownloading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [isZoomModalOpen, setIsZoomModalOpen] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
-  const exportRef = useRef<HTMLDivElement>(null);
 
   const handlePrintInPlace = () => {
     setPrinting(true);
@@ -99,32 +95,6 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
     };
 
     document.body.appendChild(iframe);
-  };
-
-  const handleDownloadPdf = async () => {
-    if (downloading) return;
-    setDownloading(true);
-    const toastId = toast.loading('Menyiapkan file PDF...');
-    try {
-      if (exportRef.current) {
-        const safeSummaryNum = (data.summaryNumber || `summary-${data.id}`).replace(/[^a-zA-Z0-9-_]/g, '_');
-        await downloadElementAsPdf(
-          exportRef.current,
-          `Summary_APD_${safeSummaryNum}.pdf`,
-          { orientation: 'landscape' }
-        );
-        toast.success('File PDF berhasil didownload!', { id: toastId });
-      } else {
-        window.open(`/print/summary/${data.id}`, '_blank');
-        toast.dismiss(toastId);
-      }
-    } catch (err: any) {
-      console.error('Failed to generate PDF:', err);
-      toast.error('Gagal generate PDF langsung, membuka halaman cetak...', { id: toastId });
-      window.open(`/print/summary/${data.id}`, '_blank');
-    } finally {
-      setDownloading(false);
-    }
   };
 
   const handleDeleteDraft = async () => {
@@ -250,7 +220,21 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
 
   // Renders the document sheet (identical to print document)
   const renderDocumentContent = (isForExport = false) => (
-    <div className={`w-full bg-white text-black select-none ${isForExport ? 'w-[1050px] p-8' : 'p-6 sm:p-8 min-w-[950px]'}`} style={{ fontFamily: 'Arial, sans-serif' }}>
+    <div
+      className={`bg-white text-black select-none ${
+        isForExport ? 'w-[1050px] p-5' : 'w-full p-6 sm:p-8 min-w-[950px]'
+      }`}
+      style={{
+        fontFamily: 'Arial, sans-serif',
+        boxSizing: 'border-box',
+        ...(isForExport
+          ? {
+              width: '1050px',
+              padding: '16px 24px',
+            }
+          : {}),
+      }}
+    >
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -276,9 +260,9 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
         <thead>
           <tr>
             <th style={{ ...th, width: '24px' }} rowSpan={2}>No</th>
-            <th style={{ ...th, width: '110px' }} rowSpan={2}>Nama Karyawan</th>
-            <th style={{ ...th, width: '42px' }} rowSpan={2}>SN</th>
-            <th style={{ ...th, width: '46px' }} rowSpan={2}>Site</th>
+            <th style={{ ...th, width: '105px' }} rowSpan={2}>Nama Karyawan</th>
+            <th style={{ ...th, width: '38px' }} rowSpan={2}>SN</th>
+            <th style={{ ...th, width: '70px' }} rowSpan={2}>Site</th>
             {QTY_ONLY_COLUMNS.map(c => (
               <th key={c} style={thVert} rowSpan={2}>
                 <div style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', margin: 'auto', maxHeight: '86px', fontSize: '5.8pt', whiteSpace: 'nowrap', lineHeight: '1' }}>
@@ -287,7 +271,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
               </th>
             ))}
             <th style={th} colSpan={2}>{SAFETY_SHOES_COL}</th>
-            <th style={{ ...th, width: '85px' }} rowSpan={2}>Remarks</th>
+            <th style={{ ...th, width: '70px' }} rowSpan={2}>Remarks</th>
           </tr>
           <tr>
             <th style={{ ...th, width: '22px' }}>QTY</th>
@@ -300,7 +284,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
               <td style={td}>{i + 1}</td>
               <td style={{ ...tdL, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</td>
               <td style={td}>{e.sn}</td>
-              <td style={{ ...td, fontSize: '6.5pt', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.site}</td>
+              <td style={{ ...td, fontSize: '6pt', lineHeight: '1.1', overflow: 'hidden', whiteSpace: 'normal', wordBreak: 'break-word', padding: '1px 2px' }}>{e.site}</td>
               {QTY_ONLY_COLUMNS.map(c => (
                 <td key={c} style={td}>{e.items[c] || ''}</td>
               ))}
@@ -480,22 +464,6 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
             <span>Cetak PDF</span>
           </Button>
 
-          {/* Download PDF */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleDownloadPdf}
-            disabled={downloading}
-            className="h-9 gap-1.5 text-xs font-semibold bg-white text-slate-700 hover:bg-slate-50 border-slate-200 rounded-xl shadow-2xs cursor-pointer"
-          >
-            {downloading ? (
-              <Loader2 className="size-3.5 animate-spin text-blue-600" />
-            ) : (
-              <Download className="size-3.5 text-blue-600" />
-            )}
-            <span>Download PDF</span>
-          </Button>
-
           {/* Hapus Draft / Pending */}
           {(data.status === 'draft' || data.status === 'pending' || data.status === 'pending_approval') && (
             <Button
@@ -604,7 +572,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
               style={{
                 transform: `scale(${zoomLevel})`,
                 transformOrigin: 'top center',
-                width: '1050px',
+                width: '297mm',
                 transition: 'transform 0.1s ease-out',
               }}
               className="rounded-xl shadow-2xl bg-white overflow-hidden my-4"
@@ -624,13 +592,6 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
           onClose={() => setShowApprovalDialog(false)}
         />
       )}
-
-      {/* High-res off-screen container for crisp PDF capture */}
-      <div style={{ position: 'fixed', left: '-9999px', top: '0', zIndex: -9999, overflow: 'hidden' }}>
-        <div ref={exportRef} className="w-[1050px] bg-white">
-          {renderDocumentContent(true)}
-        </div>
-      </div>
     </div>
   );
 }

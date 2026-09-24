@@ -17,7 +17,7 @@ async function uploadSignatureBuffer(
   // 1. Try S3 upload if configured
   if (isS3UploadConfigured()) {
     try {
-      const file = new File([buffer], `signature-${randomUUID().slice(0, 8)}.png`, { type: contentType })
+      const file = new File([new Uint8Array(buffer)], `signature-${randomUUID().slice(0, 8)}.png`, { type: contentType })
       // ponytail: bound this guest upload; tune the limit if storage latency warrants it.
       const result = await uploadAnyFileToS3(file, undefined, AbortSignal.timeout(20_000))
       if (result?.url) {

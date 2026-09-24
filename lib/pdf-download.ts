@@ -43,6 +43,7 @@ export async function generateElementAsPdfBlob(
   })
 
   const imgData = canvas.toDataURL('image/jpeg', 0.98)
+  const canvasRatio = canvas.width / canvas.height
   // ponytail: landscape_pdf_enforcement - strictly honor explicit orientation parameter
   const isLandscape =
     options?.orientation === 'landscape' ||
@@ -57,29 +58,22 @@ export async function generateElementAsPdfBlob(
     format: 'a4',
   })
 
-  // ponytail: full_bleed_landscape_pdf - fill A4 landscape edge-to-edge (0,0) without whitespace letterboxing
-  const canvasWidth = canvas.width
-  const canvasHeight = canvas.height
-  const canvasRatio = canvasWidth / canvasHeight
-  const pageRatio = pdfWidth / pdfHeight
+  // ponytail: print_margin_scaling - fit within A4 printable area with balanced 6mm margins
+  const marginX = isLandscape ? 6 : 8
+  const marginY = isLandscape ? 6 : 8
+  const maxW = pdfWidth - 2 * marginX
+  const maxH = pdfHeight - 2 * marginY
 
-  let imgWidth = pdfWidth
-  let imgHeight = pdfHeight
-  let x = 0
-  let y = 0
+  let imgWidth = maxW
+  let imgHeight = maxW / canvasRatio
 
-  // Maintain exact aspect ratio to prevent stretching / distortion
-  if (Math.abs(canvasRatio - pageRatio) > 0.01) {
-    if (canvasRatio > pageRatio) {
-      imgWidth = pdfWidth
-      imgHeight = pdfWidth / canvasRatio
-      y = isLandscape ? Math.min(8, (pdfHeight - imgHeight) / 2) : (pdfHeight - imgHeight) / 2
-    } else {
-      imgHeight = pdfHeight
-      imgWidth = pdfHeight * canvasRatio
-      x = (pdfWidth - imgWidth) / 2
-    }
+  if (imgHeight > maxH) {
+    imgHeight = maxH
+    imgWidth = maxH * canvasRatio
   }
+
+  const x = (pdfWidth - imgWidth) / 2
+  const y = (pdfHeight - imgHeight) / 2
 
   pdf.addImage(imgData, 'JPEG', x, y, imgWidth, imgHeight)
 

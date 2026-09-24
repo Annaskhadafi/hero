@@ -128,9 +128,9 @@ export default async function PrintSummaryPage({
         <thead>
           <tr>
             <th style={{ ...th, width: '24px' }} rowSpan={2}>No</th>
-            <th style={{ ...th, width: '110px' }} rowSpan={2}>Nama Karyawan</th>
-            <th style={{ ...th, width: '42px' }} rowSpan={2}>SN</th>
-            <th style={{ ...th, width: '46px' }} rowSpan={2}>Site</th>
+            <th style={{ ...th, width: '105px' }} rowSpan={2}>Nama Karyawan</th>
+            <th style={{ ...th, width: '38px' }} rowSpan={2}>SN</th>
+            <th style={{ ...th, width: '70px' }} rowSpan={2}>Site</th>
             {QTY_ONLY_COLUMNS.map(c => (
               <th key={c} style={thVert} rowSpan={2}>
                 <div style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', margin: 'auto', maxHeight: '86px', fontSize: '5.8pt', whiteSpace: 'nowrap', lineHeight: '1' }}>
@@ -139,7 +139,7 @@ export default async function PrintSummaryPage({
               </th>
             ))}
             <th style={th} colSpan={2}>{SAFETY_SHOES_COL}</th>
-            <th style={{ ...th, width: '85px' }} rowSpan={2}>Remarks</th>
+            <th style={{ ...th, width: '70px' }} rowSpan={2}>Remarks</th>
           </tr>
           <tr>
             <th style={{ ...th, width: '22px' }}>QTY</th>
@@ -152,7 +152,7 @@ export default async function PrintSummaryPage({
               <td style={td}>{i + 1}</td>
               <td style={{ ...tdL, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</td>
               <td style={td}>{e.sn}</td>
-              <td style={{ ...td, fontSize: '6.5pt', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.site}</td>
+              <td style={{ ...td, fontSize: '6pt', lineHeight: '1.1', overflow: 'hidden', whiteSpace: 'normal', wordBreak: 'break-word', padding: '1px 2px' }}>{e.site}</td>
               {QTY_ONLY_COLUMNS.map(c => (
                 <td key={c} style={td}>{e.items[c] || ''}</td>
               ))}

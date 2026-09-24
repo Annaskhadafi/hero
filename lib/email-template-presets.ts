@@ -3459,9 +3459,6 @@ Tim Human Capital`,
     description: 'Notifikasi hasil MCU Unfit/Perlu Review ke karyawan + HC.',
     variables: ['employeeName', 'mcuDate', 'kategori', 'kesimpulan', 'saran'],
     sampleValues: {
-      employeeName: 'Dina Pertiwi',
-      mcuDate: '25 Juni 2026',
-      kategori: 'Unfit',
       kesimpulan: 'Ditemukan indikasi hipertensi dan kolesterol tinggi.',
       saran: 'Konsultasi dokter spesialis dalam 2 minggu dan kontrol tekanan darah secara berkala.',
     },
@@ -3476,13 +3473,14 @@ Tim Human Capital`,
     subject: 'Permohonan {{requestType}} Baru: {{requestNumber}} - {{employeeName}}',
     htmlContent: 'Yth. {{approverName}},<br><br>Karyawan <b>{{employeeName}}</b> telah mengajukan permohonan <b>{{requestType}}</b> dengan nomor permohonan <b>{{requestNumber}}</b> yang memerlukan peninjauan dan persetujuan Anda.<br><br><b>Detail Permohonan:</b><br>No. Permohonan: {{requestNumber}}<br>Kategori: {{requestType}}<br>Pemohon: {{employeeName}}<br><br>Silakan buka tautan berikut untuk melakukan review dan memberikan persetujuan:<br><div style="margin: 16px 0;"><a href="{{approvalLink}}" style="background-color: #2563eb; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Buka Inbox Approval</a></div><br><small style="color: #64748b;">Atau salin tautan: <a href="{{approvalLink}}">{{approvalLink}}</a></small><br><br>Demikian pemberitahuan ini disampaikan. Terima kasih.',
     textContent: 'Yth. {{approverName}},\n\nKaryawan {{employeeName}} telah mengajukan permohonan {{requestType}} dengan nomor permohonan {{requestNumber}} yang memerlukan peninjauan dan persetujuan Anda.\n\nDetail Permohonan:\nNo. Permohonan: {{requestNumber}}\nKategori: {{requestType}}\nPemohon: {{employeeName}}\n\nSilakan tinjau dan berikan persetujuan melalui tautan berikut:\n{{approvalLink}}\n\nDemikian pemberitahuan ini disampaikan. Terima kasih.',
-    description: 'Notifikasi saat permohonan item HSE baru diajukan',
-    variables: ['employeeName', 'requestNumber', 'approverName', 'requestType', 'approvalLink'],
+    description: 'Notifikasi saat permohonan APD/Material/Tools baru diajukan ke approver',
+    variables: ['employeeName', 'requestNumber', 'approverName', 'requestType', 'categoryBadge', 'approvalLink'],
     sampleValues: {
       employeeName: 'Budi Santoso',
       requestNumber: 'APD-2026-0001',
       approverName: 'Agus Subiyanto',
       requestType: 'APD',
+      categoryBadge: 'APD',
       approvalLink: 'https://hero.chitraparatama.com/dashboard/approval',
     }
   },
@@ -3505,13 +3503,15 @@ Disetujui Oleh: {{approverName}}
 Status: DISETUJUI
 
 Demikian pemberitahuan ini disampaikan. Terima kasih.`,
-    description: 'Notifikasi saat permohonan item HSE disetujui',
-    variables: ['employeeName', 'requestNumber', 'approverName', 'requestType'],
+    description: 'Notifikasi saat permohonan APD/Material/Tools disetujui',
+    variables: ['employeeName', 'requestNumber', 'approverName', 'requestType', 'categoryBadge', 'dashboardLink'],
     sampleValues: {
       employeeName: 'Budi Santoso',
       requestNumber: 'APD-2026-0001',
       approverName: 'Agus Subiyanto',
       requestType: 'APD',
+      categoryBadge: 'APD',
+      dashboardLink: 'https://hero.chitraparatama.com/dashboard/apd',
     }
   },
   {
@@ -3535,14 +3535,15 @@ Ditolak Oleh: {{approverName}}
 Status: DITOLAK
 
 Demikian pemberitahuan ini disampaikan. Terima kasih.`,
-    description: 'Notifikasi saat permohonan item HSE ditolak',
-    variables: ['employeeName', 'requestNumber', 'approverName', 'reason', 'requestType'],
+    description: 'Notifikasi saat permohonan APD/Material/Tools ditolak',
+    variables: ['employeeName', 'requestNumber', 'approverName', 'reason', 'requestType', 'categoryBadge'],
     sampleValues: {
       employeeName: 'Budi Santoso',
       requestNumber: 'APD-2026-0001',
       approverName: 'Agus Subiyanto',
       reason: 'Barang sedang tidak tersedia',
       requestType: 'APD',
+      categoryBadge: 'APD',
     }
   },
   {
@@ -3555,14 +3556,15 @@ Demikian pemberitahuan ini disampaikan. Terima kasih.`,
     subject: '[Perlu Revisi] Permohonan {{requestType}}: {{requestNumber}}',
     htmlContent: 'Yth. {{employeeName}},<br><br>Permohonan {{requestType}} Anda dengan nomor permohonan <b>{{requestNumber}}</b> telah <b>DIKEMBALIKAN UNTUK REVISI (Reverted)</b> oleh {{approverName}} dengan catatan sebagai berikut:<br><blockquote style="border-left: 4px solid #f59e0b; padding-left: 12px; margin: 12px 0; color: #b45309; background-color: #fffbeb; padding: 8px 12px; border-radius: 4px;"><i>{{reason}}</i></blockquote><br>Silakan perbaiki data permohonan melalui tautan di bawah ini:<br><div style="margin: 16px 0;"><a href="{{revisionLink}}" style="background-color: #2563eb; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Revisi Permohonan Sekarang</a></div><br><small style="color: #64748b;">Atau salin tautan: <a href="{{revisionLink}}">{{revisionLink}}</a></small><br><br>Demikian pemberitahuan ini disampaikan. Terima kasih.',
     textContent: 'Yth. {{employeeName}},\n\nPermohonan {{requestType}} Anda dengan nomor permohonan {{requestNumber}} telah DIKEMBALIKAN UNTUK REVISI (Reverted) oleh {{approverName}} dengan catatan:\n{{reason}}\n\nSilakan perbaiki data permohonan melalui tautan berikut:\n{{revisionLink}}\n\nDemikian pemberitahuan ini disampaikan. Terima kasih.',
-    description: 'Notifikasi saat permohonan APD dikembalikan oleh approver untuk diperbaiki/revisi',
-    variables: ['employeeName', 'requestNumber', 'approverName', 'reason', 'requestType', 'revisionLink'],
+    description: 'Notifikasi saat permohonan APD/Material/Tools dikembalikan oleh approver untuk diperbaiki/revisi',
+    variables: ['employeeName', 'requestNumber', 'approverName', 'reason', 'requestType', 'categoryBadge', 'revisionLink'],
     sampleValues: {
       employeeName: 'Budi Santoso',
       requestNumber: 'APD-2026-0001',
       approverName: 'Agus Subiyanto',
       reason: 'Ukuran sepatu belum sesuai spesifikasi',
       requestType: 'APD',
+      categoryBadge: 'APD',
       revisionLink: 'https://hero.chitraparatama.com/dashboard/apd/new?edit=1&category=apd',
     }
   },
@@ -3577,10 +3579,11 @@ Demikian pemberitahuan ini disampaikan. Terima kasih.`,
     htmlContent: 'Yth. Bapak/Ibu Tim HSE & PIC APD,<br><br>Diberitahukan bahwa jadwal pergantian berkala APD untuk karyawan <b>{{employeeName}}</b> (Item: <b>{{itemName}}</b>) telah memasuki batas waktu penggantian (Siklus 8 Bulan).<br><br>Mohon untuk segera memproses pergantian dan pengadaan APD terkait.<br><br>Demikian pemberitahuan ini disampaikan. Terima kasih.',
     textContent: 'Yth. Bapak/Ibu Tim HSE & PIC APD,\n\nDiberitahukan bahwa jadwal pergantian berkala APD untuk karyawan {{employeeName}} (Item: {{itemName}}) telah memasuki batas waktu penggantian (Siklus 8 Bulan).\n\nMohon untuk segera memproses pergantian dan pengadaan APD terkait.\n\nDemikian pemberitahuan ini disampaikan. Terima kasih.',
     description: 'Notifikasi pengingat pergantian APD untuk admin',
-    variables: ['employeeName', 'itemName'],
+    variables: ['employeeName', 'itemName', 'categoryBadge'],
     sampleValues: {
       employeeName: 'Budi Santoso',
       itemName: 'Sepatu Safety',
+      categoryBadge: 'APD',
     }
   },
   {
@@ -3594,13 +3597,14 @@ Demikian pemberitahuan ini disampaikan. Terima kasih.`,
     htmlContent: 'Yth. {{approverName}},<br><br>Karyawan <b>{{employeeName}}</b> (Section: {{sectionName}}) telah mengajukan permohonan <b>{{requestType}}</b> dengan nomor tiket <b>{{requestNumber}}</b> yang memerlukan persetujuan Anda sebagai Section Head.<br><br><b>Detail Permohonan:</b><br>No. Permohonan: {{requestNumber}}<br>Kategori: {{requestType}}<br>Pemohon: {{employeeName}}<br>Section: {{sectionName}}<br><br>Silakan buka tautan berikut untuk melakukan review dan memberikan persetujuan:<br><div style="margin: 16px 0;"><a href="{{approvalLink}}" style="background-color: #2563eb; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Buka Inbox Approval</a></div><br><small style="color: #64748b;">Atau salin tautan: <a href="{{approvalLink}}">{{approvalLink}}</a></small><br><br>Demikian pemberitahuan ini disampaikan. Terima kasih.',
     textContent: 'Yth. {{approverName}},\n\nKaryawan {{employeeName}} (Section: {{sectionName}}) telah mengajukan permohonan {{requestType}} dengan nomor tiket {{requestNumber}} yang memerlukan persetujuan Anda sebagai Section Head.\n\nDetail Permohonan:\nNo. Permohonan: {{requestNumber}}\nKategori: {{requestType}}\nPemohon: {{employeeName}}\nSection: {{sectionName}}\n\nSilakan review dan berikan persetujuan melalui tautan berikut:\n{{approvalLink}}\n\nDemikian pemberitahuan ini disampaikan. Terima kasih.',
     description: 'Notifikasi saat permohonan Material atau Tools baru diajukan ke Section Head dengan CC ke Muhammad Taufik Akbar',
-    variables: ['employeeName', 'requestNumber', 'approverName', 'requestType', 'sectionName', 'approvalLink'],
+    variables: ['employeeName', 'requestNumber', 'approverName', 'requestType', 'sectionName', 'categoryBadge', 'approvalLink'],
     sampleValues: {
       employeeName: 'Budi Santoso',
       requestNumber: 'MAT-2026-0001',
       approverName: 'M. Nurudin',
       requestType: 'MATERIAL',
       sectionName: 'Repair / Retread Operation',
+      categoryBadge: 'MATERIAL',
       approvalLink: 'https://hero.chitraparatama.com/dashboard/approval',
     }
   },
@@ -3615,13 +3619,14 @@ Demikian pemberitahuan ini disampaikan. Terima kasih.`,
     htmlContent: 'Yth. {{employeeName}},<br><br>Permohonan <b>{{requestType}}</b> Anda dengan nomor tiket <b>{{requestNumber}}</b> telah <b>DISETUJUI</b> oleh Section Head ({{approverName}}).<br><br><b>Detail Permohonan:</b><br>No. Permohonan: {{requestNumber}}<br>Kategori: {{requestType}}<br>Disetujui Oleh: {{approverName}}<br>Status: DISETUJUI<br><br>Lihat status permohonan di dashboard:<br><div style="margin: 16px 0;"><a href="{{dashboardLink}}" style="background-color: #2563eb; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Lihat Permohonan</a></div><br><small style="color: #64748b;">Atau salin tautan: <a href="{{dashboardLink}}">{{dashboardLink}}</a></small><br><br>Demikian pemberitahuan ini disampaikan. Terima kasih.',
     textContent: 'Yth. {{employeeName}},\n\nPermohonan {{requestType}} Anda dengan nomor tiket {{requestNumber}} telah DISETUJUI oleh Section Head ({{approverName}}).\n\nDetail Permohonan:\nNo. Permohonan: {{requestNumber}}\nKategori: {{requestType}}\nDisetujui Oleh: {{approverName}}\nStatus: DISETUJUI\n\nLihat status permohonan:\n{{dashboardLink}}\n\nDemikian pemberitahuan ini disampaikan. Terima kasih.',
     description: 'Notifikasi saat permohonan Material atau Tools disetujui oleh Section Head dengan CC ke Muhammad Taufik Akbar',
-    variables: ['employeeName', 'requestNumber', 'approverName', 'requestType', 'sectionName', 'dashboardLink'],
+    variables: ['employeeName', 'requestNumber', 'approverName', 'requestType', 'sectionName', 'categoryBadge', 'dashboardLink'],
     sampleValues: {
       employeeName: 'Budi Santoso',
       requestNumber: 'MAT-2026-0001',
       approverName: 'M. Nurudin',
       requestType: 'MATERIAL',
       sectionName: 'Repair / Retread Operation',
+      categoryBadge: 'MATERIAL',
       dashboardLink: 'https://hero.chitraparatama.com/dashboard/apd',
     }
   },
@@ -3933,6 +3938,9 @@ function formatEmailBody(value: string, templateCode: string, templateType: stri
 
 function inferTemplateFeature(templateCode: string) {
   const prefixes: [string, string][] = [
+    ['material_tools_', 'Material & Tools'],
+    ['apd_summary_', 'Summary APD'],
+    ['apd_request_', 'HSE Safety'],
     ['workflow_five_r_report_', 'Quality Management (5R)'],
     ['five_r_', 'Quality Management (5R)'],
     ['chitralearning_', 'ChitraLearning LMS'],
@@ -3962,7 +3970,6 @@ function inferTemplateFeature(templateCode: string) {
     ['custom_bulk', 'HC Recruitment'],
     ['mcu_', 'HC Recruitment'],
     ['hr_counseling_', 'HR Counseling'],
-    ['apd_request_', 'HSE Safety'],
     ['form_wo_', 'Repair & Retread'],
   ]
   return prefixes.find(([prefix]) => templateCode.startsWith(prefix))?.[1] ?? 'Custom'
@@ -3981,6 +3988,14 @@ function buildUnifiedEmailHtml(preset: EmailTemplatePreset) {
       '{{tableContentHtml}}'
     ).replace('{{tableContentText}}', '{{tableContentHtml}}')
   }
+
+  const isDynamicBadge =
+    preset.templateCode.startsWith('apd_request_') ||
+    preset.templateCode.startsWith('material_tools_') ||
+    preset.templateCode === 'apd_reminder_replacement'
+
+  const badgeContent = isDynamicBadge ? '{{categoryBadge}}' : escapeEmailHtml(feature)
+
   return `<div style="margin:0;padding:0;background:#e5e7eb;font-family:'Segoe UI',Arial,sans-serif;color:#0f172a">
 <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#e5e7eb;padding:28px 12px">
 <tr><td align="center">
@@ -4000,7 +4015,7 @@ function buildUnifiedEmailHtml(preset: EmailTemplatePreset) {
 </div>
 </td></tr>
 <tr><td style="padding:28px 28px 10px">
-<div style="display:inline-block;margin-bottom:14px;border-radius:999px;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;padding:6px 10px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase">${escapeEmailHtml(feature)}</div>
+<div style="display:inline-block;margin-bottom:14px;border-radius:999px;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;padding:6px 10px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase">${badgeContent}</div>
 <h2 style="margin:0 0 10px;color:#0f172a;font-size:22px;line-height:1.28;font-weight:800;letter-spacing:-.02em">${escapeEmailHtml(preset.subject)}</h2>
 <p style="margin:0 0 20px;color:#64748b;font-size:13px;line-height:1.6">${escapeEmailHtml(preset.description)}</p>
 <div style="height:1px;background:linear-gradient(90deg,#1d4ed8,#e2e8f0);margin:0 0 22px"></div>
@@ -4137,6 +4152,9 @@ export const EMAIL_TEMPLATE_PRESET_MAP = Object.fromEntries(
 ) satisfies Record<string, EmailTemplatePreset>
 
 const TEMPLATE_FEATURE_PREFIXES: [string, string][] = [
+  ["material_tools_", "Material & Tools"],
+  ["apd_summary_", "Summary APD"],
+  ["apd_request_", "HSE Safety"],
   ["workflow_five_r_report_", "Quality Management (5R)"],
   ["five_r_", "Quality Management (5R)"],
   ["chitralearning_", "ChitraLearning LMS"],
@@ -4166,8 +4184,6 @@ const TEMPLATE_FEATURE_PREFIXES: [string, string][] = [
   ["custom_bulk", "HC Recruitment"],
   ["mcu_", "HC Recruitment"],
   ["hr_counseling_", "HR Counseling"],
-  ["apd_request_", "HSE Safety"],
-  ["apd_summary_", "HSE Safety"],
   ["rfr_", "HC Recruitment (RFR)"],
   ["form_wo_", "Central Services (Form WO)"],
   ["sop_win_request_", "SOP / WIN / POL"],

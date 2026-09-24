@@ -138,6 +138,7 @@ export async function getSectionsWithApprovedRequests() {
 
         const [countRow] = await db.select({
           count: sql<number>`count(*)::int`,
+          latestReqAt: sql<Date | null>`MAX(COALESCE(${apdRequests.updatedAt}, ${apdRequests.createdAt}))`,
         }).from(apdRequests)
           .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
           .innerJoin(sites, eq(apdRequests.siteId, sites.id))
@@ -150,6 +151,7 @@ export async function getSectionsWithApprovedRequests() {
           ));
 
         const approvedCount = countRow?.count || 0;
+        const latestApprovedReqAt = countRow?.latestReqAt || null;
 
         const [existingSummary] = await db.select({
           id: apdSummaries.id,
@@ -161,10 +163,19 @@ export async function getSectionsWithApprovedRequests() {
             inArray(apdSummaries.sectionId, actualServiceIds),
             eq(apdSummaries.targetSite, targetSite)
           ))
-          .orderBy(desc(apdSummaries.createdAt))
+          .orderBy(desc(apdSummaries.id))
           .limit(1);
 
         if (approvedCount > 0 || existingSummary) {
+          const summaryTime = existingSummary?.updatedAt || existingSummary?.createdAt || null;
+          const reqTime = latestApprovedReqAt ? new Date(latestApprovedReqAt) : null;
+          let latestActivityAt: Date | null = null;
+          if (summaryTime && reqTime) {
+            latestActivityAt = new Date(Math.max(new Date(summaryTime).getTime(), reqTime.getTime()));
+          } else {
+            latestActivityAt = summaryTime || reqTime || null;
+          }
+
           results.push({
             id: 33, // Primary section ID for Service Operation
             name: 'Service Operation',
@@ -175,7 +186,7 @@ export async function getSectionsWithApprovedRequests() {
             approvedCount,
             summaryStatus: existingSummary?.status || null,
             summaryId: existingSummary?.id || null,
-            latestActivityAt: existingSummary?.updatedAt || existingSummary?.createdAt || null,
+            latestActivityAt,
           });
         }
       }
@@ -188,6 +199,7 @@ export async function getSectionsWithApprovedRequests() {
     const counts = await db.select({
       isVale: sql<boolean>`${sites.name} ILIKE '%vale%' OR ${sites.name} = 'VALE'`,
       count: sql<number>`count(*)::int`,
+      latestReqAt: sql<Date | null>`MAX(COALESCE(${apdRequests.updatedAt}, ${apdRequests.createdAt}))`,
     }).from(apdRequests)
       .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
       .innerJoin(sites, eq(apdRequests.siteId, sites.id))
@@ -200,10 +212,18 @@ export async function getSectionsWithApprovedRequests() {
       .groupBy(sql`${sites.name} ILIKE '%vale%' OR ${sites.name} = 'VALE'`);
 
     let valeCount = 0;
+    let valeLatestReqAt: Date | null = null;
     let gabunganCount = 0;
+    let gabunganLatestReqAt: Date | null = null;
+
     for (const c of counts) {
-      if (c.isVale) valeCount += c.count;
-      else gabunganCount += c.count;
+      if (c.isVale) {
+        valeCount += c.count;
+        if (c.latestReqAt) valeLatestReqAt = new Date(c.latestReqAt);
+      } else {
+        gabunganCount += c.count;
+        if (c.latestReqAt) gabunganLatestReqAt = new Date(c.latestReqAt);
+      }
     }
 
     const [existingValeSummary] = await db.select({
@@ -213,7 +233,7 @@ export async function getSectionsWithApprovedRequests() {
       updatedAt: apdSummaries.updatedAt,
     }).from(apdSummaries)
       .where(and(eq(apdSummaries.sectionId, section.id), eq(apdSummaries.targetSite, 'VALE')))
-      .orderBy(desc(apdSummaries.createdAt))
+      .orderBy(desc(apdSummaries.id))
       .limit(1);
 
     const [existingGabunganSummary] = await db.select({
@@ -223,40 +243,67 @@ export async function getSectionsWithApprovedRequests() {
       updatedAt: apdSummaries.updatedAt,
     }).from(apdSummaries)
       .where(and(eq(apdSummaries.sectionId, section.id), eq(apdSummaries.targetSite, 'GABUNGAN')))
-      .orderBy(desc(apdSummaries.createdAt))
+      .orderBy(desc(apdSummaries.id))
       .limit(1);
 
     if (valeCount > 0 || existingValeSummary) {
+      const summaryTime = existingValeSummary?.updatedAt || existingValeSummary?.createdAt || null;
+      const reqTime = valeLatestReqAt;
+      let latestActivityAt: Date | null = null;
+      if (summaryTime && reqTime) {
+        latestActivityAt = new Date(Math.max(new Date(summaryTime).getTime(), reqTime.getTime()));
+      } else {
+        latestActivityAt = summaryTime || reqTime || null;
+      }
+
       results.push({
         ...section,
         targetSite: 'VALE',
         approvedCount: valeCount,
         summaryStatus: existingValeSummary?.status || null,
         summaryId: existingValeSummary?.id || null,
-        latestActivityAt: existingValeSummary?.updatedAt || existingValeSummary?.createdAt || null,
+        latestActivityAt,
       });
     }
     
     if (gabunganCount > 0 || existingGabunganSummary) {
+      const summaryTime = existingGabunganSummary?.updatedAt || existingGabunganSummary?.createdAt || null;
+      const reqTime = gabunganLatestReqAt;
+      let latestActivityAt: Date | null = null;
+      if (summaryTime && reqTime) {
+        latestActivityAt = new Date(Math.max(new Date(summaryTime).getTime(), reqTime.getTime()));
+      } else {
+        latestActivityAt = summaryTime || reqTime || null;
+      }
+
       results.push({
         ...section,
         targetSite: 'GABUNGAN',
         approvedCount: gabunganCount,
         summaryStatus: existingGabunganSummary?.status || null,
         summaryId: existingGabunganSummary?.id || null,
-        latestActivityAt: existingGabunganSummary?.updatedAt || existingGabunganSummary?.createdAt || null,
+        latestActivityAt,
       });
     }
   }
 
-  // Sort: Newest summary activity (or highest summaryId) at the top, then sections with uncreated approved requests
+  // Sort:
+  // 1. Prioritize sections that have approved requests NOT YET generated into a summary ("Belum Dibuat") at the very top (No. 1)
+  // 2. Then sort by latestActivityAt descending (newest activity / approval date first)
+  // 3. Then by summaryId descending (newest generated summary first)
   return results.sort((a, b) => {
+    const aNeedsGen = (!a.summaryStatus && a.approvedCount > 0) ? 1 : 0;
+    const bNeedsGen = (!b.summaryStatus && b.approvedCount > 0) ? 1 : 0;
+    if (bNeedsGen !== aNeedsGen) return bNeedsGen - aNeedsGen;
+
     const aTime = a.latestActivityAt ? new Date(a.latestActivityAt).getTime() : 0;
     const bTime = b.latestActivityAt ? new Date(b.latestActivityAt).getTime() : 0;
     if (bTime !== aTime) return bTime - aTime;
+
     const aSumId = a.summaryId || 0;
     const bSumId = b.summaryId || 0;
     if (bSumId !== aSumId) return bSumId - aSumId;
+
     return b.approvedCount - a.approvedCount;
   });
 }
@@ -287,6 +334,7 @@ export async function getPendingRequestsForSection(sectionId: number, targetSite
     requestId: apdRequests.id,
     requestNumber: apdRequests.requestNumber,
     requestDate: apdRequests.requestDate,
+    updatedAt: apdRequests.updatedAt,
     notes: apdRequests.notes,
     employeeId: employees.id,
     employeeName: employees.name,
@@ -305,7 +353,7 @@ export async function getPendingRequestsForSection(sectionId: number, targetSite
       sql`(${apdRequests.requestCategory} IS NULL OR UPPER(${apdRequests.requestCategory}) NOT IN ('TOOLS', 'MATERIAL'))`,
       isValeQuery
     ))
-    .orderBy(asc(employees.name));
+    .orderBy(desc(apdRequests.updatedAt), desc(apdRequests.id));
 
   const results: PendingSummaryRequest[] = [];
 
@@ -420,7 +468,7 @@ export async function generateSummary(
       sql`(${apdRequests.requestCategory} IS NULL OR UPPER(${apdRequests.requestCategory}) NOT IN ('TOOLS', 'MATERIAL'))`,
       isValeQuery
     ))
-    .orderBy(asc(employees.name));
+    .orderBy(desc(apdRequests.updatedAt), desc(apdRequests.id));
 
   if (options?.selectedRequests && options.selectedRequests.length > 0) {
     const selectedIds = new Set(options.selectedRequests.map(r => r.requestId));
@@ -1370,8 +1418,16 @@ export async function getSummaryDetails(summaryId: number) {
     }
   }
 
+  const isServiceCombined =
+    summary.sectionId === 33 ||
+    summary.sectionId === 34 ||
+    (summary.sectionName && summary.sectionName.toLowerCase().includes('service operation'));
+
+  const resolvedSectionName = isServiceCombined ? 'Service Operation' : summary.sectionName;
+
   return {
     ...summary,
+    sectionName: resolvedSectionName,
     generatedByName: summary.generatedByName || 'Staff',
     generatedByJobTitle: summary.generatedByJobTitle || '',
     departmentName: department?.name || '',

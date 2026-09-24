@@ -137,13 +137,13 @@ test('Material and Tools email handlers include CC to Muhammad Taufik Akbar', ()
   )
 })
 
-test('Admin actions CC Muhammad Taufik Akbar on Material and Tools reject, revert, and approval', () => {
+test('Admin actions resolve centralized Material and Tools notification config on reject, revert, and approval', () => {
   const adminActionsPath = path.join(process.cwd(), 'app/dashboard/admin-actions.ts')
   const content = fs.readFileSync(adminActionsPath, 'utf8')
 
   assert.ok(
-    content.includes("isMaterialOrTools ? ['muhammad.akbar@chitraparatama.co.id'] : undefined"),
-    'Admin actions must CC muhammad.akbar@chitraparatama.co.id on reject and revert'
+    content.includes('getMaterialToolsNotificationConfigData'),
+    'Admin actions must resolve centralized Material and Tools notification config on reject and revert'
   )
 })
 
