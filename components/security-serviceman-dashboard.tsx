@@ -28,6 +28,10 @@ import {
   LabelList,
 } from 'recharts'
 import type { SecurityUserRecord } from '@/lib/hero-admin'
+import {
+  SecurityExternalUsersList,
+  isExternalUserLocation,
+} from '@/components/security-external-users-list'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -68,10 +72,29 @@ function isContract(status: string | null | undefined): boolean {
 }
 
 export function SecurityServicemanDashboard({ users }: SecurityServicemanDashboardProps) {
-  // Only include active employees
-  const activeUsers = useMemo(() => {
-    return users.filter((u) => u.isActive !== false && !u.status?.toLowerCase().includes('inactive') && !u.status?.toLowerCase().includes('non'))
+  // Separate internal employees from external vendor personnel
+  const { internalUsers, externalUsers } = useMemo(() => {
+    const internal: SecurityUserRecord[] = []
+    const external: SecurityUserRecord[] = []
+    for (const u of users) {
+      if (isExternalUserLocation(u)) {
+        external.push(u)
+      } else {
+        internal.push(u)
+      }
+    }
+    return { internalUsers: internal, externalUsers: external }
   }, [users])
+
+  // Only include active internal employees
+  const activeUsers = useMemo(() => {
+    return internalUsers.filter(
+      (u) =>
+        u.isActive !== false &&
+        !u.status?.toLowerCase().includes('inactive') &&
+        !u.status?.toLowerCase().includes('non')
+    )
+  }, [internalUsers])
 
   // Get all unique departments and sections
   const uniqueDepartments = useMemo(() => {
@@ -649,6 +672,9 @@ export function SecurityServicemanDashboard({ users }: SecurityServicemanDashboa
           </div>
         </div>
       </div>
+
+      {/* External / Vendor Personnel List */}
+      <SecurityExternalUsersList users={externalUsers} />
     </div>
   )
 }

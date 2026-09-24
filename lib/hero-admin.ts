@@ -1,5 +1,6 @@
 import { cache } from 'react'
 import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, lte, notInArray, or, sql } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import Fuse from 'fuse.js'
 import { db } from '@/db'
 import {
@@ -12,6 +13,7 @@ import {
   emailSmtpSettings,
   emailTemplates,
   employees,
+  employeeLocationTransfers,
   hseIncidents,
   hseObservations,
   masterAttendanceShifts,
@@ -7648,6 +7650,79 @@ export async function getSecurityUsersData() {
     permanentDate: row.permanentDate ?? null,
     birthDate: row.birthDate ?? null,
   }))
+}
+
+export interface EmployeeLocationTransferRecord {
+  id: number
+  employeeId: number
+  employeeName: string
+  employeeSn: string
+  fromSiteId: number | null
+  fromSiteName: string | null
+  toSiteId: number
+  toSiteName: string
+  reason: string
+  transferDate: Date
+  actionByName: string
+  actionByUserId: string | null
+  createdAt: Date
+}
+
+export async function recordEmployeeLocationTransfer(params: {
+  employeeId: number
+  fromSiteId: number | null
+  toSiteId: number
+  reason?: string
+  actionByUserId?: string | null
+  actionByName?: string
+}) {
+  if (params.fromSiteId === params.toSiteId) return null
+  if (params.reason && params.reason !== 'Pemindahan Lokasi') return null
+
+  const [inserted] = await db
+    .insert(employeeLocationTransfers)
+    .values({
+      employeeId: params.employeeId,
+      fromSiteId: params.fromSiteId,
+      toSiteId: params.toSiteId,
+      reason: params.reason || 'Pemindahan Lokasi',
+      transferDate: new Date(),
+      actionByUserId: params.actionByUserId || null,
+      actionByName: params.actionByName || 'Admin',
+    })
+    .returning()
+
+  return inserted
+}
+
+export async function getEmployeeLocationTransfersData(): Promise<EmployeeLocationTransferRecord[]> {
+  const fromSites = alias(sites, 'fromSites')
+  const toSites = alias(sites, 'toSites')
+
+  const rows = await db
+    .select({
+      id: employeeLocationTransfers.id,
+      employeeId: employeeLocationTransfers.employeeId,
+      employeeName: employees.name,
+      employeeSn: employees.employeeSn,
+      fromSiteId: employeeLocationTransfers.fromSiteId,
+      fromSiteName: fromSites.name,
+      toSiteId: employeeLocationTransfers.toSiteId,
+      toSiteName: toSites.name,
+      reason: employeeLocationTransfers.reason,
+      transferDate: employeeLocationTransfers.transferDate,
+      actionByName: employeeLocationTransfers.actionByName,
+      actionByUserId: employeeLocationTransfers.actionByUserId,
+      createdAt: employeeLocationTransfers.createdAt,
+    })
+    .from(employeeLocationTransfers)
+    .innerJoin(employees, eq(employeeLocationTransfers.employeeId, employees.id))
+    .leftJoin(fromSites, eq(employeeLocationTransfers.fromSiteId, fromSites.id))
+    .innerJoin(toSites, eq(employeeLocationTransfers.toSiteId, toSites.id))
+    .where(eq(employeeLocationTransfers.reason, 'Pemindahan Lokasi'))
+    .orderBy(desc(employeeLocationTransfers.transferDate), desc(employeeLocationTransfers.id))
+
+  return rows
 }
 
 export async function getSecurityRolesData() {

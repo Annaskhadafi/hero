@@ -241,6 +241,7 @@ import {
   getUserAccessibleSiteIds,
   hasGlobalDataAccess,
 } from '@/lib/hero-access'
+import { recordEmployeeLocationTransfer } from '@/lib/hero-admin'
 
 async function requireSchedulingTimesheetAccess(
   permission: 'edit' | 'finalize' = 'edit',
@@ -698,9 +699,11 @@ async function syncScheduleV2EmployeeSiteAcrossPlans(
     }
 
     if (sourceSiteId == null) return
+    const currentPeriodStr = new Date().toISOString().slice(0, 7)
     const sourcePlans = await tx
       .select({
         id: timesheetSchedulingPlansV2.id,
+        period: timesheetSchedulingPlansV2.period,
         draftSchedule: timesheetSchedulingPlansV2.draftSchedule,
         activeSchedule: timesheetSchedulingPlansV2.activeSchedule,
       })
@@ -708,6 +711,8 @@ async function syncScheduleV2EmployeeSiteAcrossPlans(
       .where(eq(timesheetSchedulingPlansV2.siteId, sourceSiteId))
 
     for (const plan of sourcePlans) {
+      // Keep roster history intact for current and past periods; only remove from future periods!
+      if (plan.period <= currentPeriodStr) continue
       const remove = (rows: ScheduleV2Row[]) => rows.filter((row) => row.employeeId !== employeeId)
       await tx
         .update(timesheetSchedulingPlansV2)
@@ -3476,6 +3481,7 @@ const manageSecurityUserSchema = z.object({
   contractDurationEnd: optionalFormString,
   permanentDate: optionalFormString,
   birthDate: optionalFormString,
+  locationChangeReason: optionalFormString,
 })
 
 const manageSecurityRoleSchema = z.object({
@@ -7816,6 +7822,7 @@ export async function manageSecurityUserAction(
       contractDurationEnd: formData.get('contractDurationEnd'),
       permanentDate: formData.get('permanentDate'),
       birthDate: formData.get('birthDate'),
+      locationChangeReason: formData.get('locationChangeReason'),
     })
 
     if (['change-password', 'reset-face', 'ban-user', 'activate-user', 'change-site', 'send-magic-link'].includes(payload.intent) && !isSuperAdminRole(await getCurrentEmployeeAccessRole())) {
@@ -8318,6 +8325,21 @@ export async function manageSecurityUserAction(
 
       const targetSiteId = selectedSite?.id ?? employee.siteId
       if (targetSiteId != null && targetSiteId !== employee.siteId) {
+        const changeReason =
+          (formData.get('locationChangeReason') as string)?.trim() ||
+          payload.locationChangeReason?.trim() ||
+          'Pemindahan Lokasi'
+        if (changeReason === 'Pemindahan Lokasi') {
+          const actorEmail = await getCurrentActorEmail()
+          await recordEmployeeLocationTransfer({
+            employeeId: employee.id,
+            fromSiteId: employee.siteId,
+            toSiteId: targetSiteId,
+            reason: 'Pemindahan Lokasi',
+            actionByUserId: employee.authUserId || null,
+            actionByName: actorEmail || 'Admin',
+          })
+        }
         await syncScheduleV2EmployeeSiteAcrossPlans(employee.id, employee.siteId, targetSiteId)
       }
 
@@ -8578,7 +8600,24 @@ export async function manageSecurityUserAction(
       if (!site) return { status: 'error', message: 'Lokasi site tidak valid.' }
 
       await db.update(employees).set({ siteId: site.id, workLocation: site.name }).where(eq(employees.id, employee.id))
-      if (employee.siteId !== site.id) await syncScheduleV2EmployeeSiteAcrossPlans(employee.id, employee.siteId, site.id)
+      if (employee.siteId !== site.id) {
+        const changeReason =
+          (formData.get('locationChangeReason') as string)?.trim() ||
+          payload.locationChangeReason?.trim() ||
+          'Pemindahan Lokasi'
+        if (changeReason === 'Pemindahan Lokasi') {
+          const actorEmail = await getCurrentActorEmail()
+          await recordEmployeeLocationTransfer({
+            employeeId: employee.id,
+            fromSiteId: employee.siteId,
+            toSiteId: site.id,
+            reason: 'Pemindahan Lokasi',
+            actionByUserId: employee.authUserId || null,
+            actionByName: actorEmail || 'Admin',
+          })
+        }
+        await syncScheduleV2EmployeeSiteAcrossPlans(employee.id, employee.siteId, site.id)
+      }
 
       const actorEmail = await getCurrentActorEmail()
       await logAuditEvent({

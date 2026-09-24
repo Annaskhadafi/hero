@@ -24,6 +24,10 @@ import {
   CartesianGrid,
 } from 'recharts'
 import type { SecurityUserRecord } from '@/lib/hero-admin'
+import {
+  SecurityExternalUsersList,
+  isExternalUserLocation,
+} from '@/components/security-external-users-list'
 
 interface SecurityUserDashboardProps {
   users: SecurityUserRecord[]
@@ -89,10 +93,29 @@ const RELIGION_COLORS = [
 ]
 
 export function SecurityUserDashboard({ users }: SecurityUserDashboardProps) {
-  // Only include active employees in the Demographics Dashboard
-  const activeUsers = useMemo(() => {
-    return users.filter((u) => u.isActive !== false && !u.status?.toLowerCase().includes('inactive') && !u.status?.toLowerCase().includes('non'))
+  // Separate internal employees from external vendor personnel
+  const { internalUsers, externalUsers } = useMemo(() => {
+    const internal: SecurityUserRecord[] = []
+    const external: SecurityUserRecord[] = []
+    for (const u of users) {
+      if (isExternalUserLocation(u)) {
+        external.push(u)
+      } else {
+        internal.push(u)
+      }
+    }
+    return { internalUsers: internal, externalUsers: external }
   }, [users])
+
+  // Only include active internal employees in the Demographics Dashboard
+  const activeUsers = useMemo(() => {
+    return internalUsers.filter(
+      (u) =>
+        u.isActive !== false &&
+        !u.status?.toLowerCase().includes('inactive') &&
+        !u.status?.toLowerCase().includes('non')
+    )
+  }, [internalUsers])
 
   // 1. Calculate General Metrics
   const metrics = useMemo(() => {
@@ -585,6 +608,9 @@ export function SecurityUserDashboard({ users }: SecurityUserDashboardProps) {
           </div>
         </div>
       </div>
+
+      {/* External / Vendor Personnel List */}
+      <SecurityExternalUsersList users={externalUsers} />
     </div>
   )
 }

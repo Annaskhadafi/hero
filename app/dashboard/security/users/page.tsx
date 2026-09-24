@@ -1,5 +1,6 @@
 import { SecurityUserManagement } from '@/components/security-user-management'
 import {
+  getEmployeeLocationTransfersData,
   getSecurityRoleOptions,
   getSecurityUserReferenceData,
   getSecurityUsersData,
@@ -13,15 +14,17 @@ export const revalidate = 0
 export default async function SecurityUsersPage() {
   const permission = await getCurrentMenuPermission('security_users')
   if (!permission.canView) redirect('/dashboard')
-  const [users, roleOptions, referenceData] = await Promise.all([
+  const [users, roleOptions, referenceData, locationTransfers] = await Promise.all([
     getSecurityUsersData(),
     getSecurityRoleOptions(),
     getSecurityUserReferenceData(),
+    getEmployeeLocationTransfersData(),
   ])
 
   return (
     <SecurityUserManagement
       users={users}
+      locationTransfers={locationTransfers}
       roleOptions={roleOptions}
       sections={referenceData.sections}
       departments={referenceData.departments}

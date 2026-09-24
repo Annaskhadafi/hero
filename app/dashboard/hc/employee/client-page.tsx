@@ -127,6 +127,7 @@ type EmployeeFormData = {
   expMinePermit: string;
   lastMcuDate: string;
   manpower: string;
+  locationChangeReason?: string;
 };
 
 /* ─── PJO / Leader Multi-Select Component ───────────────────────────── */
@@ -452,6 +453,7 @@ function emptyFormData(): EmployeeFormData {
     expMinePermit: "",
     lastMcuDate: "",
     manpower: "Lokal",
+    locationChangeReason: "Pemindahan Lokasi",
   };
 }
 
@@ -480,6 +482,7 @@ function employeeToFormData(emp: Employee): EmployeeFormData {
     expMinePermit: toInputDate(emp.expMinePermit),
     lastMcuDate: toInputDate(emp.lastMcuDate),
     manpower: emp.manpower || "Lokal",
+    locationChangeReason: "Pemindahan Lokasi",
   };
 }
 
@@ -723,6 +726,7 @@ export function EmployeeClientPage({
         expMinePermit: formData.expMinePermit || undefined,
         lastMcuDate: formData.lastMcuDate || undefined,
         manpower: formData.manpower || "Lokal",
+        locationChangeReason: formData.locationChangeReason || "Pemindahan Lokasi",
       };
 
       if (editingEmployee) {
@@ -1311,6 +1315,34 @@ export function EmployeeClientPage({
                 ))}
               </select>
             </div>
+
+            {editingEmployee &&
+            formData.workLocationId &&
+            String(editingEmployee.workLocationId ?? "") !==
+              String(formData.workLocationId) ? (
+              <div className="space-y-1.5 rounded-lg border border-amber-200 bg-amber-50/70 p-3 sm:col-span-2">
+                <label className="text-xs font-semibold text-amber-900">
+                  Alasan Perubahan Lokasi Kerja
+                </label>
+                <p className="text-[11px] text-amber-700 leading-tight">
+                  Pilih apakah pemindahan tugas resmi (akan dicatat di riwayat mutasi) atau sekadar koreksi data.
+                </p>
+                <select
+                  value={formData.locationChangeReason || "Pemindahan Lokasi"}
+                  onChange={(e) =>
+                    updateFormField("locationChangeReason", e.target.value)
+                  }
+                  className="flex h-9 w-full rounded-lg border border-amber-300 bg-white px-3 text-sm shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <option value="Pemindahan Lokasi">
+                    Pemindahan Lokasi (Masuk Riwayat Mutasi)
+                  </option>
+                  <option value="Perbaikan Data">
+                    Perbaikan Data (Tidak masuk riwayat)
+                  </option>
+                </select>
+              </div>
+            ) : null}
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-foreground">
                 Job Title

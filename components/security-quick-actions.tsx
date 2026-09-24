@@ -36,10 +36,61 @@ function PasswordDialog({ user }: { user: SecurityUserRecord }) {
 function LocationDialog({ user, sites }: { user: SecurityUserRecord; sites: Array<{ id: number; name: string; location: string }> }) {
   const [state, action, pending] = useActionState(manageSecurityUserAction, initialState)
   const [siteId, setSiteId] = useState(user.siteId ? String(user.siteId) : '')
+  const [locationChangeReason, setLocationChangeReason] = useState('Pemindahan Lokasi')
   const [open, setOpen] = useState(false)
   const router = useRouter()
   useEffect(() => { if (state.status === 'success') { setOpen(false); router.refresh() } }, [router, state.status])
-  return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button variant="outline" aria-label="Ganti lokasi" title="Ganti lokasi" className="size-9 rounded-lg p-0 active:scale-[0.96] transition-transform"><MapPinIcon className="size-4" /></Button></DialogTrigger><DialogContent className="w-[calc(100vw-2rem)] rounded-2xl sm:max-w-md"><DialogHeader><DialogTitle>Ganti lokasi site</DialogTitle><DialogDescription>{user.name} · {user.employeeSn}</DialogDescription></DialogHeader><form action={action} className="space-y-4"><input type="hidden" name="intent" value="change-site" /><input type="hidden" name="employeeId" value={user.id} /><Select value={siteId} onValueChange={setSiteId}><SelectTrigger className="min-h-11 rounded-xl"><SelectValue placeholder="Pilih lokasi site" /></SelectTrigger><SelectContent>{sites.map((site) => <SelectItem key={site.id} value={String(site.id)}>{site.name}{site.location ? ` · ${site.location}` : ''}</SelectItem>)}</SelectContent></Select><input type="hidden" name="siteId" value={siteId} />{state.status === 'error' ? <p className="text-sm text-destructive">{state.message}</p> : null}<Button type="submit" disabled={pending || !siteId} className="min-h-11 w-full rounded-xl">{pending ? 'Menyimpan...' : 'Simpan lokasi'}</Button></form></DialogContent></Dialog>
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" aria-label="Ganti lokasi" title="Ganti lokasi" className="size-9 rounded-lg p-0 active:scale-[0.96] transition-transform">
+          <MapPinIcon className="size-4" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="w-[calc(100vw-2rem)] rounded-2xl sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Ganti lokasi site</DialogTitle>
+          <DialogDescription>{user.name} · {user.employeeSn}</DialogDescription>
+        </DialogHeader>
+        <form action={action} className="space-y-4">
+          <input type="hidden" name="intent" value="change-site" />
+          <input type="hidden" name="employeeId" value={user.id} />
+          <Select value={siteId} onValueChange={setSiteId}>
+            <SelectTrigger className="min-h-11 rounded-xl">
+              <SelectValue placeholder="Pilih lokasi site" />
+            </SelectTrigger>
+            <SelectContent>
+              {sites.map((site) => (
+                <SelectItem key={site.id} value={String(site.id)}>
+                  {site.name}{site.location ? ` · ${site.location}` : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <input type="hidden" name="siteId" value={siteId} />
+          {siteId && siteId !== String(user.siteId) ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs space-y-1.5">
+              <span className="font-semibold text-amber-800">Alasan Perubahan:</span>
+              <Select value={locationChangeReason} onValueChange={setLocationChangeReason}>
+                <SelectTrigger className="bg-white border-amber-300 min-h-9">
+                  <SelectValue placeholder="Pilih alasan" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Pemindahan Lokasi">Pemindahan Lokasi (Masuk Riwayat)</SelectItem>
+                  <SelectItem value="Perbaikan Data">Perbaikan Data (Tanpa Riwayat)</SelectItem>
+                </SelectContent>
+              </Select>
+              <input type="hidden" name="locationChangeReason" value={locationChangeReason} />
+            </div>
+          ) : null}
+          {state.status === 'error' ? <p className="text-sm text-destructive">{state.message}</p> : null}
+          <Button type="submit" disabled={pending || !siteId} className="min-h-11 w-full rounded-xl">
+            {pending ? 'Menyimpan...' : 'Simpan lokasi'}
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
 }
 
 

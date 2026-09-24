@@ -2318,8 +2318,14 @@ export function SchedulingTimesheetWorkspace({
     )
 
     const siteAttendanceEmployeeIds = new Set<number>()
+    const effectiveTz = effectiveSiteClockConfig.timezone
     for (const rec of attendanceRecords) {
-      if (String(rec.siteId) === siteId) siteAttendanceEmployeeIds.add(rec.employeeId)
+      if (String(rec.siteId) === siteId) {
+        const dateStr = getLocalDateStr(rec.eventTime, effectiveTz)
+        if (dateStr && dateStr.startsWith(period)) {
+          siteAttendanceEmployeeIds.add(rec.employeeId)
+        }
+      }
     }
     for (const ov of attendanceOverrides) {
       if (String(ov.siteId) === siteId && ov.period === period)
@@ -2331,7 +2337,7 @@ export function SchedulingTimesheetWorkspace({
       if (String(employee.siteId) === siteId) return true
       // 2. Included in this site's saved/scheduled plan roster
       if (scheduledEmployeeIds.has(employee.id)) return true
-      // 3. Has attendance records or overrides in this site
+      // 3. Has attendance records or overrides in this site for the selected period
       if (siteAttendanceEmployeeIds.has(employee.id)) return true
       // 4. Fallback matching site location name
       if (employee.locationName && employee.locationName === selectedSiteExtracted) return true
@@ -2342,6 +2348,7 @@ export function SchedulingTimesheetWorkspace({
   }, [
     attendanceOverrides,
     attendanceRecords,
+    effectiveSiteClockConfig,
     employees,
     mode,
     period,
@@ -2574,11 +2581,7 @@ export function SchedulingTimesheetWorkspace({
     const grouped = new Map<string, AttendanceRealRecord[]>()
     for (const record of attendanceRecords) {
       if (siteId !== 'all' && record.siteId != null && String(record.siteId) !== siteId) {
-        // Match if employee belongs to this site
-        const emp = employees.find((e) => e.id === record.employeeId)
-        if (emp && String(emp.siteId) !== siteId) {
-          continue
-        }
+        continue
       }
       const dateStr = getLocalDateStr(record.eventTime, effectiveTz)
       if (!dateStr || !dateStr.startsWith(period)) continue

@@ -161,6 +161,23 @@ export const employeeSiteAssignments = pgTable(
   })
 )
 
+export const employeeLocationTransfers = pgTable('hero_employee_location_transfers', {
+  id: serial('id').primaryKey(),
+  employeeId: integer('employee_id')
+    .notNull()
+    .references(() => employees.id, { onDelete: 'cascade' }),
+  fromSiteId: integer('from_site_id').references(() => sites.id, { onDelete: 'set null' }),
+  toSiteId: integer('to_site_id')
+    .notNull()
+    .references(() => sites.id, { onDelete: 'cascade' }),
+  reason: text('reason').notNull().default('Pemindahan Lokasi'),
+  transferDate: timestamp('transfer_date').notNull().defaultNow(),
+  actionByUserId: text('action_by_user_id'),
+  actionByName: text('action_by_name').notNull().default('Admin'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
+
 export const activityLibraries = pgTable('hero_activity_libraries', {
   id: serial('id').primaryKey(),
   siteId: integer('site_id').references(() => sites.id, { onDelete: 'set null' }),

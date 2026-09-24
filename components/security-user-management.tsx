@@ -34,6 +34,7 @@ import { SecurityUserCreateDialog } from '@/components/security-user-create-dial
 import { SecurityUserRowActions } from '@/components/security-user-row-actions'
 import { SecurityUserDashboard } from '@/components/security-user-dashboard'
 import { SecurityServicemanDashboard } from '@/components/security-serviceman-dashboard'
+import { SecurityLocationTransferHistory } from '@/components/security-location-transfer-history'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -73,7 +74,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
-import type { SecurityUserRecord } from '@/lib/hero-admin'
+import type { EmployeeLocationTransferRecord, SecurityUserRecord } from '@/lib/hero-admin'
 import {
   USER_IMPORT_FIELDS,
   autoMapHeaders,
@@ -273,10 +274,12 @@ export function SecurityUserManagement({
   departments,
   positions,
   sites,
+  locationTransfers = [],
   canEdit = true,
   canDelete = true,
 }: {
   users: SecurityUserRecord[]
+  locationTransfers?: EmployeeLocationTransferRecord[]
   roleOptions: Array<{ id: number; name: string }>
   sections: Array<{ id: number; code: string; name: string; departmentId: number | null }>
   departments: Array<{ id: number; code: string; name: string }>
@@ -294,7 +297,7 @@ export function SecurityUserManagement({
 }) {
   const router = useRouter()
   const [isRefreshing, startRefreshTransition] = useTransition()
-  const [activeTab, setActiveTab] = useState<'directory' | 'dashboard' | 'serviceman-dashboard'>('directory')
+  const [activeTab, setActiveTab] = useState<'directory' | 'dashboard' | 'serviceman-dashboard' | 'location-history'>('directory')
 
   const COLUMNS = useMemo(() => {
     return COLUMNS_DEF.map((col) => ({
@@ -960,12 +963,38 @@ export function SecurityUserManagement({
         >
           Dashboard Karyawan
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('location-history')}
+          className={cn(
+            "pb-3 text-sm font-bold border-b-2 px-4 -mb-px transition-all duration-200 cursor-pointer flex items-center gap-2",
+            activeTab === 'location-history'
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <span>Riwayat Pemindahan Lokasi</span>
+          {locationTransfers.length > 0 ? (
+            <span
+              className={cn(
+                "px-2 py-0.5 text-[11px] rounded-full font-bold",
+                activeTab === 'location-history'
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-slate-100 text-slate-600"
+              )}
+            >
+              {locationTransfers.length}
+            </span>
+          ) : null}
+        </button>
       </div>
 
-      {activeTab === 'serviceman-dashboard' ? (
+      {activeTab === 'location-history' ? (
+        <SecurityLocationTransferHistory transfers={locationTransfers} />
+      ) : activeTab === 'serviceman-dashboard' ? (
         <SecurityServicemanDashboard users={users} />
       ) : activeTab === 'dashboard' ? (
-        <SecurityUserDashboard users={filteredUsers} />
+        <SecurityUserDashboard users={users} />
       ) : (
         <>
           <AdminMetricGrid

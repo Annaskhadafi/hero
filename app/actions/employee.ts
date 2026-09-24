@@ -12,6 +12,7 @@ import { revalidatePath } from "next/cache";
 import { buildHumanCapitalEmail, sendHumanCapitalEmail } from "@/lib/human-capital-email";
 import { getServerSession } from "@/lib/auth-session";
 import { OBSOLETE_DEPARTMENT_CODES, OBSOLETE_SECTION_CODES } from "@/lib/org-seed-data";
+import { recordEmployeeLocationTransfer } from "@/lib/hero-admin";
 
 export async function getEmployeesForContract(filters?: {
   departmentId?: number;
@@ -278,6 +279,7 @@ export async function updateEmployee(id: number, data: {
   accountStatus?: string;
   manpower?: string;
   lastMcuDate?: string | null;
+  locationChangeReason?: string;
 }) {
   const session = await getServerSession();
   if (!session?.user) {
@@ -345,6 +347,20 @@ export async function updateEmployee(id: number, data: {
     .set(setData)
     .where(eq(employees.id, id))
     .returning();
+
+  if (data.siteId !== undefined && before && before.siteId !== data.siteId && data.siteId !== null) {
+    const reason = data.locationChangeReason || 'Pemindahan Lokasi';
+    if (reason === 'Pemindahan Lokasi') {
+      await recordEmployeeLocationTransfer({
+        employeeId: id,
+        fromSiteId: before.siteId,
+        toSiteId: data.siteId,
+        reason: 'Pemindahan Lokasi',
+        actionByUserId: session.user.id || null,
+        actionByName: session.user.name || session.user.email || 'Admin',
+      });
+    }
+  }
 
   if (updated.authUserId && (data.fullName !== undefined || data.email !== undefined)) {
     const userUpdate: Record<string, any> = {};

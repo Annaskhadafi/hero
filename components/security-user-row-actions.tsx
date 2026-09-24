@@ -4,7 +4,7 @@ import { useActionState, useEffect, useState, useTransition } from 'react'
 import { useFormStatus } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Eye, Pencil, ShieldBan, ShieldCheck, Trash2, Save, UserCog, Key, Ban, TrendingUp, Mail, CheckCircle2 } from 'lucide-react'
+import { Eye, Pencil, ShieldBan, ShieldCheck, Trash2, Save, UserCog, Key, Ban, TrendingUp, Mail, CheckCircle2, MapPin } from 'lucide-react'
 import { manageSecurityUserAction, type AdminMutationState } from '@/app/dashboard/admin-actions'
 import { getBirthDateInputValue, normalizeBirthDateValue } from '@/lib/birth-date'
 import type { SecurityUserRecord } from '@/lib/hero-admin'
@@ -123,6 +123,7 @@ export function SecurityUserRowActions({
       : sections.find((section) => section.name === user.section)?.id.toString() ?? ''
   )
   const [selectedSiteId, setSelectedSiteId] = useState(user.siteId ? `${user.siteId}` : '')
+  const [locationChangeReason, setLocationChangeReason] = useState('Pemindahan Lokasi')
 
   const selectedSite = sites.find((site) => site.id.toString() === selectedSiteId) ?? null
   const filteredSections = (() => {
@@ -181,6 +182,7 @@ export function SecurityUserRowActions({
       const resolvedSec = sec ?? (user.section ? sections.find((s) => s.name.toLowerCase() === user.section?.toLowerCase() || s.code.toLowerCase() === user.section?.toLowerCase()) : null);
       setSelectedSectionId(resolvedSec?.id?.toString() ?? '');
       setSelectedSiteId(user.siteId ? `${user.siteId}` : '')
+      setLocationChangeReason('Pemindahan Lokasi')
     }
   }, [departments, open, sections, user.department, user.departmentId, user.section, user.sectionId, user.siteId])
 
@@ -460,6 +462,31 @@ export function SecurityUserRowActions({
                     <input type="hidden" name="siteId" value={selectedSiteId} />
                     <input type="hidden" name="workLocation" value={resolvedWorkLocation} />
                   </div>
+
+                  {selectedSiteId && selectedSiteId !== (user.siteId ? String(user.siteId) : '') ? (
+                    <div className="grid min-w-0 gap-2 rounded-xl border border-amber-200 bg-amber-50/60 p-3.5 sm:col-span-2">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-800">
+                        <MapPin className="size-3.5 text-amber-600" />
+                        Alasan Perubahan Lokasi Site
+                      </div>
+                      <p className="text-[11px] text-amber-700/90 leading-relaxed">
+                        Pilih <strong>Pemindahan Lokasi</strong> untuk mutasi tugas (dicatat di Riwayat Mutasi &amp; memisahkan presensi per site), atau <strong>Perbaikan Data</strong> jika hanya mengoreksi kesalahan input tanpa riwayat.
+                      </p>
+                      <Select
+                        value={locationChangeReason}
+                        onValueChange={setLocationChangeReason}
+                      >
+                        <SelectTrigger className="bg-white border-amber-300 min-h-9">
+                          <SelectValue placeholder="Pilih alasan perubahan lokasi" />
+                        </SelectTrigger>
+                        <SelectContent className={compactSelectContentClass}>
+                          <SelectItem value="Pemindahan Lokasi">Pemindahan Lokasi (Masuk ke Riwayat Mutasi)</SelectItem>
+                          <SelectItem value="Perbaikan Data">Perbaikan Data (Tidak masuk riwayat)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <input type="hidden" name="locationChangeReason" value={locationChangeReason} />
+                    </div>
+                  ) : null}
 
                   <div className="grid min-w-0 gap-2">
                     <span className="text-muted-foreground text-xs font-medium">Tipe Status</span>
