@@ -463,6 +463,13 @@ body:has([data-admin-dashboard-shell]) {
     height: 297mm !important;
     overflow: hidden !important;
   }
+  .contract-review-print thead {
+    display: table-header-group !important;
+  }
+  .contract-review-print tr {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
   .contract-review-print .absolute.inset-0 {
     position: absolute !important;
     inset: 0 !important;

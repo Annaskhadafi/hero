@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Save, Printer, ArrowLeft, Plus, Trash2, Send, Upload } from "lucide-react"
 import SignatureCanvas from "react-signature-canvas"
 
-import { resendContractReviewApprovalEmail, saveContractReview } from "@/app/actions/contract-review"
+import { completeAdminContractReview, resendContractReviewApprovalEmail, resendContractReviewApprovalToStep, saveAdminContractReview, saveContractReview, updateAdminContractReviewApprovalSignature } from "@/app/actions/contract-review"
 import { getUserSignatureAction, saveUserSignatureAction } from "@/app/actions/user-signature"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -26,7 +26,7 @@ type MasterHeadMap = {
   departments?: Record<string, { headEmployeeId?: number | null; headName?: string; headEmail?: string; headTitle?: string }>
 }
 
-export function ContractReviewClientForm({ employees, orgNodes = [], initialData, approvalSettings, approvalHistory, activityTemplates = [], masterHeadMap }: { employees: any[], orgNodes?: any[], initialData?: any, approvalSettings?: any, approvalHistory?: any[], activityTemplates?: any[], masterHeadMap?: MasterHeadMap }) {
+export function ContractReviewClientForm({ employees, orgNodes = [], initialData, approvalSettings, approvalHistory, activityTemplates = [], masterHeadMap, adminMode = false }: { employees: any[], orgNodes?: any[], initialData?: any, approvalSettings?: any, approvalHistory?: any[], activityTemplates?: any[], masterHeadMap?: MasterHeadMap, adminMode?: boolean }) {
   const router = useRouter()
   const pathname = usePathname()
   const isMobileRoute = pathname.startsWith('/mobile/')
@@ -55,6 +55,8 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
   const [registeredSignature, setRegisteredSignature] = useState<string | null>(null)
   const [leaderSignatureOverride, setLeaderSignatureOverride] = useState('')
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
+  const [adminSignaturePending, setAdminSignaturePending] = useState<number | null>(null)
+  const [adminResendPending, setAdminResendPending] = useState<number | null>(null)
 
   useEffect(() => {
     getUserSignatureAction().then((result) => {
@@ -479,7 +481,11 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
   const sectionHeadApprovalMeta = getApprovalMeta('section_head_confirmation')
   const managerApprovalMeta = getApprovalMeta('central_service_manager')
   const hrApprovalMeta = getApprovalMeta('hr')
-  const leaderPreviewSignature = previewLeaderSig || leaderApprovalSig
+  const leaderPreviewSignature = leaderApprovalSig || previewLeaderSig
+  const visibleEmployeeApprovalSig = employeeApprovalSig && employeeApprovalSig !== leaderPreviewSignature ? employeeApprovalSig : ''
+  const visibleSectionHeadApprovalSig = sectionHeadApprovalSig && ![leaderPreviewSignature, visibleEmployeeApprovalSig].includes(sectionHeadApprovalSig) ? sectionHeadApprovalSig : ''
+  const visibleManagerApprovalSig = managerApprovalSig && ![leaderPreviewSignature, visibleEmployeeApprovalSig, visibleSectionHeadApprovalSig].includes(managerApprovalSig) ? managerApprovalSig : ''
+  const visibleHrApprovalSig = hrApprovalSig && ![leaderPreviewSignature, visibleEmployeeApprovalSig, visibleSectionHeadApprovalSig, visibleManagerApprovalSig].includes(hrApprovalSig) ? hrApprovalSig : ''
 
   const handleSave = () => {
     startTransition(async () => {
@@ -495,12 +501,69 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
         employeeNameStr: selectedEmp?.name || form.employeeNameStr,
         leaderSignatureDataUrl,
       }
-      const res = await saveContractReview(payload as any)
+      const res = adminMode ? await saveAdminContractReview(payload as any) : await saveContractReview(payload as any)
       if (res.success) {
-        router.push(pathname.startsWith('/mobile/') ? '/mobile/dashboard' : "/dashboard/hc/contract-review")
+        router.push(adminMode ? `/dashboard/hc/contract-review/form/${initialData?.id}?admin=1` : pathname.startsWith('/mobile/') ? '/mobile/dashboard' : "/dashboard/hc/contract-review")
       } else {
         alert("Gagal menyimpan: " + res.error)
       }
+    })
+  }
+
+  const saveAdminSignature = (step: any, signatureDataUrl: string) => {
+    if (!initialData?.id || !signatureDataUrl) return
+    setAdminSignaturePending(step.id)
+    startTransition(async () => {
+      const result = await updateAdminContractReviewApprovalSignature(initialData.id, step.id, signatureDataUrl)
+      setAdminSignaturePending(null)
+      if (!result.success) alert(`Gagal menyimpan TTD: ${result.error}`)
+      else router.refresh()
+    })
+  }
+
+  const handleAdminSignatureUpload = (step: any, event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => saveAdminSignature(step, typeof reader.result === 'string' ? reader.result : '')
+    reader.readAsDataURL(file)
+    event.target.value = ''
+  }
+
+  const removeAdminSignature = (step: any) => {
+    if (!initialData?.id || !confirm(`Hapus TTD ${step.approverName || 'reviewer'}?`)) return
+    setAdminSignaturePending(step.id)
+    startTransition(async () => {
+      const result = await updateAdminContractReviewApprovalSignature(initialData.id, step.id, null)
+      setAdminSignaturePending(null)
+      if (!result.success) alert(`Gagal menghapus TTD: ${result.error}`)
+      else {
+        if (step.stepOrder === 1) setPreviewLeaderSig('')
+        router.refresh()
+      }
+    })
+  }
+
+  const resendAdminApproval = (step: any) => {
+    if (!initialData?.id || !confirm(`Kirim ulang approval ke ${step.approverName || 'reviewer'}? Approval step ini dan step setelahnya akan dibuka ulang.`)) return
+    setAdminResendPending(step.id)
+    startTransition(async () => {
+      const result = await resendContractReviewApprovalToStep(initialData.id, step.id)
+      setAdminResendPending(null)
+      if (!result.success) alert(`Gagal mengirim ulang approval: ${result.error}`)
+      else {
+        alert(result.message)
+        router.refresh()
+      }
+    })
+  }
+
+  const handleAdminComplete = () => {
+    if (!initialData?.id || !confirm('Tandai Contract Review ini sebagai selesai?')) return
+    startTransition(async () => {
+      const result = await completeAdminContractReview(initialData.id)
+      if (result.success) router.push('/dashboard/hc/contract-review')
+      else alert(`Gagal menyelesaikan review: ${result.error}`)
     })
   }
 
@@ -518,10 +581,8 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
   }
 
   const handlePrint = () => {
-    // Get both pages' HTML
-    const page1Html = document.querySelector('#pdf-page-1')?.innerHTML || ''
-    const page2Html = document.querySelector('#pdf-page-2')?.innerHTML || ''
-    const page3Html = document.querySelector('#pdf-page-3')?.innerHTML || ''
+    const pageHtml = Array.from(document.querySelectorAll('.contract-review-print .pdf-wrapper, #contract-review-preview .pdf-wrapper'))
+      .map((page) => page.innerHTML)
     const letterheadUrl = new URL('/ChitraParatama_Stationery_Letterhead_jkt.jpg', window.location.origin).toString()
     const printWindow = window.open('', '_blank', 'width=900,height=1200')
 
@@ -593,7 +654,8 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
             .gap-2 { gap: 0.5rem; }
             .gap-8 { gap: 2rem; }
             .break-inside-avoid { break-inside: avoid; }
-            tr, table, .break-inside-avoid { break-inside: avoid; page-break-inside: avoid; }
+            thead { display: table-header-group; }
+            tr, .break-inside-avoid { break-inside: avoid; page-break-inside: avoid; }
             .break-before-auto { break-before: auto; }
             .text-gray-500 { color: #6b7280; }
             input[type="checkbox"] { margin-right: 4px; }
@@ -602,9 +664,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
         <body>
           <img src="${letterheadUrl}" class="print-bg" />
           <main>
-            <div class="page">${page1Html}</div>
-            <div class="page">${page2Html}</div>
-            <div class="page">${page3Html}</div>
+            ${pageHtml.map((html) => `<div class="page">${html}</div>`).join('')}
           </main>
           <script>
             const closeAfterPrint = () => setTimeout(() => window.close(), 250);
@@ -621,6 +681,46 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     `)
     printWindow.document.close()
   }
+
+  const estimateActivityWeight = (item: any) => Math.max(1, Math.ceil(Math.max(String(item?.activity || '').length / 42, String(item?.remark || '').length / 52)))
+  const firstPageActivities = (() => {
+    const budget = 4
+    const selected: any[] = []
+    let used = 0
+    for (const item of form.performanceActivities) {
+      const weight = estimateActivityWeight(item)
+      if (selected.length > 0 && used + weight > budget) break
+      if (selected.length === 0 && weight > budget) break
+      selected.push(item)
+      used += weight
+    }
+    return selected
+  })()
+  const overflowActivities = form.performanceActivities.slice(firstPageActivities.length)
+  const performanceOverflowChunks = Array.from({ length: Math.ceil(overflowActivities.length / 2) }, (_, index) => overflowActivities.slice(index * 2, index * 2 + 2))
+  const renderPerformanceTable = (items: any[], keyPrefix: string) => (
+    <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-center">
+      <thead>
+        <tr className="bg-slate-50">
+          <th className="w-[45%]">Activities</th>
+          <th className="w-[30%]">Achievement<br/>( Below/ Meet/ Exceed<br/>Requirement )</th>
+          <th className="w-[25%]">Remark</th>
+        </tr>
+      </thead>
+      <tbody>
+        {items.map((item: any, i: number) => (
+          <tr key={`${keyPrefix}-${i}`}>
+            <td className="text-left">{item.activity || '\u00A0'}</td>
+            <td className="capitalize">{item.achievement || '\u00A0'}</td>
+            <td className="text-left">{item.remark || '\u00A0'}</td>
+          </tr>
+        ))}
+        {items.length === 0 && Array(5).fill(0).map((_, i) => (
+          <tr key={`${keyPrefix}-empty-${i}`}><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+        ))}
+      </tbody>
+    </table>
+  )
 
   const pdfPreviewPage1 = (
     <div className="pdf-wrapper-content relative z-10 outline-none text-[9pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '40mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
@@ -668,42 +768,35 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
         </tbody>
       </table>
 
-      <div className="mb-1 font-bold">Progress made towards probation/contract period</div>
-      <div className="font-bold ml-4 mb-1">A. Performance</div>
-      
-      <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-center">
-        <thead>
-          <tr className="bg-slate-50">
-            <th className="w-[45%]">Activities</th>
-            <th className="w-[30%]">Achievement<br/>( Below/ Meet/ Exceed<br/>Requirement )</th>
-            <th className="w-[25%]">Remark</th>
-          </tr>
-        </thead>
-        <tbody>
-          {form.performanceActivities.map((item: any, i: number) => (
-            <tr key={i}>
-              <td className="text-left">{item.activity || '\u00A0'}</td>
-              <td className="capitalize">{item.achievement || '\u00A0'}</td>
-              <td className="text-left">{item.remark || '\u00A0'}</td>
-            </tr>
-          ))}
-          {form.performanceActivities.length < 5 && Array(5 - form.performanceActivities.length).fill(0).map((_, i) => (
-            <tr key={`empty-${i}`}>
-              <td>&nbsp;</td>
-              <td>&nbsp;</td>
-              <td>&nbsp;</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {firstPageActivities.length > 0 ? (
+        <><div className="mb-1 font-bold">Progress made towards probation/contract period</div><div className="font-bold ml-4 mb-1">A. Performance</div>{renderPerformanceTable(firstPageActivities, 'first')}</>
+      ) : null}
 
     </div>
   )
 
+  const pdfPreviewPerformancePages = performanceOverflowChunks.map((chunk, index) => (
+    <div key={`performance-page-${index}`} className="pdf-wrapper-content relative z-10 outline-none text-[9pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '40mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
+      <div className="mb-1 font-bold">Progress made towards probation/contract period</div>
+      <div className="font-bold ml-4 mb-1">A. Performance (lanjutan)</div>
+      {renderPerformanceTable(chunk, `overflow-${index}`)}
+    </div>
+  ))
+
+  const competencyRows = [
+    ['Discipline', form.compDisciplineAch, form.compDisciplineRemark],
+    ['Professional Skill and Knowledge', form.compSkillAch, form.compSkillRemark],
+    ['Achieving Result', form.compResultAch, form.compResultRemark],
+    ['Concern for Order, Quality and Accuracy', form.compQualityAch, form.compQualityRemark],
+    ['Customer Orientation ( internal / external )', form.compCustomerAch, form.compCustomerRemark],
+    ['Teamwork', form.compTeamworkAch, form.compTeamworkRemark],
+  ]
+  const competencyOverflowRows = competencyRows.slice(3)
+
   const pdfPreviewPage2 = (
     <div className="pdf-wrapper-content relative z-10 outline-none text-[9pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '40mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
       <div className="font-bold ml-4 mb-1">B. Related Competency ( Knowledge & Behavior)</div>
-      <table className="w-full border-collapse border border-black mb-2 break-inside-avoid [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1">
+      <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1">
         <thead>
           <tr className="bg-slate-50 text-center">
             <th className="w-[45%]">Activities</th>
@@ -712,14 +805,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
           </tr>
         </thead>
         <tbody>
-          {[
-            ['Discipline', form.compDisciplineAch, form.compDisciplineRemark],
-            ['Professional Skill and Knowledge', form.compSkillAch, form.compSkillRemark],
-            ['Achieving Result', form.compResultAch, form.compResultRemark],
-            ['Concern for Order, Quality and Accuracy', form.compQualityAch, form.compQualityRemark],
-            ['Customer Orientation ( internal / external )', form.compCustomerAch, form.compCustomerRemark],
-            ['Teamwork', form.compTeamworkAch, form.compTeamworkRemark],
-          ].map(([label, achievement, remark]) => (
+          {competencyRows.slice(0, 3).map(([label, achievement, remark]) => (
             <tr key={label}>
               <td className="font-bold">{label}</td>
               <td className="text-center capitalize">{achievement}</td>
@@ -728,63 +814,45 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
           ))}
         </tbody>
       </table>
-      <table className="w-full border-collapse border border-black mb-4 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 break-inside-avoid">
+    </div>
+  )
+
+  const pdfPreviewCompetencyPage = (
+    <div className="pdf-wrapper-content relative z-10 outline-none text-[9pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '40mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
+      <div className="font-bold ml-4 mb-1">B. Related Competency (lanjutan)</div>
+      <table className="w-full border-collapse border border-black mb-4 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1">
         <thead>
-          <tr className="bg-slate-50 text-left">
-            <th colSpan={2}>Achievement Definition</th>
+          <tr className="bg-slate-50 text-center">
+            <th className="w-[45%]">Activities</th>
+            <th className="w-[30%]">Achievement<br/>( Below/ Meet/ Exceed<br/>Requirement )</th>
+            <th className="w-[25%]">Remark</th>
           </tr>
         </thead>
         <tbody>
-          <tr>
-            <td className="w-1/3">
-              <label className="flex items-center gap-2">
-                <input type="checkbox" readOnly checked={achCategory === "exceed"} />
-                Exceed Requirement (106% - 125%)
-              </label>
-            </td>
-            <td className="w-2/3">Performance of the employee is exceeding target and He/She consistently <b>demonstrates right attitude and behavior</b> which are aligned with the competency</td>
-          </tr>
-          <tr>
-            <td>
-              <label className="flex items-center gap-2">
-                <input type="checkbox" readOnly checked={achCategory === "meet"} />
-                Meet Requirement (95% - 105%)
-              </label>
-            </td>
-            <td>Performance of the employee is meeting target and in overall He/She <b>demonstrates attitude and behavior</b> which are aligned with the competency</td>
-          </tr>
-          <tr>
-            <td>
-              <label className="flex items-center gap-2">
-                <input type="checkbox" readOnly checked={achCategory === "below"} />
-                Below Requirement (&#60; 95%)
-              </label>
-            </td>
-            <td>Performance of the employee is not meeting target and He/She still <b>demonstrating some attitudes and/ or behaviors which are not aligned</b> with the competency</td>
-          </tr>
+          {competencyOverflowRows.map(([label, achievement, remark]) => (
+            <tr key={label}>
+              <td className="font-bold">{label}</td>
+              <td className="text-center capitalize">{achievement}</td>
+              <td>{remark}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
-
-      <div className="font-bold mb-2 break-inside-avoid">Recommendation</div>
-      <div className="grid grid-cols-2 gap-4 mb-6 break-inside-avoid">
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={form.recommendation === 'confirm_permanent'} readOnly />
-          Confirm to Permanent
-        </label>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={form.recommendation === 'terminate_probation'} readOnly />
-          Unsuccessful Probationary (termination)
-        </label>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={form.recommendation === 'contract_extended'} readOnly />
-          Contract Extended <span className="border-b border-black w-12 inline-block text-center">{form.contractExtendedMonths || '\u00A0'}</span> months
-        </label>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={form.recommendation === 'contract_ended'} readOnly />
-          Contract ended
-        </label>
+      <div className="font-bold mb-2">Achievement Definition</div>
+      <table className="w-full border-collapse border border-black mb-4 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1">
+        <tbody>
+          <tr><td className="w-1/3"><label className="flex items-center gap-2"><input type="checkbox" readOnly checked={achCategory === "exceed"} />Exceed Requirement (106% - 125%)</label></td><td className="w-2/3">Performance of the employee is exceeding target and He/She consistently <b>demonstrates right attitude and behavior</b> which are aligned with the competency</td></tr>
+          <tr><td><label className="flex items-center gap-2"><input type="checkbox" readOnly checked={achCategory === "meet"} />Meet Requirement (95% - 105%)</label></td><td>Performance of the employee is meeting target and in overall He/She <b>demonstrates attitude and behavior</b> which are aligned with the competency</td></tr>
+          <tr><td><label className="flex items-center gap-2"><input type="checkbox" readOnly checked={achCategory === "below"} />Below Requirement (&#60; 95%)</label></td><td>Performance of the employee is not meeting target and He/She still <b>demonstrating some attitudes and/ or behaviors which are not aligned</b> with the competency</td></tr>
+        </tbody>
+      </table>
+      <div className="font-bold mb-2">Recommendation</div>
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'confirm_permanent'} readOnly />Confirm to Permanent</label>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'terminate_probation'} readOnly />Unsuccessful Probationary (termination)</label>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'contract_extended'} readOnly />Contract Extended <span className="border-b border-black w-12 inline-block text-center">{form.contractExtendedMonths || '\u00A0'}</span> months</label>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'contract_ended'} readOnly />Contract ended</label>
       </div>
-
     </div>
   )
 
@@ -815,7 +883,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
         <div>
           <div className="text-xs text-muted-foreground mb-1">Employee Signature</div>
           <div className="h-20 flex items-end">
-            {employeeApprovalSig ? <img src={employeeApprovalSig} alt="Employee TTD" className="h-16 object-contain" /> : null}
+              {visibleEmployeeApprovalSig ? <img src={visibleEmployeeApprovalSig} alt="Employee TTD" className="h-16 object-contain" /> : null}
           </div>
           <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{selectedEmp?.name || form.employeeNameStr || '\u00A0'}</div>
           <div className="text-xs">{selectedEmp?.position || 'Employee'}</div>
@@ -826,7 +894,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
           <div>
             <div className="text-xs text-muted-foreground mb-1">Superior Signature</div>
             <div className="h-20 flex items-end">
-              {sectionHeadApprovalSig ? <img src={sectionHeadApprovalSig} alt="Superior TTD" className="h-16 object-contain" /> : null}
+              {visibleSectionHeadApprovalSig ? <img src={visibleSectionHeadApprovalSig} alt="Superior TTD" className="h-16 object-contain" /> : null}
             </div>
             <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{form.superiorName}</div>
             <div className="text-xs">{form.superiorTitle || 'Superior'}</div>
@@ -838,7 +906,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
           <div>
             <div className="text-xs text-muted-foreground mb-1">HR Signature</div>
             <div className="h-20 flex items-end">
-              {hrApprovalSig ? <img src={hrApprovalSig} alt="HR TTD" className="h-16 object-contain" /> : null}
+              {visibleHrApprovalSig ? <img src={visibleHrApprovalSig} alt="HR TTD" className="h-16 object-contain" /> : null}
             </div>
             <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{form.hrName}</div>
             <div className="text-xs">{form.hrTitle || 'HR'}</div>
@@ -850,7 +918,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
           <div>
             <div className="text-xs text-muted-foreground mb-1">Next Superior Signature</div>
             <div className="h-20 flex items-end">
-              {managerApprovalSig ? <img src={managerApprovalSig} alt="Next Superior TTD" className="h-16 object-contain" /> : null}
+              {visibleManagerApprovalSig ? <img src={visibleManagerApprovalSig} alt="Next Superior TTD" className="h-16 object-contain" /> : null}
             </div>
             <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{form.nextSuperiorName}</div>
             <div className="text-xs">{form.nextSuperiorTitle || 'Manager'}</div>
@@ -890,7 +958,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
   if (isEmbeddedPrintPreview) {
     return (
       <div className="fixed inset-0 z-[9999] flex flex-col gap-8 overflow-auto bg-slate-100 p-4">
-        {[pdfPreviewPage1, pdfPreviewPage2, pdfPreviewPage3].map((page, index) => (
+        {[pdfPreviewPage1, ...pdfPreviewPerformancePages, pdfPreviewPage2, pdfPreviewCompetencyPage, pdfPreviewPage3].map((page, index) => (
           <div
             key={index}
             className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
@@ -923,6 +991,11 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
             {initialData?.id && (
               <Button onClick={handleResendApprovalEmail} disabled={isResending} variant="outline" className={cn("min-h-10", isMobileRoute && "min-h-9 px-3 text-xs")}>
                 <Send className="mr-2 size-4" /> {isResending ? "Mengirim..." : "Kirim Email Approval"}
+              </Button>
+            )}
+            {adminMode && initialData?.id && initialData.status !== 'completed' && (
+              <Button onClick={handleAdminComplete} disabled={isPending} variant="default" className="min-h-10 bg-emerald-600 hover:bg-emerald-700">
+                Selesai
               </Button>
             )}
             <Button onClick={handleSave} disabled={isPending} className={cn("ml-auto min-h-10", isMobileRoute && "min-h-9 px-3 text-xs max-sm:flex-1")}>
@@ -1294,6 +1367,28 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
                         ) : (
                           <Badge variant="outline" className="rounded-full px-3 text-slate-400">Menunggu</Badge>
                         )}
+                        {adminMode && (
+                          <div className="mt-1 flex flex-wrap justify-end gap-1">
+                            {step.signatureDataUrl && <img src={step.signatureDataUrl} alt={`TTD ${step.approverName}`} className="h-8 max-w-20 object-contain rounded border bg-white" />}
+                            {registeredSignature && (
+                              <Button type="button" variant="outline" size="sm" disabled={adminSignaturePending === step.id} onClick={() => saveAdminSignature(step, registeredSignature)}>
+                                Pilih TTD
+                              </Button>
+                            )}
+                            {step.signatureDataUrl && (
+                              <Button type="button" variant="ghost" size="sm" disabled={adminSignaturePending === step.id} onClick={() => removeAdminSignature(step)} className="h-8 px-2 text-[11px] text-rose-600 hover:bg-rose-50 hover:text-rose-700">
+                                Hapus TTD
+                              </Button>
+                            )}
+                            <Button type="button" variant="outline" size="sm" disabled={adminResendPending === step.id} onClick={() => resendAdminApproval(step)} className="h-8 px-2 text-[11px] text-violet-700 hover:bg-violet-50">
+                              {adminResendPending === step.id ? 'Mengirim...' : 'Kirim Ulang'}
+                            </Button>
+                            <label className="inline-flex h-8 cursor-pointer items-center rounded-md border border-slate-200 px-2 text-[11px] font-medium hover:bg-slate-50">
+                              Upload TTD
+                              <input type="file" accept="image/*" className="hidden" onChange={(event) => handleAdminSignatureUpload(step, event)} />
+                            </label>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )
@@ -1361,12 +1456,25 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
             <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
             {pdfPreviewPage1}
           </div>
+          {pdfPreviewPerformancePages.map((page, index) => (
+            <div key={`performance-page-${index}`} id={`pdf-page-performance-${index}`} className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm">
+              <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
+              {page}
+            </div>
+          ))}
           <div
             id="pdf-page-2"
             className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
           >
             <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
             {pdfPreviewPage2}
+          </div>
+          <div
+            id="pdf-page-competency"
+            className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
+          >
+            <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
+            {pdfPreviewCompetencyPage}
           </div>
           <div
             id="pdf-page-3"
@@ -1391,12 +1499,25 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
               <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
               {pdfPreviewPage1}
             </div>
+            {pdfPreviewPerformancePages.map((page, index) => (
+              <div key={`performance-page-${index}`} id={`pdf-page-performance-${index}`} className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm">
+                <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
+                {page}
+              </div>
+            ))}
             <div
               id="pdf-page-2"
               className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
             >
               <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
               {pdfPreviewPage2}
+            </div>
+            <div
+              id="pdf-page-competency"
+              className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
+            >
+              <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
+              {pdfPreviewCompetencyPage}
             </div>
             <div
               id="pdf-page-3"

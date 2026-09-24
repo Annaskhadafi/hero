@@ -203,9 +203,45 @@ test("contract review print preview keeps competency and signatures on separate 
   const source = read("app/dashboard/hc/contract-review/form/client-form.tsx");
   const page2 = source.slice(source.indexOf("const pdfPreviewPage2"), source.indexOf("const pdfPreviewPage3"));
 
-  assert.match(source, /const page3Html/);
   assert.match(source, /id="pdf-page-3"/);
+  assert.match(source, /pdfPreviewPerformancePages/);
+  assert.match(source, /pdfPreviewCompetencyPage/);
+  assert.match(source, /A\. Performance \(lanjutan\)/);
   assert.match(page2, /B\. Related Competency/);
-  assert.match(page2, /break-inside-avoid/);
+  assert.match(page2, /<table className="w-full border-collapse border border-black mb-2/);
+  assert.match(source, /height: '297mm'/);
+  assert.match(source, /thead \{ display: table-header-group; \}/);
   assert.match(source, /paddingBottom: '45mm'/);
+});
+
+test("contract review rejects reused signatures and hides legacy duplicate images", () => {
+  const actionSource = read("app/actions/contract-review.ts");
+  const formSource = read("app/dashboard/hc/contract-review/form/client-form.tsx");
+
+  assert.match(actionSource, /duplicateSignature/);
+  assert.match(actionSource, /TTD ini sudah digunakan pada step approval lain/);
+  assert.match(formSource, /visibleEmployeeApprovalSig/);
+  assert.match(formSource, /employeeApprovalSig !== leaderPreviewSignature/);
+});
+
+test("contract review exposes a Super Admin submitted-review override with per-step signatures", () => {
+  const actionSource = read("app/actions/contract-review.ts");
+  const pageSource = read("app/dashboard/hc/contract-review/page.tsx");
+  const clientSource = read("app/dashboard/hc/contract-review/client-page.tsx");
+  const formSource = read("app/dashboard/hc/contract-review/form/client-form.tsx");
+
+  assert.match(actionSource, /requireSuperAdminContractReviewAccess/);
+  assert.match(actionSource, /saveAdminContractReview/);
+  assert.match(actionSource, /updateAdminContractReviewApprovalSignature/);
+  assert.match(actionSource, /resendContractReviewApprovalToStep/);
+  assert.match(actionSource, /completeAdminContractReview/);
+  assert.match(actionSource, /isSuperAdminRole/);
+  assert.match(pageSource, /isSuperAdminRole\(role\)/);
+  assert.match(clientSource, /isSuperAdmin && status !== 'draft'/);
+  assert.match(clientSource, /form\/\$\{row\.id\}\?admin=1/);
+  assert.match(formSource, /adminMode/);
+  assert.match(formSource, /Upload TTD/);
+  assert.match(formSource, /Hapus TTD/);
+  assert.match(formSource, /Kirim Ulang/);
+  assert.match(formSource, /Selesai/);
 });

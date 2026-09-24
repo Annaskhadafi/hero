@@ -15,7 +15,7 @@ import {
   sites,
 } from '@/db/schema/hero'
 import { centralServiceEmployees } from '@/db/schema/central-service'
-import { and, asc, desc, eq, isNotNull, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, isNotNull, ne, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { randomUUID } from 'crypto'
 import { logEmailDeliveryRecord, sendEmailViaSmtp, type EmailTransportSettings } from '@/lib/email-delivery'
@@ -24,7 +24,7 @@ import { getHumanCapitalPolicyCcRecipients } from '@/lib/human-capital-email'
 import { resolveWorkflowTemplateContent } from '@/lib/workflow-email'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import { getServerSession } from '@/lib/auth-session'
-import { getCurrentEmployeeAccessRole, getCurrentMenuPermission } from '@/lib/hero-access'
+import { getCurrentEmployeeAccessRole, getCurrentMenuPermission, isSuperAdminRole } from '@/lib/hero-access'
 
 async function getBaseUrl(): Promise<string> {
   let baseUrl = process.env.NEXT_PUBLIC_APP_URL
@@ -719,18 +719,29 @@ async function sendPendingContractReviewApprovalEmail(review: typeof hcEmployeeC
     }
   }
 
+  return sendContractReviewApprovalEmailForStep(review, pendingApproval, { employeeSection, employeeSite, employeeSn })
+}
+
+async function sendContractReviewApprovalEmailForStep(
+  review: typeof hcEmployeeContractReviews.$inferSelect,
+  approval: { approvalToken: string; approverName: string; approverEmail: string; stepOrder: number },
+  context?: { employeeSection: string; employeeSite: string; employeeSn: string },
+) {
+  const resolvedContext = context || await getContractReviewReminderContext(review)
+  const { employeeSection, employeeSite, employeeSn } = resolvedContext
+
   const settings = await getContractReviewSettings()
   const template = settings.emailTemplates.approverSignature
   const baseUrl = await getBaseUrl()
   const employeeName = review.employeeNameStr || 'Employee'
-  const approvalLink = `${baseUrl}/review/${pendingApproval.approvalToken}`
+  const approvalLink = `${baseUrl}/review/${approval.approvalToken}`
   const variables = {
-    approverName: pendingApproval.approverName,
+    approverName: approval.approverName,
     employeeName,
     employeeSn,
     employeeSection,
     employeeSite,
-    approvalStep: `Step ${pendingApproval.stepOrder}`,
+    approvalStep: `Step ${approval.stepOrder}`,
     approvalLink,
   }
   const body = template.body
@@ -743,7 +754,7 @@ async function sendPendingContractReviewApprovalEmail(review: typeof hcEmployeeC
     .replace(/{{approvalLink}}/g, variables.approvalLink)
 
   const result = await sendContractReviewEmail({
-    to: pendingApproval.approverEmail,
+    to: approval.approverEmail,
     subject: template.subject
       .replace(/{{employeeName}}/g, variables.employeeName)
       .replace(/{{employeeSn}}/g, variables.employeeSn),
@@ -755,8 +766,8 @@ async function sendPendingContractReviewApprovalEmail(review: typeof hcEmployeeC
 
   return {
     ...result,
-    recipient: pendingApproval.approverEmail?.trim() || null,
-    step: pendingApproval.stepOrder,
+    recipient: approval.approverEmail?.trim() || null,
+    step: approval.stepOrder,
   }
 }
 
@@ -1590,6 +1601,60 @@ export async function resendContractReviewApprovalEmail(reviewId: number) {
   }
 }
 
+export async function resendContractReviewApprovalToStep(reviewId: number, approvalId: number) {
+  try {
+    const access = await requireSuperAdminContractReviewAccess()
+    if (!access.ok) return { success: false, error: access.error }
+
+    const [review] = await db
+      .select()
+      .from(hcEmployeeContractReviews)
+      .where(eq(hcEmployeeContractReviews.id, reviewId))
+      .limit(1)
+    if (!review) return { success: false, error: 'Review Contract Review tidak ditemukan.' }
+    if (review.status === 'draft') return { success: false, error: 'Review draft belum dapat dikirim ulang.' }
+
+    const approvals = await db
+      .select()
+      .from(hcContractReviewApprovals)
+      .where(eq(hcContractReviewApprovals.reviewId, reviewId))
+      .orderBy(asc(hcContractReviewApprovals.stepOrder))
+    const targetIndex = approvals.findIndex((approval) => approval.id === approvalId)
+    if (targetIndex < 0) return { success: false, error: 'Reviewer tidak ditemukan pada review ini.' }
+    const target = approvals[targetIndex]
+
+    await db.transaction(async (tx) => {
+      for (const [index, approval] of approvals.entries()) {
+        if (index < targetIndex) continue
+        await tx
+          .update(hcContractReviewApprovals)
+          .set({
+            status: index === targetIndex ? 'pending' : 'waiting',
+            signatureDataUrl: null,
+            signedAt: null,
+            remarks: '',
+          })
+          .where(eq(hcContractReviewApprovals.id, approval.id))
+      }
+      if (review.status === 'completed') {
+        await tx
+          .update(hcEmployeeContractReviews)
+          .set({ status: 'in_progress', updatedAt: new Date() })
+          .where(eq(hcEmployeeContractReviews.id, reviewId))
+      }
+    })
+
+    const result = await sendContractReviewApprovalEmailForStep(review, target)
+    revalidatePath(`/dashboard/hc/contract-review/form/${reviewId}`)
+    revalidatePath('/dashboard/hc/contract-review')
+    if (!result.sent) return { success: false, error: result.error || 'Email approval tidak terkirim.', recipient: result.recipient, step: result.step }
+    return { success: true, message: `Approval dikirim ulang ke ${result.recipient}.`, recipient: result.recipient, step: result.step }
+  } catch (error: any) {
+    console.error('Error resending selected Contract Review approval:', error)
+    return { success: false, error: error.message || 'Gagal mengirim ulang approval reviewer.' }
+  }
+}
+
 export async function saveContractReview(data: Partial<typeof hcEmployeeContractReviews.$inferInsert>) {
   try {
     const session = await getServerSession()
@@ -1679,6 +1744,102 @@ export async function saveContractReview(data: Partial<typeof hcEmployeeContract
   }
 }
 
+async function requireSuperAdminContractReviewAccess() {
+  const session = await getServerSession()
+  if (!session?.user) return { ok: false as const, error: 'Unauthorized: Sesi login diperlukan.' }
+  const role = await getCurrentEmployeeAccessRole()
+  if (!isSuperAdminRole(role)) return { ok: false as const, error: 'Forbidden: Hanya Super Admin yang dapat mengubah review yang sudah disubmit.' }
+  return { ok: true as const }
+}
+
+export async function saveAdminContractReview(data: Partial<typeof hcEmployeeContractReviews.$inferInsert>) {
+  try {
+    const access = await requireSuperAdminContractReviewAccess()
+    if (!access.ok) return { success: false, error: access.error }
+    if (!data.id) return { success: false, error: 'Review Contract Review tidak ditemukan.' }
+
+    const [existing] = await db.select().from(hcEmployeeContractReviews).where(eq(hcEmployeeContractReviews.id, data.id)).limit(1)
+    if (!existing) return { success: false, error: 'Review Contract Review tidak ditemukan.' }
+    if (existing.status === 'draft') return { success: false, error: 'Review draft gunakan form edit biasa.' }
+    const { id: _id, status: _status, createdAt: _createdAt, updatedAt: _updatedAt, ...fields } = data
+    const [saved] = await db
+      .update(hcEmployeeContractReviews)
+      .set({ ...fields, status: existing.status, updatedAt: new Date() })
+      .where(eq(hcEmployeeContractReviews.id, data.id))
+      .returning()
+    revalidatePath('/dashboard/hc/contract-review')
+    revalidatePath(`/dashboard/hc/contract-review/form/${data.id}`)
+    return { success: true, data: saved }
+  } catch (error: any) {
+    console.error('Error saving admin Contract Review:', error)
+    return { success: false, error: error.message || 'Gagal menyimpan perubahan admin.' }
+  }
+}
+
+export async function updateAdminContractReviewApprovalSignature(reviewId: number, approvalId: number, signatureDataUrl: string | null) {
+  try {
+    const access = await requireSuperAdminContractReviewAccess()
+    if (!access.ok) return { success: false, error: access.error }
+    if (signatureDataUrl !== null && !signatureDataUrl.startsWith('data:image/')) return { success: false, error: 'Format TTD tidak valid.' }
+    const [approval] = await db
+      .select({
+        id: hcContractReviewApprovals.id,
+        stepOrder: hcContractReviewApprovals.stepOrder,
+        status: hcEmployeeContractReviews.status,
+      })
+      .from(hcContractReviewApprovals)
+      .innerJoin(hcEmployeeContractReviews, eq(hcContractReviewApprovals.reviewId, hcEmployeeContractReviews.id))
+      .where(and(eq(hcContractReviewApprovals.id, approvalId), eq(hcContractReviewApprovals.reviewId, reviewId)))
+      .limit(1)
+    if (!approval) return { success: false, error: 'Step approval tidak ditemukan.' }
+    if (approval.status === 'draft') return { success: false, error: 'Review draft belum dapat diubah melalui override admin.' }
+    const duplicateSignature = signatureDataUrl === null ? [] : await db
+      .select({ id: hcContractReviewApprovals.id })
+      .from(hcContractReviewApprovals)
+      .where(
+        and(
+          eq(hcContractReviewApprovals.reviewId, reviewId),
+          ne(hcContractReviewApprovals.id, approvalId),
+          eq(hcContractReviewApprovals.signatureDataUrl, signatureDataUrl),
+        ),
+      )
+      .limit(1)
+    if (duplicateSignature.length > 0) return { success: false, error: 'TTD ini sudah dipakai reviewer lain pada review ini.' }
+    await db
+      .update(hcContractReviewApprovals)
+      .set({ signatureDataUrl, signedAt: signatureDataUrl ? new Date() : null })
+      .where(eq(hcContractReviewApprovals.id, approvalId))
+    if (approval.stepOrder === 1) {
+      await db
+        .update(hcEmployeeContractReviews)
+        .set({ leaderSignatureDataUrl: signatureDataUrl, updatedAt: new Date() })
+        .where(eq(hcEmployeeContractReviews.id, reviewId))
+    }
+    revalidatePath(`/dashboard/hc/contract-review/form/${reviewId}`)
+    return { success: true }
+  } catch (error: any) {
+    console.error('Error updating admin Contract Review signature:', error)
+    return { success: false, error: error.message || 'Gagal menyimpan TTD reviewer.' }
+  }
+}
+
+export async function completeAdminContractReview(reviewId: number) {
+  try {
+    const access = await requireSuperAdminContractReviewAccess()
+    if (!access.ok) return { success: false, error: access.error }
+    const [review] = await db.select({ id: hcEmployeeContractReviews.id, status: hcEmployeeContractReviews.status }).from(hcEmployeeContractReviews).where(eq(hcEmployeeContractReviews.id, reviewId)).limit(1)
+    if (!review) return { success: false, error: 'Review Contract Review tidak ditemukan.' }
+    if (review.status === 'draft') return { success: false, error: 'Review draft belum dapat diselesaikan.' }
+    await db.update(hcEmployeeContractReviews).set({ status: 'completed', updatedAt: new Date() }).where(eq(hcEmployeeContractReviews.id, reviewId))
+    revalidatePath('/dashboard/hc/contract-review')
+    revalidatePath(`/dashboard/hc/contract-review/form/${reviewId}`)
+    return { success: true }
+  } catch (error: any) {
+    console.error('Error completing admin Contract Review:', error)
+    return { success: false, error: error.message || 'Gagal menyelesaikan review.' }
+  }
+}
+
 export async function deleteContractReview(id: number) {
   try {
     const session = await getServerSession()
@@ -1755,6 +1916,24 @@ export async function approveContractReviewStep(
     if (approval.status === 'approved') return { success: true }
     if (approval.status !== 'pending') {
       return { success: false, error: 'Approval ini belum aktif. Menunggu step sebelumnya selesai.' }
+    }
+
+    const duplicateSignature = data.signatureDataUrl
+      ? await db
+          .select({ id: hcContractReviewApprovals.id })
+          .from(hcContractReviewApprovals)
+          .where(
+            and(
+              eq(hcContractReviewApprovals.reviewId, approval.reviewId),
+              eq(hcContractReviewApprovals.status, 'approved'),
+              ne(hcContractReviewApprovals.id, approval.id),
+              eq(hcContractReviewApprovals.signatureDataUrl, data.signatureDataUrl),
+            ),
+          )
+          .limit(1)
+      : []
+    if (duplicateSignature.length > 0) {
+      return { success: false, error: 'TTD ini sudah digunakan pada step approval lain.' }
     }
 
     // If recommendation/letterIssuance are changed, update the master review record

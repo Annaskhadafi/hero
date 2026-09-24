@@ -29,10 +29,13 @@ function populateEmailsFromEmployees(settings: any, empList: any[]) {
 }
 
 import { redirect } from "next/navigation"
-import { getCurrentMenuPermission } from "@/lib/hero-access"
+import { getCurrentEmployeeAccessRole, getCurrentMenuPermission, isSuperAdminRole } from "@/lib/hero-access"
 
 export default async function ContractReviewPage() {
-  const access = await getCurrentMenuPermission('hc_contract_review')
+  const [access, role] = await Promise.all([
+    getCurrentMenuPermission('hc_contract_review'),
+    getCurrentEmployeeAccessRole(),
+  ])
   if (!access.canView) {
     redirect('/dashboard')
   }
@@ -71,6 +74,7 @@ export default async function ContractReviewPage() {
       employees={employeeList}
       settings={enrichedSettings as any}
       expiringEmployees={expiringEmployees as any[]}
+      isSuperAdmin={isSuperAdminRole(role)}
     />
   )
 }

@@ -6,13 +6,18 @@ import { centralServiceEmployees } from "@/db/schema/central-service"
 import { hcContractReviewApprovals } from "@/db/schema/hero"
 import { asc, eq, inArray } from "drizzle-orm"
 import { notFound } from "next/navigation"
+import { redirect } from "next/navigation"
+import { getCurrentEmployeeAccessRole, isSuperAdminRole } from "@/lib/hero-access"
 
 export const metadata = {
   title: "Form Contract Review - HC",
 }
 
-export default async function ContractReviewEditPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ContractReviewEditPage({ params, searchParams }: { params: Promise<{ id: string }>, searchParams?: Promise<{ admin?: string }> }) {
   const resolvedParams = await params
+  const resolvedSearchParams = searchParams ? await searchParams : {}
+  const adminMode = resolvedSearchParams.admin === '1'
+  if (adminMode && !isSuperAdminRole(await getCurrentEmployeeAccessRole())) redirect('/dashboard/hc/contract-review')
   const id = parseInt(resolvedParams.id)
   if (isNaN(id)) return notFound()
 
@@ -131,6 +136,6 @@ export default async function ContractReviewEditPage({ params }: { params: Promi
   }
 
   return (
-    <ContractReviewClientForm employees={employeeList} orgNodes={orgNodes} initialData={reviewResult.data} approvalSettings={approvalSettings as any} approvalHistory={allApprovals as any[]} activityTemplates={activityTemplatesResult.success ? activityTemplatesResult.data : []} masterHeadMap={masterHeadMap} />
+    <ContractReviewClientForm employees={employeeList} orgNodes={orgNodes} initialData={reviewResult.data} approvalSettings={approvalSettings as any} approvalHistory={allApprovals as any[]} activityTemplates={activityTemplatesResult.success ? activityTemplatesResult.data : []} masterHeadMap={masterHeadMap} adminMode={adminMode} />
   )
 }

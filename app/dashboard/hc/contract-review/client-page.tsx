@@ -78,11 +78,13 @@ export function ContractReviewClientPage({
   employees,
   settings,
   expiringEmployees = [],
+  isSuperAdmin = false,
 }: {
   reviews: any[]
   employees: any[]
   settings: any
   expiringEmployees?: ExpiringEmployee[]
+  isSuperAdmin?: boolean
 }) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<string>("reviews")
@@ -505,6 +507,17 @@ export function ContractReviewClientPage({
                             onEdit={() => router.push(`/dashboard/hc/contract-review/${row.id}`)}
                             onDelete={() => handleDelete(row.id)}
                           />
+                          {isSuperAdmin && status !== 'draft' && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 border-violet-200 px-2 text-[11px] font-semibold text-violet-700 hover:bg-violet-50"
+                              onClick={() => router.push(`/dashboard/hc/contract-review/form/${row.id}?admin=1`)}
+                            >
+                              Admin Edit
+                            </Button>
+                          )}
                           {row.approvalStep && (
                             <Button
                               type="button"

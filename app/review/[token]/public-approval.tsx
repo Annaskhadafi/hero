@@ -162,7 +162,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
 
   // PDF Page 1: Details, Profile, Performance, Competency
   const pdfPage1 = (
-    <div className="relative z-10 text-[9pt] font-sans leading-tight text-black" style={{ paddingTop: '40mm', paddingBottom: '35mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
+    <div className="relative z-10 text-[9pt] font-sans leading-tight text-black" style={{ paddingTop: '40mm', paddingBottom: '35mm', paddingLeft: '20mm', paddingRight: '20mm', minHeight: '297mm', height: 'auto', overflow: 'visible' }}>
       <h1 className="text-center font-bold text-[11pt] mb-3">EMPLOYEE PROBATION/CONTRACT REVIEW</h1>
 
       <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1">
@@ -257,7 +257,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
 
   // PDF Page 2: Achievement, Signatories, Letter Issuance
   const pdfPage2 = (
-    <div className="relative z-10 text-[9pt] font-sans leading-tight text-black" style={{ paddingTop: '40mm', paddingBottom: '35mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
+    <div className="relative z-10 text-[9pt] font-sans leading-tight text-black" style={{ paddingTop: '40mm', paddingBottom: '35mm', paddingLeft: '20mm', paddingRight: '20mm', minHeight: '297mm', height: 'auto', overflow: 'visible' }}>
       <div className="font-bold ml-4 mb-1">Achievement Definition</div>
       <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1">
         <tbody>
@@ -543,8 +543,8 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                         @page { size: A4 portrait; margin: 0; }
                         * { box-sizing: border-box; margin: 0; padding: 0; }
                         body { font-family: 'Manrope', 'Inter', Arial, sans-serif; }
-                        .page { width: 210mm; height: 297mm; position: relative; page-break-after: always; overflow: hidden; background-size: 100% 100%; background-repeat: no-repeat; background-position: top center; }
-                        .content { position: relative; z-index: 10; padding: 18mm 12mm 15mm 12mm; font-size: 7pt; line-height: 1.2; color: black; height: 100%; overflow: hidden; }
+                        .page { width: 210mm; min-height: 297mm; height: auto; position: relative; page-break-after: always; overflow: visible; background-size: 100% 100%; background-repeat: no-repeat; background-position: top center; }
+                        .content { position: relative; z-index: 10; padding: 18mm 12mm 15mm 12mm; font-size: 7pt; line-height: 1.2; min-height: 297mm; height: auto; overflow: visible; }
                         table { width: 100%; border-collapse: collapse; margin-bottom: 0.5rem; }
                         td, th { border: 1px solid black; padding: 2px 4px; font-size: 7pt; }
                         th { font-weight: bold; background: #f8fafc; }
@@ -614,14 +614,14 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
               <div className="flex min-w-max flex-col gap-6">
               <div
                 id="pdf-page-1"
-                className="relative mx-auto shrink-0 min-h-[297mm] w-[210mm] overflow-hidden bg-white shadow-sm"
+                className="relative mx-auto shrink-0 min-h-[297mm] h-auto w-[210mm] overflow-visible bg-white shadow-sm"
                 style={{ backgroundImage: 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)', backgroundSize: '100% 100%' }}
               >
                 {pdfPage1}
               </div>
               <div
                 id="pdf-page-2"
-                className="relative mx-auto shrink-0 min-h-[297mm] w-[210mm] overflow-hidden bg-white shadow-sm"
+                className="relative mx-auto shrink-0 min-h-[297mm] h-auto w-[210mm] overflow-visible bg-white shadow-sm"
                 style={{ backgroundImage: 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)', backgroundSize: '100% 100%' }}
               >
                 {pdfPage2}
