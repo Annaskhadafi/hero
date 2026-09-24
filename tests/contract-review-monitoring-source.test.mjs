@@ -245,3 +245,15 @@ test("contract review exposes a Super Admin submitted-review override with per-s
   assert.match(formSource, /Kirim Ulang/);
   assert.match(formSource, /Selesai/);
 });
+
+test("completed contract review syncs contract dates to hero_employees", () => {
+  const source = read("app/actions/contract-review.ts");
+
+  assert.match(source, /syncCompletedContractReviewToEmployee/);
+  assert.match(source, /contractDurationStart/);
+  assert.match(source, /contractDurationEnd/);
+  assert.match(source, /permanentDate/);
+  assert.match(source, /where\(eq\(employees\.id, review\.employeeId\)\)/);
+  assert.match(source, /await syncCompletedContractReviewToEmployee\(\{ \.\.\.review, \.\.\.updateData \}, today\)/);
+  assert.match(source, /await syncCompletedContractReviewToEmployee\(review, completedAt\)/);
+});

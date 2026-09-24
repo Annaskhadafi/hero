@@ -372,6 +372,52 @@ function parseIsoDate(value: string | null | undefined) {
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
+function getCompletedEmployeeContractDates(
+  review: typeof hcEmployeeContractReviews.$inferSelect,
+  completedAt: Date,
+) {
+  const employeeDates: Partial<typeof employees.$inferInsert> = {}
+  const contractStart = parseIsoDate(review.hireDate ? String(review.hireDate) : null)
+  const reviewDate = parseIsoDate(review.todayDate ? String(review.todayDate) : null) || completedAt
+
+  if (contractStart) {
+    employeeDates.contractDurationStart = contractStart.toISOString().slice(0, 10)
+  }
+
+  if (review.contractEndDate) {
+    employeeDates.contractDurationEnd = String(review.contractEndDate)
+  } else if (review.recommendation === 'contract_extended') {
+    let contractEnd: Date | null = null
+    if (!contractEnd && contractStart && review.contractExtendedMonths) {
+      contractEnd = new Date(contractStart)
+      contractEnd.setMonth(contractEnd.getMonth() + review.contractExtendedMonths)
+    }
+    if (contractEnd) employeeDates.contractDurationEnd = contractEnd.toISOString().slice(0, 10)
+  } else if (review.recommendation === 'contract_ended') {
+    employeeDates.contractDurationEnd = reviewDate.toISOString().slice(0, 10)
+  }
+
+  if (review.permanentDate) {
+    employeeDates.permanentDate = String(review.permanentDate)
+  } else if (review.recommendation === 'confirm_permanent') {
+    employeeDates.permanentDate = reviewDate.toISOString().slice(0, 10)
+  }
+
+  return employeeDates
+}
+
+async function syncCompletedContractReviewToEmployee(
+  review: typeof hcEmployeeContractReviews.$inferSelect,
+  completedAt: Date,
+) {
+  if (!review.employeeId) return
+  const employeeDates = getCompletedEmployeeContractDates(review, completedAt)
+  if (Object.keys(employeeDates).length === 0) return
+  await db.update(employees).set(employeeDates).where(eq(employees.id, review.employeeId))
+  revalidatePath('/dashboard/hc/employee')
+  revalidatePath(`/dashboard/hc/employee/${review.employeeId}`)
+}
+
 function formatDisplayDate(value: Date) {
   return value.toLocaleDateString('id-ID', {
     day: '2-digit',
@@ -1827,10 +1873,12 @@ export async function completeAdminContractReview(reviewId: number) {
   try {
     const access = await requireSuperAdminContractReviewAccess()
     if (!access.ok) return { success: false, error: access.error }
-    const [review] = await db.select({ id: hcEmployeeContractReviews.id, status: hcEmployeeContractReviews.status }).from(hcEmployeeContractReviews).where(eq(hcEmployeeContractReviews.id, reviewId)).limit(1)
+    const [review] = await db.select().from(hcEmployeeContractReviews).where(eq(hcEmployeeContractReviews.id, reviewId)).limit(1)
     if (!review) return { success: false, error: 'Review Contract Review tidak ditemukan.' }
     if (review.status === 'draft') return { success: false, error: 'Review draft belum dapat diselesaikan.' }
-    await db.update(hcEmployeeContractReviews).set({ status: 'completed', updatedAt: new Date() }).where(eq(hcEmployeeContractReviews.id, reviewId))
+    const completedAt = new Date()
+    await db.update(hcEmployeeContractReviews).set({ status: 'completed', updatedAt: completedAt }).where(eq(hcEmployeeContractReviews.id, reviewId))
+    await syncCompletedContractReviewToEmployee(review, completedAt)
     revalidatePath('/dashboard/hc/contract-review')
     revalidatePath(`/dashboard/hc/contract-review/form/${reviewId}`)
     return { success: true }
@@ -1994,6 +2042,7 @@ export async function approveContractReviewStep(
         }
 
         await db.update(hcEmployeeContractReviews).set(updateData).where(eq(hcEmployeeContractReviews.id, approval.reviewId))
+        await syncCompletedContractReviewToEmployee({ ...review, ...updateData }, today)
       }
     }
 
