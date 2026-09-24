@@ -41,7 +41,7 @@ function parseAnnotations(value: unknown, imageWidth: number, imageHeight: numbe
   if (value === undefined) return [] as Annotation[]
   if (!Array.isArray(value) || value.length > 100) throw new Error('Annotations tidak valid.')
 
-  return value.map((item) => {
+  return value.map((item): Annotation => {
     if (!item || typeof item !== 'object') throw new Error('Annotation tidak valid.')
     const annotation = item as Record<string, unknown>
     const label = typeof annotation.label === 'string' ? annotation.label.trim() : ''

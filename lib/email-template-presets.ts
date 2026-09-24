@@ -3120,6 +3120,92 @@ Harap segera memberikan keputusan persetujuan Anda.`,
     },
   },
   {
+    name: 'HC Contract Review Reverted Notification',
+    templateCode: 'contract_review_reverted_notification',
+    templateType: 'Notification',
+    deliveryChannel: 'email',
+    recipientScope: 'approver,hc',
+    ccEmail: '',
+    subject: '[Contract Review - Revisi] Dokumen Dikembalikan untuk Revisi - {{employeeName}}',
+    htmlContent:
+      `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f4f5f7;padding:20px">
+<div style="background:linear-gradient(135deg,#b91c1c,#ef4444);padding:18px 24px;border-radius:8px 8px 0 0">
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
+<p style="color:#fecaca;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital • Revisi Dokumen</p></td>
+<td align="right"><span style="color:#fca5a5;font-size:22px">&#9888;</span></td>
+</tr></table>
+</div>
+<div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0">
+<p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Yth. {{approverName}},</p>
+<p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Dokumen Contract Review untuk <strong>{{employeeName}}</strong> (SN: {{employeeSn}}) telah dikembalikan oleh <strong>{{revertedByName}}</strong> ({{revertedByRole}}) untuk dilakukan perbaikan/revisi.</p>
+<div style="background:#fef2f2;border-left:4px solid #ef4444;padding:12px 16px;border-radius:4px;margin:16px 0">
+<p style="color:#991b1b;font-size:12px;font-weight:700;margin:0 0 4px;text-transform:uppercase">Catatan / Alasan Revert</p>
+<p style="color:#7f1d1d;font-size:13px;margin:0;line-height:1.5">{{revertReason}}</p>
+</div>
+<p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Contract Review</p>
+<table cellpadding="0" cellspacing="0">
+<tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nama Karyawan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr>
+<tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">SN</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeSn}}</td></tr>
+<tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Section</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeSection}}</td></tr>
+<tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Site</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeSite}}</td></tr>
+<tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tahap Approval</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{approvalStep}}</td></tr>
+</table>
+<table cellpadding="0" cellspacing="0" style="margin:20px 0"><tr><td style="background:#dc2626;border-radius:6px;padding:10px 20px"><a href="{{approvalLink}}" style="color:#fff;font-size:13px;font-weight:600;text-decoration:none;display:inline-block">Buka dan Tindak Lanjuti Dokumen</a></td></tr></table>
+<p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Harap segera memeriksa dan menindaklanjuti revisi yang diperlukan.</p>
+<table cellpadding="0" cellspacing="0" width="100%"><tr>
+<td style="padding-top:20px;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
+</td>
+</tr></table>
+</div>
+</div>`,
+    textContent:
+      `Yth. {{approverName}},
+
+Dokumen Contract Review untuk {{employeeName}} (SN: {{employeeSn}}) telah dikembalikan oleh {{revertedByName}} ({{revertedByRole}}) untuk dilakukan revisi.
+
+Catatan / Alasan Revert:
+{{revertReason}}
+
+Informasi Contract Review:
+Nama Karyawan: {{employeeName}}
+SN: {{employeeSn}}
+Section: {{employeeSection}}
+Site: {{employeeSite}}
+Tahap: {{approvalStep}}
+
+Buka dokumen: {{approvalLink}}
+
+Harap segera memeriksa dan menindaklanjuti revisi yang diperlukan.`,
+    description: 'Override pusat untuk email notifikasi revert/pengembalian dokumen contract review.',
+    variables: [
+      'approverName',
+      'employeeName',
+      'employeeSn',
+      'employeeSection',
+      'employeeSite',
+      'revertedByName',
+      'revertedByRole',
+      'revertReason',
+      'approvalStep',
+      'approvalLink',
+    ],
+    sampleValues: {
+      approverName: 'Aris Susanto',
+      employeeName: 'La Romaidun',
+      employeeSn: '76715',
+      employeeSection: 'Repair / Retread Operation',
+      employeeSite: 'Central Services',
+      revertedByName: 'Kesuma Bagaskara',
+      revertedByRole: 'HR',
+      revertReason: 'Dokumen evaluasi kurang lengkap, mohon perbaiki remark aktivitas pada bagian A.',
+      approvalStep: 'Step 1',
+      approvalLink: 'https://hero.example.com/review/sample-token',
+    },
+  },
+  {
     name: 'HC Contract Review Test Notification',
     templateCode: 'contract_review_test_notification',
     templateType: 'Notification',

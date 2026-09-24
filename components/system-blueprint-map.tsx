@@ -53,6 +53,7 @@ import {
   Hammer,
   ShieldAlert,
   ExternalLink,
+  BookOpen,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -939,6 +940,17 @@ export function SystemBlueprintMap({
           >
             <Download className="size-3.5 text-blue-600" />
             PNG
+          </Button>
+
+          <Button
+            asChild
+            variant="outline"
+            className="h-9 gap-1.5 rounded-xl border-sky-300 bg-sky-50 text-sky-800 hover:bg-sky-100 text-xs font-bold"
+          >
+            <Link href="/dashboard/documentation">
+              <BookOpen className="size-3.5 text-sky-600" />
+              Dokumentasi &amp; Handover
+            </Link>
           </Button>
         </div>
       </div>

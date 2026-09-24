@@ -78,7 +78,9 @@ function getCredentials() {
   const email = process.env.RARAY_VISION_EMAIL || ''
   const password = process.env.RARAY_VISION_PASSWORD || ''
   if (!email || !password) {
-    console.warn('[raray-vision] Warning: RARAY_VISION_EMAIL or RARAY_VISION_PASSWORD environment variables are not configured.')
+    console.warn(
+      '[raray-vision] Warning: RARAY_VISION_EMAIL or RARAY_VISION_PASSWORD environment variables are not configured.'
+    )
   }
   return { email, password }
 }
@@ -190,7 +192,14 @@ export async function rarayRegisterFace(params: {
   mimeType?: string
   force?: boolean
 }): Promise<RarayRegisterResult> {
-  const { employeeId, employeeSn, employeeName, imageBuffer, mimeType = 'image/jpeg', force = false } = params
+  const {
+    employeeId,
+    employeeSn,
+    employeeName,
+    imageBuffer,
+    mimeType = 'image/jpeg',
+    force = false,
+  } = params
   const baseUrl = getBaseUrl()
   const authHeader = await getAuthHeader()
   const faceId = employeeSn?.trim() || `emp-${employeeId}`
@@ -207,7 +216,11 @@ export async function rarayRegisterFace(params: {
     if (employeeSn) formData.append('employee_sn', employeeSn)
     formData.append('employee_name', employeeName)
     formData.append('force', force ? 'true' : 'false')
-    formData.append('file', new Blob([new Uint8Array(imageBuffer)], { type: mimeType }), `face-${employeeId}.jpg`)
+    formData.append(
+      'file',
+      new Blob([new Uint8Array(imageBuffer)], { type: mimeType }),
+      `face-${employeeId}.jpg`
+    )
 
     const res = await fetch(`${baseUrl}/api/v1/hero/register`, {
       method: 'POST',
@@ -229,7 +242,11 @@ export async function rarayRegisterFace(params: {
     formData.append('user_id', faceId)
     formData.append('user_name', employeeName)
     if (employeeSn) formData.append('employee_sn', employeeSn)
-    formData.append('file', new Blob([new Uint8Array(imageBuffer)], { type: mimeType }), `face-${employeeId}.jpg`)
+    formData.append(
+      'file',
+      new Blob([new Uint8Array(imageBuffer)], { type: mimeType }),
+      `face-${employeeId}.jpg`
+    )
 
     const endpoint = force ? `${baseUrl}/api/v1/faces/${faceId}` : `${baseUrl}/api/v1/faces/live`
     const method = force ? 'PUT' : 'POST'
@@ -267,7 +284,10 @@ export async function rarayRegisterFace(params: {
     const errText = await res.text()
     return { status: 'error', message: `Raray Vision error (${res.status}): ${errText}` }
   } catch (err) {
-    return { status: 'error', message: err instanceof Error ? err.message : 'Gagal terhubung ke Raray Vision' }
+    return {
+      status: 'error',
+      message: err instanceof Error ? err.message : 'Gagal terhubung ke Raray Vision',
+    }
   }
 }
 
@@ -315,13 +335,26 @@ export async function rarayRecognizeFace(params: {
 
     if (!res.ok) {
       const errText = await res.text()
-      return { status: 'error', recognized: false, message: `Raray Vision error: ${res.status} ${errText}` }
+      return {
+        status: 'error',
+        recognized: false,
+        message: `Raray Vision error: ${res.status} ${errText}`,
+      }
     }
 
     const data = await res.json()
     const info = data.data || {}
     const isMatch = Boolean(data.match ?? info.match ?? data.is_match ?? info.is_match ?? false)
-    const similarity = typeof data.similarity === 'number' ? data.similarity : (typeof info.similarity === 'number' ? info.similarity : (typeof data.confidence === 'number' ? data.confidence : (typeof info.confidence === 'number' ? info.confidence : 0)))
+    const similarity =
+      typeof data.similarity === 'number'
+        ? data.similarity
+        : typeof info.similarity === 'number'
+          ? info.similarity
+          : typeof data.confidence === 'number'
+            ? data.confidence
+            : typeof info.confidence === 'number'
+              ? info.confidence
+              : 0
     const normalizedSim = similarity > 1 ? similarity / 100 : similarity
 
     const faceId = info.id || data.face_id || data.user_id
@@ -344,7 +377,11 @@ export async function rarayRecognizeFace(params: {
       threshold: 0.45,
     }
   } catch (err) {
-    return { status: 'error', recognized: false, message: err instanceof Error ? err.message : 'Error' }
+    return {
+      status: 'error',
+      recognized: false,
+      message: err instanceof Error ? err.message : 'Error',
+    }
   }
 }
 
@@ -379,7 +416,11 @@ export async function rarayVerifyFace(params: {
     const formData = new FormData()
     formData.append('employee_id', String(employeeId))
     if (employeeSn) formData.append('employee_sn', employeeSn)
-    formData.append('file', new Blob([new Uint8Array(imageBuffer)], { type: mimeType }), `verify-${employeeId}.jpg`)
+    formData.append(
+      'file',
+      new Blob([new Uint8Array(imageBuffer)], { type: mimeType }),
+      `verify-${employeeId}.jpg`
+    )
 
     const res = await fetch(`${baseUrl}/api/v1/hero/verify`, {
       method: 'POST',
@@ -392,11 +433,19 @@ export async function rarayVerifyFace(params: {
     if (res.ok) {
       const data = await res.json()
       if (data.status === 'success' && data.verified !== undefined) {
-        const livenessScore = data.liveness_score ?? data.data?.liveness_score ?? data.liveness ?? data.data?.liveness ?? null
-        const isLive = data.is_live ?? data.data?.is_live ?? (livenessScore !== null ? livenessScore >= 0.40 : true)
+        const livenessScore =
+          data.liveness_score ??
+          data.data?.liveness_score ??
+          data.liveness ??
+          data.data?.liveness ??
+          null
+        const isLive =
+          data.is_live ??
+          data.data?.is_live ??
+          (livenessScore !== null ? livenessScore >= 0.4 : true)
         const isSpoof = data.is_spoof ?? data.data?.is_spoof ?? false
 
-        if (isSpoof || isLive === false || (livenessScore !== null && livenessScore < 0.40)) {
+        if (isSpoof || isLive === false || (livenessScore !== null && livenessScore < 0.4)) {
           return {
             status: 'spoofing_detected',
             verified: false,
@@ -421,7 +470,11 @@ export async function rarayVerifyFace(params: {
     try {
       const formData = new FormData()
       formData.append('user_id', faceId)
-      formData.append('file', new Blob([new Uint8Array(imageBuffer)], { type: mimeType }), `verify-${employeeId}.jpg`)
+      formData.append(
+        'file',
+        new Blob([new Uint8Array(imageBuffer)], { type: mimeType }),
+        `verify-${employeeId}.jpg`
+      )
 
       const res = await fetch(`${baseUrl}/api/v1/faces/compare`, {
         method: 'POST',
@@ -458,13 +511,24 @@ export async function rarayVerifyFace(params: {
       }
 
       const info = data.data || {}
-      const rawSim = typeof data.similarity === 'number' ? data.similarity : (typeof info.similarity === 'number' ? info.similarity : (typeof data.confidence === 'number' ? data.confidence : (typeof info.confidence === 'number' ? info.confidence : 0)))
+      const rawSim =
+        typeof data.similarity === 'number'
+          ? data.similarity
+          : typeof info.similarity === 'number'
+            ? info.similarity
+            : typeof data.confidence === 'number'
+              ? data.confidence
+              : typeof info.confidence === 'number'
+                ? info.confidence
+                : 0
       const similarity = rawSim > 1 ? rawSim / 100 : rawSim
-      const livenessScore = data.liveness_score ?? info.liveness_score ?? data.liveness ?? info.liveness ?? null
-      const isLive = data.is_live ?? info.is_live ?? (livenessScore !== null ? livenessScore >= 0.40 : true)
+      const livenessScore =
+        data.liveness_score ?? info.liveness_score ?? data.liveness ?? info.liveness ?? null
+      const isLive =
+        data.is_live ?? info.is_live ?? (livenessScore !== null ? livenessScore >= 0.4 : true)
       const isSpoof = data.is_spoof ?? info.is_spoof ?? false
 
-      if (isSpoof || isLive === false || (livenessScore !== null && livenessScore < 0.40)) {
+      if (isSpoof || isLive === false || (livenessScore !== null && livenessScore < 0.4)) {
         return {
           status: 'spoofing_detected',
           verified: false,
@@ -499,7 +563,9 @@ export async function rarayVerifyFace(params: {
   return {
     status: 'not_registered',
     verified: false,
-    message: lastErrorMessage || 'Wajah belum terdaftar di Raray Vision. Silakan lakukan registrasi wajah.',
+    message:
+      lastErrorMessage ||
+      'Wajah belum terdaftar di Raray Vision. Silakan lakukan registrasi wajah.',
   }
 }
 
@@ -538,7 +604,6 @@ export async function rarayCheckFaceStatus(params: {
   return { status: 'success', registered: false, employee_id: String(employeeId) }
 }
 
-
 /**
  * Health check: verify Raray Vision is reachable.
  */
@@ -559,7 +624,7 @@ export async function rarayHealthCheck(): Promise<boolean> {
 /**
  * Verify if a face photo is authentic (Real) or a spoof attempt (Photo screen, printout, paper mask)
  * using UniFace-v2 Anti-Spoofing API.
- * 
+ *
  * Endpoint: POST https://vision.chitraparatama.com/api/v1/anti-spoof/uniface-v2
  */
 export async function rarayCheckAntiSpoofUniFaceV2(params: {
@@ -601,7 +666,9 @@ export async function rarayCheckAntiSpoofUniFaceV2(params: {
 
     if (data.status === 'success' || data.is_real !== undefined) {
       if (isReal) {
-        console.log(`[AntiSpoof] ✅ Terverifikasi Wajah Asli: ${confidence.toFixed(1)}% (Latency: ${data.latency_ms ?? 0}ms)`)
+        console.log(
+          `[AntiSpoof] ✅ Terverifikasi Wajah Asli: ${confidence.toFixed(1)}% (Latency: ${data.latency_ms ?? 0}ms)`
+        )
         return {
           status: 'success',
           is_real: true,
@@ -611,7 +678,9 @@ export async function rarayCheckAntiSpoofUniFaceV2(params: {
         }
       } else {
         const verdictDetail = data.verdict ? ` (${data.verdict})` : ''
-        console.warn(`[AntiSpoof] 🚨 Spoofing / Foto Layar Terdeteksi: ${data.verdict || 'spoof'} | Confidence: ${confidence.toFixed(1)}%`)
+        console.warn(
+          `[AntiSpoof] 🚨 Spoofing / Foto Layar Terdeteksi: ${data.verdict || 'spoof'} | Confidence: ${confidence.toFixed(1)}%`
+        )
         return {
           status: 'spoof_detected',
           is_real: false,
@@ -648,7 +717,15 @@ function extractMarkdownFromPdfInspectorResponse(data: any): string {
   if (typeof data === 'string') return data
 
   // 1. Direct top-level fields
-  for (const key of ['markdown', 'md', 'text', 'extracted_text', 'content', 'ocr_text', 'result_text']) {
+  for (const key of [
+    'markdown',
+    'md',
+    'text',
+    'extracted_text',
+    'content',
+    'ocr_text',
+    'result_text',
+  ]) {
     if (typeof data[key] === 'string' && data[key].trim()) {
       return data[key]
     }
@@ -657,7 +734,15 @@ function extractMarkdownFromPdfInspectorResponse(data: any): string {
   // 2. Nested in data or result object
   const nested = data.data || data.result
   if (nested && typeof nested === 'object') {
-    for (const key of ['markdown', 'md', 'text', 'extracted_text', 'content', 'ocr_text', 'result_text']) {
+    for (const key of [
+      'markdown',
+      'md',
+      'text',
+      'extracted_text',
+      'content',
+      'ocr_text',
+      'result_text',
+    ]) {
       if (typeof nested[key] === 'string' && nested[key].trim()) {
         return nested[key]
       }
@@ -706,7 +791,9 @@ export async function rarayPdfInspectorProcess(params: {
     formData.append('file', new Blob([new Uint8Array(fileBuffer)], { type: mimeType }), fileName)
     formData.append('auto_ocr', autoOcr ? 'true' : 'false')
 
-    console.log(`[PDF-Inspector] Sending ${fileName} (${fileBuffer.length} bytes, ${mimeType}) to ${baseUrl}/api/v1/pdf-inspector/process...`)
+    console.log(
+      `[PDF-Inspector] Sending ${fileName} (${fileBuffer.length} bytes, ${mimeType}) to ${baseUrl}/api/v1/pdf-inspector/process...`
+    )
 
     const res = await fetch(`${baseUrl}/api/v1/pdf-inspector/process`, {
       method: 'POST',
@@ -740,14 +827,16 @@ export async function rarayPdfInspectorProcess(params: {
     const pageCount = Array.isArray(data.pages)
       ? data.pages.length
       : Array.isArray(data.data?.pages)
-      ? data.data.pages.length
-      : typeof data.page_count === 'number'
-      ? data.page_count
-      : typeof data.total_pages === 'number'
-      ? data.total_pages
-      : extractedMarkdown.split(/\n\s*---\s*\n|\n\s*#+\s*Page|\n\n/).length
+        ? data.data.pages.length
+        : typeof data.page_count === 'number'
+          ? data.page_count
+          : typeof data.total_pages === 'number'
+            ? data.total_pages
+            : extractedMarkdown.split(/\n\s*---\s*\n|\n\s*#+\s*Page|\n\n/).length
 
-    console.log(`[PDF-Inspector] ✅ Extracted ${extractedMarkdown.length} chars (${pageCount} pages, Latency: ${data.latency_ms ?? 0}ms)`)
+    console.log(
+      `[PDF-Inspector] ✅ Extracted ${extractedMarkdown.length} chars (${pageCount} pages, Latency: ${data.latency_ms ?? 0}ms)`
+    )
 
     return {
       status: 'success',

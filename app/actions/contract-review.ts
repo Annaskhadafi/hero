@@ -2054,6 +2054,197 @@ export async function approveContractReviewStep(
   }
 }
 
+const CONTRACT_REVIEW_ROLE_LABELS: Record<string, string> = {
+  pjo_or_te_initial: 'PJO/TE',
+  section_head_initial: 'Section Head',
+  employee: 'Karyawan',
+  section_head_confirmation: 'Section Head',
+  central_service_manager: 'Department Head',
+  hr: 'HR',
+}
+
+export async function revertContractReviewStep(
+  token: string,
+  data: {
+    targetStepOrder: number
+    remarks: string
+  }
+) {
+  try {
+    await ensureContractReviewWorkflowTables()
+    const [currentApproval] = await db
+      .select()
+      .from(hcContractReviewApprovals)
+      .where(eq(hcContractReviewApprovals.approvalToken, token))
+      .limit(1)
+
+    if (!currentApproval) {
+      return { success: false, error: 'Approval tidak ditemukan.' }
+    }
+    if (currentApproval.status !== 'pending') {
+      return { success: false, error: 'Approval ini tidak lagi aktif.' }
+    }
+
+    if (!data.remarks?.trim()) {
+      return { success: false, error: 'Catatan / alasan revert wajib diisi.' }
+    }
+
+    const allApprovals = await db
+      .select()
+      .from(hcContractReviewApprovals)
+      .where(eq(hcContractReviewApprovals.reviewId, currentApproval.reviewId))
+      .orderBy(asc(hcContractReviewApprovals.stepOrder))
+
+    const targetApproval = allApprovals.find(
+      (a) => a.stepOrder === data.targetStepOrder && a.stepOrder < currentApproval.stepOrder
+    )
+
+    if (!targetApproval) {
+      return { success: false, error: 'Pihak tujuan revert tidak valid.' }
+    }
+
+    const [review] = await db
+      .select()
+      .from(hcEmployeeContractReviews)
+      .where(eq(hcEmployeeContractReviews.id, currentApproval.reviewId))
+      .limit(1)
+
+    if (!review) {
+      return { success: false, error: 'Data review kontrak tidak ditemukan.' }
+    }
+
+    const now = new Date()
+
+    // 1. Target approval becomes 'pending', reset signature & timestamp
+    await db
+      .update(hcContractReviewApprovals)
+      .set({
+        status: 'pending',
+        signatureDataUrl: null,
+        signedAt: null,
+      })
+      .where(eq(hcContractReviewApprovals.id, targetApproval.id))
+
+    // 2. All approvals strictly after target step up to current step and beyond: set to 'waiting' and clear signatures
+    for (const step of allApprovals) {
+      if (step.stepOrder > targetApproval.stepOrder) {
+        await db
+          .update(hcContractReviewApprovals)
+          .set({
+            status: 'waiting',
+            signatureDataUrl: null,
+            signedAt: null,
+            remarks: step.id === currentApproval.id ? data.remarks.trim() : step.remarks,
+          })
+          .where(eq(hcContractReviewApprovals.id, step.id))
+      }
+    }
+
+    // 3. Update master review status to 'in_progress'
+    await db
+      .update(hcEmployeeContractReviews)
+      .set({
+        status: 'in_progress',
+        updatedAt: now,
+      })
+      .where(eq(hcEmployeeContractReviews.id, review.id))
+
+    // 4. Notifications
+    const baseUrl = await getBaseUrl()
+    const employeeName = review.employeeNameStr || 'Employee'
+    const actionableLink = `${baseUrl}/review/${targetApproval.approvalToken}`
+    const revertingRoleName = CONTRACT_REVIEW_ROLE_LABELS[currentApproval.approverRole] || currentApproval.approverRole
+
+    // 4a. Notification Bell
+    if (targetApproval.approverEmail) {
+      try {
+        await notifyWorkflowBellRecipients({
+          recipientEmails: [targetApproval.approverEmail],
+          eventType: 'contract_review_reverted',
+          category: 'approval_requests',
+          title: `Contract Review Dikembalikan: ${employeeName}`,
+          body: `Contract review untuk ${employeeName} dikembalikan oleh ${currentApproval.approverName} (${revertingRoleName}) untuk revisi. Catatan: ${data.remarks.trim()}`,
+          url: actionableLink,
+          tagPrefix: 'contract-review-reverted',
+          metadata: {
+            reviewId: review.id,
+            targetStep: targetApproval.stepOrder,
+            revertedBy: currentApproval.approverName,
+            remarks: data.remarks.trim(),
+          },
+        })
+      } catch (bellErr) {
+        console.error('[contract-review] Error sending bell notification on revert:', bellErr)
+      }
+    }
+
+    // 4b. Email Notification
+    if (targetApproval.approverEmail) {
+      try {
+        const { employeeSection, employeeSite, employeeSn } = await getContractReviewReminderContext(review)
+        const variables = {
+          approverName: targetApproval.approverName,
+          employeeName,
+          employeeSn,
+          employeeSection,
+          employeeSite,
+          revertedByName: currentApproval.approverName,
+          revertedByRole: revertingRoleName,
+          revertReason: data.remarks.trim(),
+          approvalStep: `Step ${targetApproval.stepOrder}`,
+          approvalLink: actionableLink,
+        }
+
+        const emailBody = `Yth. ${targetApproval.approverName},
+
+Dokumen Contract Review untuk ${employeeName} (SN: ${employeeSn || '-'}) telah dikembalikan oleh ${currentApproval.approverName} (${revertingRoleName}) untuk dilakukan revisi.
+
+Catatan / Alasan Revert:
+${data.remarks.trim()}
+
+Informasi Dokumen:
+- Karyawan: ${employeeName}
+- SN: ${employeeSn || '-'}
+- Section: ${employeeSection || '-'}
+- Site: ${employeeSite || '-'}
+- Tahap: Step ${targetApproval.stepOrder}
+
+Silakan buka tautan berikut untuk memeriksa dan menindaklanjuti dokumen:
+${actionableLink}
+
+Terima kasih.`
+
+        await sendContractReviewEmail({
+          to: targetApproval.approverEmail,
+          subject: `[Contract Review - Revisi] Dokumen Dikembalikan untuk Revisi - ${employeeName}`,
+          body: emailBody,
+          reviewId: review.id,
+          templateCode: 'contract_review_reverted_notification',
+          variables,
+        })
+      } catch (emailErr) {
+        console.error('[contract-review] Error sending revert email:', emailErr)
+      }
+    }
+
+    revalidatePath('/dashboard/hc/contract-review')
+    revalidatePath(`/dashboard/hc/contract-review/${review.id}`)
+    revalidatePath(`/review/${token}`)
+    revalidatePath(`/review/${targetApproval.approvalToken}`)
+    revalidatePath('/dashboard/approval')
+    revalidatePath('/mobile/approval')
+
+    return {
+      success: true,
+      targetName: targetApproval.approverName,
+      targetStep: targetApproval.stepOrder,
+    }
+  } catch (error: any) {
+    console.error('Error reverting contract review step:', error)
+    return { success: false, error: error.message || 'Gagal mengembalikan approval.' }
+  }
+}
+
 export async function generateTestContractReview() {
   try {
     await ensureContractReviewWorkflowTables()

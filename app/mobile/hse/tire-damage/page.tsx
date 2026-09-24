@@ -155,7 +155,10 @@ export default function MobileTireDamagePage() {
   const streamRef = useRef<MediaStream | null>(null)
   const loading = stage !== 'idle'
 
-  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }, [previewUrl])
+  useEffect(() => {
+    if (!previewUrl) return
+    return () => URL.revokeObjectURL(previewUrl)
+  }, [previewUrl])
   useEffect(() => {
     void fetch('/api/mobile/tire-damage/feedback', { cache: 'no-store' })
       .then((response) => response.ok ? response.json() as Promise<{ canEdit?: boolean }> : null)

@@ -3,12 +3,20 @@
 import { usePathname } from 'next/navigation'
 import { useRef, useState, useTransition } from 'react'
 import SignatureCanvas from 'react-signature-canvas'
-import { approveContractReviewStep } from '@/app/actions/contract-review'
+import { approveContractReviewStep, revertContractReviewStep } from '@/app/actions/contract-review'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Download } from 'lucide-react'
+import { Download, RotateCcw } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 type PublicApprovalProps = {
   token: string
@@ -124,6 +132,64 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
     })
   }
 
+  const previousApprovedSteps = approvalHistory.filter(
+    (step: any) => step.stepOrder < approval.stepOrder && step.status === 'approved'
+  )
+  const [isRevertOpen, setIsRevertOpen] = useState(false)
+  const [revertTargetStep, setRevertTargetStep] = useState<number | undefined>(
+    previousApprovedSteps.length > 0 ? previousApprovedSteps[previousApprovedSteps.length - 1].stepOrder : undefined
+  )
+  const [revertRemarks, setRevertRemarks] = useState('')
+  const [revertError, setRevertError] = useState('')
+  const [isReverting, setIsReverting] = useState(false)
+  const [revertedMessage, setRevertedMessage] = useState('')
+
+  async function handleRevert() {
+    if (!revertTargetStep) {
+      setRevertError('Pilih pihak yang akan menerima pengembalian dokumen.')
+      return
+    }
+    if (!revertRemarks.trim()) {
+      setRevertError('Catatan / alasan revert wajib diisi.')
+      return
+    }
+    setRevertError('')
+    setIsReverting(true)
+    try {
+      const res = await revertContractReviewStep(token, {
+        targetStepOrder: Number(revertTargetStep),
+        remarks: revertRemarks.trim(),
+      })
+      if (res.success) {
+        setIsRevertOpen(false)
+        setRevertedMessage(`Dokumen telah berhasil dikembalikan ke Step ${res.targetStep} (${res.targetName}) untuk revisi.`)
+        setApprovalHistory((prev: any[]) =>
+          prev.map((step: any) => {
+            if (step.stepOrder === res.targetStep) {
+              return { ...step, status: 'pending', signatureDataUrl: null, signedAt: null }
+            }
+            if (step.stepOrder > (res.targetStep || 0)) {
+              return {
+                ...step,
+                status: 'waiting',
+                signatureDataUrl: null,
+                signedAt: null,
+                remarks: step.id === approval.id ? revertRemarks.trim() : step.remarks,
+              }
+            }
+            return step
+          })
+        )
+      } else {
+        setRevertError(res.error || 'Gagal mengembalikan approval.')
+      }
+    } catch (err: any) {
+      setRevertError(err.message || 'Terjadi kesalahan sistem.')
+    } finally {
+      setIsReverting(false)
+    }
+  }
+
   const shouldShowCurrentPreview = done || Boolean(previewSignatureDataUrl || remarks.trim())
   const approvalHistoryForDisplay = shouldShowCurrentPreview
     ? approvalHistory.map((step: any) =>
@@ -160,23 +226,58 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
   const allVals = [...aVals, ...bVals]
   const achievementScore = allVals.length > 0 ? allVals.reduce((sum: number, val: string) => sum + (val === 'exceed' ? 115 : val === 'meet' ? 100 : 80), 0) / allVals.length : 0
 
-  const estimateActivityWeight = (item: any) => Math.max(1, Math.ceil(Math.max(String(item?.activity || '').length / 42, String(item?.remark || '').length / 52)))
-  const firstPageActivities = (() => {
-    const budget = 7
-    const selected: any[] = []
-    let used = 0
-    for (const item of review.performanceActivities ?? []) {
-      const weight = estimateActivityWeight(item)
-      if (selected.length > 0 && used + weight > budget) break
-      if (selected.length === 0 && weight > budget) break
-      selected.push(item)
-      used += weight
+  const estimateRowHeightMm = (item: any) => {
+    const act = String(item?.activity || '').trim()
+    const rem = String(item?.remark || '').trim()
+    const actLines = Math.max(1, Math.ceil(act.length / 50))
+    const remLines = Math.max(1, Math.ceil(rem.length / 28))
+    const maxLines = Math.max(actLines, remLines)
+    return 4 + maxLines * 4.2
+  }
+
+  const { firstPageActivities, performanceOverflowChunks } = (() => {
+    const all = review.performanceActivities ?? []
+    const PAGE_1_ROWS_MAX_MM = 120
+    const CONTINUATION_ROWS_MAX_MM = 180
+
+    const first: any[] = []
+    let usedMm = 0
+    let i = 0
+
+    for (; i < all.length; i++) {
+      const h = estimateRowHeightMm(all[i])
+      if (first.length > 0 && usedMm + h > PAGE_1_ROWS_MAX_MM) break
+      if (first.length === 0 && h > PAGE_1_ROWS_MAX_MM) {
+        first.push(all[i])
+        i++
+        break
+      }
+      first.push(all[i])
+      usedMm += h
     }
-    return selected
+
+    const overflow = all.slice(i)
+    const chunks: any[][] = []
+    let currentChunk: any[] = []
+    let currentChunkMm = 0
+
+    for (const item of overflow) {
+      const h = estimateRowHeightMm(item)
+      if (currentChunk.length > 0 && currentChunkMm + h > CONTINUATION_ROWS_MAX_MM) {
+        chunks.push(currentChunk)
+        currentChunk = [item]
+        currentChunkMm = h
+      } else {
+        currentChunk.push(item)
+        currentChunkMm += h
+      }
+    }
+    if (currentChunk.length > 0) {
+      chunks.push(currentChunk)
+    }
+
+    return { firstPageActivities: first, performanceOverflowChunks: chunks }
   })()
-  const overflowActivities = (review.performanceActivities ?? []).slice(firstPageActivities.length)
-  const overflowChunkSize = 3
-  const performanceOverflowChunks = Array.from({ length: Math.ceil(overflowActivities.length / overflowChunkSize) }, (_, index) => overflowActivities.slice(index * overflowChunkSize, index * overflowChunkSize + overflowChunkSize))
   const competencyRows = [
     ['Discipline', review.compDisciplineAch, review.compDisciplineRemark],
     ['Professional Skill and Knowledge', review.compSkillAch, review.compSkillRemark],
@@ -185,15 +286,27 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
     ['Customer Orientation ( internal / external )', review.compCustomerAch, review.compCustomerRemark],
     ['Teamwork', review.compTeamworkAch, review.compTeamworkRemark],
   ]
-  const firstPageCompetencyRows = firstPageActivities.length <= 2 ? competencyRows.slice(0, 3) : []
+
+  const estimateCompetencyRowHeightMm = (label: string, remark: string) => {
+    const actLines = Math.max(1, Math.ceil(String(label || '').length / 38))
+    const remLines = Math.max(1, Math.ceil(String(remark || '').length / 55))
+    const maxLines = Math.max(actLines, remLines)
+    return 4 + maxLines * 3.8
+  }
+
+  const totalCompetencyHeight = competencyRows.reduce(
+    (sum, [label, _, remark]) => sum + estimateCompetencyRowHeightMm(label, remark || ''),
+    0
+  )
+  const achievementBlockOnPage2 = totalCompetencyHeight + 18 + 72 <= 200
 
   const renderPerformanceTable = (items: any[], keyPrefix: string) => (
     <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5 text-center">
       <thead>
         <tr className="bg-slate-50">
-          <th className="w-[45%]">Activities</th>
-          <th className="w-[30%]">Achievement<br/>( Below/ Meet/ Exceed<br/>Requirement )</th>
-          <th className="w-[25%]">Remark</th>
+          <th className="w-[35%]">Activities</th>
+          <th className="w-[15%]">Achievement</th>
+          <th className="w-[50%]">Remark</th>
         </tr>
       </thead>
       <tbody>
@@ -211,98 +324,8 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
     </table>
   )
 
-  // PDF Page 1: Details, Profile, Performance, Competency
-  const pdfPage1 = (
-    <div className="relative z-10 text-[8pt] font-sans leading-tight text-black" style={{ paddingTop: '42mm', paddingBottom: '20mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
-      <h1 className="text-center font-bold text-[11pt] mb-3">EMPLOYEE PROBATION/CONTRACT REVIEW</h1>
-
-      <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
-        <tbody>
-          <tr><td colSpan={2} className="font-bold bg-slate-50">Details</td></tr>
-          <tr>
-            <td className="w-1/2">Today's Date: {review.todayDate ? new Date(review.todayDate).toLocaleDateString('id-ID') : '-'}</td>
-            <td className="w-1/2">Hire Date: {review.hireDate ? new Date(review.hireDate).toLocaleDateString('id-ID') : '-'}</td>
-          </tr>
-          <tr>
-            <td colSpan={2}>
-              <div className="font-bold mb-1">Purpose of this form (check one):</div>
-              <div className="flex gap-8">
-                <label className="flex items-center gap-2"><input type="checkbox" checked={review.reviewType === 'probation'} readOnly /> Probationary Review</label>
-                <label className="flex items-center gap-2"><input type="checkbox" checked={review.reviewType === 'contract'} readOnly /> Contract Review (length of contract {review.contractLength || '______'})</label>
-              </div>
-            </td>
-          </tr>
-          <tr><td colSpan={2} className="font-bold bg-slate-50">Employee Profile</td></tr>
-          <tr>
-            <td>Name:<br/>{employee?.name || review.employeeNameStr || '-'}</td>
-            <td>SN:<br/>{employee?.employeeSn || '-'}</td>
-          </tr>
-          <tr>
-            <td>Job Title:<br/>{employee?.position || '-'}</td>
-            <td>Department/Section:<br/>{employee?.department ? [employee.department, employee.section].filter(Boolean).join(' / ') : '-'}</td>
-          </tr>
-          <tr>
-            <td>Superior Name:<br/>{review.leaderName || review.superiorName || review.nextSuperiorName || '-'}</td>
-            <td>Superior Title:<br/>{review.leaderTitle || review.superiorTitle || review.nextSuperiorTitle || '-'}</td>
-          </tr>
-        </tbody>
-      </table>
-
-      {firstPageActivities.length > 0 ? (
-        <><div className="mb-1 font-bold">Progress made towards probation/contract period</div><div className="font-bold ml-4 mb-1">A. Performance</div>{renderPerformanceTable(firstPageActivities, 'first')}</>
-      ) : null}
-      {firstPageCompetencyRows.length > 0 ? (
-        <>
-          <div className="font-bold ml-4 mb-1 mt-1">B. Related Competency ( Knowledge & Behavior )</div>
-          <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
-            <thead><tr className="bg-slate-50 text-center"><th className="w-[45%]">Activities</th><th className="w-[30%]">Achievement<br/>( Below/ Meet/ Exceed<br/>Requirement )</th><th className="w-[25%]">Remark</th></tr></thead>
-            <tbody>{firstPageCompetencyRows.map(([label, achievement, remark]) => <tr key={label}><td className="font-bold">{label}</td><td className="text-center capitalize">{achievement || '\u00A0'}</td><td>{remark || '\u00A0'}</td></tr>)}</tbody>
-          </table>
-        </>
-      ) : null}
-    </div>
-  )
-
-  const packCompetencyAfterPerformance = performanceOverflowChunks.length > 0
-  const pdfPerformancePages = performanceOverflowChunks.map((chunk, index) => (
-    <div key={`performance-page-${index}`} className="relative z-10 text-[8pt] font-sans leading-tight text-black" style={{ paddingTop: '42mm', paddingBottom: '20mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
-      <div className="mb-1 font-bold">Progress made towards probation/contract period</div>
-      <div className="font-bold ml-4 mb-1">A. Performance (lanjutan)</div>
-      {renderPerformanceTable(chunk, `overflow-${index}`)}
-      {packCompetencyAfterPerformance && index === performanceOverflowChunks.length - 1 ? (
-        <>
-          <div className="font-bold ml-4 mb-1 mt-1">B. Related Competency (lanjutan)</div>
-          <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
-            <thead><tr className="bg-slate-50 text-center"><th className="w-[45%]">Activities</th><th className="w-[30%]">Achievement<br/>( Below/ Meet/ Exceed<br/>Requirement )</th><th className="w-[25%]">Remark</th></tr></thead>
-            <tbody>{competencyRows.slice(firstPageCompetencyRows.length).map(([label, achievement, remark]) => <tr key={label}><td className="font-bold">{label}</td><td className="text-center capitalize">{achievement || '\u00A0'}</td><td>{remark || '\u00A0'}</td></tr>)}</tbody>
-          </table>
-        </>
-      ) : null}
-    </div>
-  ))
-
-  // PDF Page 2: First competency rows
-  const competencyPage2Rows = packCompetencyAfterPerformance ? [] : competencyRows.slice(firstPageCompetencyRows.length, firstPageCompetencyRows.length + 3)
-  const competencyOverflowRows = packCompetencyAfterPerformance ? [] : competencyRows.slice(firstPageCompetencyRows.length + 3)
-  const pdfPage2 = (
-    <div className="relative z-10 text-[8pt] font-sans leading-tight text-black" style={{ paddingTop: '42mm', paddingBottom: '20mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
-      <div className="font-bold ml-4 mb-1">B. Related Competency ( Knowledge & Behavior )</div>
-      <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
-        <thead><tr className="bg-slate-50 text-center"><th className="w-[45%]">Activities</th><th className="w-[30%]">Achievement<br/>( Below/ Meet/ Exceed<br/>Requirement )</th><th className="w-[25%]">Remark</th></tr></thead>
-        <tbody>{competencyPage2Rows.map(([label, achievement, remark]) => <tr key={label}><td className="font-bold">{label}</td><td className="text-center capitalize">{achievement || '\u00A0'}</td><td>{remark || '\u00A0'}</td></tr>)}</tbody>
-      </table>
-    </div>
-  )
-
-  const pdfCompetencyPage = (
-    <div className="relative z-10 text-[8pt] font-sans leading-tight text-black" style={{ paddingTop: '42mm', paddingBottom: '20mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
-      {competencyOverflowRows.length > 0 ? <>
-        <div className="font-bold ml-4 mb-1">B. Related Competency (lanjutan)</div>
-        <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
-          <thead><tr className="bg-slate-50 text-center"><th className="w-[45%]">Activities</th><th className="w-[30%]">Achievement<br/>( Below/ Meet/ Exceed<br/>Requirement )</th><th className="w-[25%]">Remark</th></tr></thead>
-          <tbody>{competencyOverflowRows.map(([label, achievement, remark]) => <tr key={label}><td className="font-bold">{label}</td><td className="text-center capitalize">{achievement || '\u00A0'}</td><td>{remark || '\u00A0'}</td></tr>)}</tbody>
-        </table>
-      </> : null}
+  const renderAchievementAndRecommendation = () => (
+    <>
       <div className="font-bold ml-4 mb-1">Achievement Definition</div>
       <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
         <tbody>
@@ -387,15 +410,90 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
           Contract ended
         </label>
       </div>
+    </>
+  )
 
+  // PDF Page 1: Details, Profile, Full Performance Section A
+  const pdfPage1 = (
+    <div className="relative z-10 text-[8pt] font-sans leading-tight text-black" style={{ paddingTop: '42mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
+      <h1 className="text-center font-bold text-[11pt] mb-3">EMPLOYEE PROBATION/CONTRACT REVIEW</h1>
+
+      <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
+        <tbody>
+          <tr><td colSpan={2} className="font-bold bg-slate-50">Details</td></tr>
+          <tr>
+            <td className="w-1/2">Today's Date: {review.todayDate ? new Date(review.todayDate).toLocaleDateString('id-ID') : '-'}</td>
+            <td className="w-1/2">Hire Date: {review.hireDate ? new Date(review.hireDate).toLocaleDateString('id-ID') : '-'}</td>
+          </tr>
+          <tr>
+            <td colSpan={2}>
+              <div className="font-bold mb-1">Purpose of this form (check one):</div>
+              <div className="flex gap-8">
+                <label className="flex items-center gap-2"><input type="checkbox" checked={review.reviewType === 'probation'} readOnly /> Probationary Review</label>
+                <label className="flex items-center gap-2"><input type="checkbox" checked={review.reviewType === 'contract'} readOnly /> Contract Review (length of contract {review.contractLength || '______'})</label>
+              </div>
+            </td>
+          </tr>
+          <tr><td colSpan={2} className="font-bold bg-slate-50">Employee Profile</td></tr>
+          <tr>
+            <td>Name:<br/>{employee?.name || review.employeeNameStr || '-'}</td>
+            <td>SN:<br/>{employee?.employeeSn || '-'}</td>
+          </tr>
+          <tr>
+            <td>Job Title:<br/>{employee?.position || '-'}</td>
+            <td>Department/Section:<br/>{employee?.department ? [employee.department, employee.section].filter(Boolean).join(' / ') : '-'}</td>
+          </tr>
+          <tr>
+            <td>Superior Name:<br/>{review.leaderName || review.superiorName || review.nextSuperiorName || '-'}</td>
+            <td>Superior Title:<br/>{review.leaderTitle || review.superiorTitle || review.nextSuperiorTitle || '-'}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      {firstPageActivities.length > 0 ? (
+        <>
+          <div className="mb-1 font-bold">Progress made towards probation/contract period</div>
+          <div className="font-bold ml-4 mb-1">A. Performance</div>
+          {renderPerformanceTable(firstPageActivities, 'first')}
+        </>
+      ) : null}
+    </div>
+  )
+
+  const pdfPerformancePages = performanceOverflowChunks.map((chunk, index) => (
+    <div key={`performance-page-${index}`} className="relative z-10 text-[8pt] font-sans leading-tight text-black" style={{ paddingTop: '42mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
+      <div className="mb-1 font-bold">Progress made towards probation/contract period</div>
+      <div className="font-bold ml-4 mb-1">A. Performance (lanjutan)</div>
+      {renderPerformanceTable(chunk, `overflow-${index}`)}
+    </div>
+  ))
+
+  // PDF Page 2: Full Competency Section B, Achievement Definition, Recommendation
+  const pdfPage2 = (
+    <div className="relative z-10 text-[8pt] font-sans leading-tight text-black" style={{ paddingTop: '42mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
+      <div className="mb-1 font-bold">Progress made towards probation/contract period</div>
+      <div className="font-bold ml-4 mb-1">B. Related Competency ( Knowledge & Behavior )</div>
+      <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
+        <thead><tr className="bg-slate-50 text-center"><th className="w-[35%]">Activities</th><th className="w-[15%]">Achievement</th><th className="w-[50%]">Remark</th></tr></thead>
+        <tbody>{competencyRows.map(([label, achievement, remark]) => <tr key={label}><td className="font-bold">{label}</td><td className="text-center capitalize">{achievement || '\u00A0'}</td><td>{remark || '\u00A0'}</td></tr>)}</tbody>
+      </table>
+
+      {achievementBlockOnPage2 ? (
+        <>
+          {/* Achievement Definition */}
+          {/* Recommendation */}
+          {renderAchievementAndRecommendation()}
+        </>
+      ) : null}
     </div>
   )
 
   // PDF Page 3: Signatories and HR letter issuance
   const pdfPage3 = (
-    <div className="relative z-10 text-[8pt] font-sans leading-tight text-black" style={{ paddingTop: '42mm', paddingBottom: '20mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
+    <div className="relative z-10 text-[8pt] font-sans leading-tight text-black" style={{ paddingTop: '42mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
+      {!achievementBlockOnPage2 ? renderAchievementAndRecommendation() : null}
       <div className="font-bold mb-4">Signatories</div>
-      <div className="grid grid-cols-2 gap-x-8 gap-y-10 mb-8">
+      <div className={`grid grid-cols-2 gap-x-8 ${!achievementBlockOnPage2 ? 'gap-y-4 mb-4' : 'gap-y-8 mb-6'}`}>
         {review.leaderName && (
           <div>
             <div className="text-xs text-muted-foreground mb-1">Leader Signature</div>
@@ -507,7 +605,9 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
           </div>
         </div>
       </div>
-      <div>PT Chitra Paratama</div>
+      <div className="text-right mt-6 text-gray-500 text-[7pt]">
+        F.HR.STD.012.00
+      </div>
     </div>
   )
 
@@ -571,7 +671,16 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
           {/* TTD Digital */}
           <section className={isMobileRoute ? 'rounded-xl bg-white p-3 shadow-sm ring-1 ring-slate-200/70' : 'rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/70'}>
             <h2 className="text-sm font-semibold text-slate-950 mb-3">TTD Digital</h2>
-            {done ? (
+            {revertedMessage ? (
+              <div className="space-y-3">
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-medium text-amber-800">
+                  <p className="font-semibold flex items-center gap-1.5">
+                    <RotateCcw className="size-4" /> Dokumen Berhasil Dikembalikan
+                  </p>
+                  <p className="mt-1 text-xs text-amber-700">{revertedMessage}</p>
+                </div>
+              </div>
+            ) : done ? (
               <div className="space-y-3">
                 <p className="rounded-xl bg-emerald-50 p-4 text-sm font-medium text-emerald-700">Approval sudah ditandatangani.</p>
                 {approvalHistoryForDisplay.every((s: any) => s.status === 'approved') && (
@@ -654,9 +763,107 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                   }}>Bersihkan</Button>
                   <Button type="button" size="sm" className="flex-1" onClick={handleSubmit} disabled={isPending}>{isPending ? 'Menyimpan...' : 'Setuju & Tanda Tangani'}</Button>
                 </div>
+                {previousApprovedSteps.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-amber-700 hover:text-amber-800 hover:bg-amber-50 border-amber-200"
+                    onClick={() => {
+                      setRevertError('')
+                      setIsRevertOpen(true)
+                    }}
+                  >
+                    <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                    Kembalikan Dokumen (Revert)
+                  </Button>
+                )}
               </div>
             )}
           </section>
+
+          <Dialog open={isRevertOpen} onOpenChange={setIsRevertOpen}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-amber-800">
+                  <RotateCcw className="size-4" />
+                  Kembalikan Dokumen (Revert)
+                </DialogTitle>
+                <DialogDescription>
+                  Kembalikan dokumen ke penandatangan sebelumnya untuk dilakukan koreksi atau kelengkapan data.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4 py-2">
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-slate-700">
+                    Pilih Pihak Tujuan Revert:
+                  </label>
+                  <div className="space-y-2">
+                    {previousApprovedSteps.map((step: any) => (
+                      <label
+                        key={step.id}
+                        className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                          revertTargetStep === step.stepOrder
+                            ? 'border-amber-500 bg-amber-50/50 ring-1 ring-amber-500'
+                            : 'border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="revertTargetStep"
+                          className="mt-0.5"
+                          checked={revertTargetStep === step.stepOrder}
+                          onChange={() => setRevertTargetStep(step.stepOrder)}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-semibold text-slate-900">{step.approverName}</p>
+                          <p className="text-[11px] text-slate-500">
+                            Step {step.stepOrder} • {ROLE_LABELS[step.approverRole] || step.approverRole}
+                          </p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">
+                    Catatan / Alasan Revert <span className="text-red-500">*</span>
+                  </label>
+                  <Textarea
+                    value={revertRemarks}
+                    onChange={(e) => setRevertRemarks(e.target.value)}
+                    placeholder="Contoh: Dokumen atau lampiran kurang lengkap, mohon perbaiki penilaian aktivitas..."
+                    rows={3}
+                  />
+                </div>
+
+                {revertError && <p className="text-xs font-medium text-red-600">{revertError}</p>}
+              </div>
+
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsRevertOpen(false)}
+                  disabled={isReverting}
+                >
+                  Batal
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="bg-amber-600 hover:bg-amber-700 text-white"
+                  onClick={handleRevert}
+                  disabled={isReverting || !revertTargetStep || !revertRemarks.trim()}
+                >
+                  {isReverting ? 'Mengembalikan...' : 'Konfirmasi Revert'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
 
         {/* ── KANAN: Preview Surat + Produktivitas ── */}
@@ -668,36 +875,32 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
             </TabsList>
             <TabsContent value="letter" className="m-0 overflow-x-auto pb-2">
               <div className="flex min-w-max flex-col gap-6">
-              <div
-                id="pdf-page-1"
-                data-contract-review-page="true"
-                className="relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
-              >
-                <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-                {pdfPage1}
-              </div>
-              {pdfPerformancePages.map((page, index) => (
-                <div key={`performance-page-${index}`} id={`pdf-page-performance-${index}`} data-contract-review-page="true" className="relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm">
+                <div
+                  id="pdf-page-1"
+                  data-contract-review-page="true"
+                  className="relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
+                >
                   <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-                  {page}
+                  {pdfPage1}
                 </div>
-              ))}
-              {!packCompetencyAfterPerformance ? <div
-                id="pdf-page-2"
-                data-contract-review-page="true"
-                className="relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
-              >
-                <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-                {pdfPage2}
-              </div> : null}
-              <div id="pdf-page-competency" data-contract-review-page="true" className="relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm">
-                <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-                {pdfCompetencyPage}
-              </div>
-              <div id="pdf-page-3" data-contract-review-page="true" className="relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm">
-                <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-                {pdfPage3}
-              </div>
+                {pdfPerformancePages.map((page, index) => (
+                  <div key={`performance-page-${index}`} id={`pdf-page-performance-${index}`} data-contract-review-page="true" className="relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm">
+                    <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
+                    {page}
+                  </div>
+                ))}
+                <div
+                  id="pdf-page-2"
+                  data-contract-review-page="true"
+                  className="relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
+                >
+                  <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
+                  {pdfPage2}
+                </div>
+                <div id="pdf-page-3" data-contract-review-page="true" className="relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm">
+                  <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
+                  {pdfPage3}
+                </div>
               </div>
             </TabsContent>
             <TabsContent value="productivity" className="m-0">
