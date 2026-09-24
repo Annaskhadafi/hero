@@ -105,3 +105,27 @@ export const fiveRApprovalLogs = pgTable('hero_five_r_approval_logs', {
   notes: text('notes').notNull().default(''),
   actedAt: timestamp('acted_at').notNull().defaultNow(),
 })
+
+// Histori Pergantian PIC Master Area 5R (Audit Tracking & Fallback Logger)
+export const fiveRMasterAreaPicHistory = pgTable('hero_five_r_master_area_pic_history', {
+  id: serial('id').primaryKey(),
+  masterAreaId: integer('master_area_id')
+    .notNull()
+    .references(() => fiveRMasterAreas.id, { onDelete: 'cascade' }),
+  previousPicEmployeeId: integer('previous_pic_employee_id').references(() => employees.id, {
+    onDelete: 'set null',
+  }),
+  previousPicName: text('previous_pic_name'),
+  newPicEmployeeId: integer('new_pic_employee_id').references(() => employees.id, {
+    onDelete: 'set null',
+  }),
+  newPicName: text('new_pic_name'),
+  actionType: text('action_type').notNull().default('assigned'), // 'assigned' | 'updated' | 'cleared' | 'fallback_to_supervisor'
+  changedByEmployeeId: integer('changed_by_employee_id').references(() => employees.id, {
+    onDelete: 'set null',
+  }),
+  changedByName: text('changed_by_name').notNull().default('Admin'),
+  notes: text('notes').notNull().default(''),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+

@@ -13,6 +13,7 @@ import {
   Send,
   ShieldAlert,
   ShieldCheck,
+  Trash2,
   X,
   XCircle,
 } from 'lucide-react'
@@ -20,6 +21,7 @@ import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import {
+  deleteFiveRReportAction,
   getFiveRReportDetailAction,
   resubmitFiveRReportAction,
 } from '@/app/dashboard/quality/5r/actions'
@@ -73,6 +75,30 @@ export function FiveRDetailDialog({
   }
 
   const [isDownloading, setIsDownloading] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  const handleDeleteReport = async () => {
+    const reportNum = data?.report?.reportNumber || ''
+    if (!window.confirm(`Apakah Anda yakin ingin menghapus laporan 5R ${reportNum}?`)) {
+      return
+    }
+    setIsDeleting(true)
+    const toastId = toast.loading('Menghapus laporan 5R...')
+    try {
+      const res = await deleteFiveRReportAction(reportId)
+      if (res.success) {
+        toast.success(res.message || 'Laporan 5R berhasil dihapus.', { id: toastId })
+        onActionComplete?.()
+        onClose()
+      } else {
+        toast.error(res.message || 'Gagal menghapus laporan 5R.', { id: toastId })
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Terjadi kesalahan sistem.', { id: toastId })
+    } finally {
+      setIsDeleting(false)
+    }
+  }
 
   const handleDownloadPdf = async () => {
     const docElem = document.querySelector('.pdf-wrapper') as HTMLElement | null
@@ -230,6 +256,23 @@ export function FiveRDetailDialog({
               >
                 <Printer className="size-3.5" />
                 Cetak PDF
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isDeleting}
+                onClick={handleDeleteReport}
+                className="h-8 text-xs border-rose-200 text-rose-600 bg-rose-50 hover:bg-rose-100 cursor-pointer font-semibold gap-1.5 shadow-2xs"
+                title="Hapus Laporan 5R"
+              >
+                {isDeleting ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="size-3.5" />
+                )}
+                Hapus Laporan
               </Button>
 
               <button

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { and, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm'
 
 import { db } from '@/db'
 import {
@@ -10,6 +10,7 @@ import {
   employees,
   fiveRApprovalLogs,
   fiveRFindings,
+  fiveRMasterAreaPicHistory,
   fiveRMasterAreas,
   fiveRReports,
   notificationDeliveries,
@@ -20,7 +21,9 @@ import { getServerSession } from '@/lib/auth-session'
 import {
   initializeFiveRApprovals,
   resolveFiveRApprovalRoute,
+  resolveMasterAreaEffectivePic,
   sendFiveREmailNotification,
+  syncInFlightFiveRApprovalsForMasterArea,
 } from '@/lib/five-r-approval'
 import { getAppUrl } from '@/lib/workflow-email'
 
@@ -989,6 +992,9 @@ export async function resubmitFiveRReportAction(reportId: number, notes?: string
 /**
  * Master Area 5R CRUD
  */
+/**
+ * Master Area 5R CRUD with Dynamic Fallback & History
+ */
 export async function getMasterAreasAction() {
   try {
     const rows = await db
@@ -1010,7 +1016,25 @@ export async function getMasterAreasAction() {
       .where(eq(fiveRMasterAreas.isActive, true))
       .orderBy(fiveRMasterAreas.name)
 
-    return { success: true, data: rows }
+    // Enrich each area with dynamic supervisor fallback if PIC is not set
+    const enriched = await Promise.all(
+      rows.map(async (area) => {
+        const effective = await resolveMasterAreaEffectivePic({
+          areaId: area.id,
+          siteId: area.siteId,
+          picEmployeeId: area.picEmployeeId,
+        })
+        return {
+          ...area,
+          effectivePicId: effective.picEmployeeId,
+          effectivePicName: effective.picName,
+          isFallback: effective.isFallback,
+          fallbackReason: effective.fallbackReason,
+        }
+      })
+    )
+
+    return { success: true, data: enriched }
   } catch (error: any) {
     console.error('[5R] Get master areas error:', error)
     return { success: false, data: [], message: error?.message ?? 'Gagal memuat master area.' }
@@ -1019,21 +1043,138 @@ export async function getMasterAreasAction() {
 
 export async function saveMasterAreaAction(payload: z.infer<typeof masterAreaSchema>) {
   try {
+    let session = null
+    try {
+      session = await getServerSession()
+    } catch {}
+
     const parsed = masterAreaSchema.safeParse(payload)
     if (!parsed.success) {
       return { success: false, message: parsed.error.issues[0]?.message ?? 'Validasi gagal.' }
     }
 
     const { id, ...data } = parsed.data
+    const currentUserName = session?.user?.name || 'Admin Quality'
+
+    let currentEmpId: number | null = null
+    if (session?.user?.email) {
+      const [emp] = await db
+        .select({ id: employees.id })
+        .from(employees)
+        .where(eq(employees.email, session.user.email))
+        .limit(1)
+      if (emp) currentEmpId = emp.id
+    }
 
     if (id) {
+      // 1. Get existing area state to track PIC changes
+      const [oldArea] = await db
+        .select({
+          id: fiveRMasterAreas.id,
+          name: fiveRMasterAreas.name,
+          siteId: fiveRMasterAreas.siteId,
+          picEmployeeId: fiveRMasterAreas.picEmployeeId,
+          picName: employees.name,
+        })
+        .from(fiveRMasterAreas)
+        .leftJoin(employees, eq(fiveRMasterAreas.picEmployeeId, employees.id))
+        .where(eq(fiveRMasterAreas.id, id))
+        .limit(1)
+
+      const oldPicId = oldArea?.picEmployeeId ?? null
+      const newPicId = data.picEmployeeId !== undefined ? data.picEmployeeId : null
+
+      // Resolve old and new names
+      let newPicName: string | null = null
+      if (newPicId) {
+        const [newEmp] = await db
+          .select({ name: employees.name })
+          .from(employees)
+          .where(eq(employees.id, newPicId))
+          .limit(1)
+        newPicName = newEmp?.name ?? null
+      }
+
+      // Update area
       await db
         .update(fiveRMasterAreas)
         .set({ ...data, updatedAt: new Date() })
         .where(eq(fiveRMasterAreas.id, id))
-      return { success: true, message: 'Master area berhasil diperbarui.' }
+
+      // 2. If PIC changed, insert into history and sync live/in-flight approvals
+      if (oldPicId !== newPicId) {
+        let actionType = 'updated'
+        let notes = ''
+        if (!oldPicId && newPicId) {
+          actionType = 'assigned'
+          notes = `PIC Area ditetapkan menjadi ${newPicName}. Status fallback atasan langsung digantikan.`
+        } else if (oldPicId && !newPicId) {
+          actionType = 'cleared'
+          const effectiveFallback = await resolveMasterAreaEffectivePic({
+            areaId: id,
+            siteId: data.siteId,
+            picEmployeeId: null,
+          })
+          notes = `PIC Area dihapus/dikosongkan. Otomatis beralih ke fallback ${effectiveFallback.picName} (${effectiveFallback.fallbackReason}).`
+        } else {
+          actionType = 'updated'
+          notes = `Pergantian PIC Area dari ${oldArea?.picName || 'PIC Lama'} ke ${newPicName}.`
+        }
+
+        await db.insert(fiveRMasterAreaPicHistory).values({
+          masterAreaId: id,
+          previousPicEmployeeId: oldPicId,
+          previousPicName: oldArea?.picName ?? null,
+          newPicEmployeeId: newPicId,
+          newPicName,
+          actionType,
+          changedByEmployeeId: currentEmpId,
+          changedByName: currentUserName,
+          notes,
+        })
+
+        // Synchronize in-flight / pending approvals immediately
+        await syncInFlightFiveRApprovalsForMasterArea(id)
+      }
+
+      safeRevalidatePath('/dashboard/quality/5r/master-area')
+      safeRevalidatePath('/dashboard/quality/5r')
+      safeRevalidatePath('/mobile/quality/5r')
+
+      return {
+        success: true,
+        message:
+          oldPicId !== newPicId
+            ? `Master area berhasil diperbarui. PIC baru diterapkan ke seluruh approval berjalan.`
+            : 'Master area berhasil diperbarui.',
+      }
     } else {
-      await db.insert(fiveRMasterAreas).values(data)
+      const [created] = await db.insert(fiveRMasterAreas).values(data).returning()
+
+      if (created && data.picEmployeeId) {
+        const [emp] = await db
+          .select({ name: employees.name })
+          .from(employees)
+          .where(eq(employees.id, data.picEmployeeId))
+          .limit(1)
+
+        await db.insert(fiveRMasterAreaPicHistory).values({
+          masterAreaId: created.id,
+          previousPicEmployeeId: null,
+          previousPicName: null,
+          newPicEmployeeId: data.picEmployeeId,
+          newPicName: emp?.name ?? null,
+          actionType: 'assigned',
+          changedByEmployeeId: currentEmpId,
+          changedByName: currentUserName,
+          notes: `PIC Awal Area ditetapkan saat pembuatan master area.`,
+        })
+      }
+
+      safeRevalidatePath('/dashboard/quality/5r/master-area')
+      safeRevalidatePath('/dashboard/quality/5r')
+      safeRevalidatePath('/mobile/quality/5r')
+
       return { success: true, message: 'Master area baru berhasil ditambahkan.' }
     }
   } catch (error: any) {
@@ -1042,20 +1183,87 @@ export async function saveMasterAreaAction(payload: z.infer<typeof masterAreaSch
   }
 }
 
+/**
+ * Get PIC History for Master Area
+ */
+export async function getMasterAreaPicHistoryAction(masterAreaId: number) {
+  try {
+    const rows = await db
+      .select({
+        id: fiveRMasterAreaPicHistory.id,
+        masterAreaId: fiveRMasterAreaPicHistory.masterAreaId,
+        previousPicEmployeeId: fiveRMasterAreaPicHistory.previousPicEmployeeId,
+        previousPicName: fiveRMasterAreaPicHistory.previousPicName,
+        newPicEmployeeId: fiveRMasterAreaPicHistory.newPicEmployeeId,
+        newPicName: fiveRMasterAreaPicHistory.newPicName,
+        actionType: fiveRMasterAreaPicHistory.actionType,
+        changedByEmployeeId: fiveRMasterAreaPicHistory.changedByEmployeeId,
+        changedByName: fiveRMasterAreaPicHistory.changedByName,
+        notes: fiveRMasterAreaPicHistory.notes,
+        createdAt: fiveRMasterAreaPicHistory.createdAt,
+      })
+      .from(fiveRMasterAreaPicHistory)
+      .where(eq(fiveRMasterAreaPicHistory.masterAreaId, masterAreaId))
+      .orderBy(desc(fiveRMasterAreaPicHistory.createdAt))
+
+    return { success: true, data: rows }
+  } catch (error: any) {
+    console.error('[5R] Get master area PIC history error:', error)
+    return { success: false, data: [], message: error?.message ?? 'Gagal memuat histori PIC.' }
+  }
+}
+
+/**
+ * Delete Master Area
+ */
+export async function deleteMasterAreaAction(masterAreaId: number) {
+  try {
+    const [area] = await db
+      .select({ id: fiveRMasterAreas.id, name: fiveRMasterAreas.name })
+      .from(fiveRMasterAreas)
+      .where(eq(fiveRMasterAreas.id, masterAreaId))
+      .limit(1)
+
+    if (!area) {
+      return { success: false, message: 'Master Area tidak ditemukan.' }
+    }
+
+    // Delete PIC history entries first
+    await db
+      .delete(fiveRMasterAreaPicHistory)
+      .where(eq(fiveRMasterAreaPicHistory.masterAreaId, masterAreaId))
+
+    // Set masterAreaId in existing reports to null
+    await db
+      .update(fiveRReports)
+      .set({ masterAreaId: null })
+      .where(eq(fiveRReports.masterAreaId, masterAreaId))
+
+    // Delete Master Area
+    await db
+      .delete(fiveRMasterAreas)
+      .where(eq(fiveRMasterAreas.id, masterAreaId))
+
+    safeRevalidatePath('/dashboard/quality/5r/master-area')
+    safeRevalidatePath('/dashboard/quality/5r')
+    safeRevalidatePath('/mobile/quality/5r')
+
+    return { success: true, message: `Master Area "${area.name}" berhasil dihapus.` }
+  } catch (error: any) {
+    console.error('[5R] Delete master area error:', error)
+    return { success: false, message: error?.message ?? 'Gagal menghapus master area.' }
+  }
+}
+
 export async function deleteFiveRReportAction(reportId: number) {
   try {
     const [report] = await db
-      .select({ id: fiveRReports.id, status: fiveRReports.status })
+      .select({ id: fiveRReports.id, reportNumber: fiveRReports.reportNumber, status: fiveRReports.status })
       .from(fiveRReports)
       .where(eq(fiveRReports.id, reportId))
       .limit(1)
 
-    if (!report) return { success: false, message: 'Laporan tidak ditemukan.' }
-
-    // Only allow draft or rejected deletion
-    if (report.status !== 'draft' && report.status !== 'rejected') {
-      return { success: false, message: 'Hanya laporan draft atau rejected yang dapat dihapus.' }
-    }
+    if (!report) return { success: false, message: 'Laporan 5R tidak ditemukan.' }
 
     await db.delete(fiveRFindings).where(eq(fiveRFindings.reportId, reportId))
     await db.delete(fiveRApprovalLogs).where(eq(fiveRApprovalLogs.reportId, reportId))
@@ -1066,10 +1274,301 @@ export async function deleteFiveRReportAction(reportId: number) {
     safeRevalidatePath('/mobile/quality/5r')
     safeRevalidatePath('/dashboard/approval')
 
-    return { success: true, message: 'Laporan 5R berhasil dihapus.' }
+    return { success: true, message: `Laporan 5R ${report.reportNumber || ''} berhasil dihapus.` }
   } catch (error: any) {
     console.error('[5R] Delete report error:', error)
     return { success: false, message: error?.message ?? 'Gagal menghapus laporan 5R.' }
+  }
+}
+
+/**
+ * Get 5R Analytics Data & Matrix
+ */
+export async function getFiveRAnalyticsAction(params?: {
+  year?: number
+  siteId?: number
+  approvedOnly?: boolean
+}) {
+  try {
+    const currentYear = new Date().getFullYear()
+    const targetYear = params?.year || currentYear
+    const siteId = params?.siteId && params.siteId > 0 ? params.siteId : undefined
+    const approvedOnly = Boolean(params?.approvedOnly)
+
+    // 1. Get all active Master Areas with site and PIC
+    const allSites = await db
+      .select({ id: sites.id, name: sites.name })
+      .from(sites)
+      .orderBy(asc(sites.name))
+
+    const masterAreasQuery = db
+      .select({
+        id: fiveRMasterAreas.id,
+        name: fiveRMasterAreas.name,
+        areaScale: fiveRMasterAreas.areaScale,
+        siteId: fiveRMasterAreas.siteId,
+        siteName: sites.name,
+        picName: employees.name,
+        isActive: fiveRMasterAreas.isActive,
+      })
+      .from(fiveRMasterAreas)
+      .leftJoin(sites, eq(fiveRMasterAreas.siteId, sites.id))
+      .leftJoin(employees, eq(fiveRMasterAreas.picEmployeeId, employees.id))
+
+    const masterAreaRows = await (siteId
+      ? masterAreasQuery.where(and(eq(fiveRMasterAreas.isActive, true), eq(fiveRMasterAreas.siteId, siteId)))
+      : masterAreasQuery.where(eq(fiveRMasterAreas.isActive, true)))
+
+    // 2. Build report query with year, site, and status filters
+    const conditions = [
+      sql`EXTRACT(YEAR FROM ${fiveRReports.auditDate}::date) = ${targetYear}`,
+    ]
+
+    if (siteId) {
+      conditions.push(eq(fiveRReports.siteId, siteId))
+    }
+
+    if (approvedOnly) {
+      conditions.push(eq(fiveRReports.status, 'approved'))
+    }
+
+    const reportRows = await db
+      .select({
+        id: fiveRReports.id,
+        reportNumber: fiveRReports.reportNumber,
+        masterAreaId: fiveRReports.masterAreaId,
+        picAreaName: fiveRReports.picAreaName,
+        siteId: fiveRReports.siteId,
+        auditPeriod: fiveRReports.auditPeriod,
+        auditDate: fiveRReports.auditDate,
+        reportType: fiveRReports.reportType,
+        scoreRapi: fiveRReports.scoreRapi,
+        scoreRingkas: fiveRReports.scoreRingkas,
+        scoreResik: fiveRReports.scoreResik,
+        scoreRawat: fiveRReports.scoreRawat,
+        scoreRajin: fiveRReports.scoreRajin,
+        totalScore: fiveRReports.totalScore,
+        status: fiveRReports.status,
+      })
+      .from(fiveRReports)
+      .where(and(...conditions))
+      .orderBy(asc(fiveRReports.auditDate))
+
+    // 3. Get findings stats
+    const reportIds = reportRows.map((r) => r.id)
+    let findingsRows: Array<{ id: number; reportId: number; category5r: string; isResolved: boolean }> = []
+    if (reportIds.length > 0) {
+      findingsRows = await db
+        .select({
+          id: fiveRFindings.id,
+          reportId: fiveRFindings.reportId,
+          category5r: fiveRFindings.category5r,
+          isResolved: fiveRFindings.isResolved,
+        })
+        .from(fiveRFindings)
+        .where(inArray(fiveRFindings.reportId, reportIds))
+    }
+
+    // Aggregate monthly trends
+    const monthNames = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ]
+    const shortMonthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
+
+    const monthlyTrends = monthNames.map((mName, idx) => {
+      const monthReports = reportRows.filter((r) => {
+        const d = new Date(r.auditDate)
+        const dMonth = d.getMonth()
+        return dMonth === idx || r.auditPeriod?.toLowerCase() === mName.toLowerCase()
+      })
+      const mAvgScore =
+        monthReports.length > 0
+          ? Number(
+              (
+                monthReports.reduce((sum, r) => sum + (parseFloat(r.totalScore) || 0), 0) /
+                monthReports.length
+              ).toFixed(2)
+            )
+          : 0
+
+      return {
+        monthIndex: idx,
+        monthName: mName,
+        shortName: shortMonthNames[idx],
+        reportCount: monthReports.length,
+        avgScore: mAvgScore,
+      }
+    })
+
+    // 5 Pillars averages
+    const totalReports = reportRows.length
+    const approvedReports = reportRows.filter((r) => r.status === 'approved').length
+    const overallAvgScore =
+      totalReports > 0
+        ? Number(
+            (
+              reportRows.reduce((sum, r) => sum + (parseFloat(r.totalScore) || 0), 0) / totalReports
+            ).toFixed(2)
+          )
+        : 0
+
+    const pillarsAvg = {
+      ringkas: totalReports > 0 ? Math.round(reportRows.reduce((sum, r) => sum + r.scoreRingkas, 0) / totalReports) : 0,
+      rapi: totalReports > 0 ? Math.round(reportRows.reduce((sum, r) => sum + r.scoreRapi, 0) / totalReports) : 0,
+      resik: totalReports > 0 ? Math.round(reportRows.reduce((sum, r) => sum + r.scoreResik, 0) / totalReports) : 0,
+      rawat: totalReports > 0 ? Math.round(reportRows.reduce((sum, r) => sum + r.scoreRawat, 0) / totalReports) : 0,
+      rajin: totalReports > 0 ? Math.round(reportRows.reduce((sum, r) => sum + r.scoreRajin, 0) / totalReports) : 0,
+    }
+
+    // Build Area Matrix
+    const areaMatrix = masterAreaRows.map((ma) => {
+      const areaReports = reportRows.filter(
+        (r) => r.masterAreaId === ma.id || r.picAreaName?.toLowerCase() === ma.name?.toLowerCase()
+      )
+      const monthlyScores: Record<string, { score: number; count: number; reportIds: number[] }> = {}
+
+      for (let i = 0; i < 12; i++) {
+        const mName = monthNames[i]
+        const mReports = areaReports.filter((r) => {
+          const d = new Date(r.auditDate)
+          return d.getMonth() === i || r.auditPeriod?.toLowerCase() === mName.toLowerCase()
+        })
+
+        if (mReports.length > 0) {
+          const mAvg = Number(
+            (
+              mReports.reduce((s, r) => s + (parseFloat(r.totalScore) || 0), 0) / mReports.length
+            ).toFixed(2)
+          )
+          monthlyScores[mName] = {
+            score: mAvg,
+            count: mReports.length,
+            reportIds: mReports.map((r) => r.id),
+          }
+        } else {
+          monthlyScores[mName] = { score: 0, count: 0, reportIds: [] }
+        }
+      }
+
+      const auditedMonths = Object.values(monthlyScores).filter((m) => m.count > 0)
+      const annualAvg =
+        auditedMonths.length > 0
+          ? Number(
+              (auditedMonths.reduce((s, m) => s + m.score, 0) / auditedMonths.length).toFixed(2)
+            )
+          : 0
+
+      return {
+        areaId: ma.id,
+        areaName: ma.name,
+        areaScale: ma.areaScale,
+        siteId: ma.siteId,
+        siteName: ma.siteName || 'Global',
+        picName: ma.picName || '-',
+        monthlyScores,
+        annualAvg,
+        auditCount: areaReports.length,
+        compliancePercent: Math.round((auditedMonths.length / 12) * 100),
+      }
+    })
+
+    // Compliance Rate: audited areas this year / total master areas
+    const activeAuditedAreas = areaMatrix.filter((a) => a.auditCount > 0).length
+    const complianceRate = masterAreaRows.length > 0 ? Math.round((activeAuditedAreas / masterAreaRows.length) * 100) : 0
+
+    // Grade Helper
+    const getGrade = (score: number) => {
+      if (score >= 90) return 'A'
+      if (score >= 80) return 'B'
+      if (score >= 70) return 'C'
+      return 'D'
+    }
+
+    // Top Areas & Needs Attention
+    const auditedAreaList = areaMatrix
+      .filter((a) => a.auditCount > 0)
+      .sort((a, b) => b.annualAvg - a.annualAvg)
+
+    const topAreas = auditedAreaList.slice(0, 5).map((a) => ({
+      areaId: a.areaId,
+      areaName: a.areaName,
+      siteName: a.siteName,
+      avgScore: a.annualAvg,
+      auditCount: a.auditCount,
+      grade: getGrade(a.annualAvg),
+    }))
+
+    const needsAttentionAreas = [...auditedAreaList]
+      .reverse()
+      .slice(0, 5)
+      .map((a) => ({
+        areaId: a.areaId,
+        areaName: a.areaName,
+        siteName: a.siteName,
+        avgScore: a.annualAvg,
+        auditCount: a.auditCount,
+        grade: getGrade(a.annualAvg),
+      }))
+
+    // Findings Stats
+    const totalFindings = findingsRows.length
+    const resolvedFindings = findingsRows.filter((f) => f.isResolved).length
+    const openFindings = totalFindings - resolvedFindings
+    const byPillar: Record<string, number> = {
+      Ringkas: 0,
+      Rapi: 0,
+      Resik: 0,
+      Rawat: 0,
+      Rajin: 0,
+    }
+    for (const f of findingsRows) {
+      if (byPillar[f.category5r] !== undefined) {
+        byPillar[f.category5r]++
+      }
+    }
+
+    // Available Years
+    const availableYears = [currentYear, currentYear - 1, currentYear - 2]
+
+    return {
+      success: true,
+      data: {
+        year: targetYear,
+        selectedSiteId: siteId || null,
+        totalMasterAreas: masterAreaRows.length,
+        totalReports,
+        approvedReports,
+        avgScore: overallAvgScore,
+        complianceRate,
+        pillarsAvg,
+        monthlyTrends,
+        areaMatrix,
+        topAreas,
+        needsAttentionAreas,
+        findingsStats: {
+          totalFindings,
+          resolvedFindings,
+          openFindings,
+          byPillar,
+        },
+        availableSites: allSites,
+        availableYears,
+      },
+    }
+  } catch (error: any) {
+    console.error('[5R Analytics] Error:', error)
+    return { success: false, message: error?.message || 'Gagal memuat data analitik 5R.' }
   }
 }
 

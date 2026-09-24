@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import {
+  BarChart3,
   Calendar,
   CheckCircle2,
   Clock,
@@ -11,17 +12,23 @@ import {
   FileSpreadsheet,
   FileText,
   Filter,
+  Loader2,
   Plus,
   Printer,
   Search,
   ShieldCheck,
+  Sparkles,
+  Trash2,
   XCircle,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { FiveRDetailDialog } from './five-r-detail-dialog'
+import { FiveRAnalyticsDashboard } from './five-r-analytics-dashboard'
+import { deleteFiveRReportAction } from '@/app/dashboard/quality/5r/actions'
 
 export type FiveRReportListItem = {
   id: number
@@ -70,12 +77,14 @@ export function FiveRList({
   currentUser: { id: number; name: string; email: string }
 }) {
   const [reports, setReports] = useState<FiveRReportListItem[]>(initialReports)
+  const [activeTab, setActiveTab] = useState<'reports' | 'analytics'>('reports')
   const [search, setSearch] = useState('')
   const [selectedPeriod, setSelectedPeriod] = useState('all')
   const [selectedType, setSelectedType] = useState('all')
   const [selectedStatus, setSelectedStatus] = useState('all')
   const [selectedReportId, setSelectedReportId] = useState<number | null>(null)
   const [printingId, setPrintingId] = useState<number | null>(null)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
 
   const handlePrintInPlace = (id: number) => {
     setPrintingId(id)
@@ -109,6 +118,27 @@ export function FiveRList({
     }
 
     document.body.appendChild(iframe)
+  }
+
+  const handleDeleteReport = async (id: number, reportNumber: string) => {
+    if (!window.confirm(`Apakah Anda yakin ingin menghapus laporan 5R ${reportNumber}?`)) {
+      return
+    }
+    setDeletingId(id)
+    const toastId = toast.loading('Menghapus laporan 5R...')
+    try {
+      const res = await deleteFiveRReportAction(id)
+      if (res.success) {
+        toast.success(res.message || 'Laporan 5R berhasil dihapus.', { id: toastId })
+        setReports((prev) => prev.filter((r) => r.id !== id))
+      } else {
+        toast.error(res.message || 'Gagal menghapus laporan 5R.', { id: toastId })
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Terjadi kesalahan sistem.', { id: toastId })
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   // Filtered reports
@@ -176,10 +206,12 @@ export function FiveRList({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900">
-            Daftar Laporan 5R
+            {activeTab === 'reports' ? 'Daftar Laporan 5R' : 'Dashboard Analitik & Matriks 5R'}
           </h1>
           <p className="text-xs text-slate-500">
-            Monitoring audit 5R (Ringkas, Rapi, Resik, Rawat, Rajin), evaluasi skor, dan tindak lanjut temuan.
+            {activeTab === 'reports'
+              ? 'Monitoring audit 5R (Ringkas, Rapi, Resik, Rawat, Rajin), evaluasi skor, dan tindak lanjut temuan.'
+              : 'Analitik eksekutif kepatuhan 5R, heatmap matriks area x 12 bulan, evaluasi 5 pilar, dan status temuan.'}
           </p>
         </div>
 
@@ -206,7 +238,51 @@ export function FiveRList({
         </div>
       </div>
 
-      {/* KPI Header Cards */}
+      {/* Modern Segmented Navigation Tabs */}
+      <div className="flex items-center border-b border-border/80 pb-px">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab('reports')}
+            className={`group inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-xs font-semibold transition-all ${
+              activeTab === 'reports'
+                ? 'border-slate-900 text-slate-900'
+                : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800'
+            }`}
+          >
+            <FileText className={`size-4 ${activeTab === 'reports' ? 'text-slate-900' : 'text-slate-400 group-hover:text-slate-600'}`} />
+            <span>Daftar Laporan</span>
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+              activeTab === 'reports' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'
+            }`}>
+              {totalReports}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('analytics')}
+            className={`group inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-xs font-semibold transition-all ${
+              activeTab === 'analytics'
+                ? 'border-indigo-600 text-indigo-700'
+                : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800'
+            }`}
+          >
+            <BarChart3 className={`size-4 ${activeTab === 'analytics' ? 'text-indigo-600' : 'text-slate-400 group-hover:text-slate-600'}`} />
+            <span>Dashboard Analitik & Matriks</span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700 border border-indigo-200">
+              <Sparkles className="size-2.5" />
+              Executive
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {activeTab === 'analytics' ? (
+        <FiveRAnalyticsDashboard />
+      ) : (
+        <>
+          {/* KPI Header Cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-xl border border-border/70 bg-white p-4 shadow-sm">
           <div className="text-xs font-medium text-slate-500">Total Audit 5R</div>
@@ -440,6 +516,22 @@ export function FiveRList({
                           >
                             <Printer className={`size-3.5 ${printingId === r.id ? 'animate-pulse text-emerald-600' : ''}`} />
                           </Button>
+
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteReport(r.id, r.reportNumber)}
+                            disabled={deletingId === r.id}
+                            className="h-7 w-7 p-0 text-rose-500 hover:text-rose-700 hover:bg-rose-50 cursor-pointer"
+                            title="Hapus Laporan 5R"
+                          >
+                            {deletingId === r.id ? (
+                              <Loader2 className="size-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="size-3.5" />
+                            )}
+                          </Button>
                         </div>
                       </td>
                     </tr>
@@ -450,6 +542,8 @@ export function FiveRList({
           </table>
         </div>
       </div>
+      </>
+      )}
 
       {/* Detail & Approval Dialog */}
       {selectedReportId && (

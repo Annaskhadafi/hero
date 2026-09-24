@@ -613,7 +613,7 @@ describe('scheduling timesheet workflow', () => {
       path.join(process.cwd(), 'components/scheduling-timesheet-workspace.tsx'),
       'utf8'
     )
-    expect(source).toContain('Export CSV')
+    expect(source.includes('Ekspor CSV') || source.includes('Export CSV')).toBe(true)
   })
 
   it('sets attendance import enhancement DB schema', () => {

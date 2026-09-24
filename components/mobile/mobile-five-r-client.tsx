@@ -5,6 +5,7 @@ import Link from 'next/link'
 import {
   AlertCircle,
   ArrowRight,
+  BarChart3,
   Calendar,
   CheckCircle2,
   Clock,
@@ -13,6 +14,7 @@ import {
   FileSpreadsheet,
   FileText,
   Filter,
+  Loader2,
   Plus,
   Printer,
   Search,
@@ -27,6 +29,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { FiveRDetailDialog } from '@/components/five-r/five-r-detail-dialog'
+import { FiveRAnalyticsDashboard } from '@/components/five-r/five-r-analytics-dashboard'
 import { deleteFiveRReportAction } from '@/app/dashboard/quality/5r/actions'
 import type { FiveRReportListItem } from '@/components/five-r/five-r-list'
 
@@ -55,12 +58,14 @@ interface MobileFiveRClientProps {
 }
 
 export function MobileFiveRClient({ initialReports, currentUser }: MobileFiveRClientProps) {
+  const [activeTab, setActiveTab] = useState<'reports' | 'analytics'>('reports')
   const [reports, setReports] = useState<FiveRReportListItem[]>(initialReports)
   const [search, setSearch] = useState('')
   const [selectedMonth, setSelectedMonth] = useState<string>('all')
   const [selectedStatus, setSelectedStatus] = useState<string>('all')
   const [selectedReportId, setSelectedReportId] = useState<number | null>(null)
   const [printingId, setPrintingId] = useState<number | null>(null)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
 
   const handlePrintInPlace = (reportId: number) => {
     setPrintingId(reportId)
@@ -94,14 +99,22 @@ export function MobileFiveRClient({ initialReports, currentUser }: MobileFiveRCl
     document.body.appendChild(iframe)
   }
 
-  async function handleDelete(reportId: number) {
-    if (!confirm('Apakah Anda yakin ingin menghapus draft laporan 5R ini?')) return
-    const res = await deleteFiveRReportAction(reportId)
-    if (res.success) {
-      toast.success(res.message)
-      setReports((prev) => prev.filter((r) => r.id !== reportId))
-    } else {
-      toast.error(res.message)
+  async function handleDelete(reportId: number, reportNumber: string) {
+    if (!confirm(`Apakah Anda yakin ingin menghapus laporan 5R ${reportNumber}?`)) return
+    setDeletingId(reportId)
+    const toastId = toast.loading('Menghapus laporan 5R...')
+    try {
+      const res = await deleteFiveRReportAction(reportId)
+      if (res.success) {
+        toast.success(res.message || 'Laporan 5R berhasil dihapus.', { id: toastId })
+        setReports((prev) => prev.filter((r) => r.id !== reportId))
+      } else {
+        toast.error(res.message || 'Gagal menghapus laporan 5R.', { id: toastId })
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Terjadi kesalahan sistem.', { id: toastId })
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -239,8 +252,47 @@ export function MobileFiveRClient({ initialReports, currentUser }: MobileFiveRCl
         </div>
       </section>
 
-      {/* Filter & Search Bar */}
-      <section className="space-y-2.5">
+      {/* Segmented Tab Navigation */}
+      <div className="grid grid-cols-2 gap-1 rounded-2xl bg-slate-100 p-1 border border-slate-200">
+        <button
+          type="button"
+          onClick={() => setActiveTab('reports')}
+          className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-semibold transition-all ${
+            activeTab === 'reports'
+              ? 'bg-white text-slate-900 shadow-2xs'
+              : 'text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <FileText className="size-3.5" />
+          <span>Daftar Audit</span>
+          <span className={`ml-1 rounded-full px-1.5 py-0.2 text-[10px] ${
+            activeTab === 'reports' ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-600'
+          }`}>
+            {totalAudits}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('analytics')}
+          className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-semibold transition-all ${
+            activeTab === 'analytics'
+              ? 'bg-white text-indigo-700 shadow-2xs'
+              : 'text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <BarChart3 className="size-3.5 text-indigo-600" />
+          <span>Dashboard & Matriks</span>
+          <Sparkles className="size-3 text-amber-500" />
+        </button>
+      </div>
+
+      {activeTab === 'analytics' ? (
+        <FiveRAnalyticsDashboard />
+      ) : (
+        <>
+          {/* Filter & Search Bar */}
+          <section className="space-y-2.5">
         {/* Search Input, Month Dropdown, & Excel */}
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
@@ -393,17 +445,20 @@ export function MobileFiveRClient({ initialReports, currentUser }: MobileFiveRCl
                         <Printer className="size-3.5" />
                       </Button>
 
-                      {r.status === 'draft' && (
-                        <Button
-                          onClick={() => handleDelete(r.id)}
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 px-2 text-rose-500 hover:text-rose-700 rounded-xl active:scale-95"
-                          title="Hapus Draft"
-                        >
+                      <Button
+                        onClick={() => handleDelete(r.id, r.reportNumber)}
+                        disabled={deletingId === r.id}
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 px-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl active:scale-95 cursor-pointer"
+                        title="Hapus Laporan"
+                      >
+                        {deletingId === r.id ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
                           <Trash2 className="size-3.5" />
-                        </Button>
-                      )}
+                        )}
+                      </Button>
                     </div>
                   </div>
                 </article>
@@ -412,6 +467,8 @@ export function MobileFiveRClient({ initialReports, currentUser }: MobileFiveRCl
           </div>
         )}
       </section>
+      </>
+      )}
 
       {/* Detail Dialog */}
       {selectedReportId && (

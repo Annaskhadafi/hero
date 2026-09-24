@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   AlertCircle,
+  ArrowLeft,
   Camera,
   CheckCircle2,
   Edit3,
@@ -16,6 +17,7 @@ import {
   ShieldCheck,
   Trash2,
   Upload,
+  UserCheck,
   ZoomIn,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -61,6 +63,10 @@ export type MasterAreaOption = {
   siteName: string | null
   picEmployeeId: number | null
   picName: string | null
+  effectivePicId?: number | null
+  effectivePicName?: string | null
+  isFallback?: boolean
+  fallbackReason?: string
 }
 
 type FindingRow = {
@@ -245,14 +251,51 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
     }
   }
 
-  // Auto-fill area details if master area is selected
+  // Dirty State Checker (untuk konfirmasi tombol Kembali)
+  const isFormDirty = useMemo(() => {
+    return Boolean(
+      selectedAreaId ||
+      customAreaName ||
+      findings.length > 0 ||
+      scoreRapi !== 100 ||
+      scoreRingkas !== 100 ||
+      scoreResik !== 100 ||
+      scoreRawat !== 100 ||
+      scoreRajin !== 100 ||
+      (auditorName && auditorName !== currentUser.name)
+    )
+  }, [
+    selectedAreaId,
+    customAreaName,
+    findings.length,
+    scoreRapi,
+    scoreRingkas,
+    scoreResik,
+    scoreRawat,
+    scoreRajin,
+    auditorName,
+    currentUser.name,
+  ])
+
+  const handleBack = () => {
+    if (isFormDirty) {
+      const confirmLeave = window.confirm(
+        'Ada perubahan yang belum disimpan, yakin ingin kembali ke daftar laporan?'
+      )
+      if (!confirmLeave) return
+    }
+    router.push(returnUrl)
+  }
+
+  // Auto-fill area details if master area is selected (Single Source of Truth)
   const selectedAreaObj = useMemo(() => {
     return masterAreas.find((a) => a.id.toString() === selectedAreaId)
   }, [masterAreas, selectedAreaId])
 
   useEffect(() => {
     if (selectedAreaObj && selectedAreaId !== 'custom') {
-      setCustomAreaName(selectedAreaObj.name)
+      const effectivePic = selectedAreaObj.picName || selectedAreaObj.effectivePicName || 'Atasan Langsung'
+      setCustomAreaName(`${selectedAreaObj.name} - ${effectivePic}${selectedAreaObj.isFallback ? ' (Atasan Langsung)' : ''}`)
     }
   }, [selectedAreaObj, selectedAreaId])
 
@@ -451,15 +494,28 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
 
       {/* Header Banner */}
       <div className={isMobile ? 'rounded-2xl border border-slate-100 bg-white p-4 shadow-sm' : 'rounded-xl border border-border/70 bg-surface_container_lowest p-6 shadow-sm'}>
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="font-display text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
-              Formulir Audit 5R
-            </h1>
-            <p className="text-xs text-rose-600 font-medium">
-              &quot;(Wajib Diisi)&quot; menunjukkan kolom yang harus diisi
-            </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleBack}
+              className="h-8 rounded-xl border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 shrink-0"
+            >
+              <ArrowLeft className="mr-1.5 size-3.5" />
+              Kembali
+            </Button>
+            <div>
+              <h1 className="font-display text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+                Formulir Audit 5R
+              </h1>
+              <p className="text-xs text-rose-600 font-medium">
+                &quot;(Wajib Diisi)&quot; menunjukkan kolom yang harus diisi
+              </p>
+            </div>
           </div>
+
           <div className="mt-1 flex items-center gap-2 sm:mt-0">
             {hasRestoredDraft && (
               <Button
@@ -481,31 +537,50 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
         <form onSubmit={handleSubmit} className="mt-5 space-y-5">
           {/* Top Form Fields Grid: 1 column on mobile, responsive on desktop */}
           <div className={isMobile ? 'grid grid-cols-1 gap-3.5' : 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3'}>
-            {/* PIC - AREA 5R */}
+            {/* PIC - AREA 5R (Single Source of Truth) */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-slate-700">
-                PIC – AREA 5R <span className="text-rose-500 font-normal italic">(Wajib Diisi)</span>
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold text-slate-700">
+                  PIC – AREA 5R <span className="text-rose-500 font-normal italic">(Wajib Diisi)</span>
+                </Label>
+                <span className="text-[10px] text-slate-400 font-medium">Master Area</span>
+              </div>
               <div className="space-y-1">
                 <select
                   value={selectedAreaId}
                   onChange={(e) => setSelectedAreaId(e.target.value)}
-                  className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs shadow-2xs focus:border-[#003461] focus:outline-none"
+                  className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs shadow-2xs focus:border-[#003461] focus:outline-none font-medium text-slate-800"
                 >
-                  <option value="">– Pilih –</option>
-                  {masterAreas.map((area) => (
-                    <option key={area.id} value={area.id.toString()}>
-                      {area.name}
-                    </option>
-                  ))}
-                  <option value="custom">Lainnya</option>
+                  <option value="">– Pilih Area 5R –</option>
+                  {masterAreas.map((area) => {
+                    const picDisplay = area.picName || area.effectivePicName || 'Atasan Langsung'
+                    return (
+                      <option key={area.id} value={area.id.toString()}>
+                        {area.name} — PIC: {picDisplay}{area.isFallback ? ' (Atasan Langsung)' : ''}
+                      </option>
+                    )
+                  })}
+                  <option value="custom">Area Lainnya (Ketik Manual)</option>
                 </select>
+
+                {selectedAreaObj && (
+                  <div className="mt-1 flex items-center gap-1.5 rounded-lg bg-slate-50 px-2.5 py-1.5 text-[11px] text-slate-700 border border-slate-200">
+                    <UserCheck className="size-3.5 text-emerald-600 shrink-0" />
+                    <span className="truncate">
+                      PIC Penanggung Jawab: <strong>{selectedAreaObj.picName || selectedAreaObj.effectivePicName || 'Atasan Langsung'}</strong>
+                      {selectedAreaObj.isFallback && (
+                        <span className="ml-1 text-amber-700 font-semibold">(Fallback: {selectedAreaObj.fallbackReason || 'Atasan Langsung'})</span>
+                      )}
+                    </span>
+                  </div>
+                )}
+
                 {(selectedAreaId === 'custom' || (!selectedAreaId && masterAreas.length === 0)) && (
                   <Input
                     placeholder="Ketik nama area & PIC (misal: Workshop Bay 2 - Budi)"
                     value={customAreaName}
                     onChange={(e) => setCustomAreaName(e.target.value)}
-                    className="h-8 text-xs bg-slate-50"
+                    className="h-8 text-xs bg-slate-50 rounded-xl"
                   />
                 )}
               </div>
@@ -1340,12 +1415,13 @@ export function FiveRForm({ masterAreas, currentUser }: FiveRFormProps) {
           <div className="border-t border-border/70 pt-6 flex items-center justify-between">
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               size="sm"
-              onClick={() => router.push(returnUrl)}
-              className="text-xs text-slate-600 hover:text-slate-900"
+              onClick={handleBack}
+              className="h-10 rounded-xl border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer shadow-2xs"
             >
-              Batal
+              <ArrowLeft className="mr-1.5 size-3.5" />
+              Kembali
             </Button>
 
             <Button

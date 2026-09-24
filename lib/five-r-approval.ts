@@ -28,6 +28,199 @@ export type FiveRApprovalRoute = {
   steps: FiveRApprovalStep[]
 }
 
+export type MasterAreaEffectivePic = {
+  picEmployeeId: number | null
+  picName: string
+  picEmail: string | null
+  isFallback: boolean
+  fallbackReason: string
+}
+
+/**
+ * Resolves effective PIC for a Master Area (Single Source of Truth)
+ * If PIC is not assigned, dynamically uses the Site Head (PJO) / Direct Manager from Organization Structure as fallback.
+ */
+export async function resolveMasterAreaEffectivePic(params: {
+  areaId?: number | null
+  siteId?: number | null
+  picEmployeeId?: number | null
+}): Promise<MasterAreaEffectivePic> {
+  let areaSiteId = params.siteId ?? null
+  let assignedPicId = params.picEmployeeId !== undefined ? params.picEmployeeId : null
+
+  if (params.areaId) {
+    const [area] = await db
+      .select({
+        siteId: fiveRMasterAreas.siteId,
+        picEmployeeId: fiveRMasterAreas.picEmployeeId,
+      })
+      .from(fiveRMasterAreas)
+      .where(eq(fiveRMasterAreas.id, params.areaId))
+      .limit(1)
+
+    if (area) {
+      if (!areaSiteId && area.siteId) areaSiteId = area.siteId
+      if (assignedPicId === null || assignedPicId === undefined) {
+        assignedPicId = area.picEmployeeId
+      }
+    }
+  }
+
+  // 1. If assigned PIC exists in database
+  if (assignedPicId) {
+    const [emp] = await db
+      .select({ id: employees.id, name: employees.name, email: employees.email })
+      .from(employees)
+      .where(eq(employees.id, assignedPicId))
+      .limit(1)
+
+    if (emp) {
+      return {
+        picEmployeeId: emp.id,
+        picName: emp.name,
+        picEmail: emp.email,
+        isFallback: false,
+        fallbackReason: 'Assigned PIC Area',
+      }
+    }
+  }
+
+  // 2. Dynamic Fallback: Atasan Langsung dari Struktur Organisasi / Site Head
+  if (areaSiteId) {
+    // 2a. PJO / Head Employee dari Site
+    const [site] = await db
+      .select({ headEmployeeId: sites.headEmployeeId, siteName: sites.name })
+      .from(sites)
+      .where(eq(sites.id, areaSiteId))
+      .limit(1)
+
+    if (site?.headEmployeeId) {
+      const [headEmp] = await db
+        .select({ id: employees.id, name: employees.name, email: employees.email })
+        .from(employees)
+        .where(eq(employees.id, site.headEmployeeId))
+        .limit(1)
+
+      if (headEmp) {
+        return {
+          picEmployeeId: headEmp.id,
+          picName: headEmp.name,
+          picEmail: headEmp.email,
+          isFallback: true,
+          fallbackReason: `PJO / Kepala Site (${site.siteName || 'Site'})`,
+        }
+      }
+    }
+
+    // 2b. Fallback: Manager / Head di Site tersebut
+    const [siteManager] = await db
+      .select({ id: employees.id, name: employees.name, email: employees.email, jobTitle: employees.jobTitle })
+      .from(employees)
+      .where(
+        and(
+          eq(employees.siteId, areaSiteId),
+          eq(employees.isActive, true),
+          sql`(${employees.role} ILIKE '%PJO%' OR ${employees.role} ILIKE '%Manager%' OR ${employees.role} ILIKE '%Supervisor%' OR ${employees.role} ILIKE '%Head%')`
+        )
+      )
+      .limit(1)
+
+    if (siteManager) {
+      return {
+        picEmployeeId: siteManager.id,
+        picName: siteManager.name,
+        picEmail: siteManager.email,
+        isFallback: true,
+        fallbackReason: `Atasan Langsung Site (${siteManager.jobTitle || 'Site Manager'})`,
+      }
+    }
+  }
+
+  // 2c. Global Fallback
+  const [apriyanto] = await db
+    .select({ id: employees.id, name: employees.name, email: employees.email })
+    .from(employees)
+    .where(eq(employees.id, 955))
+    .limit(1)
+
+  return {
+    picEmployeeId: apriyanto?.id ?? 955,
+    picName: apriyanto?.name ?? 'Apriyanto',
+    picEmail: apriyanto?.email ?? 'apriyanto@chitraparatama.co.id',
+    isFallback: true,
+    fallbackReason: 'Head of Service MVC (Atasan Langsung Default)',
+  }
+}
+
+/**
+ * Synchronize live/in-flight 5R approvals and report records when Master Area PIC changes
+ */
+export async function syncInFlightFiveRApprovalsForMasterArea(areaId: number) {
+  try {
+    const effectivePic = await resolveMasterAreaEffectivePic({ areaId })
+
+    const pendingReports = await db
+      .select({
+        id: fiveRReports.id,
+        reportNumber: fiveRReports.reportNumber,
+        status: fiveRReports.status,
+        siteId: fiveRReports.siteId,
+        currentApprovalLevel: fiveRReports.currentApprovalLevel,
+      })
+      .from(fiveRReports)
+      .where(
+        and(
+          eq(fiveRReports.masterAreaId, areaId),
+          inArray(fiveRReports.status, ['pending_approval', 'in_review'])
+        )
+      )
+
+    for (const report of pendingReports) {
+      const route = await resolveFiveRApprovalRoute({
+        areaId,
+        siteId: report.siteId,
+        picEmployeeId: effectivePic.picEmployeeId,
+      })
+
+      const step1 = route.steps.find((s) => s.level === 1)
+      if (step1 && step1.approverEmployeeId) {
+        await db
+          .update(approvals)
+          .set({
+            approverEmployeeId: step1.approverEmployeeId,
+            approverName: step1.approverName,
+          })
+          .where(
+            and(
+              eq(approvals.fiveRReportId, report.id),
+              eq(approvals.level, 1),
+              eq(approvals.status, 'pending')
+            )
+          )
+      }
+
+      const [areaRow] = await db
+        .select({ name: fiveRMasterAreas.name })
+        .from(fiveRMasterAreas)
+        .where(eq(fiveRMasterAreas.id, areaId))
+        .limit(1)
+
+      const areaDisplayName = areaRow?.name || 'Area 5R'
+      const updatedPicAreaName = `${areaDisplayName} - ${effectivePic.picName}${effectivePic.isFallback ? ' (Atasan Langsung)' : ''}`
+
+      await db
+        .update(fiveRReports)
+        .set({
+          picAreaName: updatedPicAreaName,
+          updatedAt: new Date(),
+        })
+        .where(eq(fiveRReports.id, report.id))
+    }
+  } catch (err) {
+    console.error('Error syncing in-flight 5R approvals for master area:', err)
+  }
+}
+
 /**
  * Resolves 3-Step Approval Route for 5R Report:
  * Step 1: Quality Management Verifier -> Ria Annisa Putri (ID: 1181)

@@ -12,7 +12,7 @@ export default async function MasterAreaPage() {
   const masterAreasRes = await getMasterAreasAction()
 
   const allSites = await db
-    .select({ id: sites.id, name: sites.name })
+    .select({ id: sites.id, name: sites.name, headEmployeeId: sites.headEmployeeId })
     .from(sites)
     .orderBy(sites.name)
 
