@@ -4,6 +4,7 @@ import { desc } from 'drizzle-orm'
 import { SafetyInductionClient } from './_components/safety-induction-client'
 
 export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 export default async function SafetyInductionDashboard() {
   const inductions = await db

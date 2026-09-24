@@ -10,28 +10,71 @@ import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
 
-async function uploadPublicSignature(file: File): Promise<{ success: boolean; url?: string; error?: string }> {
-  try {
-    if (isS3UploadConfigured()) {
+async function uploadSignatureBuffer(
+  buffer: Buffer,
+  contentType: string = 'image/png'
+): Promise<{ success: boolean; url?: string; error?: string }> {
+  // 1. Try S3 upload if configured
+  if (isS3UploadConfigured()) {
+    try {
+      const file = new File([buffer], `signature-${randomUUID().slice(0, 8)}.png`, { type: contentType })
       // ponytail: bound this guest upload; tune the limit if storage latency warrants it.
       const result = await uploadAnyFileToS3(file, undefined, AbortSignal.timeout(20_000))
-      const readableUrl = await getS3ObjectReadUrl(result.url)
-      return { success: true, url: readableUrl || result.url }
+      if (result?.url) {
+        return { success: true, url: result.url }
+      }
+    } catch (s3Err) {
+      console.warn('[Safety Induction] S3 signature upload failed or timed out, falling back to local storage:', s3Err)
     }
+  }
 
+  // 2. Fallback to local storage
+  try {
     const uploadDir = join(process.cwd(), 'public', 'uploads')
     await mkdir(uploadDir, { recursive: true })
 
     const uniqueName = `signature-${randomUUID().slice(0, 8)}.png`
     const filePath = join(uploadDir, uniqueName)
-    const buffer = Buffer.from(await file.arrayBuffer())
 
     await writeFile(filePath, buffer)
 
     const publicUrl = `/api/uploads/${uniqueName}`
     return { success: true, url: publicUrl }
   } catch (err) {
-    console.error('Error uploading public signature:', err)
+    console.error('Error uploading public signature locally:', err)
+    return {
+      success: false,
+      error: err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')
+        ? 'Upload tanda tangan terlalu lama. Silakan coba lagi.'
+        : 'Gagal mengupload tanda tangan',
+    }
+  }
+}
+
+async function uploadPublicSignature(
+  fileOrBase64: File | string
+): Promise<{ success: boolean; url?: string; error?: string }> {
+  try {
+    let buffer: Buffer
+    let contentType = 'image/png'
+
+    if (typeof fileOrBase64 === 'string') {
+      const base64Data = fileOrBase64.replace(/^data:image\/\w+;base64,/, '')
+      buffer = Buffer.from(base64Data, 'base64')
+    } else if (fileOrBase64 && typeof fileOrBase64.arrayBuffer === 'function') {
+      buffer = Buffer.from(await fileOrBase64.arrayBuffer())
+      contentType = fileOrBase64.type || 'image/png'
+    } else {
+      return { success: false, error: 'Format tanda tangan tidak valid' }
+    }
+
+    if (buffer.length === 0) {
+      return { success: false, error: 'Tanda tangan kosong' }
+    }
+
+    return await uploadSignatureBuffer(buffer, contentType)
+  } catch (err) {
+    console.error('Error in uploadPublicSignature:', err)
     return {
       success: false,
       error: err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')
@@ -48,13 +91,16 @@ export async function submitSafetyInduction(formData: FormData) {
     const phoneNumber = (formData.get('phoneNumber') as string | null)?.trim()
     const purpose = (formData.get('purpose') as string | null)?.trim()
     const signatureFile = formData.get('signature') as File | null
+    const signatureData = (formData.get('signatureData') as string | null)?.trim()
 
-    if (!fullName || !companyOrigin || !phoneNumber || !purpose || !signatureFile) {
+    const signatureToUpload = (signatureFile && signatureFile.size > 0) ? signatureFile : signatureData
+
+    if (!fullName || !companyOrigin || !phoneNumber || !purpose || !signatureToUpload) {
       return { success: false, error: 'Semua kolom harus diisi termasuk tanda tangan' }
     }
 
     // Upload signature using public uploader (unauthenticated guests allowed)
-    const uploadResult = await uploadPublicSignature(signatureFile)
+    const uploadResult = await uploadPublicSignature(signatureToUpload)
 
     if (!uploadResult.success || !uploadResult.url) {
       return { success: false, error: uploadResult.error || 'Gagal mengupload tanda tangan' }
@@ -101,6 +147,9 @@ export async function submitSafetyInduction(formData: FormData) {
     })
 
     revalidatePath('/dashboard/safety-induction')
+    revalidatePath('/dashboard/safety')
+    revalidatePath('/dashboard/safety/data')
+    revalidatePath('/safety-induction')
 
     return { success: true }
   } catch (error) {

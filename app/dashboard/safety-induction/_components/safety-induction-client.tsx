@@ -73,6 +73,7 @@ import {
   updateSafetyInduction,
   deleteSafetyInduction,
 } from '@/app/actions/safety-induction'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 import type { SafetyInduction } from '@/db/schema/safety-induction'
 
 interface SafetyInductionClientProps {
@@ -813,16 +814,17 @@ export function SafetyInductionClient({ initialData }: SafetyInductionClientProp
                     <div className="space-y-2">
                       <div className="border rounded-md p-2 bg-white inline-block shadow-sm">
                         <Image
-                          src={selectedInduction.signatureUrl}
+                          src={resolveUploadUrl(selectedInduction.signatureUrl)}
                           alt="Tanda Tangan"
                           width={240}
                           height={120}
+                          unoptimized
                           className="object-contain"
                         />
                       </div>
                       <div>
                         <a
-                          href={selectedInduction.signatureUrl}
+                          href={resolveUploadUrl(selectedInduction.signatureUrl)}
                           target="_blank"
                           rel="noreferrer"
                           className="inline-flex items-center gap-1 text-xs text-primary hover:underline"

@@ -23,6 +23,7 @@ export default function SafetyInductionPage() {
   const [hasScrolled, setHasScrolled] = useState(false)
   const [isAgreed, setIsAgreed] = useState(false)
   const [signature, setSignature] = useState<File | null>(null)
+  const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
   
@@ -45,14 +46,19 @@ export default function SafetyInductionPage() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    if (!signature) {
+    if (!signature && !signatureDataUrl) {
       toast.error('Silakan isi tanda tangan Anda terlebih dahulu')
       return
     }
 
     setIsSubmitting(true)
     const formData = new FormData(e.currentTarget)
-    formData.append('signature', signature)
+    if (signature) {
+      formData.append('signature', signature, 'signature.png')
+    }
+    if (signatureDataUrl) {
+      formData.append('signatureData', signatureDataUrl)
+    }
 
     try {
       const result = await submitSafetyInduction(formData)
@@ -295,7 +301,10 @@ export default function SafetyInductionPage() {
                   <Label className="flex items-center text-slate-700">
                     Tanda Tangan Online
                   </Label>
-                  <SignaturePad onSignatureChange={setSignature} />
+                  <SignaturePad 
+                    onSignatureChange={setSignature} 
+                    onDataUrlChange={setSignatureDataUrl} 
+                  />
                 </div>
 
                 <div className="pt-4 border-t">

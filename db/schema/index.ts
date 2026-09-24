@@ -283,3 +283,6 @@ export * from './hero-genius'
 // Central Service
 export * from './central-service'
 
+// Safety Induction
+export * from './safety-induction'
+

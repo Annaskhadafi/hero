@@ -255,9 +255,11 @@ export function SignaturePad({ onSignatureChange, onDataUrlChange }: SignaturePa
           onMouseDown={startDrawing}
           onMouseUp={stopDrawing}
           onMouseOut={stopDrawing}
+          onMouseLeave={stopDrawing}
           onMouseMove={draw}
           onTouchStart={startDrawing}
           onTouchEnd={stopDrawing}
+          onTouchCancel={stopDrawing}
           onTouchMove={draw}
           className="w-full h-full cursor-crosshair touch-none absolute inset-0 bg-transparent"
           style={{ touchAction: 'none' }}
