@@ -1,20 +1,28 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ChevronDown,
   Clock3,
   FileCheck2,
   FileText,
+  Pencil,
   RotateCcw,
   Search,
+  Trash2,
   User,
   Wrench,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  ACTIVITY_DRAFTS_CHANGED_EVENT,
+  getActivityDraftIndex,
+  removeActivityDraft,
+  type ActivityDraftIndexEntry,
+} from '@/lib/offline-sync'
 
 export type MobileDarHistoryItem = {
   id: number
@@ -109,6 +117,14 @@ export function MobileDailyActivityHistory({
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [visible, setVisible] = useState(8)
+  const [drafts, setDrafts] = useState<ActivityDraftIndexEntry[]>([])
+
+  useEffect(() => {
+    const refreshDrafts = () => setDrafts(getActivityDraftIndex())
+    refreshDrafts()
+    window.addEventListener(ACTIVITY_DRAFTS_CHANGED_EVENT, refreshDrafts)
+    return () => window.removeEventListener(ACTIVITY_DRAFTS_CHANGED_EVENT, refreshDrafts)
+  }, [])
 
   const stats = useMemo(() => {
     const total = activities.length
@@ -150,6 +166,54 @@ export function MobileDailyActivityHistory({
 
   return (
     <div className="space-y-4">
+      {drafts.length > 0 ? (
+        <section className="space-y-2 rounded-2xl border border-sky-100 bg-sky-50/60 p-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-sky-700">
+                Draft Tersimpan di Perangkat
+              </p>
+              <p className="text-xs font-semibold text-slate-600">Bisa dilanjutkan dan diedit kembali.</p>
+            </div>
+            <Badge className="border-0 bg-sky-100 text-sky-800">{drafts.length}</Badge>
+          </div>
+          <div className="space-y-2">
+            {drafts.map((draft) => (
+              <div key={draft.key} className="flex items-center gap-2 rounded-xl border border-sky-100 bg-white p-3">
+                <Link
+                  href={`/mobile/activity?tab=apply&draft=${encodeURIComponent(draft.key)}`}
+                  className="min-w-0 flex-1"
+                >
+                  <p className="truncate text-sm font-extrabold text-slate-900">{draft.title}</p>
+                  <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
+                    {draft.workDate || 'Tanggal belum diisi'} • {draft.itemCount} item • Diperbarui{' '}
+                    {new Date(draft.updatedAt).toLocaleString('id-ID', {
+                      day: '2-digit',
+                      month: 'short',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </p>
+                  <span className="mt-2 inline-flex items-center gap-1 text-[11px] font-extrabold text-sky-700">
+                    <Pencil className="size-3" /> Edit Draft
+                  </span>
+                </Link>
+                <button
+                  type="button"
+                  aria-label={`Hapus draft ${draft.title}`}
+                  className="rounded-lg p-2 text-rose-500 hover:bg-rose-50"
+                  onClick={() => {
+                    if (window.confirm(`Hapus draft “${draft.title}”?`)) removeActivityDraft(draft.key)
+                  }}
+                >
+                  <Trash2 className="size-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       {/* ── Ringkasan Metrik (Persis SPL Mobile) ── */}
       <div className="grid grid-cols-4 gap-2">
         <div className="rounded-2xl border border-slate-100 bg-white p-3 text-center shadow-xs">

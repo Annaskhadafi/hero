@@ -1,6 +1,8 @@
 import { z } from 'zod'
 
 export const ACTIVITY_DRAFT_STORAGE_KEY = 'hero:draft:activity'
+export const ACTIVITY_DRAFT_INDEX_STORAGE_KEY = 'hero:draft:activity:index'
+export const ACTIVITY_DRAFTS_CHANGED_EVENT = 'hero:activity-drafts-changed'
 export const HSE_OBSERVATION_DRAFT_STORAGE_KEY = 'hero:draft:hse-observation'
 export const HSE_EMERGENCY_DRAFT_STORAGE_KEY = 'hero:draft:hse-emergency'
 
@@ -57,6 +59,8 @@ export type RouteSessionSyncItem = {
 
 export type ActivitySyncPayload = {
   employeeId: number
+  workDate?: string
+  draftTitle?: string
   sourceMode: 'assigned' | 'self_input' | 'custom'
   assignmentId: string
   libraryActivityId: string
@@ -94,6 +98,109 @@ export type ActivitySyncPayload = {
   photos?: QueuedFilePayload[]
   photoUrls?: string[]
   teamMemberEmployeeIds?: number[]
+}
+
+export type ActivityDraftIndexEntry = {
+  key: string
+  title: string
+  workDate: string
+  updatedAt: string
+  itemCount: number
+}
+
+function activityDraftTitle(payload: Partial<ActivitySyncPayload>) {
+  return (
+    payload.draftTitle?.trim() ||
+    payload.customActivityName?.trim() ||
+    payload.routeSessionItems?.find((item) => item.isChecked)?.snapshotLabel?.trim() ||
+    payload.libraryActivityId?.trim() ||
+    'Daily Activity'
+  )
+}
+
+function activityDraftItemCount(payload: Partial<ActivitySyncPayload>) {
+  const checkedCount = payload.routeSessionItems?.filter((item) => item.isChecked).length ?? 0
+  return checkedCount || payload.selectedLibraryActivityIds?.length || (payload.libraryActivityId ? 1 : 0)
+}
+
+export function getActivityDraftIndex(): ActivityDraftIndexEntry[] {
+  if (typeof window === 'undefined') return []
+
+  let parsed: unknown
+  try {
+    const raw = window.localStorage.getItem(ACTIVITY_DRAFT_INDEX_STORAGE_KEY)
+    parsed = raw ? JSON.parse(raw) : []
+  } catch {
+    parsed = []
+  }
+
+  const entries = Array.isArray(parsed)
+    ? parsed.filter(
+        (entry): entry is ActivityDraftIndexEntry =>
+          Boolean(entry) &&
+          typeof entry.key === 'string' &&
+          typeof entry.updatedAt === 'string'
+      )
+    : []
+
+  if (entries.some((entry) => entry.key === ACTIVITY_DRAFT_STORAGE_KEY)) return entries
+
+  try {
+    const legacyRaw = window.localStorage.getItem(ACTIVITY_DRAFT_STORAGE_KEY)
+    if (!legacyRaw) return entries
+    const legacy = JSON.parse(legacyRaw) as Partial<ActivitySyncPayload>
+    return [
+      {
+        key: ACTIVITY_DRAFT_STORAGE_KEY,
+        title: activityDraftTitle(legacy),
+        workDate: legacy.workDate || '',
+        updatedAt: new Date().toISOString(),
+        itemCount: activityDraftItemCount(legacy),
+      },
+      ...entries,
+    ]
+  } catch {
+    return entries
+  }
+}
+
+export function createActivityDraftKey() {
+  const id =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  return `${ACTIVITY_DRAFT_STORAGE_KEY}:${id}`
+}
+
+export function saveActivityDraftIndexEntry(
+  key: string,
+  payload: Partial<ActivitySyncPayload>
+) {
+  if (typeof window === 'undefined') return
+  const nextEntry: ActivityDraftIndexEntry = {
+    key,
+    title: activityDraftTitle(payload),
+    workDate: payload.workDate || '',
+    updatedAt: new Date().toISOString(),
+    itemCount: activityDraftItemCount(payload),
+  }
+  const next = [nextEntry, ...getActivityDraftIndex().filter((entry) => entry.key !== key)]
+  try {
+    window.localStorage.setItem(ACTIVITY_DRAFT_INDEX_STORAGE_KEY, JSON.stringify(next))
+    window.dispatchEvent(new CustomEvent(ACTIVITY_DRAFTS_CHANGED_EVENT))
+  } catch {
+    // The draft payload itself has already been saved; history can retry on the next edit.
+  }
+}
+
+export function removeActivityDraft(key: string) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.removeItem(key)
+    const next = getActivityDraftIndex().filter((entry) => entry.key !== key)
+    window.localStorage.setItem(ACTIVITY_DRAFT_INDEX_STORAGE_KEY, JSON.stringify(next))
+    window.dispatchEvent(new CustomEvent(ACTIVITY_DRAFTS_CHANGED_EVENT))
+  } catch {}
 }
 
 export type AttendanceSyncPayload = {
@@ -186,6 +293,7 @@ export const emergencyIncidentSyncPayloadSchema = z.object({
 
 export const activitySyncPayloadSchema = z.object({
   employeeId: z.number().int().positive(),
+  workDate: z.string().trim().max(40).optional().default(''),
   sourceMode: z.enum(['assigned', 'self_input', 'custom']),
   assignmentId: trimmedOptionalText(80),
   libraryActivityId: trimmedOptionalText(80),

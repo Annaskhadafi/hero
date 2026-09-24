@@ -58,6 +58,9 @@ import { GpsLocationPreviewCard } from '@/components/ui/gps-location-preview-car
 import { validateSiteBoundary } from '@/lib/location'
 import {
   ACTIVITY_DRAFT_STORAGE_KEY,
+  createActivityDraftKey,
+  removeActivityDraft,
+  saveActivityDraftIndexEntry,
   type ActivitySyncPayload,
   type RouteSessionSyncItem,
   type QueuedFilePayload,
@@ -415,10 +418,6 @@ function writeDraft<T>(key: string, value: T): { ok: true } | { ok: false; error
   }
 }
 
-function clearDraft(key: string) {
-  window.localStorage.removeItem(key)
-}
-
 function toDateTimeLocalValue(value?: string | Date | null) {
   if (!value) return ''
   const dateValue = value instanceof Date ? value : new Date(value)
@@ -574,6 +573,13 @@ export function MobileDailyActivityForm({
   const router = useRouter()
   const searchParams = useSearchParams()
   const queuedDraftKey = searchParams.get('draft')?.trim() || ''
+  const [activeDraftKey, setActiveDraftKey] = useState(
+    () => queuedDraftKey || ACTIVITY_DRAFT_STORAGE_KEY
+  )
+
+  useEffect(() => {
+    setActiveDraftKey(queuedDraftKey || ACTIVITY_DRAFT_STORAGE_KEY)
+  }, [queuedDraftKey])
 
   const rawSession = initialSessionData?.data || initialSessionData?.session || initialSessionData
   const rawItems = (rawSession?.sessionItems || rawSession?.items || []) as any[]
@@ -1572,9 +1578,7 @@ export function MobileDailyActivityForm({
       return
     }
 
-    const draft = queuedDraftKey
-      ? readDraft<ActivitySyncPayload>(queuedDraftKey)
-      : readDraft<ActivitySyncPayload>(ACTIVITY_DRAFT_STORAGE_KEY)
+    const draft = readDraft<ActivitySyncPayload>(activeDraftKey)
 
     if (!draft) {
       return
@@ -1627,6 +1631,11 @@ export function MobileDailyActivityForm({
       : []
 
     setSourceMode(restoredSourceMode)
+    if (draft.workDate) {
+      setWorkDate(draft.workDate)
+    } else if (draft.startTime) {
+      setWorkDate(draft.startTime.slice(0, 10))
+    }
     setAssignmentId(draft.assignmentId ?? '')
     setSelectedLibraryIds(restoredSelectedLibraryIds)
     setSelfInputEntries(restoredSelfInputEntries)
@@ -1684,7 +1693,7 @@ export function MobileDailyActivityForm({
       setSelectedMemberIds(draft.teamMemberEmployeeIds)
       setIsTeamLog(true)
     }
-  }, [checklistContext, defaultEndTime, defaultStartTime, queuedDraftKey, rawSession, revisionSessionId])
+  }, [activeDraftKey, checklistContext, defaultEndTime, defaultStartTime, rawSession, revisionSessionId])
 
   useEffect(() => {
     if (!checklistContext) {
@@ -1932,6 +1941,12 @@ export function MobileDailyActivityForm({
 
   const draftPayload: ActivitySyncPayload = {
     employeeId,
+    workDate,
+    draftTitle:
+      customActivityName.trim() ||
+      routeSessionItems.find((item) => item.isChecked)?.snapshotLabel ||
+      availableLibrary.find((item: any) => String(item.id) === selectedLibraryIds[0])?.activityName ||
+      'Daily Activity',
     sourceMode,
     assignmentId,
     libraryActivityId: selectedLibraryIds[0] ?? '',
@@ -1994,11 +2009,17 @@ export function MobileDailyActivityForm({
   }
 
   useEffect(() => {
-    const result = writeDraft(ACTIVITY_DRAFT_STORAGE_KEY, draftPayload)
+    const result = writeDraft(activeDraftKey, draftPayload)
     if (!result.ok) {
       console.warn('[MobileDailyActivityForm] Draft autosave failed:', result.error)
+    } else if (activeDraftKey !== ACTIVITY_DRAFT_STORAGE_KEY) {
+      try {
+        saveActivityDraftIndexEntry(activeDraftKey, draftPayload)
+      } catch (error) {
+        console.warn('[MobileDailyActivityForm] Draft index update failed:', error)
+      }
     }
-  }, [draftPayload])
+  }, [activeDraftKey, draftPayload])
 
   function validatePayload() {
     // 1. Validasi Header & Source Mode
@@ -2447,10 +2468,7 @@ export function MobileDailyActivityForm({
         })
       }
 
-      clearDraft(ACTIVITY_DRAFT_STORAGE_KEY)
-      if (queuedDraftKey) {
-        clearDraft(queuedDraftKey)
-      }
+      removeActivityDraft(activeDraftKey)
 
       window.setTimeout(() => {
         const targetUrl = `/mobile/activity?tab=approval&submitted=1${checklistContext?.overtimeCommandLetterId ? '&spl=1' : ''}`
@@ -3565,11 +3583,23 @@ export function MobileDailyActivityForm({
             variant="outline"
             className="h-14 rounded-2xl border-0 bg-[#eaf4fb] text-[#003f78]"
             onClick={() => {
-              const result = writeDraft(ACTIVITY_DRAFT_STORAGE_KEY, draftPayload)
+              const draftKey =
+                activeDraftKey === ACTIVITY_DRAFT_STORAGE_KEY
+                  ? createActivityDraftKey()
+                  : activeDraftKey
+              const result = writeDraft(draftKey, draftPayload)
               if (!result.ok) {
                 setSubmitState({ kind: 'error', message: result.error })
                 toast.error(result.error, { duration: 5000 })
                 return
+              }
+
+              if (draftKey !== ACTIVITY_DRAFT_STORAGE_KEY) {
+                saveActivityDraftIndexEntry(draftKey, draftPayload)
+                if (activeDraftKey === ACTIVITY_DRAFT_STORAGE_KEY) {
+                  removeActivityDraft(ACTIVITY_DRAFT_STORAGE_KEY)
+                }
+                setActiveDraftKey(draftKey)
               }
 
               setSubmitState({
