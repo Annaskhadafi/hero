@@ -25,7 +25,6 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar"
-import { useLanguage } from "@/components/language-provider"
 import { cn } from "@/lib/utils"
 
 function isMenuItemActive(pathname: string, url: string) {
@@ -135,7 +134,6 @@ export function NavMain({
   groupLabelColor?: string
 }) {
   const pathname = usePathname()
-  const { t } = useLanguage()
   const [openGroups, setOpenGroups] = React.useState<Record<string, boolean>>(() =>
     Object.fromEntries(
       (groups || []).map((group) => [
@@ -204,12 +202,12 @@ export function NavMain({
             <SidebarMenuItem className="flex items-center gap-2">
               <SidebarMenuButton
                 asChild
-                tooltip={t('sidebar.quick_action', 'Aksi cepat')}
+                tooltip="Aksi cepat"
                 className="min-h-9 min-w-8 rounded-md bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-container)_100%)] px-2 text-[13px] text-primary-foreground shadow-none duration-200 ease-linear hover:text-primary-foreground active:text-primary-foreground"
               >
                 <Link href="/dashboard/activity-hub/my-day">
                   <IconCirclePlusFilled />
-                  <span>{t('sidebar.add_activity', 'Tambah Aktivitas')}</span>
+                  <span>Tambah Aktivitas</span>
                 </Link>
               </SidebarMenuButton>
 

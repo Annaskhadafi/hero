@@ -25,8 +25,6 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { useLanguage } from "@/components/language-provider"
-
 export function NavDocuments({
   items,
 }: {
@@ -38,11 +36,10 @@ export function NavDocuments({
   }[]
 }) {
   const { isMobile } = useSidebar()
-  const { t } = useLanguage()
 
   return (
     <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-      <SidebarGroupLabel className="h-6 px-2 text-[10px] uppercase tracking-[0.14em]">{t('sidebar.documents', 'Dokumen')}</SidebarGroupLabel>
+      <SidebarGroupLabel className="h-6 px-2 text-[10px] uppercase tracking-[0.14em]">Dokumen</SidebarGroupLabel>
       <SidebarMenu>
         {items.map((item) => (
           <SidebarMenuItem key={item.name}>
@@ -63,7 +60,7 @@ export function NavDocuments({
                   className="data-[state=open]:bg-accent rounded-sm"
                 >
                   <IconDots />
-                  <span className="sr-only">{t('sidebar.more', 'Lainnya')}</span>
+                  <span className="sr-only">Lainnya</span>
                 </SidebarMenuAction>
               </DropdownMenuTrigger>
               <DropdownMenuContent
@@ -74,26 +71,26 @@ export function NavDocuments({
                 <DropdownMenuItem asChild>
                   <Link href={item.url}>
                     <IconFolder />
-                    <span>{t('sidebar.open', 'Open')}</span>
+                    <span>Open</span>
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem>
                   <IconShare3 />
-                  <span>{t('sidebar.share', 'Bagikan')}</span>
+                  <span>Bagikan</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem variant="destructive">
                   <IconTrash />
-                  <span>{t('sidebar.delete', 'Delete')}</span>
+                  <span>Delete</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </SidebarMenuItem>
         ))}
         <SidebarMenuItem>
-          <SidebarMenuButton tooltip={t('sidebar.more_documents', 'Dokumen lainnya')} className="min-h-9 rounded-md px-2 text-[13px] text-sidebar-foreground/70">
+          <SidebarMenuButton tooltip="Dokumen lainnya" className="min-h-9 rounded-md px-2 text-[13px] text-sidebar-foreground/70">
             <IconDots className="text-sidebar-foreground/70" />
-            <span>{t('sidebar.more', 'Lainnya')}</span>
+            <span>Lainnya</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>

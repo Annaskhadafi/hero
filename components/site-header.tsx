@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from "react"
 import { useTheme } from "@/components/theme-provider"
-import { useLanguage } from "@/components/language-provider"
-import { translateMenuTitle, translateSectionTitle } from "@/lib/i18n"
 import { HeaderThemeControls } from "@/components/header-theme-controls"
 import { cn } from "@/lib/utils"
 import { Separator } from "@/components/ui/separator"
@@ -40,7 +38,6 @@ export function SiteHeader({
   navSecondary?: NavItem[]
 }) {
   const { resolvedTheme } = useTheme()
-  const { language, t } = useLanguage()
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -55,9 +52,9 @@ export function SiteHeader({
     ? "bg-slate-900 text-slate-100 hover:bg-slate-800 hover:text-white border-white/10"
     : "bg-white text-foreground hover:bg-muted/50 hover:text-foreground border-border/70"
 
-  const displayEyebrow = eyebrow === "Desktop Workspace" ? t("desktop_workspace", "Desktop Workspace") : eyebrow
-  const displayTitle = translateMenuTitle(title, language)
-  const displaySubtitle = subtitle ? translateMenuTitle(subtitle, language) : null
+  const displayEyebrow = eyebrow
+  const displayTitle = title
+  const displaySubtitle = subtitle
 
   return (
     <header

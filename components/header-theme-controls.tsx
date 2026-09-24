@@ -36,9 +36,6 @@ import {
   IconUsers,
 } from "@tabler/icons-react";
 import { SimpleThemeToggle } from "@/components/theme-toggle";
-import { LanguageToggle } from "@/components/language-toggle";
-import { useLanguage } from "@/components/language-provider";
-import { translateMenuTitle, translateSectionTitle } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LogoutButton } from "@/components/logout-button";
@@ -147,7 +144,6 @@ export function HeaderThemeControls({
 }) {
   const router = useRouter();
   const { resolvedTheme } = useTheme();
-  const { language, t } = useLanguage();
   const [open, setOpen] = React.useState(false);
   const [notifications, setNotifications] = React.useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = React.useState(0);
@@ -271,7 +267,7 @@ export function HeaderThemeControls({
       const rawSection = sectionLabelMap[item.section ?? "Menu"] ?? item.section ?? "Menu";
       return {
         section: rawSection,
-        title: translateMenuTitle(item.title, language),
+        title: item.title,
         url: item.url,
         sortOrder: item.sortOrder ?? 999,
         icon: iconMap[item.iconName as keyof typeof iconMap] ?? IconChecklist,
@@ -290,7 +286,7 @@ export function HeaderThemeControls({
 
     const groups = orderedSections
       .map((section) => ({
-        title: translateSectionTitle(section, language),
+        title: section,
         icon: desktopMenuIconMap[section as keyof typeof desktopMenuIconMap] ?? IconHelp,
         items: desktopItems
           .filter((item) => item.section === section)
@@ -298,7 +294,7 @@ export function HeaderThemeControls({
       }))
       .filter((group) => group.items.length > 0);
     return groups;
-  }, [navMain, navSecondary, language]);
+  }, [navMain, navSecondary]);
 
   const isDark = resolvedTheme === "dark";
   const glassButtonClassName = isDark
@@ -317,7 +313,7 @@ export function HeaderThemeControls({
       >
         <Search className={cn("h-4 w-4", isDark ? "text-slate-400" : "text-slate-500")} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{t("search.placeholder", "Search page, command, or module")}</p>
+          <p className="truncate text-sm font-medium">Search page, command, or module</p>
         </div>
         <span className={cn("rounded-full px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.12em]", isDark ? "bg-slate-800 text-slate-300" : "bg-slate-100 text-slate-500")}>
           Ctrl K
@@ -336,44 +332,44 @@ export function HeaderThemeControls({
       </Button>
 
       <CommandDialog open={open} onOpenChange={setOpen}>
-        <CommandInput placeholder={t("search.command_placeholder", "Cari menu atau aksi...")} />
+        <CommandInput placeholder="Cari menu atau aksi..." />
         <CommandList>
-          <CommandEmpty>{t("search.no_results", "Tidak ada hasil.")}</CommandEmpty>
+          <CommandEmpty>Tidak ada hasil.</CommandEmpty>
           {desktopGroups.length === 0 ? (
             <>
-              <CommandGroup heading={translateSectionTitle("Portal Chitra", language)}>
+              <CommandGroup heading="Portal Chitra">
                 <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/analytics"))}>
                   <IconDashboard className="mr-2 h-4 w-4" />
-                  <span>{translateMenuTitle("Analytics", language)}</span>
+                  <span>Analytics</span>
                 </CommandItem>
               </CommandGroup>
               <CommandSeparator />
-              <CommandGroup heading={translateSectionTitle("Aktivitas Harian", language)}>
+              <CommandGroup heading="Aktivitas Harian">
                 <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/activity-hub/my-day"))}>
                   <IconChecklist className="mr-2 h-4 w-4" />
-                  <span>{translateMenuTitle("Input Aktivitas Harian", language)}</span>
+                  <span>Input Aktivitas Harian</span>
                 </CommandItem>
                 <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/activity-hub/library"))}>
                   <IconDatabase className="mr-2 h-4 w-4" />
-                  <span>{translateMenuTitle("Kamus Aktivitas", language)}</span>
+                  <span>Kamus Aktivitas</span>
                 </CommandItem>
               </CommandGroup>
               <CommandSeparator />
-              <CommandGroup heading={translateSectionTitle("Data Induk", language)}>
+              <CommandGroup heading="Data Induk">
                 <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/master-data"))}>
                   <IconDatabase className="mr-2 h-4 w-4" />
-                  <span>{translateMenuTitle("Master Data", language)}</span>
+                  <span>Master Data</span>
                 </CommandItem>
               </CommandGroup>
               <CommandSeparator />
-              <CommandGroup heading={translateSectionTitle("Pengaturan", language)}>
+              <CommandGroup heading="Pengaturan">
                 <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/security/users"))}>
                   <IconUsers className="mr-2 h-4 w-4" />
-                  <span>{translateMenuTitle("User Management", language)}</span>
+                  <span>User Management</span>
                 </CommandItem>
                 <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/security/roles"))}>
                   <IconShieldHalfFilled className="mr-2 h-4 w-4" />
-                  <span>{translateMenuTitle("Role Management", language)}</span>
+                  <span>Role Management</span>
                 </CommandItem>
               </CommandGroup>
             </>
@@ -400,8 +396,6 @@ export function HeaderThemeControls({
         </CommandList>
       </CommandDialog>
 
-      <LanguageToggle />
-
       <Popover>
         <PopoverTrigger asChild>
           <Button
@@ -424,13 +418,13 @@ export function HeaderThemeControls({
           <div className="surface-module-card rounded-2xl p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="industrial-label">{t("notifications.signal_queue", "Signal Queue")}</p>
-                <h4 className="mt-1 font-display text-lg font-semibold">{t("notifications.title", "Notifications")}</h4>
+                <p className="industrial-label">Signal Queue</p>
+                <h4 className="mt-1 font-display text-lg font-semibold">Notifications</h4>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2">
                 {unreadCount > 0 ? (
                   <Badge variant="secondary" className="rounded-full">
-                    {unreadCount} {t("notifications.unread", "New")}
+                    {unreadCount} New
                   </Badge>
                 ) : null}
                 {notifications.length > 0 ? (
@@ -444,7 +438,7 @@ export function HeaderThemeControls({
                       onClick={() => void runNotificationAction("mark-read", { scope: "all" })}
                     >
                       <CheckCheck className="h-3.5 w-3.5" />
-                      {t("notifications.mark_all_read", "Read all")}
+                      Read all
                     </Button>
                     <Button
                       type="button"
@@ -455,7 +449,7 @@ export function HeaderThemeControls({
                       onClick={() => void runNotificationAction("clear", { scope: "all" })}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
-                      {t("notifications.clear", "Clear")}
+                      Clear
                     </Button>
                   </>
                 ) : null}
@@ -499,7 +493,7 @@ export function HeaderThemeControls({
                   <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
                     {notification.isRead ? (
                       <Badge variant="secondary" className="rounded-full">
-                        {t("notifications.read", "Read")}
+                        Read
                       </Badge>
                     ) : (
                       <Button
@@ -511,7 +505,7 @@ export function HeaderThemeControls({
                         onClick={() => void runNotificationAction("mark-read", { ids: [notification.id] })}
                       >
                         <Check className="h-3.5 w-3.5" />
-                        {t("notifications.mark_read", "Mark read")}
+                        Mark read
                       </Button>
                     )}
                     <Button
@@ -523,7 +517,7 @@ export function HeaderThemeControls({
                       onClick={() => void runNotificationAction("clear", { ids: [notification.id] })}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
-                      {t("notifications.clear", "Clear")}
+                      Clear
                     </Button>
                   </div>
                 </div>
@@ -531,7 +525,7 @@ export function HeaderThemeControls({
             ) : (
               <div className="surface-module-card flex flex-col items-center justify-center rounded-2xl py-12 text-center">
                 <Bell className="mb-2 h-8 w-8 text-muted-foreground/30" />
-                <p className="text-sm text-muted-foreground">{t("notifications.empty", "Belum ada notification.")}</p>
+                <p className="text-sm text-muted-foreground">Belum ada notification.</p>
               </div>
             )}
           </div>
@@ -542,7 +536,7 @@ export function HeaderThemeControls({
               className="w-full rounded-2xl text-xs text-foreground"
               onClick={() => router.push("/dashboard/notifications")}
             >
-              {t("notifications.view_all", "View all notifications")}
+              View all notifications
             </Button>
           </div>
         </PopoverContent>
@@ -551,7 +545,7 @@ export function HeaderThemeControls({
       <LogoutButton
         variant="ghost"
         size="icon"
-        label={t("auth.logout", "Keluar")}
+        label="Keluar"
         className={cn("size-9 min-h-9 min-w-9 rounded-xl transition sm:size-11 sm:min-h-11 sm:min-w-11 sm:rounded-2xl", glassButtonClassName)}
       />
 

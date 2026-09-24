@@ -65,8 +65,6 @@ import {
 import { NavDocuments } from "@/components/nav-documents"
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
-import { useLanguage } from "@/components/language-provider"
-import { translateMenuTitle, translateSectionTitle, translateGroupLabel, translate } from "@/lib/i18n"
 import {
   Sidebar,
   SidebarContent,
@@ -227,7 +225,6 @@ export function AppSidebar({
   groupLabelColor?: string
 }) {
   const { state, setOpen } = useSidebar()
-  const { language, t } = useLanguage()
   const wasHoverExpanded = React.useRef(false)
 
   const handleMouseEnter = React.useCallback(() => {
@@ -249,12 +246,11 @@ export function AppSidebar({
     return {
       id: item.id,
       section: rawSection,
-      localizedSection: translateSectionTitle(rawSection, language),
-      title: translateMenuTitle(item.title, language),
+      title: item.title,
       url: item.url,
       sortOrder: item.sortOrder ?? 999,
       icon: iconMap[item.iconName as keyof typeof iconMap] ?? IconChecklist,
-      groupLabel: translateGroupLabel(item.groupLabel, language) ?? null,
+      groupLabel: item.groupLabel ?? null,
       openInNewTab: item.openInNewTab ?? false,
       parentId: item.parentId ?? null,
       isIframe: item.isIframe ?? false,
@@ -262,8 +258,8 @@ export function AppSidebar({
   })
 
   const documentItems = documents.map((item) => ({
-    section: translateSectionTitle(item.section ?? "Dokumen", language),
-    name: translateMenuTitle(item.title, language),
+    section: item.section ?? "Dokumen",
+    name: item.title,
     url: item.url,
     icon: iconMap[item.iconName as keyof typeof iconMap] ?? IconFolder,
   }))
@@ -335,7 +331,7 @@ export function AppSidebar({
 
       return {
         rawTitle: section,
-        title: translateSectionTitle(section, language),
+        title: section,
         icon: desktopMenuIconMap[section as keyof typeof desktopMenuIconMap] ?? IconHelp,
         items: rootItems.sort((left, right) => left.sortOrder - right.sortOrder),
       }
@@ -367,7 +363,7 @@ export function AppSidebar({
             />
             <div className="min-w-0 group-data-[collapsible=icon]:hidden">
               <p className="truncate text-sm font-semibold text-sidebar-foreground">HERO</p>
-              <p className="truncate text-xs text-muted-foreground">{t('operational_workspace', 'Operational workspace')}</p>
+              <p className="truncate text-xs text-muted-foreground">Operational workspace</p>
             </div>
           </Link>
         </div>
@@ -378,7 +374,7 @@ export function AppSidebar({
           <>
             <SidebarSeparator className="mx-2 mt-2" />
             <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] leading-[1.35] text-muted-foreground whitespace-normal break-words group-data-[collapsible=icon]:hidden">
-              {t('sidebar.documents', 'Dokumen')}
+              Dokumen
             </div>
             <NavDocuments items={documentItems as any} />
           </>

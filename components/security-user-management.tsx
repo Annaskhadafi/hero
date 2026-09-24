@@ -81,8 +81,6 @@ import {
   type UserImportMapping,
 } from '@/lib/security-user-import'
 import { cn } from '@/lib/utils'
-
-import { useLanguage } from '@/components/language-provider'
 import { SecurityUserBulkActions } from '@/components/security-user-bulk-actions'
 
 function getSiteDisplayName(user: Pick<SecurityUserRecord, 'siteName' | 'workLocation'>): string {
@@ -188,7 +186,6 @@ function MultiSelectDropdown({
   placeholder: string
   label: string
 }) {
-  const { isIndonesian } = useLanguage()
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -201,9 +198,7 @@ function MultiSelectDropdown({
       ? placeholder
       : selected.length === 1
         ? selected[0]
-        : isIndonesian
-          ? `${selected.length} dipilih`
-          : `${selected.length} selected`
+        : `${selected.length} dipilih`
 
   function toggleOption(option: string) {
     if (selected.includes(option)) {
@@ -230,14 +225,14 @@ function MultiSelectDropdown({
       <PopoverContent className="w-[280px] p-0" align="start">
         <Command>
           <CommandInput
-            placeholder={isIndonesian ? `Cari ${label.toLowerCase()}...` : `Search ${label.toLowerCase()}...`}
+            placeholder={`Cari ${label.toLowerCase()}...`}
             value={searchQuery}
             onValueChange={setSearchQuery}
             className="h-9"
           />
           <CommandList className="max-h-[220px]">
             <CommandEmpty>
-              {isIndonesian ? `Tidak ada ${label.toLowerCase()}.` : `No ${label.toLowerCase()} found.`}
+              Tidak ada {label.toLowerCase()}.
             </CommandEmpty>
             <CommandGroup>
               {filteredOptions.map((option) => (
@@ -261,7 +256,7 @@ function MultiSelectDropdown({
                 onClick={() => onChange([])}
                 className="text-muted-foreground h-8 w-full justify-center text-xs"
               >
-                {isIndonesian ? 'Bersihkan pilihan' : 'Clear selection'}
+                Bersihkan pilihan
               </Button>
             </div>
           ) : null}
@@ -297,7 +292,6 @@ export function SecurityUserManagement({
   canEdit?: boolean
   canDelete?: boolean
 }) {
-  const { isIndonesian } = useLanguage()
   const router = useRouter()
   const [isRefreshing, startRefreshTransition] = useTransition()
   const [activeTab, setActiveTab] = useState<'directory' | 'dashboard' | 'serviceman-dashboard'>('directory')
@@ -305,9 +299,9 @@ export function SecurityUserManagement({
   const COLUMNS = useMemo(() => {
     return COLUMNS_DEF.map((col) => ({
       key: col.key,
-      label: isIndonesian ? col.id : col.en,
+      label: col.id,
     }))
-  }, [isIndonesian])
+  }, [])
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([])
   const [selectedSections, setSelectedSections] = useState<string[]>([])
@@ -665,14 +659,10 @@ export function SecurityUserManagement({
 
   return (
     <AdminPageShell
-      eyebrow={isIndonesian ? "Keamanan" : "Security"}
-      title={isIndonesian ? "Manajemen Pengguna" : "User Management"}
-      description={
-        isIndonesian
-          ? "Kelola akses akun, struktur HC, dan status karyawan dalam satu workspace table-first yang lebih cepat dipindai."
-          : "Manage account access, HC structure, and employee status in a fast table-first workspace."
-      }
-      badge={`${filteredUsers.length}/${users.length} ${isIndonesian ? 'terlihat' : 'visible'}`}
+      eyebrow="Keamanan"
+      title="Manajemen Pengguna"
+      description="Kelola akses akun, struktur HC, dan status karyawan dalam satu workspace table-first yang lebih cepat dipindai."
+      badge={`${filteredUsers.length}/${users.length} terlihat`}
       actions={
         <>
           {canEdit && (
@@ -688,16 +678,14 @@ export function SecurityUserManagement({
                   className="bg-surface-container-lowest text-muted-foreground h-10 rounded-xl border-0 px-4 text-sm font-semibold shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
                 >
                   <Upload className="size-4" />
-                  {isIndonesian ? 'Import Pengguna' : 'Import Users'}
+                  Import Pengguna
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-h-[90vh] max-w-6xl overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>{isIndonesian ? 'Import Daftar Pengguna' : 'Import User List'}</DialogTitle>
+                  <DialogTitle>Import Daftar Pengguna</DialogTitle>
                   <DialogDescription>
-                    {isIndonesian
-                      ? 'Upload atau tempel CSV/Excel, cocokkan kolom, lalu simpan ke master user.'
-                      : 'Upload or paste CSV/Excel, match columns, then save to master users.'}
+                    Upload atau tempel CSV/Excel, cocokkan kolom, lalu simpan ke master user.
                   </DialogDescription>
                 </DialogHeader>
 
@@ -711,7 +699,7 @@ export function SecurityUserManagement({
                         <div className="space-y-3">
                           <div className="space-y-2">
                             <p className="text-foreground text-sm font-semibold">
-                              {isIndonesian ? 'File daftar pengguna' : 'User list file'}
+                              File daftar pengguna
                             </p>
                             <Input
                               type="file"
@@ -738,17 +726,13 @@ export function SecurityUserManagement({
 
                           <div className="space-y-2">
                             <p className="text-foreground text-sm font-semibold">
-                              {isIndonesian ? 'Tempel daftar manual' : 'Paste manual list'}
+                              Tempel daftar manual
                             </p>
                             <Textarea
                               value={rawCsv}
                               onChange={(event) => setRawCsv(event.target.value)}
                               className="min-h-56 text-xs"
-                              placeholder={
-                                isIndonesian
-                                  ? 'Tempel data pengguna di sini bila tidak mengunggah file...'
-                                  : 'Paste user data here if not uploading a file...'
-                              }
+                              placeholder="Tempel data pengguna di sini bila tidak mengunggah file..."
                             />
                           </div>
                         </div>
@@ -758,10 +742,10 @@ export function SecurityUserManagement({
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div>
                             <p className="text-foreground text-sm font-semibold">
-                              {isIndonesian ? 'Pratinjau data' : 'Data preview'}
+                              Pratinjau data
                             </p>
                             <p className="text-muted-foreground text-xs">
-                              {parsedImport.records.length} {isIndonesian ? 'baris' : 'rows'}, {parsedImport.headers.length} {isIndonesian ? 'kolom terdeteksi.' : 'columns detected.'}
+                              {parsedImport.records.length} baris, {parsedImport.headers.length} kolom terdeteksi.
                             </p>
                           </div>
                           <Badge
@@ -769,8 +753,8 @@ export function SecurityUserManagement({
                             className="bg-surface-container-low rounded-full border-0 px-3 py-1"
                           >
                             {missingRequiredMappings.length === 0
-                              ? (isIndonesian ? 'Siap import' : 'Ready to import')
-                              : `${missingRequiredMappings.length} ${isIndonesian ? 'kolom wajib' : 'required columns'}`}
+                              ? 'Siap import'
+                              : `${missingRequiredMappings.length} kolom wajib`}
                           </Badge>
                         </div>
 
@@ -783,7 +767,7 @@ export function SecurityUserManagement({
                                     <TableHead key={header}>{header}</TableHead>
                                   ))
                                 ) : (
-                                  <TableHead>{isIndonesian ? 'Tidak ada header' : 'No header'}</TableHead>
+                                  <TableHead>Tidak ada header</TableHead>
                                 )}
                               </TableRow>
                             </TableHeader>
@@ -806,12 +790,10 @@ export function SecurityUserManagement({
                     <div className="space-y-4">
                       <div className="surface-module-card rounded-[1rem] p-4">
                         <p className="text-foreground text-sm font-semibold">
-                          {isIndonesian ? 'Cocokkan Kolom' : 'Match Columns'}
+                          Cocokkan Kolom
                         </p>
                         <p className="text-muted-foreground mt-1 text-xs">
-                          {isIndonesian
-                            ? 'Semua kolom wajib harus diisi sebelum import dijalankan.'
-                            : 'All required columns must be mapped before importing.'}
+                          Semua kolom wajib harus diisi sebelum import dijalankan.
                         </p>
                         <div className="mt-4 grid gap-3">
                           {USER_IMPORT_FIELDS.map((field) => (
@@ -823,13 +805,13 @@ export function SecurityUserManagement({
                                     variant="secondary"
                                     className="bg-surface-container-low rounded-full"
                                   >
-                                    {isIndonesian ? 'Wajib' : 'Required'}
+                                    Wajib
                                   </Badge>
                                 ) : null}
                               </div>
                               <Command className="bg-surface-container-lowest rounded-xl border-0 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]">
                                 <CommandInput
-                                  placeholder={isIndonesian ? "Pilih kolom sumber" : "Select source column"}
+                                  placeholder="Pilih kolom sumber"
                                   value={mapping[field.key] || ''}
                                   onValueChange={(value) =>
                                     setMapping((current) => ({
@@ -840,7 +822,7 @@ export function SecurityUserManagement({
                                 />
                                 <CommandList className="max-h-[120px]">
                                   <CommandEmpty>
-                                    {isIndonesian ? 'Tidak ada kolom yang cocok' : 'No matching column'}
+                                    Tidak ada kolom yang cocok
                                   </CommandEmpty>
                                   <CommandGroup>
                                     {parsedImport.headers.map((header) => (
@@ -866,7 +848,7 @@ export function SecurityUserManagement({
 
                       <div className="surface-muted-card rounded-[1rem] p-4">
                         <p className="text-foreground text-sm font-semibold">
-                          {isIndonesian ? 'Ringkasan Kolom' : 'Column Summary'}
+                          Ringkasan Kolom
                         </p>
                         <p className="text-muted-foreground mt-2 font-mono text-xs leading-6 whitespace-pre-line">
                           {toHeaderPreview(mapping)}
@@ -889,11 +871,7 @@ export function SecurityUserManagement({
                         {actionState.status === 'success' ? (
                           <span>
                             {' '}
-                            {isIndonesian ? 'Baru: ' : 'New: '}
-                            {actionState.importedCount ?? 0}, {isIndonesian ? 'diperbarui: ' : 'updated: '}
-                            {actionState.updatedCount ?? 0}, {isIndonesian ? 'dilewati: ' : 'skipped: '}
-                            {actionState.skippedCount ?? 0}
-                            .
+                            Baru: {actionState.importedCount ?? 0}, diperbarui: {actionState.updatedCount ?? 0}, dilewati: {actionState.skippedCount ?? 0}.
                           </span>
                         ) : null}
                       </AlertDescription>
@@ -902,7 +880,7 @@ export function SecurityUserManagement({
 
                   <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
                     <Button type="button" variant="outline" onClick={() => setIsImportOpen(false)}>
-                      {isIndonesian ? 'Tutup' : 'Close'}
+                      Tutup
                     </Button>
                     <Button
                       type="submit"
@@ -914,8 +892,8 @@ export function SecurityUserManagement({
                       }
                     >
                       {isPending
-                        ? (isIndonesian ? 'Mengimpor...' : 'Importing...')
-                        : (isIndonesian ? 'Import ke Manajemen Pengguna' : 'Import to User Management')}
+                        ? 'Mengimpor...'
+                        : 'Import ke Manajemen Pengguna'}
                     </Button>
                   </div>
                 </form>
@@ -956,7 +934,7 @@ export function SecurityUserManagement({
               : "border-transparent text-muted-foreground hover:text-foreground"
           )}
         >
-          {isIndonesian ? 'Direktori Pengguna' : 'User Directory'}
+          Direktori Pengguna
         </button>
         <button
           type="button"
@@ -968,7 +946,7 @@ export function SecurityUserManagement({
               : "border-transparent text-muted-foreground hover:text-foreground"
           )}
         >
-          {isIndonesian ? 'Dashboard Demografis' : 'Demographics Dashboard'}
+          Dashboard Demografis
         </button>
         <button
           type="button"
@@ -980,7 +958,7 @@ export function SecurityUserManagement({
               : "border-transparent text-muted-foreground hover:text-foreground"
           )}
         >
-          {isIndonesian ? 'Dashboard Karyawan' : 'Employee Dashboard'}
+          Dashboard Karyawan
         </button>
       </div>
 
@@ -993,24 +971,24 @@ export function SecurityUserManagement({
           <AdminMetricGrid
             items={[
               {
-                label: isIndonesian ? 'Total Pengguna' : 'Total Users',
+                label: 'Total Pengguna',
                 value: users.length.toLocaleString(),
-                meta: isIndonesian ? 'Semua akun yang terdaftar di HERO.' : 'All accounts registered in HERO.',
+                meta: 'Semua akun yang terdaftar di HERO.',
               },
               {
-                label: isIndonesian ? 'Akses Aktif' : 'Active Access',
+                label: 'Akses Aktif',
                 value: activeUsersCount.toLocaleString(),
-                meta: isIndonesian ? 'Akun dengan akses aktif dan siap dipakai.' : 'Accounts with active and ready access.',
+                meta: 'Akun dengan akses aktif dan siap dipakai.',
               },
               {
-                label: isIndonesian ? `Bergabung ${currentYear}` : `Joined ${currentYear}`,
+                label: `Bergabung ${currentYear}`,
                 value: newHiresCount.toLocaleString(),
-                meta: isIndonesian ? 'Karyawan baru pada tahun berjalan.' : 'New employees in the current year.',
+                meta: 'Karyawan baru pada tahun berjalan.',
               },
               {
-                label: isIndonesian ? 'Cakupan Terlihat' : 'Visible Coverage',
+                label: 'Cakupan Terlihat',
                 value: `${visiblePercentage}%`,
-                meta: isIndonesian ? 'Proporsi data yang masih tampil setelah filter diterapkan.' : 'Proportion of data displayed after applying filters.',
+                meta: 'Proporsi data yang masih tampil setelah filter diterapkan.',
               },
             ]}
           />
@@ -1020,7 +998,7 @@ export function SecurityUserManagement({
               <div className="flex flex-wrap items-center gap-2">
                 {searchQuery.trim() ? (
                   <FilterChip onRemove={() => setSearchQuery('')}>
-                    {isIndonesian ? 'Cari: ' : 'Search: '}{searchQuery.trim()}
+                    Cari: {searchQuery.trim()}
                   </FilterChip>
                 ) : null}
                 {selectedDepartments.map((department) => (
@@ -1030,7 +1008,7 @@ export function SecurityUserManagement({
                       setSelectedDepartments((current) => current.filter((item) => item !== department))
                     }
                   >
-                    {isIndonesian ? 'Departemen: ' : 'Department: '}{department}
+                    Departemen: {department}
                   </FilterChip>
                 ))}
                 {selectedSections.map((section) => (
@@ -1040,7 +1018,7 @@ export function SecurityUserManagement({
                       setSelectedSections((current) => current.filter((item) => item !== section))
                     }
                   >
-                    {isIndonesian ? 'Seksi: ' : 'Section: '}{section}
+                    Seksi: {section}
                   </FilterChip>
                 ))}
                 {selectedRoles.map((role) => (
@@ -1050,7 +1028,7 @@ export function SecurityUserManagement({
                       setSelectedRoles((current) => current.filter((item) => item !== role))
                     }
                   >
-                    {isIndonesian ? 'Peran: ' : 'Role: '}{role}
+                    Peran: {role}
                   </FilterChip>
                 ))}
                 {selectedStatusTypes.map((statusType) => (
@@ -1060,12 +1038,12 @@ export function SecurityUserManagement({
                       setSelectedStatusTypes((current) => current.filter((item) => item !== statusType))
                     }
                   >
-                    {isIndonesian ? 'Status: ' : 'Status: '}{statusType}
+                    Status: {statusType}
                   </FilterChip>
                 ))}
                 {showUnlinkedLokasi ? (
                   <FilterChip onRemove={() => setShowUnlinkedLokasi(false)}>
-                    {isIndonesian ? 'Tanpa Lokasi' : 'No Location'}
+                    Tanpa Lokasi
                   </FilterChip>
                 ) : null}
                 {selectedSites.map((site) => (
@@ -1075,7 +1053,7 @@ export function SecurityUserManagement({
                       setSelectedSites((current) => current.filter((item) => item !== site))
                     }
                   >
-                    {isIndonesian ? 'Site: ' : 'Site: '}{site}
+                    Site: {site}
                   </FilterChip>
                 ))}
                 <Button
@@ -1084,7 +1062,7 @@ export function SecurityUserManagement({
                   onClick={resetFilters}
                   className="text-muted-foreground h-8 rounded-full px-3 text-xs"
                 >
-                  {isIndonesian ? 'Reset semua' : 'Reset all'}
+                  Reset semua
                 </Button>
               </div>
             </div>
@@ -1530,13 +1508,9 @@ export function SecurityUserManagement({
             />
 
             <MinimalTableShell
-              title={isIndonesian ? "Direktori Pengguna" : "User Directory"}
-              description={
-                isIndonesian
-                  ? "Fokus utama halaman ini: cari orang, sempitkan departemen/peran/status, lalu buka aksi per baris."
-                  : "Main focus: search employees, narrow down department/role/status, and manage actions per row."
-              }
-              label={isIndonesian ? "pengguna" : "users"}
+              title="Direktori Pengguna"
+              description="Fokus utama halaman ini: cari orang, sempitkan departemen/peran/status, lalu buka aksi per baris."
+              label="pengguna"
               fileName="security-users"
               searchEnabled={false}
               showImport={false}
@@ -1546,7 +1520,7 @@ export function SecurityUserManagement({
                   <div className="relative w-full sm:w-[220px] sm:flex-none">
                     <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
                     <Input
-                      placeholder={isIndonesian ? "Cari pengguna..." : "Search users..."}
+                      placeholder="Cari pengguna..."
                       value={searchQuery}
                       onChange={(event) => setSearchQuery(event.target.value)}
                       className="bg-surface-container-lowest h-9 rounded-xl border-0 pl-9 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
@@ -1556,35 +1530,35 @@ export function SecurityUserManagement({
                     options={departmentFilterOptions}
                     selected={selectedDepartments}
                     onChange={setSelectedDepartments}
-                    placeholder={isIndonesian ? "Semua departemen" : "All departments"}
-                    label={isIndonesian ? "Departemen" : "Department"}
+                    placeholder="Semua departemen"
+                    label="Departemen"
                   />
                   <MultiSelectDropdown
                     options={sectionFilterOptions}
                     selected={selectedSections}
                     onChange={setSelectedSections}
-                    placeholder={isIndonesian ? "Semua seksi" : "All sections"}
-                    label={isIndonesian ? "Seksi" : "Section"}
+                    placeholder="Semua seksi"
+                    label="Seksi"
                   />
                   <MultiSelectDropdown
                     options={roleNames}
                     selected={selectedRoles}
                     onChange={setSelectedRoles}
-                    placeholder={isIndonesian ? "Semua peran" : "All roles"}
-                    label={isIndonesian ? "Peran" : "Role"}
+                    placeholder="Semua peran"
+                    label="Peran"
                   />
                   <MultiSelectDropdown
                     options={statusTypeOptions}
                     selected={selectedStatusTypes}
                     onChange={setSelectedStatusTypes}
-                    placeholder={isIndonesian ? "Semua tipe status" : "All status types"}
-                    label={isIndonesian ? "Tipe status" : "Status type"}
+                    placeholder="Semua tipe status"
+                    label="Tipe status"
                   />
                   <MultiSelectDropdown
                     options={siteOptions}
                     selected={selectedSites}
                     onChange={setSelectedSites}
-                    placeholder={isIndonesian ? "Semua site" : "All sites"}
+                    placeholder="Semua site"
                     label="Site"
                   />
                   <Button
@@ -1601,8 +1575,8 @@ export function SecurityUserManagement({
                   >
                     <MapPin className="mr-1.5 size-3.5" />
                     {showUnlinkedLokasi
-                      ? (isIndonesian ? 'Filter: Tanpa Lokasi' : 'Filter: No Location')
-                      : (isIndonesian ? 'Tanpa Lokasi' : 'No Location')}
+                      ? 'Filter: Tanpa Lokasi'
+                      : 'Tanpa Lokasi'}
                   </Button>
                 </>
               }
@@ -1616,7 +1590,7 @@ export function SecurityUserManagement({
                         className="bg-surface-container-lowest h-9 rounded-xl border-0 px-3 text-[13px] font-medium shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
                       >
                         <EyeOff className="mr-1.5 size-3.5" />
-                        {isIndonesian ? 'Kolom' : 'Columns'}
+                        Kolom
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="max-h-80 overflow-y-auto">
@@ -1639,7 +1613,7 @@ export function SecurityUserManagement({
                     onClick={exportVisibleUsers}
                     className="bg-surface-container-lowest h-9 rounded-xl border-0 px-3 text-[13px] font-medium shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
                   >
-                    {isIndonesian ? 'Export Terfilter' : 'Export Filtered'}
+                    Export Terfilter
                   </Button>
                 </>
               }
@@ -1678,7 +1652,7 @@ export function SecurityUserManagement({
                           </TableHead>
                         ) : null
                       )}
-                      <TableHead className="w-[120px]">{isIndonesian ? 'Aksi' : 'Actions'}</TableHead>
+                      <TableHead className="w-[120px]">Aksi</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1694,7 +1668,7 @@ export function SecurityUserManagement({
                               variant="ghost"
                               size="icon"
                               aria-expanded={isExpanded}
-                              aria-label={`${isExpanded ? (isIndonesian ? 'Tutup detail ' : 'Close detail ') : (isIndonesian ? 'Buka detail ' : 'Open detail ')}${user.name}`}
+                              aria-label={`${isExpanded ? 'Tutup detail ' : 'Buka detail '}${user.name}`}
                               className={cn(
                                 "size-7 rounded-lg",
                                 isExpanded
@@ -1826,8 +1800,8 @@ export function SecurityUserManagement({
                               {(() => {
                                 if (!user.gender) return '-';
                                 const g = user.gender.toLowerCase().trim();
-                                if (g === '1' || g === 'l' || g === 'm' || g === 'male' || g === 'laki-laki' || g === 'laki - laki') return isIndonesian ? 'Laki-laki' : 'Male';
-                                if (g === '2' || g === 'p' || g === 'f' || g === 'female' || g === 'perempuan') return isIndonesian ? 'Perempuan' : 'Female';
+                                if (g === '1' || g === 'l' || g === 'm' || g === 'male' || g === 'laki-laki' || g === 'laki - laki') return 'Laki-laki';
+                                if (g === '2' || g === 'p' || g === 'f' || g === 'female' || g === 'perempuan') return 'Perempuan';
                                 return user.gender;
                               })()}
                             </TableCell>
@@ -1862,7 +1836,7 @@ export function SecurityUserManagement({
                           {columnVisibility.statusAkun ? (
                             <TableCell className="py-3.5">
                               <Badge variant="outline" className={cn("rounded-full border-0 px-3 py-1 text-[10px] uppercase tracking-wide", user.isActive ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700")}>
-                                {user.isActive ? (isIndonesian ? 'Aktif' : 'Active') : (isIndonesian ? 'Nonaktif' : 'Inactive')}
+                                {user.isActive ? 'Aktif' : 'Nonaktif'}
                               </Badge>
                             </TableCell>
                           ) : null}
@@ -1887,30 +1861,30 @@ export function SecurityUserManagement({
                                 {/* Personal Info */}
                                 <div className="space-y-2.5">
                                   <h4 className="font-bold text-slate-800 border-b pb-1 text-[10px] uppercase tracking-wider">
-                                    {isIndonesian ? 'Data Pribadi' : 'Personal Info'}
+                                    Data Pribadi
                                   </h4>
                                   <div className="grid grid-cols-2 gap-1.5 text-xs">
-                                    <span className="text-muted-foreground">{isIndonesian ? 'Tempat/Tgl Lahir:' : 'Birth Place/Date:'}</span>
+                                    <span className="text-muted-foreground">Tempat/Tgl Lahir:</span>
                                     <span className="font-medium text-foreground">{user.birthPlaceDate || user.birthDate || '-'}</span>
-                                    <span className="text-muted-foreground">{isIndonesian ? 'Gender:' : 'Gender:'}</span>
+                                    <span className="text-muted-foreground">Gender:</span>
                                     <span className="font-medium text-foreground">
                                       {(() => {
                                         if (!user.gender) return '-';
                                         const g = user.gender.toLowerCase().trim();
-                                        if (g === '1' || g === 'l' || g === 'm' || g === 'male' || g === 'laki-laki' || g === 'laki - laki') return isIndonesian ? 'Laki-laki' : 'Male';
-                                        if (g === '2' || g === 'p' || g === 'f' || g === 'female' || g === 'perempuan') return isIndonesian ? 'Perempuan' : 'Female';
+                                        if (g === '1' || g === 'l' || g === 'm' || g === 'male' || g === 'laki-laki' || g === 'laki - laki') return 'Laki-laki';
+                                        if (g === '2' || g === 'p' || g === 'f' || g === 'female' || g === 'perempuan') return 'Perempuan';
                                         return user.gender;
                                       })()}
                                     </span>
-                                    <span className="text-muted-foreground">{isIndonesian ? 'Agama:' : 'Religion:'}</span>
+                                    <span className="text-muted-foreground">Agama:</span>
                                     <span className="font-medium text-foreground">{user.religion || '-'}</span>
-                                    <span className="text-muted-foreground">{isIndonesian ? 'Pendidikan:' : 'Education:'}</span>
+                                    <span className="text-muted-foreground">Pendidikan:</span>
                                     <span className="font-medium text-foreground">{user.education || '-'}</span>
-                                    <span className="text-muted-foreground">{isIndonesian ? 'Status Nikah:' : 'Marital Status:'}</span>
+                                    <span className="text-muted-foreground">Status Nikah:</span>
                                     <span className="font-medium text-foreground">{user.maritalStatus || '-'}</span>
-                                    <span className="text-muted-foreground">{isIndonesian ? 'Domisili:' : 'Domicile:'}</span>
+                                    <span className="text-muted-foreground">Domisili:</span>
                                     <span className="font-medium text-foreground">{user.domicile || '-'}</span>
-                                    <span className="text-muted-foreground">{isIndonesian ? 'No. HP:' : 'Phone No:'}</span>
+                                    <span className="text-muted-foreground">No. HP:</span>
                                     <span className="font-medium text-foreground">{user.phoneNumber || '-'}</span>
                                   </div>
                                 </div>
@@ -1918,20 +1892,20 @@ export function SecurityUserManagement({
                                 {/* Employment Info */}
                                 <div className="space-y-2.5">
                                   <h4 className="font-bold text-slate-800 border-b pb-1 text-[10px] uppercase tracking-wider">
-                                    {isIndonesian ? 'Kepegawaian' : 'Employment Info'}
+                                    Kepegawaian
                                   </h4>
                                   <div className="grid grid-cols-2 gap-1.5 text-xs">
-                                    <span className="text-muted-foreground">{isIndonesian ? 'Tipe Status:' : 'Status Type:'}</span>
+                                    <span className="text-muted-foreground">Tipe Status:</span>
                                     <span className="font-medium text-foreground">{user.employeeStatusType || '-'}</span>
-                                    <span className="text-muted-foreground">{isIndonesian ? 'Level Staff:' : 'Staff Level:'}</span>
+                                    <span className="text-muted-foreground">Level Staff:</span>
                                     <span className="font-medium text-foreground">{user.levelName || '-'}</span>
-                                    <span className="text-muted-foreground">{isIndonesian ? 'POH (Point of Hire):' : 'POH (Point of Hire):'}</span>
+                                    <span className="text-muted-foreground">POH (Point of Hire):</span>
                                     <span className="font-medium text-foreground">{user.pointOfHire || '-'}</span>
-                                    <span className="text-muted-foreground">{isIndonesian ? 'Seksi (Section):' : 'Section:'}</span>
+                                    <span className="text-muted-foreground">Seksi (Section):</span>
                                     <span className="font-medium text-foreground">{user.section || '-'}</span>
-                                    <span className="text-muted-foreground">{isIndonesian ? 'Atasan Langsung:' : 'Direct Supervisor:'}</span>
+                                    <span className="text-muted-foreground">Atasan Langsung:</span>
                                     <span className="font-medium text-foreground">{user.directManagerName || '-'}</span>
-                                    <span className="text-muted-foreground">{isIndonesian ? 'Lokasi Kerja:' : 'Work Location:'}</span>
+                                    <span className="text-muted-foreground">Lokasi Kerja:</span>
                                     <span className="font-medium text-foreground">{getSiteDisplayName(user)}</span>
                                   </div>
                                 </div>
@@ -1939,16 +1913,16 @@ export function SecurityUserManagement({
                                 {/* Contract & Dates */}
                                 <div className="space-y-2.5">
                                   <h4 className="font-bold text-slate-800 border-b pb-1 text-[10px] uppercase tracking-wider">
-                                    {isIndonesian ? 'Kontrak & Tanggal' : 'Contract & Dates'}
+                                    Kontrak & Tanggal
                                   </h4>
                                   <div className="grid grid-cols-2 gap-1.5 text-xs">
-                                    <span className="text-muted-foreground">{isIndonesian ? 'Tanggal Bergabung:' : 'Join Date:'}</span>
+                                    <span className="text-muted-foreground">Tanggal Bergabung:</span>
                                     <span className="font-medium text-foreground">{user.joinDate || '-'}</span>
-                                    <span className="text-muted-foreground">{isIndonesian ? 'Mulai Kontrak:' : 'Contract Start:'}</span>
+                                    <span className="text-muted-foreground">Mulai Kontrak:</span>
                                     <span className="font-medium text-foreground">{user.contractDurationStart || '-'}</span>
-                                    <span className="text-muted-foreground">{isIndonesian ? 'Selesai Kontrak:' : 'Contract End:'}</span>
+                                    <span className="text-muted-foreground">Selesai Kontrak:</span>
                                     <span className="font-medium text-foreground">{user.contractDurationEnd || '-'}</span>
-                                    <span className="text-muted-foreground">{isIndonesian ? 'Karyawan Tetap:' : 'Permanent Date:'}</span>
+                                    <span className="text-muted-foreground">Karyawan Tetap:</span>
                                     <span className="font-medium text-foreground">{user.permanentDate || '-'}</span>
                                   </div>
                                 </div>
@@ -1965,9 +1939,7 @@ export function SecurityUserManagement({
                       colSpan={24}
                       className="text-muted-foreground py-12 text-center text-sm"
                     >
-                      {isIndonesian
-                        ? 'Tidak ada pengguna yang cocok dengan filter saat ini.'
-                        : 'No users match the current filters.'}
+                      Tidak ada pengguna yang cocok dengan filter saat ini.
                     </TableCell>
                   </TableRow>
                 )}
@@ -1977,9 +1949,7 @@ export function SecurityUserManagement({
           {filteredUsers.length > 0 ? (
             <div className="flex items-center justify-between px-1 pt-3">
               <p className="text-muted-foreground text-xs">
-                {isIndonesian
-                  ? `Menampilkan ${safePage * pageSize + 1}–${Math.min((safePage + 1) * pageSize, filteredUsers.length)} dari ${filteredUsers.length} pengguna`
-                  : `Showing ${safePage * pageSize + 1}–${Math.min((safePage + 1) * pageSize, filteredUsers.length)} of ${filteredUsers.length} users`}
+                {`Menampilkan ${safePage * pageSize + 1}–${Math.min((safePage + 1) * pageSize, filteredUsers.length)} dari ${filteredUsers.length} pengguna`}
               </p>
               <div className="flex items-center gap-1">
                 <Button
@@ -2031,9 +2001,7 @@ export function SecurityUserManagement({
             <div>
               <p className="text-muted-foreground text-xs font-semibold uppercase">Total scope</p>
               <p className="text-foreground text-sm font-medium">
-                {isIndonesian
-                  ? `${users.length.toLocaleString()} akun terdaftar`
-                  : `${users.length.toLocaleString()} registered accounts`}
+                {`${users.length.toLocaleString()} akun terdaftar`}
               </p>
             </div>
           </div>
@@ -2046,9 +2014,7 @@ export function SecurityUserManagement({
             <div>
               <p className="text-muted-foreground text-xs font-semibold uppercase">Access health</p>
               <p className="text-foreground text-sm font-medium">
-                {isIndonesian
-                  ? `${activeUsersCount.toLocaleString()} akses aktif`
-                  : `${activeUsersCount.toLocaleString()} active access`}
+                {`${activeUsersCount.toLocaleString()} akses aktif`}
               </p>
             </div>
           </div>
@@ -2065,9 +2031,7 @@ export function SecurityUserManagement({
             <div>
               <p className="text-muted-foreground text-xs font-semibold uppercase">Current view</p>
               <p className="text-foreground text-sm font-medium">
-                {isIndonesian
-                  ? `${filteredUsers.length.toLocaleString()} user siap ditindak`
-                  : `${filteredUsers.length.toLocaleString()} users actionable`}
+                {`${filteredUsers.length.toLocaleString()} user siap ditindak`}
               </p>
             </div>
           </div>

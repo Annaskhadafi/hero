@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { PwaRegistration } from "@/components/pwa-registration";
 import { ThemeProvider } from "@/components/theme-provider";
-import { LanguageProvider } from "@/components/language-provider";
 import { Suspense } from "react";
 import { NavigationProgressBar } from "@/components/navigation-progress-bar";
 import "./globals.css";
@@ -26,6 +25,9 @@ export const metadata: Metadata = {
   formatDetection: {
     telephone: false,
   },
+  other: {
+    google: "notranslate",
+  },
 };
 
 export const viewport: Viewport = {
@@ -34,8 +36,9 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="id" className="notranslate" translate="no" suppressHydrationWarning>
       <head>
+        <meta name="google" content="notranslate" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Manrope:wght@500;600;700&display=swap" rel="stylesheet" />
@@ -47,13 +50,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           enableSystem={false}
           disableTransitionOnChange
         >
-          <LanguageProvider>
-            <Suspense fallback={null}>
-              <NavigationProgressBar />
-            </Suspense>
-            <PwaRegistration />
-            {children}
-          </LanguageProvider>
+          <Suspense fallback={null}>
+            <NavigationProgressBar />
+          </Suspense>
+          <PwaRegistration />
+          {children}
         </ThemeProvider>
       </body>
     </html>
