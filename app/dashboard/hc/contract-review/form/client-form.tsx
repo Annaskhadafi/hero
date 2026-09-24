@@ -2,10 +2,11 @@
 
 import { useState, useTransition, useEffect, useMemo, useRef } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { Save, Printer, ArrowLeft, Plus, Trash2, Send } from "lucide-react"
+import { Save, Printer, ArrowLeft, Plus, Trash2, Send, Upload } from "lucide-react"
 import SignatureCanvas from "react-signature-canvas"
 
 import { resendContractReviewApprovalEmail, saveContractReview } from "@/app/actions/contract-review"
+import { getUserSignatureAction, saveUserSignatureAction } from "@/app/actions/user-signature"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -25,7 +26,7 @@ type MasterHeadMap = {
   departments?: Record<string, { headEmployeeId?: number | null; headName?: string; headEmail?: string; headTitle?: string }>
 }
 
-export function ContractReviewClientForm({ employees, orgNodes = [], initialData, approvalSettings, approvalHistory, masterHeadMap }: { employees: any[], orgNodes?: any[], initialData?: any, approvalSettings?: any, approvalHistory?: any[], masterHeadMap?: MasterHeadMap }) {
+export function ContractReviewClientForm({ employees, orgNodes = [], initialData, approvalSettings, approvalHistory, activityTemplates = [], masterHeadMap }: { employees: any[], orgNodes?: any[], initialData?: any, approvalSettings?: any, approvalHistory?: any[], activityTemplates?: any[], masterHeadMap?: MasterHeadMap }) {
   const router = useRouter()
   const pathname = usePathname()
   const isMobileRoute = pathname.startsWith('/mobile/')
@@ -51,6 +52,15 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
   const [isResending, startResend] = useTransition()
   const leaderSigRef = useRef<SignatureCanvas | null>(null)
   const [previewLeaderSig, setPreviewLeaderSig] = useState<string>(initialData?.leaderSignatureDataUrl || '')
+  const [registeredSignature, setRegisteredSignature] = useState<string | null>(null)
+  const [leaderSignatureOverride, setLeaderSignatureOverride] = useState('')
+  const [selectedTemplateId, setSelectedTemplateId] = useState('')
+
+  useEffect(() => {
+    getUserSignatureAction().then((result) => {
+      if (result.success && result.signatureDataUrl) setRegisteredSignature(result.signatureDataUrl)
+    }).catch(() => {})
+  }, [])
 
   const hasVisibleCanvasInk = (canvas: HTMLCanvasElement) => {
     const context = canvas.getContext('2d', { willReadFrequently: true })
@@ -87,8 +97,35 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
 
   const updateLeaderSignaturePreview = () => {
     const dataUrl = getLeaderSignatureDataUrl()
-    if (dataUrl) setPreviewLeaderSig(dataUrl)
+    if (dataUrl) {
+      setPreviewLeaderSig(dataUrl)
+      setLeaderSignatureOverride(dataUrl)
+    }
     return dataUrl
+  }
+
+  const useRegisteredSignature = () => {
+    if (!registeredSignature) return
+    leaderSigRef.current?.clear()
+    setPreviewLeaderSig(registeredSignature)
+    setLeaderSignatureOverride(registeredSignature)
+  }
+
+  const handleSignatureFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = async () => {
+      const dataUrl = typeof reader.result === 'string' ? reader.result : ''
+      if (!dataUrl) return
+      setPreviewLeaderSig(dataUrl)
+      setLeaderSignatureOverride(dataUrl)
+      const result = await saveUserSignatureAction(dataUrl)
+      if (result.success) setRegisteredSignature(dataUrl)
+      else alert(result.error || 'Tanda tangan gagal disimpan ke profile.')
+    }
+    reader.readAsDataURL(file)
+    event.target.value = ''
   }
   
   const [form, setForm] = useState({
@@ -135,6 +172,16 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     if (!form.employeeId) return null
     return employees.find(e => String(e.id) === form.employeeId) || null
   }, [form.employeeId, employees])
+
+  const filteredActivityTemplates = useMemo(() => {
+    const section = String(selectedEmp?.section || '').trim().toLowerCase()
+    if (!section) return []
+    return activityTemplates.filter((template: any) => String(template.section || '').trim().toLowerCase() === section)
+  }, [activityTemplates, selectedEmp?.section])
+
+  useEffect(() => {
+    setSelectedTemplateId('')
+  }, [form.employeeId])
 
   const autoPopulateSignatories = (employeeId: string, currentForm: any) => {
     const emp = employees.find(e => String(e.id) === employeeId)
@@ -438,7 +485,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     startTransition(async () => {
       const { leaderTitle, superiorTitle, hrTitle, nextSuperiorTitle, ...formToSave } = form
       const leaderCanvasSignature = getLeaderSignatureDataUrl()
-      const leaderSignatureDataUrl = leaderCanvasSignature || previewLeaderSig || initialData?.leaderSignatureDataUrl || ''
+      const leaderSignatureDataUrl = leaderCanvasSignature || leaderSignatureOverride || (!initialData?.id ? previewLeaderSig : '')
       const payload = {
         ...formToSave,
         employeeId: form.employeeId ? parseInt(form.employeeId) : null,
@@ -944,7 +991,42 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
 
         <Card>
           <CardHeader>
-            <CardTitle>A. Performance Activities</CardTitle>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle>A. Performance Activities</CardTitle>
+              <div className="flex flex-col gap-1.5 sm:items-end">
+                <Select
+                  value={selectedTemplateId}
+                  onValueChange={(value) => {
+                    const template = filteredActivityTemplates.find((item: any) => String(item.id) === value)
+                    if (!template) return
+                    setSelectedTemplateId(value)
+                    setForm({
+                      ...form,
+                      performanceActivities: template.performanceActivities.map((item: any) => ({
+                        activity: item.activity || '',
+                        achievement: item.achievement || 'meet',
+                        remark: item.remark || '',
+                      })),
+                    })
+                  }}
+                  disabled={filteredActivityTemplates.length === 0}
+                >
+                  <SelectTrigger className="w-full sm:w-[280px]">
+                    <SelectValue placeholder={selectedEmp ? 'Pakai template history section' : 'Pilih karyawan dulu'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filteredActivityTemplates.map((template: any) => (
+                      <SelectItem key={template.id} value={String(template.id)}>
+                        {template.employeeName} · {template.createdAt ? new Date(template.createdAt).toLocaleDateString('id-ID') : 'History'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span className="text-[11px] text-muted-foreground">
+                  {selectedEmp?.section ? `Template section: ${selectedEmp.section}` : 'Template mengikuti section karyawan'}
+                </span>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -1227,6 +1309,14 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
           </CardHeader>
           <CardContent>
             <p className="text-xs text-muted-foreground mb-2">Tanda tangan digital sebagai pembuat Contract Review ini.</p>
+            {registeredSignature && (
+              <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50/60 p-2">
+                <div className="flex h-14 flex-1 items-center justify-center rounded bg-white px-2">
+                  <img src={registeredSignature} alt="TTD tersimpan di profile" className="max-h-12 max-w-full object-contain" />
+                </div>
+                <span className="text-xs font-medium text-emerald-700">TTD tersimpan</span>
+              </div>
+            )}
             <div className="rounded-xl border border-slate-200 bg-white p-2">
               <SignatureCanvas
                 ref={leaderSigRef}
@@ -1235,11 +1325,21 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
                 backgroundColor="rgba(255,255,255,0)"
               />
             </div>
-            <div className="mt-2 flex gap-2">
+            <div className="mt-2 flex flex-wrap gap-2">
               <Button type="button" variant="outline" size="sm" onClick={() => {
                 leaderSigRef.current?.clear()
                 setPreviewLeaderSig('')
+                setLeaderSignatureOverride('')
               }}>Bersihkan</Button>
+              {registeredSignature && (
+                <Button type="button" variant="outline" size="sm" onClick={useRegisteredSignature}>
+                  Pakai TTD Tersimpan
+                </Button>
+              )}
+              <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                <Upload className="size-4" /> Upload TTD
+                <input type="file" accept="image/*" className="hidden" onChange={handleSignatureFileUpload} />
+              </label>
               <Button type="button" variant="default" size="sm" onClick={updateLeaderSignaturePreview}>Tambahkan ke PDF</Button>
               {initialData?.leaderSignatureDataUrl && !previewLeaderSig && (
                 <Button type="button" variant="ghost" size="sm" onClick={() => {

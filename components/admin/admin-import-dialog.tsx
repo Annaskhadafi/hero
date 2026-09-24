@@ -172,7 +172,7 @@ export function AdminImportDialog({
     <Dialog>
       <DialogTrigger asChild>
         {trigger ?? (
-          <Button type="button" variant="outline" size="dense">
+          <Button type="button" variant="outline" size="dense" className="font-medium normal-case text-slate-700 hover:text-slate-900">
             <Upload className="size-4" />
             Import
           </Button>

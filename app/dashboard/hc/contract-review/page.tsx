@@ -1,7 +1,7 @@
 import { getContractReviewSettings, getContractReviews, getExpiringContractEmployees } from "@/app/actions/contract-review"
 import { ContractReviewClientPage } from "./client-page"
 import { db } from "@/db"
-import { employees, hrPositions, masterDepartments } from "@/db/schema/hero"
+import { employees, hrPositions, masterDepartments, masterSections } from "@/db/schema/hero"
 import { eq } from "drizzle-orm"
 
 export const metadata = {
@@ -54,10 +54,13 @@ export default async function ContractReviewPage() {
       position: hrPositions.levelName,
       rank: hrPositions.rankName,
       department: masterDepartments.name,
+      section: masterSections.name,
+      sectionId: employees.sectionId,
     })
     .from(employees)
     .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
     .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+    .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
     .where(eq(employees.isActive, true))
 
   const enrichedSettings = populateEmailsFromEmployees(settings, employeeList)

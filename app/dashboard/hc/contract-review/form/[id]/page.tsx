@@ -1,5 +1,5 @@
 import { ContractReviewClientForm } from "../client-form"
-import { getContractReviewById, getContractReviewSettings } from "@/app/actions/contract-review"
+import { getContractReviewActivityTemplates, getContractReviewById, getContractReviewSettings } from "@/app/actions/contract-review"
 import { db } from "@/db"
 import { employees, hrPositions, hrOrgNodes, masterDepartments, masterSections } from "@/db/schema/hero"
 import { centralServiceEmployees } from "@/db/schema/central-service"
@@ -16,9 +16,10 @@ export default async function ContractReviewEditPage({ params }: { params: Promi
   const id = parseInt(resolvedParams.id)
   if (isNaN(id)) return notFound()
 
-  const [reviewResult, approvalSettings] = await Promise.all([
+  const [reviewResult, approvalSettings, activityTemplatesResult] = await Promise.all([
     getContractReviewById(id),
     getContractReviewSettings(),
+    getContractReviewActivityTemplates(),
   ])
   if (!reviewResult.success || !reviewResult.data) return notFound()
 
@@ -130,6 +131,6 @@ export default async function ContractReviewEditPage({ params }: { params: Promi
   }
 
   return (
-    <ContractReviewClientForm employees={employeeList} orgNodes={orgNodes} initialData={reviewResult.data} approvalSettings={approvalSettings as any} approvalHistory={allApprovals as any[]} masterHeadMap={masterHeadMap} />
+    <ContractReviewClientForm employees={employeeList} orgNodes={orgNodes} initialData={reviewResult.data} approvalSettings={approvalSettings as any} approvalHistory={allApprovals as any[]} activityTemplates={activityTemplatesResult.success ? activityTemplatesResult.data : []} masterHeadMap={masterHeadMap} />
   )
 }

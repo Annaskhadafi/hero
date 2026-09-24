@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import {
   AlertCircle,
@@ -31,6 +31,7 @@ import {
 } from "@/app/actions/contract-review"
 import { AdminPageShell } from "@/components/admin-page-shell"
 import { HcWorkspaceBanner, hcPrimaryActionClassName } from "@/components/hc/hc-workspace-banner"
+import { AdminStatusBadge } from "@/components/admin-status-badge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -39,6 +40,7 @@ import { EnterpriseActionButtons } from "@/components/ui/enterprise-table-kit"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell"
+import { MultiSelectFilterDropdown } from "@/components/ui/multi-select-filter-dropdown"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -97,13 +99,19 @@ export function ContractReviewClientPage({
   // Multi-select state
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<number[]>([])
   const [isBatchSending, setIsBatchSending] = useState(false)
+  const [selectedReviewIds, setSelectedReviewIds] = useState<number[]>([])
 
   // Monitoring filters
+  const [reviewSearch, setReviewSearch] = useState("")
+  const [reviewSectionFilters, setReviewSectionFilters] = useState<string[]>([])
+  const [visibleReviewCount, setVisibleReviewCount] = useState(25)
+  const reviewLoadMoreRef = useRef<HTMLDivElement | null>(null)
   const [monitoringSearch, setMonitoringSearch] = useState("")
   const [urgencyFilter, setUrgencyFilter] = useState<string>("all")
   const [reviewStatusFilter, setReviewStatusFilter] = useState<string>("all")
 
   const access = { canView: true, canEdit: true, canDelete: true }
+  const toolbarButtonClassName = "h-9 rounded-lg px-3 text-[13px] font-medium normal-case tracking-normal shadow-[0_6px_14px_rgba(15,23,42,0.06)] transition-[transform,background-color,box-shadow,color]"
 
   const approvalRoleLabel = (role: string | null) => {
     const labels: Record<string, string> = {
@@ -235,6 +243,56 @@ export function ContractReviewClientPage({
     }
   }
 
+  const reviewSectionOptions = useMemo(() => Array.from(new Set(
+    rows
+      .map((row) => employees.find((employee: any) => employee.id === row.employeeId)?.section)
+      .filter((section): section is string => Boolean(section))
+  )).sort((a, b) => a.localeCompare(b)), [employees, rows])
+  const filteredReviewRows = useMemo(() => {
+    const normalizedSearch = reviewSearch.trim().toLowerCase()
+    return rows.filter((row) => {
+      const employee = employees.find((item: any) => item.id === row.employeeId)
+      const section = employee?.section || ""
+      if (reviewSectionFilters.length > 0 && !reviewSectionFilters.includes(section)) return false
+      if (!normalizedSearch) return true
+      return [
+        employee?.name,
+        section,
+        row.leaderName,
+        row.reviewType,
+        row.recommendation,
+        row.status,
+      ].some((value) => String(value || "").toLowerCase().includes(normalizedSearch))
+    })
+  }, [employees, reviewSearch, reviewSectionFilters, rows])
+  const visibleReviewRows = filteredReviewRows.slice(0, visibleReviewCount)
+  const allReviewsSelected = filteredReviewRows.length > 0 && filteredReviewRows.every((row) => selectedReviewIds.includes(row.id))
+  const toggleSelectReview = (id: number) => {
+    setSelectedReviewIds((prev) => prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id])
+  }
+  const toggleSelectAllReviews = () => {
+    if (allReviewsSelected) {
+      const filteredIds = new Set(filteredReviewRows.map((row) => row.id))
+      setSelectedReviewIds((prev) => prev.filter((id) => !filteredIds.has(id)))
+    } else {
+      setSelectedReviewIds((prev) => Array.from(new Set([...prev, ...filteredReviewRows.map((row) => row.id)])))
+    }
+  }
+
+  useEffect(() => {
+    setVisibleReviewCount(25)
+  }, [reviewSearch, reviewSectionFilters])
+
+  useEffect(() => {
+    const target = reviewLoadMoreRef.current
+    if (!target || visibleReviewCount >= filteredReviewRows.length) return
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) setVisibleReviewCount((count) => Math.min(count + 25, filteredReviewRows.length))
+    }, { rootMargin: "160px" })
+    observer.observe(target)
+    return () => observer.disconnect()
+  }, [filteredReviewRows.length, visibleReviewCount])
+
   // Monitoring stats
   const stats = useMemo(() => {
     const total = expiringEmployees.length
@@ -304,10 +362,9 @@ export function ContractReviewClientPage({
   }
 
   return (
-    <AdminPageShell eyebrow="HC • Contract & Probation" title="Employee Contract & Review" description="Kelola evaluasi probation, perpanjangan kontrak, dan monitoring masa berakhir kontrak karyawan.">
+    <AdminPageShell>
       <HcWorkspaceBanner
         title="Contract & Probation Reviews"
-        description="Monitor evaluasi karyawan untuk perpanjangan kontrak atau pengangkatan karyawan tetap."
         items={[
           { label: "Total Reviews", value: rows.length, tone: "slate" },
           { label: "Monitoring Kontrak", value: stats.total, tone: stats.overdue > 0 ? "rose" : "amber" },
@@ -340,36 +397,72 @@ export function ContractReviewClientPage({
         <TabsContent value="reviews" className="space-y-4">
           <MinimalTableShell 
             label="contract review" 
-            title="Daftar Review" 
-            description="Daftar historis evaluasi karyawan." 
             fileName="contract-reviews-hc" 
-            searchPlaceholder="Cari..." 
             access={access} 
+            searchEnabled={false}
+            paginationEnabled={false}
+            filters={
+              <div className="flex min-w-max items-center gap-2">
+                <div className="relative w-[220px] flex-none">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={reviewSearch}
+                    onChange={(event) => setReviewSearch(event.target.value)}
+                    placeholder="Cari karyawan, leader..."
+                    className="h-9 rounded-lg border-border/70 bg-muted/30 pl-9 text-[13px] shadow-none"
+                  />
+                </div>
+                <MultiSelectFilterDropdown
+                  title="Section"
+                  label="section"
+                  options={reviewSectionOptions}
+                  selected={reviewSectionFilters}
+                  onChange={setReviewSectionFilters}
+                  placeholder="Semua Section"
+                  className="min-w-[160px]"
+                />
+              </div>
+            }
             primaryAction={
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" onClick={() => setIsSettingsOpen(true)}>
+                <Button variant="outline" size="dense" className={`${toolbarButtonClassName} text-slate-700 hover:bg-slate-50 hover:text-slate-950`} onClick={() => setIsSettingsOpen(true)}>
                   <Settings className="size-4" /> Settings
                 </Button>
-                <Button variant="secondary" onClick={handleTestApproval} disabled={isTestRunning}>
+                <Button variant="secondary" size="dense" className={`${toolbarButtonClassName} bg-teal-50 text-teal-700 hover:bg-teal-100 hover:text-teal-800`} onClick={handleTestApproval} disabled={isTestRunning}>
                   <Bug className="size-4" /> {isTestRunning ? 'Generating...' : 'Test Approval'}
                 </Button>
-                <Button variant="outline" onClick={handleSendReminders} disabled={isReminderRunning}>
+                <Button variant="outline" size="dense" className={`${toolbarButtonClassName} bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800`} onClick={handleSendReminders} disabled={isReminderRunning}>
                   {isReminderRunning ? 'Sending reminders...' : 'Send Reminders'}
                 </Button>
-                <Button onClick={() => router.push('/dashboard/hc/contract-review/new')} className={hcPrimaryActionClassName}>
-                  <Plus className="size-4" />Tambah Review
+                <Button size="dense" onClick={() => router.push('/dashboard/hc/contract-review/new')} className={`${toolbarButtonClassName} ${hcPrimaryActionClassName}`}>
+                  <Plus className="size-4" /> Tambah Review
                 </Button>
               </div>
             }
             columnOptions={[]}
           >
-            <Table>
-              <TableHeader>
+            {selectedReviewIds.length > 0 && (
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-200/80 bg-gradient-to-r from-sky-50 via-white to-indigo-50 px-4 py-3 shadow-sm">
+                <div className="flex items-center gap-2 text-sm text-slate-700">
+                  <Badge className="rounded-full bg-slate-900 px-2.5 py-1 text-xs text-white">{selectedReviewIds.length} dipilih</Badge>
+                  <span>Review terpilih.</span>
+                </div>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedReviewIds([])} className="h-8 text-xs">
+                  Batalkan pilihan
+                </Button>
+              </div>
+            )}
+            <Table containerClassName="overflow-visible rounded-none border-0 shadow-none" className="text-sm">
+              <TableHeader className="[&>tr>th]:sticky [&>tr>th]:top-0 [&>tr>th]:z-20 [&>tr>th]:bg-white/95 [&>tr>th]:backdrop-blur">
                 <TableRow>
-                  <TableHead>Karyawan</TableHead>
-                  <TableHead>Jenis Review</TableHead>
-                  <TableHead>Tgl Masuk</TableHead>
+                  <TableHead className="w-10">
+                    <Checkbox checked={allReviewsSelected} onCheckedChange={toggleSelectAllReviews} aria-label="Pilih semua review" />
+                  </TableHead>
                   <TableHead>Tgl Review</TableHead>
+                  <TableHead>Karyawan</TableHead>
+                  <TableHead>Section</TableHead>
+                  <TableHead>Pembuat / Leader</TableHead>
+                  <TableHead>Jenis Review</TableHead>
                   <TableHead>Rekomendasi</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Aksi</TableHead>
@@ -377,24 +470,31 @@ export function ContractReviewClientPage({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.length === 0 && (
+                {filteredReviewRows.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">Belum ada data review.</TableCell>
+                    <TableCell colSpan={10} className="text-center text-muted-foreground py-8">Belum ada data review.</TableCell>
                   </TableRow>
                 )}
-                {rows.map((row) => {
+                {visibleReviewRows.map((row) => {
                   const emp = employees.find(e => e.id === row.employeeId)
+                  const status = String(row.status || '').toLowerCase()
+                  const isSelected = selectedReviewIds.includes(row.id)
+                  const completedSteps = Number(row.approvalCompletedSteps || 0)
+                  const totalSteps = Number(row.approvalTotalSteps || 0)
+                  const progress = totalSteps > 0 ? Math.min(100, Math.round((completedSteps / totalSteps) * 100)) : 0
                   return (
-                    <TableRow key={row.id}>
-                      <TableCell className="font-medium">{emp?.name || row.employeeNameStr || '-'}</TableCell>
-                      <TableCell className="capitalize">{row.reviewType}</TableCell>
-                      <TableCell>{row.hireDate ? new Date(row.hireDate).toLocaleDateString('id-ID') : '-'}</TableCell>
+                    <TableRow key={row.id} className={isSelected ? 'bg-sky-50/60 dark:bg-sky-950/20' : undefined}>
+                      <TableCell className="w-10">
+                        <Checkbox checked={isSelected} onCheckedChange={() => toggleSelectReview(row.id)} aria-label={`Pilih review ${emp?.name || row.employeeNameStr || row.id}`} />
+                      </TableCell>
                       <TableCell>{row.todayDate ? new Date(row.todayDate).toLocaleDateString('id-ID') : '-'}</TableCell>
-                      <TableCell className="capitalize">{row.recommendation.replace('_', ' ')}</TableCell>
-                      <TableCell className="capitalize">
-                        <Badge variant={row.status === 'completed' ? 'default' : row.status === 'draft' ? 'outline' : 'secondary'}>
-                          {row.status}
-                        </Badge>
+                      <TableCell className="font-medium"><div className="max-w-[180px] truncate">{emp?.name || row.employeeNameStr || '-'}</div></TableCell>
+                      <TableCell><div className="max-w-[180px] truncate">{emp?.section || '-'}</div></TableCell>
+                      <TableCell className="font-medium text-slate-800"><div className="max-w-[160px] truncate">{row.leaderName || '-'}</div></TableCell>
+                      <TableCell className="capitalize">{row.reviewType}</TableCell>
+                      <TableCell className="capitalize"><div className="max-w-[170px] truncate">{row.recommendation.replace('_', ' ')}</div></TableCell>
+                      <TableCell>
+                        <AdminStatusBadge value={status || 'draft'} />
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center justify-end gap-1">
@@ -421,14 +521,24 @@ export function ContractReviewClientPage({
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="min-w-[190px]">
+                      <TableCell className="min-w-[210px]">
                         {row.status === 'draft' ? (
                           <span className="text-muted-foreground">Belum submit</span>
                         ) : row.status === 'completed' ? (
-                          <span className="font-medium">Selesai ({row.approvalCompletedSteps || row.approvalTotalSteps || 0}/{row.approvalTotalSteps || 0})</span>
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between gap-3 text-xs">
+                              <span className="font-semibold text-slate-900">TTD selesai</span>
+                              <span className="font-mono text-[11px] text-slate-500">{completedSteps}/{totalSteps}</span>
+                            </div>
+                            <div className="h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${progress}%` }} /></div>
+                          </div>
                         ) : row.approvalStep ? (
-                          <div className="space-y-0.5">
-                            <div className="font-semibold">Step {row.approvalStep}/{row.approvalTotalSteps}</div>
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between gap-3 text-xs">
+                              <span className="font-semibold text-slate-900">Step {row.approvalStep}/{row.approvalTotalSteps}</span>
+                              <span className="font-mono text-[11px] text-slate-500">{completedSteps}/{totalSteps} TTD</span>
+                            </div>
+                            <div className="h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-sky-500 to-indigo-500" style={{ width: `${progress}%` }} /></div>
                             <div className="text-xs text-muted-foreground">
                               Menunggu: {row.approvalApproverName || '-'}{row.approvalApproverRole ? ` · ${approvalRoleLabel(row.approvalApproverRole)}` : ''}
                             </div>
@@ -442,6 +552,7 @@ export function ContractReviewClientPage({
                 })}
               </TableBody>
             </Table>
+            <div ref={reviewLoadMoreRef} className="h-8" aria-hidden="true" />
           </MinimalTableShell>
         </TabsContent>
 

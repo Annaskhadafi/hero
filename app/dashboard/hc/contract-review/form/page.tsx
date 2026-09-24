@@ -2,7 +2,7 @@ import { ContractReviewClientForm } from "./client-form"
 import { db } from "@/db"
 import { employees, hrPositions, hrOrgNodes, masterDepartments, masterSections } from "@/db/schema/hero"
 import { centralServiceEmployees } from "@/db/schema/central-service"
-import { getContractReviewSettings } from "@/app/actions/contract-review"
+import { getContractReviewActivityTemplates, getContractReviewSettings } from "@/app/actions/contract-review"
 import { eq, inArray } from "drizzle-orm"
 
 export const metadata = {
@@ -10,7 +10,7 @@ export const metadata = {
 }
 
 export default async function ContractReviewFormPage() {
-  const [hrEmps, csEmps, orgNodes, approvalSettings, sectionRows, departmentRows] = await Promise.all([
+  const [hrEmps, csEmps, orgNodes, approvalSettings, sectionRows, departmentRows, activityTemplatesResult] = await Promise.all([
     db
       .select({
         id: employees.id,
@@ -46,6 +46,7 @@ export default async function ContractReviewFormPage() {
     getContractReviewSettings(),
     db.select().from(masterSections),
     db.select().from(masterDepartments),
+    getContractReviewActivityTemplates(),
   ])
 
   const csBySn = new Map<string, typeof csEmps[number]>()
@@ -114,6 +115,6 @@ export default async function ContractReviewFormPage() {
   }
 
   return (
-    <ContractReviewClientForm employees={employeeList} orgNodes={orgNodes} approvalSettings={approvalSettings as any} masterHeadMap={masterHeadMap} />
+    <ContractReviewClientForm employees={employeeList} orgNodes={orgNodes} approvalSettings={approvalSettings as any} activityTemplates={activityTemplatesResult.success ? activityTemplatesResult.data : []} masterHeadMap={masterHeadMap} />
   )
 }

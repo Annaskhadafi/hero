@@ -1504,6 +1504,40 @@ export async function getContractReviews() {
   }
 }
 
+export async function getContractReviewActivityTemplates() {
+  try {
+    await ensureContractReviewWorkflowTables()
+    const records = await db
+      .select({
+        id: hcEmployeeContractReviews.id,
+        employeeName: hcEmployeeContractReviews.employeeNameStr,
+        section: sql<string | null>`coalesce(${masterSections.name}, ${employees.section})`,
+        performanceActivities: hcEmployeeContractReviews.performanceActivities,
+        createdAt: hcEmployeeContractReviews.createdAt,
+      })
+      .from(hcEmployeeContractReviews)
+      .leftJoin(employees, eq(hcEmployeeContractReviews.employeeId, employees.id))
+      .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+      .orderBy(desc(hcEmployeeContractReviews.createdAt))
+
+    return {
+      success: true as const,
+      data: records
+        .filter((record) => Array.isArray(record.performanceActivities) && record.performanceActivities.length > 0)
+        .map((record) => ({
+          id: record.id,
+          employeeName: record.employeeName || 'Riwayat Contract Review',
+          section: record.section || '',
+          createdAt: record.createdAt ? new Date(record.createdAt).toISOString() : null,
+          performanceActivities: record.performanceActivities,
+        })),
+    }
+  } catch (error: any) {
+    console.error('Error fetching contract review activity templates:', error)
+    return { success: false as const, error: error.message || 'Gagal mengambil template aktivitas.' }
+  }
+}
+
 export async function getContractReviewById(id: number) {
   try {
     const [record] = await db.select().from(hcEmployeeContractReviews).where(eq(hcEmployeeContractReviews.id, id))
@@ -1566,6 +1600,12 @@ export async function saveContractReview(data: Partial<typeof hcEmployeeContract
     await ensureContractReviewWorkflowTables()
     let saved: any
     if (data.id) {
+      const [existingReview] = await db
+        .select({ leaderSignatureDataUrl: hcEmployeeContractReviews.leaderSignatureDataUrl })
+        .from(hcEmployeeContractReviews)
+        .where(eq(hcEmployeeContractReviews.id, data.id))
+        .limit(1)
+
       const [updated] = await db
         .update(hcEmployeeContractReviews)
         .set({ ...data, updatedAt: new Date() })
@@ -1573,8 +1613,12 @@ export async function saveContractReview(data: Partial<typeof hcEmployeeContract
         .returning()
       saved = updated
 
-      // If leader signature provided on update, mark first pending approval step as approved
-      if (data.leaderSignatureDataUrl) {
+      // Only a newly drawn leader signature can approve the initial workflow step.
+      const hasNewLeaderSignature = Boolean(
+        data.leaderSignatureDataUrl &&
+        data.leaderSignatureDataUrl !== (existingReview?.leaderSignatureDataUrl || ''),
+      )
+      if (hasNewLeaderSignature) {
         const [firstPending] = await db
           .select()
           .from(hcContractReviewApprovals)
@@ -1582,7 +1626,7 @@ export async function saveContractReview(data: Partial<typeof hcEmployeeContract
           .orderBy(asc(hcContractReviewApprovals.stepOrder))
           .limit(1)
 
-        if (firstPending) {
+        if (firstPending && ['pjo_or_te_initial', 'section_head_initial'].includes(firstPending.approverRole)) {
           await db
             .update(hcContractReviewApprovals)
             .set({ status: 'approved', signatureDataUrl: data.leaderSignatureDataUrl as string, signedAt: new Date() })
@@ -1709,6 +1753,9 @@ export async function approveContractReviewStep(
       .limit(1)
     if (!approval) return { success: false, error: 'Approval not found' }
     if (approval.status === 'approved') return { success: true }
+    if (approval.status !== 'pending') {
+      return { success: false, error: 'Approval ini belum aktif. Menunggu step sebelumnya selesai.' }
+    }
 
     // If recommendation/letterIssuance are changed, update the master review record
     const updateFields: Record<string, any> = {}
@@ -1728,10 +1775,15 @@ export async function approveContractReviewStep(
         .where(eq(hcEmployeeContractReviews.id, approval.reviewId))
     }
 
-    await db
+    const [approvedApproval] = await db
       .update(hcContractReviewApprovals)
       .set({ status: 'approved', signatureDataUrl: data.signatureDataUrl, remarks: data.remarks ?? '', signedAt: new Date() })
-      .where(eq(hcContractReviewApprovals.id, approval.id))
+      .where(and(eq(hcContractReviewApprovals.id, approval.id), eq(hcContractReviewApprovals.status, 'pending')))
+      .returning({ id: hcContractReviewApprovals.id })
+
+    if (!approvedApproval) {
+      return { success: false, error: 'Approval ini sudah diproses atau tidak lagi aktif.' }
+    }
 
     const [nextApproval] = await db
       .select()

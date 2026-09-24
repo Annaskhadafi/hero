@@ -6,7 +6,7 @@ type HcWorkspaceBannerProps = {
   eyebrow?: string;
   badge?: string;
   title: string;
-  description: string;
+  description?: string;
   items?: Array<{ label: string; value: ReactNode; tone?: "slate" | "emerald" | "amber" | "rose" | "sky" }>;
   metrics?: Array<{ label: string; value: ReactNode; tone?: "slate" | "emerald" | "amber" | "rose" | "sky" }>;
   className?: string;
@@ -46,7 +46,7 @@ export function HcWorkspaceBanner({
         <div className="max-w-3xl space-y-2">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{displayEyebrow}</p>
           <h2 className="font-display text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">{title}</h2>
-          <p className="max-w-2xl text-sm leading-6 text-slate-600">{description}</p>
+          {description ? <p className="max-w-2xl text-sm leading-6 text-slate-600">{description}</p> : null}
         </div>
         {displayItems.length ? (
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 lg:min-w-[28rem]">

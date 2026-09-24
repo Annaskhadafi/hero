@@ -557,7 +557,7 @@ export function MinimalTableShell({
                 key="table-export-slot"
                 variant="outline"
                 onClick={() => exportVisibleTable()}
-                className="h-9 rounded-lg border-0 bg-white px-3 text-[13px] font-medium tracking-normal normal-case shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)]"
+                className="h-9 rounded-lg border-0 bg-white px-3 text-[13px] font-medium tracking-normal normal-case text-slate-700 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)] hover:text-slate-900"
               >
                 <IconFileSpreadsheet className="size-4" /> Excel
               </Button>

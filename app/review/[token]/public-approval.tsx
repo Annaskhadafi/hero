@@ -61,13 +61,14 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
   const [recommendation, setRecommendation] = useState<string>(review.recommendation || '')
   const [contractExtendedMonths, setContractExtendedMonths] = useState<number | undefined>(review.contractExtendedMonths || undefined)
   const [letterIssuance, setLetterIssuance] = useState<string>(review.letterIssuance || '')
+  const isWaitingForPreviousStep = approval.status === 'waiting'
 
   const isSectionHead = approval.approverRole === 'section_head_confirmation' || approval.approverRole === 'section_head_initial'
   const isDeptHead = approval.approverRole === 'central_service_manager'
   const isHr = approval.approverRole === 'hr'
 
-  const canEditRecommendation = !done && (isSectionHead || isDeptHead || isHr)
-  const canEditLetterIssuance = !done && isHr
+  const canEditRecommendation = approval.status === 'pending' && !done && (isSectionHead || isDeptHead || isHr)
+  const canEditLetterIssuance = approval.status === 'pending' && !done && isHr
 
   function getSignatureDataUrl() {
     const signature = signatureRef.current
@@ -89,6 +90,10 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
   }
 
   function handleSubmit() {
+    if (isWaitingForPreviousStep) {
+      setError('Step sebelumnya belum selesai.')
+      return
+    }
     setError('')
     const signatureDataUrl = getSignatureDataUrl()
     if (!signatureDataUrl) {
@@ -574,6 +579,10 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                   </Button>
                 )}
               </div>
+            ) : isWaitingForPreviousStep ? (
+              <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium text-slate-600">
+                TTD belum aktif. Menunggu step sebelumnya selesai.
+              </p>
             ) : (
               <div className="space-y-3">
                 <div className="rounded-xl border border-slate-200 bg-white p-2">

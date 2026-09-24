@@ -135,11 +135,56 @@ test("contract review list exposes the current approval step", () => {
   assert.match(source, /approvalTotalSteps: reviewApprovals\.length/);
   assert.match(clientSource, /Step Approval Sampai Dimana/);
   assert.match(clientSource, /Step \{row\.approvalStep\}\/\{row\.approvalTotalSteps\}/);
+  assert.match(clientSource, /Pembuat \/ Leader/);
+  assert.match(clientSource, /<TableHead>Section<\/TableHead>/);
+  assert.match(clientSource, /emp\?\.section/);
+  assert.doesNotMatch(clientSource, /Penanggung jawab review/);
+  assert.match(clientSource, /paginationEnabled=\{false\}/);
+  assert.match(clientSource, /IntersectionObserver/);
+  assert.match(clientSource, /title="Section"/);
+  assert.match(clientSource, /MultiSelectFilterDropdown/);
+  assert.match(clientSource, /Tgl Review/);
+  assert.doesNotMatch(clientSource, /<TableHead>Tgl Masuk<\/TableHead>/);
+  assert.ok(clientSource.indexOf("<TableHead>Tgl Review</TableHead>") < clientSource.indexOf("<TableHead>Karyawan</TableHead>"));
+  assert.match(clientSource, /sticky/);
+  assert.match(clientSource, /containerClassName="overflow-visible/);
+  assert.match(clientSource, /row\.leaderName/);
   assert.match(clientSource, /Menunggu: \{row\.approvalApproverName/);
   assert.match(clientSource, /resendContractReviewApprovalEmail/);
   assert.match(clientSource, /Resend email approval/);
   assert.match(clientSource, /Kirim ulang email approval sekarang/);
   assert.match(clientSource, /toast\.success\('Berhasil dikirim'/);
+});
+
+test("contract review signing stays sequential and does not reuse an old leader signature", () => {
+  const actionSource = read("app/actions/contract-review.ts");
+  const formSource = read("app/dashboard/hc/contract-review/form/client-form.tsx");
+  const publicApprovalSource = read("app/review/[token]/public-approval.tsx");
+
+  assert.match(actionSource, /approval\.status !== 'pending'/);
+  assert.match(actionSource, /hasNewLeaderSignature/);
+  assert.match(actionSource, /pjo_or_te_initial', 'section_head_initial'/);
+  assert.match(formSource, /!initialData\?\.id \? previewLeaderSig/);
+  assert.match(publicApprovalSource, /isWaitingForPreviousStep/);
+  assert.match(publicApprovalSource, /TTD belum aktif/);
+});
+
+test("contract review form reuses profile signatures and section-matched activity history", () => {
+  const actionSource = read("app/actions/contract-review.ts");
+  const formSource = read("app/dashboard/hc/contract-review/form/client-form.tsx");
+  const newPageSource = read("app/dashboard/hc/contract-review/form/page.tsx");
+  const editPageSource = read("app/dashboard/hc/contract-review/form/[id]/page.tsx");
+
+  assert.match(actionSource, /getContractReviewActivityTemplates/);
+  assert.match(actionSource, /leftJoin\(masterSections/);
+  assert.match(formSource, /getUserSignatureAction/);
+  assert.match(formSource, /saveUserSignatureAction/);
+  assert.match(formSource, /Pakai TTD Tersimpan/);
+  assert.match(formSource, /Upload TTD/);
+  assert.match(formSource, /filteredActivityTemplates/);
+  assert.match(formSource, /template\.section/);
+  assert.match(newPageSource, /activityTemplatesResult/);
+  assert.match(editPageSource, /activityTemplatesResult/);
 });
 
 test("contract review print preview opens in a modal", () => {
