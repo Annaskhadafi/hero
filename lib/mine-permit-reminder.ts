@@ -44,6 +44,16 @@ export interface ReminderResult {
   details?: string[]
 }
 
+export const BLOCKED_MINE_PERMIT_EMAILS = [
+  'abdul.rajab@chitraparatama.co.id',
+] as const
+
+export function isBlockedMinePermitEmail(email?: string | null): boolean {
+  if (!email) return false
+  const normalized = email.trim().toLowerCase()
+  return BLOCKED_MINE_PERMIT_EMAILS.some((blocked) => blocked.toLowerCase() === normalized)
+}
+
 function escapeEmailHtml(value: string) {
   return value
     .replaceAll('&', '&amp;')
@@ -79,7 +89,9 @@ export async function getMinePermitSiteOptions() {
       .orderBy(asc(employees.name)),
   ])
 
-  return { sites: siteRows, employees: empRows }
+  const eligibleEmployees = empRows.filter((e) => !isBlockedMinePermitEmail(e.email))
+
+  return { sites: siteRows, employees: eligibleEmployees }
 }
 
 export async function getMinePermitSiteConfig(siteId: number): Promise<SiteReminderConfigData> {
@@ -133,8 +145,20 @@ export async function getMinePermitSiteConfig(siteId: number): Promise<SiteRemin
     }
   }
 
-  const recipientEmails = recipientIds.map((id) => emailMap.get(id)).filter(Boolean) as string[]
-  const ccEmails = ccIds.map((id) => emailMap.get(id)).filter(Boolean) as string[]
+  const recipientEmails = recipientIds
+    .map((id) => emailMap.get(id))
+    .filter((email): email is string => Boolean(email) && !isBlockedMinePermitEmail(email))
+  const ccEmails = ccIds
+    .map((id) => emailMap.get(id))
+    .filter((email): email is string => Boolean(email) && !isBlockedMinePermitEmail(email))
+
+  const validRecipientEmployeeIds = recipientIds.filter((id) => !isBlockedMinePermitEmail(emailMap.get(id)))
+  const validCcEmployeeIds = ccIds.filter((id) => !isBlockedMinePermitEmail(emailMap.get(id)))
+  const cleanedAdditionalCc = (config.additionalCcEmails ?? '')
+    .split(',')
+    .map((e) => e.trim())
+    .filter((e) => e && !isBlockedMinePermitEmail(e))
+    .join(', ')
 
   return {
     id: config.id,
@@ -142,11 +166,11 @@ export async function getMinePermitSiteConfig(siteId: number): Promise<SiteRemin
     siteName: site?.name ?? '',
     intervalDays: config.intervalDays ?? 1,
     reminderDays: config.reminderDays ?? 30,
-    recipientEmployeeIds: Array.isArray(recipientIds) ? recipientIds : [],
+    recipientEmployeeIds: validRecipientEmployeeIds,
     recipientEmails,
-    ccEmployeeIds: Array.isArray(ccIds) ? ccIds : [],
+    ccEmployeeIds: validCcEmployeeIds,
     ccEmails,
-    additionalCcEmails: config.additionalCcEmails ?? '',
+    additionalCcEmails: cleanedAdditionalCc,
     isActive: config.isActive ?? true,
     isConfigured: true,
     lastSentAt: config.lastSentAt ? new Date(config.lastSentAt) : null,
@@ -211,8 +235,20 @@ export async function getAllMinePermitSiteConfigs(): Promise<SiteReminderConfigD
       } catch {}
     }
 
-    const recipientEmails = recipientIds.map((id) => emailMap.get(id)).filter(Boolean) as string[]
-    const ccEmails = ccIds.map((id) => emailMap.get(id)).filter(Boolean) as string[]
+    const recipientEmails = recipientIds
+      .map((id) => emailMap.get(id))
+      .filter((email): email is string => Boolean(email) && !isBlockedMinePermitEmail(email))
+    const ccEmails = ccIds
+      .map((id) => emailMap.get(id))
+      .filter((email): email is string => Boolean(email) && !isBlockedMinePermitEmail(email))
+
+    const validRecipientEmployeeIds = recipientIds.filter((id) => !isBlockedMinePermitEmail(emailMap.get(id)))
+    const validCcEmployeeIds = ccIds.filter((id) => !isBlockedMinePermitEmail(emailMap.get(id)))
+    const cleanedAdditionalCc = (c?.additionalCcEmails ?? '')
+      .split(',')
+      .map((e) => e.trim())
+      .filter((e) => e && !isBlockedMinePermitEmail(e))
+      .join(', ')
 
     return {
       id: c?.id,
@@ -220,11 +256,11 @@ export async function getAllMinePermitSiteConfigs(): Promise<SiteReminderConfigD
       siteName: site.name,
       intervalDays: c?.intervalDays ?? 1,
       reminderDays: c?.reminderDays ?? 30,
-      recipientEmployeeIds: recipientIds,
+      recipientEmployeeIds: validRecipientEmployeeIds,
       recipientEmails,
-      ccEmployeeIds: ccIds,
+      ccEmployeeIds: validCcEmployeeIds,
       ccEmails,
-      additionalCcEmails: c?.additionalCcEmails ?? '',
+      additionalCcEmails: cleanedAdditionalCc,
       isActive: c ? Boolean(c.isActive) : true,
       isConfigured: Boolean(c?.id),
       lastSentAt: c?.lastSentAt ? new Date(c.lastSentAt) : null,
@@ -248,32 +284,60 @@ export async function saveMinePermitSiteConfig(input: {
   let recipientIds = input.recipientEmployeeIds || []
   let ccIds = input.ccEmployeeIds || []
 
-  // If emails are passed, resolve them to employee IDs
+  // If emails are passed, resolve them to employee IDs, excluding blocked emails
   if (input.recipientEmails !== undefined) {
-    const cleanEmails = input.recipientEmails.map((e) => e.trim().toLowerCase()).filter(Boolean)
+    const cleanEmails = input.recipientEmails
+      .map((e) => e.trim().toLowerCase())
+      .filter((e) => Boolean(e) && !isBlockedMinePermitEmail(e))
     if (cleanEmails.length > 0) {
       const emps = await db
         .select({ id: employees.id, email: employees.email })
         .from(employees)
         .where(inArray(sql`lower(${employees.email})`, cleanEmails))
-      recipientIds = emps.map((e) => e.id)
+      recipientIds = emps
+        .filter((e) => !isBlockedMinePermitEmail(e.email))
+        .map((e) => e.id)
     } else {
       recipientIds = []
     }
   }
 
   if (input.ccEmails !== undefined) {
-    const cleanCcEmails = input.ccEmails.map((e) => e.trim().toLowerCase()).filter(Boolean)
+    const cleanCcEmails = input.ccEmails
+      .map((e) => e.trim().toLowerCase())
+      .filter((e) => Boolean(e) && !isBlockedMinePermitEmail(e))
     if (cleanCcEmails.length > 0) {
       const emps = await db
         .select({ id: employees.id, email: employees.email })
         .from(employees)
         .where(inArray(sql`lower(${employees.email})`, cleanCcEmails))
-      ccIds = emps.map((e) => e.id)
+      ccIds = emps
+        .filter((e) => !isBlockedMinePermitEmail(e.email))
+        .map((e) => e.id)
     } else {
       ccIds = []
     }
   }
+
+  // Also sanitize recipientIds and ccIds if IDs were passed directly
+  if (recipientIds.length > 0 || ccIds.length > 0) {
+    const allPassedIds = [...new Set([...recipientIds, ...ccIds])]
+    const emps = await db
+      .select({ id: employees.id, email: employees.email })
+      .from(employees)
+      .where(inArray(employees.id, allPassedIds))
+    const blockedIdSet = new Set(
+      emps.filter((e) => isBlockedMinePermitEmail(e.email)).map((e) => e.id)
+    )
+    recipientIds = recipientIds.filter((id) => !blockedIdSet.has(id))
+    ccIds = ccIds.filter((id) => !blockedIdSet.has(id))
+  }
+
+  const cleanedAdditionalCc = (input.additionalCcEmails || '')
+    .split(',')
+    .map((e) => e.trim())
+    .filter((e) => e && !isBlockedMinePermitEmail(e))
+    .join(', ')
 
   const existing = await db
     .select({ id: minePermitReminderConfig.id })
@@ -287,7 +351,7 @@ export async function saveMinePermitSiteConfig(input: {
     reminderDays: Math.max(1, input.reminderDays || 30),
     recipientEmployeeIds: JSON.stringify(recipientIds),
     ccEmployeeIds: JSON.stringify(ccIds),
-    additionalCcEmails: (input.additionalCcEmails || '').trim(),
+    additionalCcEmails: cleanedAdditionalCc,
     isActive: Boolean(input.isActive),
     updatedAt: new Date(),
     updatedBy: input.updatedBy ?? null,
@@ -448,8 +512,14 @@ export async function sendSiteMinePermitExpiryReminder(
           sql`${employees.email} IS NOT NULL AND ${employees.email} != ''`
         )
       )
-    toEmails = toUsers.map((u) => u.email!.trim().toLowerCase()).filter(Boolean)
+    toEmails = toUsers
+      .map((u) => u.email!.trim().toLowerCase())
+      .filter((e) => Boolean(e) && !isBlockedMinePermitEmail(e))
   }
+
+  toEmails = Array.from(new Set(toEmails.map((e) => e.trim().toLowerCase()))).filter(
+    (e) => Boolean(e) && !isBlockedMinePermitEmail(e)
+  )
 
   if (toEmails.length === 0) {
     return {
@@ -509,18 +579,24 @@ export async function sendSiteMinePermitExpiryReminder(
           sql`${employees.email} IS NOT NULL AND ${employees.email} != ''`
         )
       )
-    ccEmails.push(...ccUsers.map((u) => u.email!.trim().toLowerCase()).filter(Boolean))
+    ccEmails.push(
+      ...ccUsers
+        .map((u) => u.email!.trim().toLowerCase())
+        .filter((e) => Boolean(e) && !isBlockedMinePermitEmail(e))
+    )
   }
 
   if (config.additionalCcEmails && config.additionalCcEmails.trim()) {
     const manualCcs = config.additionalCcEmails
       .split(',')
       .map((e) => e.trim().toLowerCase())
-      .filter((e) => e.includes('@'))
+      .filter((e) => e.includes('@') && !isBlockedMinePermitEmail(e))
     ccEmails.push(...manualCcs)
   }
-  // Deduplicate and remove any that are in To
-  ccEmails = Array.from(new Set(ccEmails)).filter((e) => !toEmails.includes(e))
+  // Deduplicate and remove any that are in To or blocked
+  ccEmails = Array.from(new Set(ccEmails)).filter(
+    (e) => !toEmails.includes(e) && !isBlockedMinePermitEmail(e)
+  )
 
   // Keep the legacy template variable name so existing admin-customized templates
   // receive the new, email-client-friendly employee list without a template migration.
