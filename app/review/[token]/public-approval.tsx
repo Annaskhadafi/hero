@@ -9,12 +9,13 @@ import {
   deleteContractReviewAttachment,
   revertContractReviewStep,
 } from '@/app/actions/contract-review'
+import { getUserSignatureAction } from '@/app/actions/user-signature'
 import { uploadFile } from '@/app/actions/upload'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Download, RotateCcw, Upload, Paperclip, FileText, Image as ImageIcon, ExternalLink, Loader2, Trash2, Eye, AlertCircle } from 'lucide-react'
+import { Download, RotateCcw, Upload, Paperclip, FileText, Image as ImageIcon, ExternalLink, Loader2, Trash2, Eye, AlertCircle, CheckCircle2, PenTool } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   Dialog,
@@ -31,6 +32,11 @@ type PublicApprovalProps = {
   review: any
   allApprovals: any[]
   employee: any
+  registeredSignature?: {
+    signatureDataUrl: string
+    signatureRegisteredAt: string | null
+    employeeName: string
+  } | null
 }
 
 function formatDateTime(value: string | Date | null | undefined) {
@@ -61,7 +67,7 @@ function hasVisibleCanvasInk(canvas: HTMLCanvasElement) {
   return false
 }
 
-export function ContractReviewPublicApproval({ token, approval, review, allApprovals, employee }: PublicApprovalProps) {
+export function ContractReviewPublicApproval({ token, approval, review, allApprovals, employee, registeredSignature }: PublicApprovalProps) {
   const pathname = usePathname()
   const isMobileRoute = pathname.startsWith('/mobile/review/')
   const signatureRef = useRef<SignatureCanvas | null>(null)
@@ -69,12 +75,42 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
   const [error, setError] = useState('')
   const [done, setDone] = useState(approval.status === 'approved')
   const [approvalHistory, setApprovalHistory] = useState(allApprovals)
-  const [previewSignatureDataUrl, setPreviewSignatureDataUrl] = useState(approval.signatureDataUrl || '')
-  const [previewSignedAt, setPreviewSignedAt] = useState<Date | null>(approval.signedAt ? new Date(approval.signedAt) : null)
+
+  // Registered Digital Signature (dari profil user / mobile)
+  const [registeredSig, setRegisteredSig] = useState<any>(registeredSignature || null)
+  const [useRegisteredSig, setUseRegisteredSig] = useState<boolean>(() => Boolean(registeredSignature?.signatureDataUrl))
+
+  const [previewSignatureDataUrl, setPreviewSignatureDataUrl] = useState(
+    approval.signatureDataUrl || (registeredSignature?.signatureDataUrl ?? '')
+  )
+  const [previewSignedAt, setPreviewSignedAt] = useState<Date | null>(
+    approval.signedAt ? new Date(approval.signedAt) : (registeredSignature?.signatureDataUrl ? new Date() : null)
+  )
   const [isPending, startTransition] = useTransition()
   const [attachments, setAttachments] = useState<any[]>(review.attachments || [])
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false)
   const [previewModalAttachment, setPreviewModalAttachment] = useState<any | null>(null)
+
+  // Ambil tanda tangan tersimpan jika belum ada dari token dan user sedang login di browser
+  useEffect(() => {
+    if (!registeredSig?.signatureDataUrl) {
+      getUserSignatureAction().then((res) => {
+        if (res.success && res.signatureDataUrl) {
+          const sigObj = {
+            signatureDataUrl: res.signatureDataUrl,
+            signatureRegisteredAt: res.signatureRegisteredAt || null,
+            employeeName: res.employeeName || approval.approverName,
+          }
+          setRegisteredSig(sigObj)
+          if (!approval.signatureDataUrl) {
+            setUseRegisteredSig(true)
+            setPreviewSignatureDataUrl(res.signatureDataUrl)
+            setPreviewSignedAt(new Date())
+          }
+        }
+      }).catch(() => {})
+    }
+  }, [approval.signatureDataUrl, registeredSig?.signatureDataUrl, approval.approverName])
 
   // PDF scale for mobile — fit A4 (794px wide) into screen width without horizontal scroll
   const pdfContainerRef = useRef<HTMLDivElement>(null)
@@ -195,10 +231,13 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
     .sort((a: any, b: any) => Number(b.stepOrder) - Number(a.stepOrder))[0] || null
 
   function getSignatureDataUrl() {
+    if (useRegisteredSig && registeredSig?.signatureDataUrl) {
+      return registeredSig.signatureDataUrl
+    }
     const signature = signatureRef.current
-    if (!signature) return ''
+    if (!signature) return previewSignatureDataUrl || ''
     const canvas = signature.getCanvas()
-    if (!hasVisibleCanvasInk(canvas) && signature.isEmpty()) return ''
+    if (!hasVisibleCanvasInk(canvas) && signature.isEmpty()) return previewSignatureDataUrl || ''
     try {
       return signature.getTrimmedCanvas().toDataURL('image/png')
     } catch {
@@ -253,6 +292,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
   const previousSteps = approvalHistory
     .filter((step: any) => Number(step.stepOrder) < Number(approval.stepOrder))
     .sort((a: any, b: any) => Number(a.stepOrder) - Number(b.stepOrder))
+  const previousApprovedSteps = previousSteps
 
   const [isRevertOpen, setIsRevertOpen] = useState(false)
   const [revertTargetStep, setRevertTargetStep] = useState<number | undefined>(() => {
@@ -1057,7 +1097,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
             ) : isWaitingForPreviousStep ? (
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-2 text-slate-600">
                 <p className="font-semibold text-xs text-slate-700 flex items-center gap-1.5">
-                  <RotateCcw className="size-3.5 text-amber-600" /> TTD Belum Aktif
+                  <RotateCcw className="size-3.5 text-amber-600" /> TTD belum aktif
                 </p>
                 <p className="text-xs">
                   Dokumen saat ini sedang menunggu tindakan / persetujuan dari step sebelumnya.
@@ -1065,17 +1105,101 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
               </div>
             ) : (
               <div className="space-y-3">
-                <div className="rounded-xl border border-slate-200 bg-white p-2">
-                  <SignatureCanvas ref={signatureRef} onEnd={updateSignaturePreview} canvasProps={{ className: isMobileRoute ? 'h-36 w-full touch-none rounded-lg bg-white' : 'h-44 w-full touch-none rounded-lg bg-white sm:h-40' }} />
-                </div>
+                {/* Opsi TTD Terdaftar dari Profile / Mobile */}
+                {registeredSig?.signatureDataUrl ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Badge className="bg-emerald-100 text-emerald-800 border-0 text-[10px] font-semibold">
+                          TTD Terdaftar
+                        </Badge>
+                        Tanda Tangan Tersimpan
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !useRegisteredSig
+                          setUseRegisteredSig(next)
+                          if (next) {
+                            setPreviewSignatureDataUrl(registeredSig.signatureDataUrl)
+                            setPreviewSignedAt(new Date())
+                          } else {
+                            setPreviewSignatureDataUrl('')
+                            setPreviewSignedAt(null)
+                            signatureRef.current?.clear()
+                          }
+                        }}
+                        className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold underline underline-offset-2 flex items-center gap-1"
+                      >
+                        {useRegisteredSig ? (
+                          <>
+                            <PenTool className="size-3" /> Ganti TTD Manual
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="size-3 text-emerald-600" /> Pakai TTD Terdaftar
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {useRegisteredSig ? (
+                      <div className="rounded-xl border-2 border-emerald-400 bg-emerald-50/50 p-3 space-y-2 shadow-xs">
+                        <div className="flex items-center justify-center p-3 bg-white rounded-lg border border-emerald-200">
+                          <img
+                            src={registeredSig.signatureDataUrl}
+                            alt="TTD Terdaftar"
+                            className="h-20 max-w-full object-contain"
+                          />
+                        </div>
+                        <div className="text-[11px] text-emerald-900 flex items-center justify-between px-1">
+                          <span className="text-emerald-700">
+                            {registeredSig.signatureRegisteredAt ? `Didaftarkan: ${formatDateTime(registeredSig.signatureRegisteredAt)}` : 'Tersimpan di Profil'}
+                          </span>
+                          <span className="font-bold">{registeredSig.employeeName || approval.approverName}</span>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {/* Canvas Tanda Tangan Manual */}
+                {(!registeredSig?.signatureDataUrl || !useRegisteredSig) && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs text-slate-600">
+                      <span className="font-semibold">Gambar Tanda Tangan:</span>
+                      <span className="text-[10px] text-slate-400">Gunakan jari atau stylus</span>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-white p-2">
+                      <SignatureCanvas
+                        ref={signatureRef}
+                        onEnd={updateSignaturePreview}
+                        canvasProps={{
+                          className: isMobileRoute
+                            ? 'h-36 w-full touch-none rounded-lg bg-white'
+                            : 'h-44 w-full touch-none rounded-lg bg-white sm:h-40',
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+
                 <Textarea value={remarks} onChange={(event) => setRemarks(event.target.value)} placeholder="Catatan opsional..." rows={2} />
                 {error ? <p className="text-sm font-medium text-red-600">{error}</p> : null}
                 <div className="flex flex-col gap-2 sm:flex-row">
-                  <Button type="button" variant="outline" size="sm" onClick={() => {
-                    signatureRef.current?.clear()
-                    setPreviewSignatureDataUrl('')
-                    setPreviewSignedAt(null)
-                  }}>Bersihkan</Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      signatureRef.current?.clear()
+                      setPreviewSignatureDataUrl('')
+                      setPreviewSignedAt(null)
+                      setUseRegisteredSig(false)
+                    }}
+                  >
+                    Bersihkan
+                  </Button>
                   <Button type="button" size="sm" className="flex-1" onClick={handleSubmit} disabled={isPending}>{isPending ? 'Menyimpan...' : 'Setuju & Tanda Tangani'}</Button>
                 </div>
                 {previousSteps.length > 0 && (
@@ -1228,7 +1352,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
               <TabsTrigger value="letter">Preview Surat</TabsTrigger>
               <TabsTrigger value="productivity">Produktivitas</TabsTrigger>
             </TabsList>
-            <TabsContent value="letter" className="m-0 pb-2">
+            <TabsContent value="letter" className="m-0 overflow-x-auto pb-2">
               <div ref={pdfContainerRef} className={isMobileRoute ? 'w-full overflow-hidden' : 'overflow-x-auto'}>
                 <div
                   className="flex flex-col gap-6"

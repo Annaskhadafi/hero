@@ -1940,7 +1940,72 @@ export async function getContractReviewApprovalByToken(token: string) {
       .where(eq(hcContractReviewApprovals.reviewId, approval.reviewId))
       .orderBy(asc(hcContractReviewApprovals.stepOrder))
 
-    return { success: true, data: { approval, review: reviewResult.data, allApprovals } }
+    // Check if the approver has a registered digital signature in employees
+    let registeredSignature: {
+      signatureDataUrl: string
+      signatureRegisteredAt: string | null
+      employeeName: string
+    } | null = null
+
+    let targetEmpId = approval.approverEmployeeId
+    if (!targetEmpId && approval.approverRole === 'employee' && reviewResult.data?.employeeId) {
+      targetEmpId = reviewResult.data.employeeId
+    }
+
+    let empRecord: any = null
+    if (targetEmpId) {
+      const [found] = await db
+        .select({
+          id: employees.id,
+          name: employees.name,
+          signatureDataUrl: employees.signatureDataUrl,
+          signatureRegisteredAt: employees.signatureRegisteredAt,
+        })
+        .from(employees)
+        .where(eq(employees.id, targetEmpId))
+        .limit(1)
+      empRecord = found
+    }
+
+    if (!empRecord && approval.approverEmail?.trim()) {
+      const targetEmail = approval.approverEmail.trim().toLowerCase()
+      const [found] = await db
+        .select({
+          id: employees.id,
+          name: employees.name,
+          signatureDataUrl: employees.signatureDataUrl,
+          signatureRegisteredAt: employees.signatureRegisteredAt,
+        })
+        .from(employees)
+        .where(sql`LOWER(TRIM(${employees.email})) = ${targetEmail}`)
+        .limit(1)
+      empRecord = found
+    }
+
+    if (!empRecord && approval.approverName?.trim()) {
+      const targetName = approval.approverName.trim().toLowerCase()
+      const [found] = await db
+        .select({
+          id: employees.id,
+          name: employees.name,
+          signatureDataUrl: employees.signatureDataUrl,
+          signatureRegisteredAt: employees.signatureRegisteredAt,
+        })
+        .from(employees)
+        .where(sql`LOWER(TRIM(${employees.name})) = ${targetName}`)
+        .limit(1)
+      empRecord = found
+    }
+
+    if (empRecord?.signatureDataUrl) {
+      registeredSignature = {
+        signatureDataUrl: empRecord.signatureDataUrl,
+        signatureRegisteredAt: empRecord.signatureRegisteredAt ? new Date(empRecord.signatureRegisteredAt).toISOString() : null,
+        employeeName: empRecord.name,
+      }
+    }
+
+    return { success: true, data: { approval, review: reviewResult.data, allApprovals, registeredSignature } }
   } catch (error: any) {
     console.error('Error fetching contract review approval:', error)
     return { success: false, error: error.message }

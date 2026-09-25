@@ -1778,7 +1778,9 @@ async function getContractReviewInboxItems(
       return {
         id: `contract-review-${row.approvalId}`,
         approvalId: row.approvalId,
+        approvalToken: row.approvalToken,
         reviewId: row.reviewId,
+        stepOrder: row.stepOrder,
         title: `Contract Review - ${row.employeeName || 'Employee'}`,
         employeeName: row.employeeName || 'Employee',
         reviewType: row.reviewType || 'contract',

@@ -57,5 +57,14 @@ export default async function ContractReviewPublicPage({ params }: { params: Pro
     }
   }
 
-  return <ContractReviewPublicApproval token={token} approval={data.approval} review={review} allApprovals={data.allApprovals || []} employee={employee} />
+  return (
+    <ContractReviewPublicApproval
+      token={token}
+      approval={data.approval}
+      review={review}
+      allApprovals={data.allApprovals || []}
+      employee={employee}
+      registeredSignature={data.registeredSignature || null}
+    />
+  )
 }

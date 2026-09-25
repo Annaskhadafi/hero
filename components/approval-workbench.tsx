@@ -97,6 +97,10 @@ import {
   revertFiveRReportAction,
   rejectFiveRReportAction,
 } from '@/app/dashboard/quality/5r/actions'
+import {
+  approveContractReviewStep,
+  revertContractReviewStep,
+} from '@/app/actions/contract-review'
 import { FormWoApprovalDialog } from '@/components/admin/form-wo-approval-dialog'
 import { FormWoDocumentView } from '@/components/form-wo-document-preview-dialog'
 import { RfrApprovalDialog } from '@/components/admin/rfr-approval-dialog'
@@ -1144,6 +1148,38 @@ export function InboxTab({
         )
         if (!res.success) throw new Error(res.error || 'Gagal memproses permohonan dokumen SOP/WIN')
         toast.success(`Permintaan dokumen #${req.documentNumber} berhasil diproses (${action}).`)
+      } else if (currentBatchDoc.category === 'CONTRACT_REVIEW') {
+        const token =
+          (currentBatchDoc as any).rawContractReview?.approvalToken ||
+          (currentBatchDoc as any).approvalToken ||
+          (currentBatchDoc.url ? currentBatchDoc.url.split('/').pop()?.split('?')[0] : '')
+
+        if (!token) throw new Error('Token approval Contract Review tidak ditemukan.')
+
+        if (action === 'approve') {
+          const res = await approveContractReviewStep(token, {
+            signatureDataUrl: signatureDataUrl || '',
+            remarks: currentRemark || 'Disetujui via Inbox Approval',
+          })
+          if (!res.success) throw new Error(res.error || 'Gagal menyetujui Contract Review')
+          toast.success(`Contract Review #${currentBatchDoc.documentNumber} berhasil disetujui.`)
+        } else if (action === 'revert') {
+          const rawStep = (currentBatchDoc as any).rawContractReview?.stepOrder
+          const targetStep = rawStep && Number(rawStep) > 1 ? Number(rawStep) - 1 : 1
+          const res = await revertContractReviewStep(token, {
+            targetStepOrder: targetStep,
+            remarks: currentRemark || 'Dikembalikan via Inbox Approval',
+          })
+          if (!res.success) throw new Error(res.error || 'Gagal mengembalikan Contract Review')
+          toast.info(`Contract Review #${currentBatchDoc.documentNumber} dikembalikan untuk revisi.`)
+        } else {
+          const res = await revertContractReviewStep(token, {
+            targetStepOrder: 1,
+            remarks: currentRemark ? `Ditolak: ${currentRemark}` : 'Ditolak via Inbox Approval',
+          })
+          if (!res.success) throw new Error(res.error || 'Gagal menolak Contract Review')
+          toast.error(`Contract Review #${currentBatchDoc.documentNumber} ditolak.`)
+        }
       } else if (
         currentBatchDoc.category === 'QUALITY_5R' ||
         Boolean((currentBatchDoc as any).rawFiveR) ||
@@ -1303,6 +1339,9 @@ export function InboxTab({
             it.category === 'SUMMARY') &&
           it.rawGeneralGroup
       )
+      const contractReviewItems = itemsToProcess.filter(
+        (it) => it.category === 'CONTRACT_REVIEW'
+      )
 
       // Daily Activity Batch
       if (dailyItems.length > 0) {
@@ -1373,6 +1412,37 @@ export function InboxTab({
         })
         if (res.success) successCount++
         else failCount++
+      }
+
+      // Contract Review Items
+      for (const item of contractReviewItems) {
+        const token =
+          (item as any).rawContractReview?.approvalToken ||
+          (item as any).approvalToken ||
+          (item.url ? item.url.split('/').pop()?.split('?')[0] : '')
+
+        if (!token) {
+          failCount++
+          continue
+        }
+
+        if (action === 'approve') {
+          const res = await approveContractReviewStep(token, {
+            signatureDataUrl: signatureDataUrl || '',
+            remarks: reason || 'Approved via Inbox Batch',
+          })
+          if (res.success) successCount++
+          else failCount++
+        } else {
+          const rawStep = (item as any).rawContractReview?.stepOrder
+          const targetStep = rawStep && Number(rawStep) > 1 ? Number(rawStep) - 1 : 1
+          const res = await revertContractReviewStep(token, {
+            targetStepOrder: targetStep,
+            remarks: reason || (action === 'revert' ? 'Dikembalikan via Inbox Batch' : 'Ditolak via Inbox Batch'),
+          })
+          if (res.success) successCount++
+          else failCount++
+        }
       }
 
       // Form WO Items
@@ -2248,7 +2318,11 @@ export function InboxTab({
                 )
               )
 
-            const isCleanCustomDoc = isLandscapeDoc || isFiveRDoc || isApdDoc
+            const isContractReviewDoc =
+              (currentBatchDoc?.category as any) === 'CONTRACT_REVIEW' ||
+              Boolean((currentBatchDoc as any)?.rawContractReview)
+
+            const isCleanCustomDoc = isLandscapeDoc || isFiveRDoc || isApdDoc || isContractReviewDoc
             return (
               <DialogContent
                 showCloseButton={false}
@@ -2256,7 +2330,7 @@ export function InboxTab({
                   viewMode === 'mobile'
                     ? "max-w-[430px] w-full sm:max-w-[430px] mx-auto h-[92dvh] sm:h-[86dvh] max-h-[92dvh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-t-2xl sm:rounded-2xl z-50"
                     : "max-h-[94vh] h-[94vh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-2xl transition-all",
-                  viewMode !== 'mobile' && (isLandscapeDoc ? "max-w-[98vw] 2xl:max-w-[1600px]" : "max-w-[96vw] xl:max-w-6xl 2xl:max-w-7xl")
+                  viewMode !== 'mobile' && ((isLandscapeDoc || isContractReviewDoc) ? "max-w-[98vw] 2xl:max-w-[1600px]" : "max-w-[96vw] xl:max-w-6xl 2xl:max-w-7xl")
                 )}
               >
                 {/* Top Viewer Toolbar */}
@@ -2405,6 +2479,45 @@ export function InboxTab({
                         : (viewMode === 'mobile' ? 0.48 : 0.80)
                       const effectiveScale = baseScale * viewerZoom
                       const originalHeightMm = isLandscapeDoc ? 210 : 297
+                      if (isContractReviewDoc) {
+                        const crReviewId = (currentBatchDoc as any)?.rawContractReview?.reviewId || (currentBatchDoc as any)?.reviewId
+                        const crToken = (currentBatchDoc as any)?.rawContractReview?.approvalToken || (currentBatchDoc as any)?.approvalToken || (currentBatchDoc.url ? currentBatchDoc.url.split('/').pop()?.split('?')[0] : '')
+                        const iframeUrl = crReviewId
+                          ? `/dashboard/hc/contract-review/${crReviewId}?mode=print&embedded=1`
+                          : (crToken ? `/review/${crToken}?embedded=1` : null)
+
+                        return (
+                          <div className="w-full flex-1 flex flex-col bg-slate-100 rounded-2xl overflow-hidden border border-slate-300 shadow-inner min-h-[500px] h-[75vh]">
+                            <div className="bg-slate-200/90 px-3 py-2 border-b border-slate-300 flex items-center justify-between text-xs text-slate-700 shrink-0">
+                              <span className="font-bold flex items-center gap-1.5 text-indigo-900">
+                                <FileText className="size-4 text-indigo-700" /> Dokumen Resmi Contract Review
+                              </span>
+                              {iframeUrl && (
+                                <a
+                                  href={iframeUrl.replace('?mode=print&embedded=1', '').replace('?embedded=1', '')}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-indigo-700 hover:text-indigo-900 font-bold flex items-center gap-1 hover:underline bg-white px-2.5 py-1 rounded-md border border-slate-300 shadow-xs"
+                                >
+                                  Buka Tab Baru ↗
+                                </a>
+                              )}
+                            </div>
+                            {iframeUrl ? (
+                              <iframe
+                                src={iframeUrl}
+                                className="w-full flex-1 border-0 bg-white"
+                                title={`Contract Review ${currentBatchDoc.documentNumber}`}
+                              />
+                            ) : (
+                              <div className="p-12 text-center text-slate-500">
+                                Dokumen Contract Review tidak dapat dimuat.
+                              </div>
+                            )}
+                          </div>
+                        )
+                      }
+
                       const marginOffsetMm = -Math.round(originalHeightMm * (1 - effectiveScale))
 
                       return (

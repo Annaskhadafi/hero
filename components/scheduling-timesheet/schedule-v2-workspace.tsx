@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, useTransition, Fragment } from 'react'
-import { CalendarDays, CheckCircle2, Eraser, Pencil, Plus, Save, Trash2, Forklift, Car, Printer, Upload } from 'lucide-react'
+import { CalendarDays, CheckCircle2, Eraser, Pencil, Plus, Save, Trash2, Forklift, Car, Printer, Upload, Clock, Loader2, AlertTriangle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
@@ -287,23 +287,45 @@ function formatPeriod(period: string) {
   )
 }
 
-function reconcileRows(plan: ScheduleV2Plan, employees: Employee[]) {
+function reconcileRows(plan: ScheduleV2Plan, siteEmployees: Employee[]) {
   const current = new Map(plan.draftSchedule.map((row) => [row.employeeId, row]))
   const dayCount = getScheduleV2DayCount(plan.period)
-  return employees.map((employee) => {
-    const existing = current.get(employee.id)
+  const visited = new Set<number>()
+
+  const rows: ScheduleV2Row[] = (plan.draftSchedule || []).map((row) => {
+    visited.add(row.employeeId)
     return {
-      employeeId: employee.id,
+      employeeId: row.employeeId,
       schedule: Array.from(
         { length: dayCount },
-        (_, index) => existing?.schedule[index] ?? ''
+        (_, index) => row.schedule[index] ?? ''
       ) as ScheduleV2Code[],
-      section: existing?.section,
-      positionOnSite: existing?.positionOnSite,
-      kimperLv: existing?.kimperLv,
-      kimperTh: existing?.kimperTh,
+      section: row.section,
+      positionOnSite: row.positionOnSite,
+      kimperLv: row.kimperLv,
+      kimperTh: row.kimperTh,
     }
   })
+
+  for (const employee of siteEmployees) {
+    if (!visited.has(employee.id)) {
+      const existing = current.get(employee.id)
+      const section = normalizeRosterSection(employee.section || employee.role)
+      rows.push({
+        employeeId: employee.id,
+        schedule: Array.from(
+          { length: dayCount },
+          (_, index) => existing?.schedule[index] ?? ''
+        ) as ScheduleV2Code[],
+        section: existing?.section || section,
+        positionOnSite: existing?.positionOnSite || defaultPositionOnSite(section),
+        kimperLv: existing?.kimperLv ?? Boolean(employee.kimperLv),
+        kimperTh: existing?.kimperTh ?? Boolean(employee.kimperTh),
+      })
+    }
+  }
+
+  return rows
 }
 
 function employeesForSite(employees: Employee[], siteId: number) {
@@ -352,6 +374,12 @@ export function ScheduleV2Workspace({
   const dragging = useRef(false)
   const visitedCells = useRef(new Set<string>())
   const activePaintTool = useRef<ScheduleV2Code | null>(null)
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved' | 'error'>('saved')
+  const [lastSavedTime, setLastSavedTime] = useState<string | null>(null)
+  const isDirtyRef = useRef(false)
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const rowsRef = useRef<ScheduleV2Row[]>(rows)
+  rowsRef.current = rows
 
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<number | null>(null)
   const [profileSection, setProfileSection] = useState('Crew Office')
@@ -655,6 +683,12 @@ export function ScheduleV2Workspace({
     const stopDragging = () => {
       dragging.current = false
       visitedCells.current.clear()
+      if (isDirtyRef.current) {
+        if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+        autoSaveTimerRef.current = setTimeout(() => {
+          performSave(rowsRef.current)
+        }, 300)
+      }
     }
     window.addEventListener('pointerup', stopDragging)
     window.addEventListener('pointercancel', stopDragging)
@@ -673,6 +707,12 @@ export function ScheduleV2Workspace({
   }, [])
 
   useEffect(() => {
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+    }
+  }, [])
+
+  useEffect(() => {
     if (!editorPlan) return
     let active = true
     getIndonesiaHolidaysAction({ period: editorPlan.period })
@@ -683,11 +723,67 @@ export function ScheduleV2Workspace({
     }
   }, [editorPlan])
 
+  const performSave = async (targetRows: ScheduleV2Row[], isManual = false) => {
+    if (!editorPlan) return
+    setSaveStatus('saving')
+    try {
+      const result = await saveSchedulingTimesheetPlanV2DraftAction({
+        siteId: editorPlan.siteId,
+        period: editorPlan.period,
+        rows: targetRows,
+      })
+      isDirtyRef.current = false
+      setSaveStatus('saved')
+      const timeStr = new Date().toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+      setLastSavedTime(timeStr)
+      updateLocalPlan({ draftSchedule: targetRows, updatedAt: result.updatedAt })
+      announceFieldBreakSync(editorPlan.siteId, editorPlan.period)
+      if (isManual) {
+        toast.success('Draft Schedule V2 tersimpan di database')
+        router.refresh()
+      }
+    } catch (error) {
+      setSaveStatus('error')
+      if (isManual) {
+        toast.error('Gagal menyimpan draft ke database', {
+          description: error instanceof Error ? error.message : 'Unknown error',
+        })
+      }
+    }
+  }
+
+  const triggerAutoSave = (nextRows: ScheduleV2Row[], delayMs = 1200) => {
+    if (!editorPlan || !canEdit) return
+    isDirtyRef.current = true
+    setSaveStatus('unsaved')
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current)
+    }
+    autoSaveTimerRef.current = setTimeout(() => {
+      performSave(nextRows)
+    }, delayMs)
+  }
+
   function openEditor(plan: ScheduleV2Plan) {
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+    isDirtyRef.current = false
+    setSaveStatus('saved')
     const siteEmployees = employeesForSite(employees, plan.siteId)
     setEditorPlan(plan)
     setRows(reconcileRows(plan, siteEmployees))
     setSelectedTool(null)
+  }
+
+  function handleCloseEditor() {
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+    if (isDirtyRef.current && editorPlan) {
+      performSave(rowsRef.current)
+    }
+    setEditorPlan(null)
   }
 
   function resetScheduleImport() {
@@ -761,7 +857,9 @@ export function ScheduleV2Workspace({
 
       const key = `${employeeId}:${day}`
       visitedCells.current.add(key)
-      return applyScheduleV2Code(current, employeeId, day, targetTool, selectedTool === 'OFF')
+      const updated = applyScheduleV2Code(current, employeeId, day, targetTool, selectedTool === 'OFF')
+      triggerAutoSave(updated, 1500)
+      return updated
     })
   }
 
@@ -771,7 +869,11 @@ export function ScheduleV2Workspace({
     const key = `${employeeId}:${day}`
     if (visitedCells.current.has(key)) return
     visitedCells.current.add(key)
-    setRows((current) => applyScheduleV2Code(current, employeeId, day, targetTool, selectedTool === 'OFF'))
+    setRows((current) => {
+      const updated = applyScheduleV2Code(current, employeeId, day, targetTool, selectedTool === 'OFF')
+      triggerAutoSave(updated, 1500)
+      return updated
+    })
   }
 
   function handleCellClick(employeeId: number, day: number) {
@@ -780,7 +882,9 @@ export function ScheduleV2Workspace({
       const row = current.find((item) => item.employeeId === employeeId)
       const code = row?.schedule[day - 1] ?? ''
       const nextCode = cycleScheduleV2Code(code)
-      return applyScheduleV2Code(current, employeeId, day, nextCode, false)
+      const updated = applyScheduleV2Code(current, employeeId, day, nextCode, false)
+      triggerAutoSave(updated, 1200)
+      return updated
     })
   }
 
@@ -789,25 +893,35 @@ export function ScheduleV2Workspace({
     if (!numericSiteId || !period) return
     startTransition(async () => {
       try {
+        const siteEmployees = employeesForSite(employees, numericSiteId)
+        const now = new Date().toISOString()
+        const siteConfig = configs?.find((c) => c.siteId === numericSiteId)
+        const baseRows = applyFieldBreakPlansToSchedule(
+          createPrefilledScheduleV2(siteEmployees, period, siteConfig?.scheduleType),
+          fieldBreakPlans.filter((plan) => plan.siteId === numericSiteId),
+          period
+        )
+        const draftSchedule = scheduleImport
+          ? mergeScheduleV2Import(baseRows, scheduleImport.rows)
+          : baseRows
+
         const result = await createSchedulingTimesheetPlanV2Action({
           siteId: numericSiteId,
           period,
+          rows: draftSchedule,
         })
         const existing = plans.find(
           (plan) => plan.siteId === numericSiteId && plan.period === period
         )
         if (existing) {
-          const siteEmployees = employeesForSite(employees, numericSiteId)
           const nextRows = scheduleImport
             ? mergeScheduleV2Import(reconcileRows(existing, siteEmployees), scheduleImport.rows)
             : reconcileRows(existing, siteEmployees)
-          const saved = scheduleImport
-            ? await saveSchedulingTimesheetPlanV2DraftAction({
-                siteId: numericSiteId,
-                period,
-                rows: nextRows,
-              })
-            : null
+          const saved = await saveSchedulingTimesheetPlanV2DraftAction({
+            siteId: numericSiteId,
+            period,
+            rows: nextRows,
+          })
           const nextPlan = {
             ...existing,
             draftSchedule: nextRows,
@@ -820,35 +934,17 @@ export function ScheduleV2Workspace({
           if (saved) announceFieldBreakSync(numericSiteId, period)
           toast.info(
             scheduleImport
-              ? 'Schedule sudah ada. Data Excel diterapkan ke draft.'
+              ? 'Schedule sudah ada. Data Excel diterapkan ke draft dan tersimpan di database.'
               : 'Schedule site dan bulan ini sudah ada. Draft dibuka.'
           )
           return
         }
-        if (result.existing) {
-          setCreateOpen(false)
-          toast.info('Schedule site dan bulan ini sudah ada. Data dimuat ulang.')
-          router.refresh()
-          return
-        }
-        const siteEmployees = employeesForSite(employees, numericSiteId)
-        const now = new Date().toISOString()
-        const siteConfig = configs?.find((c) => c.siteId === numericSiteId)
-        const baseRows = applyFieldBreakPlansToSchedule(
-          createPrefilledScheduleV2(siteEmployees, period, siteConfig?.scheduleType),
-          fieldBreakPlans.filter((plan) => plan.siteId === numericSiteId),
-          period
-        )
-        const draftSchedule = scheduleImport
-          ? mergeScheduleV2Import(baseRows, scheduleImport.rows)
-          : baseRows
-        const saved = scheduleImport
-          ? await saveSchedulingTimesheetPlanV2DraftAction({
-              siteId: numericSiteId,
-              period,
-              rows: draftSchedule,
-            })
-          : null
+
+        const saved = await saveSchedulingTimesheetPlanV2DraftAction({
+          siteId: numericSiteId,
+          period,
+          rows: draftSchedule,
+        })
 
         const plan: ScheduleV2Plan = {
           id: result.id ?? Date.now(),
@@ -868,6 +964,7 @@ export function ScheduleV2Workspace({
         resetScheduleImport()
         router.refresh()
         if (saved) announceFieldBreakSync(numericSiteId, period)
+        toast.success('Schedule berhasil dibuat dan tersimpan di database.')
       } catch (error) {
         toast.error('Gagal membuat Schedule V2', {
           description: error instanceof Error ? error.message : 'Unknown error',
@@ -885,22 +982,9 @@ export function ScheduleV2Workspace({
 
   function saveDraft() {
     if (!editorPlan) return
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
     startTransition(async () => {
-      try {
-        const result = await saveSchedulingTimesheetPlanV2DraftAction({
-          siteId: editorPlan.siteId,
-          period: editorPlan.period,
-          rows,
-        })
-        updateLocalPlan({ draftSchedule: rows, updatedAt: result.updatedAt })
-        toast.success('Draft Schedule V2 tersimpan')
-        router.refresh()
-        announceFieldBreakSync(editorPlan.siteId, editorPlan.period)
-      } catch (error) {
-        toast.error('Gagal menyimpan draft', {
-          description: error instanceof Error ? error.message : 'Unknown error',
-        })
-      }
+      await performSave(rows, true)
     })
   }
 
@@ -1205,7 +1289,7 @@ export function ScheduleV2Workspace({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(editorPlan)} onOpenChange={(open) => !open && setEditorPlan(null)}>
+      <Dialog open={Boolean(editorPlan)} onOpenChange={(open) => !open && handleCloseEditor()}>
         <DialogContent className="flex h-[94vh] max-h-[94vh] w-[98vw] max-w-[98vw] flex-col overflow-hidden p-0">
           {editorPlan ? (
             <>
@@ -1218,9 +1302,29 @@ export function ScheduleV2Workspace({
                       {progress.filled}/{progress.total} cell terisi
                     </DialogDescription>
                   </div>
-                  <Badge variant={editorPlan.status === 'active' ? 'default' : 'secondary'}>
-                    {editorPlan.status === 'active' ? 'Aktif' : 'Draft'}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    {saveStatus === 'saving' ? (
+                      <Badge variant="outline" className="border-sky-300 bg-sky-50 text-sky-700 animate-pulse flex items-center gap-1.5 py-0.5">
+                        <Loader2 className="size-3 animate-spin" /> Menyimpan ke database...
+                      </Badge>
+                    ) : saveStatus === 'unsaved' ? (
+                      <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-700 flex items-center gap-1.5 py-0.5">
+                        <Clock className="size-3" /> Menyimpan perubahan...
+                      </Badge>
+                    ) : saveStatus === 'error' ? (
+                      <Badge variant="outline" className="border-rose-300 bg-rose-50 text-rose-700 flex items-center gap-1.5 py-0.5">
+                        <AlertTriangle className="size-3" /> Gagal simpan DB
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-700 flex items-center gap-1.5 py-0.5">
+                        <CheckCircle2 className="size-3 text-emerald-600" />
+                        Tersimpan di database{lastSavedTime ? ` (${lastSavedTime})` : ''}
+                      </Badge>
+                    )}
+                    <Badge variant={editorPlan.status === 'active' ? 'default' : 'secondary'}>
+                      {editorPlan.status === 'active' ? 'Aktif' : 'Draft'}
+                    </Badge>
+                  </div>
                 </div>
               </DialogHeader>
               <div
@@ -1594,15 +1698,20 @@ export function ScheduleV2Workspace({
                   >
                     <Plus className="size-4" /> Tambah User
                   </Button>
-                  <Button variant="outline" onClick={() => setEditorPlan(null)}>
+                  <Button variant="outline" onClick={handleCloseEditor}>
                     Tutup
                   </Button>
                   <Button variant="outline" onClick={exportSchedulePdf}>
                     <Printer className="size-4" /> Export PDF
                   </Button>
                   {canEdit ? (
-                    <Button variant="outline" disabled={pending} onClick={saveDraft}>
-                      <Save className="size-4" /> {pending ? 'Menyimpan...' : 'Save Draft'}
+                    <Button
+                      variant="outline"
+                      disabled={pending || saveStatus === 'saving'}
+                      onClick={saveDraft}
+                    >
+                      <Save className="size-4" />{' '}
+                      {pending || saveStatus === 'saving' ? 'Menyimpan...' : 'Save Draft'}
                     </Button>
                   ) : null}
                   {canEdit ? (

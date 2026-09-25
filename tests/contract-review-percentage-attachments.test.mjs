@@ -73,3 +73,32 @@ test('public approval and action support selectable revert target to any previou
   assert.ok(publicContent.includes('revertNoteFromLaterStep'), 'must display revert reason from later step')
   assert.ok(publicContent.includes('pdfScale'), 'must include pdfScale hook for mobile fit')
 })
+
+test('registered signature is provided to public approval and can be toggled without re-signing', () => {
+  const actionsPath = path.resolve('app/actions/contract-review.ts')
+  const actionsContent = fs.readFileSync(actionsPath, 'utf8')
+  assert.ok(actionsContent.includes('registeredSignature'), 'getContractReviewApprovalByToken must query and return registeredSignature')
+  assert.ok(actionsContent.includes('signatureDataUrl: empRecord.signatureDataUrl'), 'must map signatureDataUrl from employee')
+
+  const publicPath = path.resolve('app/review/[token]/public-approval.tsx')
+  const publicContent = fs.readFileSync(publicPath, 'utf8')
+  assert.ok(publicContent.includes('useRegisteredSig'), 'must have state to toggle between registered signature and manual canvas')
+  assert.ok(publicContent.includes('getUserSignatureAction'), 'must import and support fetching user signature')
+  assert.ok(publicContent.includes('Pakai TTD Terdaftar'), 'must render registered signature switch')
+})
+
+test('approval workbench supports executing single and batch contract review approvals with official iframe preview', () => {
+  const workbenchPath = path.resolve('components/approval-workbench.tsx')
+  const content = fs.readFileSync(workbenchPath, 'utf8')
+
+  // Single & Batch execution
+  assert.ok(content.includes("currentBatchDoc.category === 'CONTRACT_REVIEW'"), 'must handle CONTRACT_REVIEW in handleExecuteApprovalAction')
+  assert.ok(content.includes('approveContractReviewStep(token'), 'must call approveContractReviewStep in approval handler')
+  assert.ok(content.includes('revertContractReviewStep(token'), 'must call revertContractReviewStep in revert handler')
+  assert.ok(content.includes("contractReviewItems = itemsToProcess.filter"), 'must filter contract review items in handleExecuteBatchAllAction')
+
+  // Official document preview
+  assert.ok(content.includes('isContractReviewDoc'), 'must detect isContractReviewDoc')
+  assert.ok(content.includes('Dokumen Resmi Contract Review'), 'must render official contract review document banner')
+  assert.ok(content.includes('mode=print&embedded=1'), 'must load official print embedded iframe URL')
+})

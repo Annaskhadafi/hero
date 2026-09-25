@@ -595,6 +595,7 @@ const scheduleV2RowSchema = z.object({
 const scheduleV2KeySchema = z.object({
   siteId: z.number().int().positive(),
   period: z.string().regex(/^\d{4}-\d{2}$/),
+  rows: z.array(scheduleV2RowSchema).optional(),
 })
 const saveScheduleV2Schema = scheduleV2KeySchema.extend({
   rows: z.array(scheduleV2RowSchema),
@@ -618,6 +619,17 @@ async function getActiveScheduleEmployees(siteId: number) {
 async function validateScheduleV2Rows(siteId: number, period: string, rows: ScheduleV2Row[]) {
   const activeEmployees = await getActiveScheduleEmployees(siteId)
   const allowedIds = new Set(activeEmployees.map((e) => e.id))
+  const extraIds = rows.map((r) => r.employeeId).filter((id) => !allowedIds.has(id))
+  if (extraIds.length > 0) {
+    const validExtra = await db
+      .select({ id: employees.id })
+      .from(employees)
+      .where(inArray(employees.id, extraIds))
+    for (const emp of validExtra) {
+      allowedIds.add(emp.id)
+    }
+  }
+
   const dayCount = getScheduleV2DayCount(period)
   if (new Set(rows.map((row) => row.employeeId)).size !== rows.length) {
     throw new Error('Duplicate employee pada schedule V2.')
@@ -631,27 +643,58 @@ async function validateScheduleV2Rows(siteId: number, period: string, rows: Sche
 
 async function normalizeScheduleV2DraftRows(siteId: number, period: string, rows: ScheduleV2Row[]) {
   const activeEmployees = await getActiveScheduleEmployees(siteId)
-  const allowedIds = new Set(activeEmployees.map((employee) => employee.id))
-  if (new Set(rows.map((row) => row.employeeId)).size !== rows.length) {
-    throw new Error('Duplicate employee pada schedule V2.')
-  }
+  const activeIds = new Set(activeEmployees.map((employee) => employee.id))
+
+  const rowByEmployee = new Map<number, ScheduleV2Row>()
   for (const row of rows) {
-    if (!allowedIds.has(row.employeeId)) throw new Error('Employee bukan anggota aktif site ini.')
+    rowByEmployee.set(row.employeeId, row)
   }
 
-  const rowByEmployee = new Map(rows.map((row) => [row.employeeId, row]))
+  const extraIds = Array.from(rowByEmployee.keys()).filter((id) => !activeIds.has(id))
+  let extraEmployees: { id: number; section: string | null; role: string | null }[] = []
+  if (extraIds.length > 0) {
+    extraEmployees = await db
+      .select({ id: employees.id, section: employees.section, role: employees.role })
+      .from(employees)
+      .where(inArray(employees.id, extraIds))
+  }
+  const validEmployeeIds = new Set([
+    ...activeIds,
+    ...extraEmployees.map((e) => e.id),
+  ])
+
   const dayCount = getScheduleV2DayCount(period)
-  return activeEmployees.map((employee) => {
-    const existing = rowByEmployee.get(employee.id)
-    return {
-      employeeId: employee.id,
+  const result: ScheduleV2Row[] = []
+  const includedIds = new Set<number>()
+
+  for (const [employeeId, existing] of rowByEmployee.entries()) {
+    if (!validEmployeeIds.has(employeeId)) continue
+    includedIds.add(employeeId)
+    result.push({
+      employeeId,
       schedule: Array.from({ length: dayCount }, (_, index) => existing?.schedule[index] ?? ''),
       section: existing?.section,
       positionOnSite: existing?.positionOnSite,
       kimperLv: existing?.kimperLv,
       kimperTh: existing?.kimperTh,
+    })
+  }
+
+  for (const employee of activeEmployees) {
+    if (!includedIds.has(employee.id)) {
+      const existing = rowByEmployee.get(employee.id)
+      result.push({
+        employeeId: employee.id,
+        schedule: Array.from({ length: dayCount }, (_, index) => existing?.schedule[index] ?? ''),
+        section: existing?.section,
+        positionOnSite: existing?.positionOnSite,
+        kimperLv: existing?.kimperLv,
+        kimperTh: existing?.kimperTh,
+      })
     }
-  })
+  }
+
+  return result
 }
 
 async function syncScheduleV2EmployeeSiteAcrossPlans(
@@ -888,17 +931,28 @@ export async function createSchedulingTimesheetPlanV2Action(
   if (!site) throw new Error('Site tidak ditemukan atau tidak aktif.')
 
   const holidays = await getIndonesiaHolidaysAction({ period: payload.period })
+  const initialSchedule =
+    payload.rows && payload.rows.length > 0
+      ? await normalizeScheduleV2DraftRows(payload.siteId, payload.period, payload.rows)
+      : createEmptyScheduleV2(activeEmployees, payload.period, holidays)
 
   const [created] = await db
     .insert(timesheetSchedulingPlansV2)
     .values({
       siteId: payload.siteId,
       period: payload.period,
-      draftSchedule: createEmptyScheduleV2(activeEmployees, payload.period, holidays),
+      draftSchedule: initialSchedule,
       createdByUserId: actorUserId,
       updatedByUserId: actorUserId,
     })
-    .onConflictDoNothing()
+    .onConflictDoUpdate({
+      target: [timesheetSchedulingPlansV2.siteId, timesheetSchedulingPlansV2.period],
+      set: {
+        ...(payload.rows && payload.rows.length > 0
+          ? { draftSchedule: initialSchedule, updatedByUserId: actorUserId, updatedAt: new Date() }
+          : {}),
+      },
+    })
     .returning({ id: timesheetSchedulingPlansV2.id })
   const existing = created
     ? null
@@ -939,14 +993,25 @@ export async function saveSchedulingTimesheetPlanV2DraftAction(
   const now = new Date()
   const updated = await db.transaction(async (tx) => {
     const [updatedPlan] = await tx
-      .update(timesheetSchedulingPlansV2)
-      .set({ draftSchedule: draftRows, updatedByUserId: actorUserId, updatedAt: now })
-      .where(
-        and(
-          eq(timesheetSchedulingPlansV2.siteId, payload.siteId),
-          eq(timesheetSchedulingPlansV2.period, payload.period)
-        )
-      )
+      .insert(timesheetSchedulingPlansV2)
+      .values({
+        siteId: payload.siteId,
+        period: payload.period,
+        status: 'draft',
+        draftSchedule: draftRows,
+        createdByUserId: actorUserId,
+        updatedByUserId: actorUserId,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [timesheetSchedulingPlansV2.siteId, timesheetSchedulingPlansV2.period],
+        set: {
+          draftSchedule: draftRows,
+          updatedByUserId: actorUserId,
+          updatedAt: now,
+        },
+      })
       .returning({ id: timesheetSchedulingPlansV2.id })
     if (!updatedPlan) throw new Error('Schedule V2 tidak ditemukan.')
     await syncFieldBreakPlansFromV2Rows(tx, {
@@ -974,7 +1039,7 @@ export async function updateSchedulingTimesheetPlanV2CellAction(
   input: z.infer<typeof updateScheduleV2CellSchema>
 ) {
   const payload = updateScheduleV2CellSchema.parse(input)
-  await assertSchedulingSiteScope(payload.siteId, 'edit', 'scheduling_timesheet_attendance')
+  await assertSchedulingSiteScope(payload.siteId, 'edit')
   await ensureSchedulingTimesheetTables()
   await assertSchedulingPeriodOpen(payload.siteId, payload.period)
   const actorEmail = await getCurrentActorEmail()
