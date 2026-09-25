@@ -1,6 +1,6 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useRef, useState, useTransition } from 'react'
 import SignatureCanvas from 'react-signature-canvas'
 import {
@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Download, RotateCcw, Upload, Paperclip, FileText, Image as ImageIcon, ExternalLink, Loader2, Trash2, Eye } from 'lucide-react'
+import { Download, RotateCcw, Upload, Paperclip, FileText, Image as ImageIcon, ExternalLink, Loader2, Trash2, Eye, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   Dialog,
@@ -174,17 +174,25 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
     }
   }
 
+  const router = useRouter()
   const [recommendation, setRecommendation] = useState<string>(review.recommendation || '')
   const [contractExtendedMonths, setContractExtendedMonths] = useState<number | undefined>(review.contractExtendedMonths || undefined)
   const [letterIssuance, setLetterIssuance] = useState<string>(review.letterIssuance || '')
-  const isWaitingForPreviousStep = approval.status === 'waiting'
+  const [currentStatus, setCurrentStatus] = useState<string>(approval.status || 'pending')
+
+  const isWaitingForPreviousStep = currentStatus === 'waiting'
 
   const isSectionHead = approval.approverRole === 'section_head_confirmation' || approval.approverRole === 'section_head_initial'
   const isDeptHead = approval.approverRole === 'central_service_manager'
   const isHr = approval.approverRole === 'hr'
 
-  const canEditRecommendation = approval.status === 'pending' && !done && (isSectionHead || isDeptHead || isHr)
-  const canEditLetterIssuance = approval.status === 'pending' && !done && isHr
+  const canEditRecommendation = currentStatus === 'pending' && !done && (isSectionHead || isDeptHead || isHr)
+  const canEditLetterIssuance = currentStatus === 'pending' && !done && isHr
+
+  // Catatan revert dari approver setelah step ini jika dokumen sedang dikembalikan untuk revisi
+  const revertNoteFromLaterStep = approvalHistory
+    .filter((s: any) => Number(s.stepOrder) > Number(approval.stepOrder) && s.remarks?.trim())
+    .sort((a: any, b: any) => Number(b.stepOrder) - Number(a.stepOrder))[0] || null
 
   function getSignatureDataUrl() {
     const signature = signatureRef.current
@@ -229,6 +237,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
       })
       if (result.success) {
         setDone(true)
+        setCurrentStatus('approved')
         setApprovalHistory((current) =>
           current.map((step: any) =>
             step.id === approval.id
@@ -240,13 +249,15 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
     })
   }
 
-  const previousApprovedSteps = approvalHistory.filter(
-    (step: any) => step.stepOrder < approval.stepOrder && step.status === 'approved'
-  )
+  // Semua pihak pada urutan step sebelum step saat ini yang dapat dipilih untuk target pengembalian
+  const previousSteps = approvalHistory
+    .filter((step: any) => Number(step.stepOrder) < Number(approval.stepOrder))
+    .sort((a: any, b: any) => Number(a.stepOrder) - Number(b.stepOrder))
+
   const [isRevertOpen, setIsRevertOpen] = useState(false)
-  const [revertTargetStep, setRevertTargetStep] = useState<number | undefined>(
-    previousApprovedSteps.length > 0 ? previousApprovedSteps[previousApprovedSteps.length - 1].stepOrder : undefined
-  )
+  const [revertTargetStep, setRevertTargetStep] = useState<number | undefined>(() => {
+    return previousSteps.length > 0 ? Number(previousSteps[previousSteps.length - 1].stepOrder) : undefined
+  })
   const [revertRemarks, setRevertRemarks] = useState('')
   const [revertError, setRevertError] = useState('')
   const [isReverting, setIsReverting] = useState(false)
@@ -270,13 +281,17 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
       })
       if (res.success) {
         setIsRevertOpen(false)
-        setRevertedMessage(`Dokumen telah berhasil dikembalikan ke Step ${res.targetStep} (${res.targetName}) untuk revisi.`)
+        setCurrentStatus('waiting')
+        const targetObj = previousSteps.find((s: any) => Number(s.stepOrder) === Number(res.targetStep || revertTargetStep))
+        const targetName = res.targetName || targetObj?.approverName || 'Approver'
+        const targetStep = res.targetStep || revertTargetStep
+        setRevertedMessage(`Dokumen telah berhasil dikembalikan ke Step ${targetStep} (${targetName}) untuk revisi/perbaikan.`)
         setApprovalHistory((prev: any[]) =>
           prev.map((step: any) => {
-            if (step.stepOrder === res.targetStep) {
+            if (Number(step.stepOrder) === Number(targetStep)) {
               return { ...step, status: 'pending', signatureDataUrl: null, signedAt: null }
             }
-            if (step.stepOrder > (res.targetStep || 0)) {
+            if (Number(step.stepOrder) > Number(targetStep)) {
               return {
                 ...step,
                 status: 'waiting',
@@ -288,6 +303,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
             return step
           })
         )
+        router.refresh()
       } else {
         setRevertError(res.error || 'Gagal mengembalikan approval.')
       }
@@ -768,9 +784,9 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Contract Review Approval</p>
                 <h1 className="mt-1 text-lg font-semibold text-slate-950 sm:text-xl">{review.employeeNameStr || 'Employee Contract Review'}</h1>
-                <p className="mt-1 text-xs text-slate-500">Approver: {approval.approverName} ({ROLE_LABELS[approval.approverRole] || approval.approverRole})</p>
+                <p className="mt-1 text-xs text-slate-500">Approver: {approval.approverName} ({ROLE_LABELS[approval.approverRole] || approval.approverRole}) • Step {approval.stepOrder}</p>
               </div>
-              <Badge variant="outline" className="rounded-full px-3 py-1 capitalize">{done ? 'approved' : approval.status}</Badge>
+              <Badge variant="outline" className="rounded-full px-3 py-1 capitalize">{done ? 'approved' : currentStatus}</Badge>
             </div>
           </section>
 
@@ -782,11 +798,18 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                 <div key={idx} className="flex items-start justify-between gap-3 rounded-lg border p-2.5">
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-slate-900">{step.approverName}</p>
-                    <p className="text-[10px] text-slate-500">{ROLE_LABELS[step.approverRole] || step.approverRole}</p>
+                    <p className="text-[10px] text-slate-500">Step {step.stepOrder} • {ROLE_LABELS[step.approverRole] || step.approverRole}</p>
                     {['approved', 'preview'].includes(step.status) ? (
                       <div className="mt-1 space-y-0.5 text-[10px] text-slate-500">
                         <p>Waktu TTD: {formatDateTime(step.signedAt)}</p>
                         {step.remarks ? <p className="line-clamp-2">Catatan: {step.remarks}</p> : null}
+                      </div>
+                    ) : step.remarks ? (
+                      <div className="mt-1 space-y-0.5 text-[10px] text-amber-800 bg-amber-50 rounded p-1.5 border border-amber-200/70">
+                        <p className="font-semibold flex items-center gap-1">
+                          <RotateCcw className="size-3 text-amber-600 shrink-0" /> Catatan Revert:
+                        </p>
+                        <p className="line-clamp-3 font-medium">{step.remarks}</p>
                       </div>
                     ) : null}
                   </div>
@@ -803,8 +826,14 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                       </>
                     ) : step.status === 'rejected' ? (
                       <Badge className="bg-red-50 text-red-700 rounded-full border-0 px-2 text-[10px]">Ditolak</Badge>
-                    ) : approval.status === 'pending' && step.id === approval.id ? (
-                      <Badge className="bg-amber-50 text-amber-600 rounded-full border-0 px-2 text-[10px]">Menunggu Anda</Badge>
+                    ) : (step.id === approval.id && currentStatus === 'pending') || step.status === 'pending' ? (
+                      <Badge className="bg-amber-50 text-amber-600 rounded-full border-0 px-2 text-[10px]">
+                        {step.id === approval.id ? 'Menunggu Anda' : 'Aktif (Revisi)'}
+                      </Badge>
+                    ) : step.remarks ? (
+                      <Badge variant="outline" className="border-amber-300 text-amber-700 bg-amber-50/50 rounded-full px-2 text-[10px]">
+                        Direvert
+                      </Badge>
                     ) : (
                       <Badge variant="outline" className="rounded-full px-2 text-[10px] text-slate-400">Menunggu</Badge>
                     )}
@@ -926,13 +955,39 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
           {/* TTD Digital */}
           <section className={isMobileRoute ? 'rounded-xl bg-white p-3 shadow-sm ring-1 ring-slate-200/70' : 'rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/70'}>
             <h2 className="text-sm font-semibold text-slate-950 mb-3">TTD Digital</h2>
+
+            {/* Peringatan jika dokumen ini diterima kembali hasil dari Revert step di atasnya */}
+            {revertNoteFromLaterStep && !done && currentStatus === 'pending' && (
+              <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-3.5 text-amber-900 shadow-xs space-y-2">
+                <div className="flex items-center gap-1.5 font-bold text-xs text-amber-900">
+                  <AlertCircle className="size-4 text-amber-600 shrink-0" />
+                  <span>Dokumen ini Dikembalikan untuk Revisi</span>
+                </div>
+                <p className="text-[11px] text-amber-800">
+                  Dikembalikan oleh: <strong>{revertNoteFromLaterStep.approverName}</strong> ({ROLE_LABELS[revertNoteFromLaterStep.approverRole] || revertNoteFromLaterStep.approverRole})
+                </p>
+                <div className="rounded-lg bg-white/90 p-2.5 border border-amber-200 text-xs font-semibold text-slate-800">
+                  &ldquo;{revertNoteFromLaterStep.remarks}&rdquo;
+                </div>
+                <p className="text-[10px] text-amber-700">
+                  Mohon periksa dan tindak lanjuti catatan di atas sebelum menandatangani ulang.
+                </p>
+              </div>
+            )}
+
             {revertedMessage ? (
               <div className="space-y-3">
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-medium text-amber-800">
-                  <p className="font-semibold flex items-center gap-1.5">
-                    <RotateCcw className="size-4" /> Dokumen Berhasil Dikembalikan
+                <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm font-medium text-amber-900 space-y-2">
+                  <p className="font-bold flex items-center gap-2 text-amber-800">
+                    <RotateCcw className="size-4.5 text-amber-600" /> Dokumen Berhasil Dikembalikan
                   </p>
-                  <p className="mt-1 text-xs text-amber-700">{revertedMessage}</p>
+                  <p className="text-xs text-amber-800 leading-relaxed">{revertedMessage}</p>
+                  <div className="rounded-lg bg-white/90 p-2.5 border border-amber-200 text-xs text-slate-700">
+                    <span className="font-bold text-slate-900">Catatan Anda:</span> &ldquo;{revertRemarks}&rdquo;
+                  </div>
+                  <p className="text-[11px] text-slate-500 pt-1">
+                    Anda akan menerima notifikasi kembali jika dokumen telah selesai diperbaiki dan siap disetujui.
+                  </p>
                 </div>
               </div>
             ) : done ? (
@@ -1000,9 +1055,14 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                 )}
               </div>
             ) : isWaitingForPreviousStep ? (
-              <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium text-slate-600">
-                TTD belum aktif. Menunggu step sebelumnya selesai.
-              </p>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-2 text-slate-600">
+                <p className="font-semibold text-xs text-slate-700 flex items-center gap-1.5">
+                  <RotateCcw className="size-3.5 text-amber-600" /> TTD Belum Aktif
+                </p>
+                <p className="text-xs">
+                  Dokumen saat ini sedang menunggu tindakan / persetujuan dari step sebelumnya.
+                </p>
+              </div>
             ) : (
               <div className="space-y-3">
                 <div className="rounded-xl border border-slate-200 bg-white p-2">
@@ -1018,18 +1078,21 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                   }}>Bersihkan</Button>
                   <Button type="button" size="sm" className="flex-1" onClick={handleSubmit} disabled={isPending}>{isPending ? 'Menyimpan...' : 'Setuju & Tanda Tangani'}</Button>
                 </div>
-                {previousApprovedSteps.length > 0 && (
+                {previousSteps.length > 0 && (
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="w-full text-amber-700 hover:text-amber-800 hover:bg-amber-50 border-amber-200"
+                    className="w-full text-amber-700 hover:text-amber-800 hover:bg-amber-50 border-amber-300 font-semibold"
                     onClick={() => {
                       setRevertError('')
+                      if (!revertTargetStep && previousSteps.length > 0) {
+                        setRevertTargetStep(Number(previousSteps[previousSteps.length - 1].stepOrder))
+                      }
                       setIsRevertOpen(true)
                     }}
                   >
-                    <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                    <RotateCcw className="mr-1.5 h-3.5 w-3.5 text-amber-600" />
                     Kembalikan Dokumen (Revert)
                   </Button>
                 )}
@@ -1038,63 +1101,93 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
           </section>
 
           <Dialog open={isRevertOpen} onOpenChange={setIsRevertOpen}>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className="sm:max-w-lg">
               <DialogHeader>
-                <DialogTitle className="flex items-center gap-2 text-amber-800">
-                  <RotateCcw className="size-4" />
+                <DialogTitle className="flex items-center gap-2 text-amber-800 font-bold">
+                  <RotateCcw className="size-5 text-amber-600" />
                   Kembalikan Dokumen (Revert)
                 </DialogTitle>
                 <DialogDescription>
-                  Kembalikan dokumen ke penandatangan sebelumnya untuk dilakukan koreksi atau kelengkapan data.
+                  Pilih penandatangan sebelumnya yang akan menerima dokumen ini untuk dilakukan perbaikan atau revisi.
                 </DialogDescription>
               </DialogHeader>
 
               <div className="space-y-4 py-2">
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold text-slate-700">
-                    Pilih Pihak Tujuan Revert:
+                  <label className="text-xs font-bold text-slate-800">
+                    Pilih Pihak Tujuan Pengembalian:
                   </label>
-                  <div className="space-y-2">
-                    {previousApprovedSteps.map((step: any) => (
-                      <label
-                        key={step.id}
-                        className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
-                          revertTargetStep === step.stepOrder
-                            ? 'border-amber-500 bg-amber-50/50 ring-1 ring-amber-500'
-                            : 'border-slate-200 hover:bg-slate-50'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="revertTargetStep"
-                          className="mt-0.5"
-                          checked={revertTargetStep === step.stepOrder}
-                          onChange={() => setRevertTargetStep(step.stepOrder)}
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-semibold text-slate-900">{step.approverName}</p>
-                          <p className="text-[11px] text-slate-500">
-                            Step {step.stepOrder} • {ROLE_LABELS[step.approverRole] || step.approverRole}
-                          </p>
-                        </div>
-                      </label>
-                    ))}
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {previousSteps.map((step: any) => {
+                      const isImmediatePrevious = Number(step.stepOrder) === Number(approval.stepOrder) - 1
+                      const isSelected = Number(revertTargetStep) === Number(step.stepOrder)
+                      return (
+                        <label
+                          key={step.id}
+                          className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-all ${
+                            isSelected
+                              ? 'border-amber-500 bg-amber-50/70 ring-2 ring-amber-500/20 shadow-xs'
+                              : 'border-slate-200 hover:bg-slate-50 bg-white'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="revertTargetStep"
+                            className="mt-1 size-4 text-amber-600 focus:ring-amber-500"
+                            checked={isSelected}
+                            onChange={() => setRevertTargetStep(Number(step.stepOrder))}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-xs font-bold text-slate-900">{step.approverName || 'Penandatangan'}</p>
+                              <div className="flex items-center gap-1.5">
+                                {isImmediatePrevious && (
+                                  <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 border-0 text-[10px] font-semibold">
+                                    Tahap Sebelumnya
+                                  </Badge>
+                                )}
+                                <Badge variant="outline" className="text-[10px] font-semibold text-slate-600">
+                                  Step {step.stepOrder}
+                                </Badge>
+                              </div>
+                            </div>
+                            <p className="text-[11px] font-medium text-slate-600 mt-0.5">
+                              {ROLE_LABELS[step.approverRole] || step.approverRole}
+                              {step.approverEmail ? ` • ${step.approverEmail}` : ''}
+                            </p>
+                            {step.signedAt && (
+                              <p className="text-[10px] text-slate-400 mt-0.5">
+                                Waktu TTD Sebelumnya: {formatDateTime(step.signedAt)}
+                              </p>
+                            )}
+                          </div>
+                        </label>
+                      )
+                    })}
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">
+                  <label className="text-xs font-bold text-slate-800">
                     Catatan / Alasan Revert <span className="text-red-500">*</span>
                   </label>
                   <Textarea
                     value={revertRemarks}
                     onChange={(e) => setRevertRemarks(e.target.value)}
-                    placeholder="Contoh: Dokumen atau lampiran kurang lengkap, mohon perbaiki penilaian aktivitas..."
+                    placeholder="Tuliskan dengan jelas bagian yang perlu diperbaiki (contoh: Nilai evaluasi aktivitas nomor 2 belum sesuai bukti kerja, mohon diperbaiki lampirannya)..."
                     rows={3}
+                    className="text-xs focus-visible:ring-amber-500"
                   />
+                  <p className="text-[10px] text-slate-500">
+                    Catatan ini akan dicatat dalam riwayat persetujuan dan dikirimkan ke email penerima.
+                  </p>
                 </div>
 
-                {revertError && <p className="text-xs font-medium text-red-600">{revertError}</p>}
+                {revertError && (
+                  <p className="text-xs font-medium text-red-600 bg-red-50 p-2.5 rounded-lg border border-red-200">
+                    {revertError}
+                  </p>
+                )}
               </div>
 
               <DialogFooter className="gap-2 sm:gap-0">
@@ -1110,11 +1203,18 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                 <Button
                   type="button"
                   size="sm"
-                  className="bg-amber-600 hover:bg-amber-700 text-white"
+                  className="bg-amber-600 hover:bg-amber-700 text-white font-bold"
                   onClick={handleRevert}
                   disabled={isReverting || !revertTargetStep || !revertRemarks.trim()}
                 >
-                  {isReverting ? 'Mengembalikan...' : 'Konfirmasi Revert'}
+                  {isReverting ? (
+                    <>
+                      <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                      Mengembalikan...
+                    </>
+                  ) : (
+                    'Konfirmasi Revert'
+                  )}
                 </Button>
               </DialogFooter>
             </DialogContent>

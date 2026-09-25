@@ -56,3 +56,20 @@ test('public approval implements percentage display, auto summary, upload card, 
   assert.ok(content.includes('handleDeleteAttachment'), 'must implement delete handler for signatories')
   assert.ok(content.includes('Lampiran Dokumen Pendukung'), 'must render Lampiran Dokumen Pendukung below preview letter')
 })
+
+test('public approval and action support selectable revert target to any previous step with feedback', () => {
+  const actionsPath = path.resolve('app/actions/contract-review.ts')
+  const actionsContent = fs.readFileSync(actionsPath, 'utf8')
+  assert.ok(actionsContent.includes('export async function revertContractReviewStep'), 'must export revertContractReviewStep')
+  assert.ok(actionsContent.includes('targetStepOrder'), 'must take targetStepOrder')
+  assert.ok(actionsContent.includes("leaderSignatureDataUrl = null"), 'must reset leaderSignatureDataUrl if reverted to step 1')
+
+  const publicPath = path.resolve('app/review/[token]/public-approval.tsx')
+  const publicContent = fs.readFileSync(publicPath, 'utf8')
+  assert.ok(publicContent.includes('previousSteps'), 'must compute previousSteps for selection')
+  assert.ok(publicContent.includes('revertTargetStep'), 'must have revertTargetStep state')
+  assert.ok(publicContent.includes('revertRemarks'), 'must have revertRemarks state')
+  assert.ok(publicContent.includes('revertedMessage'), 'must have visual feedback for reverted action')
+  assert.ok(publicContent.includes('revertNoteFromLaterStep'), 'must display revert reason from later step')
+  assert.ok(publicContent.includes('pdfScale'), 'must include pdfScale hook for mobile fit')
+})

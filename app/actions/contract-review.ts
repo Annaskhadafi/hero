@@ -2145,18 +2145,23 @@ export async function revertContractReviewStep(
     }
 
     // 3. Update master review status to 'in_progress'
+    const updateMasterReview: Record<string, any> = {
+      status: 'in_progress',
+      updatedAt: now,
+    }
+    if (targetApproval.stepOrder === 1) {
+      updateMasterReview.leaderSignatureDataUrl = null
+    }
     await db
       .update(hcEmployeeContractReviews)
-      .set({
-        status: 'in_progress',
-        updatedAt: now,
-      })
+      .set(updateMasterReview)
       .where(eq(hcEmployeeContractReviews.id, review.id))
 
     // 4. Notifications
     const baseUrl = await getBaseUrl()
     const employeeName = review.employeeNameStr || 'Employee'
     const actionableLink = `${baseUrl}/review/${targetApproval.approvalToken}`
+    const formLink = `${baseUrl}/dashboard/hc/contract-review/form/${review.id}`
     const revertingRoleName = CONTRACT_REVIEW_ROLE_LABELS[currentApproval.approverRole] || currentApproval.approverRole
 
     // 4a. Notification Bell
@@ -2233,6 +2238,7 @@ Terima kasih.`
 
     revalidatePath('/dashboard/hc/contract-review')
     revalidatePath(`/dashboard/hc/contract-review/${review.id}`)
+    revalidatePath(`/dashboard/hc/contract-review/form/${review.id}`)
     revalidatePath(`/review/${token}`)
     revalidatePath(`/review/${targetApproval.approvalToken}`)
     revalidatePath('/dashboard/approval')
