@@ -12,6 +12,10 @@ import {
 import { sendSummaryApprovedEmail, sendSummaryPendingApprovalEmail } from '@/lib/summary-email';
 import { revalidatePath } from 'next/cache';
 
+import { db } from '@/db';
+import { employees, sites, masterSections, masterDepartments, employeeAssets } from '@/db/schema/hero';
+import { eq, and, asc, ilike, desc } from 'drizzle-orm';
+
 export async function getPendingRequestsAction(sectionId: number, targetSite: string) {
   try {
     const requests = await getPendingRequestsForSection(sectionId, targetSite);
@@ -21,6 +25,57 @@ export async function getPendingRequestsAction(sectionId: number, targetSite: st
     return { success: false, error: error.message || 'Gagal mengambil data pengajuan' };
   }
 }
+
+export async function getAvailableEmployeesForSummaryAction(sectionId?: number) {
+  try {
+    const rows = await db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        employeeSn: employees.employeeSn,
+        sectionId: employees.sectionId,
+        sectionName: masterSections.name,
+        departmentId: employees.departmentId,
+        departmentName: masterDepartments.name,
+        siteId: employees.siteId,
+        siteName: sites.name,
+        employmentStatus: employees.employmentStatus,
+      })
+      .from(employees)
+      .leftJoin(sites, eq(employees.siteId, sites.id))
+      .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+      .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+      .orderBy(asc(employees.name));
+
+    // Also get safety shoes sizes for all employees
+    const shoeAssets = await db
+      .select({
+        employeeId: employeeAssets.employeeId,
+        size: employeeAssets.size,
+      })
+      .from(employeeAssets)
+      .where(ilike(employeeAssets.itemName, '%sepatu%'))
+      .orderBy(desc(employeeAssets.assignedAt));
+
+    const shoeSizeMap = new Map<number, string>();
+    for (const asset of shoeAssets) {
+      if (asset.employeeId && asset.size && !shoeSizeMap.has(asset.employeeId)) {
+        shoeSizeMap.set(asset.employeeId, asset.size);
+      }
+    }
+
+    const result = rows.map((emp) => ({
+      ...emp,
+      safetyShoesSize: shoeSizeMap.get(emp.id) || '',
+    }));
+
+    return { success: true, employees: result };
+  } catch (error: any) {
+    console.error('Get available employees for summary error:', error);
+    return { success: false, error: error.message || 'Gagal mengambil daftar karyawan' };
+  }
+}
+
 
 export async function generateSummaryAction(
   sectionId: number,

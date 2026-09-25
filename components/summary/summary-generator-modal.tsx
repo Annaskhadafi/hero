@@ -10,10 +10,13 @@ import {
   Layers,
   Loader2,
   PackageCheck,
+  Plus,
   Search,
   ShieldCheck,
   Sparkles,
+  Trash2,
   User,
+  UserPlus,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -23,11 +26,17 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
   getPendingRequestsAction,
+  getAvailableEmployeesForSummaryAction,
   generateSummaryAction,
 } from '@/app/dashboard/summary/actions';
-import type {
-  PendingSummaryRequest,
-  PendingSummaryRequestItem,
+import {
+  SAFETY_SHOES_COL,
+  QTY_ONLY_COLUMNS,
+  APD_ITEM_COLUMNS,
+  type PendingSummaryRequest,
+  type PendingSummaryRequestItem,
+  type ManualSummaryEntry,
+  type ManualSummaryItem,
 } from '@/lib/summary-constants';
 import type { SectionWithSummary } from './summary-list';
 
@@ -38,6 +47,41 @@ interface SummaryGeneratorModalProps {
   currentEmployeeId?: number;
   onSuccess: (summaryId: number) => void;
 }
+
+type AvailableEmployee = {
+  id: number;
+  name: string;
+  employeeSn: string;
+  sectionId: number | null;
+  sectionName: string | null;
+  departmentId: number | null;
+  departmentName: string | null;
+  siteId: number | null;
+  siteName: string | null;
+  employmentStatus: string | null;
+  safetyShoesSize: string;
+};
+
+const COMMON_APD_ITEMS = [
+  'Safety Shoes',
+  'Safety Boot Petrova',
+  'Helmet Kuning',
+  'Helmet Putih',
+  'Safety Glasses',
+  'Safety Goggles',
+  'Sarung Tangan Ansel',
+  'Kaos Tangan Dotting',
+  'Masker',
+  'Ear Plug',
+  'Padlock Merah',
+  'Padlock Kuning',
+  'Sisor',
+  'Apron',
+  'Sunbrim Helmet',
+  'Dalaman Helm',
+  'Tali Kacamata',
+  'Chin Strap',
+];
 
 export function SummaryGeneratorModal({
   isOpen,
@@ -55,12 +99,26 @@ export function SummaryGeneratorModal({
   const [shoeSizeMap, setShoeSizeMap] = useState<Record<number, string>>({});
   const [globalRemarks, setGlobalRemarks] = useState('');
 
+  // Manual employee entry states
+  const [isAddManualOpen, setIsAddManualOpen] = useState(false);
+  const [availableEmployees, setAvailableEmployees] = useState<AvailableEmployee[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(false);
+  const [empSearch, setEmpSearch] = useState('');
+  const [selectedManualEmp, setSelectedManualEmp] = useState<AvailableEmployee | null>(null);
+  const [manualSelectedItems, setManualSelectedItems] = useState<ManualSummaryItem[]>([
+    { itemType: 'Safety Shoes', canonicalName: 'Safety Shoes', quantity: 1, requestType: 'baru' },
+  ]);
+  const [manualShoeSize, setManualShoeSize] = useState('');
+  const [manualRemarks, setManualRemarks] = useState('');
+
   // Fetch pending requests when modal opens
   useEffect(() => {
     if (!isOpen) return;
 
     let isMounted = true;
     setLoading(true);
+    setIsAddManualOpen(false);
+    setSelectedManualEmp(null);
 
     getPendingRequestsAction(section.id, section.targetSite)
       .then((res) => {
@@ -100,6 +158,142 @@ export function SummaryGeneratorModal({
     };
   }, [isOpen, section.id, section.targetSite]);
 
+  // Load available employees when manual form is toggled
+  const handleOpenManualForm = async () => {
+    setIsAddManualOpen(true);
+    if (availableEmployees.length === 0) {
+      setLoadingEmployees(true);
+      try {
+        const res = await getAvailableEmployeesForSummaryAction(section.id);
+        if (res.success && res.employees) {
+          setAvailableEmployees(res.employees);
+        } else {
+          toast.error(res.error || 'Gagal memuat data karyawan');
+        }
+      } catch (err: any) {
+        toast.error(err.message || 'Gagal mengambil data karyawan');
+      } finally {
+        setLoadingEmployees(false);
+      }
+    }
+  };
+
+  const handleSelectEmployee = (emp: AvailableEmployee) => {
+    setSelectedManualEmp(emp);
+    if (emp.safetyShoesSize) {
+      setManualShoeSize(emp.safetyShoesSize);
+    }
+  };
+
+  const handleToggleItem = (itemType: string) => {
+    const existingIndex = manualSelectedItems.findIndex((i) => i.itemType === itemType);
+    if (existingIndex >= 0) {
+      setManualSelectedItems((prev) => prev.filter((i) => i.itemType !== itemType));
+    } else {
+      setManualSelectedItems((prev) => [
+        ...prev,
+        { itemType, canonicalName: itemType, quantity: 1, requestType: 'baru' },
+      ]);
+    }
+  };
+
+  const handleItemQtyChange = (itemType: string, delta: number) => {
+    setManualSelectedItems((prev) =>
+      prev.map((it) => {
+        if (it.itemType === itemType) {
+          const nextQty = Math.max(1, it.quantity + delta);
+          return { ...it, quantity: nextQty };
+        }
+        return it;
+      })
+    );
+  };
+
+  const handleItemRequestTypeChange = (itemType: string, requestType: string) => {
+    setManualSelectedItems((prev) =>
+      prev.map((it) => (it.itemType === itemType ? { ...it, requestType } : it))
+    );
+  };
+
+  const handleAddManualToTable = () => {
+    if (!selectedManualEmp) {
+      toast.error('Pilih karyawan terlebih dahulu');
+      return;
+    }
+    if (manualSelectedItems.length === 0) {
+      toast.error('Pilih minimal 1 item APD');
+      return;
+    }
+
+    const tempId = `manual-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const syntheticId = -Date.now(); // negative ID to distinguish from real DB requests
+
+    const hasShoes = manualSelectedItems.some(
+      (i) => i.canonicalName === 'Safety Shoes' || i.itemType.toLowerCase().includes('sepatu')
+    );
+
+    const syntheticRequest: PendingSummaryRequest = {
+      requestId: syntheticId,
+      tempId,
+      isManual: true,
+      requestNumber: `MANUAL-${selectedManualEmp.employeeSn || selectedManualEmp.id}`,
+      requestDate: new Date(),
+      employeeId: selectedManualEmp.id,
+      employeeName: selectedManualEmp.name,
+      employeeSn: selectedManualEmp.employeeSn || '-',
+      siteId: selectedManualEmp.siteId || 1,
+      siteName: selectedManualEmp.siteName || (section.targetSite === 'VALE' ? 'Vale' : 'Site'),
+      departmentName: selectedManualEmp.departmentName,
+      items: manualSelectedItems.map((item, idx) => ({
+        id: idx + 1,
+        itemType: item.itemType,
+        canonicalName: item.canonicalName,
+        requestType: item.requestType,
+        quantity: item.quantity,
+        notes: item.notes || '',
+      })),
+      safetyShoesSize: hasShoes ? manualShoeSize : '',
+      suggestedRemarks: manualRemarks,
+    };
+
+    setRequests((prev) => [syntheticRequest, ...prev]);
+    setSelectedIds((prev) => new Set([...prev, syntheticId]));
+    setRemarksMap((prev) => ({ ...prev, [syntheticId]: manualRemarks }));
+    setShoeSizeMap((prev) => ({ ...prev, [syntheticId]: manualShoeSize }));
+
+    toast.success(`Karyawan ${selectedManualEmp.name} berhasil ditambahkan secara manual`);
+
+    // Reset manual form
+    setIsAddManualOpen(false);
+    setSelectedManualEmp(null);
+    setManualSelectedItems([
+      { itemType: 'Safety Shoes', canonicalName: 'Safety Shoes', quantity: 1, requestType: 'baru' },
+    ]);
+    setManualShoeSize('');
+    setManualRemarks('');
+    setEmpSearch('');
+  };
+
+  const handleRemoveManualRow = (requestId: number) => {
+    setRequests((prev) => prev.filter((r) => r.requestId !== requestId));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(requestId);
+      return next;
+    });
+    setRemarksMap((prev) => {
+      const next = { ...prev };
+      delete next[requestId];
+      return next;
+    });
+    setShoeSizeMap((prev) => {
+      const next = { ...prev };
+      delete next[requestId];
+      return next;
+    });
+    toast.info('Baris manual dihapus');
+  };
+
   // Filtered requests by search
   const filteredRequests = useMemo(() => {
     if (!search.trim()) return requests;
@@ -112,6 +306,20 @@ export function SummaryGeneratorModal({
         r.siteName.toLowerCase().includes(lower)
     );
   }, [requests, search]);
+
+  // Filtered available employees for manual addition
+  const filteredAvailableEmployees = useMemo(() => {
+    if (!empSearch.trim()) return availableEmployees.slice(0, 50);
+    const lower = empSearch.toLowerCase();
+    return availableEmployees
+      .filter(
+        (e) =>
+          e.name.toLowerCase().includes(lower) ||
+          e.employeeSn.toLowerCase().includes(lower) ||
+          (e.sectionName && e.sectionName.toLowerCase().includes(lower))
+      )
+      .slice(0, 50);
+  }, [availableEmployees, empSearch]);
 
   const toggleSelectAll = () => {
     if (selectedIds.size === filteredRequests.length) {
@@ -154,15 +362,52 @@ export function SummaryGeneratorModal({
     const toastId = toast.loading('Sedang membuat dokumen summary APD...');
 
     try {
-      const selectedRequestsPayload = Array.from(selectedIds).map((requestId) => ({
-        requestId,
-        remarks: remarksMap[requestId]?.trim() || '',
-        safetyShoesSize: shoeSizeMap[requestId]?.trim() || '',
-      }));
+      const regularSelectedPayload: Array<{
+        requestId: number;
+        remarks?: string;
+        safetyShoesSize?: string;
+      }> = [];
+
+      const manualEntriesPayload: ManualSummaryEntry[] = [];
+
+      for (const req of requests) {
+        if (!selectedIds.has(req.requestId)) continue;
+
+        const remarks = remarksMap[req.requestId]?.trim() || '';
+        const safetyShoesSize = shoeSizeMap[req.requestId]?.trim() || '';
+
+        if (req.isManual) {
+          manualEntriesPayload.push({
+            tempId: req.tempId || `m-${req.requestId}`,
+            employeeId: req.employeeId,
+            employeeName: req.employeeName,
+            employeeSn: req.employeeSn,
+            siteId: req.siteId,
+            siteName: req.siteName,
+            departmentName: req.departmentName,
+            items: req.items.map((it) => ({
+              itemType: it.itemType,
+              canonicalName: it.canonicalName,
+              quantity: it.quantity,
+              requestType: it.requestType,
+              notes: it.notes,
+            })),
+            safetyShoesSize,
+            remarks,
+          });
+        } else {
+          regularSelectedPayload.push({
+            requestId: req.requestId,
+            remarks,
+            safetyShoesSize,
+          });
+        }
+      }
 
       const empId = currentEmployeeId || 5;
       const res = await generateSummaryAction(section.id, empId, section.targetSite, {
-        selectedRequests: selectedRequestsPayload,
+        selectedRequests: regularSelectedPayload,
+        manualEntries: manualEntriesPayload,
         defaultRemarks: globalRemarks,
       });
 
@@ -220,7 +465,7 @@ export function SummaryGeneratorModal({
           </button>
         </div>
 
-        {/* Filter & Search Bar */}
+        {/* Filter & Action Toolbar */}
         <div className="px-6 py-3 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900">
           <div className="relative flex-1 min-w-[240px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -232,6 +477,16 @@ export function SummaryGeneratorModal({
             />
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleOpenManualForm}
+              className="h-9 text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 gap-1.5 shadow-2xs"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              + Tambah Karyawan Manual
+            </Button>
             <Button
               type="button"
               variant="outline"
@@ -249,8 +504,240 @@ export function SummaryGeneratorModal({
           </div>
         </div>
 
-        {/* Modal Body - Request Table */}
+        {/* Modal Body - Request Table & Manual Entry Panel */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
+
+          {/* Expandable Manual Addition Form */}
+          {isAddManualOpen && (
+            <div className="p-4 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/80 shadow-xs animate-in fade-in slide-in-from-top-2">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold">
+                    <UserPlus className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-emerald-950 dark:text-emerald-200">
+                      Tambah Karyawan Manual ke Summary
+                    </h4>
+                    <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                      Pilih karyawan dan tentukan item APD yang akan langsung dimasukkan ke dokumen draft ini.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsAddManualOpen(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-md"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-white dark:bg-slate-900 p-4 rounded-lg border border-emerald-100 dark:border-emerald-900/50 text-xs">
+                {/* 1. Pilih Karyawan */}
+                <div className="space-y-2">
+                  <label className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1">
+                    <User className="w-3.5 h-3.5 text-blue-600" />
+                    Pilih Karyawan
+                  </label>
+                  {loadingEmployees ? (
+                    <div className="flex items-center gap-2 text-slate-400 py-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+                      <span>Memuat daftar karyawan...</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <Input
+                        value={empSearch}
+                        onChange={(e) => setEmpSearch(e.target.value)}
+                        placeholder="Ketik nama atau SN karyawan..."
+                        className="h-8 text-xs"
+                      />
+                      <div className="max-h-36 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-md divide-y divide-slate-100 dark:divide-slate-800 bg-slate-50/50 dark:bg-slate-950/40">
+                        {filteredAvailableEmployees.length === 0 ? (
+                          <div className="p-2 text-center text-slate-400 text-[11px]">Karyawan tidak ditemukan</div>
+                        ) : (
+                          filteredAvailableEmployees.map((emp) => {
+                            const isChosen = selectedManualEmp?.id === emp.id;
+                            return (
+                              <div
+                                key={emp.id}
+                                onClick={() => handleSelectEmployee(emp)}
+                                className={`p-2 flex items-center justify-between cursor-pointer transition-colors ${
+                                  isChosen
+                                    ? 'bg-emerald-100/70 dark:bg-emerald-950/80 text-emerald-900 dark:text-emerald-100 font-semibold'
+                                    : 'hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                                }`}
+                              >
+                                <div>
+                                  <div className="text-xs">{emp.name}</div>
+                                  <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                                    {emp.employeeSn} &bull; {emp.sectionName || emp.departmentName || 'Section'}
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                                    {emp.siteName || 'Site'}
+                                  </Badge>
+                                  {emp.safetyShoesSize && (
+                                    <div className="text-[10px] text-emerald-600 font-medium">
+                                      Size {emp.safetyShoesSize}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedManualEmp && (
+                    <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-md">
+                      <div className="text-xs font-bold text-emerald-900 dark:text-emerald-200 flex items-center justify-between">
+                        <span>{selectedManualEmp.name}</span>
+                        <Badge className="bg-emerald-600 text-[10px]">{selectedManualEmp.siteName || 'Site'}</Badge>
+                      </div>
+                      <div className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-0.5 font-mono">
+                        SN: {selectedManualEmp.employeeSn} &bull; {selectedManualEmp.sectionName || '-'}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Pilih Item APD & Ukuran Sepatu */}
+                <div className="space-y-2.5">
+                  <div>
+                    <label className="font-bold text-slate-700 dark:text-slate-200 block mb-1">
+                      Pilih Item APD
+                    </label>
+                    <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto p-1 border border-slate-200 dark:border-slate-800 rounded-md bg-slate-50/40 dark:bg-slate-950/30">
+                      {COMMON_APD_ITEMS.map((item) => {
+                        const isSelected = manualSelectedItems.some((i) => i.itemType === item);
+                        return (
+                          <button
+                            key={item}
+                            type="button"
+                            onClick={() => handleToggleItem(item)}
+                            className={`px-2 py-1 rounded text-[11px] font-medium border transition-colors ${
+                              isSelected
+                                ? 'bg-emerald-600 text-white border-emerald-600 font-bold'
+                                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-emerald-400'
+                            }`}
+                          >
+                            {isSelected ? '✓ ' : '+ '}
+                            {item}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Selected Items Config List */}
+                  {manualSelectedItems.length > 0 && (
+                    <div className="space-y-1.5 max-h-28 overflow-y-auto pr-1">
+                      {manualSelectedItems.map((it) => (
+                        <div
+                          key={it.itemType}
+                          className="flex items-center justify-between p-1.5 bg-slate-50 dark:bg-slate-800/60 rounded border border-slate-200 dark:border-slate-700 text-xs"
+                        >
+                          <span className="font-semibold text-slate-800 dark:text-slate-200 text-[11px]">
+                            {it.itemType}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-900">
+                              <button
+                                type="button"
+                                onClick={() => handleItemQtyChange(it.itemType, -1)}
+                                className="px-1.5 py-0.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                              >
+                                -
+                              </button>
+                              <span className="px-2 font-bold text-xs">{it.quantity}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleItemQtyChange(it.itemType, 1)}
+                                className="px-1.5 py-0.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                              >
+                                +
+                              </button>
+                            </div>
+                            <select
+                              value={it.requestType}
+                              onChange={(e) => handleItemRequestTypeChange(it.itemType, e.target.value)}
+                              className="h-6 text-[11px] px-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded"
+                            >
+                              <option value="baru">Baru</option>
+                              <option value="pergantian">Pergantian</option>
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleItem(it.itemType)}
+                              className="text-slate-400 hover:text-red-500"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Shoe Size & Remarks */}
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <div>
+                      <label className="font-bold text-slate-700 dark:text-slate-200 block text-[11px] mb-0.5">
+                        Ukuran Sepatu (Size)
+                      </label>
+                      <Input
+                        value={manualShoeSize}
+                        onChange={(e) => setManualShoeSize(e.target.value)}
+                        placeholder="e.g. 41 / 42"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="font-bold text-slate-700 dark:text-slate-200 block text-[11px] mb-0.5">
+                        Remarks (Keterangan)
+                      </label>
+                      <Input
+                        value={manualRemarks}
+                        onChange={(e) => setManualRemarks(e.target.value)}
+                        placeholder="e.g. Karyawan Baru"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Form Action Buttons */}
+              <div className="flex items-center justify-end gap-2 mt-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsAddManualOpen(false)}
+                  className="h-8 text-xs"
+                >
+                  Batal
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleAddManualToTable}
+                  disabled={!selectedManualEmp || manualSelectedItems.length === 0}
+                  className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Tambahkan ke Tabel
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Table Area */}
           {loading ? (
             <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-400">
               <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
@@ -263,7 +750,7 @@ export function SummaryGeneratorModal({
                 Tidak ada pengajuan yang siap digenerate
               </p>
               <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
-                Pastikan sudah ada pengajuan APD karyawan yang telah disetujui (Approved) dan belum masuk ke dokumen summary lain.
+                Anda dapat menambahkan karyawan secara manual menggunakan tombol <strong>+ Tambah Karyawan Manual</strong> di atas, atau menunggu pengajuan APD disetujui.
               </p>
             </div>
           ) : (
@@ -280,7 +767,7 @@ export function SummaryGeneratorModal({
                       />
                     </th>
                     <th className="py-2.5 px-3 w-12 text-center">No</th>
-                    <th className="py-2.5 px-3 min-w-[160px]">Nama Karyawan & SN</th>
+                    <th className="py-2.5 px-3 min-w-[170px]">Nama Karyawan & SN</th>
                     <th className="py-2.5 px-3 min-w-[90px]">Site</th>
                     <th className="py-2.5 px-3 min-w-[200px]">Item Barang APD</th>
                     <th className="py-2.5 px-3 min-w-[100px]">Ukuran Sepatu (Size)</th>
@@ -289,6 +776,7 @@ export function SummaryGeneratorModal({
                         Remarks (Keterangan)
                       </span>
                     </th>
+                    <th className="py-2.5 px-2 w-10 text-center"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
@@ -315,7 +803,14 @@ export function SummaryGeneratorModal({
                         </td>
                         <td className="py-3 px-3 text-center font-mono text-slate-500">{idx + 1}</td>
                         <td className="py-3 px-3">
-                          <div className="font-semibold text-slate-900 dark:text-slate-100">{req.employeeName}</div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-semibold text-slate-900 dark:text-slate-100">{req.employeeName}</span>
+                            {req.isManual && (
+                              <Badge className="bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border-purple-300 text-[9px] font-bold px-1.5 py-0">
+                                MANUAL
+                              </Badge>
+                            )}
+                          </div>
                           <div className="text-[11px] font-mono text-slate-500">{req.employeeSn}</div>
                           <div className="text-[10px] text-slate-400 font-mono mt-0.5">{req.requestNumber}</div>
                         </td>
@@ -360,6 +855,18 @@ export function SummaryGeneratorModal({
                             placeholder="Tulis keterangan untuk karyawan ini..."
                             className="h-8 text-xs px-2.5 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 focus:border-blue-500"
                           />
+                        </td>
+                        <td className="py-3 px-2 text-center">
+                          {req.isManual && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveManualRow(req.requestId)}
+                              title="Hapus baris manual"
+                              className="p-1 text-slate-400 hover:text-red-600 rounded transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );

@@ -15,6 +15,8 @@ import {
   APD_COLUMNS,
   type PendingSummaryRequestItem,
   type PendingSummaryRequest,
+  type ManualSummaryEntry,
+  type ManualSummaryItem,
 } from '@/lib/summary-constants';
 
 export {
@@ -24,6 +26,8 @@ export {
   APD_COLUMNS,
   type PendingSummaryRequestItem,
   type PendingSummaryRequest,
+  type ManualSummaryEntry,
+  type ManualSummaryItem,
 };
 
 let summarySchemaChecked = false;
@@ -414,6 +418,7 @@ export type GenerateSummaryOptions = {
     remarks?: string;
     safetyShoesSize?: string;
   }>;
+  manualEntries?: ManualSummaryEntry[];
   defaultRemarks?: string;
 };
 
@@ -458,10 +463,14 @@ export async function generateSummary(
   if (options?.selectedRequests && options.selectedRequests.length > 0) {
     const selectedIds = new Set(options.selectedRequests.map(r => r.requestId));
     approvedRequests = approvedRequests.filter(r => selectedIds.has(r.requestId));
+  } else if (options?.selectedRequests && options.selectedRequests.length === 0) {
+    approvedRequests = [];
   }
 
-  if (approvedRequests.length === 0) {
-    return { error: 'Tidak ada pengajuan yang dipilih atau berstatus approved untuk section ini' };
+  const manualEntries = options?.manualEntries || [];
+
+  if (approvedRequests.length === 0 && manualEntries.length === 0) {
+    return { error: 'Tidak ada pengajuan yang dipilih atau ditambahkan untuk section ini' };
   }
 
   const requestOptionsMap = new Map(
@@ -480,6 +489,7 @@ export async function generateSummary(
     remarks: string;
   }> = [];
 
+  // 1. Process regular approved requests
   for (const req of approvedRequests) {
     const customOpt = requestOptionsMap.get(req.requestId);
     const employeeRemarks = customOpt?.remarks?.trim() || options?.defaultRemarks?.trim() || '';
@@ -529,6 +539,96 @@ export async function generateSummary(
           employeeName: req.employeeName,
           employeeSn: req.employeeSn,
           siteName: req.siteName,
+          itemName: 'Safety Shoes Size',
+          quantity: 0,
+          requestType: shoeSize,
+          remarks: employeeRemarks || shoeSize,
+        });
+      }
+    }
+  }
+
+  // 2. Process manual employee entries
+  for (const manual of manualEntries) {
+    const [empData] = await db.select({
+      id: employees.id,
+      name: employees.name,
+      employeeSn: employees.employeeSn,
+      siteId: employees.siteId,
+      siteName: sites.name,
+    }).from(employees)
+      .leftJoin(sites, eq(employees.siteId, sites.id))
+      .where(eq(employees.id, manual.employeeId))
+      .limit(1);
+
+    const empName = manual.employeeName || empData?.name || 'Karyawan';
+    const empSn = manual.employeeSn || empData?.employeeSn || '';
+    const empSiteId = manual.siteId || empData?.siteId || 1;
+    const empSiteName = manual.siteName || empData?.siteName || 'Site';
+    const employeeRemarks = manual.remarks?.trim() || options?.defaultRemarks?.trim() || '';
+
+    // Generate request number for manual entry
+    const timestampSuffix = Date.now().toString().slice(-4);
+    const randomSuffix = Math.floor(Math.random() * 900 + 100);
+    const manualRequestNumber = `APD-${new Date().getFullYear()}-M${timestampSuffix}${randomSuffix}`;
+
+    const [createdRequest] = await db.insert(apdRequests).values({
+      requestNumber: manualRequestNumber,
+      employeeId: manual.employeeId,
+      siteId: empSiteId,
+      requestCategory: 'APD',
+      status: 'proses_order',
+      notes: employeeRemarks || 'Manual Entry Summary APD',
+    }).returning();
+
+    let manualHasSafetyShoes = false;
+
+    for (const item of manual.items) {
+      const canonicalName = mapItemToColumn(item.itemType) || item.itemType;
+      if (canonicalName === SAFETY_SHOES_COL || item.itemType.toLowerCase().includes('sepatu')) {
+        manualHasSafetyShoes = true;
+      }
+
+      await db.insert(apdRequestItems).values({
+        requestId: createdRequest.id,
+        itemType: item.itemType,
+        requestType: item.requestType || 'baru',
+        quantity: item.quantity || 1,
+        notes: item.notes || '',
+      });
+
+      summaryItems.push({
+        apdRequestId: createdRequest.id,
+        employeeId: manual.employeeId,
+        employeeName: empName,
+        employeeSn: empSn,
+        siteName: empSiteName,
+        itemName: canonicalName,
+        quantity: item.quantity || 1,
+        requestType: item.requestType || 'baru',
+        remarks: employeeRemarks,
+      });
+    }
+
+    if (manualHasSafetyShoes) {
+      let shoeSize = manual.safetyShoesSize?.trim() || '';
+
+      if (!shoeSize) {
+        const [asset] = await db.select({ size: employeeAssets.size }).from(employeeAssets)
+          .where(and(
+            eq(employeeAssets.employeeId, manual.employeeId),
+            ilike(employeeAssets.itemName, '%sepatu%')
+          )).limit(1);
+        if (asset?.size) shoeSize = asset.size;
+      }
+
+      if (shoeSize) {
+        summaryItems.push({
+          apdRequestId: createdRequest.id,
+          employeeId: manual.employeeId,
+          employeeName: empName,
+          employeeSn: empSn,
+          siteName: empSiteName,
           itemName: 'Safety Shoes Size',
           quantity: 0,
           requestType: shoeSize,

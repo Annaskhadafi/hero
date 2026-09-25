@@ -33,8 +33,31 @@ export type PendingSummaryRequestItem = {
   notes: string;
 };
 
+export type ManualSummaryItem = {
+  itemType: string;
+  canonicalName: string;
+  quantity: number;
+  requestType: string;
+  notes?: string;
+};
+
+export type ManualSummaryEntry = {
+  tempId: string;
+  employeeId: number;
+  employeeName: string;
+  employeeSn: string;
+  siteId: number;
+  siteName: string;
+  departmentName?: string | null;
+  items: ManualSummaryItem[];
+  safetyShoesSize?: string;
+  remarks?: string;
+};
+
 export type PendingSummaryRequest = {
   requestId: number;
+  tempId?: string;
+  isManual?: boolean;
   requestNumber: string;
   requestDate: Date;
   employeeId: number;
@@ -47,3 +70,4 @@ export type PendingSummaryRequest = {
   safetyShoesSize: string;
   suggestedRemarks: string;
 };
+
