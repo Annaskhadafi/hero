@@ -12,7 +12,7 @@ import { getCurrentEmployee } from '@/lib/get-current-employee'
 import { getCurrentMenuPermission } from '@/lib/hero-access'
 import { resolveApprovalRouteForActivity } from '@/lib/approval-engine'
 import { sendApdRequestSubmittedEmail, sendMaterialToolsRequestSubmittedEmail } from '@/lib/apd-email'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, desc, eq, ilike, inArray, or } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import { normalizeApdRequestCategory, normalizeApdRequestStatus } from '@/lib/apd-status'
@@ -446,51 +446,149 @@ export async function updateApdRequestStatus(id: number, rawStatus: string) {
     .where(eq(apdRequests.id, id))
   if (!request) throw new Error('Permintaan tidak ditemukan')
 
+  const completedAt = new Date()
+
   await db.transaction(async (tx) => {
     await tx
       .update(apdRequests)
-      .set({ status, updatedAt: new Date() })
+      .set({ status, updatedAt: completedAt })
       .where(eq(apdRequests.id, id))
 
     if (status === 'complete') {
       const items = await tx.select().from(apdRequestItems).where(eq(apdRequestItems.requestId, id))
 
       for (const item of items) {
-        if (item.requestType === 'pergantian') {
-          await tx
-            .update(employeeAssets)
-            .set({ status: 'REPLACED', updatedAt: new Date() })
+        const isSafetyShoes =
+          item.itemType === 'Sepatu Safety' ||
+          item.itemType === 'Safety Shoes' ||
+          item.itemType.toLowerCase().includes('sepatu') ||
+          item.itemType.toLowerCase().includes('safety shoes')
+
+        if (isSafetyShoes) {
+          // Check idempotency: avoid inserting duplicate entry for the same request
+          const [existingForThisRequest] = await tx
+            .select({ id: employeeAssets.id })
+            .from(employeeAssets)
             .where(
               and(
                 eq(employeeAssets.employeeId, request.employeeId),
-                eq(employeeAssets.itemName, item.itemType),
-                eq(employeeAssets.status, 'ACTIVE')
+                eq(employeeAssets.lastRequestId, id),
+                or(
+                  ilike(employeeAssets.itemName, '%sepatu%'),
+                  ilike(employeeAssets.itemName, '%safety shoes%')
+                )
               )
             )
-        }
+            .limit(1)
 
-        let nextReplacementDue: Date | null = null
-        if (item.itemType === 'Sepatu Safety') {
-          nextReplacementDue = new Date()
-          nextReplacementDue.setMonth(nextReplacementDue.getMonth() + 8)
-        }
+          if (!existingForThisRequest) {
+            // Find previous size if any
+            const [existingShoe] = await tx
+              .select({ size: employeeAssets.size })
+              .from(employeeAssets)
+              .where(
+                and(
+                  eq(employeeAssets.employeeId, request.employeeId),
+                  or(
+                    ilike(employeeAssets.itemName, '%sepatu%'),
+                    ilike(employeeAssets.itemName, '%safety shoes%')
+                  )
+                )
+              )
+              .orderBy(desc(employeeAssets.assignedAt))
+              .limit(1)
 
-        for (let i = 0; i < item.quantity; i++) {
-          await tx.insert(employeeAssets).values({
-            employeeId: request.employeeId,
-            itemCategory: request.requestCategory,
-            itemName: item.itemType,
-            status: 'ACTIVE',
-            assignedAt: new Date(),
-            nextReplacementDue,
-            lastRequestId: id,
-          })
+            if (item.requestType === 'pergantian') {
+              await tx
+                .update(employeeAssets)
+                .set({ status: 'REPLACED', updatedAt: completedAt })
+                .where(
+                  and(
+                    eq(employeeAssets.employeeId, request.employeeId),
+                    or(
+                      ilike(employeeAssets.itemName, '%sepatu%'),
+                      ilike(employeeAssets.itemName, '%safety shoes%')
+                    ),
+                    eq(employeeAssets.status, 'ACTIVE')
+                  )
+                )
+            }
+
+            const nextReplacementDue = new Date(completedAt)
+            nextReplacementDue.setMonth(nextReplacementDue.getMonth() + 8)
+
+            for (let i = 0; i < item.quantity; i++) {
+              await tx.insert(employeeAssets).values({
+                employeeId: request.employeeId,
+                itemCategory: 'APD',
+                itemName: 'Sepatu Safety',
+                size: existingShoe?.size || null,
+                status: 'ACTIVE',
+                assignedAt: completedAt,
+                nextReplacementDue,
+                lastRequestId: id,
+              })
+            }
+          }
+        } else {
+          // Non-safety-shoes item (recorded for general employee asset tracking, does not affect safety shoes inventory)
+          const [existingForThisRequest] = await tx
+            .select({ id: employeeAssets.id })
+            .from(employeeAssets)
+            .where(
+              and(
+                eq(employeeAssets.employeeId, request.employeeId),
+                eq(employeeAssets.lastRequestId, id),
+                eq(employeeAssets.itemName, item.itemType)
+              )
+            )
+            .limit(1)
+
+          if (!existingForThisRequest) {
+            if (item.requestType === 'pergantian') {
+              await tx
+                .update(employeeAssets)
+                .set({ status: 'REPLACED', updatedAt: completedAt })
+                .where(
+                  and(
+                    eq(employeeAssets.employeeId, request.employeeId),
+                    eq(employeeAssets.itemName, item.itemType),
+                    eq(employeeAssets.status, 'ACTIVE')
+                  )
+                )
+            }
+
+            for (let i = 0; i < item.quantity; i++) {
+              await tx.insert(employeeAssets).values({
+                employeeId: request.employeeId,
+                itemCategory: request.requestCategory,
+                itemName: item.itemType,
+                status: 'ACTIVE',
+                assignedAt: completedAt,
+                lastRequestId: id,
+              })
+            }
+          }
         }
       }
     }
   })
+
+  // Auto-transition to Summary APD draft when status becomes "proses_order"
+  if (status === 'proses_order') {
+    try {
+      const { syncApprovedApdRequestToSummary } = await import('@/lib/summary-engine')
+      await syncApprovedApdRequestToSummary(id)
+    } catch (syncErr) {
+      console.error('[APD] Failed to auto-sync APD request to summary:', syncErr)
+    }
+  }
+
   revalidatePath('/dashboard/apd')
   revalidatePath(`/dashboard/apd/${id}`)
+  revalidatePath('/dashboard/apd/inventory/safety-shoes')
+  revalidatePath('/dashboard/summary')
+  revalidatePath('/mobile/summary')
   revalidatePath('/dashboard/approval')
   return { success: true }
 }

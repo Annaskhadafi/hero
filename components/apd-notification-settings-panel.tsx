@@ -26,6 +26,9 @@ export type ApdNotificationConfigData = {
   serviceCcEmail?: string;
   repairCcEmail?: string;
   teCcEmail?: string;
+  serviceReminderEmail?: string;
+  repairReminderEmail?: string;
+  teReminderEmail?: string;
   isActive: boolean;
 };
 
@@ -39,12 +42,28 @@ export function ApdNotificationSettingsPanel({
   const [formData, setFormData] = useState<ApdNotificationConfigData>({
     recipientEmails: config.recipientEmails || "",
     ccEmails: config.ccEmails || "",
-    serviceCcEmail: config.serviceCcEmail || "otoleeh123@gmail.com",
-    repairCcEmail: config.repairCcEmail || "zahiriarjun@gmail.com",
-    teCcEmail: config.teCcEmail || "abian.husain@chitraparatama.co.id",
+    serviceCcEmail: config.serviceCcEmail || "",
+    repairCcEmail: config.repairCcEmail || "",
+    teCcEmail: config.teCcEmail || "",
+    serviceReminderEmail: config.serviceReminderEmail || "",
+    repairReminderEmail: config.repairReminderEmail || "",
+    teReminderEmail: config.teReminderEmail || "",
     isActive: config.isActive ?? true,
   });
   const [isSaving, setIsSaving] = useState(false);
+
+  const emailToEmployeeMap = new Map(
+    employees.map((e) => [e.email.toLowerCase().trim(), e.name])
+  );
+
+  const getRecipientNames = (emailsStr?: string) => {
+    if (!emailsStr) return [];
+    return emailsStr
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean)
+      .map((email) => emailToEmployeeMap.get(email) || email);
+  };
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -56,6 +75,9 @@ export function ApdNotificationSettingsPanel({
     fd.set("serviceCcEmail", formData.serviceCcEmail || "");
     fd.set("repairCcEmail", formData.repairCcEmail || "");
     fd.set("teCcEmail", formData.teCcEmail || "");
+    fd.set("serviceReminderEmail", formData.serviceReminderEmail || "");
+    fd.set("repairReminderEmail", formData.repairReminderEmail || "");
+    fd.set("teReminderEmail", formData.teReminderEmail || "");
     fd.set("isActive", String(formData.isActive));
 
     const result = await saveApdNotificationConfigAction(INITIAL_STATE, fd);
@@ -80,7 +102,7 @@ export function ApdNotificationSettingsPanel({
           <div className="min-w-0">
             <h2 className="font-display text-lg font-semibold">Pengaturan Notifikasi Email APD</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Pengaturan tembusan (CC) email status approval dan penerima pengingat (reminder) otomatis masa pakai APD.
+              Pengaturan tembusan (CC) email status approval dan penerima pengingat (reminder) otomatis masa pakai APD per divisi/tim.
             </p>
           </div>
         </div>
@@ -93,7 +115,7 @@ export function ApdNotificationSettingsPanel({
             <Users className="size-4 text-primary" />
             <div>
               <h3 className="font-display text-base font-semibold">
-                Tembusan (CC) Berdasarkan Divisi / Tim Pemohon
+                Tembusan (CC) Approval Berdasarkan Divisi / Tim Pemohon
               </h3>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Saat pengajuan APD disetujui (approved) oleh PJO/HSE/Admin, email pemberitahuan ke pemohon otomatis di-CC kan ke penanggung jawab sesuai divisi pemohon:
@@ -124,6 +146,18 @@ export function ApdNotificationSettingsPanel({
                 employees={employees}
                 placeholder="Pilih PIC Service..."
               />
+              <div className="mt-1 text-[0.7rem]">
+                {getRecipientNames(formData.serviceCcEmail).length > 0 ? (
+                  <p className="text-slate-600">
+                    <span className="font-medium text-slate-400">Penerima aktif: </span>
+                    <span className="font-semibold text-slate-800">{getRecipientNames(formData.serviceCcEmail).join(", ")}</span>
+                  </p>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                    Belum ada penerima yang diatur untuk divisi ini
+                  </span>
+                )}
+              </div>
               <p className="text-[0.7rem] text-muted-foreground">
                 Menerima CC jika pemohon APD berasal dari tim/seksi Service.
               </p>
@@ -151,6 +185,18 @@ export function ApdNotificationSettingsPanel({
                 employees={employees}
                 placeholder="Pilih PIC Repair..."
               />
+              <div className="mt-1 text-[0.7rem]">
+                {getRecipientNames(formData.repairCcEmail).length > 0 ? (
+                  <p className="text-slate-600">
+                    <span className="font-medium text-slate-400">Penerima aktif: </span>
+                    <span className="font-semibold text-slate-800">{getRecipientNames(formData.repairCcEmail).join(", ")}</span>
+                  </p>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                    Belum ada penerima yang diatur untuk divisi ini
+                  </span>
+                )}
+              </div>
               <p className="text-[0.7rem] text-muted-foreground">
                 Menerima CC jika pemohon APD berasal dari tim/seksi Repair / Retread.
               </p>
@@ -178,6 +224,18 @@ export function ApdNotificationSettingsPanel({
                 employees={employees}
                 placeholder="Pilih PIC TE..."
               />
+              <div className="mt-1 text-[0.7rem]">
+                {getRecipientNames(formData.teCcEmail).length > 0 ? (
+                  <p className="text-slate-600">
+                    <span className="font-medium text-slate-400">Penerima aktif: </span>
+                    <span className="font-semibold text-slate-800">{getRecipientNames(formData.teCcEmail).join(", ")}</span>
+                  </p>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                    Belum ada penerima yang diatur untuk divisi ini
+                  </span>
+                )}
+              </div>
               <p className="text-[0.7rem] text-muted-foreground">
                 Menerima CC jika pemohon APD berasal dari tim/seksi Technical Operation.
               </p>
@@ -185,25 +243,140 @@ export function ApdNotificationSettingsPanel({
           </div>
         </Card>
 
-        {/* Reminder Recipients */}
+        {/* Reminder Recipients by Division */}
         <Card className="rounded-lg p-5 shadow-sm border border-border space-y-4">
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="apd-to">Penerima Utama Reminder Masa Pakai APD</Label>
+          <div className="flex items-center gap-2 border-b border-border pb-3">
+            <Users className="size-4 text-primary" />
+            <div>
+              <h3 className="font-display text-base font-semibold">
+                Penerima Utama Reminder Masa Pakai APD per Divisi / Tim
+              </h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Email pengingat / reminder otomatis masa pakai APD (8 bulan) dikirimkan khusus ke penanggung jawab sesuai divisi masing-masing karyawan:
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            {/* Reminder Tim Service */}
+            <div className="space-y-2 rounded-lg border bg-surface-container-low p-4">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Wrench className="size-3.5 text-primary" />
+                <Badge variant="secondary" className="text-[0.7rem]">Tim Service</Badge>
+              </div>
+              <Label htmlFor="apd-service-reminder" className="text-xs font-semibold">
+                Reminder Karyawan Tim Service
+              </Label>
               <EmployeeMultiSelect
-                label="penerima reminder"
-                selectedEmails={formData.recipientEmails ? formData.recipientEmails.split(",").map((e: string) => e.trim()).filter(Boolean) : []}
+                label="PIC Reminder Service"
+                selectedEmails={
+                  formData.serviceReminderEmail
+                    ? formData.serviceReminderEmail.split(",").map((e: string) => e.trim()).filter(Boolean)
+                    : []
+                }
                 onChange={(emails: string[]) =>
-                  setFormData((current) => ({ ...current, recipientEmails: emails.join(", ") }))
+                  setFormData((current) => ({ ...current, serviceReminderEmail: emails.join(", ") }))
                 }
                 employees={employees}
-                placeholder="Pilih penerima reminder..."
+                placeholder="Pilih PIC Service..."
               />
-              <p className="text-xs text-muted-foreground">
-                Menerima email pengingat / reminder otomatis masa pakai APD (8 bulan).
+              <div className="mt-1 text-[0.7rem]">
+                {getRecipientNames(formData.serviceReminderEmail).length > 0 ? (
+                  <p className="text-slate-600">
+                    <span className="font-medium text-slate-400">Penerima aktif: </span>
+                    <span className="font-semibold text-slate-800">{getRecipientNames(formData.serviceReminderEmail).join(", ")}</span>
+                  </p>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                    Belum ada penerima yang diatur untuk divisi ini
+                  </span>
+                )}
+              </div>
+              <p className="text-[0.7rem] text-muted-foreground">
+                Menerima reminder masa pakai APD untuk karyawan divisi/seksi Service.
               </p>
             </div>
 
+            {/* Reminder Tim Repair / Retread */}
+            <div className="space-y-2 rounded-lg border bg-surface-container-low p-4">
+              <div className="flex items-center gap-1.5 mb-1">
+                <ShieldAlert className="size-3.5 text-amber-600" />
+                <Badge variant="secondary" className="text-[0.7rem]">Repair / Retread</Badge>
+              </div>
+              <Label htmlFor="apd-repair-reminder" className="text-xs font-semibold">
+                Reminder Karyawan Repair / Retread
+              </Label>
+              <EmployeeMultiSelect
+                label="PIC Reminder Repair"
+                selectedEmails={
+                  formData.repairReminderEmail
+                    ? formData.repairReminderEmail.split(",").map((e: string) => e.trim()).filter(Boolean)
+                    : []
+                }
+                onChange={(emails: string[]) =>
+                  setFormData((current) => ({ ...current, repairReminderEmail: emails.join(", ") }))
+                }
+                employees={employees}
+                placeholder="Pilih PIC Repair..."
+              />
+              <div className="mt-1 text-[0.7rem]">
+                {getRecipientNames(formData.repairReminderEmail).length > 0 ? (
+                  <p className="text-slate-600">
+                    <span className="font-medium text-slate-400">Penerima aktif: </span>
+                    <span className="font-semibold text-slate-800">{getRecipientNames(formData.repairReminderEmail).join(", ")}</span>
+                  </p>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                    Belum ada penerima yang diatur untuk divisi ini
+                  </span>
+                )}
+              </div>
+              <p className="text-[0.7rem] text-muted-foreground">
+                Menerima reminder masa pakai APD untuk karyawan divisi/seksi Repair / Retread.
+              </p>
+            </div>
+
+            {/* Reminder Tim TE */}
+            <div className="space-y-2 rounded-lg border bg-surface-container-low p-4">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Cpu className="size-3.5 text-blue-600" />
+                <Badge variant="secondary" className="text-[0.7rem]">Technical Operation (TE)</Badge>
+              </div>
+              <Label htmlFor="apd-te-reminder" className="text-xs font-semibold">
+                Reminder Karyawan Technical Operation (TE)
+              </Label>
+              <EmployeeMultiSelect
+                label="PIC Reminder TE"
+                selectedEmails={
+                  formData.teReminderEmail
+                    ? formData.teReminderEmail.split(",").map((e: string) => e.trim()).filter(Boolean)
+                    : []
+                }
+                onChange={(emails: string[]) =>
+                  setFormData((current) => ({ ...current, teReminderEmail: emails.join(", ") }))
+                }
+                employees={employees}
+                placeholder="Pilih PIC TE..."
+              />
+              <div className="mt-1 text-[0.7rem]">
+                {getRecipientNames(formData.teReminderEmail).length > 0 ? (
+                  <p className="text-slate-600">
+                    <span className="font-medium text-slate-400">Penerima aktif: </span>
+                    <span className="font-semibold text-slate-800">{getRecipientNames(formData.teReminderEmail).join(", ")}</span>
+                  </p>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                    Belum ada penerima yang diatur untuk divisi ini
+                  </span>
+                )}
+              </div>
+              <p className="text-[0.7rem] text-muted-foreground">
+                Menerima reminder masa pakai APD untuk karyawan divisi/seksi Technical Operation.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 pt-2">
             <div className="space-y-2">
               <Label htmlFor="apd-cc">CC Reminder APD (Opsional)</Label>
               <EmployeeMultiSelect
@@ -216,7 +389,7 @@ export function ApdNotificationSettingsPanel({
                 placeholder="Pilih penerima CC reminder..."
               />
               <p className="text-xs text-muted-foreground">
-                Penerima tembusan (CC) tambahan untuk email reminder masa pakai APD.
+                Penerima tembusan (CC) tambahan untuk seluruh email reminder masa pakai APD.
               </p>
             </div>
           </div>

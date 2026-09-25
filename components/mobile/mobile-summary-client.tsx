@@ -99,6 +99,7 @@ export function MobileSummaryClient({ sections, currentEmployeeId = 0 }: MobileS
   const exportToExcel = () => {
     const excelRows = filtered.map((sec, idx) => ({
       No: idx + 1,
+      'No. Dokumen': sec.summaryNumber || '(Belum Dibuat)',
       Section: sec.name,
       'Kode Section': sec.code || '-',
       'Target Site': sec.targetSite === 'VALE' ? 'Vale' : 'Gabungan Site',
@@ -342,12 +343,24 @@ export function MobileSummaryClient({ sections, currentEmployeeId = 0 }: MobileS
 
               return (
                 <article
-                  key={`${section.id}-${section.targetSite}`}
+                  key={section.summaryId ? `sum-${section.summaryId}` : `uncreated-${section.id}-${section.targetSite}`}
                   className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm space-y-3"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <h2 className="text-sm font-bold text-slate-900 leading-tight">{section.name}</h2>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h2 className="text-sm font-bold text-slate-900 leading-tight">{section.name}</h2>
+                        {section.summaryNumber && (
+                          <span className="font-mono text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                            {section.summaryNumber}
+                          </span>
+                        )}
+                        {!section.summaryStatus && (
+                          <span className="text-[9px] font-medium text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                            Permohonan Baru
+                          </span>
+                        )}
+                      </div>
                       <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                         {section.code && (
                           <span className="text-[10px] text-slate-400 font-mono">Kode: {section.code}</span>

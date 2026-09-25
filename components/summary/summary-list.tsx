@@ -37,6 +37,8 @@ export type SectionWithSummary = {
   approvedCount: number;
   summaryStatus: string | null;
   summaryId: number | null;
+  summaryNumber?: string | null;
+  createdAt?: Date | null;
   latestActivityAt?: Date | null;
 };
 
@@ -174,6 +176,7 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
   function exportToExcel() {
     const exportData = filtered.map((s, idx) => ({
       No: idx + 1,
+      'No. Dokumen': s.summaryNumber || '(Belum Dibuat)',
       Section: s.name,
       Kode: s.code || '-',
       'Target Site': s.targetSite === 'VALE' ? 'Vale' : 'Gabungan Site',
@@ -337,12 +340,24 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
 
                   return (
                     <tr
-                      key={`${section.id}-${section.targetSite}`}
+                      key={section.summaryId ? `sum-${section.summaryId}` : `uncreated-${section.id}-${section.targetSite}`}
                       className="transition-colors hover:bg-slate-50/70"
                     >
                       <td className="px-3.5 py-3 text-center font-medium text-slate-500">{idx + 1}</td>
                       <td className="px-4 py-3">
-                        <div className="font-semibold text-slate-900">{section.name}</div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <div className="font-semibold text-slate-900">{section.name}</div>
+                          {section.summaryNumber && (
+                            <span className="font-mono text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                              {section.summaryNumber}
+                            </span>
+                          )}
+                          {!section.summaryStatus && (
+                            <span className="text-[10px] font-medium text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                              Permohonan Baru
+                            </span>
+                          )}
+                        </div>
                         {section.code && (
                           <div className="text-[10px] text-slate-400 font-mono mt-0.5">Kode: {section.code}</div>
                         )}

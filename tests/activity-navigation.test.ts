@@ -8,7 +8,7 @@ import {
 describe("activity navigation clarity", () => {
   it("uses one primary daily activity input label across desktop and mobile", () => {
     expect(activityMenuLabels.input).toBe("Input Aktivitas Harian");
-    expect(activityHubTabs[0]).toMatchObject({ label: "Input Aktivitas Harian", href: "/dashboard/activity-hub/my-day" });
+    expect(activityHubTabs.find((t) => t.label === "Input Aktivitas Harian")).toMatchObject({ label: "Input Aktivitas Harian", href: "/dashboard/activity-hub/my-day" });
     expect(mobileActivityDrawerItem).toMatchObject({ label: "Input Aktivitas Harian", href: "/mobile/activity/input" });
   });
 

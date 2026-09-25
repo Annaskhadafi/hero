@@ -7906,18 +7906,24 @@ export async function getApdNotificationConfigData() {
         "id" serial PRIMARY KEY NOT NULL,
         "recipient_emails" text DEFAULT '' NOT NULL,
         "cc_emails" text DEFAULT '' NOT NULL,
-        "service_cc_email" text DEFAULT 'otoleeh123@gmail.com' NOT NULL,
-        "repair_cc_email" text DEFAULT 'zahiriarjun@gmail.com' NOT NULL,
-        "te_cc_email" text DEFAULT 'abian.husain@chitraparatama.co.id' NOT NULL,
+        "service_cc_email" text DEFAULT '' NOT NULL,
+        "repair_cc_email" text DEFAULT '' NOT NULL,
+        "te_cc_email" text DEFAULT '' NOT NULL,
+        "service_reminder_email" text DEFAULT '' NOT NULL,
+        "repair_reminder_email" text DEFAULT '' NOT NULL,
+        "te_reminder_email" text DEFAULT '' NOT NULL,
         "is_active" boolean DEFAULT true NOT NULL,
         "updated_at" timestamp DEFAULT now() NOT NULL
       )
     `)
     await db.execute(sql`
       ALTER TABLE "hero_apd_notification_config"
-      ADD COLUMN IF NOT EXISTS "service_cc_email" text DEFAULT 'otoleeh123@gmail.com' NOT NULL,
-      ADD COLUMN IF NOT EXISTS "repair_cc_email" text DEFAULT 'zahiriarjun@gmail.com' NOT NULL,
-      ADD COLUMN IF NOT EXISTS "te_cc_email" text DEFAULT 'abian.husain@chitraparatama.co.id' NOT NULL
+      ADD COLUMN IF NOT EXISTS "service_cc_email" text DEFAULT '' NOT NULL,
+      ADD COLUMN IF NOT EXISTS "repair_cc_email" text DEFAULT '' NOT NULL,
+      ADD COLUMN IF NOT EXISTS "te_cc_email" text DEFAULT '' NOT NULL,
+      ADD COLUMN IF NOT EXISTS "service_reminder_email" text DEFAULT '' NOT NULL,
+      ADD COLUMN IF NOT EXISTS "repair_reminder_email" text DEFAULT '' NOT NULL,
+      ADD COLUMN IF NOT EXISTS "te_reminder_email" text DEFAULT '' NOT NULL
     `).catch(() => null)
   } catch {
     // DDL bypass
@@ -7934,9 +7940,12 @@ export async function getApdNotificationConfigData() {
       id: 0,
       recipientEmails: '',
       ccEmails: '',
-      serviceCcEmail: 'otoleeh123@gmail.com',
-      repairCcEmail: 'zahiriarjun@gmail.com',
-      teCcEmail: 'abian.husain@chitraparatama.co.id',
+      serviceCcEmail: '',
+      repairCcEmail: '',
+      teCcEmail: '',
+      serviceReminderEmail: '',
+      repairReminderEmail: '',
+      teReminderEmail: '',
       isActive: true,
       updatedAt: new Date(),
     }

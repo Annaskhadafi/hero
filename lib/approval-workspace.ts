@@ -532,6 +532,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
             id: apdSummaries.id,
             summaryNumber: apdSummaries.summaryNumber,
             sectionId: apdSummaries.sectionId,
+            targetSite: apdSummaries.targetSite,
             status: apdSummaries.status,
             generatedByEmployeeId: apdSummaries.generatedByEmployeeId,
           })
@@ -618,6 +619,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
             row.activityEmployeeId ??
             row.requesterEmployeeId ??
             (row.apdRequestId == null ? null : apdMap.get(row.apdRequestId)?.employeeId) ??
+            (row.apdSummaryId == null ? null : summaryMap.get(row.apdSummaryId)?.generatedByEmployeeId) ??
             (row.fiveRReportId == null ? null : fiveRMap.get(row.fiveRReportId)?.auditorId) ??
             (row.repairFormWoId == null ? null : (repairWoMap.get(row.repairFormWoId)?.createdBy ? Number(repairWoMap.get(row.repairFormWoId)?.createdBy) : null)) ??
             row.approverEmployeeId
@@ -950,15 +952,17 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       resolvedRequesterName = currentRepairWo.pemohon
     } else if (requester?.name) {
       resolvedRequesterName = requester.name
+    } else if (row.apdSummaryId != null) {
+      resolvedRequesterName = 'Pemohon Summary APD'
     } else if (row.approverName) {
       resolvedRequesterName = row.approverName
     }
 
     const resolvedRequesterEmail = fiveR?.auditorEmail || requester?.email || ''
-    const resolvedDepartment = requester?.department || (fiveR ? 'Quality Management' : '')
-    const resolvedSection = requester?.section || (fiveR ? 'CPI' : '')
-    const resolvedJobTitle = requester?.jobTitle || (currentRepairWo ? 'Pemohon WO' : fiveR ? 'Auditor 5R' : '')
-    const resolvedSiteName = currentRepairWo?.site || site?.name || siteNameFromSnapshot || (fiveR ? 'Balikpapan' : '-')
+    const resolvedDepartment = requester?.department || (fiveR ? 'Quality Management' : (row.apdSummaryId != null ? 'HSE / Safety' : ''))
+    const resolvedSection = requester?.section || (row.apdSummaryId != null && summary ? (summary.sectionId === 33 || summary.sectionId === 34 ? 'Service Operation' : '') : '') || (fiveR ? 'CPI' : '')
+    const resolvedJobTitle = requester?.jobTitle || (currentRepairWo ? 'Pemohon WO' : fiveR ? 'Auditor 5R' : (row.apdSummaryId != null ? 'Submitter Summary' : ''))
+    const resolvedSiteName = currentRepairWo?.site || (row.apdSummaryId != null && summary ? (summary.targetSite === 'VALE' ? 'Vale' : 'Gabungan Site') : null) || site?.name || siteNameFromSnapshot || (fiveR ? 'Balikpapan' : '-')
 
     let resolvedUnitNumber = '-'
     if (row.repairFormWoId != null) {

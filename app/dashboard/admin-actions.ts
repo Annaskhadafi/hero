@@ -5429,14 +5429,14 @@ async function applyApprovalDecision(params: {
 
               const streamCc: string[] = []
               if (reqSec.includes('repair') || reqSec.includes('retread')) {
-                streamCc.push(...parseEmails(apdConfig.repairCcEmail || 'zahiriarjun@gmail.com'))
+                streamCc.push(...parseEmails(apdConfig.repairCcEmail))
               } else if (reqSec.includes('te') || reqSec.includes('technical') || reqSec.includes('engineer')) {
-                streamCc.push(...parseEmails(apdConfig.teCcEmail || 'abian.husain@chitraparatama.co.id'))
+                streamCc.push(...parseEmails(apdConfig.teCcEmail))
               } else if (reqSec.includes('service') || reqSec.includes('mvc')) {
-                streamCc.push(...parseEmails(apdConfig.serviceCcEmail || 'otoleeh123@gmail.com'))
-              } else {
-                // Default fallback to service CC
-                streamCc.push(...parseEmails(apdConfig.serviceCcEmail || 'otoleeh123@gmail.com'))
+                streamCc.push(...parseEmails(apdConfig.serviceCcEmail))
+              } else if (apdConfig.serviceCcEmail) {
+                // Fallback to configured service CC if present
+                streamCc.push(...parseEmails(apdConfig.serviceCcEmail))
               }
 
               ccEmails = Array.from(

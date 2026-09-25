@@ -146,6 +146,12 @@ const humanCapitalNotificationSchema = z.object({
 const apdNotificationSchema = z.object({
   recipientEmails: z.string().trim().default(""),
   ccEmails: z.string().trim().default(""),
+  serviceCcEmail: z.string().trim().default(""),
+  repairCcEmail: z.string().trim().default(""),
+  teCcEmail: z.string().trim().default(""),
+  serviceReminderEmail: z.string().trim().default(""),
+  repairReminderEmail: z.string().trim().default(""),
+  teReminderEmail: z.string().trim().default(""),
   isActive: z.preprocess((value) => value === "true" || value === true, z.boolean()),
 });
 
@@ -1013,6 +1019,12 @@ export async function saveApdNotificationConfigAction(
     const values = {
       recipientEmails: parsed.data.recipientEmails,
       ccEmails: parsed.data.ccEmails,
+      serviceCcEmail: parsed.data.serviceCcEmail,
+      repairCcEmail: parsed.data.repairCcEmail,
+      teCcEmail: parsed.data.teCcEmail,
+      serviceReminderEmail: parsed.data.serviceReminderEmail,
+      repairReminderEmail: parsed.data.repairReminderEmail,
+      teReminderEmail: parsed.data.teReminderEmail,
       isActive: parsed.data.isActive,
       updatedAt: new Date(),
     };

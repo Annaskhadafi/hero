@@ -116,179 +116,164 @@ export async function getSectionsWithApprovedRequests() {
     .where(eq(masterSections.isActive, true))
     .orderBy(asc(masterSections.name));
 
+  const sectionMap = new Map(sections.map(s => [s.id, s]));
+
   // Service Operation sections (e.g. Service Operation MVC [id 33] & Service Operation Others [id 34])
   const serviceSectionIds = [33, 34];
   const serviceSections = sections.filter(s => serviceSectionIds.includes(s.id) || s.name.toLowerCase().includes('service operation'));
   const actualServiceIds = serviceSections.length > 0 ? serviceSections.map(s => s.id) : [33, 34];
 
-  const processedSectionIds = new Set<number>();
-  const results = [];
+  // 1. Fetch ALL existing summaries from DB - these represent all historical and active generated summaries
+  const allSummaries = await db.select({
+    id: apdSummaries.id,
+    summaryNumber: apdSummaries.summaryNumber,
+    sectionId: apdSummaries.sectionId,
+    targetSite: apdSummaries.targetSite,
+    status: apdSummaries.status,
+    createdAt: apdSummaries.createdAt,
+    updatedAt: apdSummaries.updatedAt,
+    approvedAt: apdSummaries.approvedAt,
+    itemCount: sql<number>`count(${apdSummaryItems.id})::int`,
+    distinctRequests: sql<number>`count(distinct ${apdSummaryItems.apdRequestId})::int`,
+  }).from(apdSummaries)
+    .leftJoin(apdSummaryItems, eq(apdSummaries.id, apdSummaryItems.summaryId))
+    .groupBy(apdSummaries.id)
+    .orderBy(desc(apdSummaries.id));
 
-  for (const section of sections) {
-    if (actualServiceIds.includes(section.id)) {
-      if (processedSectionIds.has(actualServiceIds[0])) continue; // only process once as combined
-      actualServiceIds.forEach(id => processedSectionIds.add(id));
+  // 2. Fetch all assigned request IDs across active summaries to determine unassigned requests
+  const assignedReqRows = await db.select({
+    apdRequestId: apdSummaryItems.apdRequestId,
+  }).from(apdSummaryItems)
+    .innerJoin(apdSummaries, eq(apdSummaryItems.summaryId, apdSummaries.id))
+    .where(inArray(apdSummaries.status, ['draft', 'pending', 'approved']));
 
-      // Combined query for all service sections
-      for (const targetSite of ['GABUNGAN', 'VALE'] as const) {
-        const isVale = targetSite === 'VALE';
-        const isValeCondition = isVale
-          ? sql`(${sites.name} ILIKE '%vale%' OR ${sites.name} = 'VALE')`
-          : sql`NOT (${sites.name} ILIKE '%vale%' OR ${sites.name} = 'VALE')`;
+  const assignedRequestIds = new Set(assignedReqRows.map(r => r.apdRequestId).filter(Boolean));
 
-        const [countRow] = await db.select({
-          count: sql<number>`count(*)::int`,
-          latestReqAt: sql<Date | null>`MAX(COALESCE(${apdRequests.updatedAt}, ${apdRequests.createdAt}))`,
-        }).from(apdRequests)
-          .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
-          .innerJoin(sites, eq(apdRequests.siteId, sites.id))
-          .where(and(
-            inArray(employees.sectionId, actualServiceIds),
-            inArray(apdRequests.status, ['approved', 'proses_order', 'complete', 'completed']),
-            sql`(${apdRequests.requestCategory} IS NULL OR ${apdRequests.requestCategory} = 'APD' OR UPPER(${apdRequests.requestCategory}) = 'APD')`,
-            sql`(${apdRequests.requestCategory} IS NULL OR UPPER(${apdRequests.requestCategory}) NOT IN ('TOOLS', 'MATERIAL'))`,
-            isValeCondition
-          ));
+  const results: Array<{
+    id: number;
+    name: string;
+    code: string;
+    departmentId: number | null;
+    headEmployeeId: number | null;
+    targetSite: string;
+    approvedCount: number;
+    summaryStatus: string | null;
+    summaryId: number | null;
+    summaryNumber: string | null;
+    latestActivityAt: Date | null;
+  }> = [];
 
-        const approvedCount = countRow?.count || 0;
-        const latestApprovedReqAt = countRow?.latestReqAt || null;
+  // Add all existing summaries to results (preserving full history)
+  for (const sum of allSummaries) {
+    const isService = actualServiceIds.includes(sum.sectionId);
+    const sec = sectionMap.get(sum.sectionId);
+    const sectionName = isService ? 'Service Operation' : (sec?.name || `Section ${sum.sectionId}`);
+    const sectionCode = isService ? 'SRV-OPS' : (sec?.code || '');
+    const deptId = isService ? 2 : (sec?.departmentId || null);
+    const headEmpId = sec?.headEmployeeId || null;
 
-        const [existingSummary] = await db.select({
-          id: apdSummaries.id,
-          status: apdSummaries.status,
-          createdAt: apdSummaries.createdAt,
-          updatedAt: apdSummaries.updatedAt,
-        }).from(apdSummaries)
-          .where(and(
-            inArray(apdSummaries.sectionId, actualServiceIds),
-            eq(apdSummaries.targetSite, targetSite)
-          ))
-          .orderBy(desc(apdSummaries.id))
-          .limit(1);
-
-        if (approvedCount > 0 || existingSummary) {
-          const summaryTime = existingSummary?.updatedAt || existingSummary?.createdAt || null;
-          const reqTime = latestApprovedReqAt ? new Date(latestApprovedReqAt) : null;
-          let latestActivityAt: Date | null = null;
-          if (summaryTime && reqTime) {
-            latestActivityAt = new Date(Math.max(new Date(summaryTime).getTime(), reqTime.getTime()));
-          } else {
-            latestActivityAt = summaryTime || reqTime || null;
-          }
-
-          results.push({
-            id: 33, // Primary section ID for Service Operation
-            name: 'Service Operation',
-            code: 'SRV-OPS',
-            departmentId: section.departmentId || 2,
-            headEmployeeId: section.headEmployeeId,
-            targetSite,
-            approvedCount,
-            summaryStatus: existingSummary?.status || null,
-            summaryId: existingSummary?.id || null,
-            latestActivityAt,
-          });
-        }
-      }
-      continue;
+    const summaryTime = sum.approvedAt || sum.updatedAt || sum.createdAt || null;
+    const reqTime = summaryTime ? new Date(summaryTime) : null;
+    let latestActivityAt: Date | null = null;
+    if (summaryTime && reqTime) {
+      latestActivityAt = new Date(Math.max(new Date(summaryTime).getTime(), reqTime.getTime()));
+    } else {
+      latestActivityAt = summaryTime ? new Date(summaryTime) : null;
     }
 
-    if (processedSectionIds.has(section.id)) continue;
-    processedSectionIds.add(section.id);
+    results.push({
+      id: isService ? 33 : sum.sectionId,
+      name: sectionName,
+      code: sectionCode,
+      departmentId: deptId,
+      headEmployeeId: headEmpId,
+      targetSite: sum.targetSite,
+      approvedCount: sum.distinctRequests || sum.itemCount || 0,
+      summaryStatus: sum.status,
+      summaryId: sum.id,
+      summaryNumber: sum.summaryNumber,
+      latestActivityAt,
+    });
+  }
 
-    const counts = await db.select({
-      isVale: sql<boolean>`${sites.name} ILIKE '%vale%' OR ${sites.name} = 'VALE'`,
-      count: sql<number>`count(*)::int`,
-      latestReqAt: sql<Date | null>`MAX(COALESCE(${apdRequests.updatedAt}, ${apdRequests.createdAt}))`,
-    }).from(apdRequests)
-      .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
-      .innerJoin(sites, eq(apdRequests.siteId, sites.id))
-      .where(and(
-        eq(employees.sectionId, section.id),
-        inArray(apdRequests.status, ['approved', 'proses_order', 'complete', 'completed']),
-        sql`(${apdRequests.requestCategory} IS NULL OR ${apdRequests.requestCategory} = 'APD' OR UPPER(${apdRequests.requestCategory}) = 'APD')`,
-        sql`(${apdRequests.requestCategory} IS NULL OR UPPER(${apdRequests.requestCategory}) NOT IN ('TOOLS', 'MATERIAL'))`
-      ))
-      .groupBy(sql`${sites.name} ILIKE '%vale%' OR ${sites.name} = 'VALE'`);
+  // 3. Find UNASSIGNED approved requests (ready to be generated into a new summary)
+  const unassignedReqs = await db.select({
+    requestId: apdRequests.id,
+    sectionId: employees.sectionId,
+    siteName: sites.name,
+    latestReqAt: sql<Date | null>`MAX(COALESCE(${apdRequests.updatedAt}, ${apdRequests.createdAt}))`,
+    updatedAt: apdRequests.updatedAt,
+    createdAt: apdRequests.createdAt,
+  }).from(apdRequests)
+    .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
+    .innerJoin(sites, eq(apdRequests.siteId, sites.id))
+    .where(and(
+      inArray(apdRequests.status, ['approved', 'proses_order', 'complete', 'completed']),
+      sql`(${apdRequests.requestCategory} IS NULL OR ${apdRequests.requestCategory} = 'APD' OR UPPER(${apdRequests.requestCategory}) = 'APD')`,
+      sql`(${apdRequests.requestCategory} IS NULL OR UPPER(${apdRequests.requestCategory}) NOT IN ('TOOLS', 'MATERIAL'))`
+    ))
+    .groupBy(apdRequests.id, employees.sectionId, sites.name, apdRequests.updatedAt, apdRequests.createdAt);
 
-    let valeCount = 0;
-    let valeLatestReqAt: Date | null = null;
-    let gabunganCount = 0;
-    let gabunganLatestReqAt: Date | null = null;
+  const pendingRequests = unassignedReqs.filter(r => !assignedRequestIds.has(r.requestId));
 
-    for (const c of counts) {
-      if (c.isVale) {
-        valeCount += c.count;
-        if (c.latestReqAt) valeLatestReqAt = new Date(c.latestReqAt);
-      } else {
-        gabunganCount += c.count;
-        if (c.latestReqAt) gabunganLatestReqAt = new Date(c.latestReqAt);
+  const unassignedMap = new Map<string, {
+    sectionId: number;
+    targetSite: 'VALE' | 'GABUNGAN';
+    count: number;
+    latestReqAt: Date | null;
+  }>();
+
+  for (const req of pendingRequests) {
+    const rawSecId = req.sectionId || 33;
+    const isService = actualServiceIds.includes(rawSecId);
+    const effectiveSectionId = isService ? 33 : rawSecId;
+    const isVale = req.siteName.toLowerCase().includes('vale') || req.siteName.toUpperCase() === 'VALE';
+    const targetSite: 'VALE' | 'GABUNGAN' = isVale ? 'VALE' : 'GABUNGAN';
+    const key = `${effectiveSectionId}_${targetSite}`;
+
+    const reqTime = req.latestReqAt || req.updatedAt || req.createdAt ? new Date((req.latestReqAt || req.updatedAt || req.createdAt)!) : null;
+
+    const existing = unassignedMap.get(key);
+    if (existing) {
+      existing.count += 1;
+      if (reqTime && (!existing.latestReqAt || reqTime.getTime() > existing.latestReqAt.getTime())) {
+        existing.latestReqAt = reqTime;
       }
-    }
-
-    const [existingValeSummary] = await db.select({
-      id: apdSummaries.id,
-      status: apdSummaries.status,
-      createdAt: apdSummaries.createdAt,
-      updatedAt: apdSummaries.updatedAt,
-    }).from(apdSummaries)
-      .where(and(eq(apdSummaries.sectionId, section.id), eq(apdSummaries.targetSite, 'VALE')))
-      .orderBy(desc(apdSummaries.id))
-      .limit(1);
-
-    const [existingGabunganSummary] = await db.select({
-      id: apdSummaries.id,
-      status: apdSummaries.status,
-      createdAt: apdSummaries.createdAt,
-      updatedAt: apdSummaries.updatedAt,
-    }).from(apdSummaries)
-      .where(and(eq(apdSummaries.sectionId, section.id), eq(apdSummaries.targetSite, 'GABUNGAN')))
-      .orderBy(desc(apdSummaries.id))
-      .limit(1);
-
-    if (valeCount > 0 || existingValeSummary) {
-      const summaryTime = existingValeSummary?.updatedAt || existingValeSummary?.createdAt || null;
-      const reqTime = valeLatestReqAt;
-      let latestActivityAt: Date | null = null;
-      if (summaryTime && reqTime) {
-        latestActivityAt = new Date(Math.max(new Date(summaryTime).getTime(), reqTime.getTime()));
-      } else {
-        latestActivityAt = summaryTime || reqTime || null;
-      }
-
-      results.push({
-        ...section,
-        targetSite: 'VALE',
-        approvedCount: valeCount,
-        summaryStatus: existingValeSummary?.status || null,
-        summaryId: existingValeSummary?.id || null,
-        latestActivityAt,
-      });
-    }
-    
-    if (gabunganCount > 0 || existingGabunganSummary) {
-      const summaryTime = existingGabunganSummary?.updatedAt || existingGabunganSummary?.createdAt || null;
-      const reqTime = gabunganLatestReqAt;
-      let latestActivityAt: Date | null = null;
-      if (summaryTime && reqTime) {
-        latestActivityAt = new Date(Math.max(new Date(summaryTime).getTime(), reqTime.getTime()));
-      } else {
-        latestActivityAt = summaryTime || reqTime || null;
-      }
-
-      results.push({
-        ...section,
-        targetSite: 'GABUNGAN',
-        approvedCount: gabunganCount,
-        summaryStatus: existingGabunganSummary?.status || null,
-        summaryId: existingGabunganSummary?.id || null,
-        latestActivityAt,
+    } else {
+      unassignedMap.set(key, {
+        sectionId: effectiveSectionId,
+        targetSite,
+        count: 1,
+        latestReqAt: reqTime,
       });
     }
   }
 
+  for (const [, val] of unassignedMap.entries()) {
+    const isService = actualServiceIds.includes(val.sectionId);
+    const sec = sectionMap.get(val.sectionId);
+    const sectionName = isService ? 'Service Operation' : (sec?.name || `Section ${val.sectionId}`);
+    const sectionCode = isService ? 'SRV-OPS' : (sec?.code || '');
+    const deptId = isService ? 2 : (sec?.departmentId || null);
+    const headEmpId = sec?.headEmployeeId || null;
+
+    results.push({
+      id: val.sectionId,
+      name: sectionName,
+      code: sectionCode,
+      departmentId: deptId,
+      headEmployeeId: headEmpId,
+      targetSite: val.targetSite,
+      approvedCount: val.count,
+      summaryStatus: null, // "Belum Dibuat"
+      summaryId: null,
+      summaryNumber: null,
+      latestActivityAt: val.latestReqAt,
+    });
+  }
+
   // Sort:
-  // 1. Prioritize sections that have approved requests NOT YET generated into a summary ("Belum Dibuat") at the very top (No. 1)
+  // 1. Prioritize sections with uncreated approved requests ("Belum Dibuat") at the very top (No. 1)
   // 2. Then sort by latestActivityAt descending (newest activity / approval date first)
   // 3. Then by summaryId descending (newest generated summary first)
   return results.sort((a, b) => {
@@ -585,6 +570,7 @@ export async function syncApprovedApdRequestToSummary(apdRequestId: number) {
     requestId: apdRequests.id,
     requestNumber: apdRequests.requestNumber,
     requestCategory: apdRequests.requestCategory,
+    status: apdRequests.status,
     notes: apdRequests.notes,
     employeeId: employees.id,
     employeeName: employees.name,
@@ -599,6 +585,12 @@ export async function syncApprovedApdRequestToSummary(apdRequestId: number) {
     .limit(1);
 
   if (!req) return { skipped: true, reason: 'Request not found' };
+
+  // Trigger strictly for "proses_order" or "approved" / "complete" statuses
+  const normalizedStatus = (req.status || '').toLowerCase();
+  if (!['proses_order', 'approved', 'complete', 'completed'].includes(normalizedStatus)) {
+    return { skipped: true, reason: `Status is ${req.status}, must be proses_order or approved` };
+  }
 
   // Only APD requests (exclude TOOLS, MATERIAL)
   const category = (req.requestCategory || 'APD').toUpperCase();
