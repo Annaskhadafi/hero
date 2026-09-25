@@ -1030,6 +1030,10 @@ export async function getDailyActivityDashboardData(
       .innerJoin(employees, eq(overtimeCommandLetters.requestedByEmployeeId, employees.id))
       .where(currentSite.id !== 0 ? eq(employees.siteId, currentSite.id) : undefined)
       .limit(3)
+      .catch((err) => {
+        console.error('[daily-activity:overtimeCommandLetters] Query failed:', err)
+        return []
+      })
 
     for (const spl of rawSpl) {
       delayedJobs.push({
@@ -1088,6 +1092,21 @@ export async function getDailyActivityDashboardData(
     employeeWhere.push(eq(employees.siteId, currentSite.id))
   }
 
+  const v2Conditions = [inArray(timesheetSchedulingPlansV2.period, evalPeriods)]
+  if (currentSite.id !== 0) {
+    v2Conditions.push(eq(timesheetSchedulingPlansV2.siteId, currentSite.id))
+  }
+
+  const v1Conditions = [inArray(timesheetSchedulingPlans.period, evalPeriods)]
+  if (currentSite.id !== 0) {
+    v1Conditions.push(eq(timesheetSchedulingPlans.siteId, currentSite.id))
+  }
+
+  const fbConditions = []
+  if (currentSite.id !== 0) {
+    fbConditions.push(eq(timesheetFieldBreakPlans.siteId, currentSite.id))
+  }
+
   const [allActiveEmployees, v2Plans, v1Plans, fbPlans] = await Promise.all([
     db
       .select({
@@ -1101,14 +1120,18 @@ export async function getDailyActivityDashboardData(
         sectionName: masterSections.name,
         siteId: employees.siteId,
         siteName: sites.name,
-        rosterType: employees.rosterType,
+        rosterType: sql<string>`'5:2'`.as('roster_type'),
       })
       .from(employees)
       .leftJoin(sites, eq(employees.siteId, sites.id))
       .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
       .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
       .where(and(...employeeWhere))
-      .orderBy(employees.name),
+      .orderBy(employees.name)
+      .catch((err) => {
+        console.error('[daily-activity:employees] Query failed:', err)
+        return []
+      }),
     evalPeriods.length > 0
       ? db
           .select({
@@ -1119,13 +1142,12 @@ export async function getDailyActivityDashboardData(
             draftSchedule: timesheetSchedulingPlansV2.draftSchedule,
           })
           .from(timesheetSchedulingPlansV2)
-          .where(
-            and(
-              currentSite.id !== 0 ? eq(timesheetSchedulingPlansV2.siteId, currentSite.id) : undefined,
-              inArray(timesheetSchedulingPlansV2.period, evalPeriods)
-            )
-          )
-      : [],
+          .where(and(...v2Conditions))
+          .catch((err) => {
+            console.error('[daily-activity:timesheetSchedulingPlansV2] Query failed:', err)
+            return []
+          })
+      : Promise.resolve([]),
     evalPeriods.length > 0
       ? db
           .select({
@@ -1134,13 +1156,12 @@ export async function getDailyActivityDashboardData(
             fixedSchedule: timesheetSchedulingPlans.fixedSchedule,
           })
           .from(timesheetSchedulingPlans)
-          .where(
-            and(
-              currentSite.id !== 0 ? eq(timesheetSchedulingPlans.siteId, currentSite.id) : undefined,
-              inArray(timesheetSchedulingPlans.period, evalPeriods)
-            )
-          )
-      : [],
+          .where(and(...v1Conditions))
+          .catch((err) => {
+            console.error('[daily-activity:timesheetSchedulingPlans] Query failed:', err)
+            return []
+          })
+      : Promise.resolve([]),
     db
       .select({
         siteId: timesheetFieldBreakPlans.siteId,
@@ -1149,9 +1170,11 @@ export async function getDailyActivityDashboardData(
         fieldBreakEndDate: timesheetFieldBreakPlans.fieldBreakEndDate,
       })
       .from(timesheetFieldBreakPlans)
-      .where(
-        currentSite.id !== 0 ? eq(timesheetFieldBreakPlans.siteId, currentSite.id) : undefined
-      ),
+      .where(fbConditions.length > 0 ? and(...fbConditions) : undefined)
+      .catch((err) => {
+        console.error('[daily-activity:timesheetFieldBreakPlans] Query failed:', err)
+        return []
+      }),
   ])
 
   type SchedRow = { employeeId: number; schedule: string[] }

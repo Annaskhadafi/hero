@@ -49,7 +49,15 @@ export default async function DailyActivityPage({ searchParams }: PageProps) {
   const resolvedParams = searchParams ? await searchParams : {}
   const searchKeyword = resolvedParams.employeeName || resolvedParams.q
 
-  const [data, [emp]] = await Promise.all([
+  const userConds = []
+  if (session.user.id) {
+    userConds.push(eq(employees.authUserId, session.user.id))
+  }
+  if (session.user.email) {
+    userConds.push(sql`lower(${employees.email}) = lower(${session.user.email})`)
+  }
+
+  const [data, empRows] = await Promise.all([
     getDailyActivityDashboardData({
       siteId: resolvedParams.siteId,
       date: resolvedParams.date,
@@ -59,23 +67,23 @@ export default async function DailyActivityPage({ searchParams }: PageProps) {
       status: resolvedParams.status,
       search: searchKeyword,
     }),
-    db
-      .select({
-        name: employees.name,
-        jobTitle: employees.jobTitle,
-        accessRole: employees.accessRole,
-      })
-      .from(employees)
-      .where(
-        or(
-          session.user.id ? eq(employees.authUserId, session.user.id) : undefined,
-          session.user.email
-            ? sql`lower(${employees.email}) = lower(${session.user.email})`
-            : undefined
-        )
-      )
-      .limit(1),
+    userConds.length > 0
+      ? db
+          .select({
+            name: employees.name,
+            jobTitle: employees.jobTitle,
+            accessRole: employees.accessRole,
+          })
+          .from(employees)
+          .where(userConds.length > 1 ? or(...userConds) : userConds[0])
+          .limit(1)
+          .catch((err) => {
+            console.error('[daily-activity:page:employee] query error:', err)
+            return []
+          })
+      : Promise.resolve([]),
   ])
+  const emp = empRows[0]
 
   return (
     <div className="w-full min-h-[calc(100vh-4rem)] p-4 sm:p-5 lg:p-6 bg-[#f5f7fb]">

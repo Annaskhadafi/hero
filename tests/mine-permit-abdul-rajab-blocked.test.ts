@@ -1,6 +1,8 @@
 import {
   isBlockedMinePermitEmail,
   BLOCKED_MINE_PERMIT_EMAILS,
+} from '../lib/mine-permit-utils'
+import {
   getMinePermitSiteOptions,
   getMinePermitSiteConfig,
   saveMinePermitSiteConfig,

@@ -135,7 +135,11 @@ export async function canAccessDailyActivityMonitoring(
 
   if (!userEmail && !userId) return false
 
-  // 3. Check employee record (jobTitle, role, accessRole)
+  const userConds = []
+  if (userId) userConds.push(eq(employees.authUserId, userId))
+  if (userEmail) userConds.push(sql`lower(${employees.email}) = lower(${userEmail})`)
+  if (userConds.length === 0) return false
+
   const [emp] = await db
     .select({
       id: employees.id,
@@ -144,12 +148,7 @@ export async function canAccessDailyActivityMonitoring(
       accessRole: employees.accessRole,
     })
     .from(employees)
-    .where(
-      or(
-        userId ? eq(employees.authUserId, userId) : undefined,
-        userEmail ? sql`lower(${employees.email}) = lower(${userEmail})` : undefined
-      )
-    )
+    .where(userConds.length > 1 ? or(...userConds) : userConds[0])
     .limit(1)
 
   if (!emp) return false
