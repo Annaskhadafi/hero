@@ -102,3 +102,21 @@ test('approval workbench supports executing single and batch contract review app
   assert.ok(content.includes('Dokumen Resmi Contract Review'), 'must render official contract review document banner')
   assert.ok(content.includes('mode=print&embedded=1'), 'must load official print embedded iframe URL')
 })
+
+test('contract recommendation is hidden from employee under review across workbench, public approval, and action', () => {
+  const workbenchPath = path.resolve('components/approval-workbench.tsx')
+  const workbenchContent = fs.readFileSync(workbenchPath, 'utf8')
+  assert.ok(workbenchContent.includes('isEmployeeUnderReview'), 'workbench must identify isEmployeeUnderReview')
+  assert.ok(workbenchContent.includes('if (isEmployeeUnderReview) return null'), 'workbench must hide recommendation card for employee')
+
+  const actionsPath = path.resolve('app/actions/contract-review.ts')
+  const actionsContent = fs.readFileSync(actionsPath, 'utf8')
+  assert.ok(actionsContent.includes('isEmployeeReviewer'), 'action must identify isEmployeeReviewer')
+  assert.ok(actionsContent.includes('if (!isEmployeeReviewer)'), 'action must prevent employee reviewer from updating recommendation')
+
+  const publicPath = path.resolve('app/review/[token]/public-approval.tsx')
+  const publicContent = fs.readFileSync(publicPath, 'utf8')
+  assert.ok(publicContent.includes('isEmployee'), 'public approval must identify isEmployee')
+  assert.ok(publicContent.includes('!isEmployee &&'), 'public approval must wrap recommendation in !isEmployee condition')
+})
+

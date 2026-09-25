@@ -221,9 +221,10 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
   const isSectionHead = approval.approverRole === 'section_head_confirmation' || approval.approverRole === 'section_head_initial'
   const isDeptHead = approval.approverRole === 'central_service_manager'
   const isHr = approval.approverRole === 'hr'
+  const isEmployee = approval.approverRole === 'employee' || approval.stepOrder === 2
 
-  const canEditRecommendation = currentStatus === 'pending' && !done && (isSectionHead || isDeptHead || isHr)
-  const canEditLetterIssuance = currentStatus === 'pending' && !done && isHr
+  const canEditRecommendation = currentStatus === 'pending' && !done && (isSectionHead || isDeptHead || isHr) && !isEmployee
+  const canEditLetterIssuance = currentStatus === 'pending' && !done && isHr && !isEmployee
 
   // Catatan revert dari approver setelah step ini jika dokumen sedang dikembalikan untuk revisi
   const revertNoteFromLaterStep = approvalHistory
@@ -421,19 +422,29 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
   const achievementScore = allVals.length > 0 ? Math.round(allVals.reduce((sum: number, val: number) => sum + val, 0) / allVals.length) : 0
   const achCategory = achievementScore >= 106 ? 'exceed' : achievementScore >= 95 ? 'meet' : achievementScore > 0 ? 'below' : ''
 
+  const countLines = (text: string, charsPerLine: number) => {
+    if (!text) return 1
+    const lines = text.split('\n')
+    let total = 0
+    for (const line of lines) {
+      total += Math.max(1, Math.ceil(line.length / charsPerLine))
+    }
+    return Math.max(1, total)
+  }
+
   const estimateRowHeightMm = (item: any) => {
     const act = String(item?.activity || '').trim()
     const rem = String(item?.remark || '').trim()
-    const actLines = Math.max(1, Math.ceil(act.length / 50))
-    const remLines = Math.max(1, Math.ceil(rem.length / 28))
+    const actLines = countLines(act, 40)
+    const remLines = countLines(rem, 54)
     const maxLines = Math.max(actLines, remLines)
-    return 4 + maxLines * 4.2
+    return 2.5 + maxLines * 3.3
   }
 
   const { firstPageActivities, performanceOverflowChunks } = (() => {
     const all = review.performanceActivities ?? []
-    const PAGE_1_ROWS_MAX_MM = 120
-    const CONTINUATION_ROWS_MAX_MM = 180
+    const PAGE_1_ROWS_MAX_MM = 130
+    const CONTINUATION_ROWS_MAX_MM = 190
 
     const first: any[] = []
     let usedMm = 0
@@ -507,13 +518,13 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
       <tbody>
         {items.map((item: any, i: number) => (
           <tr key={`${keyPrefix}-${i}`}>
-            <td className="text-left">{item.activity || '\u00A0'}</td>
-            <td className="text-center font-medium">{formatAchievementDisplay(item.achievement)}</td>
-            <td className="text-left">{item.remark || '\u00A0'}</td>
+            <td className="text-left align-top">{item.activity || '\u00A0'}</td>
+            <td className="text-center font-medium align-top">{formatAchievementDisplay(item.achievement)}</td>
+            <td className="text-left align-top">{item.remark || '\u00A0'}</td>
           </tr>
         ))}
         {items.length === 0 && Array(5).fill(0).map((_, i) => (
-          <tr key={`${keyPrefix}-empty-${i}`}><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+          <tr key={`${keyPrefix}-empty-${i}`}><td className="align-top">&nbsp;</td><td className="align-top">&nbsp;</td><td className="align-top">&nbsp;</td></tr>
         ))}
       </tbody>
     </table>
@@ -546,79 +557,83 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
         </tbody>
       </table>
 
-      <div className="font-bold ml-4 mb-1">Recommendation</div>
-      <div className="grid grid-cols-2 gap-x-4 gap-y-1 mb-4 text-[7pt]">
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={recommendation === 'confirm_permanent'}
-            onChange={() => {
-              if (canEditRecommendation) {
-                setRecommendation(recommendation === 'confirm_permanent' ? '' : 'confirm_permanent')
-              }
-            }}
-            disabled={!canEditRecommendation}
-          />{' '}
-          Confirm to Permanent
-        </label>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={recommendation === 'terminate_probation'}
-            onChange={() => {
-              if (canEditRecommendation) {
-                setRecommendation(recommendation === 'terminate_probation' ? '' : 'terminate_probation')
-              }
-            }}
-            disabled={!canEditRecommendation}
-          />{' '}
-          Unsuccessful Probationary (termination)
-        </label>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={recommendation === 'contract_extended'}
-            onChange={() => {
-              if (canEditRecommendation) {
-                setRecommendation(recommendation === 'contract_extended' ? '' : 'contract_extended')
-              }
-            }}
-            disabled={!canEditRecommendation}
-          />{' '}
-          Contract Extended{' '}
-          {canEditRecommendation && recommendation === 'contract_extended' ? (
-            <input
-              type="number"
-              value={contractExtendedMonths ?? ''}
-              onChange={(e) => setContractExtendedMonths(e.target.value ? Number(e.target.value) : undefined)}
-              className="w-12 border-b border-black text-center focus:outline-none"
-              placeholder="months"
-            />
-          ) : (
-            contractExtendedMonths ? `${contractExtendedMonths} months` : ''
-          )}
-        </label>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={recommendation === 'contract_ended'}
-            onChange={() => {
-              if (canEditRecommendation) {
-                setRecommendation(recommendation === 'contract_ended' ? '' : 'contract_ended')
-              }
-            }}
-            disabled={!canEditRecommendation}
-          />{' '}
-          Contract ended
-        </label>
-      </div>
+      {!isEmployee && (
+        <>
+          <div className="font-bold ml-4 mb-1">Recommendation</div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 mb-4 text-[7pt]">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={recommendation === 'confirm_permanent'}
+                onChange={() => {
+                  if (canEditRecommendation) {
+                    setRecommendation(recommendation === 'confirm_permanent' ? '' : 'confirm_permanent')
+                  }
+                }}
+                disabled={!canEditRecommendation}
+              />{' '}
+              Confirm to Permanent
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={recommendation === 'terminate_probation'}
+                onChange={() => {
+                  if (canEditRecommendation) {
+                    setRecommendation(recommendation === 'terminate_probation' ? '' : 'terminate_probation')
+                  }
+                }}
+                disabled={!canEditRecommendation}
+              />{' '}
+              Unsuccessful Probationary (termination)
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={recommendation === 'contract_extended'}
+                onChange={() => {
+                  if (canEditRecommendation) {
+                    setRecommendation(recommendation === 'contract_extended' ? '' : 'contract_extended')
+                  }
+                }}
+                disabled={!canEditRecommendation}
+              />{' '}
+              Contract Extended{' '}
+              {canEditRecommendation && recommendation === 'contract_extended' ? (
+                <input
+                  type="number"
+                  value={contractExtendedMonths ?? ''}
+                  onChange={(e) => setContractExtendedMonths(e.target.value ? Number(e.target.value) : undefined)}
+                  className="w-12 border-b border-black text-center focus:outline-none"
+                  placeholder="months"
+                />
+              ) : (
+                contractExtendedMonths ? `${contractExtendedMonths} months` : ''
+              )}
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={recommendation === 'contract_ended'}
+                onChange={() => {
+                  if (canEditRecommendation) {
+                    setRecommendation(recommendation === 'contract_ended' ? '' : 'contract_ended')
+                  }
+                }}
+                disabled={!canEditRecommendation}
+              />{' '}
+              Contract ended
+            </label>
+          </div>
+        </>
+      )}
     </>
   )
 
   // PDF Page 1: Details, Profile, Full Performance Section A
   const pdfPage1 = (
     <div className="relative z-10 text-[8pt] font-sans leading-tight text-black" style={{ paddingTop: '42mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
-      <h1 className="text-center font-bold text-[11pt] mb-3">EMPLOYEE PROBATION/CONTRACT REVIEW</h1>
+      <h1 className="text-center font-bold text-[11pt] mb-2">EMPLOYEE PROBATION/CONTRACT REVIEW</h1>
 
       <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
         <tbody>

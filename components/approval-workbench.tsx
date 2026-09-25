@@ -22,9 +22,11 @@ import {
   FileText,
   Hand,
   HardHat,
+  Image as ImageIcon,
   Loader2,
   MapPin,
   Move,
+  Paperclip,
   PenTool,
   RotateCcw,
   Search,
@@ -100,7 +102,9 @@ import {
 import {
   approveContractReviewStep,
   revertContractReviewStep,
+  addContractReviewAttachment,
 } from '@/app/actions/contract-review'
+import { uploadFile } from '@/app/actions/upload'
 import { FormWoApprovalDialog } from '@/components/admin/form-wo-approval-dialog'
 import { FormWoDocumentView } from '@/components/form-wo-document-preview-dialog'
 import { RfrApprovalDialog } from '@/components/admin/rfr-approval-dialog'
@@ -109,6 +113,7 @@ import { AdminPageShell } from '@/components/admin-page-shell'
 import { AdminStatusBadge } from '@/components/admin-status-badge'
 import { ApprovalReviewDrawerForm } from '@/components/approval-review-drawer-form'
 import { MissingSignatureDialog } from '@/components/missing-signature-dialog'
+import { ApprovalSignatureModal } from '@/components/approval-signature-modal'
 import { SignatureFloatingWidget } from '@/components/signature-floating-widget'
 import { TableFilterPresets } from '@/components/table-filter-presets'
 import { Button } from '@/components/ui/button'
@@ -451,7 +456,19 @@ export function InboxTab({
   const [currentUserName, setCurrentUserName] = useState<string | null>(null)
   const [currentUserEmployeeId, setCurrentUserEmployeeId] = useState<string | null>(null)
   const [isMissingSignatureDialogOpen, setIsMissingSignatureDialogOpen] = useState(false)
+  const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false)
   const [isAccessSettingsOpen, setIsAccessSettingsOpen] = useState(false)
+
+  // Contract Review Custom Edits & Attachments State
+  const [contractReviewEdits, setContractReviewEdits] = useState<
+    Record<string, { recommendation?: string; contractExtendedMonths?: number; letterIssuance?: string }>
+  >({})
+  const [contractReviewUploadedAttachments, setContractReviewUploadedAttachments] = useState<
+    Record<string, any[]>
+  >({})
+  const [isUploadingContractAttachment, setIsUploadingContractAttachment] = useState(false)
+  const [previewAttachmentModal, setPreviewAttachmentModal] = useState<any | null>(null)
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [isDrawing, setIsDrawing] = useState(false)
   const [hasDrawn, setHasDrawn] = useState(false)
@@ -527,6 +544,87 @@ export function InboxTab({
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     setHasDrawn(false)
     setSignatureDataUrl(null)
+  }
+
+  // Upload Lampiran Dokumen untuk Contract Review
+  const handleUploadContractAttachment = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    doc: any
+  ) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const isImage = file.type.startsWith('image/')
+    const isPdf = file.type === 'application/pdf'
+    if (!isImage && !isPdf) {
+      toast.error('File harus berupa PDF atau gambar (JPG/PNG).')
+      e.target.value = ''
+      return
+    }
+
+    if (isImage && file.size > 5 * 1024 * 1024) {
+      toast.error('Ukuran gambar maksimal 5MB.')
+      e.target.value = ''
+      return
+    }
+    if (isPdf && file.size > 10 * 1024 * 1024) {
+      toast.error('Ukuran PDF maksimal 10MB.')
+      e.target.value = ''
+      return
+    }
+
+    setIsUploadingContractAttachment(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('uploadTarget', 'contract-review-attachment')
+
+      const token =
+        (doc as any).rawContractReview?.approvalToken ||
+        (doc as any).approvalToken ||
+        (doc.url ? doc.url.split('/').pop()?.split('?')[0] : '')
+
+      if (token) {
+        formData.append('approvalToken', token)
+      }
+
+      const res = await uploadFile(formData)
+      if (!res.success || !res.url) {
+        toast.error(res.error || 'Gagal mengunggah berkas.')
+        return
+      }
+
+      const fileInfo = {
+        fileName: file.name,
+        fileUrl: res.url,
+        fileType: isPdf ? 'pdf' : 'image',
+        fileSize: file.size,
+        uploadedBy: currentUserName || (doc as any).approverName || 'Reviewer',
+        uploadedByRole: (doc as any).approverRole || 'Approver',
+      }
+
+      const attachRes = await addContractReviewAttachment({
+        token: token || undefined,
+        reviewId: (doc as any).rawContractReview?.reviewId || (doc as any).reviewId,
+        file: fileInfo,
+      })
+
+      if (attachRes.success && attachRes.attachment) {
+        setContractReviewUploadedAttachments((prev) => ({
+          ...prev,
+          [doc.id]: [...(prev[doc.id] || []), attachRes.attachment],
+        }))
+        toast.success(`Lampiran "${file.name}" berhasil diunggah!`)
+      } else {
+        toast.error(attachRes.error || 'Gagal menyimpan lampiran dokumen.')
+      }
+    } catch (err: any) {
+      console.error(err)
+      toast.error(err.message || 'Terjadi kesalahan saat upload berkas.')
+    } finally {
+      setIsUploadingContractAttachment(false)
+      e.target.value = ''
+    }
   }
 
   // All unified items
@@ -1081,7 +1179,7 @@ export function InboxTab({
     if (!currentBatchDoc) return
 
     if (action === 'approve' && !signatureDataUrl) {
-      setIsMissingSignatureDialogOpen(true)
+      setIsSignatureModalOpen(true)
       return
     }
 
@@ -1157,9 +1255,28 @@ export function InboxTab({
         if (!token) throw new Error('Token approval Contract Review tidak ditemukan.')
 
         if (action === 'approve') {
+          const rawCr = (currentBatchDoc as any).rawContractReview || {}
+          const approverRole = String(rawCr.approverRole || (currentBatchDoc as any).approverRole || '').toLowerCase()
+          const stepOrder = Number(rawCr.stepOrder || (currentBatchDoc as any).stepOrder || 0)
+          const isEmployeeUnderReview = approverRole === 'employee' || approverRole.includes('employee') || stepOrder === 2
+
+          const edits = contractReviewEdits[currentBatchDoc.id] || {}
+          const finalRecommendation = !isEmployeeUnderReview
+            ? (edits.recommendation !== undefined ? edits.recommendation : rawCr.recommendation)
+            : undefined
+          const finalMonths = !isEmployeeUnderReview
+            ? (edits.contractExtendedMonths !== undefined ? edits.contractExtendedMonths : rawCr.contractExtendedMonths)
+            : undefined
+          const finalLetter = !isEmployeeUnderReview
+            ? (edits.letterIssuance !== undefined ? edits.letterIssuance : rawCr.letterIssuance)
+            : undefined
+
           const res = await approveContractReviewStep(token, {
             signatureDataUrl: signatureDataUrl || '',
             remarks: currentRemark || 'Disetujui via Inbox Approval',
+            recommendation: finalRecommendation,
+            contractExtendedMonths: finalMonths ? Number(finalMonths) : undefined,
+            letterIssuance: finalLetter,
           })
           if (!res.success) throw new Error(res.error || 'Gagal menyetujui Contract Review')
           toast.success(`Contract Review #${currentBatchDoc.documentNumber} berhasil disetujui.`)
@@ -1310,7 +1427,7 @@ export function InboxTab({
     if (itemsToProcess.length === 0) return
 
     if (action === 'approve' && !signatureDataUrl) {
-      setIsMissingSignatureDialogOpen(true)
+      setIsSignatureModalOpen(true)
       return
     }
 
@@ -1427,9 +1544,28 @@ export function InboxTab({
         }
 
         if (action === 'approve') {
+          const rawCr = (item as any).rawContractReview || {}
+          const approverRole = String(rawCr.approverRole || (item as any).approverRole || '').toLowerCase()
+          const stepOrder = Number(rawCr.stepOrder || (item as any).stepOrder || 0)
+          const isItemEmployeeUnderReview = approverRole === 'employee' || approverRole.includes('employee') || stepOrder === 2
+
+          const edits = contractReviewEdits[item.id] || {}
+          const finalRecommendation = !isItemEmployeeUnderReview
+            ? (edits.recommendation !== undefined ? edits.recommendation : rawCr.recommendation)
+            : undefined
+          const finalMonths = !isItemEmployeeUnderReview
+            ? (edits.contractExtendedMonths !== undefined ? edits.contractExtendedMonths : rawCr.contractExtendedMonths)
+            : undefined
+          const finalLetter = !isItemEmployeeUnderReview
+            ? (edits.letterIssuance !== undefined ? edits.letterIssuance : rawCr.letterIssuance)
+            : undefined
+
           const res = await approveContractReviewStep(token, {
             signatureDataUrl: signatureDataUrl || '',
             remarks: reason || 'Approved via Inbox Batch',
+            recommendation: finalRecommendation,
+            contractExtendedMonths: finalMonths ? Number(finalMonths) : undefined,
+            letterIssuance: finalLetter,
           })
           if (res.success) successCount++
           else failCount++
@@ -4061,28 +4197,238 @@ export function InboxTab({
                   </div>
 
                   {/* Card: Tanda Tangan Approver */}
-                  <div className="rounded-xl border border-slate-200/80 bg-white p-3.5 flex items-center justify-between shadow-2xs">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="size-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 border border-indigo-100">
-                        <PenTool className="size-4" />
+                  <div className="rounded-xl border border-slate-200/80 bg-white p-3.5 space-y-2 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="size-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 border border-indigo-100">
+                          <PenTool className="size-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-slate-800">Tanda Tangan Approver</p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            {signatureDataUrl ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                                <CheckCircle2 className="size-3 text-emerald-600" /> TTD Aktif
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                                <Clock className="size-3 text-amber-600" /> Belum Ada TTD
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-slate-800">Tanda Tangan Approver</p>
-                        <p className="text-[11px] text-slate-500 font-medium">
-                          {signatureDataUrl ? 'TTD Digital Aktif' : 'Belum Ada TTD'}
-                        </p>
-                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsSignatureModalOpen(true)}
+                        className="h-8 text-xs font-bold border-indigo-200 bg-indigo-50/60 hover:bg-indigo-100/80 text-indigo-700 rounded-xl cursor-pointer gap-1.5"
+                      >
+                        <PenTool className="size-3.5" />
+                        {signatureDataUrl ? 'UBAH TTD' : 'BUAT TTD'}
+                      </Button>
                     </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setIsMissingSignatureDialogOpen(true)}
-                      className="h-8 text-xs font-bold border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl cursor-pointer"
-                    >
-                      UBAH TTD
-                    </Button>
+
+                    {signatureDataUrl && (
+                      <div className="relative rounded-lg border border-slate-200 bg-slate-50/70 p-2 flex items-center justify-center h-16 overflow-hidden">
+                        <img
+                          src={signatureDataUrl}
+                          alt="Tanda Tangan Approver"
+                          className="max-h-12 max-w-full object-contain filter contrast-125"
+                        />
+                      </div>
+                    )}
                   </div>
+
+                  {/* Card: Dokumen Lampiran Reviewer Sebelumnya (Khusus Contract Review) */}
+                  {currentBatchDoc?.category === 'CONTRACT_REVIEW' && (() => {
+                    const savedAtts = (currentBatchDoc.rawContractReview as any)?.attachments || []
+                    const sessionAtts = contractReviewUploadedAttachments[currentBatchDoc.id] || []
+                    const allAttachments = [...savedAtts, ...sessionAtts]
+
+                    return (
+                      <div className="rounded-xl border border-slate-200/80 bg-white p-3.5 space-y-2.5 shadow-2xs">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <Paperclip className="size-4 text-indigo-600" />
+                            <p className="text-xs font-bold text-slate-800">
+                              Lampiran Reviewer ({allAttachments.length})
+                            </p>
+                          </div>
+                          <label className="cursor-pointer inline-flex items-center gap-1 text-[11px] font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2.5 py-1 transition shadow-2xs">
+                            <Upload className="size-3" />
+                            <span>{isUploadingContractAttachment ? 'Mengunggah...' : '+ Upload Berkas'}</span>
+                            <input
+                              type="file"
+                              accept="application/pdf,image/*"
+                              className="hidden"
+                              disabled={isUploadingContractAttachment}
+                              onChange={(e) => handleUploadContractAttachment(e, currentBatchDoc)}
+                            />
+                          </label>
+                        </div>
+
+                        {allAttachments.length > 0 ? (
+                          <div className="space-y-1.5 max-h-[175px] overflow-y-auto pr-1 scrollbar-thin">
+                            {allAttachments.map((att: any, idx: number) => {
+                              const isPdf = att.fileType === 'pdf' || att.fileName?.toLowerCase().endsWith('.pdf')
+                              return (
+                                <div
+                                  key={att.id || idx}
+                                  className="flex items-center justify-between p-2 rounded-lg border border-slate-200 bg-slate-50/70 hover:bg-slate-100/80 transition gap-2 text-xs"
+                                >
+                                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    {isPdf ? (
+                                      <FileText className="size-4 text-rose-500 shrink-0" />
+                                    ) : (
+                                      <ImageIcon className="size-4 text-sky-500 shrink-0" />
+                                    )}
+                                    <div className="min-w-0 flex-1">
+                                      <p className="font-semibold text-slate-800 truncate text-[11px]" title={att.fileName}>
+                                        {att.fileName}
+                                      </p>
+                                      <p className="text-[10px] text-slate-500 truncate">
+                                        {att.uploadedBy || 'Reviewer'} {att.uploadedByRole ? `(${att.uploadedByRole})` : ''} · {att.uploadedAt ? new Date(att.uploadedAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }) : ''}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 px-2 text-[11px] font-bold text-indigo-700 hover:bg-indigo-50 flex items-center gap-1 rounded-md"
+                                      onClick={() => setPreviewAttachmentModal(att)}
+                                    >
+                                      <Eye className="size-3" /> Preview
+                                    </Button>
+                                    <a
+                                      href={att.fileUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center justify-center h-7 w-7 text-slate-500 hover:text-slate-800 hover:bg-slate-200 rounded-md"
+                                      title="Buka Tab Baru"
+                                    >
+                                      <ExternalLink className="size-3.5" />
+                                    </a>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        ) : (
+                          <div className="p-2.5 rounded-lg border border-dashed border-slate-200 text-center text-slate-400 text-[11px]">
+                            Belum ada dokumen yang diunggah reviewer sebelumnya.
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
+
+                  {/* Card: Rekomendasi & Evaluasi Kontrak (Khusus Contract Review) - Tidak muncul untuk user yang sedang direview */}
+                  {currentBatchDoc?.category === 'CONTRACT_REVIEW' && (() => {
+                    const rawCr = (currentBatchDoc.rawContractReview as any) || {}
+                    const approverRole = String(rawCr?.approverRole || (currentBatchDoc as any)?.approverRole || '').toLowerCase()
+                    const stepOrder = Number(rawCr?.stepOrder || (currentBatchDoc as any)?.stepOrder || 0)
+                    const isEmployeeUnderReview = approverRole === 'employee' || approverRole.includes('employee') || stepOrder === 2
+
+                    if (isEmployeeUnderReview) return null
+
+                    return (
+                      <div className="rounded-xl border border-slate-200/80 bg-white p-3.5 space-y-2 shadow-2xs">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-bold text-slate-800">Rekomendasi Kontrak</p>
+                          <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                            {rawCr?.stepLabel || 'Contract Review'}
+                          </span>
+                        </div>
+
+                        <div className="space-y-1 text-xs">
+                          <label className="text-[11px] font-semibold text-slate-600">Rekomendasi Evaluasi:</label>
+                          <select
+                            value={
+                              contractReviewEdits[currentBatchDoc.id]?.recommendation ??
+                              rawCr?.recommendation ??
+                              'contract_extended'
+                            }
+                            onChange={(e) => {
+                              setContractReviewEdits((prev) => ({
+                                ...prev,
+                                [currentBatchDoc.id]: {
+                                  ...prev[currentBatchDoc.id],
+                                  recommendation: e.target.value,
+                                },
+                              }))
+                            }}
+                            className="w-full h-8 text-xs rounded-lg border border-slate-200 bg-white px-2 font-medium text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                          >
+                            <option value="contract_extended">Perpanjangan Masa Kontrak (Contract Extended)</option>
+                            <option value="confirm_permanent">Pengangkatan Karyawan Tetap (Confirm Permanent)</option>
+                            <option value="terminate_probation">Pemutusan Masa Percobaan (Terminate Probation)</option>
+                            <option value="contract_ended">Selesai Kontrak / Tidak Diperpanjang (Contract Ended)</option>
+                          </select>
+                        </div>
+
+                        {(contractReviewEdits[currentBatchDoc.id]?.recommendation ??
+                          rawCr?.recommendation ??
+                          'contract_extended') === 'contract_extended' && (
+                          <div className="space-y-1 text-xs">
+                            <label className="text-[11px] font-semibold text-slate-600">Durasi Perpanjangan (Bulan):</label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="36"
+                              value={
+                                contractReviewEdits[currentBatchDoc.id]?.contractExtendedMonths ??
+                                rawCr?.contractExtendedMonths ??
+                                3
+                              }
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value) || 1
+                                setContractReviewEdits((prev) => ({
+                                  ...prev,
+                                  [currentBatchDoc.id]: {
+                                    ...prev[currentBatchDoc.id],
+                                    contractExtendedMonths: val,
+                                  },
+                                }))
+                              }}
+                              className="w-full h-8 text-xs rounded-lg border border-slate-200 bg-white px-2.5 font-medium text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                            />
+                          </div>
+                        )}
+
+                        {((rawCr?.approverRole === 'hr') || (currentBatchDoc as any)?.approverRole === 'hr') && (
+                          <div className="space-y-1 text-xs">
+                            <label className="text-[11px] font-semibold text-slate-600">Penerbitan Surat (HR):</label>
+                            <select
+                              value={
+                                contractReviewEdits[currentBatchDoc.id]?.letterIssuance ??
+                                rawCr?.letterIssuance ??
+                                'contract_extension'
+                              }
+                              onChange={(e) => {
+                                setContractReviewEdits((prev) => ({
+                                  ...prev,
+                                  [currentBatchDoc.id]: {
+                                    ...prev[currentBatchDoc.id],
+                                    letterIssuance: e.target.value,
+                                  },
+                                }))
+                              }}
+                              className="w-full h-8 text-xs rounded-lg border border-slate-200 bg-white px-2 font-medium text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                            >
+                              <option value="contract_extension">Surat Perpanjangan Kontrak Kerja</option>
+                              <option value="permanent_confirmation">Surat Pengangkatan Karyawan Tetap</option>
+                              <option value="unsuccessful_probation">Surat Pemutusan Hubungan Kerja (Masa Percobaan)</option>
+                              <option value="end_of_contract">Surat Pemberitahuan Selesai Masa Kontrak</option>
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
 
                   {/* Card 2: Catatan Approval */}
                   <div className={cn(
@@ -4210,6 +4556,15 @@ export function InboxTab({
       })()}
     </Dialog>
 
+        <ApprovalSignatureModal
+          isOpen={isSignatureModalOpen}
+          onClose={() => setIsSignatureModalOpen(false)}
+          currentSignatureUrl={signatureDataUrl}
+          onSignatureSaved={(newSigUrl) => {
+            setSignatureDataUrl(newSigUrl)
+          }}
+        />
+
         <MissingSignatureDialog
           isOpen={isMissingSignatureDialogOpen}
           onClose={() => setIsMissingSignatureDialogOpen(false)}
@@ -4218,6 +4573,56 @@ export function InboxTab({
             toast.success('Tanda tangan digital berhasil didaftarkan! Silakan tekan tombol APPROVE untuk menyetujui dokumen.')
           }}
         />
+
+        {/* Modal Preview Lampiran Dokumen */}
+        {previewAttachmentModal && (
+          <Dialog open={Boolean(previewAttachmentModal)} onOpenChange={(open) => (!open ? setPreviewAttachmentModal(null) : null)}>
+            <DialogContent className="max-w-4xl h-[85vh] flex flex-col p-4 bg-white rounded-2xl">
+              <DialogHeader className="flex flex-row items-center justify-between pb-2 border-b border-slate-200">
+                <div className="flex items-center gap-2">
+                  {previewAttachmentModal.fileType === 'pdf' || previewAttachmentModal.fileName?.toLowerCase().endsWith('.pdf') ? (
+                    <FileText className="size-5 text-rose-500" />
+                  ) : (
+                    <ImageIcon className="size-5 text-sky-500" />
+                  )}
+                  <div>
+                    <DialogTitle className="text-sm font-bold text-slate-800">
+                      {previewAttachmentModal.fileName}
+                    </DialogTitle>
+                    <p className="text-[11px] text-slate-500">
+                      Diunggah oleh: {previewAttachmentModal.uploadedBy || 'Reviewer'} {previewAttachmentModal.uploadedByRole ? `(${previewAttachmentModal.uploadedByRole})` : ''}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 pr-6">
+                  <a
+                    href={previewAttachmentModal.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 border border-indigo-200 px-2.5 py-1.5 rounded-lg"
+                  >
+                    <ExternalLink className="size-3.5" /> Buka Tab Baru
+                  </a>
+                </div>
+              </DialogHeader>
+              <div className="flex-1 w-full bg-slate-100 rounded-xl overflow-hidden flex items-center justify-center p-2 mt-2">
+                {previewAttachmentModal.fileType === 'pdf' || previewAttachmentModal.fileName?.toLowerCase().endsWith('.pdf') ? (
+                  <iframe
+                    src={`${previewAttachmentModal.fileUrl}#toolbar=1&navpanes=0`}
+                    className="w-full h-full border-0 bg-white rounded-lg shadow-sm"
+                    title={previewAttachmentModal.fileName}
+                  />
+                ) : (
+                  <img
+                    src={previewAttachmentModal.fileUrl}
+                    alt={previewAttachmentModal.fileName}
+                    className="max-h-full max-w-full object-contain rounded-lg shadow-sm"
+                  />
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
 
         {currentBatchDoc?.category === 'SOP_WIN_REQUEST' && currentBatchDoc.rawSopWinRequest && (
           <SopWinAccessSettingsModal

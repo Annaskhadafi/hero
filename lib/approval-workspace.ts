@@ -34,6 +34,8 @@ import {
   sites,
   apdRequests,
   masterSections,
+  notificationEvents,
+  notificationDeliveries,
 } from '@/db/schema/hero'
 import { apdSummaries } from '@/db/schema/apd-summary'
 import { ensurePtwApprovalsExist, syncPtwApproverNames } from '@/app/dashboard/hse/izin-kerja-ptw/actions'
@@ -43,6 +45,7 @@ import { ensureHeroSeedData } from '@/lib/hero-admin'
 import { resolveUploadUrl } from '@/lib/s3-storage'
 import { user as authUser } from '@/db/schema/auth'
 import { isSuperAdminRole } from '@/lib/hero-access'
+import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 
 type ApprovalRecordRow = {
   approvalId: number
@@ -1746,9 +1749,14 @@ async function getContractReviewInboxItems(
       stepOrder: hcContractReviewApprovals.stepOrder,
       createdAt: hcContractReviewApprovals.createdAt,
       reviewId: hcEmployeeContractReviews.id,
+      employeeId: hcEmployeeContractReviews.employeeId,
       employeeName: hcEmployeeContractReviews.employeeNameStr,
       reviewType: hcEmployeeContractReviews.reviewType,
       contractEndDate: hcEmployeeContractReviews.contractEndDate,
+      recommendation: hcEmployeeContractReviews.recommendation,
+      contractExtendedMonths: hcEmployeeContractReviews.contractExtendedMonths,
+      letterIssuance: hcEmployeeContractReviews.letterIssuance,
+      attachments: hcEmployeeContractReviews.attachments,
       updatedAt: hcEmployeeContractReviews.updatedAt,
     })
     .from(hcContractReviewApprovals)
@@ -1759,40 +1767,87 @@ async function getContractReviewInboxItems(
     .where(eq(hcContractReviewApprovals.status, 'pending'))
     .orderBy(desc(hcContractReviewApprovals.createdAt))
 
-  return rows
-    .filter((row) => {
-      const emailMatches =
-        normalizedEmail && normalizeMatchValue(row.approverEmail) === normalizedEmail
-      const employeeMatches =
-        currentEmployee?.id != null && row.approverEmployeeId === currentEmployee.id
-      const nameMatches =
-        normalizedEmployeeName && normalizeMatchValue(row.approverName) === normalizedEmployeeName
-      const roleMatches =
-        row.approverRole && (currentEmployee as any)?.rank && normalizeMatchValue(row.approverRole) === normalizeMatchValue((currentEmployee as any).rank)
-      return emailMatches || employeeMatches || nameMatches || roleMatches
-    })
-    .map((row) => {
-      const contractEnd = row.contractEndDate
-        ? new Date(`${row.contractEndDate}T00:00:00`)
-        : row.createdAt
-      return {
-        id: `contract-review-${row.approvalId}`,
-        approvalId: row.approvalId,
-        approvalToken: row.approvalToken,
-        reviewId: row.reviewId,
-        stepOrder: row.stepOrder,
-        title: `Contract Review - ${row.employeeName || 'Employee'}`,
-        employeeName: row.employeeName || 'Employee',
-        reviewType: row.reviewType || 'contract',
-        approverName: row.approverName,
-        approverRole: row.approverRole,
-        stepLabel: `Step ${row.stepOrder}`,
-        submittedAt: row.updatedAt ?? row.createdAt,
-        dueAt: contractEnd,
-        dueState: getContractReviewDueState(contractEnd, new Date()),
-        url: `/review/${row.approvalToken}`,
+  const userItems = rows.filter((row) => {
+    const emailMatches =
+      normalizedEmail && normalizeMatchValue(row.approverEmail) === normalizedEmail
+    const employeeMatches =
+      currentEmployee?.id != null && row.approverEmployeeId === currentEmployee.id
+    const nameMatches =
+      normalizedEmployeeName && normalizeMatchValue(row.approverName) === normalizedEmployeeName
+    const roleMatches =
+      row.approverRole && (currentEmployee as any)?.rank && normalizeMatchValue(row.approverRole) === normalizeMatchValue((currentEmployee as any).rank)
+    return emailMatches || employeeMatches || nameMatches || roleMatches
+  })
+
+  // Bell Notification Backfill check: ensure pending approvals appear in notification bell for the user
+  if (userItems.length > 0) {
+    for (const item of userItems) {
+      if (!item.approverEmail?.trim()) continue
+      const targetEmail = item.approverEmail.trim()
+      try {
+        const [existingDelivery] = await db
+          .select({ id: notificationDeliveries.id })
+          .from(notificationDeliveries)
+          .innerJoin(notificationEvents, eq(notificationDeliveries.notificationEventId, notificationEvents.id))
+          .where(
+            and(
+              eq(notificationDeliveries.deliveryChannel, 'in_app'),
+              sql`lower(${notificationDeliveries.recipient}) = ${targetEmail.toLowerCase()}`,
+              sql`${notificationEvents.payloadSnapshot}::text LIKE ${`%CR-${item.approvalId}%`}`
+            )
+          )
+          .limit(1)
+
+        if (!existingDelivery) {
+          await notifyWorkflowBellRecipients({
+            recipientEmails: [targetEmail],
+            eventType: 'contract_review_approval_request',
+            category: 'approval_requests',
+            title: `Approval Contract Review - ${item.employeeName || 'Karyawan'}`,
+            body: `Permohonan approval Contract Review untuk ${item.employeeName || 'Karyawan'} (Step ${item.stepOrder}) memerlukan persetujuan Anda.`,
+            url: `/dashboard/approval`,
+            tagPrefix: 'contract-review-approval',
+            metadata: {
+              reviewId: item.reviewId,
+              stepOrder: item.stepOrder,
+              approvalToken: item.approvalToken,
+              approvalId: item.approvalId,
+            },
+          })
+        }
+      } catch (bellErr) {
+        console.error('[approval-workspace] Error ensuring bell notification for contract review:', bellErr)
       }
-    })
+    }
+  }
+
+  return userItems.map((row) => {
+    const contractEnd = row.contractEndDate
+      ? new Date(`${row.contractEndDate}T00:00:00`)
+      : row.createdAt
+    return {
+      id: `contract-review-${row.approvalId}`,
+      approvalId: row.approvalId,
+      approvalToken: row.approvalToken,
+      reviewId: row.reviewId,
+      employeeId: row.employeeId,
+      stepOrder: row.stepOrder,
+      title: `Contract Review - ${row.employeeName || 'Employee'}`,
+      employeeName: row.employeeName || 'Employee',
+      reviewType: row.reviewType || 'contract',
+      approverName: row.approverName,
+      approverRole: row.approverRole,
+      stepLabel: `Step ${row.stepOrder}`,
+      recommendation: row.recommendation || '',
+      contractExtendedMonths: row.contractExtendedMonths || null,
+      letterIssuance: row.letterIssuance || '',
+      attachments: Array.isArray(row.attachments) ? row.attachments : [],
+      submittedAt: row.updatedAt ?? row.createdAt,
+      dueAt: contractEnd,
+      dueState: getContractReviewDueState(contractEnd, new Date()),
+      url: `/review/${row.approvalToken}`,
+    }
+  })
 }
 
 async function getRfrInboxItems(

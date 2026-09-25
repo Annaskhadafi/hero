@@ -768,7 +768,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
             }
             /* Removing internal paddings from .page since they are already applied in .pdf-wrapper-content via inline styles */
             table { width: 100%; border-collapse: collapse; border-color: black; }
-            th, td { border: 1px solid black; padding: 4px; }
+            th, td { border: 1px solid black; padding: 2.5px 4px; vertical-align: top; }
             .text-center { text-align: center; }
             .text-left { text-align: left; }
             .text-right { text-align: right; }
@@ -832,19 +832,29 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     printWindow.document.close()
   }
 
+  const countLines = (text: string, charsPerLine: number) => {
+    if (!text) return 1
+    const lines = text.split('\n')
+    let total = 0
+    for (const line of lines) {
+      total += Math.max(1, Math.ceil(line.length / charsPerLine))
+    }
+    return Math.max(1, total)
+  }
+
   const estimateRowHeightMm = (item: any) => {
     const act = String(item?.activity || '').trim()
     const rem = String(item?.remark || '').trim()
-    const actLines = Math.max(1, Math.ceil(act.length / 50))
-    const remLines = Math.max(1, Math.ceil(rem.length / 28))
+    const actLines = countLines(act, 40)
+    const remLines = countLines(rem, 54)
     const maxLines = Math.max(actLines, remLines)
-    return 4 + maxLines * 4.2
+    return 2.5 + maxLines * 3.3
   }
 
   const { firstPageActivities, performanceOverflowChunks } = (() => {
     const all = form.performanceActivities || []
-    const PAGE_1_ROWS_MAX_MM = 120
-    const CONTINUATION_ROWS_MAX_MM = 180
+    const PAGE_1_ROWS_MAX_MM = 130
+    const CONTINUATION_ROWS_MAX_MM = 190
 
     const first: any[] = []
     let usedMm = 0
@@ -919,7 +929,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     </>
   )
   const renderPerformanceTable = (items: any[], keyPrefix: string) => (
-    <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-center">
+    <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5 text-center">
       <thead>
         <tr className="bg-slate-50">
           <th className="w-[35%]">Activities</th>
@@ -930,13 +940,13 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
       <tbody>
         {items.map((item: any, i: number) => (
           <tr key={`${keyPrefix}-${i}`}>
-            <td className="text-left">{item.activity || '\u00A0'}</td>
-            <td className="text-center font-medium">{formatAchievementDisplay(item.achievement)}</td>
-            <td className="text-left">{item.remark || '\u00A0'}</td>
+            <td className="text-left align-top">{item.activity || '\u00A0'}</td>
+            <td className="text-center font-medium align-top">{formatAchievementDisplay(item.achievement)}</td>
+            <td className="text-left align-top">{item.remark || '\u00A0'}</td>
           </tr>
         ))}
         {items.length === 0 && Array(5).fill(0).map((_, i) => (
-          <tr key={`${keyPrefix}-empty-${i}`}><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+          <tr key={`${keyPrefix}-empty-${i}`}><td className="align-top">&nbsp;</td><td className="align-top">&nbsp;</td><td className="align-top">&nbsp;</td></tr>
         ))}
       </tbody>
     </table>
@@ -944,9 +954,9 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
 
   const pdfPreviewPage1 = (
     <div className="pdf-wrapper-content relative z-10 outline-none text-[8pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '42mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
-      <h1 className="text-center font-bold text-[11pt] mb-3">EMPLOYEE PROBATION/CONTRACT REVIEW</h1>
+      <h1 className="text-center font-bold text-[11pt] mb-2">EMPLOYEE PROBATION/CONTRACT REVIEW</h1>
 
-      <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1">
+      <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
         <tbody>
           <tr>
             <td colSpan={2} className="font-bold bg-slate-50">Details</td>

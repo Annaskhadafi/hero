@@ -814,6 +814,28 @@ async function sendContractReviewApprovalEmailForStep(
     variables,
   })
 
+  // Bell Notification for Approver
+  if (approval.approverEmail?.trim()) {
+    try {
+      await notifyWorkflowBellRecipients({
+        recipientEmails: [approval.approverEmail.trim()],
+        eventType: 'contract_review_approval_request',
+        category: 'approval_requests',
+        title: `Approval Contract Review - ${employeeName}`,
+        body: `Permohonan approval Contract Review untuk ${employeeName} (${variables.approvalStep}) memerlukan persetujuan Anda.`,
+        url: `/dashboard/approval`,
+        tagPrefix: 'contract-review-approval',
+        metadata: {
+          reviewId: review.id,
+          stepOrder: approval.stepOrder,
+          approvalToken: approval.approvalToken,
+        },
+      })
+    } catch (bellErr) {
+      console.error('[contract-review] Failed to send bell notification on step advance:', bellErr)
+    }
+  }
+
   return {
     ...result,
     recipient: approval.approverEmail?.trim() || null,
@@ -2054,15 +2076,19 @@ export async function approveContractReviewStep(
     }
 
     // If recommendation/letterIssuance are changed, update the master review record
+    // Rekomendasi kontrak tidak boleh diubah oleh karyawan yang sedang direview (step 2 / role employee)
+    const isEmployeeReviewer = approval.approverRole === 'employee' || approval.stepOrder === 2
     const updateFields: Record<string, any> = {}
-    if (data.recommendation !== undefined) {
-      updateFields.recommendation = data.recommendation
-    }
-    if (data.contractExtendedMonths !== undefined) {
-      updateFields.contractExtendedMonths = data.contractExtendedMonths
-    }
-    if (data.letterIssuance !== undefined) {
-      updateFields.letterIssuance = data.letterIssuance
+    if (!isEmployeeReviewer) {
+      if (data.recommendation !== undefined) {
+        updateFields.recommendation = data.recommendation
+      }
+      if (data.contractExtendedMonths !== undefined) {
+        updateFields.contractExtendedMonths = data.contractExtendedMonths
+      }
+      if (data.letterIssuance !== undefined) {
+        updateFields.letterIssuance = data.letterIssuance
+      }
     }
     if (Object.keys(updateFields || {}).length > 0) {
       await db
@@ -2112,10 +2138,39 @@ export async function approveContractReviewStep(
 
         await db.update(hcEmployeeContractReviews).set(updateData).where(eq(hcEmployeeContractReviews.id, approval.reviewId))
         await syncCompletedContractReviewToEmployee({ ...review, ...updateData }, today)
+
+        // Notification Bell when review process is completed
+        try {
+          let employeeEmail: string | null = null
+          if (review.employeeId) {
+            const [emp] = await db.select({ email: employees.email }).from(employees).where(eq(employees.id, review.employeeId)).limit(1)
+            employeeEmail = emp?.email || null
+          }
+          const hcPolicyCc = await getHumanCapitalPolicyCcRecipients()
+          const notifyRecipients = Array.from(new Set([employeeEmail, ...hcPolicyCc].filter(Boolean))) as string[]
+          if (notifyRecipients.length > 0) {
+            await notifyWorkflowBellRecipients({
+              recipientEmails: notifyRecipients,
+              eventType: 'contract_review_completed',
+              category: 'approval_requests',
+              title: `Contract Review Selesai - ${review.employeeNameStr || 'Karyawan'}`,
+              body: `Proses evaluasi kontrak untuk ${review.employeeNameStr || 'Karyawan'} telah selesai dan disetujui seluruh pihak. Rekomendasi: ${review.recommendation || 'Disetujui'}.`,
+              url: `/dashboard/hc/contract-review`,
+              tagPrefix: 'contract-review-completed',
+              metadata: {
+                reviewId: review.id,
+                recommendation: review.recommendation,
+              },
+            })
+          }
+        } catch (bellErr) {
+          console.error('[contract-review] Failed to send completion bell notification:', bellErr)
+        }
       }
     }
 
     revalidatePath('/dashboard/hc/contract-review')
+    revalidatePath('/dashboard/approval')
     return { success: true }
   } catch (error: any) {
     console.error('Error approving contract review step:', error)
