@@ -96,14 +96,14 @@ export function LevelConfigPanel({ levels }: { levels: any[] }) {
         columns={["Sistem Ranking", "Min Point", "Deskripsi", "Status", "Aksi"]}
         dateFilter={false}
         rows={levels.map((lvl) => [
-          <div key="rank" className="flex items-center gap-2">
+          <div key={`lvl-rank-${lvl.id}`} className="flex items-center gap-2">
             <div className="h-4 w-4 rounded-full" style={{ backgroundColor: lvl.colorCode }} />
             <span className="font-semibold">{lvl.name}</span>
           </div>,
           lvl.minPoints.toLocaleString("id-ID"),
           lvl.description || "-",
           <span
-            key="status"
+            key={`lvl-status-${lvl.id}`}
             className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
               lvl.isActive
                 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400"
@@ -112,7 +112,7 @@ export function LevelConfigPanel({ levels }: { levels: any[] }) {
           >
             {lvl.isActive ? "Aktif" : "Non-Aktif"}
           </span>,
-          <div key="actions" className="flex items-center gap-2">
+          <div key={`lvl-actions-${lvl.id}`} className="flex items-center gap-2">
             <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(lvl)}>
               <Pencil className="h-4 w-4" />
             </Button>
@@ -232,20 +232,20 @@ export function BadgeConfigPanel({ badges }: { badges: any[] }) {
         columns={["Icon", "Badge Name", "Rule Otomatis", "Nilai Threshold", "Aksi"]}
         dateFilter={false}
         rows={badges.map((b) => [
-          <div key="icon" className="flex h-8 w-8 items-center justify-center rounded-full" style={{ backgroundColor: b.colorCode + "20" }}>
+          <div key={`badge-icon-${b.id}`} className="flex h-8 w-8 items-center justify-center rounded-full" style={{ backgroundColor: b.colorCode + "20" }}>
             <span style={{ color: b.colorCode }}>{b.iconUrl || "🏆"}</span>
           </div>,
-          <div key="name">
+          <div key={`badge-name-${b.id}`}>
             <p className="font-medium">{b.name}</p>
             <p className="text-xs text-muted-foreground line-clamp-1">{b.description}</p>
           </div>,
           b.autoAssignRule === "points_threshold" ? (
-             <span key="rule" className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">Poin Threshold</span>
+             <span key={`badge-rule-${b.id}`} className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">Poin Threshold</span>
           ) : (
-             <span key="rule" className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs font-medium text-neutral-800 dark:bg-neutral-800 dark:text-neutral-400">Manual</span>
+             <span key={`badge-rule-${b.id}`} className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs font-medium text-neutral-800 dark:bg-neutral-800 dark:text-neutral-400">Manual</span>
           ),
           b.autoAssignThreshold > 0 ? b.autoAssignThreshold.toLocaleString("id-ID") : "-",
-          <div key="actions" className="flex items-center gap-2">
+          <div key={`badge-actions-${b.id}`} className="flex items-center gap-2">
             <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(b)}>
               <Pencil className="h-4 w-4" />
             </Button>

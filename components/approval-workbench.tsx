@@ -1870,6 +1870,16 @@ export function InboxTab({
                       Revisi Dokumen ↗
                     </a>
                   </Button>
+                ) : item.category === 'CONTRACT_REVIEW' && item.url ? (
+                  <Button
+                    size="sm"
+                    asChild
+                    className="w-full h-11 text-sm font-black bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl shadow-xs flex items-center justify-center gap-2"
+                  >
+                    <a href={item.url}>
+                      Buka TTD Contract Review ↗
+                    </a>
+                  </Button>
                 ) : (
                   <Button
                     type="button"

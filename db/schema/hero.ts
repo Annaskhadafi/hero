@@ -3621,6 +3621,21 @@ export const hcEmployeeContractReviews = pgTable('hero_hc_employee_contract_revi
 
   letterIssuance: text('letter_issuance').notNull().default(''), // permanent_confirmation, contract_extension, unsuccessful_probation, end_of_contract
 
+  // Attachments (supporting PDF / Image documents)
+  attachments: jsonb('attachments')
+    .$type<Array<{
+      id: string
+      fileName: string
+      fileUrl: string
+      fileType: string
+      fileSize?: number
+      uploadedBy: string
+      uploadedByRole?: string
+      uploadedAt: string
+      stepOrder?: number
+    }>>()
+    .default([]),
+
   status: text('status').notNull().default('draft'), // draft, finalized
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),

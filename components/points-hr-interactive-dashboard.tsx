@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -64,9 +64,14 @@ function signalTone(row: PointsEmployee): "good" | "warn" | "bad" | "neutral" {
 }
 
 export function PointsHrInteractiveDashboard({ leaderboard, departments, timeline }: PointsHrInteractiveDashboardProps) {
+  const [mounted, setMounted] = useState(false);
   const [query, setQuery] = useState("");
   const [department, setDepartment] = useState("all");
   const [signal, setSignal] = useState("all");
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const departmentOptions = useMemo(
     () => ["all", ...Array.from(new Set(leaderboard.map((row) => row.department || "Tanpa department")))],
@@ -172,19 +177,25 @@ export function PointsHrInteractiveDashboard({ leaderboard, departments, timelin
 
         <TabsContent value="chart" className="mt-4 grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
           <div className="h-[320px] rounded-[1.2rem] bg-surface-container-low p-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 12, right: 16, left: -8, bottom: 36 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" angle={-20} textAnchor="end" interval={0} height={56} tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip />
-                <Bar dataKey="points" radius={[10, 10, 4, 4]}>
-                  {chartData.map((row) => (
-                    <Cell key={row.name} fill={row.points < 0 ? "#ef4444" : "#0ea5e9"} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            {mounted ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} margin={{ top: 12, right: 16, left: -8, bottom: 36 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="name" angle={-20} textAnchor="end" interval={0} height={56} tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Bar dataKey="points" radius={[10, 10, 4, 4]}>
+                    {chartData.map((row, idx) => (
+                      <Cell key={`bar-${row.name}-${idx}`} fill={row.points < 0 ? "#ef4444" : "#0ea5e9"} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                Memuat grafik...
+              </div>
+            )}
           </div>
           <div className="space-y-3">
             {departments.slice(0, 6).map((row) => (

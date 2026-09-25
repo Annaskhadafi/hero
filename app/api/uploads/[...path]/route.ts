@@ -65,7 +65,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
   }
 
   // Strict session check only for sensitive directories
-  const isSensitive = path[0] !== "upload" && path[0] !== "lms-covers" && path[0] !== "chitralearning"
+  const isRootUpload = path.length === 1
+  const isPublicPrefix =
+    path[0] === "upload" ||
+    path[0] === "uploads" ||
+    path[0] === "lms-covers" ||
+    path[0] === "chitralearning"
+
+  const isSensitive = !isRootUpload && !isPublicPrefix
   if (isSensitive) {
     const session = await getServerSession()
     if (!session?.user?.email) {

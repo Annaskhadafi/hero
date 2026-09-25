@@ -1,14 +1,21 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { useRef, useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import SignatureCanvas from 'react-signature-canvas'
-import { approveContractReviewStep, revertContractReviewStep } from '@/app/actions/contract-review'
+import {
+  addContractReviewAttachment,
+  approveContractReviewStep,
+  deleteContractReviewAttachment,
+  revertContractReviewStep,
+} from '@/app/actions/contract-review'
+import { uploadFile } from '@/app/actions/upload'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Download, RotateCcw } from 'lucide-react'
+import { Download, RotateCcw, Upload, Paperclip, FileText, Image as ImageIcon, ExternalLink, Loader2, Trash2, Eye } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import {
   Dialog,
   DialogContent,
@@ -63,8 +70,91 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
   const [done, setDone] = useState(approval.status === 'approved')
   const [approvalHistory, setApprovalHistory] = useState(allApprovals)
   const [previewSignatureDataUrl, setPreviewSignatureDataUrl] = useState(approval.signatureDataUrl || '')
-  const [previewSignedAt, setPreviewSignedAt] = useState<string | Date | null>(approval.signedAt || null)
+  const [previewSignedAt, setPreviewSignedAt] = useState<Date | null>(approval.signedAt ? new Date(approval.signedAt) : null)
   const [isPending, startTransition] = useTransition()
+  const [attachments, setAttachments] = useState<any[]>(review.attachments || [])
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false)
+  const [previewModalAttachment, setPreviewModalAttachment] = useState<any | null>(null)
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const isImage = file.type.startsWith('image/')
+    const isPdf = file.type === 'application/pdf'
+    if (!isImage && !isPdf) {
+      alert('File harus berupa PDF atau gambar (JPG/PNG).')
+      e.target.value = ''
+      return
+    }
+
+    if (isImage && file.size > 5 * 1024 * 1024) {
+      alert('Ukuran gambar maksimal 5MB.')
+      e.target.value = ''
+      return
+    }
+    if (isPdf && file.size > 10 * 1024 * 1024) {
+      alert('Ukuran PDF maksimal 10MB.')
+      e.target.value = ''
+      return
+    }
+
+    setIsUploadingAttachment(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('uploadTarget', 'contract-review-attachment')
+      formData.append('approvalToken', token)
+
+      const res = await uploadFile(formData)
+      if (!res.success || !res.url) {
+        alert(res.error || 'Gagal mengunggah file.')
+        return
+      }
+
+      const fileInfo = {
+        fileName: file.name,
+        fileUrl: res.url,
+        fileType: isPdf ? 'pdf' : 'image',
+        fileSize: file.size,
+        uploadedBy: approval.approverName,
+        uploadedByRole: ROLE_LABELS[approval.approverRole] || approval.approverRole,
+      }
+
+      const attachRes = await addContractReviewAttachment({
+        token,
+        file: fileInfo,
+      })
+
+      if (attachRes.success && attachRes.attachments) {
+        setAttachments(attachRes.attachments)
+      } else {
+        alert(attachRes.error || 'Gagal menyimpan lampiran.')
+      }
+    } catch (err: any) {
+      alert(err.message || 'Terjadi kesalahan saat upload file.')
+    } finally {
+      setIsUploadingAttachment(false)
+      e.target.value = ''
+    }
+  }
+
+  async function handleDeleteAttachment(attachmentId: string) {
+    if (!confirm('Hapus lampiran ini?')) return
+    try {
+      const res = await deleteContractReviewAttachment({
+        token,
+        attachmentId,
+      })
+      if (res.success && res.attachments) {
+        setAttachments(res.attachments)
+      } else {
+        alert(res.error || 'Gagal menghapus lampiran.')
+      }
+    } catch (err: any) {
+      alert(err.message || 'Terjadi kesalahan saat menghapus lampiran.')
+    }
+  }
 
   const [recommendation, setRecommendation] = useState<string>(review.recommendation || '')
   const [contractExtendedMonths, setContractExtendedMonths] = useState<number | undefined>(review.contractExtendedMonths || undefined)
@@ -220,11 +310,42 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
     )
   }
 
-  // Calculate achievement score
-  const aVals = (review.performanceActivities ?? []).map((a: any) => a.achievement).filter(Boolean)
-  const bVals = [review.compDisciplineAch, review.compSkillAch, review.compResultAch, review.compQualityAch, review.compCustomerAch, review.compTeamworkAch].filter(Boolean)
+  // Helper to format achievement percentage
+  const formatAchievementDisplay = (val: any) => {
+    if (val === null || val === undefined || val === '') return '-'
+    const num = Number(val)
+    if (isNaN(num)) {
+      if (val === 'meet') return '100%'
+      if (val === 'exceed') return '115%'
+      if (val === 'below') return '80%'
+      return String(val)
+    }
+    return `${num}%`
+  }
+
+  // Calculate achievement score from percentage numbers
+  const parsePercent = (v: any) => {
+    if (v === null || v === undefined || v === '') return null
+    const num = Number(v)
+    if (!isNaN(num)) return num
+    if (v === 'exceed') return 115
+    if (v === 'meet') return 100
+    if (v === 'below') return 80
+    return null
+  }
+
+  const aVals = (review.performanceActivities ?? []).map((a: any) => parsePercent(a.achievement)).filter((v: any): v is number => v !== null)
+  const bVals = [
+    parsePercent(review.compDisciplineAch),
+    parsePercent(review.compSkillAch),
+    parsePercent(review.compResultAch),
+    parsePercent(review.compQualityAch),
+    parsePercent(review.compCustomerAch),
+    parsePercent(review.compTeamworkAch),
+  ].filter((v: any): v is number => v !== null)
   const allVals = [...aVals, ...bVals]
-  const achievementScore = allVals.length > 0 ? allVals.reduce((sum: number, val: string) => sum + (val === 'exceed' ? 115 : val === 'meet' ? 100 : 80), 0) / allVals.length : 0
+  const achievementScore = allVals.length > 0 ? Math.round(allVals.reduce((sum: number, val: number) => sum + val, 0) / allVals.length) : 0
+  const achCategory = achievementScore >= 106 ? 'exceed' : achievementScore >= 95 ? 'meet' : achievementScore > 0 ? 'below' : ''
 
   const estimateRowHeightMm = (item: any) => {
     const act = String(item?.activity || '').trim()
@@ -313,7 +434,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
         {items.map((item: any, i: number) => (
           <tr key={`${keyPrefix}-${i}`}>
             <td className="text-left">{item.activity || '\u00A0'}</td>
-            <td className="capitalize">{item.achievement || '\u00A0'}</td>
+            <td className="text-center font-medium">{formatAchievementDisplay(item.achievement)}</td>
             <td className="text-left">{item.remark || '\u00A0'}</td>
           </tr>
         ))}
@@ -326,19 +447,26 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
 
   const renderAchievementAndRecommendation = () => (
     <>
-      <div className="font-bold ml-4 mb-1">Achievement Definition</div>
+      <div className="font-bold ml-4 mb-1 flex items-center justify-between">
+        <span>Achievement Definition</span>
+        {achievementScore > 0 ? (
+          <span className="text-[7pt] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-300">
+            Rata-rata: {achievementScore}% ({achCategory === 'exceed' ? 'Exceed Requirement' : achCategory === 'meet' ? 'Meet Requirement' : 'Below Requirement'})
+          </span>
+        ) : null}
+      </div>
       <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
         <tbody>
           <tr>
-            <td className="w-[25%] text-center"><input type="checkbox" checked={achievementScore >= 106} readOnly /> Exceed Requirement (106% - 125%)</td>
+            <td className="w-[25%] text-center"><input type="checkbox" checked={achCategory === 'exceed'} readOnly /> Exceed Requirement (106% - 125%)</td>
             <td className="text-[7pt]">Performance of the employee is exceeding target and He/She consistently <strong>demonstrates right attitude and behavior</strong> which are aligned with the competence.</td>
           </tr>
           <tr>
-            <td className="w-[25%] text-center"><input type="checkbox" checked={achievementScore >= 95 && achievementScore < 106} readOnly /> Meet Requirement (95% - 105%)</td>
+            <td className="w-[25%] text-center"><input type="checkbox" checked={achCategory === 'meet'} readOnly /> Meet Requirement (95% - 105%)</td>
             <td className="text-[7pt]">Performance of the employee is meeting target and in overall He/She <strong>demonstrates attitude and behavior</strong> which are aligned with the competence.</td>
           </tr>
           <tr>
-            <td className="w-[25%] text-center"><input type="checkbox" checked={achievementScore > 0 && achievementScore < 95} readOnly /> Below Requirement (&lt; 95%)</td>
+            <td className="w-[25%] text-center"><input type="checkbox" checked={achCategory === 'below'} readOnly /> Below Requirement (&lt; 95%)</td>
             <td className="text-[7pt]">Performance of the employee is not meeting target and He/She still <strong>demonstrating some attitudes and/ or behaviors</strong> which are not aligned with the competence.</td>
           </tr>
         </tbody>
@@ -475,7 +603,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
       <div className="font-bold ml-4 mb-1">B. Related Competency ( Knowledge & Behavior )</div>
       <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
         <thead><tr className="bg-slate-50 text-center"><th className="w-[35%]">Activities</th><th className="w-[15%]">Achievement</th><th className="w-[50%]">Remark</th></tr></thead>
-        <tbody>{competencyRows.map(([label, achievement, remark]) => <tr key={label}><td className="font-bold">{label}</td><td className="text-center capitalize">{achievement || '\u00A0'}</td><td>{remark || '\u00A0'}</td></tr>)}</tbody>
+        <tbody>{competencyRows.map(([label, achievement, remark]) => <tr key={label}><td className="font-bold">{label}</td><td className="text-center font-medium">{formatAchievementDisplay(achievement)}</td><td>{remark || '\u00A0'}</td></tr>)}</tbody>
       </table>
 
       {achievementBlockOnPage2 ? (
@@ -611,6 +739,23 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
     </div>
   )
 
+  const pdfContainerRef = useRef<HTMLDivElement>(null)
+  const [pdfScale, setPdfScale] = useState(1)
+  const PDF_WIDTH_PX = 794
+
+  useEffect(() => {
+    if (!isMobileRoute) return
+    const update = () => {
+      const container = pdfContainerRef.current
+      if (!container) return
+      const available = container.clientWidth
+      setPdfScale(Math.min(1, available / PDF_WIDTH_PX))
+    }
+    update()
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [isMobileRoute])
+
   return (
     <main className={isMobileRoute ? 'min-h-dvh bg-slate-50 px-2 py-3' : 'min-h-screen bg-slate-50 px-3 py-4 sm:px-4 sm:py-6'}>
       <div className="mx-auto flex w-full max-w-[1800px] flex-col items-stretch gap-4 xl:flex-row xl:items-start">
@@ -666,6 +811,115 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                 </div>
               ))}
             </div>
+          </section>
+
+          {/* Lampiran Dokumen Pendukung */}
+          <section className={isMobileRoute ? 'rounded-xl bg-white p-3 shadow-sm ring-1 ring-slate-200/70' : 'rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200/70 sm:p-5'}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Paperclip className="size-4 text-indigo-600" />
+                <h2 className="text-sm font-semibold text-slate-950">Lampiran Dokumen</h2>
+              </div>
+              <Badge variant="outline" className="text-xs">
+                {attachments.length} berkas
+              </Badge>
+            </div>
+            <p className="text-xs text-slate-500 mb-3">
+              Unggah PDF atau gambar pendukung (bukti evaluasi, catatan performa, dsb). Dokumen dapat dilihat oleh seluruh penandatangan.
+            </p>
+
+            {/* Upload Button */}
+            <div className="mb-3">
+              <input
+                id="public-attachment-upload"
+                type="file"
+                accept="application/pdf,image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={handleFileUpload}
+                disabled={isUploadingAttachment}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full border-dashed border-slate-300 hover:border-indigo-400 hover:bg-indigo-50/50 text-slate-700"
+                disabled={isUploadingAttachment}
+                onClick={() => document.getElementById('public-attachment-upload')?.click()}
+              >
+                {isUploadingAttachment ? (
+                  <>
+                    <Loader2 className="mr-2 size-4 animate-spin text-indigo-600" />
+                    Mengunggah...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="mr-2 size-4 text-indigo-600" />
+                    Upload Dokumen Pendukung
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {/* List of attachments */}
+            {attachments.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-slate-200 p-3 text-center text-xs text-slate-400">
+                Belum ada lampiran pendukung.
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                {attachments.map((att: any, idx: number) => (
+                  <div key={att.id || idx} className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50/60 p-2 text-xs">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {att.fileType === 'pdf' ? (
+                        <FileText className="size-4 text-rose-500 shrink-0" />
+                      ) : (
+                        <ImageIcon className="size-4 text-sky-500 shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => setPreviewModalAttachment(att)}
+                          className="font-medium text-slate-800 hover:text-indigo-600 truncate block text-left hover:underline"
+                          title="Klik untuk preview"
+                        >
+                          {att.fileName}
+                        </button>
+                        <p className="text-[10px] text-slate-400 truncate">
+                          {att.uploadedBy} · {att.uploadedAt ? new Date(att.uploadedAt).toLocaleDateString('id-ID') : ''}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewModalAttachment(att)}
+                        className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700"
+                        title="Preview Dokumen"
+                      >
+                        <Eye className="size-3" /> Preview
+                      </button>
+                      <a
+                        href={att.fileUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60"
+                        title="Buka File di Tab Baru"
+                      >
+                        <ExternalLink className="size-3.5" />
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteAttachment(att.id)}
+                        className="rounded p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                        title="Hapus Lampiran"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
 
           {/* TTD Digital */}
@@ -873,8 +1127,16 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
               <TabsTrigger value="letter">Preview Surat</TabsTrigger>
               <TabsTrigger value="productivity">Produktivitas</TabsTrigger>
             </TabsList>
-            <TabsContent value="letter" className="m-0 overflow-x-auto pb-2">
-              <div className="flex min-w-max flex-col gap-6">
+            <TabsContent value="letter" className="m-0 pb-2">
+              <div ref={pdfContainerRef} className={isMobileRoute ? 'w-full overflow-hidden' : 'overflow-x-auto'}>
+                <div
+                  className="flex flex-col gap-6"
+                  style={isMobileRoute ? {
+                    width: `${PDF_WIDTH_PX}px`,
+                    transform: `scale(${pdfScale})`,
+                    transformOrigin: 'top left',
+                  } : { minWidth: 'max-content' }}
+                >
                 <div
                   id="pdf-page-1"
                   data-contract-review-page="true"
@@ -901,7 +1163,105 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                   <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
                   {pdfPage3}
                 </div>
+
+                {/* ── LAMPIRAN DOKUMEN PENDUKUNG PREVIEW ── */}
+                {attachments && attachments.length > 0 && (
+                  <div className="relative mx-auto w-[210mm] shrink-0 rounded-xl bg-white p-6 shadow-sm border border-slate-200 text-slate-800">
+                    <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-200">
+                      <div className="flex items-center gap-2">
+                        <Paperclip className="size-5 text-indigo-600" />
+                        <h3 className="font-bold text-base text-slate-900">Lampiran Dokumen Pendukung ({attachments.length})</h3>
+                      </div>
+                      <span className="text-xs text-slate-500">Dapat dilihat oleh seluruh penandatangan</span>
+                    </div>
+                    <div className="flex flex-col gap-6">
+                      {attachments.map((att: any, idx: number) => (
+                        <div key={att.id || idx} className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
+                          <div className="flex items-center justify-between gap-3 mb-3">
+                            <div className="flex items-center gap-2 min-w-0">
+                              {att.fileType === 'pdf' ? (
+                                <FileText className="size-5 text-rose-500 shrink-0" />
+                              ) : (
+                                <ImageIcon className="size-5 text-sky-500 shrink-0" />
+                              )}
+                              <div className="min-w-0">
+                                <p className="font-semibold text-sm text-slate-800 truncate">{att.fileName}</p>
+                                <p className="text-xs text-slate-500">
+                                  Diunggah oleh: <span className="font-medium text-slate-700">{att.uploadedBy}</span>
+                                  {att.uploadedByRole ? ` (${att.uploadedByRole})` : ''} · {att.uploadedAt ? new Date(att.uploadedAt).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : ''}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-8 gap-1.5 px-2.5 text-xs text-indigo-700 bg-indigo-50/60 border-indigo-200 hover:bg-indigo-100/70"
+                                onClick={() => setPreviewModalAttachment(att)}
+                              >
+                                <Eye className="size-3.5" /> Preview
+                              </Button>
+                              <a
+                                href={att.fileUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex h-8 items-center gap-1.5 px-2.5 text-xs font-medium rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shrink-0"
+                              >
+                                <ExternalLink className="size-3.5" /> Buka Tab Baru
+                              </a>
+                            </div>
+                          </div>
+                          {att.fileType === 'pdf' ? (
+                            <div className="rounded-lg border border-slate-300 bg-white overflow-hidden shadow-inner relative">
+                              <div className="flex items-center justify-between px-3 py-1.5 bg-slate-100 border-b border-slate-200 text-xs text-slate-600">
+                                <span className="font-medium truncate">Viewer Dokumen PDF</span>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setPreviewModalAttachment(att)}
+                                    className="text-xs text-indigo-600 hover:underline flex items-center gap-1 font-medium"
+                                  >
+                                    <Eye className="size-3" /> Layar Penuh
+                                  </button>
+                                  <a
+                                    href={att.fileUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-xs text-slate-600 hover:underline flex items-center gap-1"
+                                  >
+                                    <ExternalLink className="size-3" /> Tab Baru
+                                  </a>
+                                </div>
+                              </div>
+                              <iframe
+                                src={`${att.fileUrl}#toolbar=1&navpanes=0&scrollbar=1`}
+                                title={att.fileName}
+                                className="w-full h-[650px] border-0 bg-white"
+                              />
+                            </div>
+                          ) : (
+                            <div
+                              className="flex flex-col items-center justify-center rounded-lg border border-slate-300 bg-slate-50 p-2 relative group cursor-pointer"
+                              onClick={() => setPreviewModalAttachment(att)}
+                            >
+                              <img
+                                src={att.fileUrl}
+                                alt={att.fileName}
+                                className="max-h-[700px] max-w-full object-contain rounded shadow-sm hover:opacity-95 transition"
+                              />
+                              <span className="mt-2 text-xs text-slate-500 flex items-center gap-1">
+                                <Eye className="size-3 text-indigo-600" /> Klik gambar untuk memperbesar / layar penuh
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
+            </div>
             </TabsContent>
             <TabsContent value="productivity" className="m-0">
               {review.employeeId ? (
@@ -919,6 +1279,61 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
           </Tabs>
         </div>
       </div>
+
+      {/* Modal Wide Dialog Preview Dokumen */}
+      <Dialog open={Boolean(previewModalAttachment)} onOpenChange={(open) => !open && setPreviewModalAttachment(null)}>
+        <DialogContent className="max-w-5xl w-[95vw] h-[88vh] flex flex-col p-0 overflow-hidden bg-slate-900 border-slate-800 text-white">
+          <DialogHeader className="p-4 bg-slate-900/90 border-b border-slate-800 flex flex-row items-center justify-between shrink-0">
+            <div className="flex items-center gap-2.5 min-w-0 pr-4">
+              {previewModalAttachment?.fileType === 'pdf' ? (
+                <FileText className="size-5 text-rose-400 shrink-0" />
+              ) : (
+                <ImageIcon className="size-5 text-sky-400 shrink-0" />
+              )}
+              <div className="min-w-0">
+                <DialogTitle className="text-sm font-semibold truncate text-white">
+                  {previewModalAttachment?.fileName}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-slate-400 truncate">
+                  Diunggah oleh {previewModalAttachment?.uploadedBy} {previewModalAttachment?.uploadedByRole ? `(${previewModalAttachment.uploadedByRole})` : ''} · {previewModalAttachment?.uploadedAt ? new Date(previewModalAttachment.uploadedAt).toLocaleString('id-ID') : ''}
+                </DialogDescription>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <a
+                href={previewModalAttachment?.fileUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white transition"
+              >
+                <ExternalLink className="size-3.5" /> Buka Tab Baru
+              </a>
+              <a
+                href={previewModalAttachment?.fileUrl}
+                download={previewModalAttachment?.fileName}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition"
+              >
+                <Download className="size-3.5" /> Unduh
+              </a>
+            </div>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto bg-slate-950 flex items-center justify-center p-2 sm:p-4">
+            {previewModalAttachment?.fileType === 'pdf' ? (
+              <iframe
+                src={`${previewModalAttachment.fileUrl}#toolbar=1&navpanes=0&scrollbar=1`}
+                title={previewModalAttachment.fileName}
+                className="w-full h-full min-h-[60vh] rounded border border-slate-800 bg-white"
+              />
+            ) : (
+              <img
+                src={previewModalAttachment?.fileUrl}
+                alt={previewModalAttachment?.fileName}
+                className="max-h-full max-w-full object-contain rounded shadow-lg"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </main>
   )
 }

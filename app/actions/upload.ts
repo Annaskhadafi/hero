@@ -2,6 +2,9 @@
 
 import { getS3ObjectReadUrl, isS3UploadConfigured, uploadAnyFileToS3, uploadAttendancePhotoToS3 } from "@/lib/s3-storage";
 import { getServerSession } from "@/lib/auth-session";
+import { db } from "@/db";
+import { hcContractReviewApprovals } from "@/db/schema/hero";
+import { eq } from "drizzle-orm";
 import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { randomUUID } from "crypto";
@@ -53,7 +56,25 @@ export async function uploadFile(formData: FormData) {
   try {
     const uploadTarget = (formData.get("uploadTarget") as string | null)?.trim();
     const isPublicCareerCv = uploadTarget === "public-career-cv";
-    if (!isPublicCareerCv) {
+    const isContractReviewAttachment = uploadTarget === "contract-review-attachment";
+
+    if (isContractReviewAttachment) {
+      const approvalToken = (formData.get("approvalToken") as string | null)?.trim();
+      const session = await getServerSession();
+      if (!session?.user?.email) {
+        if (!approvalToken) {
+          return { success: false, error: "Unauthorized: Token approval atau sesi login diperlukan." };
+        }
+        const [approval] = await db
+          .select({ id: hcContractReviewApprovals.id })
+          .from(hcContractReviewApprovals)
+          .where(eq(hcContractReviewApprovals.approvalToken, approvalToken))
+          .limit(1);
+        if (!approval) {
+          return { success: false, error: "Unauthorized: Token approval tidak valid." };
+        }
+      }
+    } else if (!isPublicCareerCv) {
       const access = await requireUploadSession();
       if (!access.success) return access;
     }

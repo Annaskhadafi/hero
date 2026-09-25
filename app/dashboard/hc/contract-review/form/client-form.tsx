@@ -2,10 +2,20 @@
 
 import { useState, useTransition, useEffect, useMemo, useRef } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { Save, Printer, ArrowLeft, Plus, Trash2, Send, Upload } from "lucide-react"
+import { Save, Printer, ArrowLeft, Plus, Trash2, Send, Upload, Paperclip, FileText, Image as ImageIcon, ExternalLink, Loader2, Eye, Download } from "lucide-react"
 import SignatureCanvas from "react-signature-canvas"
 
-import { completeAdminContractReview, resendContractReviewApprovalEmail, resendContractReviewApprovalToStep, saveAdminContractReview, saveContractReview, updateAdminContractReviewApprovalSignature } from "@/app/actions/contract-review"
+import {
+  addContractReviewAttachment,
+  completeAdminContractReview,
+  deleteContractReviewAttachment,
+  resendContractReviewApprovalEmail,
+  resendContractReviewApprovalToStep,
+  saveAdminContractReview,
+  saveContractReview,
+  updateAdminContractReviewApprovalSignature,
+} from "@/app/actions/contract-review"
+import { uploadFile } from "@/app/actions/upload"
 import { getUserSignatureAction, saveUserSignatureAction } from "@/app/actions/user-signature"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -19,6 +29,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { useSidebar } from "@/components/ui/sidebar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 
 type MasterHeadMap = {
@@ -57,6 +74,8 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [adminSignaturePending, setAdminSignaturePending] = useState<number | null>(null)
   const [adminResendPending, setAdminResendPending] = useState<number | null>(null)
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false)
+  const [previewModalAttachment, setPreviewModalAttachment] = useState<any | null>(null)
 
   useEffect(() => {
     getUserSignatureAction().then((result) => {
@@ -139,19 +158,23 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     todayDate: initialData?.todayDate ? new Date(initialData.todayDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
     hireDate: initialData?.hireDate ? new Date(initialData.hireDate).toISOString().slice(0, 10) : "",
     
-    performanceActivities: initialData?.performanceActivities || [{ activity: "", achievement: "meet", remark: "" }],
+    performanceActivities: initialData?.performanceActivities?.map((act: any) => ({
+      activity: act.activity || '',
+      achievement: act.achievement === 'meet' ? '100' : act.achievement === 'below' ? '80' : act.achievement === 'exceed' ? '115' : String(act.achievement || '100'),
+      remark: act.remark || '',
+    })) || [{ activity: "", achievement: "100", remark: "" }],
     
-    compDisciplineAch: initialData?.compDisciplineAch || "",
+    compDisciplineAch: initialData?.compDisciplineAch === 'meet' ? '100' : initialData?.compDisciplineAch === 'below' ? '80' : initialData?.compDisciplineAch === 'exceed' ? '115' : initialData?.compDisciplineAch || "",
     compDisciplineRemark: initialData?.compDisciplineRemark || "",
-    compSkillAch: initialData?.compSkillAch || "",
+    compSkillAch: initialData?.compSkillAch === 'meet' ? '100' : initialData?.compSkillAch === 'below' ? '80' : initialData?.compSkillAch === 'exceed' ? '115' : initialData?.compSkillAch || "",
     compSkillRemark: initialData?.compSkillRemark || "",
-    compResultAch: initialData?.compResultAch || "",
+    compResultAch: initialData?.compResultAch === 'meet' ? '100' : initialData?.compResultAch === 'below' ? '80' : initialData?.compResultAch === 'exceed' ? '115' : initialData?.compResultAch || "",
     compResultRemark: initialData?.compResultRemark || "",
-    compQualityAch: initialData?.compQualityAch || "",
+    compQualityAch: initialData?.compQualityAch === 'meet' ? '100' : initialData?.compQualityAch === 'below' ? '80' : initialData?.compQualityAch === 'exceed' ? '115' : initialData?.compQualityAch || "",
     compQualityRemark: initialData?.compQualityRemark || "",
-    compCustomerAch: initialData?.compCustomerAch || "",
+    compCustomerAch: initialData?.compCustomerAch === 'meet' ? '100' : initialData?.compCustomerAch === 'below' ? '80' : initialData?.compCustomerAch === 'exceed' ? '115' : initialData?.compCustomerAch || "",
     compCustomerRemark: initialData?.compCustomerRemark || "",
-    compTeamworkAch: initialData?.compTeamworkAch || "",
+    compTeamworkAch: initialData?.compTeamworkAch === 'meet' ? '100' : initialData?.compTeamworkAch === 'below' ? '80' : initialData?.compTeamworkAch === 'exceed' ? '115' : initialData?.compTeamworkAch || "",
     compTeamworkRemark: initialData?.compTeamworkRemark || "",
     
     recommendation: initialData?.recommendation || "",
@@ -169,6 +192,17 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     
     letterIssuance: initialData?.letterIssuance || "",
     status: initialData?.status || "draft",
+    attachments: (initialData?.attachments || []) as Array<{
+      id: string
+      fileName: string
+      fileUrl: string
+      fileType: string
+      fileSize?: number
+      uploadedBy: string
+      uploadedByRole?: string
+      uploadedAt: string
+      stepOrder?: number
+    }>,
   })
 
   const selectedEmp = useMemo(() => {
@@ -433,14 +467,22 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     const allVals = [...aVals, ...bVals]
     if (allVals.length === 0) return 0
 
-    const total = allVals.reduce((sum, val) => {
-      if (val === 'exceed') return sum + 115
-      if (val === 'meet') return sum + 100
-      if (val === 'below') return sum + 80
-      return sum
-    }, 0)
+    const parseVal = (val: any): number | null => {
+      if (typeof val === 'number') return val
+      const str = String(val).trim().toLowerCase()
+      if (!str) return null
+      if (str === 'exceed') return 115
+      if (str === 'meet') return 100
+      if (str === 'below') return 80
+      const num = parseFloat(str.replace('%', ''))
+      return isNaN(num) ? null : num
+    }
 
-    return total / allVals.length
+    const validNums = allVals.map(parseVal).filter((v): v is number => v !== null)
+    if (validNums.length === 0) return 0
+
+    const total = validNums.reduce((sum, val) => sum + val, 0)
+    return Math.round((total / validNums.length) * 10) / 10
   }, [form])
 
   const achCategory =
@@ -451,6 +493,14 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
         : achievementScore > 0
           ? 'below'
           : ''
+
+  const formatAchievementDisplay = (val: any) => {
+    if (val === null || val === undefined || val === '') return '\u00A0'
+    const str = String(val).trim()
+    const num = parseFloat(str.replace('%', ''))
+    if (!isNaN(num)) return `${num}%`
+    return str
+  }
 
   const getApprovedSignature = (...roles: string[]) => {
     return (
@@ -504,7 +554,13 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
       }
       const res = adminMode ? await saveAdminContractReview(payload as any) : await saveContractReview(payload as any)
       if (res.success) {
-        router.push(adminMode ? `/dashboard/hc/contract-review/form/${initialData?.id}?admin=1` : pathname.startsWith('/mobile/') ? '/mobile/dashboard' : "/dashboard/hc/contract-review")
+        const savedId = (res as any).data?.id
+        if (!adminMode && !pathname.startsWith('/mobile/') && !initialData?.id && savedId) {
+          // Create mode: redirect ke form edit agar user bisa upload lampiran
+          router.push(`/dashboard/hc/contract-review/form/${savedId}`)
+        } else {
+          router.push(adminMode ? `/dashboard/hc/contract-review/form/${initialData?.id}?admin=1` : pathname.startsWith('/mobile/') ? '/mobile/dashboard' : "/dashboard/hc/contract-review")
+        }
       } else {
         alert("Gagal menyimpan: " + res.error)
       }
@@ -579,6 +635,99 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
         alert(`Gagal mengirim email: ${result.error}`)
       }
     })
+  }
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const isImage = file.type.startsWith('image/')
+    const isPdf = file.type === 'application/pdf'
+    if (!isImage && !isPdf) {
+      alert('File harus berupa PDF atau gambar (JPG/PNG).')
+      e.target.value = ''
+      return
+    }
+
+    if (isImage && file.size > 5 * 1024 * 1024) {
+      alert('Ukuran gambar maksimal 5MB.')
+      e.target.value = ''
+      return
+    }
+    if (isPdf && file.size > 10 * 1024 * 1024) {
+      alert('Ukuran PDF maksimal 10MB.')
+      e.target.value = ''
+      return
+    }
+
+    setIsUploadingAttachment(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('uploadTarget', 'contract-review-attachment')
+
+      const res = await uploadFile(formData)
+      if (!res.success || !res.url) {
+        alert(res.error || 'Gagal mengunggah file.')
+        return
+      }
+
+      const fileInfo = {
+        fileName: file.name,
+        fileUrl: res.url,
+        fileType: isPdf ? 'pdf' : 'image',
+        fileSize: file.size,
+        uploadedBy: form.leaderName || 'Creator',
+        uploadedByRole: 'Creator',
+      }
+
+      if (form.id) {
+        const attachRes = await addContractReviewAttachment({
+          reviewId: form.id,
+          file: fileInfo,
+        })
+        if (attachRes.success && attachRes.attachments) {
+          setForm((prev) => ({ ...prev, attachments: attachRes.attachments }))
+        } else {
+          alert(attachRes.error || 'Gagal menyimpan lampiran ke review.')
+        }
+      } else {
+        const newAttachment = {
+          id: `temp-${Date.now()}`,
+          ...fileInfo,
+          uploadedAt: new Date().toISOString(),
+        }
+        setForm((prev: any) => ({
+          ...prev,
+          attachments: [...(prev.attachments || []), newAttachment],
+        }))
+      }
+    } catch (err: any) {
+      alert(err.message || 'Terjadi kesalahan saat upload file.')
+    } finally {
+      setIsUploadingAttachment(false)
+      e.target.value = ''
+    }
+  }
+
+  const handleDeleteAttachment = async (attachmentId: string) => {
+    if (!confirm('Hapus lampiran ini?')) return
+    if (form.id) {
+      const res = await deleteContractReviewAttachment({
+        reviewId: form.id,
+        attachmentId,
+      })
+      if (res.success && res.attachments) {
+        setForm((prev) => ({ ...prev, attachments: res.attachments }))
+      } else {
+        alert(res.error || 'Gagal menghapus lampiran.')
+      }
+    } else {
+      setForm((prev: any) => ({
+        ...prev,
+        attachments: (prev.attachments || []).filter((a: any) => a.id !== attachmentId),
+      }))
+    }
   }
 
   const handlePrint = () => {
@@ -745,7 +894,14 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
   ]
   const renderAchievementBlock = () => (
     <>
-      <div className="font-bold mb-2">Achievement Definition</div>
+      <div className="font-bold mb-2 flex items-center justify-between">
+        <span>Achievement Definition</span>
+        {achievementScore > 0 ? (
+          <span className="text-[7.5pt] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-300">
+            Rata-rata: {achievementScore}% ({achCategory === 'exceed' ? 'Exceed Requirement' : achCategory === 'meet' ? 'Meet Requirement' : 'Below Requirement'})
+          </span>
+        ) : null}
+      </div>
       <table className="w-full border-collapse border border-black mb-4 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
         <tbody>
           <tr><td className="w-1/3"><label className="flex items-center gap-2"><input type="checkbox" readOnly checked={achCategory === "exceed"} />Exceed Requirement (106% - 125%)</label></td><td className="w-2/3">Performance of the employee is exceeding target and He/She consistently <b>demonstrates right attitude and behavior</b> which are aligned with the competency</td></tr>
@@ -775,7 +931,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
         {items.map((item: any, i: number) => (
           <tr key={`${keyPrefix}-${i}`}>
             <td className="text-left">{item.activity || '\u00A0'}</td>
-            <td className="capitalize">{item.achievement || '\u00A0'}</td>
+            <td className="text-center font-medium">{formatAchievementDisplay(item.achievement)}</td>
             <td className="text-left">{item.remark || '\u00A0'}</td>
           </tr>
         ))}
@@ -877,7 +1033,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
           {competencyRows.map(([label, achievement, remark]) => (
             <tr key={label}>
               <td className="font-bold">{label}</td>
-              <td className="text-center capitalize">{achievement}</td>
+              <td className="text-center font-medium">{formatAchievementDisplay(achievement)}</td>
               <td>{remark}</td>
             </tr>
           ))}
@@ -998,6 +1154,102 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     </div>
   )
 
+  const attachmentsPreviewSection = form.attachments && form.attachments.length > 0 ? (
+    <div className="mx-auto w-[210mm] shrink-0 rounded-xl bg-white p-6 shadow-sm border border-slate-200 text-slate-800">
+      <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-200">
+        <div className="flex items-center gap-2">
+          <Paperclip className="size-5 text-indigo-600" />
+          <h3 className="font-bold text-base text-slate-900">Lampiran Dokumen Pendukung ({form.attachments.length})</h3>
+        </div>
+        <span className="text-xs text-slate-500">Dapat dilihat oleh seluruh penandatangan</span>
+      </div>
+      <div className="flex flex-col gap-6">
+        {form.attachments.map((att: any, idx: number) => (
+          <div key={att.id || idx} className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div className="flex items-center gap-2 min-w-0">
+                {att.fileType === 'pdf' ? (
+                  <FileText className="size-5 text-rose-500 shrink-0" />
+                ) : (
+                  <ImageIcon className="size-5 text-sky-500 shrink-0" />
+                )}
+                <div className="min-w-0">
+                  <p className="font-semibold text-sm text-slate-800 truncate">{att.fileName}</p>
+                  <p className="text-xs text-slate-500">
+                    Diunggah oleh: <span className="font-medium text-slate-700">{att.uploadedBy}</span>
+                    {att.uploadedByRole ? ` (${att.uploadedByRole})` : ''} · {att.uploadedAt ? new Date(att.uploadedAt).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : ''}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5 px-2.5 text-xs text-indigo-700 bg-indigo-50/60 border-indigo-200 hover:bg-indigo-100/70"
+                  onClick={() => setPreviewModalAttachment(att)}
+                >
+                  <Eye className="size-3.5" /> Preview
+                </Button>
+                <a
+                  href={att.fileUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex h-8 items-center gap-1.5 px-2.5 text-xs font-medium rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shrink-0"
+                >
+                  <ExternalLink className="size-3.5" /> Buka Tab Baru
+                </a>
+              </div>
+            </div>
+            {att.fileType === 'pdf' ? (
+              <div className="rounded-lg border border-slate-300 bg-white overflow-hidden shadow-inner relative">
+                <div className="flex items-center justify-between px-3 py-1.5 bg-slate-100 border-b border-slate-200 text-xs text-slate-600">
+                  <span className="font-medium truncate">Viewer Dokumen PDF</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewModalAttachment(att)}
+                      className="text-xs text-indigo-600 hover:underline flex items-center gap-1 font-medium"
+                    >
+                      <Eye className="size-3" /> Layar Penuh
+                    </button>
+                    <a
+                      href={att.fileUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs text-slate-600 hover:underline flex items-center gap-1"
+                    >
+                      <ExternalLink className="size-3" /> Tab Baru
+                    </a>
+                  </div>
+                </div>
+                <iframe
+                  src={`${att.fileUrl}#toolbar=1&navpanes=0&scrollbar=1`}
+                  title={att.fileName}
+                  className="w-full h-[650px] border-0 bg-white"
+                />
+              </div>
+            ) : (
+              <div
+                className="flex flex-col items-center justify-center rounded-lg border border-slate-300 bg-slate-50 p-2 relative group cursor-pointer"
+                onClick={() => setPreviewModalAttachment(att)}
+              >
+                <img
+                  src={att.fileUrl}
+                  alt={att.fileName}
+                  className="max-h-[700px] max-w-full object-contain rounded shadow-sm hover:opacity-95 transition"
+                />
+                <span className="mt-2 text-xs text-slate-500 flex items-center gap-1">
+                  <Eye className="size-3 text-indigo-600" /> Klik gambar untuk memperbesar / layar penuh
+                </span>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  ) : null
+
   if (isEmbeddedPrintPreview) {
     return (
       <div className="fixed inset-0 z-[9999] flex flex-col gap-8 overflow-auto bg-slate-100 p-4">
@@ -1010,6 +1262,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
             {page}
           </div>
         ))}
+        {attachmentsPreviewSection}
       </div>
     )
   }
@@ -1159,23 +1412,39 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
                       }} 
                     />
                   </div>
-                  <div className="w-full space-y-2 sm:w-[200px]">
-                    <Label>Achievement</Label>
-                    <Select 
-                      value={act.achievement} 
-                      onValueChange={(val) => {
-                        const newArr = [...form.performanceActivities]
-                        newArr[idx].achievement = val
-                        setForm({ ...form, performanceActivities: newArr })
-                      }}
-                    >
-                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="below">Below Requirement</SelectItem>
-                        <SelectItem value="meet">Meet Requirement</SelectItem>
-                        <SelectItem value="exceed">Exceed Requirement</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <div className="w-full space-y-2 sm:w-[160px]">
+                    <div className="flex items-center justify-between">
+                      <Label>Achievement (%)</Label>
+                      {act.achievement ? (
+                        <span className={cn(
+                          "text-[10px] font-semibold px-1.5 py-0.5 rounded",
+                          parseFloat(String(act.achievement)) >= 106 ? "bg-emerald-100 text-emerald-700" :
+                          parseFloat(String(act.achievement)) >= 95 ? "bg-blue-100 text-blue-700" :
+                          parseFloat(String(act.achievement)) > 0 ? "bg-amber-100 text-amber-700" : "text-slate-400"
+                        )}>
+                          {parseFloat(String(act.achievement)) >= 106 ? "Exceed" :
+                           parseFloat(String(act.achievement)) >= 95 ? "Meet" :
+                           parseFloat(String(act.achievement)) > 0 ? "Below" : ""}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="relative">
+                      <Input 
+                        type="number"
+                        min={0}
+                        max={200}
+                        step={1}
+                        placeholder="100"
+                        className="pr-7 text-right font-medium"
+                        value={act.achievement} 
+                        onChange={(e) => {
+                          const newArr = [...form.performanceActivities]
+                          newArr[idx].achievement = e.target.value
+                          setForm({ ...form, performanceActivities: newArr })
+                        }} 
+                      />
+                      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400 pointer-events-none">%</span>
+                    </div>
                   </div>
                   <div className="flex-1 space-y-2">
                     <Label>Remark</Label>
@@ -1195,7 +1464,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
                     onClick={() => {
                       const newArr = form.performanceActivities.filter((_: any, i: number) => i !== idx)
                       setForm({ ...form, performanceActivities: newArr })
-                    }}
+                    }} 
                   >
                     <Trash2 className="size-4 text-red-500" />
                   </Button>
@@ -1205,7 +1474,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
                 variant="outline" 
                 onClick={() => setForm({ 
                   ...form, 
-                  performanceActivities: [...form.performanceActivities, { activity: "", achievement: "meet", remark: "" }] 
+                  performanceActivities: [...form.performanceActivities, { activity: "", achievement: "100", remark: "" }] 
                 })}
               >
                 <Plus className="mr-2 size-4" /> Tambah Aktivitas
@@ -1230,18 +1499,34 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
               ].map((comp, idx) => (
                 <div key={idx} className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-start">
                   <div className="w-full pt-2 font-medium sm:w-[30%]">{comp.label}</div>
-                  <div className="w-full sm:w-[200px]">
-                    <Select 
-                      value={(form as any)[comp.achKey]} 
-                      onValueChange={(val) => setForm({ ...form, [comp.achKey]: val })}
-                    >
-                    <SelectTrigger className="w-full"><SelectValue placeholder="Pilih..." /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="below">Below</SelectItem>
-                        <SelectItem value="meet">Meet</SelectItem>
-                        <SelectItem value="exceed">Exceed</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <div className="w-full sm:w-[160px]">
+                    <div className="relative">
+                      <Input 
+                        type="number"
+                        min={0}
+                        max={200}
+                        step={1}
+                        placeholder="100"
+                        className="pr-7 text-right font-medium"
+                        value={(form as any)[comp.achKey]} 
+                        onChange={(e) => setForm({ ...form, [comp.achKey]: e.target.value })} 
+                      />
+                      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400 pointer-events-none">%</span>
+                    </div>
+                    {(form as any)[comp.achKey] ? (
+                      <div className="mt-1 text-right">
+                        <span className={cn(
+                          "text-[10px] font-semibold px-1.5 py-0.5 rounded",
+                          parseFloat(String((form as any)[comp.achKey])) >= 106 ? "bg-emerald-100 text-emerald-700" :
+                          parseFloat(String((form as any)[comp.achKey])) >= 95 ? "bg-blue-100 text-blue-700" :
+                          parseFloat(String((form as any)[comp.achKey])) > 0 ? "bg-amber-100 text-amber-700" : "text-slate-400"
+                        )}>
+                          {parseFloat(String((form as any)[comp.achKey])) >= 106 ? "Exceed" :
+                           parseFloat(String((form as any)[comp.achKey])) >= 95 ? "Meet" :
+                           parseFloat(String((form as any)[comp.achKey])) > 0 ? "Below" : ""}
+                        </span>
+                      </div>
+                    ) : null}
                   </div>
                   <div className="flex-1">
                     <Input 
@@ -1487,6 +1772,118 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
             </div>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Paperclip className="size-4 text-primary" /> Lampiran Dokumen Pendukung
+              </CardTitle>
+              {form.attachments && form.attachments.length > 0 && (
+                <Badge variant="secondary" className="font-normal text-xs">
+                  {form.attachments.length} berkas
+                </Badge>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Unggah dokumen pendukung (PDF atau Foto/Gambar JPG/PNG maks 10MB). Dokumen ini akan dapat dilihat oleh semua penandatangan review.
+            </p>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <label className={cn(
+                "inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm",
+                isUploadingAttachment && "opacity-50 pointer-events-none"
+              )}>
+                {isUploadingAttachment ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin text-primary" />
+                    <span>Mengunggah...</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="size-4 text-primary" />
+                    <span>Upload Lampiran (PDF / Gambar)</span>
+                  </>
+                )}
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  className="hidden"
+                  disabled={isUploadingAttachment}
+                  onChange={handleFileUpload}
+                />
+              </label>
+            </div>
+
+            {form.attachments && form.attachments.length > 0 ? (
+              <div className="space-y-2 pt-2">
+                {form.attachments.map((att: any, idx: number) => (
+                  <div
+                    key={att.id || idx}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50/70 p-2.5 text-xs transition-colors hover:bg-slate-50"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {att.fileType === 'pdf' ? (
+                        <FileText className="size-4 text-rose-500 shrink-0" />
+                      ) : (
+                        <ImageIcon className="size-4 text-sky-500 shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <p
+                          className="font-medium text-slate-800 truncate cursor-pointer hover:text-indigo-600 hover:underline"
+                          onClick={() => setPreviewModalAttachment(att)}
+                          title="Klik untuk preview"
+                        >
+                          {att.fileName}
+                        </p>
+                        <p className="text-[10px] text-slate-500">
+                          {att.uploadedBy} {att.uploadedByRole ? `(${att.uploadedByRole})` : ''} · {att.uploadedAt ? new Date(att.uploadedAt).toLocaleDateString('id-ID') : ''}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-[11px] font-medium text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700"
+                        onClick={() => setPreviewModalAttachment(att)}
+                        title="Preview dokumen di modal"
+                      >
+                        <Eye className="mr-1 size-3" /> Preview
+                      </Button>
+                      <a
+                        href={att.fileUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex h-7 items-center gap-1 rounded px-2 text-[11px] font-medium text-slate-700 hover:bg-white hover:text-slate-900 border border-transparent hover:border-slate-200"
+                        title="Buka dokumen di tab baru"
+                      >
+                        <ExternalLink className="size-3" /> Buka
+                      </a>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                        onClick={() => handleDeleteAttachment(att.id)}
+                        title="Hapus lampiran"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-slate-200 p-4 text-center text-xs text-slate-400">
+                Belum ada dokumen pendukung yang diunggah.
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* KANAN: PDF Preview */}
@@ -1516,6 +1913,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
             <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
             {pdfPreviewPage3}
           </div>
+          {attachmentsPreviewSection}
         </div>
       ) : (
       <div id="contract-review-preview" className={cn("rounded-[1.1rem] bg-slate-100 p-4 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)] print:hidden overflow-auto", isMobileRoute && "block max-md:p-2")}>
@@ -1549,6 +1947,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
               <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
               {pdfPreviewPage3}
             </div>
+            {attachmentsPreviewSection}
           </TabsContent>
           <TabsContent value="productivity" className="m-0">
             {form.employeeId ? (
@@ -1567,6 +1966,61 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
       </div>
       )}
     </div>
+
+    {/* Modal Wide Dialog Preview Dokumen */}
+    <Dialog open={Boolean(previewModalAttachment)} onOpenChange={(open) => !open && setPreviewModalAttachment(null)}>
+      <DialogContent className="max-w-5xl w-[95vw] h-[88vh] flex flex-col p-0 overflow-hidden bg-slate-900 border-slate-800 text-white">
+        <DialogHeader className="p-4 bg-slate-900/90 border-b border-slate-800 flex flex-row items-center justify-between shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0 pr-4">
+            {previewModalAttachment?.fileType === 'pdf' ? (
+              <FileText className="size-5 text-rose-400 shrink-0" />
+            ) : (
+              <ImageIcon className="size-5 text-sky-400 shrink-0" />
+            )}
+            <div className="min-w-0">
+              <DialogTitle className="text-sm font-semibold truncate text-white">
+                {previewModalAttachment?.fileName}
+              </DialogTitle>
+              <DialogDescription className="text-xs text-slate-400 truncate">
+                Diunggah oleh {previewModalAttachment?.uploadedBy} {previewModalAttachment?.uploadedByRole ? `(${previewModalAttachment.uploadedByRole})` : ''} · {previewModalAttachment?.uploadedAt ? new Date(previewModalAttachment.uploadedAt).toLocaleString('id-ID') : ''}
+              </DialogDescription>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <a
+              href={previewModalAttachment?.fileUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white transition"
+            >
+              <ExternalLink className="size-3.5" /> Buka Tab Baru
+            </a>
+            <a
+              href={previewModalAttachment?.fileUrl}
+              download={previewModalAttachment?.fileName}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition"
+            >
+              <Download className="size-3.5" /> Unduh
+            </a>
+          </div>
+        </DialogHeader>
+        <div className="flex-1 overflow-auto bg-slate-950 flex items-center justify-center p-2 sm:p-4">
+          {previewModalAttachment?.fileType === 'pdf' ? (
+            <iframe
+              src={`${previewModalAttachment.fileUrl}#toolbar=1&navpanes=0&scrollbar=1`}
+              title={previewModalAttachment.fileName}
+              className="w-full h-full min-h-[60vh] rounded border border-slate-800 bg-white"
+            />
+          ) : (
+            <img
+              src={previewModalAttachment?.fileUrl}
+              alt={previewModalAttachment?.fileName}
+              className="max-h-full max-w-full object-contain rounded shadow-lg"
+            />
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   </AdminPageShell>
   )
 }

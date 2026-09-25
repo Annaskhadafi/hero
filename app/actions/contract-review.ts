@@ -278,6 +278,10 @@ async function ensureContractReviewWorkflowTablesOnce() {
       updated_at timestamp not null default now()
     )
   `)
+  await db.execute(sql`
+    alter table hero_hc_employee_contract_reviews
+    add column if not exists attachments jsonb default '[]'::jsonb;
+  `)
 }
 
 export async function getContractReviewSettings() {
@@ -2335,5 +2339,156 @@ export async function generateTestContractReview() {
   } catch (error: any) {
     console.error('Error generating test review:', error)
     return { success: false, error: error.message }
+  }
+}
+
+export async function addContractReviewAttachment(params: {
+  reviewId?: number
+  token?: string
+  file: {
+    fileName: string
+    fileUrl: string
+    fileType: string
+    fileSize?: number
+    uploadedBy?: string
+    uploadedByRole?: string
+  }
+}) {
+  try {
+    await ensureContractReviewWorkflowTables()
+    let reviewId = params.reviewId
+    let uploaderName = params.file.uploadedBy || ''
+    let uploaderRole = params.file.uploadedByRole || ''
+    let stepOrder: number | undefined
+
+    if (params.token) {
+      const [approval] = await db
+        .select()
+        .from(hcContractReviewApprovals)
+        .where(eq(hcContractReviewApprovals.approvalToken, params.token))
+        .limit(1)
+      if (!approval) {
+        return { success: false, error: 'Approval token tidak valid.' }
+      }
+      reviewId = approval.reviewId
+      uploaderName = uploaderName || approval.approverName
+      uploaderRole = uploaderRole || approval.approverRole
+      stepOrder = approval.stepOrder
+    } else {
+      const session = await getServerSession()
+      if (!session?.user) {
+        return { success: false, error: 'Unauthorized: Sesi login diperlukan.' }
+      }
+      uploaderName = uploaderName || session.user.name || 'User'
+      uploaderRole = uploaderRole || 'Admin/Creator'
+    }
+
+    if (!reviewId) {
+      return { success: false, error: 'Review ID tidak ditemukan.' }
+    }
+
+    const [review] = await db
+      .select({ id: hcEmployeeContractReviews.id, attachments: hcEmployeeContractReviews.attachments })
+      .from(hcEmployeeContractReviews)
+      .where(eq(hcEmployeeContractReviews.id, reviewId))
+      .limit(1)
+
+    if (!review) {
+      return { success: false, error: 'Review tidak ditemukan.' }
+    }
+
+    const currentAttachments = Array.isArray(review.attachments) ? review.attachments : []
+    const newAttachment = {
+      id: randomUUID(),
+      fileName: params.file.fileName,
+      fileUrl: params.file.fileUrl,
+      fileType: params.file.fileType,
+      fileSize: params.file.fileSize,
+      uploadedBy: uploaderName,
+      uploadedByRole: uploaderRole,
+      uploadedAt: new Date().toISOString(),
+      stepOrder,
+    }
+
+    const updatedAttachments = [...currentAttachments, newAttachment]
+
+    await db
+      .update(hcEmployeeContractReviews)
+      .set({ attachments: updatedAttachments, updatedAt: new Date() })
+      .where(eq(hcEmployeeContractReviews.id, reviewId))
+
+    revalidatePath('/dashboard/hc/contract-review')
+    revalidatePath(`/dashboard/hc/contract-review/${reviewId}`)
+    revalidatePath(`/dashboard/hc/contract-review/form/${reviewId}`)
+    if (params.token) {
+      revalidatePath(`/review/${params.token}`)
+    }
+
+    return { success: true, attachment: newAttachment, attachments: updatedAttachments }
+  } catch (error: any) {
+    console.error('Error adding contract review attachment:', error)
+    return { success: false, error: error.message || 'Gagal menambahkan lampiran.' }
+  }
+}
+
+export async function deleteContractReviewAttachment(params: {
+  reviewId?: number
+  token?: string
+  attachmentId: string
+}) {
+  try {
+    await ensureContractReviewWorkflowTables()
+    let reviewId = params.reviewId
+
+    if (params.token) {
+      const [approval] = await db
+        .select()
+        .from(hcContractReviewApprovals)
+        .where(eq(hcContractReviewApprovals.approvalToken, params.token))
+        .limit(1)
+      if (!approval) {
+        return { success: false, error: 'Approval token tidak valid.' }
+      }
+      reviewId = approval.reviewId
+    } else {
+      const session = await getServerSession()
+      if (!session?.user) {
+        return { success: false, error: 'Unauthorized: Sesi login diperlukan.' }
+      }
+    }
+
+    if (!reviewId) {
+      return { success: false, error: 'Review ID tidak ditemukan.' }
+    }
+
+    const [review] = await db
+      .select({ id: hcEmployeeContractReviews.id, attachments: hcEmployeeContractReviews.attachments })
+      .from(hcEmployeeContractReviews)
+      .where(eq(hcEmployeeContractReviews.id, reviewId))
+      .limit(1)
+
+    if (!review) {
+      return { success: false, error: 'Review tidak ditemukan.' }
+    }
+
+    const currentAttachments = Array.isArray(review.attachments) ? review.attachments : []
+    const updatedAttachments = currentAttachments.filter((att) => att.id !== params.attachmentId)
+
+    await db
+      .update(hcEmployeeContractReviews)
+      .set({ attachments: updatedAttachments, updatedAt: new Date() })
+      .where(eq(hcEmployeeContractReviews.id, reviewId))
+
+    revalidatePath('/dashboard/hc/contract-review')
+    revalidatePath(`/dashboard/hc/contract-review/${reviewId}`)
+    revalidatePath(`/dashboard/hc/contract-review/form/${reviewId}`)
+    if (params.token) {
+      revalidatePath(`/review/${params.token}`)
+    }
+
+    return { success: true, attachments: updatedAttachments }
+  } catch (error: any) {
+    console.error('Error deleting contract review attachment:', error)
+    return { success: false, error: error.message || 'Gagal menghapus lampiran.' }
   }
 }
