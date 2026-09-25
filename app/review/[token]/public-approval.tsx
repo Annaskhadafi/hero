@@ -76,6 +76,24 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false)
   const [previewModalAttachment, setPreviewModalAttachment] = useState<any | null>(null)
 
+  // PDF scale for mobile — fit A4 (794px wide) into screen width without horizontal scroll
+  const pdfContainerRef = useRef<HTMLDivElement>(null)
+  const [pdfScale, setPdfScale] = useState(1)
+  const PDF_WIDTH_PX = 794
+
+  useEffect(() => {
+    if (!isMobileRoute) return
+    const update = () => {
+      const container = pdfContainerRef.current
+      if (!container) return
+      const available = container.clientWidth
+      setPdfScale(Math.min(1, available / PDF_WIDTH_PX))
+    }
+    update()
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [isMobileRoute])
+
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -738,23 +756,6 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
       </div>
     </div>
   )
-
-  const pdfContainerRef = useRef<HTMLDivElement>(null)
-  const [pdfScale, setPdfScale] = useState(1)
-  const PDF_WIDTH_PX = 794
-
-  useEffect(() => {
-    if (!isMobileRoute) return
-    const update = () => {
-      const container = pdfContainerRef.current
-      if (!container) return
-      const available = container.clientWidth
-      setPdfScale(Math.min(1, available / PDF_WIDTH_PX))
-    }
-    update()
-    window.addEventListener('resize', update)
-    return () => window.removeEventListener('resize', update)
-  }, [isMobileRoute])
 
   return (
     <main className={isMobileRoute ? 'min-h-dvh bg-slate-50 px-2 py-3' : 'min-h-screen bg-slate-50 px-3 py-4 sm:px-4 sm:py-6'}>
