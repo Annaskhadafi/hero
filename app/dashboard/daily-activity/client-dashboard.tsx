@@ -37,9 +37,11 @@ import {
 import {
   DailyActivityDashboardData,
   EmployeeActivityRow,
+  UnsubmittedEmployeeRow,
   DelayedJobItem,
   TimelineActivityEvent,
 } from '@/lib/daily-activity-dashboard'
+import { cn } from '@/lib/utils'
 import { formatPhotoDisplayUrl } from '@/lib/photo-url'
 import { Button } from '@/components/ui/button'
 import {
@@ -78,8 +80,11 @@ export function DailyActivityClientDashboard({
   const [selectedSiteId, setSelectedSiteId] = useState<string>(
     searchParams.get('siteId') || String(initialData.currentSite.id)
   )
-  const [selectedDate, setSelectedDate] = useState<string>(
-    searchParams.get('date') || ''
+  const [startDate, setStartDate] = useState<string>(
+    searchParams.get('startDate') || initialData.startDate || searchParams.get('date') || ''
+  )
+  const [endDate, setEndDate] = useState<string>(
+    searchParams.get('endDate') || initialData.endDate || searchParams.get('date') || ''
   )
   const [selectedShift, setSelectedShift] = useState<string>(
     searchParams.get('shift') || initialData.selectedShift
@@ -93,23 +98,38 @@ export function DailyActivityClientDashboard({
   const [selectedEmployeeStatus, setSelectedEmployeeStatus] = useState<string>(
     searchParams.get('status') || 'Semua Status'
   )
-  const [searchQuery, setSearchQuery] = useState<string>(
-    searchParams.get('q') || ''
+  const [employeeNameFilter, setEmployeeNameFilter] = useState<string>(
+    searchParams.get('employeeName') || searchParams.get('q') || ''
   )
+  const [searchQuery, setSearchQuery] = useState<string>(
+    searchParams.get('q') || searchParams.get('employeeName') || ''
+  )
+
+  // Active Tab state: 'submitted' (Sudah Mengisi) vs 'unsubmitted' (Belum Mengisi)
+  const [activeTab, setActiveTab] = useState<'submitted' | 'unsubmitted'>('submitted')
 
   // Keep state synchronized whenever URL searchParams or server initialData changes
   useEffect(() => {
     const siteParam = searchParams.get('siteId')
     setSelectedSiteId(siteParam !== null ? siteParam : String(initialData.currentSite.id))
-    setSelectedDate(searchParams.get('date') || '')
+    setStartDate(searchParams.get('startDate') || initialData.startDate || searchParams.get('date') || '')
+    setEndDate(searchParams.get('endDate') || initialData.endDate || searchParams.get('date') || '')
     setSelectedShift(searchParams.get('shift') || initialData.selectedShift || 'Semua Shift')
     setSelectedDept(searchParams.get('dept') || 'Semua Tim')
     setSelectedEmployeeStatus(searchParams.get('status') || 'Semua Status')
-    setSearchQuery(searchParams.get('q') || '')
-  }, [searchParams, initialData.currentSite.id, initialData.selectedShift])
+    setEmployeeNameFilter(searchParams.get('employeeName') || searchParams.get('q') || '')
+    setSearchQuery(searchParams.get('q') || searchParams.get('employeeName') || '')
+  }, [
+    searchParams,
+    initialData.currentSite.id,
+    initialData.selectedShift,
+    initialData.startDate,
+    initialData.endDate,
+  ])
 
-  // Pagination state
+  // Pagination states
   const [currentPage, setCurrentPage] = useState<number>(1)
+  const [unsubmittedPage, setUnsubmittedPage] = useState<number>(1)
   const pageSize = 10
 
   // Detail Modal state
@@ -138,44 +158,53 @@ export function DailyActivityClientDashboard({
 
   const [isAddActivityModalOpen, setIsAddActivityModalOpen] = useState(false)
 
-
   // Sync navigation when filters change
   const applyFilters = (overrides?: {
     siteId?: string
-    date?: string
+    startDate?: string
+    endDate?: string
     shift?: string
     status?: string
     dept?: string
     q?: string
+    employeeName?: string
   }) => {
     const sId = overrides?.siteId !== undefined ? overrides.siteId : selectedSiteId
-    const dt = overrides?.date !== undefined ? overrides.date : selectedDate
+    const sDate = overrides?.startDate !== undefined ? overrides.startDate : startDate
+    const eDate = overrides?.endDate !== undefined ? overrides.endDate : endDate
     const sh = overrides?.shift !== undefined ? overrides.shift : selectedShift
     const st = overrides?.status !== undefined ? overrides.status : selectedEmployeeStatus
+    const empName = overrides?.employeeName !== undefined ? overrides.employeeName : employeeNameFilter
     const q = overrides?.q !== undefined ? overrides.q : searchQuery
 
     const params = new URLSearchParams()
     if (sId && sId !== '0' && sId !== 'all') params.set('siteId', sId)
-    if (dt) params.set('date', dt)
+    if (sDate) params.set('startDate', sDate)
+    if (eDate) params.set('endDate', eDate)
     if (sh && sh !== 'Semua Shift') params.set('shift', sh)
     if (st && st !== 'Semua Status') params.set('status', st)
-    if (q.trim()) params.set('q', q.trim())
+    if (empName.trim()) params.set('employeeName', empName.trim())
+    else if (q.trim()) params.set('q', q.trim())
 
     startTransition(() => {
       router.push(`/dashboard/daily-activity?${params.toString()}`)
     })
     setCurrentPage(1)
+    setUnsubmittedPage(1)
   }
 
   const handleResetFilters = () => {
     setSelectedSiteId('0')
-    setSelectedDate('')
+    setStartDate('')
+    setEndDate('')
     setSelectedShift('Semua Shift')
     setSelectedDept('Semua Tim')
     setSelectedActivityType('Semua Aktivitas')
     setSelectedEmployeeStatus('Semua Status')
+    setEmployeeNameFilter('')
     setSearchQuery('')
     setCurrentPage(1)
+    setUnsubmittedPage(1)
     startTransition(() => {
       router.push('/dashboard/daily-activity')
     })
@@ -203,14 +232,14 @@ export function DailyActivityClientDashboard({
       if (selectedEmployeeStatus !== 'Semua Status' && emp.status !== selectedEmployeeStatus) {
         return false
       }
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim()
+      const effectiveSearch = (searchQuery || employeeNameFilter).trim().toLowerCase()
+      if (effectiveSearch) {
         return (
-          emp.name.toLowerCase().includes(q) ||
-          emp.employeeId.toLowerCase().includes(q) ||
-          emp.primaryActivity.toLowerCase().includes(q) ||
-          emp.unitTireId.toLowerCase().includes(q) ||
-          emp.jobTitle.toLowerCase().includes(q)
+          emp.name.toLowerCase().includes(effectiveSearch) ||
+          emp.employeeId.toLowerCase().includes(effectiveSearch) ||
+          emp.primaryActivity.toLowerCase().includes(effectiveSearch) ||
+          emp.unitTireId.toLowerCase().includes(effectiveSearch) ||
+          emp.jobTitle.toLowerCase().includes(effectiveSearch)
         )
       }
       return true
@@ -223,14 +252,57 @@ export function DailyActivityClientDashboard({
     selectedActivityType,
     selectedEmployeeStatus,
     searchQuery,
+    employeeNameFilter,
   ])
 
-  // Pagination calculation
+  // Filter unsubmitted employees (Belum Mengisi, excluding Roster OFF)
+  const filteredUnsubmittedEmployees = useMemo(() => {
+    return (initialData.unsubmittedEmployees || []).filter((emp) => {
+      if (
+        selectedSiteId !== '0' &&
+        selectedSiteId !== 'all' &&
+        emp.siteId !== undefined &&
+        String(emp.siteId) !== selectedSiteId
+      ) {
+        return false
+      }
+      if (selectedShift !== 'Semua Shift' && emp.expectedShift !== selectedShift) return false
+      if (selectedDept !== 'Semua Tim' && emp.department !== selectedDept) return false
+
+      const effectiveSearch = (searchQuery || employeeNameFilter).trim().toLowerCase()
+      if (effectiveSearch) {
+        return (
+          emp.name.toLowerCase().includes(effectiveSearch) ||
+          emp.employeeId.toLowerCase().includes(effectiveSearch) ||
+          emp.jobTitle.toLowerCase().includes(effectiveSearch) ||
+          emp.department.toLowerCase().includes(effectiveSearch) ||
+          (emp.section && emp.section.toLowerCase().includes(effectiveSearch)) ||
+          emp.rosterCode.toLowerCase().includes(effectiveSearch)
+        )
+      }
+      return true
+    })
+  }, [
+    initialData.unsubmittedEmployees,
+    selectedSiteId,
+    selectedShift,
+    selectedDept,
+    searchQuery,
+    employeeNameFilter,
+  ])
+
+  // Pagination calculations
   const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / pageSize))
   const paginatedEmployees = useMemo(() => {
     const start = (currentPage - 1) * pageSize
     return filteredEmployees.slice(start, start + pageSize)
   }, [filteredEmployees, currentPage, pageSize])
+
+  const unsubmittedTotalPages = Math.max(1, Math.ceil(filteredUnsubmittedEmployees.length / pageSize))
+  const paginatedUnsubmittedEmployees = useMemo(() => {
+    const start = (unsubmittedPage - 1) * pageSize
+    return filteredUnsubmittedEmployees.slice(start, start + pageSize)
+  }, [filteredUnsubmittedEmployees, unsubmittedPage, pageSize])
 
   // Dynamic activity types from real employee activities
   const dynamicActivityTypes = useMemo(() => {
@@ -244,8 +316,47 @@ export function DailyActivityClientDashboard({
     return Array.from(set).slice(0, 8)
   }, [initialData.employees])
 
-  // Export to CSV using real data
+  // Export to CSV using real data (based on activeTab)
   const handleExportCsv = () => {
+    if (activeTab === 'unsubmitted') {
+      const headers = [
+        'Employee ID',
+        'Nama Karyawan',
+        'Jabatan',
+        'Departemen / Section',
+        'Shift Roster',
+        'Status Kehadiran',
+        'Jam Check-in',
+        'Status Aktivitas',
+        'Jadwal Roster Type',
+      ]
+      const rows = filteredUnsubmittedEmployees.map((e) => [
+        `"${e.employeeId}"`,
+        `"${e.name}"`,
+        `"${e.jobTitle}"`,
+        `"${e.department}${e.section ? ` - ${e.section}` : ''}"`,
+        `"${e.rosterCode} (${e.expectedShift})"`,
+        `"${e.attendanceStatus}"`,
+        `"${e.checkInTime}"`,
+        `"Belum Mengisi"`,
+        `"${e.rosterType || '-'}"`,
+      ])
+      const csvContent =
+        'data:text/csv;charset=utf-8,\uFEFF' +
+        [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
+      const encodedUri = encodeURI(csvContent)
+      const link = document.createElement('a')
+      link.setAttribute('href', encodedUri)
+      link.setAttribute(
+        'download',
+        `Karyawan_Belum_Isi_Daily_Activity_${initialData.currentSite.name.replace(/\s+/g, '_')}_${initialData.currentDate.replace(/\s+/g, '_')}.csv`
+      )
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      return
+    }
+
     const headers = [
       'Employee ID',
       'Nama Karyawan',
@@ -275,14 +386,14 @@ export function DailyActivityClientDashboard({
     ])
 
     const csvContent =
-      'data:text/csv;charset=utf-8,' +
+      'data:text/csv;charset=utf-8,\uFEFF' +
       [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
     const encodedUri = encodeURI(csvContent)
     const link = document.createElement('a')
     link.setAttribute('href', encodedUri)
     link.setAttribute(
       'download',
-      `Daily_Activity_${initialData.currentSite.name.replace(/\\s+/g, '_')}_${initialData.currentDate.replace(/\\s+/g, '_')}.csv`
+      `Daily_Activity_${initialData.currentSite.name.replace(/\s+/g, '_')}_${initialData.currentDate.replace(/\s+/g, '_')}.csv`
     )
     document.body.appendChild(link)
     link.click()
@@ -440,7 +551,7 @@ export function DailyActivityClientDashboard({
 
       {/* ── Secondary Filter Bar Card ── */}
       <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs p-3.5">
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-3 items-end">
           {/* Site */}
           <div>
             <label className="text-[11px] font-semibold text-slate-500 mb-1 block">Site</label>
@@ -462,20 +573,57 @@ export function DailyActivityClientDashboard({
             </select>
           </div>
 
-          {/* Tanggal */}
+          {/* Dari Tanggal */}
           <div>
-            <label className="text-[11px] font-semibold text-slate-500 mb-1 block">Tanggal</label>
+            <label className="text-[11px] font-semibold text-slate-500 mb-1 block">Dari Tanggal</label>
             <input
               type="date"
-              aria-label="Pilih Tanggal"
-              value={selectedDate}
+              aria-label="Pilih Dari Tanggal"
+              value={startDate}
               onChange={(e) => {
                 const val = e.target.value
-                setSelectedDate(val)
-                applyFilters({ date: val })
+                setStartDate(val)
+                applyFilters({ startDate: val })
               }}
-              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
+          </div>
+
+          {/* Sampai Tanggal */}
+          <div>
+            <label className="text-[11px] font-semibold text-slate-500 mb-1 block">Sampai Tanggal</label>
+            <input
+              type="date"
+              aria-label="Pilih Sampai Tanggal"
+              value={endDate}
+              onChange={(e) => {
+                const val = e.target.value
+                setEndDate(val)
+                applyFilters({ endDate: val })
+              }}
+              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+
+          {/* Nama Karyawan */}
+          <div>
+            <label className="text-[11px] font-semibold text-slate-500 mb-1 block">Nama Karyawan</label>
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Input
+                type="text"
+                placeholder="Cari nama karyawan..."
+                value={employeeNameFilter}
+                onChange={(e) => {
+                  setEmployeeNameFilter(e.target.value)
+                  setSearchQuery(e.target.value)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') applyFilters({ employeeName: employeeNameFilter })
+                }}
+                className="h-[33px] pl-8 text-xs bg-slate-50 border-slate-200 rounded-lg placeholder:text-slate-400 font-normal"
+              />
+            </div>
           </div>
 
           {/* Shift */}
@@ -518,26 +666,6 @@ export function DailyActivityClientDashboard({
             </select>
           </div>
 
-          {/* Activity Type */}
-          <div>
-            <label className="text-[11px] font-semibold text-slate-500 mb-1 block">
-              Activity Type
-            </label>
-            <select
-              aria-label="Pilih Jenis Aktivitas"
-              value={selectedActivityType}
-              onChange={(e) => setSelectedActivityType(e.target.value)}
-              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-            >
-              <option value="Semua Aktivitas">Semua Aktivitas</option>
-              {dynamicActivityTypes.map((act) => (
-                <option key={act} value={act}>
-                  {act}
-                </option>
-              ))}
-            </select>
-          </div>
-
           {/* Employee Status */}
           <div>
             <label className="text-[11px] font-semibold text-slate-500 mb-1 block">
@@ -562,12 +690,12 @@ export function DailyActivityClientDashboard({
           </div>
 
           {/* Actions: Terapkan Filter & Reset */}
-          <div className="flex items-center gap-2 col-span-2 sm:col-span-3 lg:col-span-1">
+          <div className="flex items-center gap-2">
             <Button
               size="sm"
               onClick={() => applyFilters()}
               disabled={isPending}
-              className="h-8 text-xs font-semibold bg-[#1d72f2] hover:bg-blue-600 text-white rounded-lg px-3 gap-1.5 flex-1"
+              className="h-[33px] text-xs font-semibold bg-[#1d72f2] hover:bg-blue-600 text-white rounded-lg px-3 gap-1.5 flex-1"
             >
               <Filter className="w-3.5 h-3.5" />
               Terapkan
@@ -996,7 +1124,9 @@ export function DailyActivityClientDashboard({
             <FileText className="w-4 h-4 text-blue-600" />
             <h2 className="text-sm font-bold text-slate-900">Aktivitas Setiap Karyawan</h2>
             <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-semibold">
-              {filteredEmployees.length} record
+              {activeTab === 'submitted'
+                ? `${filteredEmployees.length} record`
+                : `${filteredUnsubmittedEmployees.length} belum isi`}
             </span>
             {isPending && (
               <span className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md ml-1">
@@ -1011,7 +1141,11 @@ export function DailyActivityClientDashboard({
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <Input
                 type="text"
-                placeholder="Cari karyawan, aktivitas, unit..."
+                placeholder={
+                  activeTab === 'submitted'
+                    ? 'Cari karyawan, aktivitas, unit...'
+                    : 'Cari nama, ID, jabatan...'
+                }
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => {
@@ -1054,12 +1188,74 @@ export function DailyActivityClientDashboard({
           </div>
         </div>
 
-        {/* Table Content */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="bg-slate-50/70 text-slate-500 font-semibold border-b border-slate-200/80">
-                <th className="py-3 px-4">Employee ID</th>
+        {/* Navigation Tabs: Sudah Mengisi vs Belum Mengisi (Roster Aktif) */}
+        <div className="flex items-center gap-2 border-b border-slate-200/80 px-4 bg-slate-50/50">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('submitted')
+              setCurrentPage(1)
+            }}
+            className={cn(
+              'flex items-center gap-2 py-3 px-3 text-xs font-bold border-b-2 transition-all cursor-pointer',
+              activeTab === 'submitted'
+                ? 'border-blue-600 text-blue-600 bg-white shadow-2xs rounded-t-lg -mb-[1px]'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            )}
+          >
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Sudah Mengisi Aktivitas</span>
+            <span
+              className={cn(
+                'text-[11px] px-2 py-0.5 rounded-full font-semibold',
+                activeTab === 'submitted'
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'bg-slate-100 text-slate-600'
+              )}
+            >
+              {filteredEmployees.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('unsubmitted')
+              setUnsubmittedPage(1)
+            }}
+            className={cn(
+              'flex items-center gap-2 py-3 px-3 text-xs font-bold border-b-2 transition-all cursor-pointer',
+              activeTab === 'unsubmitted'
+                ? 'border-rose-600 text-rose-700 bg-white shadow-2xs rounded-t-lg -mb-[1px]'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            )}
+          >
+            <AlertTriangle className="w-3.5 h-3.5 text-rose-500" />
+            <span>Belum Mengisi Aktivitas</span>
+            <span
+              className={cn(
+                'text-[11px] px-2 py-0.5 rounded-full font-semibold',
+                activeTab === 'unsubmitted'
+                  ? 'bg-rose-100 text-rose-700'
+                  : 'bg-slate-100 text-slate-600'
+              )}
+            >
+              {filteredUnsubmittedEmployees.length}
+            </span>
+            <span className="text-[10px] font-normal text-slate-400 hidden sm:inline ml-0.5">
+              (Roster Aktif &bull; OFF Dikecualikan)
+            </span>
+          </button>
+        </div>
+
+        {activeTab === 'submitted' && (
+          <>
+            {/* Table Content */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-slate-50/70 text-slate-500 font-semibold border-b border-slate-200/80">
+                    <th className="py-3 px-4">Employee ID</th>
                 <th className="py-3 px-4">Nama Karyawan</th>
                 <th className="py-3 px-4">Jabatan / Tim</th>
                 <th className="py-3 px-4">Shift</th>
@@ -1255,7 +1451,175 @@ export function DailyActivityClientDashboard({
             </div>
           )}
         </div>
-      </div>
+      </>
+    )}
+
+    {activeTab === 'unsubmitted' && (
+      <>
+        {/* Table Content: Belum Mengisi Aktivitas */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="bg-slate-50/70 text-slate-500 font-semibold border-b border-slate-200/80">
+                <th className="py-3 px-4">Employee ID</th>
+                <th className="py-3 px-4">Nama Karyawan</th>
+                <th className="py-3 px-4">Jabatan / Tim</th>
+                <th className="py-3 px-4">Shift Roster</th>
+                <th className="py-3 px-4">Status Kehadiran</th>
+                <th className="py-3 px-4">Status Daily Activity</th>
+                <th className="py-3 px-4">Keterangan</th>
+                <th className="py-3 px-4 text-center">Aksi</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {paginatedUnsubmittedEmployees.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
+                    <div className="flex flex-col items-center justify-center gap-2 max-w-md mx-auto">
+                      <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                        <CheckCircle2 className="w-5 h-5" />
+                      </div>
+                      <span className="font-semibold text-slate-800 text-sm">
+                        Tidak ada karyawan bertugas yang belum mengisi!
+                      </span>
+                      <span className="text-xs text-slate-500">
+                        Semua karyawan dengan jadwal kerja aktif telah mengisi daily activity. Karyawan dengan status roster OFF / Libur otomatis dikecualikan.
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                paginatedUnsubmittedEmployees.map((emp, idx) => (
+                  <tr
+                    key={`unsubmitted-row-${emp.employeeDbId}-${emp.employeeId}-${idx}`}
+                    className="hover:bg-slate-50/60 transition-colors"
+                  >
+                    <td className="py-3 px-4 font-mono font-medium text-slate-700">
+                      {emp.employeeId}
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="font-semibold text-slate-900">
+                        {emp.name}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-slate-600">
+                      <div className="font-medium text-slate-800">{emp.jobTitle}</div>
+                      <div className="text-[11px] text-slate-400">
+                        {emp.department}{emp.section ? ` - ${emp.section}` : ''}
+                      </div>
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        {emp.rosterCode} ({emp.expectedShift})
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 font-mono">
+                      {emp.attendanceStatus === 'Hadir' ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          <span className="size-1.5 rounded-full bg-emerald-500 inline-block" />
+                          Hadir ({emp.checkInTime})
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
+                          <Clock className="w-3 h-3 text-slate-400" />
+                          Belum Check-In
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                        <AlertTriangle className="w-3 h-3 text-rose-600" />
+                        Belum Mengisi
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-slate-500 text-xs">
+                      <span className="text-[11px] text-slate-600 font-medium">
+                        Jadwal Kerja Aktif ({emp.rosterType || '5:2'})
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setIsAddActivityModalOpen(true)}
+                          className="h-7 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:bg-blue-50 border-blue-200 rounded-md gap-1"
+                        >
+                          <Plus className="w-3 h-3" />
+                          Input
+                        </Button>
+                        <Button
+                          asChild
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 text-xs text-slate-500 hover:text-slate-800 px-2"
+                        >
+                          <Link href="/dashboard/scheduling-timesheet" title="Lihat jadwal roster lengkap">
+                            <Users className="w-3.5 h-3.5" />
+                          </Link>
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Unsubmitted Table Pagination */}
+        <div className="p-3.5 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-500">
+          <div>
+            Menampilkan{' '}
+            {filteredUnsubmittedEmployees.length === 0
+              ? '0'
+              : `${(unsubmittedPage - 1) * pageSize + 1} - ${Math.min(
+                  unsubmittedPage * pageSize,
+                  filteredUnsubmittedEmployees.length
+                )}`}{' '}
+            dari {filteredUnsubmittedEmployees.length} karyawan belum isi
+          </div>
+
+          {unsubmittedTotalPages > 1 && (
+            <div className="flex items-center gap-1 self-center">
+              <button
+                type="button"
+                onClick={() => setUnsubmittedPage((p) => Math.max(1, p - 1))}
+                disabled={unsubmittedPage === 1}
+                className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
+              >
+                &lt;
+              </button>
+              {Array.from({ length: unsubmittedTotalPages }, (_, i) => i + 1)
+                .slice(0, 5)
+                .map((page) => (
+                  <button
+                    key={page}
+                    type="button"
+                    onClick={() => setUnsubmittedPage(page)}
+                    className={`w-7 h-7 flex items-center justify-center rounded border font-semibold ${
+                      unsubmittedPage === page
+                        ? 'bg-[#1d72f2] text-white border-blue-600'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+              <button
+                type="button"
+                onClick={() => setUnsubmittedPage((p) => Math.min(unsubmittedTotalPages, p + 1))}
+                disabled={unsubmittedPage === unsubmittedTotalPages}
+                className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
+              >
+                &gt;
+              </button>
+            </div>
+          )}
+        </div>
+      </>
+    )}
+  </div>
 
       {/* ── Bottom Row: Timeline Aktivitas Terbaru & Pekerjaan Tertunda (100% Real DB) ── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">

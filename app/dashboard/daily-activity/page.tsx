@@ -17,10 +17,13 @@ interface PageProps {
   searchParams?: Promise<{
     siteId?: string
     date?: string
+    startDate?: string
+    endDate?: string
     shift?: string
     dept?: string
     status?: string
     q?: string
+    employeeName?: string
   }>
 }
 
@@ -44,14 +47,17 @@ export default async function DailyActivityPage({ searchParams }: PageProps) {
   }
 
   const resolvedParams = searchParams ? await searchParams : {}
+  const searchKeyword = resolvedParams.employeeName || resolvedParams.q
 
   const [data, [emp]] = await Promise.all([
     getDailyActivityDashboardData({
       siteId: resolvedParams.siteId,
       date: resolvedParams.date,
+      startDate: resolvedParams.startDate,
+      endDate: resolvedParams.endDate,
       shift: resolvedParams.shift,
       status: resolvedParams.status,
-      search: resolvedParams.q,
+      search: searchKeyword,
     }),
     db
       .select({
