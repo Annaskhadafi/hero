@@ -31,6 +31,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { resolveUploadUrl } from "@/lib/resolve-upload-url";
+import { formatPhotoDisplayUrl } from "@/lib/photo-url";
 
 interface LightboxPhoto {
   url: string;
@@ -601,7 +602,7 @@ export function MyDayDetailDialog({
                                 className="relative w-28 h-20 sm:w-32 sm:h-24 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 hover:border-sky-500 shadow-2xs hover:shadow-md transition-all bg-slate-900 flex items-center justify-center cursor-pointer group"
                                 onClick={() =>
                                   setLightboxPhoto({
-                                    url: resolveUploadUrl(pUrl),
+                                    url: formatPhotoDisplayUrl(pUrl),
                                     label: `${task.label}${taskPhotos.length > 1 ? ` (${pIdx + 1}/${taskPhotos.length})` : ""}`,
                                     unitNumber: task.unitNumber,
                                     time: `${task.startedAt} - ${task.endedAt}`,
@@ -610,7 +611,7 @@ export function MyDayDetailDialog({
                                 }
                               >
                                 <img
-                                  src={resolveUploadUrl(pUrl)}
+                                  src={formatPhotoDisplayUrl(pUrl, 400)}
                                   alt={`${task.label} #${pIdx + 1}`}
                                   className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
                                   loading="lazy"
@@ -772,11 +773,12 @@ export function MyDayDetailDialog({
             </div>
             <div className="p-4 flex items-center justify-center bg-black/90 min-h-[300px] max-h-[70vh] overflow-hidden">
               <img
-                src={resolveUploadUrl(lightboxPhoto.url)}
+                src={formatPhotoDisplayUrl(lightboxPhoto.url, 1200)}
                 alt={lightboxPhoto.label}
                 className="max-h-[65vh] w-auto max-w-full object-contain rounded-lg"
               />
             </div>
+
             {lightboxPhoto.remarks && (
               <div className="p-3 bg-slate-900 text-slate-300 text-xs border-t border-slate-800">
                 <span className="font-semibold text-slate-400 block mb-0.5">Catatan:</span>

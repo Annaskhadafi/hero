@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { toast } from 'sonner'
 import { resolveUploadUrl } from '@/lib/resolve-upload-url'
+import { formatPhotoDisplayUrl } from '@/lib/photo-url'
 
 type EvidenceItem = {
   id: number
@@ -270,14 +271,14 @@ export function ActivityEvidenceViewer({ data }: { data: EvidenceData }) {
                   className="relative aspect-4/3 w-full bg-slate-900 cursor-pointer overflow-hidden"
                   onClick={() =>
                     setSelectedImage({
-                      url: resolveUploadUrl(item.photoUrl!),
+                      url: formatPhotoDisplayUrl(item.photoUrl!),
                       label: item.snapshotLabel,
                       detail: `${item.startLabel} - ${item.endLabel} • ${item.unitNumber || 'No Unit'} ${item.remark ? `• ${item.remark}` : ''}`,
                     })
                   }
                 >
                   <img
-                    src={resolveUploadUrl(item.photoUrl!)}
+                    src={formatPhotoDisplayUrl(item.photoUrl!, 400)}
                     alt={item.snapshotLabel}
                     className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                     loading="lazy"
@@ -341,7 +342,7 @@ export function ActivityEvidenceViewer({ data }: { data: EvidenceData }) {
                     className="w-full text-xs text-slate-600 hover:text-slate-900 h-8 rounded-xl justify-center gap-1.5"
                     onClick={() =>
                       setSelectedImage({
-                        url: resolveUploadUrl(item.photoUrl!),
+                        url: formatPhotoDisplayUrl(item.photoUrl!),
                         label: item.snapshotLabel,
                         detail: `${item.startLabel} - ${item.endLabel} • ${item.unitNumber || 'No Unit'} ${item.remark ? `• ${item.remark}` : ''}`,
                       })
@@ -350,6 +351,7 @@ export function ActivityEvidenceViewer({ data }: { data: EvidenceData }) {
                     <Maximize2 className="size-3.5" />
                     Lihat Ukuran Penuh
                   </Button>
+
                 </CardContent>
               </Card>
             ))}
@@ -464,10 +466,11 @@ export function ActivityEvidenceViewer({ data }: { data: EvidenceData }) {
             onClick={(e) => e.stopPropagation()}
           >
             <img
-              src={resolveUploadUrl(selectedImage.url)}
+              src={formatPhotoDisplayUrl(selectedImage.url, 1200)}
               alt={selectedImage.label}
               className="max-h-[75vh] w-auto max-w-full rounded-xl object-contain shadow-2xl border border-white/10"
             />
+
             <div className="text-center text-white px-4">
               <p className="font-bold text-sm sm:text-base">{selectedImage.label}</p>
               <p className="text-xs text-slate-300 mt-0.5">{selectedImage.detail}</p>

@@ -4,6 +4,7 @@ import sharp from 'sharp'
 import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
+import { getS3ObjectForProxy, isS3UploadConfigured } from '@/lib/s3-storage'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -103,37 +104,65 @@ export async function GET(request: Request) {
     }
 
     // 3. Cache Miss: Fetch original file
-    let inputBuffer: Buffer
+    let inputBuffer: Buffer | null = null
     const lowerUrl = trimmedUrl.toLowerCase().split('?')[0]
 
-    if (trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://')) {
-      const fetchRes = await fetch(trimmedUrl, {
-        signal: AbortSignal.timeout(25000),
-      })
-      if (!fetchRes.ok) {
-        return NextResponse.json(
-          { error: `Failed to fetch remote image: HTTP ${fetchRes.status}` },
-          { status: fetchRes.status }
-        )
+    // Step A: If S3 is configured, fetch object via S3 SDK proxy getter (handles private bucket, CloudHost S3 URLs, /api/uploads/ URLs, etc.)
+    if (isS3UploadConfigured()) {
+      try {
+        const s3Obj = await getS3ObjectForProxy(trimmedUrl)
+        if (s3Obj?.body) {
+          inputBuffer = Buffer.from(s3Obj.body)
+        }
+      } catch (err) {
+        console.warn('S3 proxy fetch error in activity-photos/view:', err)
       }
-      inputBuffer = Buffer.from(await fetchRes.arrayBuffer())
-    } else {
-      const localRelPath = trimmedUrl.replace(/^\/+/, '')
+    }
+
+    // Step B: Check local disk candidate paths
+    if (!inputBuffer) {
+      const cleanRel = trimmedUrl
+        .split('?')[0]
+        .replace(/^https?:\/\/[^\/]+/, '')
+        .replace(/^\/+/, '')
+        .replace(/^api\/uploads\//, '')
+        .replace(/^uploads\//, '')
+      const fileName = path.basename(cleanRel)
+
       const candidatePaths = [
-        path.join(process.cwd(), 'public', localRelPath),
-        path.join(process.cwd(), 'public', 'uploads', localRelPath),
+        path.join(process.cwd(), 'public', 'uploads', cleanRel),
+        path.join(process.cwd(), 'public', 'uploads', 'activity-photos', fileName),
+        path.join(process.cwd(), 'public', 'uploads', fileName),
+        path.join(process.cwd(), 'public', cleanRel),
+        path.join(process.cwd(), 'public', fileName),
       ]
-      let foundPath: string | null = null
+
       for (const cp of candidatePaths) {
         if (fs.existsSync(cp)) {
-          foundPath = cp
-          break
+          try {
+            inputBuffer = fs.readFileSync(cp)
+            break
+          } catch {}
         }
       }
-      if (!foundPath) {
-        return NextResponse.json({ error: 'Local file not found' }, { status: 404 })
+    }
+
+    // Step C: Fallback to remote HTTP/HTTPS fetch if not private S3
+    if (!inputBuffer && (trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://'))) {
+      try {
+        const fetchRes = await fetch(trimmedUrl, {
+          signal: AbortSignal.timeout(25000),
+        })
+        if (fetchRes.ok) {
+          inputBuffer = Buffer.from(await fetchRes.arrayBuffer())
+        }
+      } catch (err) {
+        console.warn('Remote fetch error in activity-photos/view:', err)
       }
-      inputBuffer = fs.readFileSync(foundPath)
+    }
+
+    if (!inputBuffer) {
+      return NextResponse.json({ error: 'Original file not found' }, { status: 404 })
     }
 
     // Detect if buffer is HEIC format

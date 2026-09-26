@@ -3,6 +3,8 @@ import { getS3ObjectForProxy, isS3UploadConfigured } from "@/lib/s3-storage"
 import { getServerSession } from "@/lib/auth-session"
 import { join } from "path"
 import { existsSync, readFileSync } from "fs"
+import heicDecode from "heic-decode"
+import sharp from "sharp"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -63,6 +65,24 @@ function isAllowedUploadPath(path: string[]) {
   return ALLOWED_UPLOAD_PREFIXES.has(path[0])
 }
 
+async function prepareResponseBuffer(buffer: Buffer, fileName: string): Promise<{ data: Buffer; contentType: string }> {
+  const lower = fileName.toLowerCase()
+  if (lower.endsWith(".heic") || lower.endsWith(".heif")) {
+    try {
+      const { width, height, data } = await heicDecode({ buffer })
+      const converted = await sharp(Buffer.from(data), {
+        raw: { width, height, channels: 4 },
+      })
+        .jpeg({ quality: 85, mozjpeg: true })
+        .toBuffer()
+      return { data: converted, contentType: "image/jpeg" }
+    } catch (e) {
+      console.warn("HEIC auto-conversion failed in uploads proxy:", e)
+    }
+  }
+  return { data: buffer, contentType: getContentType(fileName) }
+}
+
 export async function GET(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params
 
@@ -111,10 +131,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
   for (const localPath of candidateLocalPaths) {
     if (existsSync(localPath)) {
       try {
-        const fileBuffer = readFileSync(localPath)
-        const contentType = getContentType(fileName)
+        const rawBuffer = readFileSync(localPath)
+        const { data: fileBuffer, contentType } = await prepareResponseBuffer(rawBuffer, fileName)
         const isSafeInline = contentType.startsWith("image/") || contentType === "application/pdf"
-        return new NextResponse(fileBuffer, {
+        return new NextResponse(new Uint8Array(fileBuffer), {
           headers: {
             "Content-Type": contentType,
             "Cache-Control": "private, max-age=300",
@@ -150,9 +170,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
       try {
         const object = await getS3ObjectForProxy(key)
         if (object && object.body) {
-          const contentType = object.contentType || getContentType(fileName)
+          const rawBuffer = Buffer.from(object.body)
+          const { data: fileBuffer, contentType } = await prepareResponseBuffer(rawBuffer, fileName)
           const isSafeInline = contentType.startsWith("image/") || contentType === "application/pdf"
-          return new NextResponse(Buffer.from(object.body), {
+          return new NextResponse(new Uint8Array(fileBuffer), {
             headers: {
               "Content-Type": contentType,
               "Cache-Control": "private, max-age=300",
@@ -166,6 +187,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
       }
     }
   }
+
+
 
   // 3. Fallback for demo/mock attachment files: Render clean HTML notice instead of raw JSON
   const html = `<!DOCTYPE html>

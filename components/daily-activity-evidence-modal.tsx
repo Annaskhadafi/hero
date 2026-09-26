@@ -25,6 +25,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { resolveUploadUrl } from '@/lib/resolve-upload-url'
+import { formatPhotoDisplayUrl } from '@/lib/photo-url'
 
 type EvidenceItem = {
   id: number
@@ -467,7 +468,7 @@ export function DailyActivityEvidenceModal({
                         onClick={() => {
                           if (item.photoUrl) {
                             setSelectedImage({
-                              url: resolveUploadUrl(item.photoUrl),
+                              url: formatPhotoDisplayUrl(item.photoUrl),
                               label: item.snapshotLabel,
                               detail: [
                                 item.unitNumber ? `Unit: ${item.unitNumber}` : null,
@@ -481,7 +482,7 @@ export function DailyActivityEvidenceModal({
                         {item.photoUrl ? (
                           <>
                             <img
-                              src={resolveUploadUrl(item.photoUrl)}
+                              src={formatPhotoDisplayUrl(item.photoUrl, 400)}
                               alt={item.snapshotLabel}
                               className="h-full w-full object-contain group-hover:scale-105 transition-transform duration-300"
                               loading="lazy"
@@ -547,11 +548,12 @@ export function DailyActivityEvidenceModal({
 
             <div className="flex-1 max-h-[68vh] min-h-[220px] bg-slate-950 flex items-center justify-center p-2 overflow-hidden">
               <img
-                src={resolveUploadUrl(selectedImage.url)}
+                src={formatPhotoDisplayUrl(selectedImage.url, 1200)}
                 alt={selectedImage.label}
                 className="max-h-[65vh] max-w-full object-contain rounded shadow-lg"
               />
             </div>
+
 
             {selectedImage.detail ? (
               <div className="p-3 bg-slate-50 border-t border-slate-200 text-center shrink-0">
