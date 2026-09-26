@@ -1202,7 +1202,20 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between text-xs text-slate-600">
                       <span className="font-semibold">Gambar Tanda Tangan:</span>
-                      <span className="text-[10px] text-slate-400">Gunakan jari atau stylus</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-slate-400">Gunakan jari atau stylus</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            signatureRef.current?.clear()
+                            setPreviewSignatureDataUrl('')
+                            setPreviewSignedAt(null)
+                          }}
+                          className="text-[11px] font-medium text-rose-600 hover:text-rose-700 underline underline-offset-2 flex items-center gap-1"
+                        >
+                          <RotateCcw className="size-2.5" /> Bersihkan
+                        </button>
+                      </div>
                     </div>
                     <div className="rounded-xl border border-slate-200 bg-white p-2">
                       <SignatureCanvas
@@ -1218,41 +1231,63 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                   </div>
                 )}
 
-                <Textarea value={remarks} onChange={(event) => setRemarks(event.target.value)} placeholder="Catatan opsional..." rows={2} />
-                {error ? <p className="text-sm font-medium text-red-600">{error}</p> : null}
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      signatureRef.current?.clear()
-                      setPreviewSignatureDataUrl('')
-                      setPreviewSignedAt(null)
-                      setUseRegisteredSig(false)
-                    }}
-                  >
-                    Bersihkan
-                  </Button>
-                  <Button type="button" size="sm" className="flex-1" onClick={handleSubmit} disabled={isPending}>{isPending ? 'Menyimpan...' : 'Setuju & Tanda Tangani'}</Button>
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-500 font-medium">Catatan Persetujuan (Opsional):</label>
+                  <Textarea
+                    value={remarks}
+                    onChange={(event) => setRemarks(event.target.value)}
+                    placeholder="Tulis catatan jika ada..."
+                    rows={2}
+                    className="resize-none text-sm"
+                  />
                 </div>
+
+                {error ? <p className="text-sm font-medium text-red-600">{error}</p> : null}
+
+                {/* Tombol Utama: Setuju & Tanda Tangani */}
+                <Button
+                  type="button"
+                  size="lg"
+                  className="w-full h-13 min-h-[52px] text-base font-bold bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white rounded-xl shadow-md shadow-emerald-700/20 transition-all flex items-center justify-center gap-2 tracking-wide"
+                  onClick={handleSubmit}
+                  disabled={isPending}
+                >
+                  {isPending ? (
+                    <>
+                      <Loader2 className="size-5 animate-spin" />
+                      <span>Menyimpan & Menandatangani...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="size-5" />
+                      <span>Setuju & Tanda Tangani</span>
+                    </>
+                  )}
+                </Button>
+
+                {/* Section Terpisah: Revert / Kembalikan Dokumen */}
                 {previousSteps.length > 0 && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="w-full text-amber-700 hover:text-amber-800 hover:bg-amber-50 border-amber-300 font-semibold"
-                    onClick={() => {
-                      setRevertError('')
-                      if (!revertTargetStep && previousSteps.length > 0) {
-                        setRevertTargetStep(Number(previousSteps[previousSteps.length - 1].stepOrder))
-                      }
-                      setIsRevertOpen(true)
-                    }}
-                  >
-                    <RotateCcw className="mr-1.5 h-3.5 w-3.5 text-amber-600" />
-                    Kembalikan Dokumen (Revert)
-                  </Button>
+                  <div className="pt-3 mt-1 border-t border-slate-200/80">
+                    <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1.5 px-0.5">
+                      <span>Ada revisi atau ketidaksesuaian data?</span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-full text-xs font-medium text-amber-700 hover:text-amber-800 hover:bg-amber-50/80 border border-dashed border-amber-300 rounded-lg transition"
+                      onClick={() => {
+                        setRevertError('')
+                        if (!revertTargetStep && previousSteps.length > 0) {
+                          setRevertTargetStep(Number(previousSteps[previousSteps.length - 1].stepOrder))
+                        }
+                        setIsRevertOpen(true)
+                      }}
+                    >
+                      <RotateCcw className="mr-1.5 size-3.5 text-amber-600" />
+                      Kembalikan Dokumen (Revert)
+                    </Button>
+                  </div>
                 )}
               </div>
             )}
