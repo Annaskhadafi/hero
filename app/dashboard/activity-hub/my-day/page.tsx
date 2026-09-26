@@ -1,6 +1,20 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Clock3, FileSignature, ListChecks, MapPinned, ShieldAlert, Sparkles, Trophy } from "lucide-react";
+import {
+  Calendar,
+  Clock3,
+  FileSignature,
+  Inbox,
+  ListTodo,
+  MapPin,
+  MapPinned,
+  ShieldAlert,
+  Sparkles,
+  Sun,
+  Users,
+  Activity as ActivityIcon,
+  CheckCircle2,
+} from "lucide-react";
 import {
   submitDailyActivityWithStateAction,
   submitPointDisputeAction,
@@ -19,6 +33,11 @@ import {
 import { asc, eq } from "drizzle-orm";
 import { ActivityTeamLogPanel } from "@/components/activity-team-log-panel";
 import { MyDayActivityCreateTrigger } from "@/components/my-day-activity-create-trigger";
+import { MyDayStatCards } from "@/components/my-day/my-day-stat-cards";
+import { MyDayRouteChecklist } from "@/components/my-day/my-day-route-checklist";
+import { MyDayFilterBar } from "@/components/my-day/my-day-filter-bar";
+import { MyDayEmptyState } from "@/components/my-day/my-day-empty-state";
+import { MyDayActivityLogTable } from "@/components/my-day/my-day-activity-log-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TableFilterPresets } from "@/components/table-filter-presets";
@@ -40,51 +59,24 @@ import { Textarea } from "@/components/ui/textarea";
 import { getServerSession } from "@/lib/auth-session";
 import { getActivityPagePurpose } from "@/lib/activity-navigation";
 import { getDailyActivityEmployeeData, getDailyActivityTeamBoardData, type RouteFolder } from "@/lib/daily-activity";
+import { getCurrentMenuPermission } from "@/lib/hero-access";
 
 function statusBadgeClass(status: string) {
   const normalized = status.toLowerCase();
 
-  if (normalized.includes("approved")) {
-    return "bg-emerald-100 text-emerald-900";
+  if (normalized.includes("approved") || normalized.includes("selesai") || normalized.includes("done")) {
+    return "bg-emerald-50 text-emerald-700 border border-emerald-200/80 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/50 font-semibold";
   }
 
-  if (normalized.includes("pending")) {
-    return "bg-amber-100 text-amber-900";
+  if (normalized.includes("pending") || normalized.includes("review") || normalized.includes("menunggu")) {
+    return "bg-amber-50 text-amber-700 border border-amber-200/80 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800/50 font-semibold";
   }
 
-  if (normalized.includes("reject")) {
-    return "bg-rose-100 text-rose-900";
+  if (normalized.includes("reject") || normalized.includes("tolak") || normalized.includes("batal")) {
+    return "bg-rose-50 text-rose-700 border border-rose-200/80 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800/50 font-semibold";
   }
 
-  return "bg-slate-100 text-slate-800";
-}
-
-function dateTimeLocalValue(reference: Date) {
-  const local = new Date(reference.getTime() - reference.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 16);
-}
-
-function MetricPill({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | number;
-}) {
-  return (
-    <div className="rounded-full bg-surface-container-low px-4 py-2 text-sm shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="ml-2 font-semibold text-foreground">{value}</span>
-    </div>
-  );
-}
-
-function WorkspaceTabBadge({ value }: { value: string }) {
-  return (
-    <Badge variant="outline" className="rounded-full px-3 py-1 text-[0.68rem]">
-      {value}
-    </Badge>
-  );
+  return "bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700 font-medium";
 }
 
 function SelectFilter({
@@ -100,7 +92,7 @@ function SelectFilter({
     <select
       data-table-filter-key={filterKey}
       defaultValue=""
-      className="h-9 rounded-xl border-0 bg-surface-container-lowest px-3 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+      className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 shadow-2xs transition-colors focus:border-blue-500 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
     >
       <option value="">{placeholder}</option>
       {options.map((option) => (
@@ -112,9 +104,42 @@ function SelectFilter({
   );
 }
 
-export default async function MyDayPage() {
+type MyDaySearchParams = Promise<{
+  view?: string | string[];
+  siteId?: string | string[];
+  sectionId?: string | string[];
+}>;
+
+function firstSearchParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+export default async function MyDayPage({
+  searchParams,
+}: {
+  searchParams?: MyDaySearchParams;
+}) {
   const session = await getServerSession();
-  const userEmail = session?.user?.email ?? '';
+  const userEmail = session?.user?.email ?? "";
+  const permission = await getCurrentMenuPermission("tire_service");
+
+  if (!permission.canView) {
+    redirect("/dashboard");
+  }
+
+  const params = (await searchParams) ?? {};
+  const requestedView = firstSearchParam(params.view);
+  const requestedSiteId = Number.parseInt(firstSearchParam(params.siteId) ?? "", 10);
+  const requestedSectionId = Number.parseInt(firstSearchParam(params.sectionId) ?? "", 10);
+  const canMonitor = permission.dataScope !== "own";
+  const viewScope =
+    requestedView === "site"
+      ? canMonitor
+        ? "site"
+        : "own"
+      : requestedView === "global" && permission.dataScope === "global"
+        ? "global"
+        : "own";
 
   let [
     data,
@@ -128,8 +153,12 @@ export default async function MyDayPage() {
     routeGroupRows,
     routeItemRows,
   ] = await Promise.all([
-    getDailyActivityEmployeeData(userEmail || null),
-    getDailyActivityTeamBoardData(userEmail || null),
+    getDailyActivityEmployeeData(userEmail || null, {
+      viewScope,
+      siteId: Number.isFinite(requestedSiteId) ? requestedSiteId : undefined,
+      sectionId: Number.isFinite(requestedSectionId) ? requestedSectionId : undefined,
+    }),
+    canMonitor ? getDailyActivityTeamBoardData(userEmail || null) : Promise.resolve(null),
     db
       .select({
         id: employees.id,
@@ -209,29 +238,32 @@ export default async function MyDayPage() {
 
   if (!data) {
     return (
-      <div className="p-8 text-center text-slate-500">
-        <p className="font-semibold text-lg">Data aktivitas harian tidak ditemukan.</p>
-        <p className="text-xs text-slate-400 mt-1">Silakan hubungi administrator atau pastikan data karyawan Anda telah terdaftar.</p>
+      <div className="rounded-2xl border border-slate-200/80 bg-white p-12 text-center dark:border-slate-800 dark:bg-slate-900/90">
+        <MyDayEmptyState
+          iconType="inbox"
+          title="Data aktivitas harian tidak ditemukan"
+          description="Silakan hubungi administrator atau pastikan data karyawan Anda telah terdaftar aktif pada sistem."
+        />
       </div>
     );
   }
 
-  const itemsByGroupId = new Map<number, any[]>()
+  const itemsByGroupId = new Map<number, any[]>();
   for (const item of routeItemRows || []) {
-    const list = itemsByGroupId.get(item.routeGroupId) || []
-    list.push(item)
-    itemsByGroupId.set(item.routeGroupId, list)
+    const list = itemsByGroupId.get(item.routeGroupId) || [];
+    list.push(item);
+    itemsByGroupId.set(item.routeGroupId, list);
   }
 
-  const groupsByTemplateId = new Map<number, any[]>()
+  const groupsByTemplateId = new Map<number, any[]>();
   for (const group of routeGroupRows || []) {
-    const list = groupsByTemplateId.get(group.routeTemplateId) || []
+    const list = groupsByTemplateId.get(group.routeTemplateId) || [];
     list.push({
       id: group.id,
       groupName: group.groupName,
       items: itemsByGroupId.get(group.id) || [],
-    })
-    groupsByTemplateId.set(group.routeTemplateId, list)
+    });
+    groupsByTemplateId.set(group.routeTemplateId, list);
   }
 
   const availableRouteFolders: RouteFolder[] = (routeTemplateRows || [])
@@ -241,42 +273,69 @@ export default async function MyDayPage() {
       routeName: t.routeName,
       groups: groupsByTemplateId.get(t.id) || [],
     }))
-    .filter((t) => t.groups.length > 0)
+    .filter((t) => t.groups.length > 0);
 
-  const sectionHeadMap: Record<string, number | null> = {}
+  const sectionHeadMap: Record<string, number | null> = {};
   for (const s of rawSections || []) {
-    if (s?.id) sectionHeadMap[String(s.id)] = s.headEmployeeId || null
+    if (s?.id) sectionHeadMap[String(s.id)] = s.headEmployeeId || null;
   }
 
-  const deptHeadMap: Record<string, number | null> = {}
+  const deptHeadMap: Record<string, number | null> = {};
   for (const d of rawDepts || []) {
-    if (d?.id) deptHeadMap[String(d.id)] = d.headEmployeeId || null
+    if (d?.id) deptHeadMap[String(d.id)] = d.headEmployeeId || null;
   }
 
   const modalEmployees = (rawEmployees || []).map((e) => ({
     id: Number(e.id),
-    name: e.name || '',
-    employeeId: e.employeeId || '',
-    email: e.email || '',
-    jobTitle: e.jobTitle || '',
-    department: e.department || '',
-    section: e.section || '',
+    name: e.name || "",
+    employeeId: e.employeeId || "",
+    email: e.email || "",
+    jobTitle: e.jobTitle || "",
+    department: e.department || "",
+    section: e.section || "",
     siteId: e.siteId ? Number(e.siteId) : null,
     directManagerId: e.directManagerId ? Number(e.directManagerId) : null,
     sectionId: e.sectionId ? Number(e.sectionId) : null,
     departmentId: e.departmentId ? Number(e.departmentId) : null,
-  }))
+  }));
+
+  const accessibleModalEmployees = modalEmployees.filter((employee) => {
+    if (permission.dataScope === "global") return true;
+    if (permission.dataScope === "site") return employee.siteId === data.employee.siteId;
+    return employee.id === data.employee.id;
+  });
 
   const modalSites = (rawSites || []).map((s) => ({
     id: Number(s.id),
-    name: s.name || '',
-    location: s.location || '',
-  }))
+    name: s.name || "",
+    location: s.location || "",
+  }));
+
+  const permittedSectionIds = new Set(
+    (permission.dataScope === "site"
+      ? accessibleModalEmployees
+      : permission.dataScope === "global" && Number.isFinite(requestedSiteId)
+        ? modalEmployees.filter((employee) => employee.siteId === requestedSiteId)
+        : modalEmployees)
+      .filter((employee) => {
+        if (permission.dataScope === "site") return employee.siteId === data.employee.siteId;
+        if (permission.dataScope === "global" && Number.isFinite(requestedSiteId)) {
+          return employee.siteId === requestedSiteId;
+        }
+        return true;
+      })
+      .map((employee) => employee.sectionId)
+      .filter((sectionId): sectionId is number => sectionId != null)
+  );
+
+  const filterSections = (rawSections || []).filter(
+    (section) => section.isActive && permittedSectionIds.has(Number(section.id))
+  );
 
   const modalPresets = (rawPresets || []).map((p) => ({
     id: Number(p.id),
-    code: p.code || '',
-    name: p.name || '',
+    code: p.code || "",
+    name: p.name || "",
     basePoints: Number(p.basePoints) || 0,
     category: p.category || null,
     requiresPhoto: Boolean(p.requiresPhoto),
@@ -285,620 +344,578 @@ export default async function MyDayPage() {
     requiresLocationGps: Boolean(p.requiresLocationGps),
     requiresTireCount: Boolean(p.requiresTireCount),
     requiresMaterialUsed: Boolean(p.requiresMaterialUsed),
-  }))
+  }));
 
-  const assignmentStatuses: string[] = Array.from(new Set<string>(data.assignments.map((assignment: any) => String(assignment.statusLabel || '')))).sort();
-  const assignmentPriorities: string[] = Array.from(new Set<string>(data.assignments.map((assignment: any) => String(assignment.priority || '')))).sort();
-  const activityStatuses: string[] = Array.from(new Set<string>(data.activities.map((activity: any) => String(activity.statusLabel || '')))).sort();
-  const activitySources: string[] = Array.from(new Set<string>(data.activities.map((activity: any) => String(activity.sourceMode || '')))).sort();
-  const penaltyStatuses: string[] = Array.from(new Set<string>(data.penalties.map((penalty: any) => String(penalty.disputeStatus || '')))).sort();
-  const pagePurpose = getActivityPagePurpose("input");
+  const assignmentStatuses: string[] = Array.from(
+    new Set<string>(data.assignments.map((assignment: any) => String(assignment.statusLabel || "")))
+  ).sort();
+  const assignmentPriorities: string[] = Array.from(
+    new Set<string>(data.assignments.map((assignment: any) => String(assignment.priority || "")))
+  ).sort();
+  const activityStatuses: string[] = Array.from(
+    new Set<string>(data.activities.map((activity: any) => String(activity.statusLabel || "")))
+  ).sort();
+  const activitySources: string[] = Array.from(
+    new Set<string>(data.activities.map((activity: any) => String(activity.sourceMode || "")))
+  ).sort();
+  const penaltyStatuses: string[] = Array.from(
+    new Set<string>(data.penalties.map((penalty: any) => String(penalty.disputeStatus || "")))
+  ).sort();
+
+  const defaultTab = "activity-log";
+  const pendingActivitiesCount = data.activities.filter((activity: any) =>
+    String(activity.statusLabel || "").toLowerCase().includes("pending")
+  ).length;
 
   return (
-    <div className="space-y-5">
-      <Card className="surface-module-card rounded-[1.1rem] border-0">
-        <CardHeader className="gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="space-y-4">
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="secondary">Satu Pintu Aktivitas Harian</Badge>
-              <Badge variant="outline">{data.site?.name ?? "Site"}</Badge>
-              <Badge variant="outline">Shift {data.summary.shift}</Badge>
-              {data.summary.activeModifier ? (
-                <Badge className="border-0 bg-amber-100 text-amber-900">{data.summary.activeModifier}</Badge>
-              ) : null}
-            </div>
-            <div className="space-y-2">
-              <CardTitle className="text-2xl">{pagePurpose.title}</CardTitle>
-              <CardDescription className="max-w-3xl text-sm leading-6">
-                {pagePurpose.description} Cek assignment, submit aktivitas, lalu pantau status approval, poin, dan penalty
-                tanpa pindah halaman.
-              </CardDescription>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <MetricPill label="Job list" value={`${data.summary.jobsCompleted}/${data.summary.jobsAssigned}`} />
-              <MetricPill label="Points today" value={data.summary.pointsToday} />
-              <MetricPill
-                label="Pending approval"
-                value={data.activities.filter((activity: any) => String(activity.statusLabel || '').toLowerCase().includes("pending")).length}
-              />
-              <MetricPill label="Penalty" value={`-${data.summary.penaltyToday}`} />
-              <MetricPill label="Sync" value={data.summary.syncAt} />
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <MyDayActivityCreateTrigger
-              employees={modalEmployees}
-              sites={modalSites}
-              activityPresets={modalPresets}
-              routeFolders={availableRouteFolders}
-              sectionHeadMap={sectionHeadMap}
-              deptHeadMap={deptHeadMap}
-              currentEmployeeId={data.employee.id}
-            />
-
-            <Button asChild variant="outline" className="rounded-full">
-              <Link href="/dashboard/leaderboard">
-                <Trophy className="size-4" />
-                Open leaderboard
-              </Link>
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <div className="flex flex-wrap gap-2">
-            <WorkspaceTabBadge value="1. Cek assignment" />
-            <WorkspaceTabBadge value="2. Submit activity" />
-            <WorkspaceTabBadge value="3. Pantau status" />
-            <WorkspaceTabBadge value="4. Review poin & penalty" />
-          </div>
-        </CardContent>
-      </Card>
-
-      {data.routeChecklist ? (
-        <Card className="surface-module-card rounded-[1.1rem] border-0">
-          <CardHeader className="gap-3">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="space-y-2">
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant="secondary">{data.routeChecklist.routeCode}</Badge>
-                  <Badge variant="outline">{data.routeChecklist.shiftCode}</Badge>
-                  <Badge variant="outline">{data.routeChecklist.sectionName ?? "Semua section"}</Badge>
-                  <Badge variant="outline">{data.routeChecklist.positionName ?? "Semua jabatan"}</Badge>
-                  {data.routeChecklist.activeSpl ? <Badge variant="outline">{data.routeChecklist.activeSpl.splNumber}</Badge> : null}
-                </div>
-                  <CardTitle className="flex items-center gap-2 text-xl">
-                    <ListChecks className="size-5 text-primary" />
-                    Route checklist aktif
-                  </CardTitle>
-                  <CardDescription className="max-w-3xl text-sm leading-6">
-                    {data.routeChecklist.routeName}.{" "}
-                    {data.routeChecklist.description || "Gunakan blok ini sebagai konteks kerja aktif untuk section dan jabatan Anda."}
-                  </CardDescription>
-                {data.routeChecklist.activeSpl ? (
-                  <p className="text-sm font-medium text-[#486275]">
-                    SPL aktif: {data.routeChecklist.activeSpl.title} • {data.routeChecklist.activeSpl.lineCount} line
-                  </p>
-                ) : null}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="outline">{data.routeChecklist.groupCount} group</Badge>
-                <Badge variant="outline">{data.routeChecklist.itemCount} item</Badge>
-                {data.routeChecklist.mobileEnabled ? <Badge variant="outline">Mobile ready</Badge> : null}
-                {data.routeChecklist.sessionId ? (
-                  <>
-                    <Button asChild variant="outline" size="sm" className="rounded-full">
-                      <Link href={`/dashboard/activity-hub/document/${data.routeChecklist.sessionId}`}>
-                        <FileSignature className="size-4" />
-                        Dokumen user
-                      </Link>
-                    </Button>
-                    <Button asChild variant="default" size="sm" className="rounded-full">
-                      <Link href={`/dashboard/activity-hub/document/${data.routeChecklist.sessionId}/approval`}>
-                        <FileSignature className="size-4" />
-                        Approval Workflow
-                      </Link>
-                    </Button>
-                  </>
-                ) : null}
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {data.routeChecklist.activeSpl ? (
-              <div className="rounded-[1.1rem] bg-[#fff8e8] px-4 py-3 text-sm text-[#8a5a00]">
-                <p className="font-semibold">{data.routeChecklist.activeSpl.splNumber}</p>
-                <div className="mt-2 space-y-2">
-                  {data.routeChecklist.activeSpl.items.map((item) => (
-                    <div key={item.id}>
-                      <p className="font-medium">{item.lineLabel}</p>
-                      <p className="text-xs">{item.targetUnit || "-"} • {item.plannedPoints} pts</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
+    <div className="space-y-4">
+      {/* 1. Header Bar (Minimalist, Compact) */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pt-0.5">
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-base font-bold text-slate-900 dark:text-white">
+              History Aktivitas Harian Saya
+            </h2>
+            <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">|</span>
+            <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-xs font-medium text-slate-600 dark:text-slate-300">
+              <MapPin className="size-3 text-slate-400" />
+              {data.site?.name ?? "Site"}
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-xs font-medium text-slate-600 dark:text-slate-300">
+              <Sun className="size-3 text-slate-400" />
+              {data.summary.shift}
+            </span>
+            {data.summary.activeModifier ? (
+              <span className="inline-flex items-center gap-1 rounded-md bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:text-indigo-300">
+                <Sparkles className="size-3 text-indigo-500" />
+                {data.summary.activeModifier}
+              </span>
             ) : null}
-            <div className="grid gap-3 lg:grid-cols-2">
-              {data.routeChecklist.groups.map((group) => (
-                <details
-                  key={group.id}
-                  className="rounded-[1.1rem] bg-surface-container-low px-4 py-3"
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Riwayat pengerjaan, verifikasi lapangan, dan proses approval aktivitas harian Anda.
+          </p>
+        </div>
 
-                >
-                  <summary className="cursor-pointer list-none">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#486275]">
-                          {group.groupKey}
-                        </p>
-                        <p className="mt-1 text-base font-black text-[#082033]">{group.groupName}</p>
-                        <p className="mt-1 text-sm text-[#486275]">{group.description || "Tanpa deskripsi group."}</p>
-                      </div>
-                      <Badge variant="outline">{group.items.length} item</Badge>
-                    </div>
-                  </summary>
-                  <div className="mt-3 space-y-2">
-                    {group.items.map((item) => (
-                      <div key={item.id} className="rounded-xl bg-white px-4 py-3 ring-1 ring-border/60">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#486275]">
-                              {item.itemCode || item.libraryCode || "ROUTE ITEM"}
-                            </p>
-                            <p className="mt-1 font-semibold text-[#082033]">{item.itemLabel}</p>
-                            <p className="mt-1 text-sm text-[#486275]">
-                              {item.itemDescription || item.libraryName || "No item description."}
-                            </p>
-                          </div>
-                          <Badge variant="outline">{item.pointOverride ?? item.libraryPoints ?? 0} pts</Badge>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </details>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        <MyDayActivityCreateTrigger
+          employees={accessibleModalEmployees}
+          sites={modalSites}
+          activityPresets={modalPresets}
+          routeFolders={availableRouteFolders}
+          sectionHeadMap={sectionHeadMap}
+          deptHeadMap={deptHeadMap}
+          currentEmployeeId={data.employee.id}
+          className="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-xs px-3.5 py-1.5 rounded-lg text-xs font-semibold gap-1.5"
+          label="+ Tambah Aktivitas"
+        />
+      </div>
+
+      {/* 2. Stat Cards Grid (4 Kolom Responsive) */}
+      <MyDayStatCards
+        jobsCompleted={data.summary.jobsCompleted}
+        jobsAssigned={data.summary.jobsAssigned}
+        pointsToday={data.summary.pointsToday}
+        pendingApprovalCount={pendingActivitiesCount}
+        penaltyToday={data.summary.penaltyToday}
+      />
+
+      {/* 3. Route Checklist Aktif */}
+      {data.routeChecklist ? (
+        <MyDayRouteChecklist routeChecklist={data.routeChecklist} />
       ) : null}
 
-      <Tabs defaultValue="jobs" className="space-y-4">
-        <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">
-          <TabsTrigger value="jobs" className="gap-1.5">
-            <span>Antrean checklist</span>
-            {data.assignments.length > 0 ? (
-              <Badge variant="secondary" className="rounded-full px-1.5 py-0 text-[10px]">{data.assignments.length}</Badge>
-            ) : null}
-          </TabsTrigger>
-          <TabsTrigger value="activity-log" className="gap-1.5">
-            <span>Log aktivitas</span>
+      {/* 4. Filter Bar Horizontal */}
+      {canMonitor ? (
+        <MyDayFilterBar
+          viewScope={viewScope}
+          dataScope={permission.dataScope}
+          requestedSiteId={requestedSiteId}
+          requestedSectionId={requestedSectionId}
+          sites={modalSites}
+          sections={filterSections}
+        />
+      ) : null}
+
+      {/* 5. Sub-Tabs Konten Data */}
+      <Tabs defaultValue={defaultTab} className="space-y-4">
+        <TabsList className="inline-flex h-auto w-full flex-wrap items-center justify-start gap-1.5 rounded-2xl border border-slate-200/80 bg-slate-100/80 p-1.5 dark:border-slate-800 dark:bg-slate-900/80">
+          {data.assignments.length > 0 ? (
+            <TabsTrigger
+              value="jobs"
+              className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-white data-[state=active]:text-blue-700 data-[state=active]:shadow-xs dark:data-[state=active]:bg-slate-800 dark:data-[state=active]:text-white"
+            >
+              <ListTodo className="size-3.5" />
+              <span>Antrean tugas</span>
+              <Badge variant="secondary" className="rounded-full px-2 py-0 text-[10px] font-bold">
+                {data.assignments.length}
+              </Badge>
+            </TabsTrigger>
+          ) : null}
+
+          <TabsTrigger
+            value="activity-log"
+            className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-white data-[state=active]:text-blue-700 data-[state=active]:shadow-xs dark:data-[state=active]:bg-slate-800 dark:data-[state=active]:text-white"
+          >
+            <ActivityIcon className="size-3.5" />
+            <span>History Aktivitas</span>
             {data.activities.length > 0 ? (
-              <Badge className="bg-teal-600 text-white hover:bg-teal-700 rounded-full px-1.5 py-0 text-[10px]">{data.activities.length}</Badge>
+              <Badge className="rounded-full bg-blue-600 px-2 py-0 text-[10px] font-bold text-white hover:bg-blue-700">
+                {data.activities.length}
+              </Badge>
             ) : null}
           </TabsTrigger>
-          {teamData?.hasSubordinates ? <TabsTrigger value="team-activity">Aktivitas Tim</TabsTrigger> : null}
-          <TabsTrigger value="points">Feed poin</TabsTrigger>
-          <TabsTrigger value="penalties">Audit penalty</TabsTrigger>
+
+          {canMonitor && teamData?.hasSubordinates ? (
+            <TabsTrigger
+              value="team-activity"
+              className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-white data-[state=active]:text-blue-700 data-[state=active]:shadow-xs dark:data-[state=active]:bg-slate-800 dark:data-[state=active]:text-white"
+            >
+              <Users className="size-3.5" />
+              <span>Aktivitas Tim</span>
+            </TabsTrigger>
+          ) : null}
+
+          <TabsTrigger
+            value="points"
+            className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-white data-[state=active]:text-blue-700 data-[state=active]:shadow-xs dark:data-[state=active]:bg-slate-800 dark:data-[state=active]:text-white"
+          >
+            <Sparkles className="size-3.5" />
+            <span>Feed poin</span>
+          </TabsTrigger>
+
+          <TabsTrigger
+            value="penalties"
+            className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition-all data-[state=active]:bg-white data-[state=active]:text-blue-700 data-[state=active]:shadow-xs dark:data-[state=active]:bg-slate-800 dark:data-[state=active]:text-white"
+          >
+            <ShieldAlert className="size-3.5" />
+            <span>Audit penalty</span>
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="jobs" className="space-y-4">
-          <Card className="surface-module-card rounded-[1.1rem] border-0">
-            <CardContent className="space-y-4 pt-6">
-              <MinimalTableShell
-                title="Today's work queue"
-                description="Mulai dari assignment yang wajib diselesaikan lebih dulu, lalu susun prioritas kerja dari tabel utama."
-                label="assignments"
-                fileName="my-day-assignments"
-                searchPlaceholder="Search assignment, activity, priority, or PIC..."
-                filters={<><SelectFilter filterKey="status" placeholder="All statuses" options={assignmentStatuses} /><SelectFilter filterKey="priority" placeholder="All priorities" options={assignmentPriorities} /><SelectFilter filterKey="mandatory" placeholder="All obligations" options={["yes", "optional"]} /></>}
-                presets={<TableFilterPresets presets={[{ label: "Prioritas tinggi", filters: { priority: "High" } }, { label: "Wajib", filters: { mandatory: "ya" } }]} />}
-              >
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Activity</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Priority</TableHead>
-                      <TableHead>Deadline</TableHead>
-                      <TableHead>PIC</TableHead>
-                      <TableHead>Mandatory</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {data.assignments.length > 0 ? (
-                      data.assignments.map((assignment) => (
-                        <TableRow
-                          key={assignment.id}
-                          data-date-value={(assignment.deadline ?? assignment.createdAt).toISOString()}
-                          data-filter-status={assignment.statusLabel}
-                          data-filter-priority={assignment.priority}
-                          data-filter-mandatory={assignment.isMandatory ? "yes" : "optional"}
-                        >
-                          <TableCell className="align-top">
-                            <div className="space-y-1">
-                              <p className="font-medium">
-                                {(assignment.activityName ?? assignment.customJobName) || "Custom assignment"}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {assignment.activityCode ?? "Custom"} • {assignment.category ?? assignment.assignmentType}
-                              </p>
-                              <p className="text-xs text-muted-foreground">{assignment.notes || "Tanpa catatan tambahan."}</p>
-                            </div>
-                          </TableCell>
-                          <TableCell className="align-top">
-                            <Badge className={statusBadgeClass(assignment.statusLabel)}>{assignment.statusLabel}</Badge>
-                          </TableCell>
-                          <TableCell className="align-top">
-                            <div className="text-sm">
-                              <p>{assignment.priority}</p>
-                              <p className="text-xs text-muted-foreground">{assignment.durationLabel}</p>
-                            </div>
-                          </TableCell>
-                          <TableCell className="align-top">
-                            {assignment.deadline
-                              ? assignment.deadline.toLocaleString("id-ID", {
-                                  day: "2-digit",
-                                  month: "short",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })
-                              : "-"}
-                          </TableCell>
-                          <TableCell className="align-top">{assignment.assignedByName}</TableCell>
-                          <TableCell className="align-top">
-                            <Badge variant="outline">{assignment.isMandatory ? "Yes" : "Optional"}</Badge>
-                          </TableCell>
+        {/* Tab 1: Antrean Tugas */}
+        {data.assignments.length > 0 ? (
+          <TabsContent value="jobs" className="space-y-4">
+            <Card className="rounded-xl border border-slate-200/80 bg-white shadow-2xs dark:border-slate-800 dark:bg-slate-900">
+              <CardContent className="space-y-4 p-4 sm:p-5">
+                <MinimalTableShell
+                  title="Antrean Tugas"
+                  label="assignments"
+                  fileName="my-day-assignments"
+                  showImport={false}
+                  searchPlaceholder="Cari tugas, prioritas, PIC..."
+                  filters={
+                    <>
+                      <SelectFilter filterKey="status" placeholder="Semua status" options={assignmentStatuses} />
+                      <SelectFilter filterKey="priority" placeholder="Semua prioritas" options={assignmentPriorities} />
+                      <SelectFilter filterKey="mandatory" placeholder="Kewajiban" options={["yes", "optional"]} />
+                    </>
+                  }
+                  presets={
+                    <TableFilterPresets
+                      presets={[
+                        { label: "Prioritas tinggi", filters: { priority: "High" } },
+                        { label: "Wajib", filters: { mandatory: "yes" } },
+                      ]}
+                    />
+                  }
+                >
+                  <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
+                    <Table>
+                      <TableHeader className="bg-slate-50 dark:bg-slate-800/60">
+                        <TableRow className="border-b border-slate-200 dark:border-slate-700">
+                          <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                            Activity
+                          </TableHead>
+                          <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                            Status
+                          </TableHead>
+                          <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                            Priority
+                          </TableHead>
+                          <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                            Deadline
+                          </TableHead>
+                          <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                            PIC
+                          </TableHead>
+                          <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                            Mandatory
+                          </TableHead>
                         </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                          Belum ada assignment untuk hari ini.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </MinimalTableShell>
-            </CardContent>
-          </Card>
-
-          <Card className="surface-module-card rounded-[1.1rem] border-0">
-            <CardContent className="space-y-4 pt-6">
-              <MinimalTableShell
-                title="Library input mandiri"
-                description="Pilihan aktivitas self-input ditampilkan sebagai table agar tidak memenuhi layar dengan card grid."
-                label="library activities"
-                fileName="my-day-library"
-                searchPlaceholder="Search activity code, activity name, category, or requirement..."
-              >
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Activity</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead>Points</TableHead>
-                      <TableHead>Validasi</TableHead>
-                      <TableHead>SLA</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {data.availableLibrary.length > 0 ? (
-                      data.availableLibrary.map((item: any) => (
-                        <TableRow key={item.id}>
-                          <TableCell className="align-top">
-                            <div className="space-y-1">
-                              <p className="font-medium">{item.activityName}</p>
-                              <p className="text-xs text-muted-foreground">{item.activityCode}</p>
-                            </div>
-                          </TableCell>
-                          <TableCell className="align-top">{item.category}</TableCell>
-                          <TableCell className="align-top">
-                            <div className="text-sm">
-                              <p>{item.basePoints} pts</p>
-                              <p className="text-xs text-muted-foreground">Complexity {item.complexityLevel || 'Standard'}</p>
-                            </div>
-                          </TableCell>
-                          <TableCell className="align-top">
-                            <div className="flex flex-wrap gap-2">
-                              {item.requiresPhoto ? <Badge variant="outline">Photo</Badge> : null}
-                              {item.requiresEquipmentNo ? <Badge variant="outline">Unit/alat</Badge> : null}
-                              {item.requiresTireCount ? <Badge variant="outline">Jumlah Tire</Badge> : null}
-                              {item.requiresMaterialUsed ? <Badge variant="outline">Material</Badge> : null}
-                            </div>
-                          </TableCell>
-                          <TableCell className="align-top">{item.slaHours || 24} jam</TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                          Belum ada library self-input yang aktif.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </MinimalTableShell>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="activity-log">
-          <Card className="surface-module-card rounded-[1.1rem] border-0">
-            <CardContent className="space-y-4 pt-6">
-              <MinimalTableShell
-                title="Sent activity log"
-                description="Pantau aktivitas yang sudah masuk, status approval, dan dampak poin tanpa pindah ke halaman lain."
-                label="activities"
-                fileName="my-day-activity-log"
-                searchPlaceholder="Search activity, status, submission, or unit..."
-                filters={<><SelectFilter filterKey="status" placeholder="All statuses" options={activityStatuses} /><SelectFilter filterKey="source" placeholder="All sources" options={activitySources} /></>}
-                presets={<TableFilterPresets presets={[{ label: "Pending approval", filters: { status: "Pending" } }, { label: "Self input", filters: { source: "self_input" } }]} />}
-              >
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Activity</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Durasi</TableHead>
-                      <TableHead>Submission</TableHead>
-                      <TableHead>Points</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {data.activities.length > 0 ? (
-                      data.activities.map((activity: any) => (
-                        <TableRow
-                          key={activity.id}
-                          data-date-value={activity.startTime.toISOString()}
-                          data-filter-status={activity.statusLabel}
-                          data-filter-source={activity.sourceMode}
-                        >
-                          <TableCell className="align-top">
-                            <div className="space-y-1">
-                              <p className="font-medium">{activity.title}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {activity.activityCode} • {activity.sourceMode} • {activity.unitNumber}
-                              </p>
-                            </div>
-                          </TableCell>
-                          <TableCell className="align-top">
-                            <Badge className={statusBadgeClass(activity.statusLabel)}>{activity.statusLabel}</Badge>
-                          </TableCell>
-                          <TableCell className="align-top">
-                            <div className="text-sm">
-                              <p>{activity.durationLabel}</p>
-                              <p className="text-xs text-muted-foreground">
-                                <Clock3 className="mr-1 inline size-3.5" />
-                                {activity.startTime.toLocaleTimeString("id-ID", {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}{" "}
-                                -{" "}
-                                {activity.endTime.toLocaleTimeString("id-ID", {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
-                              </p>
-                            </div>
-                          </TableCell>
-                          <TableCell className="align-top">
-                            <div className="text-sm">
-                              <p>{activity.submissionCategory}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {activity.gpsValid ? (
-                                  <>
-                                    <MapPinned className="mr-1 inline size-3.5" />
-                                    GPS valid
-                                  </>
-                                ) : (
-                                  "GPS perlu review"
-                                )}
-                              </p>
-                            </div>
-                          </TableCell>
-                          <TableCell className="align-top">
-                            <div className="text-sm">
-                              <p className="font-medium">+{activity.pointsAwarded}</p>
-                              {activity.penaltyDeducted > 0 ? (
-                                <p className="text-xs text-rose-700">Penalty -{activity.penaltyDeducted}</p>
-                              ) : null}
-                              <p className="text-xs text-muted-foreground">Net {activity.pointsNet}</p>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                          Belum ada aktivitas yang disubmit hari ini.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </MinimalTableShell>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {teamData?.hasSubordinates ? (
-          <TabsContent value="team-activity">
-            <Card className="surface-module-card rounded-[1.1rem] border-0">
-              <CardContent className="space-y-4 pt-6">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div>
-                    <h3 className="text-lg font-semibold text-foreground">Aktivitas Bawahan</h3>
-                    <p className="text-sm leading-6 text-muted-foreground">
-                      Hanya bawahan yang terhubung ke atasan ini lewat struktur organisasi atau atasan langsung yang
-                      tampil di sini. Group per nama, lalu per hari, dan bisa collapse.
-                    </p>
+                      </TableHeader>
+                      <TableBody>
+                        {data.assignments.length > 0 ? (
+                          data.assignments.map((assignment) => (
+                            <TableRow
+                              key={assignment.id}
+                              data-date-value={(assignment.deadline ?? assignment.createdAt).toISOString()}
+                              data-filter-status={assignment.statusLabel}
+                              data-filter-priority={assignment.priority}
+                              data-filter-mandatory={assignment.isMandatory ? "yes" : "optional"}
+                              className="border-b border-slate-100 transition-colors hover:bg-slate-50/80 dark:border-slate-800/80 dark:hover:bg-slate-800/50"
+                            >
+                              <TableCell className="align-top py-3.5">
+                                <div className="space-y-1">
+                                  <p className="font-semibold text-slate-900 dark:text-white">
+                                    {(assignment.activityName ?? assignment.customJobName) || "Custom assignment"}
+                                  </p>
+                                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                                    {assignment.activityCode ?? "Custom"} • {assignment.category ?? assignment.assignmentType}
+                                  </p>
+                                  <p className="text-xs text-slate-400 dark:text-slate-500">
+                                    {assignment.notes || "Tanpa catatan tambahan."}
+                                  </p>
+                                </div>
+                              </TableCell>
+                              <TableCell className="align-top py-3.5">
+                                <Badge className={`rounded-full px-2.5 py-0.5 text-xs ${statusBadgeClass(assignment.statusLabel)}`}>
+                                  {assignment.statusLabel}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="align-top py-3.5">
+                                <div className="text-xs">
+                                  <p className="font-semibold text-slate-800 dark:text-slate-200">{assignment.priority}</p>
+                                  <p className="text-slate-400 dark:text-slate-500">{assignment.durationLabel}</p>
+                                </div>
+                              </TableCell>
+                              <TableCell className="align-top py-3.5 text-xs text-slate-600 dark:text-slate-300 font-medium">
+                                {assignment.deadline
+                                  ? assignment.deadline.toLocaleString("id-ID", {
+                                      day: "2-digit",
+                                      month: "short",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })
+                                  : "-"}
+                              </TableCell>
+                              <TableCell className="align-top py-3.5 text-xs font-medium text-slate-700 dark:text-slate-300">
+                                {assignment.assignedByName}
+                              </TableCell>
+                              <TableCell className="align-top py-3.5">
+                                <Badge variant="outline" className="rounded-md text-[11px] font-medium">
+                                  {assignment.isMandatory ? "Wajib" : "Opsional"}
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={6} className="py-8">
+                              <MyDayEmptyState
+                                iconType="jobs"
+                                title="Belum ada antrean tugas"
+                                description="Foreman belum memberikan tugas khusus untuk shift hari ini."
+                              />
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
                   </div>
-                  <Button asChild variant="outline" className="rounded-full">
-                    <Link href="/dashboard/activity-hub/team-board">Buka Monitoring Tim & SPL</Link>
+                </MinimalTableShell>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        ) : null}
+
+        {/* Tab 2: Log Aktivitas */}
+        <TabsContent value="activity-log">
+          <Card className="rounded-xl border border-slate-200/80 bg-white shadow-2xs dark:border-slate-800 dark:bg-slate-900">
+            <CardContent className="space-y-4 p-4 sm:p-5">
+              <MinimalTableShell
+                title="History Aktivitas Harian"
+                label="aktivitas"
+                fileName="history-aktivitas-harian"
+                showImport={false}
+                searchPlaceholder="Cari aktivitas, PIC approval, status, atau unit..."
+                filters={
+                  <>
+                    <SelectFilter filterKey="status" placeholder="Semua status" options={activityStatuses} />
+                    <SelectFilter filterKey="source" placeholder="Semua sumber" options={activitySources} />
+                  </>
+                }
+                presets={
+                  <TableFilterPresets
+                    presets={[
+                      { label: "Menunggu approval", filters: { status: "Pending" } },
+                      { label: "Sudah disetujui", filters: { status: "Approved" } },
+                      { label: "Self input", filters: { source: "self_input" } },
+                    ]}
+                  />
+                }
+              >
+                <MyDayActivityLogTable
+                  activities={data.activities}
+                  employee={data.employee}
+                  site={data.site}
+                  emptyAction={
+                    <MyDayActivityCreateTrigger
+                      employees={accessibleModalEmployees}
+                      sites={modalSites}
+                      activityPresets={modalPresets}
+                      routeFolders={availableRouteFolders}
+                      sectionHeadMap={sectionHeadMap}
+                      deptHeadMap={deptHeadMap}
+                      currentEmployeeId={data.employee.id}
+                      className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2"
+                      label="Tambah Aktivitas Sekarang"
+                    />
+                  }
+                />
+              </MinimalTableShell>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tab 3: Aktivitas Tim */}
+        {canMonitor && teamData?.hasSubordinates ? (
+          <TabsContent value="team-activity">
+            <Card className="rounded-xl border border-slate-200/80 bg-white shadow-2xs dark:border-slate-800 dark:bg-slate-900">
+              <CardContent className="space-y-4 p-4 sm:p-5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">Aktivitas Tim</h3>
+                  <Button asChild variant="outline" size="sm" className="rounded-lg border-slate-200 dark:border-slate-700 text-xs font-medium">
+                    <Link href="/dashboard/activity-hub/team-board">
+                      Monitoring Tim & SPL
+                    </Link>
                   </Button>
                 </div>
 
                 <ActivityTeamLogPanel
                   groups={teamData.activityGroups}
-                  emptyMessage="Belum ada activity dari bawahan Anda hari ini."
+                  emptyMessage="Belum ada aktivitas tercatat dari bawahan Anda hari ini."
                 />
               </CardContent>
             </Card>
           </TabsContent>
         ) : null}
 
+        {/* Tab 4: Feed Poin */}
         <TabsContent value="points">
-          <Card className="surface-module-card rounded-[1.1rem] border-0">
-            <CardContent className="space-y-4 pt-6">
+          <Card className="rounded-xl border border-slate-200/80 bg-white shadow-2xs dark:border-slate-800 dark:bg-slate-900">
+            <CardContent className="space-y-4 p-4 sm:p-5">
               <MinimalTableShell
-                title="Point feed"
-                description="Perubahan poin terbaru untuk akun Anda dalam bentuk audit table yang lebih mudah diurutkan."
+                title="Feed Poin"
                 label="point events"
                 fileName="my-day-point-feed"
-                searchPlaceholder="Search label, category, or point change..."
+                showImport={false}
+                searchPlaceholder="Cari event, kategori..."
               >
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Event</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Points</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {data.pointsFeed.length > 0 ? (
-                      data.pointsFeed.map((event) => (
-                        <TableRow key={event.id} data-date-value={event.createdAt.toISOString()}>
-                          <TableCell className="align-top font-medium">{event.label}</TableCell>
-                          <TableCell className="align-top">{event.category}</TableCell>
-                          <TableCell className="align-top">{event.createdAt.toLocaleString("id-ID")}</TableCell>
-                          <TableCell className="align-top">
-                            <Badge className={event.points >= 0 ? "bg-emerald-100 text-emerald-900" : "bg-rose-100 text-rose-900"}>
-                              {event.points >= 0 ? "+" : ""}
-                              {event.points}
-                            </Badge>
+                <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
+                  <Table>
+                    <TableHeader className="bg-slate-50 dark:bg-slate-800/60">
+                      <TableRow className="border-b border-slate-200 dark:border-slate-700">
+                        <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                          Event
+                        </TableHead>
+                        <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                          Category
+                        </TableHead>
+                        <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                          Date & Time
+                        </TableHead>
+                        <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                          Points
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data.pointsFeed.length > 0 ? (
+                        data.pointsFeed.map((event) => (
+                          <TableRow
+                            key={event.id}
+                            data-date-value={event.createdAt.toISOString()}
+                            className="border-b border-slate-100 transition-colors hover:bg-slate-50/80 dark:border-slate-800/80 dark:hover:bg-slate-800/50"
+                          >
+                            <TableCell className="align-top py-3.5 font-semibold text-xs text-slate-900 dark:text-white">
+                              {event.label}
+                            </TableCell>
+                            <TableCell className="align-top py-3.5 text-xs text-slate-600 dark:text-slate-400">
+                              <Badge variant="outline" className="rounded-md font-medium text-[11px]">
+                                {event.category}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="align-top py-3.5 text-xs text-slate-500 dark:text-slate-400 font-medium">
+                              {event.createdAt.toLocaleString("id-ID")}
+                            </TableCell>
+                            <TableCell className="align-top py-3.5">
+                              <Badge
+                                className={
+                                  event.points >= 0
+                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/50 font-bold text-xs"
+                                    : "bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800/50 font-bold text-xs"
+                                }
+                              >
+                                {event.points >= 0 ? "+" : ""}
+                                {event.points} pts
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={4} className="py-8">
+                            <MyDayEmptyState
+                              iconType="points"
+                              title="Belum ada riwayat poin hari ini"
+                              description="Poin akan masuk secara otomatis setelah aktivitas disetujui atasan."
+                            />
                           </TableCell>
                         </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
-                          Belum ada perubahan poin terbaru.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </MinimalTableShell>
             </CardContent>
           </Card>
         </TabsContent>
 
+        {/* Tab 5: Audit Penalty */}
         <TabsContent value="penalties">
-          <Card className="surface-module-card rounded-[1.1rem] border-0">
-            <CardContent className="space-y-4 pt-6">
+          <Card className="rounded-xl border border-slate-200/80 bg-white shadow-2xs dark:border-slate-800 dark:bg-slate-900">
+            <CardContent className="space-y-4 p-4 sm:p-5">
               <MinimalTableShell
-                title="Penalty and dispute"
-                description="Audit penalties affecting today's points, then submit a dispute if clarification is needed."
+                title="Audit Penalty"
                 label="penalties"
                 fileName="my-day-penalties"
-                searchPlaceholder="Search penalty code, type, reason, or dispute status..."
-                filters={<SelectFilter filterKey="dispute" placeholder="All dispute statuses" options={penaltyStatuses} />}
-                presets={<TableFilterPresets presets={[{ label: "Dispute aktif", filters: { dispute: "in_review" } }, { label: "Belum diajukan", filters: { dispute: "not_disputed" } }]} />}
+                showImport={false}
+                searchPlaceholder="Cari kode penalty, tipe, alasan..."
+                filters={
+                  <SelectFilter filterKey="dispute" placeholder="Semua status dispute" options={penaltyStatuses} />
+                }
+                presets={
+                  <TableFilterPresets
+                    presets={[
+                      { label: "Dispute aktif", filters: { dispute: "in_review" } },
+                      { label: "Belum diajukan", filters: { dispute: "not_disputed" } },
+                    ]}
+                  />
+                }
               >
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Penalty</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Points</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Aksi</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {data.penalties.length > 0 ? (
-                      data.penalties.map((penalty) => (
-                        <TableRow
-                          key={penalty.id}
-                          data-date-value={penalty.createdAt.toISOString()}
-                          data-filter-dispute={penalty.disputeStatus}
-                        >
-                          <TableCell className="align-top">
-                            <div className="space-y-1">
-                              <p className="font-medium">
-                                {penalty.penaltyCode} • {penalty.penaltyType}
-                              </p>
-                              <p className="text-xs text-muted-foreground">{penalty.description}</p>
-                            </div>
-                          </TableCell>
-                          <TableCell className="align-top">{penalty.createdAt.toLocaleString("id-ID")}</TableCell>
-                          <TableCell className="align-top">
-                            <Badge className="bg-rose-100 text-rose-900">-{penalty.pointsDeducted}</Badge>
-                          </TableCell>
-                          <TableCell className="align-top">
-                            <Badge className={statusBadgeClass(penalty.disputeStatus)}>{penalty.disputeStatus}</Badge>
-                          </TableCell>
-                          <TableCell className="align-top">
-                            {penalty.isDisputed ? (
-                              <Badge variant="outline">Sudah disputed</Badge>
-                            ) : (
-                              <Dialog>
-                                <DialogTrigger asChild>
-                                  <Button size="sm" variant="outline" className="rounded-full">
-                                    <ShieldAlert className="size-4" />
-                                    Ajukan dispute
-                                  </Button>
-                                </DialogTrigger>
-                                <DialogContent>
-                                  <DialogHeader>
-                                    <DialogTitle>Ajukan Dispute Penalty</DialogTitle>
-                                    <DialogDescription>
-                                      Explain chronology and supporting evidence so penalty audit can be reviewed.
-                                    </DialogDescription>
-                                  </DialogHeader>
-                                  <form action={submitPointDisputeAction} className="grid gap-4">
-                                    <input type="hidden" name="penaltyEventId" value={penalty.id} />
-                                    <input type="hidden" name="employeeId" value={data.employee.id} />
-                                    <Label className="grid gap-2 text-sm">
-                                      Dispute reason
-                                      <Textarea
-                                        name="reason"
-                                        rows={4}
-                                        placeholder="Explain chronology, signal/site issues, or reason why penalty needs review."
-                                        required
-                                        minLength={20}
-                                      />
-                                    </Label>
-                                    <Label className="grid gap-2 text-sm">
-                                      Bukti pendukung
-                                      <Input
-                                        name="evidenceUrls"
-                                        placeholder="URL of photo/chat/event news, separate with commas if more than one."
-                                      />
-                                    </Label>
-                                    <Button type="submit" className="w-full rounded-xl">
-                                      Kirim dispute
+                <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
+                  <Table>
+                    <TableHeader className="bg-slate-50 dark:bg-slate-800/60">
+                      <TableRow className="border-b border-slate-200 dark:border-slate-700">
+                        <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                          Penalty
+                        </TableHead>
+                        <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                          Waktu
+                        </TableHead>
+                        <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                          Potongan
+                        </TableHead>
+                        <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                          Status Dispute
+                        </TableHead>
+                        <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                          Aksi
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data.penalties.length > 0 ? (
+                        data.penalties.map((penalty) => (
+                          <TableRow
+                            key={penalty.id}
+                            data-date-value={penalty.createdAt.toISOString()}
+                            data-filter-dispute={penalty.disputeStatus}
+                            className="border-b border-slate-100 transition-colors hover:bg-slate-50/80 dark:border-slate-800/80 dark:hover:bg-slate-800/50"
+                          >
+                            <TableCell className="align-top py-3.5">
+                              <div className="space-y-1">
+                                <p className="font-semibold text-xs text-slate-900 dark:text-white">
+                                  {penalty.penaltyCode} • {penalty.penaltyType}
+                                </p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">{penalty.description}</p>
+                              </div>
+                            </TableCell>
+                            <TableCell className="align-top py-3.5 text-xs text-slate-500 dark:text-slate-400 font-medium">
+                              {penalty.createdAt.toLocaleString("id-ID")}
+                            </TableCell>
+                            <TableCell className="align-top py-3.5">
+                              <Badge className="bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800/50 font-bold text-xs">
+                                -{penalty.pointsDeducted} pts
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="align-top py-3.5">
+                              <Badge className={`rounded-full px-2.5 py-0.5 text-xs ${statusBadgeClass(penalty.disputeStatus)}`}>
+                                {penalty.disputeStatus}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="align-top py-3.5">
+                              {penalty.isDisputed ? (
+                                <Badge variant="outline" className="rounded-md text-[11px] font-medium text-slate-500">
+                                  Sudah disputed
+                                </Badge>
+                              ) : (
+                                <Dialog>
+                                  <DialogTrigger asChild>
+                                    <Button size="sm" variant="outline" className="rounded-xl border-rose-200 bg-rose-50/60 text-xs font-semibold text-rose-700 hover:bg-rose-100 hover:text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/50 dark:text-rose-300">
+                                      <ShieldAlert className="size-3.5 mr-1" />
+                                      Ajukan dispute
                                     </Button>
-                                  </form>
-                                </DialogContent>
-                              </Dialog>
-                            )}
+                                  </DialogTrigger>
+                                  <DialogContent className="sm:max-w-lg rounded-2xl">
+                                    <DialogHeader>
+                                      <DialogTitle className="text-lg font-bold">Ajukan Dispute Penalty</DialogTitle>
+                                      <DialogDescription className="text-xs text-slate-500">
+                                        Jelaskan kronologi kendala teknis/lapangan serta bukti pendukung agar pemotongan poin dapat ditinjau ulang oleh atasan.
+                                      </DialogDescription>
+                                    </DialogHeader>
+                                    <form action={submitPointDisputeAction} className="grid gap-4 mt-2">
+                                      <input type="hidden" name="penaltyEventId" value={penalty.id} />
+                                      <input type="hidden" name="employeeId" value={data.employee.id} />
+                                      <div className="space-y-1.5">
+                                        <Label htmlFor="dispute-reason" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                          Alasan dispute & kronologi kendala
+                                        </Label>
+                                        <Textarea
+                                          id="dispute-reason"
+                                          name="reason"
+                                          rows={4}
+                                          placeholder="Jelaskan alasan kronologi kendala sinyal site atau bukti verifikasi (minimal 20 karakter)..."
+                                          required
+                                          minLength={20}
+                                          className="rounded-xl text-xs"
+                                        />
+                                      </div>
+                                      <div className="space-y-1.5">
+                                        <Label htmlFor="dispute-evidence" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                          URL Bukti pendukung (opsional)
+                                        </Label>
+                                        <Input
+                                          id="dispute-evidence"
+                                          name="evidenceUrls"
+                                          placeholder="URL foto/dokumen/berita acara, pisahkan dengan koma jika lebih dari satu"
+                                          className="rounded-xl text-xs"
+                                        />
+                                      </div>
+                                      <Button type="submit" className="w-full rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs py-2.5">
+                                        Kirim Pengajuan Dispute
+                                      </Button>
+                                    </form>
+                                  </DialogContent>
+                                </Dialog>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={5} className="py-8">
+                            <MyDayEmptyState
+                              iconType="penalty"
+                              title="Tidak ada catatan penalty"
+                              description="Seluruh pekerjaan Anda tercatat dengan tertib tanpa ada pemotongan poin hari ini."
+                            />
                           </TableCell>
                         </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                          Belum ada penalty terbaru.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </MinimalTableShell>
             </CardContent>
           </Card>
@@ -907,5 +924,3 @@ export default async function MyDayPage() {
     </div>
   );
 }
-
-

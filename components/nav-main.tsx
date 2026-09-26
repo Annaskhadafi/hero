@@ -21,6 +21,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarSeparator,
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
@@ -68,14 +69,20 @@ function SubmenuItem({ item, pathname }: { item: NavItem; pathname: string }) {
 
   const hasActiveChild = item.children?.some(child => isMenuItemActive(pathname, child.url)) ?? false
   const hasChildren = item.children && item.children.length > 0
+  const isActive = isMenuItemActive(pathname, item.url)
 
   if (!hasChildren) {
     return (
       <SidebarMenuSubItem key={item.url}>
         <SidebarMenuSubButton
           asChild
-          isActive={isMenuItemActive(pathname, item.url)}
-          className="min-h-8 rounded-md px-2 text-[13px]"
+          isActive={isActive}
+          className={cn(
+            "min-h-8 rounded-lg px-2.5 text-[13px] transition-all duration-150",
+            isActive
+              ? "bg-blue-600 text-white font-semibold shadow-xs hover:bg-blue-700 hover:text-white"
+              : "text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800"
+          )}
         >
           <Link href={item.url} target={item.openInNewTab ? "_blank" : undefined}>
             <span>{item.title}</span>
@@ -91,8 +98,11 @@ function SubmenuItem({ item, pathname }: { item: NavItem; pathname: string }) {
         <div className="flex flex-col w-full">
           <CollapsibleTrigger asChild>
             <SidebarMenuSubButton
-              isActive={isMenuItemActive(pathname, item.url) || hasActiveChild}
-              className="min-h-8 rounded-md px-2 text-[13px] font-medium flex items-center justify-between w-full"
+              isActive={isActive || hasActiveChild}
+              className={cn(
+                "min-h-8 rounded-lg px-2.5 text-[13px] font-medium flex items-center justify-between w-full transition-all duration-150",
+                (isActive || hasActiveChild) && "font-semibold text-blue-700 dark:text-blue-300"
+              )}
             >
               <span>{item.title}</span>
               <IconChevronRight
@@ -104,19 +114,27 @@ function SubmenuItem({ item, pathname }: { item: NavItem; pathname: string }) {
             </SidebarMenuSubButton>
           </CollapsibleTrigger>
           <CollapsibleContent className="pl-2 border-l border-sidebar-border/60 ml-2 mt-1 flex flex-col gap-1">
-            {item.children?.map((child) => (
-              <SidebarMenuSubItem key={child.url}>
-                <SidebarMenuSubButton
-                  asChild
-                  isActive={isMenuItemActive(pathname, child.url)}
-                  className="min-h-7 rounded-md px-2 text-[12px] text-muted-foreground hover:text-foreground"
-                >
-                  <Link href={child.url} target={child.openInNewTab ? "_blank" : undefined}>
-                    <span>{child.title}</span>
-                  </Link>
-                </SidebarMenuSubButton>
-              </SidebarMenuSubItem>
-            ))}
+            {item.children?.map((child) => {
+              const isChildActive = isMenuItemActive(pathname, child.url)
+              return (
+                <SidebarMenuSubItem key={child.url}>
+                  <SidebarMenuSubButton
+                    asChild
+                    isActive={isChildActive}
+                    className={cn(
+                      "min-h-7 rounded-lg px-2.5 text-[12px] transition-all duration-150",
+                      isChildActive
+                        ? "bg-blue-600 text-white font-semibold shadow-xs hover:bg-blue-700 hover:text-white"
+                        : "text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800"
+                    )}
+                  >
+                    <Link href={child.url} target={child.openInNewTab ? "_blank" : undefined}>
+                      <span>{child.title}</span>
+                    </Link>
+                  </SidebarMenuSubButton>
+                </SidebarMenuSubItem>
+              )
+            })}
           </CollapsibleContent>
         </div>
       </SidebarMenuSubItem>
@@ -203,58 +221,62 @@ export function NavMain({
               <SidebarMenuButton
                 asChild
                 tooltip="Aksi cepat"
-                className="min-h-9 min-w-8 rounded-md bg-[linear-gradient(135deg,var(--primary)_0%,var(--primary-container)_100%)] px-2 text-[13px] text-primary-foreground shadow-none duration-200 ease-linear hover:text-primary-foreground active:text-primary-foreground"
+                className="min-h-9 min-w-8 rounded-xl bg-blue-600 px-3 text-[13px] font-semibold text-white shadow-xs transition-colors duration-150 hover:bg-blue-700 active:bg-blue-800"
               >
                 <Link href="/dashboard/activity-hub/my-day">
-                  <IconCirclePlusFilled />
+                  <IconCirclePlusFilled className="size-4" />
                   <span>Tambah Aktivitas</span>
                 </Link>
               </SidebarMenuButton>
-
             </SidebarMenuItem>
           </SidebarMenu>
         ) : null}
         <SidebarMenu className="px-1">
-          {groups.map((group) => {
+          {groups.map((group, groupIdx) => {
             const hasActiveItem = group.items.some((item) => isMenuItemActive(pathname, item.url))
             const isOpen = openGroups[group.title] ?? hasActiveItem
 
             return (
-              <Collapsible
-                key={group.title}
-                asChild
-                open={isOpen}
-                onOpenChange={(open) =>
-                  setOpenGroups((previous) => ({
-                    ...previous,
-                    [group.title]: open,
-                  }))
-                }
-              >
-                <SidebarMenuItem>
-                  <CollapsibleTrigger asChild>
-                    <SidebarMenuButton
-                      tooltip={group.title}
-                      isActive={hasActiveItem}
-                      className="min-h-9 rounded-md px-2 text-[13px] font-medium"
-                    >
-                      {group.icon && <group.icon />}
-                      <span suppressHydrationWarning>{group.title}</span>
-                      <IconChevronRight
+              <React.Fragment key={group.title}>
+                {groupIdx > 0 && <SidebarSeparator className="my-1.5 opacity-40" />}
+                <Collapsible
+                  asChild
+                  open={isOpen}
+                  onOpenChange={(open) =>
+                    setOpenGroups((previous) => ({
+                      ...previous,
+                      [group.title]: open,
+                    }))
+                  }
+                >
+                  <SidebarMenuItem>
+                    <CollapsibleTrigger asChild>
+                      <SidebarMenuButton
+                        tooltip={group.title}
+                        isActive={hasActiveItem}
                         className={cn(
-                          "ml-auto transition-transform duration-200 group-data-[collapsible=icon]:hidden",
-                          isOpen ? "rotate-90" : "rotate-0"
+                          "min-h-9 rounded-xl px-2.5 text-[13px] font-medium transition-all duration-150",
+                          hasActiveItem && "bg-blue-50 text-blue-700 font-semibold dark:bg-blue-950/60 dark:text-blue-300"
                         )}
-                      />
-                    </SidebarMenuButton>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <SidebarMenuSub className="mt-0.5">
-                      {renderItems(group.items, group.title)}
-                    </SidebarMenuSub>
-                  </CollapsibleContent>
-                </SidebarMenuItem>
-              </Collapsible>
+                      >
+                        {group.icon && <group.icon />}
+                        <span suppressHydrationWarning>{group.title}</span>
+                        <IconChevronRight
+                          className={cn(
+                            "ml-auto transition-transform duration-200 group-data-[collapsible=icon]:hidden",
+                            isOpen ? "rotate-90" : "rotate-0"
+                          )}
+                        />
+                      </SidebarMenuButton>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <SidebarMenuSub className="mt-0.5">
+                        {renderItems(group.items, group.title)}
+                      </SidebarMenuSub>
+                    </CollapsibleContent>
+                  </SidebarMenuItem>
+                </Collapsible>
+              </React.Fragment>
             )
           })}
         </SidebarMenu>
@@ -262,7 +284,3 @@ export function NavMain({
     </SidebarGroup>
   )
 }
-
-
-
-

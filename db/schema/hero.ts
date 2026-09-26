@@ -440,6 +440,10 @@ export const dailyActivitySessions = pgTable('hero_daily_activity_sessions', {
   submittedAt: timestamp('submitted_at'),
   approvedAt: timestamp('approved_at'),
   summaryRemark: text('summary_remark').notNull().default(''),
+  deletedAt: timestamp('deleted_at'),
+  deletedByEmployeeId: integer('deleted_by_employee_id').references(() => employees.id, {
+    onDelete: 'set null',
+  }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
@@ -602,6 +606,10 @@ export const activities = pgTable('hero_activities', {
   penaltyDeducted: integer('penalty_deducted').notNull().default(0),
   isTeamActivity: boolean('is_team_activity').notNull().default(false),
   teamNameList: text('team_name_list').notNull().default(''),
+  deletedAt: timestamp('deleted_at'),
+  deletedByEmployeeId: integer('deleted_by_employee_id').references(() => employees.id, {
+    onDelete: 'set null',
+  }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 export const approvals = pgTable('hero_approvals', {

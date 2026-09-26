@@ -27,12 +27,14 @@ import {
   RefreshCw,
   Search,
   Settings,
+  Trash2,
   Truck,
   Users,
   Wrench,
   X,
   ZoomIn,
 } from 'lucide-react'
+import { toast } from 'sonner'
 
 import {
   DailyActivityDashboardData,
@@ -52,12 +54,24 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
+import { deleteDailyActivityRecordAction } from './actions'
 
 interface ClientDashboardProps {
   initialData: DailyActivityDashboardData
@@ -65,21 +79,45 @@ interface ClientDashboardProps {
     name?: string | null
     email?: string | null
     role?: string | null
+    isSuperAdmin?: boolean
+    isPjoOrLocationLeader?: boolean
+    isDeptHead?: boolean
+    isSectionHead?: boolean
+    assignedSiteId?: number | null
+    assignedSiteName?: string | null
+    assignedDepartment?: string | null
+    assignedSection?: string | null
+  }
+  initialFilters?: {
+    siteId?: string
+    dept?: string
+    section?: string
   }
 }
 
 export function DailyActivityClientDashboard({
   initialData,
   currentUser,
+  initialFilters,
 }: ClientDashboardProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [isPending, startTransition] = useTransition()
 
   // Top context bar & filters
-  const [selectedSiteId, setSelectedSiteId] = useState<string>(
-    searchParams.get('siteId') || String(initialData.currentSite.id)
-  )
+  const initialSiteVal = currentUser?.isPjoOrLocationLeader && currentUser?.assignedSiteId
+    ? String(currentUser.assignedSiteId)
+    : (searchParams.get('siteId') || initialFilters?.siteId || String(initialData.currentSite.id))
+
+  const initialDeptVal = searchParams.get('dept') ||
+    initialFilters?.dept ||
+    (currentUser?.isDeptHead && currentUser?.assignedDepartment ? currentUser.assignedDepartment : 'Semua Tim')
+
+  const initialSectionVal = searchParams.get('section') ||
+    initialFilters?.section ||
+    (currentUser?.isSectionHead && currentUser?.assignedSection ? currentUser.assignedSection : 'Semua Section')
+
+  const [selectedSiteId, setSelectedSiteId] = useState<string>(initialSiteVal)
   const [startDate, setStartDate] = useState<string>(
     searchParams.get('startDate') || initialData.startDate || searchParams.get('date') || ''
   )
@@ -89,9 +127,8 @@ export function DailyActivityClientDashboard({
   const [selectedShift, setSelectedShift] = useState<string>(
     searchParams.get('shift') || initialData.selectedShift
   )
-  const [selectedDept, setSelectedDept] = useState<string>(
-    searchParams.get('dept') || 'Semua Tim'
-  )
+  const [selectedDept, setSelectedDept] = useState<string>(initialDeptVal)
+  const [selectedSection, setSelectedSection] = useState<string>(initialSectionVal)
   const [selectedActivityType, setSelectedActivityType] = useState<string>(
     'Semua Aktivitas'
   )
@@ -110,12 +147,35 @@ export function DailyActivityClientDashboard({
 
   // Keep state synchronized whenever URL searchParams or server initialData changes
   useEffect(() => {
-    const siteParam = searchParams.get('siteId')
-    setSelectedSiteId(siteParam !== null ? siteParam : String(initialData.currentSite.id))
+    if (currentUser?.isPjoOrLocationLeader && currentUser?.assignedSiteId) {
+      setSelectedSiteId(String(currentUser.assignedSiteId))
+    } else {
+      const siteParam = searchParams.get('siteId')
+      setSelectedSiteId(siteParam !== null ? siteParam : String(initialData.currentSite.id))
+    }
+
     setStartDate(searchParams.get('startDate') || initialData.startDate || searchParams.get('date') || '')
     setEndDate(searchParams.get('endDate') || initialData.endDate || searchParams.get('date') || '')
     setSelectedShift(searchParams.get('shift') || initialData.selectedShift || 'Semua Shift')
-    setSelectedDept(searchParams.get('dept') || 'Semua Tim')
+
+    const deptParam = searchParams.get('dept')
+    if (deptParam !== null) {
+      setSelectedDept(deptParam)
+    } else if (currentUser?.isDeptHead && currentUser?.assignedDepartment) {
+      setSelectedDept(currentUser.assignedDepartment)
+    } else {
+      setSelectedDept('Semua Tim')
+    }
+
+    const secParam = searchParams.get('section')
+    if (secParam !== null) {
+      setSelectedSection(secParam)
+    } else if (currentUser?.isSectionHead && currentUser?.assignedSection) {
+      setSelectedSection(currentUser.assignedSection)
+    } else {
+      setSelectedSection('Semua Section')
+    }
+
     setSelectedEmployeeStatus(searchParams.get('status') || 'Semua Status')
     setEmployeeNameFilter(searchParams.get('employeeName') || searchParams.get('q') || '')
     setSearchQuery(searchParams.get('q') || searchParams.get('employeeName') || '')
@@ -125,6 +185,7 @@ export function DailyActivityClientDashboard({
     initialData.selectedShift,
     initialData.startDate,
     initialData.endDate,
+    currentUser,
   ])
 
   // Pagination states
@@ -158,6 +219,57 @@ export function DailyActivityClientDashboard({
 
   const [isAddActivityModalOpen, setIsAddActivityModalOpen] = useState(false)
 
+  // Delete state
+  const [deletingEmployee, setDeletingEmployee] = useState<EmployeeActivityRow | null>(null)
+  const [isDeleting, setIsDeleting] = useState<boolean>(false)
+  const [deletedEmployeeKeys, setDeletedEmployeeKeys] = useState<string[]>([])
+
+  const handleDeleteEmployeeActivity = async () => {
+    if (!deletingEmployee) return
+    if (!currentUser?.isSuperAdmin) {
+      toast.error('Hanya Super Admin yang berhak menghapus data aktivitas.')
+      return
+    }
+    setIsDeleting(true)
+
+    const sessionIds = (deletingEmployee.sessions || []).map((s) => s.id)
+    if (deletingEmployee.sessionId && !sessionIds.includes(deletingEmployee.sessionId)) {
+      sessionIds.push(deletingEmployee.sessionId)
+    }
+
+    const activityIds = (deletingEmployee.tasks || [])
+      .filter((t) => !t.sessionId && Number.isFinite(t.id) && t.id > 0)
+      .map((t) => t.id)
+
+    const key = `${deletingEmployee.employeeDbId}-${deletingEmployee.sessionId}`
+
+    try {
+      const res = await deleteDailyActivityRecordAction({
+        sessionIds,
+        activityIds,
+        employeeDbId: deletingEmployee.employeeDbId,
+        workDate: deletingEmployee.rawWorkDate,
+      })
+
+      if (res.success) {
+        toast.success(`Aktivitas harian untuk ${deletingEmployee.name} berhasil dihapus.`)
+        setDeletedEmployeeKeys((prev) => [...prev, key])
+        if (activeDetailItem?.employee?.employeeId === deletingEmployee.employeeId) {
+          setActiveDetailItem(null)
+        }
+        setDeletingEmployee(null)
+        router.refresh()
+      } else {
+        toast.error(res.error || 'Gagal menghapus data aktivitas.')
+      }
+    } catch (err: any) {
+      console.error('Delete error:', err)
+      toast.error(err.message || 'Terjadi kesalahan saat menghapus aktivitas.')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   // Sync navigation when filters change
   const applyFilters = (overrides?: {
     siteId?: string
@@ -166,14 +278,21 @@ export function DailyActivityClientDashboard({
     shift?: string
     status?: string
     dept?: string
+    section?: string
     q?: string
     employeeName?: string
   }) => {
-    const sId = overrides?.siteId !== undefined ? overrides.siteId : selectedSiteId
+    // If PJO / Leader Lokasi, lock siteId
+    const sId = (currentUser?.isPjoOrLocationLeader && currentUser?.assignedSiteId)
+      ? String(currentUser.assignedSiteId)
+      : (overrides?.siteId !== undefined ? overrides.siteId : selectedSiteId)
+
     const sDate = overrides?.startDate !== undefined ? overrides.startDate : startDate
     const eDate = overrides?.endDate !== undefined ? overrides.endDate : endDate
     const sh = overrides?.shift !== undefined ? overrides.shift : selectedShift
     const st = overrides?.status !== undefined ? overrides.status : selectedEmployeeStatus
+    const dpt = overrides?.dept !== undefined ? overrides.dept : selectedDept
+    const sec = overrides?.section !== undefined ? overrides.section : selectedSection
     const empName = overrides?.employeeName !== undefined ? overrides.employeeName : employeeNameFilter
     const q = overrides?.q !== undefined ? overrides.q : searchQuery
 
@@ -183,6 +302,8 @@ export function DailyActivityClientDashboard({
     if (eDate) params.set('endDate', eDate)
     if (sh && sh !== 'Semua Shift') params.set('shift', sh)
     if (st && st !== 'Semua Status') params.set('status', st)
+    if (dpt && dpt !== 'Semua Tim') params.set('dept', dpt)
+    if (sec && sec !== 'Semua Section') params.set('section', sec)
     if (empName.trim()) params.set('employeeName', empName.trim())
     else if (q.trim()) params.set('q', q.trim())
 
@@ -194,26 +315,49 @@ export function DailyActivityClientDashboard({
   }
 
   const handleResetFilters = () => {
-    setSelectedSiteId('0')
+    const defaultSite = currentUser?.isPjoOrLocationLeader && currentUser?.assignedSiteId
+      ? String(currentUser.assignedSiteId)
+      : '0'
+    const defaultDpt = currentUser?.isDeptHead && currentUser?.assignedDepartment
+      ? currentUser.assignedDepartment
+      : 'Semua Tim'
+    const defaultSec = currentUser?.isSectionHead && currentUser?.assignedSection
+      ? currentUser.assignedSection
+      : 'Semua Section'
+
+    setSelectedSiteId(defaultSite)
     setStartDate('')
     setEndDate('')
     setSelectedShift('Semua Shift')
-    setSelectedDept('Semua Tim')
+    setSelectedDept(defaultDpt)
+    setSelectedSection(defaultSec)
     setSelectedActivityType('Semua Aktivitas')
     setSelectedEmployeeStatus('Semua Status')
     setEmployeeNameFilter('')
     setSearchQuery('')
     setCurrentPage(1)
     setUnsubmittedPage(1)
+
+    const params = new URLSearchParams()
+    if (defaultSite !== '0') params.set('siteId', defaultSite)
+    if (defaultDpt !== 'Semua Tim') params.set('dept', defaultDpt)
+    if (defaultSec !== 'Semua Section') params.set('section', defaultSec)
+
     startTransition(() => {
-      router.push('/dashboard/daily-activity')
+      router.push(`/dashboard/daily-activity${params.toString() ? `?${params.toString()}` : ''}`)
     })
   }
 
   // Filter employees client-side for rapid search & department filter
   const filteredEmployees = useMemo(() => {
-    return initialData.employees.filter((emp) => {
-      if (
+    return initialData.employees
+      .filter((emp) => !deletedEmployeeKeys.includes(`${emp.employeeDbId}-${emp.sessionId}`))
+      .filter((emp) => {
+      if (currentUser?.isPjoOrLocationLeader && currentUser?.assignedSiteId) {
+        if (emp.siteId !== undefined && emp.siteId !== currentUser.assignedSiteId) {
+          return false
+        }
+      } else if (
         selectedSiteId !== '0' &&
         selectedSiteId !== 'all' &&
         emp.siteId !== undefined &&
@@ -223,6 +367,7 @@ export function DailyActivityClientDashboard({
       }
       if (selectedShift !== 'Semua Shift' && emp.shift !== selectedShift) return false
       if (selectedDept !== 'Semua Tim' && emp.department !== selectedDept) return false
+      if (selectedSection !== 'Semua Section' && emp.section !== selectedSection) return false
       if (
         selectedActivityType !== 'Semua Aktivitas' &&
         !emp.primaryActivity.toLowerCase().includes(selectedActivityType.toLowerCase())
@@ -239,26 +384,35 @@ export function DailyActivityClientDashboard({
           emp.employeeId.toLowerCase().includes(effectiveSearch) ||
           emp.primaryActivity.toLowerCase().includes(effectiveSearch) ||
           emp.unitTireId.toLowerCase().includes(effectiveSearch) ||
-          emp.jobTitle.toLowerCase().includes(effectiveSearch)
+          emp.jobTitle.toLowerCase().includes(effectiveSearch) ||
+          (emp.section && emp.section.toLowerCase().includes(effectiveSearch)) ||
+          emp.department.toLowerCase().includes(effectiveSearch)
         )
       }
       return true
     })
   }, [
     initialData.employees,
+    deletedEmployeeKeys,
     selectedSiteId,
     selectedShift,
     selectedDept,
+    selectedSection,
     selectedActivityType,
     selectedEmployeeStatus,
     searchQuery,
     employeeNameFilter,
+    currentUser,
   ])
 
   // Filter unsubmitted employees (Belum Mengisi, excluding Roster OFF)
   const filteredUnsubmittedEmployees = useMemo(() => {
     return (initialData.unsubmittedEmployees || []).filter((emp) => {
-      if (
+      if (currentUser?.isPjoOrLocationLeader && currentUser?.assignedSiteId) {
+        if (emp.siteId !== undefined && emp.siteId !== currentUser.assignedSiteId) {
+          return false
+        }
+      } else if (
         selectedSiteId !== '0' &&
         selectedSiteId !== 'all' &&
         emp.siteId !== undefined &&
@@ -268,6 +422,7 @@ export function DailyActivityClientDashboard({
       }
       if (selectedShift !== 'Semua Shift' && emp.expectedShift !== selectedShift) return false
       if (selectedDept !== 'Semua Tim' && emp.department !== selectedDept) return false
+      if (selectedSection !== 'Semua Section' && emp.section !== selectedSection) return false
 
       const effectiveSearch = (searchQuery || employeeNameFilter).trim().toLowerCase()
       if (effectiveSearch) {
@@ -287,9 +442,55 @@ export function DailyActivityClientDashboard({
     selectedSiteId,
     selectedShift,
     selectedDept,
+    selectedSection,
     searchQuery,
     employeeNameFilter,
+    currentUser,
   ])
+
+  // Available sites list (restricted to assigned site for PJO / Leader Lokasi)
+  const availableSites = useMemo(() => {
+    if (currentUser?.isPjoOrLocationLeader && currentUser?.assignedSiteId) {
+      const match = initialData.sitesList.filter((s) => s.id === currentUser.assignedSiteId)
+      if (match.length > 0) return match
+      return [{
+        id: currentUser.assignedSiteId,
+        name: currentUser.assignedSiteName || 'Site Anda',
+        customerName: '-',
+        pjoName: currentUser.name || null,
+        pjoJobTitle: currentUser.role || null,
+      }]
+    }
+    return initialData.sitesList
+  }, [initialData.sitesList, currentUser])
+
+  // Available sections list from masterSections and employee records
+  const availableSections = useMemo(() => {
+    const list: string[] = []
+    const seen = new Set<string>()
+
+    ;(initialData.sectionsList || []).forEach((s) => {
+      if (s.name && !seen.has(s.name.trim())) {
+        seen.add(s.name.trim())
+        list.push(s.name.trim())
+      }
+    })
+
+    initialData.employees.forEach((e) => {
+      if (e.section && !seen.has(e.section.trim())) {
+        seen.add(e.section.trim())
+        list.push(e.section.trim())
+      }
+    })
+    ;(initialData.unsubmittedEmployees || []).forEach((e) => {
+      if (e.section && !seen.has(e.section.trim())) {
+        seen.add(e.section.trim())
+        list.push(e.section.trim())
+      }
+    })
+
+    return list.sort((a, b) => a.localeCompare(b))
+  }, [initialData.sectionsList, initialData.employees, initialData.unsubmittedEmployees])
 
   // Pagination calculations
   const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / pageSize))
@@ -544,28 +745,51 @@ export function DailyActivityClientDashboard({
           )}
           <div className="flex items-center gap-1.5 text-xs text-slate-600 bg-white px-3 py-1.5 rounded-lg border border-slate-200/80 shadow-2xs">
             <Lock className="w-3.5 h-3.5 text-slate-400" />
-            <span>Hak Akses: PJO / Head Section / Dept Head</span>
+            <span>
+              {currentUser?.isSuperAdmin
+                ? 'Hak Akses: Super Admin (Akses Penuh)'
+                : currentUser?.isPjoOrLocationLeader
+                ? `Hak Akses: PJO / Lokasi (${currentUser.assignedSiteName || initialData.currentSite.name})`
+                : currentUser?.isDeptHead
+                ? `Hak Akses: Head Dept (${currentUser.assignedDepartment || 'Department'})`
+                : currentUser?.isSectionHead
+                ? `Hak Akses: Section Head (${currentUser.assignedSection || 'Section'})`
+                : 'Hak Akses: PJO / Head Section / Dept Head'}
+            </span>
           </div>
         </div>
       </div>
 
       {/* ── Secondary Filter Bar Card ── */}
       <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs p-3.5">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-3 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-2.5 items-end">
           {/* Site */}
           <div>
-            <label className="text-[11px] font-semibold text-slate-500 mb-1 block">Site</label>
+            <label className="text-[11px] font-semibold text-slate-500 mb-1 flex items-center justify-between">
+              <span>Site</span>
+              {currentUser?.isPjoOrLocationLeader && (
+                <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1 py-0.2 rounded border border-amber-200">
+                  Terkunci
+                </span>
+              )}
+            </label>
             <select
               aria-label="Pilih Site"
               value={selectedSiteId}
+              disabled={currentUser?.isPjoOrLocationLeader}
               onChange={(e) => {
                 const val = e.target.value
                 setSelectedSiteId(val)
                 applyFilters({ siteId: val })
               }}
-              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+              className={cn(
+                "w-full text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500",
+                currentUser?.isPjoOrLocationLeader
+                  ? "bg-slate-100 border border-slate-300 text-slate-500 cursor-not-allowed"
+                  : "bg-slate-50 border border-slate-200 text-slate-800 cursor-pointer"
+              )}
             >
-              {initialData.sitesList.map((s) => (
+              {availableSites.map((s) => (
                 <option key={s.id} value={String(s.id)}>
                   {s.name}
                 </option>
@@ -648,19 +872,57 @@ export function DailyActivityClientDashboard({
 
           {/* Department/Team */}
           <div>
-            <label className="text-[11px] font-semibold text-slate-500 mb-1 block">
-              Department/Team
+            <label className="text-[11px] font-semibold text-slate-500 mb-1 flex items-center justify-between">
+              <span>Department</span>
+              {currentUser?.isDeptHead && (
+                <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1 py-0.2 rounded border border-blue-200">
+                  Auto
+                </span>
+              )}
             </label>
             <select
               aria-label="Pilih Department atau Tim"
               value={selectedDept}
-              onChange={(e) => setSelectedDept(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value
+                setSelectedDept(val)
+                applyFilters({ dept: val })
+              }}
               className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
             >
-              <option value="Semua Tim">Semua Tim</option>
+              <option value="Semua Tim">Semua Dept</option>
               {initialData.departmentsList.map((d) => (
                 <option key={d.id} value={d.name}>
                   {d.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Section */}
+          <div>
+            <label className="text-[11px] font-semibold text-slate-500 mb-1 flex items-center justify-between">
+              <span>Section</span>
+              {currentUser?.isSectionHead && (
+                <span className="text-[9px] font-bold text-blue-700 bg-blue-50 px-1 py-0.2 rounded border border-blue-200">
+                  Auto
+                </span>
+              )}
+            </label>
+            <select
+              aria-label="Pilih Section"
+              value={selectedSection}
+              onChange={(e) => {
+                const val = e.target.value
+                setSelectedSection(val)
+                applyFilters({ section: val })
+              }}
+              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+            >
+              <option value="Semua Section">Semua Section</option>
+              {availableSections.map((secName) => (
+                <option key={secName} value={secName}>
+                  {secName}
                 </option>
               ))}
             </select>
@@ -1390,6 +1652,18 @@ export function DailyActivityClientDashboard({
                               Buat SPL Lembur
                             </Link>
                           </DropdownMenuItem>
+                          {currentUser?.isSuperAdmin && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => setDeletingEmployee(emp)}
+                                className="text-rose-600 focus:text-rose-700 focus:bg-rose-50 cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 mr-2 text-rose-600" />
+                                Hapus Aktivitas
+                              </DropdownMenuItem>
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </td>
@@ -2161,9 +2435,22 @@ export function DailyActivityClientDashboard({
 
               {/* Bottom Actions */}
               <div className="p-4 bg-white border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0">
-                <Button variant="outline" size="sm" onClick={() => setActiveDetailItem(null)}>
-                  Tutup Formulir
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setActiveDetailItem(null)}>
+                    Tutup Formulir
+                  </Button>
+                  {currentUser?.isSuperAdmin && activeDetailItem.employee && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setDeletingEmployee(activeDetailItem.employee!)}
+                      className="gap-1.5 text-xs text-rose-600 border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                      Hapus Aktivitas
+                    </Button>
+                  )}
+                </div>
 
                 <div className="flex items-center gap-2">
                   <Button
@@ -2187,6 +2474,60 @@ export function DailyActivityClientDashboard({
           )}
         </DialogContent>
       </Dialog>
+
+      {/* ── Dialog Konfirmasi Hapus Aktivitas ── */}
+      <AlertDialog
+        open={Boolean(deletingEmployee)}
+        onOpenChange={(open) => {
+          if (!open && !isDeleting) setDeletingEmployee(null)
+        }}
+      >
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <div className="size-10 rounded-full bg-rose-100 flex items-center justify-center text-rose-600 mb-2">
+              <Trash2 className="w-5 h-5" />
+            </div>
+            <AlertDialogTitle className="text-base font-bold text-slate-900">
+              Hapus Aktivitas Harian?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-slate-600 leading-relaxed">
+              Apakah Anda yakin ingin menghapus data aktivitas harian untuk{' '}
+              <span className="font-semibold text-slate-900">{deletingEmployee?.name}</span>{' '}
+              (NIK: <span className="font-mono">{deletingEmployee?.employeeId}</span>) pada tanggal{' '}
+              <span className="font-medium text-slate-800">{deletingEmployee?.workDate}</span>?
+              <br />
+              <span className="text-rose-600 font-medium block mt-1">
+                Data sesi dan aktivitas ini akan dihapus dari monitoring harian dan rekap operasional.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2 sm:gap-0">
+            <AlertDialogCancel disabled={isDeleting} className="text-xs">
+              Batal
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                handleDeleteEmployeeActivity()
+              }}
+              disabled={isDeleting}
+              className="bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold gap-1.5"
+            >
+              {isDeleting ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Menghapus...</span>
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Hapus Aktivitas</span>
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* ── Lightbox Photo Preview Modal ── */}
       <Dialog open={Boolean(lightboxPhoto)} onOpenChange={(open) => !open && setLightboxPhoto(null)}>

@@ -14,7 +14,7 @@ import {
   masterSections,
   sites,
 } from '@/db/schema/hero'
-import { asc, desc, eq, inArray, sql } from 'drizzle-orm'
+import { asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { ApprovalListingClient, type SessionApprovalRow } from './client'
 import { getDailyActivityWorkflowSettings } from '@/app/dashboard/activity-hub/actions'
 import { DEFAULT_DAILY_ACTIVITY_SETTINGS } from '@/lib/workflow-settings-defaults'
@@ -130,6 +130,7 @@ export default async function DailyActivityApprovalListPage() {
           .from(dailyActivitySessions)
           .leftJoin(employees, eq(dailyActivitySessions.employeeId, employees.id))
           .leftJoin(sites, eq(dailyActivitySessions.siteId, sites.id))
+          .where(isNull(dailyActivitySessions.deletedAt))
           .orderBy(desc(dailyActivitySessions.id)),
       [],
       'fetchRawSessions'

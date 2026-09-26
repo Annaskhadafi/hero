@@ -34,6 +34,7 @@ import {
   streakRecords,
 } from '@/db/schema/hero'
 import { ensureHeroGovernanceSeedData } from '@/lib/hero-admin'
+import { getMenuPermissionForRole } from '@/lib/hero-access'
 import { resolveUploadUrl } from '@/lib/s3-storage'
 
 let dailyActivitySeedPromise: Promise<void> | null = null
@@ -966,7 +967,9 @@ function isCurrentNodeAssignment(
   return true
 }
 
-async function getCurrentEmployeeByEmail(email?: string | null) {
+// Keep the legacy employee shape flexible for mobile callers that consume both
+// database Date values and serialized string values.
+async function getCurrentEmployeeByEmail(email?: string | null): Promise<any> {
   const normalizedEmail = email?.trim().toLowerCase()
 
   if (normalizedEmail) {
@@ -1099,72 +1102,7 @@ async function getCurrentEmployeeByEmail(email?: string | null) {
     }
   }
 
-  // Fallback: default active employee (mochamad.khadafi@chitraparatama.co.id / 71261 / first active)
-  const [defaultEmp] = await db
-    .select({
-      id: employees.id,
-      authUserId: employees.authUserId,
-      siteId: employees.siteId,
-      name: employees.name,
-      email: employees.email,
-      employeeSn: employees.employeeSn,
-      joinYear: employees.joinYear,
-      birthPlaceDate: employees.birthPlaceDate,
-      domicile: employees.domicile,
-      directManagerId: employees.directManagerId,
-      departmentId: employees.departmentId,
-      sectionId: employees.sectionId,
-      positionId: employees.positionId,
-      orgNodeId: employees.orgNodeId,
-      section: employees.section,
-      role: employees.role,
-      department: employees.department,
-      jobTitle: employees.jobTitle,
-      workLocation: employees.workLocation,
-      phoneNumber: employees.phoneNumber,
-      employmentStatus: employees.employmentStatus,
-      employeeStatusType: employees.employeeStatusType,
-      accessRole: employees.accessRole,
-      levelName: employees.levelName,
-      totalPoints: employees.totalPoints,
-      fitStatus: employees.fitStatus,
-      isActive: employees.isActive,
-      invitationToken: employees.invitationToken,
-      invitationExpiresAt: employees.invitationExpiresAt,
-      invitationAcceptedAt: employees.invitationAcceptedAt,
-      emailVerificationToken: employees.emailVerificationToken,
-      emailVerificationExpiresAt: employees.emailVerificationExpiresAt,
-      emailVerified: employees.emailVerified,
-      faceEmbedding: employees.faceEmbedding,
-      faceRegisteredAt: employees.faceRegisteredAt,
-      createdAt: employees.createdAt,
-      joinDate: employees.joinDate,
-      contractDurationStart: employees.contractDurationStart,
-      contractDurationEnd: employees.contractDurationEnd,
-      permanentDate: employees.permanentDate,
-      pointOfHire: employees.pointOfHire,
-      birthDate: employees.birthDate,
-      gender: employees.gender,
-      maritalStatus: employees.maritalStatus,
-      religion: employees.religion,
-      education: employees.education,
-      signatureDataUrl: employees.signatureDataUrl,
-      signatureRegisteredAt: employees.signatureRegisteredAt,
-    })
-    .from(employees)
-    .where(or(eq(employees.email, 'mochamad.khadafi@chitraparatama.co.id'), eq(employees.employeeSn, '71261')))
-    .limit(1)
-
-  if (defaultEmp) return defaultEmp
-
-  const [firstActive] = await db
-    .select()
-    .from(employees)
-    .where(eq(employees.isActive, true))
-    .orderBy(asc(employees.id))
-    .limit(1)
-
-  return firstActive as any ?? null
+  return null
 }
 
 async function getManagedEmployeesForLead(currentEmployee: DailyActivityEmployeeContext) {
@@ -1482,6 +1420,13 @@ async function ensureDailyActivityTables() {
     alter table hero_daily_activity_sessions
     add column if not exists activity_id integer references hero_activities(id) on delete set null;
   `)
+  await db.execute(sql`
+    alter table hero_daily_activity_sessions add column if not exists deleted_at timestamp;
+  `)
+  await db.execute(sql`
+    alter table hero_daily_activity_sessions
+    add column if not exists deleted_by_employee_id integer references hero_employees(id) on delete set null;
+  `)
 
   await db.execute(sql`
     create table if not exists hero_point_disputes (
@@ -1787,6 +1732,13 @@ async function ensureDailyActivityTables() {
   `)
   await db.execute(sql`
     alter table hero_activities add column if not exists penalty_deducted integer not null default 0;
+  `)
+  await db.execute(sql`
+    alter table hero_activities add column if not exists deleted_at timestamp;
+  `)
+  await db.execute(sql`
+    alter table hero_activities
+    add column if not exists deleted_by_employee_id integer references hero_employees(id) on delete set null;
   `)
 
   await db.execute(sql`
@@ -2147,6 +2099,9 @@ export async function getDailyActivityConfigMap() {
 
 type DailyActivityReadOptions = {
   ensureSeed?: boolean
+  viewScope?: 'own' | 'site' | 'global'
+  siteId?: number | null
+  sectionId?: number | null
 }
 
 export type RouteFolder = {
@@ -2326,27 +2281,39 @@ export async function getDailyActivityEmployeeData(
   const dayStart = startOfDay()
   const dayEnd = endOfDay()
 
-  const approverSessionRows = await db
-    .select({ sessionId: dailyActivityApprovals.sessionId })
-    .from(dailyActivityApprovals)
-    .where(
-      or(
-        eq(dailyActivityApprovals.approverEmployeeId, employee.id),
-        employee.email ? sql`LOWER(TRIM(${dailyActivityApprovals.approverEmail})) = ${employee.email.trim().toLowerCase()}` : undefined,
-        employee.name ? sql`LOWER(TRIM(${dailyActivityApprovals.approverName})) = ${employee.name.trim().toLowerCase()}` : undefined
-      )
-    )
-  const approverSessionIds = Array.from(new Set(approverSessionRows.map((r) => r.sessionId).filter((id): id is number => Boolean(id))))
-
-  const isAdmin = ['Super Admin', 'Site Admin', 'HC Manager', 'Admin'].includes(employee.accessRole || '')
-
-  const sessionWhereConditions = [
-    eq(dailyActivitySessions.employeeId, employee.id),
-    employee.name ? sql`${dailyActivitySessions.summaryRemark} ILIKE ${'%' + employee.name.trim() + '%'}` : undefined,
-  ]
-  if (approverSessionIds.length > 0) {
-    sessionWhereConditions.push(inArray(dailyActivitySessions.id, approverSessionIds))
+  const permission = await getMenuPermissionForRole(employee.accessRole || null, 'tire_service')
+  if (!permission.canView) {
+    return null
   }
+
+  const requestedScope = options.viewScope ?? 'own'
+  const canViewSite = permission.dataScope === 'site' || permission.dataScope === 'global'
+  const canViewGlobal = permission.dataScope === 'global'
+  const viewScope =
+    requestedScope === 'global' && canViewGlobal
+      ? 'global'
+      : requestedScope === 'site' && canViewSite && employee.siteId != null
+        ? 'site'
+        : 'own'
+  const viewSiteId =
+    viewScope === 'site'
+      ? employee.siteId
+      : viewScope === 'global' && options.siteId != null && Number.isInteger(options.siteId)
+        ? options.siteId
+        : null
+  const viewSectionId =
+    viewScope !== 'own' && options.sectionId != null && Number.isInteger(options.sectionId)
+      ? options.sectionId
+      : null
+  const activityEmployeeScope = [
+    viewScope === 'own'
+      ? eq(employees.id, employee.id)
+      : viewSiteId != null
+        ? eq(employees.siteId, viewSiteId)
+        : undefined,
+    viewSectionId != null ? eq(employees.sectionId, viewSectionId) : undefined,
+  ].filter(Boolean)
+  const activityScopePredicate = activityEmployeeScope.length > 0 ? and(...activityEmployeeScope) : sql`true`
 
   const [
     assignmentRows,
@@ -2419,17 +2386,11 @@ export async function getDailyActivityEmployeeData(
           libraryName: activityLibraries.activityName,
         })
         .from(activities)
+        .innerJoin(employees, eq(activities.employeeId, employees.id))
         .leftJoin(activityLibraries, eq(activities.libraryActivityId, activityLibraries.id))
-        .where(
-          and(
-            eq(activities.employeeId, employee.id),
-            or(
-              and(gte(activities.startTime, dayStart), lte(activities.startTime, dayEnd)),
-              and(gte(activities.submissionTime, dayStart), lte(activities.submissionTime, dayEnd))
-            )
-          )
-        )
-        .orderBy(desc(activities.startTime), desc(activities.id)),
+        .where(and(activityScopePredicate, isNull(activities.deletedAt)))
+        .orderBy(desc(activities.startTime), desc(activities.id))
+        .limit(100),
       db
         .select({
           id: dailyActivitySessions.id,
@@ -2446,11 +2407,7 @@ export async function getDailyActivityEmployeeData(
         })
         .from(dailyActivitySessions)
         .leftJoin(employees, eq(dailyActivitySessions.employeeId, employees.id))
-        .where(
-          isAdmin
-            ? undefined
-            : or(...sessionWhereConditions.filter(Boolean))
-        )
+        .where(and(activityScopePredicate, isNull(dailyActivitySessions.deletedAt)))
         .orderBy(desc(dailyActivitySessions.createdAt), desc(dailyActivitySessions.id))
         .limit(100),
       db
@@ -2572,6 +2529,7 @@ export async function getDailyActivityEmployeeData(
             stepLabel: dailyActivityApprovals.stepLabel,
             status: dailyActivityApprovals.status,
             approverName: dailyActivityApprovals.approverName,
+            approverRole: dailyActivityApprovals.approverRole,
             signedAt: dailyActivityApprovals.signedAt,
           })
           .from(dailyActivityApprovals)
@@ -2649,7 +2607,7 @@ export async function getDailyActivityEmployeeData(
       authorEmployeeId: s.employeeId,
       employeeName: s.employeeName || 'Karyawan',
       isAuthor: s.employeeId === employee.id,
-      isApprover: approverSessionIds.includes(s.id),
+      isApprover: false,
       isTeamMember: Boolean(s.summaryRemark && employee.name && s.summaryRemark.toLowerCase().includes(employee.name.toLowerCase().trim())),
     }
   })
@@ -2758,6 +2716,11 @@ export async function getDailyActivityEmployeeData(
   return {
     employee,
     site,
+    viewScope,
+    viewSiteId,
+    viewSectionId,
+    canViewSite,
+    canViewGlobal,
     availableRouteFolders,
     summary: {
       shift: getShiftLabel(),

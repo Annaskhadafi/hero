@@ -11,30 +11,37 @@ export const activityMenuLabels = {
 export const activityHubTabs = [
   {
     label: activityMenuLabels.dashboard,
+    compactLabel: "Ringkasan",
     href: "/dashboard/daily-activity",
   },
   {
     label: activityMenuLabels.input,
+    compactLabel: "Saya",
     href: "/dashboard/activity-hub/my-day",
   },
   {
     label: activityMenuLabels.teamBoard,
+    compactLabel: "Tim",
     href: "/dashboard/activity-hub/team-board",
   },
   {
     label: activityMenuLabels.library,
+    compactLabel: "Kamus",
     href: "/dashboard/activity-hub/library",
   },
   {
     label: activityMenuLabels.routes,
+    compactLabel: "Route",
     href: "/dashboard/activity-hub/routes",
   },
   {
     label: activityMenuLabels.approval,
+    compactLabel: "Approval",
     href: "/dashboard/activity-hub/approval",
   },
   {
     label: activityMenuLabels.configuration,
+    compactLabel: "Rule",
     href: "/dashboard/activity-hub/configuration",
   },
 ] as const;

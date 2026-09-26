@@ -18,7 +18,7 @@ import {
   timesheetSchedulingPlans,
   timesheetFieldBreakPlans,
 } from '@/db/schema/timesheet'
-import { and, desc, eq, inArray, like, or, sql, ilike } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, like, or, sql, ilike } from 'drizzle-orm'
 
 export interface DailyActivityFilterParams {
   siteId?: string
@@ -81,6 +81,7 @@ export interface EmployeeSessionMeta {
 export interface EmployeeActivityRow {
   sessionId?: number
   employeeDbId?: number
+  rawWorkDate?: string
   employeeId: string
   name: string
   jobTitle: string
@@ -157,6 +158,7 @@ export interface DailyActivitySiteItem {
 export interface DailyActivityDashboardData {
   sitesList: DailyActivitySiteItem[]
   departmentsList: Array<{ id: number; name: string }>
+  sectionsList: Array<{ id: number; name: string; departmentId?: number | null }>
   currentSite: DailyActivitySiteItem
   currentDate: string
   startDate?: string
@@ -295,8 +297,8 @@ function formatDateDisplay(date?: Date | string | null): string {
 export async function getDailyActivityDashboardData(
   params: DailyActivityFilterParams = {}
 ): Promise<DailyActivityDashboardData> {
-  // 1. Fetch available sites & departments with PJO / Site Head details
-  const [allSites, allDepartments] = await Promise.all([
+  // 1. Fetch available sites, departments, and sections with PJO / Site Head details
+  const [allSites, allDepartments, allSections] = await Promise.all([
     db
       .select({
         id: sites.id,
@@ -315,7 +317,17 @@ export async function getDailyActivityDashboardData(
         name: masterDepartments.name,
       })
       .from(masterDepartments)
+      .where(eq(masterDepartments.isActive, true))
       .orderBy(masterDepartments.name),
+    db
+      .select({
+        id: masterSections.id,
+        name: masterSections.name,
+        departmentId: masterSections.departmentId,
+      })
+      .from(masterSections)
+      .where(eq(masterSections.isActive, true))
+      .orderBy(masterSections.name),
   ])
 
   // Select active site
@@ -409,6 +421,7 @@ export async function getDailyActivityDashboardData(
   }
 
   // Fetch real sessions
+  sessionConditions.push(isNull(dailyActivitySessions.deletedAt))
   const rawSessions = await db
     .select({
       id: dailyActivitySessions.id,
@@ -425,6 +438,8 @@ export async function getDailyActivityDashboardData(
       employeeSn: employees.employeeSn,
       employeeName: employees.name,
       jobTitle: employees.jobTitle,
+      empDept: employees.department,
+      empSection: employees.section,
       deptName: masterDepartments.name,
       sectionName: masterSections.name,
       siteId: sites.id,
@@ -460,6 +475,8 @@ export async function getDailyActivityDashboardData(
         employeeSn: employees.employeeSn,
         employeeName: employees.name,
         jobTitle: employees.jobTitle,
+        empDept: employees.department,
+        empSection: employees.section,
         deptName: masterDepartments.name,
         sectionName: masterSections.name,
         siteId: sites.id,
@@ -471,6 +488,7 @@ export async function getDailyActivityDashboardData(
       .leftJoin(sites, eq(dailyActivitySessions.siteId, sites.id))
       .leftJoin(masterDepartments, eq(dailyActivitySessions.departmentId, masterDepartments.id))
       .leftJoin(masterSections, eq(dailyActivitySessions.sectionId, masterSections.id))
+      .where(isNull(dailyActivitySessions.deletedAt))
       .orderBy(desc(dailyActivitySessions.workDate), desc(dailyActivitySessions.id))
       .limit(50)
   }
@@ -519,7 +537,7 @@ export async function getDailyActivityDashboardData(
           pointsAwarded: activities.pointsAwarded,
         })
         .from(activities)
-        .where(inArray(activities.employeeId, employeeIds))
+        .where(and(inArray(activities.employeeId, employeeIds), isNull(activities.deletedAt)))
     : []
 
   const rawActIds = rawActivities.map((a) => a.id)
@@ -904,11 +922,12 @@ export async function getDailyActivityDashboardData(
     employeesList.push({
       sessionId: firstSession.id,
       employeeDbId: firstSession.employeeId,
+      rawWorkDate: firstSession.workDate ? new Date(firstSession.workDate).toISOString() : undefined,
       employeeId: firstSession.employeeSn || `EMP-${firstSession.employeeId}`,
       name: firstSession.employeeName,
       jobTitle: firstSession.jobTitle || 'Technician',
-      department: firstSession.deptName || 'Tyre Service',
-      section: firstSession.sectionName || undefined,
+      department: firstSession.deptName || firstSession.empDept || 'Tyre Service',
+      section: firstSession.sectionName || firstSession.empSection || undefined,
       siteId: firstSession.siteId ?? undefined,
       siteName: firstSession.siteName ?? undefined,
       customerName: firstSession.customerName ?? undefined,
@@ -1338,6 +1357,7 @@ export async function getDailyActivityDashboardData(
   return {
     sitesList,
     departmentsList: allDepartments,
+    sectionsList: allSections,
     currentSite,
     currentDate: latestSessionDate,
     startDate: effectiveStartDate || undefined,

@@ -184,25 +184,15 @@ export async function getMenuPermissionForRole(
   roleName: string | null,
   resource: string
 ): Promise<HeroMenuPermission> {
-  if (resource === 'tire_service') {
-    return {
-      roleName: roleName || 'User',
-      canView: true,
-      canEdit: true,
-      canDelete: false,
-      canSelectAll: false,
-      dataScope: 'global',
-    }
-  }
-
   if (resource === 'daily_activity') {
     // Khusus untuk PJO, Head Section, Head Department, keatas
     const isLeadership = isLeadershipOrManagerialRole(roleName)
+    const isSuperAdmin = isSuperAdminRole(roleName)
     return {
       roleName: roleName || 'User',
       canView: isLeadership,
       canEdit: isLeadership,
-      canDelete: false,
+      canDelete: isSuperAdmin,
       canSelectAll: isLeadership,
       dataScope: 'global' as const,
     }
@@ -291,7 +281,7 @@ export async function getCurrentMenuPermission(resource: string): Promise<HeroMe
       roleName: roleName || 'User',
       canView: canAccess,
       canEdit: canAccess,
-      canDelete: false,
+      canDelete: canAccess && isSuperAdminRole(roleName),
       canSelectAll: canAccess,
       dataScope: 'global' as const,
     }

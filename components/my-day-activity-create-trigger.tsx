@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { hcPrimaryActionClassName } from '@/components/hc/hc-workspace-banner'
+import { cn } from '@/lib/utils'
 import {
   DailyActivityCreateModal,
   type ModalEmployee,
@@ -20,6 +20,11 @@ interface MyDayActivityCreateTriggerProps {
   sectionHeadMap?: Record<string, number | null>
   deptHeadMap?: Record<string, number | null>
   currentEmployeeId?: number
+  className?: string
+  label?: string
+  size?: 'default' | 'sm' | 'lg' | 'icon'
+  variant?: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link'
+  children?: React.ReactNode
 }
 
 export function MyDayActivityCreateTrigger({
@@ -30,14 +35,31 @@ export function MyDayActivityCreateTrigger({
   sectionHeadMap,
   deptHeadMap,
   currentEmployeeId,
+  className,
+  label = 'Tambah Aktivitas',
+  size = 'default',
+  variant = 'default',
+  children,
 }: MyDayActivityCreateTriggerProps) {
   const [open, setOpen] = useState(false)
 
   return (
     <>
-      <Button onClick={() => setOpen(true)} className={hcPrimaryActionClassName}>
-        <Plus className="size-4 mr-1.5" />
-        TAMBAH AKTIVITAS
+      <Button
+        onClick={() => setOpen(true)}
+        size={size}
+        variant={variant}
+        className={cn(
+          'inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 font-semibold text-white shadow-sm shadow-blue-500/25 transition-all duration-150 hover:bg-blue-700 active:scale-[0.98] active:bg-blue-800 disabled:opacity-50',
+          className
+        )}
+      >
+        {children ?? (
+          <>
+            <Plus className="size-4 shrink-0" />
+            <span>{label}</span>
+          </>
+        )}
       </Button>
 
       <DailyActivityCreateModal
