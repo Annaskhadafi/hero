@@ -5,6 +5,7 @@ import { db } from '@/db'
 import { heroSafetyInductions } from '@/db/schema/safety-induction'
 import { eq, inArray } from 'drizzle-orm'
 import { getS3ObjectReadUrl, isS3UploadConfigured, uploadAnyFileToS3 } from '@/lib/s3-storage'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 import { buildHseSafetyEmail, sendHseSafetyEmail } from '@/lib/hse-safety-email'
 import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
@@ -21,7 +22,7 @@ async function uploadSignatureBuffer(
       // ponytail: bound this guest upload; tune the limit if storage latency warrants it.
       const result = await uploadAnyFileToS3(file, undefined, AbortSignal.timeout(20_000))
       if (result?.url) {
-        return { success: true, url: result.url }
+        return { success: true, url: resolveUploadUrl(result.url || result.key) }
       }
     } catch (s3Err) {
       console.warn('[Safety Induction] S3 signature upload failed or timed out, falling back to local storage:', s3Err)

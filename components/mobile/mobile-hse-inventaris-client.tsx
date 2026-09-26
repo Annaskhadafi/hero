@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { SpeechTextarea as Textarea } from "@/components/ui/speech-textarea"
 import { cn } from '@/lib/utils'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 
 type HseInventory = { id: number; documentId: string; name: string; category: string; qty: number; location: string; condition: string; notes: string; picName: string; photoUrl: string; verifiedStatus: string; verifiedAt: Date | string; purchaseDate: Date | string | null; validityMonths: number | null; expirationDate: Date | string | null; reminderDaysBefore: number; reminderEmailRecipients: string; lastReminderSentAt: Date | string | null; createdAt: Date | string; updatedAt: Date | string }
 type Access = { canView: boolean; canEdit: boolean; canDelete: boolean; canSelectAll?: boolean }
@@ -271,7 +272,7 @@ export function MobileHseInventarisClient({ data, access, userEmails: initialEma
                   {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}{fphoto ? 'Ganti' : 'Upload'}
                   <input type="file" accept="image/*" onChange={handleUpload} className="hidden" disabled={uploading} />
                 </label>
-                {fphoto && <div className="size-11 overflow-hidden rounded-lg border bg-white"><img src={fphoto} alt="" className="size-full object-cover" /></div>}
+                {fphoto && <div className="size-11 overflow-hidden rounded-lg border bg-white"><img src={resolveUploadUrl(fphoto)} alt="" className="size-full object-cover" /></div>}
               </div>
             </label>
           </div>
@@ -303,7 +304,7 @@ export function MobileHseInventarisClient({ data, access, userEmails: initialEma
           </div>
           {detailItem.notes && <ReportBlock title="Catatan" value={detailItem.notes} />}
           {detailItem.reminderEmailRecipients && <div className="rounded-lg bg-gray-50 p-3"><p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Penerima Email</p><div className="mt-1 flex flex-wrap gap-1">{detailItem.reminderEmailRecipients.split(',').map((e) => <span key={e} className="rounded-md bg-white px-2 py-0.5 text-[10px] text-gray-700">{e.trim()}</span>)}</div></div>}
-          {detailItem.photoUrl && <div><p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Foto</p><a href={detailItem.photoUrl} target="_blank" rel="noreferrer"><img src={detailItem.photoUrl} alt={detailItem.name} className="mt-1 w-full max-h-64 rounded-lg border object-contain bg-white" /></a></div>}
+          {detailItem.photoUrl && <div><p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Foto</p><a href={resolveUploadUrl(detailItem.photoUrl)} target="_blank" rel="noreferrer"><img src={resolveUploadUrl(detailItem.photoUrl)} alt={detailItem.name} className="mt-1 w-full max-h-64 rounded-lg border object-contain bg-white" /></a></div>}
           <div className="grid grid-cols-2 gap-2">{access.canEdit && <Button variant="outline" type="button" className="h-11 rounded-xl" onClick={() => { setDetailOpen(false); openEdit(detailItem) }}><Pencil className="mr-2 size-4" />Edit</Button>}</div>
         </section>
       )}

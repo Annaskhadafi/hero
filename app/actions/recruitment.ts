@@ -1944,7 +1944,10 @@ export async function getCandidateEmailLogs(candidateId: number) {
 export async function getCvDownloadUrl(cvUrl: string | null) {
   if (!cvUrl) return null;
   const { getS3ObjectReadUrl } = await import("@/lib/s3-storage");
-  return getS3ObjectReadUrl(cvUrl, 3600);
+  const { resolveUploadUrl } = await import("@/lib/resolve-upload-url");
+  const resolved = resolveUploadUrl(cvUrl);
+  if (resolved && resolved.startsWith("/api/uploads/")) return resolved;
+  return (await getS3ObjectReadUrl(cvUrl, 3600)) || resolved;
 }
 
 // ─── AI Assessment ────────────────────────────────────────────────────────

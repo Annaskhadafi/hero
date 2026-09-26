@@ -44,6 +44,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { SpeechTextarea as Textarea } from "@/components/ui/speech-textarea"
 import { cn } from '@/lib/utils'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 
 type ChecklistAccess = {
   canView: boolean
@@ -811,7 +812,7 @@ export function MobileHseChecklistClient({
                     <div className="flex flex-wrap gap-2">
                       {answer.attachments.map((url, attachmentIndex) => (
                         <div key={`${url}-${attachmentIndex}`} className="relative size-16 overflow-hidden rounded-lg bg-white">
-                          <img src={url} alt="Lampiran checklist" className="h-full w-full object-cover" />
+                          <img src={resolveUploadUrl(url)} alt="Lampiran checklist" className="h-full w-full object-cover" />
                           {canAnswer ? (
                             <button
                               type="button"

@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { randomUUID } from 'crypto'
 import { db } from '@/db'
 import { getPublicAppUrl } from '@/lib/auth-config'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 import {
   sendDailyActivityStepApprovalEmail,
   sendDailyActivityCompletedEmail,
@@ -4624,10 +4625,7 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
       const str = typeof u === 'string' ? u : u?.url || u?.dataUrl || ''
       if (!str || typeof str !== 'string') return ''
       const trimmed = str.trim()
-      if (trimmed.includes('is3.cloudhost.id') && (trimmed.includes('X-Amz-') || trimmed.includes('?'))) {
-        return trimmed.split('?')[0]
-      }
-      return trimmed
+      return resolveUploadUrl(trimmed)
     }
 
     const rawExtractedUrls: string[] = []
@@ -5873,10 +5871,7 @@ export async function saveDailyActivityApprovalForm(payload: {
           const str = typeof u === 'string' ? u : u?.url || u?.dataUrl || ''
           if (!str || typeof str !== 'string') return ''
           const trimmed = str.trim()
-          if (trimmed.includes('is3.cloudhost.id') && (trimmed.includes('X-Amz-') || trimmed.includes('?'))) {
-            return trimmed.split('?')[0]
-          }
-          return trimmed
+          return resolveUploadUrl(trimmed)
         }
 
         const rawExtracted: string[] = []

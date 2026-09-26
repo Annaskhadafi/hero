@@ -117,8 +117,7 @@ export async function uploadFile(formData: FormData) {
             ? await uploadAttendancePhotoToS3(file)
             : await uploadAnyFileToS3(file);
         const proxyUrl = `/api/uploads/${result.key}`;
-        const readableUrl = (await getS3ObjectReadUrl(result.url)) || proxyUrl;
-        return { success: true, url: proxyUrl, readableUrl };
+        return { success: true, url: proxyUrl, readableUrl: proxyUrl };
       } catch (s3Error) {
         console.warn("S3 Upload failed, falling back to local storage:", s3Error);
       }
@@ -178,9 +177,9 @@ export async function uploadImageFromUrl(imageUrl: string) {
     const file = new File([blob], fileName, { type: blob.type });
 
     const result = await uploadAnyFileToS3(file);
-    const readableUrl = await getS3ObjectReadUrl(result.url);
+    const proxyUrl = `/api/uploads/${result.key}`;
     
-    return { success: true, url: result.url, readableUrl };
+    return { success: true, url: proxyUrl, readableUrl: proxyUrl };
   } catch (error) {
     console.error("Upload from URL error:", error);
     return { success: false, error: "Failed to fetch or upload image from URL." };
@@ -244,8 +243,8 @@ export async function uploadCurhatAttachment(formData: FormData) {
 
     if (isS3UploadConfigured()) {
       const result = await uploadAnyFileToS3(file, "curhat-attachments");
-      const readableUrl = await getS3ObjectReadUrl(result.url);
-      return { success: true, url: result.url, readableUrl, fileName: file.name };
+      const proxyUrl = `/api/uploads/${result.key}`;
+      return { success: true, url: proxyUrl, readableUrl: proxyUrl, fileName: file.name };
     }
 
     // Local fallback storage when S3 is not configured

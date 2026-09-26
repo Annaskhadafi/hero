@@ -19,6 +19,7 @@ import {
   timesheetFieldBreakPlans,
 } from '@/db/schema/timesheet'
 import { and, desc, eq, inArray, isNull, like, or, sql, ilike } from 'drizzle-orm'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 
 export interface DailyActivityFilterParams {
   siteId?: string
@@ -189,11 +190,13 @@ function extractPhotosFromPayload(payloadStr?: string | null): { photoUrl: strin
     const addClean = (val: any) => {
       if (!val) return
       if (typeof val === 'string' && val.trim().length > 0) {
-        list.push(val.trim())
+        const resolved = resolveUploadUrl(val.trim())
+        if (resolved) list.push(resolved)
       } else if (val && typeof val === 'object') {
         const u = val.url || val.fileUrl || val.preview || val.dataUrl
         if (typeof u === 'string' && u.trim().length > 0) {
-          list.push(u.trim())
+          const resolved = resolveUploadUrl(u.trim())
+          if (resolved) list.push(resolved)
         }
       }
     }

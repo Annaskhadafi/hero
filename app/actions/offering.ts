@@ -8,6 +8,7 @@ import { getEmailSmtpSettingsData } from "@/lib/hero-admin";
 import { sendEmailViaSmtp } from "@/lib/email-delivery";
 import { format } from "date-fns";
 import { uploadBufferToS3 } from "@/lib/s3-storage";
+import { resolveUploadUrl } from "@/lib/resolve-upload-url";
 import { generateOfferingLetterPdf } from "@/lib/offering-letter-pdf";
 import { getNextLetterNumber } from "@/app/actions/surat";
 import { getHumanCapitalPolicyCcRecipients } from "@/lib/human-capital-email";
@@ -155,7 +156,7 @@ export async function sendOfferingEmail(candidateId: number) {
       `offering-letters/${candidate.id}-${Date.now()}.pdf`,
       "application/pdf"
     );
-    pdfUrl = s3Result.url;
+    pdfUrl = resolveUploadUrl(s3Result.url || s3Result.key);
   } catch (pdfErr) {
     console.error("Failed to generate or upload offering PDF:", pdfErr);
   }

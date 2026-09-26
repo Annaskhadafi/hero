@@ -13,6 +13,7 @@ import { getHumanCapitalPolicyCcRecipients } from "@/lib/human-capital-email";
 import { resolveWorkflowTemplateContent } from "@/lib/workflow-email";
 import { generateMcuReferralPdf } from "@/lib/mcu-referral-pdf";
 import { uploadBufferToS3 } from "@/lib/s3-storage";
+import { resolveUploadUrl } from "@/lib/resolve-upload-url";
 import { getPublicAppUrl } from "@/lib/auth-config";
 
 const MCU_CLINIC_FALLBACK_HTML = (vars: Record<string, string>) => `
@@ -186,7 +187,7 @@ export async function scheduleCandidateMcu(candidateId: number, data: {
           `mcu-referral-letters/${candidate.id}-${Date.now()}.pdf`,
           "application/pdf"
         );
-        pdfUrl = s3Result.url;
+        pdfUrl = resolveUploadUrl(s3Result.url || s3Result.key);
       } catch (pdfErr) {
         console.error("Failed to generate or upload MCU PDF:", pdfErr);
       }
@@ -461,7 +462,7 @@ export async function bulkScheduleMcus(candidateIds: number[], data: {
             `mcu-referral-letters/${candidate.id}-${Date.now()}.pdf`,
             "application/pdf"
           );
-          pdfUrl = s3Result.url;
+          pdfUrl = resolveUploadUrl(s3Result.url || s3Result.key);
         } catch (pdfErr) {
           console.error("Failed to generate or upload MCU PDF:", pdfErr);
         }
@@ -642,7 +643,7 @@ export async function uploadMcuResultFile(candidateMcuId: number, base64File: st
   const buffer = Buffer.from(base64File.split(",")[1] ?? base64File, "base64");
   const key = `mcu-results/${candidateMcuId}-${Date.now()}-${fileName}`;
   const result = await uploadBufferToS3(buffer, key, "application/pdf");
-  return result.url;
+  return resolveUploadUrl(result.url || result.key);
 }
 
 export async function getAllScheduledMcus() {

@@ -37,6 +37,7 @@ import { downloadElementAsPdf } from '@/lib/pdf-download'
 import { MobileSignatureSection } from '@/components/mobile/mobile-signature-section'
 import { DailyActivityEvidenceModal } from '@/components/daily-activity-evidence-modal'
 import { cn } from '@/lib/utils'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -510,10 +511,7 @@ function normalizeSearch(value: string) {
 function cleanPhotoUrl(url: string): string {
   if (!url || typeof url !== 'string') return ''
   const trimmed = url.trim()
-  if (trimmed.includes('is3.cloudhost.id') && (trimmed.includes('X-Amz-') || trimmed.includes('?'))) {
-    return trimmed.split('?')[0]
-  }
-  return trimmed
+  return resolveUploadUrl(trimmed)
 }
 
 function extractItemPhotos(item: any): string[] {

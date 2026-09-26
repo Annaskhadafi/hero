@@ -5,7 +5,8 @@ import { PDFDocument, StandardFonts, rgb, type PDFPage, type PDFFont } from "pdf
 import QRCode from "qrcode";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivitySessionDocumentData } from "@/lib/daily-activity-documents";
-import { getS3ObjectReadUrl } from "@/lib/s3-storage";
+import { getS3ObjectReadUrl, getS3ObjectForProxy } from "@/lib/s3-storage";
+import { getAppBaseUrl } from "@/lib/resolve-upload-url";
 
 const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
@@ -1144,27 +1145,34 @@ async function loadPdfImage(pdfDoc: PDFDocument, imageUrl: string) {
       }
       bytes = u8;
     } else {
-      let targetFetchUrl = imageUrl;
-      if (!imageUrl.startsWith("http://") && !imageUrl.startsWith("https://")) {
-        const s3ReadUrl = await getS3ObjectReadUrl(imageUrl).catch(() => null);
-        if (s3ReadUrl) {
-          targetFetchUrl = s3ReadUrl;
-        } else if (imageUrl.startsWith("/")) {
-          const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-          targetFetchUrl = `${appUrl}${imageUrl}`;
-        }
+      // 1. Direct S3 buffer lookup via getS3ObjectForProxy
+      const s3Obj = await getS3ObjectForProxy(imageUrl).catch(() => null);
+      if (s3Obj?.body) {
+        bytes = s3Obj.body;
+        isPng = s3Obj.contentType?.includes("png") || false;
       } else {
-        const s3ReadUrl = await getS3ObjectReadUrl(imageUrl).catch(() => null);
-        if (s3ReadUrl) targetFetchUrl = s3ReadUrl;
-      }
+        let targetFetchUrl = imageUrl;
+        if (!imageUrl.startsWith("http://") && !imageUrl.startsWith("https://")) {
+          const s3ReadUrl = await getS3ObjectReadUrl(imageUrl).catch(() => null);
+          if (s3ReadUrl) {
+            targetFetchUrl = s3ReadUrl;
+          } else if (imageUrl.startsWith("/")) {
+            const appUrl = getAppBaseUrl();
+            targetFetchUrl = `${appUrl}${imageUrl}`;
+          }
+        } else {
+          const s3ReadUrl = await getS3ObjectReadUrl(imageUrl).catch(() => null);
+          if (s3ReadUrl) targetFetchUrl = s3ReadUrl;
+        }
 
-      const response = await fetch(targetFetchUrl);
-      if (!response.ok) return null;
-      bytes = await response.arrayBuffer();
-      const contentType = response.headers.get("content-type") || "";
-      isPng =
-        contentType.includes("png") ||
-        (!imageUrl.endsWith(".jpg") && !imageUrl.endsWith(".jpeg") && imageUrl.endsWith(".png"));
+        const response = await fetch(targetFetchUrl);
+        if (!response.ok) return null;
+        bytes = await response.arrayBuffer();
+        const contentType = response.headers.get("content-type") || "";
+        isPng =
+          contentType.includes("png") ||
+          (!imageUrl.endsWith(".jpg") && !imageUrl.endsWith(".jpeg") && imageUrl.endsWith(".png"));
+      }
     }
 
     if (!bytes) return null;

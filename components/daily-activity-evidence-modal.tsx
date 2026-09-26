@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 
 type EvidenceItem = {
   id: number
@@ -200,7 +201,8 @@ export function DailyActivityEvidenceModal({
 
       const fetchImageBlob = async (url: string) => {
         try {
-          const res = await fetch(url)
+          const resolved = resolveUploadUrl(url)
+          const res = await fetch(resolved)
           if (!res.ok) return null
           return await res.blob()
         } catch {
@@ -465,7 +467,7 @@ export function DailyActivityEvidenceModal({
                         onClick={() => {
                           if (item.photoUrl) {
                             setSelectedImage({
-                              url: item.photoUrl,
+                              url: resolveUploadUrl(item.photoUrl),
                               label: item.snapshotLabel,
                               detail: [
                                 item.unitNumber ? `Unit: ${item.unitNumber}` : null,
@@ -479,7 +481,7 @@ export function DailyActivityEvidenceModal({
                         {item.photoUrl ? (
                           <>
                             <img
-                              src={item.photoUrl}
+                              src={resolveUploadUrl(item.photoUrl)}
                               alt={item.snapshotLabel}
                               className="h-full w-full object-contain group-hover:scale-105 transition-transform duration-300"
                               loading="lazy"
@@ -545,7 +547,7 @@ export function DailyActivityEvidenceModal({
 
             <div className="flex-1 max-h-[68vh] min-h-[220px] bg-slate-950 flex items-center justify-center p-2 overflow-hidden">
               <img
-                src={selectedImage.url}
+                src={resolveUploadUrl(selectedImage.url)}
                 alt={selectedImage.label}
                 className="max-h-[65vh] max-w-full object-contain rounded shadow-lg"
               />

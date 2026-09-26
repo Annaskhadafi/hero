@@ -1,5 +1,6 @@
 import { getServerSession } from '@/lib/auth-session'
 import { isS3UploadConfigured, uploadAnyFileToS3 } from '@/lib/s3-storage'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
@@ -30,7 +31,10 @@ export async function POST(request: Request) {
       try {
         const s3Result = await uploadAnyFileToS3(file, 'activity-photos')
         if (s3Result.url) {
-          return Response.json(s3Result)
+          return Response.json({
+            ...s3Result,
+            url: resolveUploadUrl(s3Result.url || s3Result.key),
+          })
         }
       } catch (s3Err) {
         console.warn('[activity-presign] S3 upload failed, falling back to local storage:', s3Err)
@@ -48,7 +52,7 @@ export async function POST(request: Request) {
     await writeFile(join(uploadDir, fileName), buffer)
 
     return Response.json({
-      url: relativePath,
+      url: resolveUploadUrl(relativePath),
       key: `activity-photos/${fileName}`,
       fileName: file.name,
       fileType: file.type,

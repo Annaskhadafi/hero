@@ -9,6 +9,7 @@ import {
   overtimeCommandLetters,
   sites,
 } from '@/db/schema/hero'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 
 function minutesBetween(start?: Date | null, end?: Date | null) {
   if (!start || !end || end <= start) {
@@ -190,7 +191,7 @@ export async function getDailyActivitySessionDocumentData(
         const str = typeof u === 'string' ? u : u?.url || u?.dataUrl || u?.preview || ''
         if (!str || typeof str !== 'string') return null
         const trimmed = str.trim()
-        return trimmed.length > 0 ? trimmed : null
+        return trimmed.length > 0 ? resolveUploadUrl(trimmed) : null
       }
 
       const photoUrl =
@@ -394,7 +395,7 @@ export async function getPublicDailyActivityEvidenceData(sessionId: number) {
       const str = typeof u === 'string' ? u : u?.url || u?.dataUrl || u?.preview || ''
       if (!str || typeof str !== 'string') return null
       const trimmed = str.trim()
-      return trimmed.length > 0 ? trimmed : null
+      return trimmed.length > 0 ? resolveUploadUrl(trimmed) : null
     }
 
     const photoUrl =

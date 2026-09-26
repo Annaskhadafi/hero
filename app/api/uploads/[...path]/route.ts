@@ -12,15 +12,25 @@ const ALLOWED_UPLOAD_PREFIXES = new Set([
   "attendance-photos",
   "activity-photos",
   "curhat",
+  "curhat-attachments",
   "profile-photos",
   "upload",
   "uploads",
   "mcu-wellness-results",
+  "mcu-referral-letters",
+  "mcu-results",
+  "offering-letters",
   "lms-materials",
   "lms-covers",
   "chitralearning",
   "sop-win-requests",
   "sop-win",
+  "emergency-reports",
+  "safety",
+  "face-attendance",
+  "face-attendance-v2",
+  "contract-review-attachment",
+  "public-career-cv",
 ])
 
 function getContentType(fileName: string) {
@@ -69,6 +79,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
   const isPublicPrefix =
     path[0] === "upload" ||
     path[0] === "uploads" ||
+    path[0] === "activity-photos" ||
+    path[0] === "profile-photos" ||
+    path[0] === "emergency-reports" ||
+    path[0] === "safety" ||
+    path[0] === "face-attendance-v2" ||
+    path[0] === "sop-win" ||
     path[0] === "lms-covers" ||
     path[0] === "chitralearning"
 
@@ -119,7 +135,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
       fileName,
       `upload/${fileName}`,
       `uploads/${fileName}`,
+      `activity-photos/${fileName}`,
+      `attendance-photos/${fileName}`,
+      `emergency-reports/${fileName}`,
+      `safety/${fileName}`,
       `sop-win-requests/${fileName}`,
+      `sop-win/${fileName}`,
+      `mcu-referral-letters/${fileName}`,
+      `mcu-results/${fileName}`,
+      `offering-letters/${fileName}`,
     ]
 
     for (const key of candidateS3Keys) {

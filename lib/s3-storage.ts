@@ -38,15 +38,39 @@ function decodeObjectKey(pathname: string) {
 
 function getObjectKeyFromUrl(objectUrl: string) {
   try {
-    const trimmed = objectUrl.trim();
-    const cleanPath = trimmed.replace(/^\/+/, "");
+    const trimmed = objectUrl.trim().split("?")[0].split("#")[0];
+    let cleanPath = trimmed.replace(/^\/+/, "");
+    if (cleanPath.startsWith("api/uploads/")) {
+      cleanPath = cleanPath.slice("api/uploads/".length);
+    } else if (cleanPath.startsWith("api/")) {
+      cleanPath = cleanPath.slice("api/".length);
+    }
+    if (cleanPath.startsWith("uploads/upload/")) {
+      cleanPath = cleanPath.slice("uploads/".length);
+    }
     if (
       cleanPath.startsWith("upload/") ||
+      cleanPath.startsWith("uploads/") ||
       cleanPath.startsWith("attendance-photos/") ||
       cleanPath.startsWith("activity-photos/") ||
       cleanPath.startsWith("profile-photos/") ||
       cleanPath.startsWith("curhat/") ||
-      cleanPath.startsWith("mcu-wellness-results/")
+      cleanPath.startsWith("curhat-attachments/") ||
+      cleanPath.startsWith("mcu-wellness-results/") ||
+      cleanPath.startsWith("mcu-referral-letters/") ||
+      cleanPath.startsWith("mcu-results/") ||
+      cleanPath.startsWith("offering-letters/") ||
+      cleanPath.startsWith("sop-win-requests/") ||
+      cleanPath.startsWith("sop-win/") ||
+      cleanPath.startsWith("lms-materials/") ||
+      cleanPath.startsWith("lms-covers/") ||
+      cleanPath.startsWith("chitralearning/") ||
+      cleanPath.startsWith("emergency-reports/") ||
+      cleanPath.startsWith("safety/") ||
+      cleanPath.startsWith("face-attendance/") ||
+      cleanPath.startsWith("face-attendance-v2/") ||
+      cleanPath.startsWith("contract-review-attachment/") ||
+      cleanPath.startsWith("public-career-cv/")
     ) {
       return cleanPath;
     }
@@ -92,7 +116,7 @@ function getObjectKeyFromUrl(objectUrl: string) {
     }
 
     const knownPrefixMatch = objectPath.match(
-      /(?:^|\/)((?:activity-photos|attendance-photos|profile-photos|upload|curhat|mcu-wellness-results)\/.+)$/,
+      /(?:^|\/)((?:activity-photos|attendance-photos|profile-photos|upload|uploads|curhat|curhat-attachments|mcu-wellness-results|mcu-referral-letters|mcu-results|offering-letters|sop-win-requests|sop-win|lms-materials|lms-covers|chitralearning|emergency-reports|safety|face-attendance|face-attendance-v2|contract-review-attachment|public-career-cv)\/.+)$/i,
     );
 
     if (knownPrefixMatch) {
@@ -174,20 +198,9 @@ function buildS3PublicUrl(key: string) {
     return `${trimTrailingSlashes(ensureLeadingProtocol(serverEnv.s3PublicBaseUrl))}/${encodedKey}`;
   }
 
-  if (serverEnv.s3Endpoint) {
-    const normalizedEndpoint = trimTrailingSlashes(
-      ensureLeadingProtocol(serverEnv.s3Endpoint),
-    );
-
-    if (serverEnv.s3ForcePathStyle) {
-      return `${normalizedEndpoint}/${serverEnv.s3BucketName}/${encodedKey}`;
-    }
-
-    const endpointUrl = new URL(normalizedEndpoint);
-    return `${endpointUrl.protocol}//${serverEnv.s3BucketName}.${endpointUrl.host}/${encodedKey}`;
-  }
-
-  return `https://${serverEnv.s3BucketName}.s3.${serverEnv.s3Region}.amazonaws.com/${encodedKey}`;
+  // When s3PublicBaseUrl is not set (private S3 bucket without public CDN),
+  // routing through internal proxy /api/uploads ensures persistent authenticated file serving.
+  return `/api/uploads/${encodedKey}`;
 }
 
 export async function uploadProfilePhotoToS3(file: File) {
@@ -371,8 +384,10 @@ export async function getS3ObjectForProxy(objectUrl: string | null) {
     new Set([
       primaryKey,
       decodeURIComponent(primaryKey),
-      primaryKey.replace(/^upload\//, ""),
-      `upload/${primaryKey.replace(/^upload\//, "")}`,
+      primaryKey.replace(/^uploads?\//, ""),
+      `upload/${primaryKey.replace(/^uploads?\//, "")}`,
+      `uploads/${primaryKey.replace(/^uploads?\//, "")}`,
+      primaryKey.replace(/^api\/uploads?\//, ""),
     ])
   );
 

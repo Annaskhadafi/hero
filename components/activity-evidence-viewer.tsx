@@ -19,6 +19,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { toast } from 'sonner'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 
 type EvidenceItem = {
   id: number
@@ -269,14 +270,14 @@ export function ActivityEvidenceViewer({ data }: { data: EvidenceData }) {
                   className="relative aspect-4/3 w-full bg-slate-900 cursor-pointer overflow-hidden"
                   onClick={() =>
                     setSelectedImage({
-                      url: item.photoUrl!,
+                      url: resolveUploadUrl(item.photoUrl!),
                       label: item.snapshotLabel,
                       detail: `${item.startLabel} - ${item.endLabel} • ${item.unitNumber || 'No Unit'} ${item.remark ? `• ${item.remark}` : ''}`,
                     })
                   }
                 >
                   <img
-                    src={item.photoUrl!}
+                    src={resolveUploadUrl(item.photoUrl!)}
                     alt={item.snapshotLabel}
                     className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                     loading="lazy"
@@ -340,7 +341,7 @@ export function ActivityEvidenceViewer({ data }: { data: EvidenceData }) {
                     className="w-full text-xs text-slate-600 hover:text-slate-900 h-8 rounded-xl justify-center gap-1.5"
                     onClick={() =>
                       setSelectedImage({
-                        url: item.photoUrl!,
+                        url: resolveUploadUrl(item.photoUrl!),
                         label: item.snapshotLabel,
                         detail: `${item.startLabel} - ${item.endLabel} • ${item.unitNumber || 'No Unit'} ${item.remark ? `• ${item.remark}` : ''}`,
                       })
@@ -463,7 +464,7 @@ export function ActivityEvidenceViewer({ data }: { data: EvidenceData }) {
             onClick={(e) => e.stopPropagation()}
           >
             <img
-              src={selectedImage.url}
+              src={resolveUploadUrl(selectedImage.url)}
               alt={selectedImage.label}
               className="max-h-[75vh] w-auto max-w-full rounded-xl object-contain shadow-2xl border border-white/10"
             />

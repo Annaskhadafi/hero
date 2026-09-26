@@ -1,4 +1,5 @@
 import { AdminStatusBadge } from '@/components/admin-status-badge'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 import type { getApprovalCenterData } from '@/lib/approval-workspace'
 
 type ApprovalInboxItem = Awaited<
@@ -274,22 +275,25 @@ export function ApprovalRequestDetails({ item }: { item: ApprovalInboxItem }) {
         </div>
         {evidencePhotoUrls.length > 0 ? (
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {evidencePhotoUrls.map((url, index) => (
-              <a
-                key={url}
-                href={url}
-                target="_blank"
-                rel="noreferrer"
-                className="overflow-hidden rounded-xl bg-[#eef6fb] transition-transform active:scale-[0.98]"
-              >
-                <img
-                  src={url}
-                  alt={`Evidence ${index + 1}`}
-                  className="aspect-[4/3] w-full object-cover"
-                  loading="lazy"
-                />
-              </a>
-            ))}
+            {evidencePhotoUrls.map((url, index) => {
+              const resolvedUrl = resolveUploadUrl(url)
+              return (
+                <a
+                  key={url}
+                  href={resolvedUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="overflow-hidden rounded-xl bg-[#eef6fb] transition-transform active:scale-[0.98]"
+                >
+                  <img
+                    src={resolvedUrl}
+                    alt={`Evidence ${index + 1}`}
+                    className="aspect-[4/3] w-full object-cover"
+                    loading="lazy"
+                  />
+                </a>
+              )
+            })}
           </div>
         ) : (
           <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-amber-50 px-3 py-2.5 text-sm">

@@ -71,6 +71,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { EnterpriseFormGrid } from '@/components/ui/enterprise-table-kit'
 import { useSidebar } from '@/components/ui/sidebar'
 import { cn } from '@/lib/utils'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 import type { RouteFolder } from '@/lib/daily-activity'
 
 type ModalPreset = {
@@ -2168,8 +2169,8 @@ export function DailyActivityApprovalForm({
                             <div className="flex flex-wrap items-center gap-2">
                               {itemPhotoUrl ? (
                                 <div className="flex items-center gap-3 w-full bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
-                                  <a href={itemPhotoUrl} target="_blank" rel="noreferrer" className="shrink-0 group relative overflow-hidden rounded-md border border-slate-200">
-                                    <img src={itemPhotoUrl} alt="Evidence" className="size-12 object-cover rounded-md group-hover:scale-105 transition-transform" />
+                                  <a href={resolveUploadUrl(itemPhotoUrl)} target="_blank" rel="noreferrer" className="shrink-0 group relative overflow-hidden rounded-md border border-slate-200">
+                                    <img src={resolveUploadUrl(itemPhotoUrl)} alt="Evidence" className="size-12 object-cover rounded-md group-hover:scale-105 transition-transform" />
                                   </a>
                                   <div className="flex-1 min-w-0">
                                     <p className="text-xs font-bold text-slate-800 truncate">Foto Bukti Terlampir</p>

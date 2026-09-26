@@ -28,6 +28,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { resolveUploadUrl } from "@/lib/resolve-upload-url";
 
 interface AssetAttachment {
   id?: number;
@@ -159,16 +160,8 @@ function dueStatusInfo(dueDate: Date | string | null | undefined) {
 }
 
 function attachmentUrl(attachment: AssetAttachment) {
-  const cleanPath = (attachment.fileUrl || "").trim().split("?")[0];
-  if (cleanPath.startsWith("/api/uploads/")) return cleanPath;
-  const parts = cleanPath.split("/").filter(Boolean);
-  const prefixIndex = parts.findIndex((part) =>
-    ["upload", "attendance-photos", "curhat", "profile-photos"].includes(decodeURIComponent(part))
-  );
-  if (prefixIndex >= 0) {
-    return `/api/uploads/${parts.slice(prefixIndex).map((part) => encodeURIComponent(decodeURIComponent(part))).join("/")}`;
-  }
-  return attachment.previewUrl || attachment.fileUrl;
+  const resolved = resolveUploadUrl(attachment.fileUrl || attachment.previewUrl);
+  return resolved || attachment.previewUrl || attachment.fileUrl || "";
 }
 
 function isPdfAttachment(attachment: AssetAttachment) {

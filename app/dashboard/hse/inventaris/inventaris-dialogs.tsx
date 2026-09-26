@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select"
 import { uploadFile } from "@/app/actions/upload"
 import { createHseInventory, updateHseInventory, getHseUserEmails } from "@/app/actions/hse-inventaris"
+import { resolveUploadUrl } from "@/lib/resolve-upload-url"
 import { toast } from "sonner"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
@@ -546,7 +547,7 @@ export function HseInventoryFormDialog({
               {photoUrl && (
                 <div className="relative size-12 overflow-hidden rounded-md border bg-muted shadow-sm">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={photoUrl} alt="Preview" className="size-full object-cover" />
+                  <img src={resolveUploadUrl(photoUrl)} alt="Preview" className="size-full object-cover" />
                 </div>
               )}
             </div>
@@ -874,7 +875,7 @@ export function HseInventoryDetailDialog({
               </span>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={item.photoUrl}
+                src={resolveUploadUrl(item.photoUrl)}
                 alt="Bukti Aset"
                 className="photo-img rounded-lg border max-w-full max-h-[300px] object-contain mx-auto"
               />

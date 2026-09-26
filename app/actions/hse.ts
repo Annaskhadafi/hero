@@ -27,6 +27,7 @@ import type {
   QueuedFilePayload,
 } from "@/lib/offline-sync";
 import { uploadAnyFileToS3 } from "@/lib/s3-storage";
+import { resolveUploadUrl } from "@/lib/resolve-upload-url";
 
 async function getAuthenticatedEmployee() {
   await ensureHeroGovernanceSeedData();
@@ -394,7 +395,7 @@ export async function submitEmergencyIncidentFromPayload(payload: EmergencyIncid
   if (payload.photo) {
     const file = dataUrlToFile(payload.photo, `emergency-${Date.now()}.jpg`);
     const uploaded = await uploadAnyFileToS3(file, "emergency-reports");
-    photoUrl = uploaded.url;
+    photoUrl = resolveUploadUrl(uploaded.url || uploaded.key);
   }
 
   const [incident] = await db

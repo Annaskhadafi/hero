@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { ImageIcon, FileText, ExternalLink } from "lucide-react"
+import { resolveUploadUrl } from "@/lib/resolve-upload-url"
 
 export function EvidenceCell({ attachment }: { attachment: string }) {
   const [open, setOpen] = useState(false)
@@ -20,7 +21,8 @@ export function EvidenceCell({ attachment }: { attachment: string }) {
     )
   }
 
-  const isImage = /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(attachment)
+  const resolvedUrl = resolveUploadUrl(attachment)
+  const isImage = /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(resolvedUrl || attachment)
 
   return (
     <>
@@ -40,14 +42,14 @@ export function EvidenceCell({ attachment }: { attachment: string }) {
           <div className="px-5 pb-5">
             {isImage ? (
               <img
-                src={attachment}
+                src={resolvedUrl}
                 alt="Bukti izin"
                 className="w-full rounded-xl border border-border/40 object-contain"
                 style={{ maxHeight: "60vh" }}
               />
             ) : (
               <a
-                href={attachment}
+                href={resolvedUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-3 rounded-xl border border-border/40 bg-surface-container-low p-4 transition hover:bg-surface-container"

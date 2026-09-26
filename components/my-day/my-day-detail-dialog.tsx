@@ -30,6 +30,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { resolveUploadUrl } from "@/lib/resolve-upload-url";
 
 interface LightboxPhoto {
   url: string;
@@ -209,9 +210,9 @@ export function MyDayDetailDialog({
     ? activity.items!.map((it, idx) => {
         let photos: string[] = [];
         if (it.photos && it.photos.length > 0) {
-          photos = it.photos;
+          photos = it.photos.map((p: any) => resolveUploadUrl(String(p)));
         } else if (it.photoUrl) {
-          photos = [it.photoUrl];
+          photos = [resolveUploadUrl(it.photoUrl)];
         } else if (it.snapshotPayload) {
           try {
             const p = JSON.parse(it.snapshotPayload);
@@ -224,9 +225,9 @@ export function MyDayDetailDialog({
               p.image ||
               p.images;
             if (Array.isArray(raw)) {
-              photos = raw.filter(Boolean);
+              photos = raw.filter(Boolean).map((p: any) => resolveUploadUrl(String(p)));
             } else if (typeof raw === "string" && raw.trim().length > 0) {
-              photos = [raw.trim()];
+              photos = [resolveUploadUrl(raw.trim())];
             }
           } catch {
             // ignore JSON parse error
@@ -259,7 +260,7 @@ export function MyDayDetailDialog({
           points: activity.pointsAwarded ?? 0,
           status: currentStatus,
           remarks: activity.remarks || "",
-          photos: (activity.photos || []).map((p) => p.url),
+          photos: (activity.photos || []).map((p) => resolveUploadUrl(p.url)),
         },
       ];
 
@@ -600,7 +601,7 @@ export function MyDayDetailDialog({
                                 className="relative w-28 h-20 sm:w-32 sm:h-24 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 hover:border-sky-500 shadow-2xs hover:shadow-md transition-all bg-slate-900 flex items-center justify-center cursor-pointer group"
                                 onClick={() =>
                                   setLightboxPhoto({
-                                    url: pUrl,
+                                    url: resolveUploadUrl(pUrl),
                                     label: `${task.label}${taskPhotos.length > 1 ? ` (${pIdx + 1}/${taskPhotos.length})` : ""}`,
                                     unitNumber: task.unitNumber,
                                     time: `${task.startedAt} - ${task.endedAt}`,
@@ -609,7 +610,7 @@ export function MyDayDetailDialog({
                                 }
                               >
                                 <img
-                                  src={pUrl}
+                                  src={resolveUploadUrl(pUrl)}
                                   alt={`${task.label} #${pIdx + 1}`}
                                   className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
                                   loading="lazy"
@@ -771,7 +772,7 @@ export function MyDayDetailDialog({
             </div>
             <div className="p-4 flex items-center justify-center bg-black/90 min-h-[300px] max-h-[70vh] overflow-hidden">
               <img
-                src={lightboxPhoto.url}
+                src={resolveUploadUrl(lightboxPhoto.url)}
                 alt={lightboxPhoto.label}
                 className="max-h-[65vh] w-auto max-w-full object-contain rounded-lg"
               />

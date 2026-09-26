@@ -15,6 +15,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { EnterpriseRecordDialog, type TableRbacAccess } from '@/components/ui/enterprise-table-kit'
 import { cn } from '@/lib/utils'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 
 type ChecklistItem = {
   id: number
@@ -338,7 +339,7 @@ export function DailyChecklistRunDialog({
                     <div className="flex flex-wrap gap-2">
                       {answer.attachments.map((url, i) => (
                         <div key={i} className="relative group size-16 rounded-md overflow-hidden border border-border/70">
-                          <img src={url} className="w-full h-full object-cover" alt="Attachment" />
+                          <img src={resolveUploadUrl(url)} className="w-full h-full object-cover" alt="Attachment" />
                           {!isCompleted && canEdit && (
                             <button
                               type="button"
