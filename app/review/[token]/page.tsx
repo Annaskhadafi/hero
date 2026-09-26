@@ -57,11 +57,36 @@ export default async function ContractReviewPublicPage({ params }: { params: Pro
     }
   }
 
+  // Resolve signatory titles if missing (e.g. for legacy records)
+  const resolveSignatoryTitle = async (name?: string | null, fallbackDefault = '') => {
+    if (!name) return fallbackDefault
+    const trimmed = name.trim().toLowerCase()
+    if (!trimmed) return fallbackDefault
+    const [emp] = await db
+      .select({
+        position: hrPositions.levelName,
+        jobTitle: employees.jobTitle,
+      })
+      .from(employees)
+      .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
+      .where(eq(employees.name, name.trim()))
+      .limit(1)
+    return emp?.position || emp?.jobTitle || fallbackDefault
+  }
+
+  const enrichedReview = {
+    ...review,
+    leaderTitle: review?.leaderTitle || (await resolveSignatoryTitle(review?.leaderName, 'Leader')),
+    superiorTitle: review?.superiorTitle || (await resolveSignatoryTitle(review?.superiorName, 'Superior')),
+    hrTitle: review?.hrTitle || (await resolveSignatoryTitle(review?.hrName, 'HR-GA')),
+    nextSuperiorTitle: review?.nextSuperiorTitle || (await resolveSignatoryTitle(review?.nextSuperiorName, 'Department Head')),
+  }
+
   return (
     <ContractReviewPublicApproval
       token={token}
       approval={data.approval}
-      review={review}
+      review={enrichedReview}
       allApprovals={data.allApprovals || []}
       employee={employee}
       registeredSignature={data.registeredSignature || null}

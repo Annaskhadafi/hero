@@ -149,6 +149,17 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     reader.readAsDataURL(file)
     event.target.value = ''
   }
+
+  const resolveEmployeeTitle = (name?: string | null, fallbackDefault: string = '') => {
+    if (!name) return fallbackDefault
+    const trimmed = name.trim().toLowerCase()
+    if (!trimmed) return fallbackDefault
+    const matched = employees.find(e => e.name?.trim().toLowerCase() === trimmed)
+    if (matched) {
+      return matched.rank || matched.position || matched.jobTitle || fallbackDefault
+    }
+    return fallbackDefault
+  }
   
   const [form, setForm] = useState({
     id: initialData?.id,
@@ -181,14 +192,14 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     contractExtendedMonths: initialData?.contractExtendedMonths || "",
     
     leaderName: initialData?.leaderName || "",
-    leaderTitle: initialData?.leaderTitle || "",
+    leaderTitle: initialData?.leaderTitle || (initialData?.leaderName ? resolveEmployeeTitle(initialData.leaderName, "Leader") : ""),
     employeeNameStr: initialData?.employeeNameStr || "",
     superiorName: initialData?.superiorName || "",
-    superiorTitle: initialData?.superiorTitle || "",
+    superiorTitle: initialData?.superiorTitle || (initialData?.superiorName ? resolveEmployeeTitle(initialData.superiorName, "Superior") : ""),
     hrName: initialData?.hrName || "Kesuma Bagaskara",
-    hrTitle: initialData?.hrTitle || "HR-GA",
+    hrTitle: initialData?.hrTitle || resolveEmployeeTitle(initialData?.hrName || "Kesuma Bagaskara", "HR-GA"),
     nextSuperiorName: initialData?.nextSuperiorName || "",
-    nextSuperiorTitle: initialData?.nextSuperiorTitle || "",
+    nextSuperiorTitle: initialData?.nextSuperiorTitle || (initialData?.nextSuperiorName ? resolveEmployeeTitle(initialData.nextSuperiorName, "Department Head") : ""),
     
     letterIssuance: initialData?.letterIssuance || "",
     status: initialData?.status || "draft",
@@ -276,15 +287,24 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
         }
       }
 
+      let hrName = currentForm.hrName || approvalSettings?.approvalMatrix?.hrName || "Kesuma Bagaskara"
+      let hrTitle = currentForm.hrTitle || resolveEmployeeTitle(hrName, "HR-GA")
+
+      const finalLeaderName = currentForm.leaderName || leaderName
+      const finalSuperiorName = currentForm.superiorName || superiorName
+      const finalNextSuperiorName = currentForm.nextSuperiorName || managerName
+
       return {
         ...currentForm,
         employeeId,
-        leaderName: currentForm.leaderName || leaderName,
-        leaderTitle: currentForm.leaderTitle || leaderTitle,
-        superiorName: currentForm.superiorName || superiorName,
-        superiorTitle: currentForm.superiorTitle || superiorTitle,
-        nextSuperiorName: currentForm.nextSuperiorName || managerName,
-        nextSuperiorTitle: currentForm.nextSuperiorTitle || managerTitle,
+        leaderName: finalLeaderName,
+        leaderTitle: currentForm.leaderTitle || leaderTitle || resolveEmployeeTitle(finalLeaderName, "Leader"),
+        superiorName: finalSuperiorName,
+        superiorTitle: currentForm.superiorTitle || superiorTitle || resolveEmployeeTitle(finalSuperiorName, "Superior"),
+        nextSuperiorName: finalNextSuperiorName,
+        nextSuperiorTitle: currentForm.nextSuperiorTitle || managerTitle || resolveEmployeeTitle(finalNextSuperiorName, "Department Head"),
+        hrName,
+        hrTitle,
       }
     }
 
@@ -391,37 +411,85 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
       }
     }
 
+    const finalLeaderName = currentForm.leaderName || newLeaderName
+    const finalSuperiorName = currentForm.superiorName || newSupName
+    const finalNextSuperiorName = currentForm.nextSuperiorName || newNextSupName
+    const finalHrName = newHrName || currentForm.hrName || 'Kesuma Bagaskara'
+
     return {
       ...currentForm,
       employeeId,
-      leaderName: currentForm.leaderName || newLeaderName,
-      leaderTitle: currentForm.leaderTitle || newLeaderTitle,
-      superiorName: currentForm.superiorName || newSupName,
-      superiorTitle: currentForm.superiorTitle || newSupTitle,
-      nextSuperiorName: currentForm.nextSuperiorName || newNextSupName,
-      nextSuperiorTitle: currentForm.nextSuperiorTitle || newNextSupTitle,
-      hrName: newHrName,
-      hrTitle: newHrTitle,
+      leaderName: finalLeaderName,
+      leaderTitle: currentForm.leaderTitle || newLeaderTitle || resolveEmployeeTitle(finalLeaderName, 'Leader'),
+      superiorName: finalSuperiorName,
+      superiorTitle: currentForm.superiorTitle || newSupTitle || resolveEmployeeTitle(finalSuperiorName, 'Superior'),
+      nextSuperiorName: finalNextSuperiorName,
+      nextSuperiorTitle: currentForm.nextSuperiorTitle || newNextSupTitle || resolveEmployeeTitle(finalNextSuperiorName, 'Department Head'),
+      hrName: finalHrName,
+      hrTitle: newHrTitle || currentForm.hrTitle || resolveEmployeeTitle(finalHrName, 'HR-GA'),
     }
   }
 
-  // Auto populate on initial load if fields are missing
+  // Auto populate on initial load if fields or titles are missing
   useEffect(() => {
     if (
       form.employeeId &&
-      (!form.leaderName || !form.superiorName || !form.nextSuperiorName || !form.hrName)
+      (!form.leaderName || !form.superiorName || !form.nextSuperiorName || !form.hrName || !form.leaderTitle || !form.superiorTitle || !form.nextSuperiorTitle || !form.hrTitle)
     ) {
       const populatedForm = autoPopulateSignatories(form.employeeId, form)
       if (
         populatedForm.leaderName !== form.leaderName ||
         populatedForm.nextSuperiorName !== form.nextSuperiorName ||
         populatedForm.superiorName !== form.superiorName ||
-        populatedForm.hrName !== form.hrName
+        populatedForm.hrName !== form.hrName ||
+        populatedForm.leaderTitle !== form.leaderTitle ||
+        populatedForm.superiorTitle !== form.superiorTitle ||
+        populatedForm.nextSuperiorTitle !== form.nextSuperiorTitle ||
+        populatedForm.hrTitle !== form.hrTitle
       ) {
         setForm(populatedForm)
       }
     }
   }, [form.employeeId])
+
+  // Automatically sync titles if name is present but title is empty
+  useEffect(() => {
+    let shouldUpdate = false
+    const updated = { ...form }
+
+    if (form.leaderName && !form.leaderTitle) {
+      const resolved = resolveEmployeeTitle(form.leaderName, 'Leader')
+      if (resolved && resolved !== form.leaderTitle) {
+        updated.leaderTitle = resolved
+        shouldUpdate = true
+      }
+    }
+    if (form.superiorName && !form.superiorTitle) {
+      const resolved = resolveEmployeeTitle(form.superiorName, 'Superior')
+      if (resolved && resolved !== form.superiorTitle) {
+        updated.superiorTitle = resolved
+        shouldUpdate = true
+      }
+    }
+    if (form.nextSuperiorName && !form.nextSuperiorTitle) {
+      const resolved = resolveEmployeeTitle(form.nextSuperiorName, 'Department Head')
+      if (resolved && resolved !== form.nextSuperiorTitle) {
+        updated.nextSuperiorTitle = resolved
+        shouldUpdate = true
+      }
+    }
+    if (form.hrName && !form.hrTitle) {
+      const resolved = resolveEmployeeTitle(form.hrName, 'HR-GA')
+      if (resolved && resolved !== form.hrTitle) {
+        updated.hrTitle = resolved
+        shouldUpdate = true
+      }
+    }
+
+    if (shouldUpdate) {
+      setForm(updated)
+    }
+  }, [form.leaderName, form.leaderTitle, form.superiorName, form.superiorTitle, form.nextSuperiorName, form.nextSuperiorTitle, form.hrName, form.hrTitle, employees])
 
   // Auto-select employee from ?employeeId= or ?employeeSn= query param (e.g. from Monitoring Kontrak / Central Service)
   useEffect(() => {
@@ -540,11 +608,14 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
 
   const handleSave = () => {
     startTransition(async () => {
-      const { leaderTitle, superiorTitle, hrTitle, nextSuperiorTitle, ...formToSave } = form
       const leaderCanvasSignature = getLeaderSignatureDataUrl()
       const leaderSignatureDataUrl = leaderCanvasSignature || previewLeaderSig || initialData?.leaderSignatureDataUrl || leaderSignatureOverride || (!initialData?.id ? previewLeaderSig : '')
       const payload = {
-        ...formToSave,
+        ...form,
+        leaderTitle: form.leaderTitle || resolveEmployeeTitle(form.leaderName, 'Leader'),
+        superiorTitle: form.superiorTitle || resolveEmployeeTitle(form.superiorName, 'Superior'),
+        hrTitle: form.hrTitle || resolveEmployeeTitle(form.hrName, 'HR-GA'),
+        nextSuperiorTitle: form.nextSuperiorTitle || resolveEmployeeTitle(form.nextSuperiorName, 'Department Head'),
         employeeId: form.employeeId ? parseInt(form.employeeId) : null,
         contractExtendedMonths: form.contractExtendedMonths ? parseInt(form.contractExtendedMonths as string) : null,
         todayDate: new Date(form.todayDate),
@@ -993,7 +1064,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
           </tr>
           <tr>
             <td>Superior Name:<br/>{form.leaderName || form.superiorName || form.nextSuperiorName || '-'}</td>
-            <td>Superior Title:<br/>{form.leaderTitle || form.superiorTitle || form.nextSuperiorTitle || '-'}</td>
+            <td>Superior Title:<br/>{form.leaderTitle || resolveEmployeeTitle(form.leaderName, '') || form.superiorTitle || resolveEmployeeTitle(form.superiorName, '') || form.nextSuperiorTitle || resolveEmployeeTitle(form.nextSuperiorName, '') || '-'}</td>
           </tr>
         </tbody>
       </table>
@@ -1069,94 +1140,146 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
       ) : null}
       <div className="font-bold mb-4 break-before-auto break-inside-avoid">Signatories</div>
       
-      <div className={`grid grid-cols-2 gap-x-8 ${!achievementBlockOnPage2 ? 'gap-y-4 mb-4' : 'gap-y-8 mb-6'} break-inside-avoid`}>
-        {form.leaderName && (
-          <div>
-            <div className="text-xs text-muted-foreground mb-1">Leader Signature</div>
-            <div className="h-20 flex items-end">
-              {leaderPreviewSignature ? (
-                <img
-                  src={leaderPreviewSignature}
-                  alt="Leader TTD"
-                  className="h-16 object-contain"
-                  style={{ maxWidth: '45mm', maxHeight: '16mm' }}
-                />
-              ) : null}
+      {(() => {
+        const seenSignerKeys = new Set<string>()
+        const displaySignatories: Array<{
+          key: string
+          label: string
+          name: string
+          title: string
+          signatureUrl: string | null
+          signedAt?: string | Date | null
+          remarks?: string | null
+        }> = []
+
+        const findSignatureForName = (name?: string | null, fallbackSig?: string | null) => {
+          if (!name) return fallbackSig || ''
+          const trimmed = name.trim().toLowerCase()
+          const matched = approvalHistory?.find(
+            (step: any) =>
+              step.status === 'approved' &&
+              step.signatureDataUrl &&
+              step.approverName?.trim().toLowerCase() === trimmed
+          )
+          return matched?.signatureDataUrl || fallbackSig || ''
+        }
+
+        const findMetaForName = (name?: string | null, fallbackMeta?: any) => {
+          if (!name) return fallbackMeta
+          const trimmed = name.trim().toLowerCase()
+          const matched = approvalHistory?.find(
+            (step: any) =>
+              step.status === 'approved' &&
+              step.approverName?.trim().toLowerCase() === trimmed
+          )
+          return matched || fallbackMeta
+        }
+
+        const employeeDisplayName = selectedEmp?.name || form.employeeNameStr || ''
+        const signatoryCandidates = [
+          {
+            key: 'leader',
+            label: 'Leader Signature',
+            name: form.leaderName,
+            title: form.leaderTitle || resolveEmployeeTitle(form.leaderName, 'Leader'),
+            signatureUrl: leaderPreviewSignature || findSignatureForName(form.leaderName),
+            meta: leaderApprovalMeta || findMetaForName(form.leaderName),
+          },
+          {
+            key: 'employee',
+            label: 'Employee Signature',
+            name: employeeDisplayName,
+            title: selectedEmp?.position || resolveEmployeeTitle(employeeDisplayName, 'Employee'),
+            signatureUrl: visibleEmployeeApprovalSig || findSignatureForName(employeeDisplayName),
+            meta: employeeApprovalMeta || findMetaForName(employeeDisplayName),
+          },
+          {
+            key: 'superior',
+            label: 'Superior Signature',
+            name: form.superiorName,
+            title: form.superiorTitle || resolveEmployeeTitle(form.superiorName, 'Superior'),
+            signatureUrl: visibleSectionHeadApprovalSig || findSignatureForName(form.superiorName),
+            meta: sectionHeadApprovalMeta || findMetaForName(form.superiorName),
+          },
+          {
+            key: 'next_superior',
+            label: 'Next Superior Signature',
+            name: form.nextSuperiorName,
+            title: form.nextSuperiorTitle || resolveEmployeeTitle(form.nextSuperiorName, 'Department Head'),
+            signatureUrl: visibleManagerApprovalSig || findSignatureForName(form.nextSuperiorName),
+            meta: managerApprovalMeta || findMetaForName(form.nextSuperiorName),
+          },
+          {
+            key: 'hr',
+            label: 'HR Signature',
+            name: form.hrName,
+            title: form.hrTitle || resolveEmployeeTitle(form.hrName, 'HR-GA'),
+            signatureUrl: visibleHrApprovalSig || findSignatureForName(form.hrName),
+            meta: hrApprovalMeta || findMetaForName(form.hrName),
+          },
+        ]
+
+        for (const cand of signatoryCandidates) {
+          const normalized = (cand.name || '').trim().toLowerCase()
+          if (!normalized) continue
+          if (seenSignerKeys.has(normalized)) continue
+          seenSignerKeys.add(normalized)
+          displaySignatories.push({
+            key: cand.key,
+            label: cand.label,
+            name: cand.name,
+            title: cand.title,
+            signatureUrl: cand.signatureUrl,
+            signedAt: cand.meta?.signedAt,
+            remarks: cand.meta?.remarks,
+          })
+        }
+
+        return (
+          <div className={`grid grid-cols-2 gap-x-8 ${!achievementBlockOnPage2 ? 'gap-y-4 mb-4' : 'gap-y-8 mb-6'} break-inside-avoid`}>
+            {displaySignatories.map((sig) => (
+              <div key={sig.key}>
+                <div className="text-xs text-muted-foreground mb-1">{sig.label}</div>
+                <div className="h-20 flex items-end">
+                  {sig.signatureUrl ? (
+                    <img
+                      src={sig.signatureUrl}
+                      alt={`${sig.label} TTD`}
+                      className="h-16 object-contain"
+                      style={{ maxWidth: '45mm', maxHeight: '16mm' }}
+                    />
+                  ) : null}
+                </div>
+                <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{sig.name}</div>
+                <div className="text-xs">{sig.title}</div>
+                <div className="mt-1 text-[7pt] text-gray-500">Waktu TTD: {formatDateTime(sig.signedAt)}</div>
+                {sig.remarks ? <div className="mt-1 text-[7pt] text-left text-gray-600">Catatan: {sig.remarks}</div> : null}
+              </div>
+            ))}
+            <div>
+              <div className="font-bold mb-2">Letter Issuance by HR</div>
+              <div className="text-[7pt]" style={{ display: 'grid', gap: '4px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <input type="checkbox" checked={form.letterIssuance === 'permanent_confirmation'} readOnly />
+                  <span>Permanent Confirmation</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <input type="checkbox" checked={form.letterIssuance === 'contract_extension'} readOnly />
+                  <span>Contract extension</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <input type="checkbox" checked={form.letterIssuance === 'unsuccessful_probation'} readOnly />
+                  <span>Unsuccessful probation notification</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <input type="checkbox" checked={form.letterIssuance === 'end_of_contract'} readOnly />
+                  <span>End of contract notification</span>
+                </label>
+              </div>
             </div>
-            <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{form.leaderName}</div>
-            <div className="text-xs">{form.leaderTitle || 'Leader'}</div>
-            <div className="mt-1 text-[7pt] text-gray-500">Waktu TTD: {formatDateTime(leaderApprovalMeta?.signedAt)}</div>
-            {leaderApprovalMeta?.remarks ? <div className="mt-1 text-[7pt] text-left text-gray-600">Catatan: {leaderApprovalMeta.remarks}</div> : null}
           </div>
-        )}
-        <div>
-          <div className="text-xs text-muted-foreground mb-1">Employee Signature</div>
-          <div className="h-20 flex items-end">
-              {visibleEmployeeApprovalSig ? <img src={visibleEmployeeApprovalSig} alt="Employee TTD" className="h-16 object-contain" /> : null}
-          </div>
-          <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{selectedEmp?.name || form.employeeNameStr || '\u00A0'}</div>
-          <div className="text-xs">{selectedEmp?.position || 'Employee'}</div>
-          <div className="mt-1 text-[7pt] text-gray-500">Waktu TTD: {formatDateTime(employeeApprovalMeta?.signedAt)}</div>
-          {employeeApprovalMeta?.remarks ? <div className="mt-1 text-[7pt] text-left text-gray-600">Catatan: {employeeApprovalMeta.remarks}</div> : null}
-        </div>
-        {form.superiorName && (
-          <div>
-            <div className="text-xs text-muted-foreground mb-1">Superior Signature</div>
-            <div className="h-20 flex items-end">
-              {visibleSectionHeadApprovalSig ? <img src={visibleSectionHeadApprovalSig} alt="Superior TTD" className="h-16 object-contain" /> : null}
-            </div>
-            <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{form.superiorName}</div>
-            <div className="text-xs">{form.superiorTitle || 'Superior'}</div>
-            <div className="mt-1 text-[7pt] text-gray-500">Waktu TTD: {formatDateTime(sectionHeadApprovalMeta?.signedAt)}</div>
-            {sectionHeadApprovalMeta?.remarks ? <div className="mt-1 text-[7pt] text-left text-gray-600">Catatan: {sectionHeadApprovalMeta.remarks}</div> : null}
-          </div>
-        )}
-        {form.hrName && (
-          <div>
-            <div className="text-xs text-muted-foreground mb-1">HR Signature</div>
-            <div className="h-20 flex items-end">
-              {visibleHrApprovalSig ? <img src={visibleHrApprovalSig} alt="HR TTD" className="h-16 object-contain" /> : null}
-            </div>
-            <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{form.hrName}</div>
-            <div className="text-xs">{form.hrTitle || 'HR'}</div>
-            <div className="mt-1 text-[7pt] text-gray-500">Waktu TTD: {formatDateTime(hrApprovalMeta?.signedAt)}</div>
-            {hrApprovalMeta?.remarks ? <div className="mt-1 text-[7pt] text-left text-gray-600">Catatan: {hrApprovalMeta.remarks}</div> : null}
-          </div>
-        )}
-        {form.nextSuperiorName && (
-          <div>
-            <div className="text-xs text-muted-foreground mb-1">Next Superior Signature</div>
-            <div className="h-20 flex items-end">
-              {visibleManagerApprovalSig ? <img src={visibleManagerApprovalSig} alt="Next Superior TTD" className="h-16 object-contain" /> : null}
-            </div>
-            <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{form.nextSuperiorName}</div>
-            <div className="text-xs">{form.nextSuperiorTitle || 'Manager'}</div>
-            <div className="mt-1 text-[7pt] text-gray-500">Waktu TTD: {formatDateTime(managerApprovalMeta?.signedAt)}</div>
-            {managerApprovalMeta?.remarks ? <div className="mt-1 text-[7pt] text-left text-gray-600">Catatan: {managerApprovalMeta.remarks}</div> : null}
-          </div>
-        )}
-        <div>
-          <div className="font-bold mb-2">Letter Issuance by HR</div>
-          <div className="text-[7pt]" style={{ display: 'grid', gap: '4px' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <input type="checkbox" checked={form.letterIssuance === 'permanent_confirmation'} readOnly />
-              <span>Permanent Confirmation</span>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <input type="checkbox" checked={form.letterIssuance === 'contract_extension'} readOnly />
-              <span>Contract extension</span>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <input type="checkbox" checked={form.letterIssuance === 'unsuccessful_probation'} readOnly />
-              <span>Unsuccessful probation notification</span>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <input type="checkbox" checked={form.letterIssuance === 'end_of_contract'} readOnly />
-              <span>End of contract notification</span>
-            </label>
-          </div>
-        </div>
-      </div>
+        )
+      })()}
 
       <div className="text-right mt-12 text-gray-500">
         F.HR.STD.012.00
@@ -1584,18 +1707,18 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
                   value={employees.find(e => e.name === form.leaderName)?.id?.toString() || ""}
                   onValueChange={(val) => {
                     const m = employees.find(e => String(e.id) === val)
-                    if (m) setForm({ ...form, leaderName: m.name, leaderTitle: m.rank || m.position || "Leader" })
-                    else setForm({ ...form, leaderName: "", leaderTitle: "" })
+                    if (m) setForm(prev => ({ ...prev, leaderName: m.name, leaderTitle: m.rank || m.position || m.jobTitle || "Leader" }))
+                    else setForm(prev => ({ ...prev, leaderName: "", leaderTitle: "" }))
                   }}
                   options={employees
                     .filter(e => !selectedEmp || e.departmentId === selectedEmp.departmentId || e.department?.toLowerCase().includes("hr"))
-                    .map(emp => ({ value: String(emp.id), label: `${emp.name} - ${emp.rank || emp.position}` }))}
+                    .map(emp => ({ value: String(emp.id), label: `${emp.name} - ${emp.rank || emp.position || emp.jobTitle || 'Leader'}` }))}
                   widthClassName="w-full"
                 />
               </div>
               <div className="space-y-2">
                 <Label>Leader Title</Label>
-                <Input value={form.leaderTitle} onChange={(e) => setForm({ ...form, leaderTitle: e.target.value })} />
+                <Input value={form.leaderTitle} onChange={(e) => setForm(prev => ({ ...prev, leaderTitle: e.target.value }))} />
               </div>
               <div className="space-y-2">
                 <Label>Superior Name</Label>
@@ -1605,37 +1728,18 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
                   value={employees.find(e => e.name === form.superiorName)?.id?.toString() || ""}
                   onValueChange={(val) => {
                     const m = employees.find(e => String(e.id) === val)
-                    if (m) setForm({ ...form, superiorName: m.name, superiorTitle: m.rank || m.position || "SPV" })
-                    else setForm({ ...form, superiorName: "", superiorTitle: "" })
+                    if (m) setForm(prev => ({ ...prev, superiorName: m.name, superiorTitle: m.rank || m.position || m.jobTitle || "Superior" }))
+                    else setForm(prev => ({ ...prev, superiorName: "", superiorTitle: "" }))
                   }}
                   options={employees
                     .filter(e => !selectedEmp || e.departmentId === selectedEmp.departmentId || e.department?.toLowerCase().includes("hr"))
-                    .map(emp => ({ value: String(emp.id), label: `${emp.name} - ${emp.rank || emp.position}` }))}
+                    .map(emp => ({ value: String(emp.id), label: `${emp.name} - ${emp.rank || emp.position || emp.jobTitle || 'Superior'}` }))}
                   widthClassName="w-full"
                 />
               </div>
               <div className="space-y-2">
                 <Label>Superior Title</Label>
-                <Input value={form.superiorTitle} onChange={(e) => setForm({ ...form, superiorTitle: e.target.value })} />
-              </div>
-              <div className="space-y-2">
-                <Label>HR Recipient (Email Approval)</Label>
-                <SearchableSelect 
-                  label="HR"
-                  placeholder="Pilih HR penerima email..."
-                  value={employees.find(e => e.name === form.hrName)?.id?.toString() || ""}
-                  onValueChange={(val) => {
-                    const m = employees.find(e => String(e.id) === val)
-                    if (m) setForm({ ...form, hrName: m.name, hrTitle: m.rank || m.position || "HR" })
-                    else setForm({ ...form, hrName: "", hrTitle: "" })
-                  }}
-                  options={employees.map(emp => ({ value: String(emp.id), label: `${emp.name} - ${emp.rank || emp.position || 'Employee'}` }))}
-                  widthClassName="w-full"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>HR Title</Label>
-                <Input value={form.hrTitle} onChange={(e) => setForm({ ...form, hrTitle: e.target.value })} />
+                <Input value={form.superiorTitle} onChange={(e) => setForm(prev => ({ ...prev, superiorTitle: e.target.value }))} />
               </div>
               <div className="space-y-2">
                 <Label>Next Superior Name</Label>
@@ -1645,18 +1749,37 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
                   value={employees.find(e => e.name === form.nextSuperiorName)?.id?.toString() || ""}
                   onValueChange={(val) => {
                     const m = employees.find(e => String(e.id) === val)
-                    if (m) setForm({ ...form, nextSuperiorName: m.name, nextSuperiorTitle: m.rank || m.position || "Manager" })
-                    else setForm({ ...form, nextSuperiorName: "", nextSuperiorTitle: "" })
+                    if (m) setForm(prev => ({ ...prev, nextSuperiorName: m.name, nextSuperiorTitle: m.rank || m.position || m.jobTitle || "Department Head" }))
+                    else setForm(prev => ({ ...prev, nextSuperiorName: "", nextSuperiorTitle: "" }))
                   }}
                   options={employees
                     .filter(e => !selectedEmp || e.departmentId === selectedEmp.departmentId || e.department?.toLowerCase().includes("hr"))
-                    .map(emp => ({ value: String(emp.id), label: `${emp.name} - ${emp.rank || emp.position}` }))}
+                    .map(emp => ({ value: String(emp.id), label: `${emp.name} - ${emp.rank || emp.position || emp.jobTitle || 'Department Head'}` }))}
                   widthClassName="w-full"
                 />
               </div>
               <div className="space-y-2">
                 <Label>Next Superior Title</Label>
-                <Input value={form.nextSuperiorTitle} onChange={(e) => setForm({ ...form, nextSuperiorTitle: e.target.value })} />
+                <Input value={form.nextSuperiorTitle} onChange={(e) => setForm(prev => ({ ...prev, nextSuperiorTitle: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>HR Recipient (Email Approval)</Label>
+                <SearchableSelect 
+                  label="HR"
+                  placeholder="Pilih HR penerima email..."
+                  value={employees.find(e => e.name === form.hrName)?.id?.toString() || ""}
+                  onValueChange={(val) => {
+                    const m = employees.find(e => String(e.id) === val)
+                    if (m) setForm(prev => ({ ...prev, hrName: m.name, hrTitle: m.rank || m.position || m.jobTitle || "HR-GA" }))
+                    else setForm(prev => ({ ...prev, hrName: "", hrTitle: "" }))
+                  }}
+                  options={employees.map(emp => ({ value: String(emp.id), label: `${emp.name} - ${emp.rank || emp.position || emp.jobTitle || 'HR'}` }))}
+                  widthClassName="w-full"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>HR Title</Label>
+                <Input value={form.hrTitle} onChange={(e) => setForm(prev => ({ ...prev, hrTitle: e.target.value }))} />
               </div>
               
               <div className="space-y-2 col-span-2">

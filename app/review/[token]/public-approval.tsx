@@ -710,60 +710,77 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
     <div className="relative z-10 text-[8pt] font-sans leading-tight text-black" style={{ paddingTop: '42mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
       {!achievementBlockOnPage2 ? renderAchievementAndRecommendation() : null}
       <div className="font-bold mb-4">Signatories</div>
-      <div className={`grid grid-cols-2 gap-x-8 ${!achievementBlockOnPage2 ? 'gap-y-4 mb-4' : 'gap-y-8 mb-6'}`}>
-        {review.leaderName && (
-          <div>
-            <div className="text-xs text-muted-foreground mb-1">Leader Signature</div>
-            <div className="h-20 flex items-end">
-              {leaderSig && <img src={leaderSig.signatureDataUrl} alt="TTD" className="h-16 object-contain" />}
-            </div>
-            <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{review.leaderName}</div>
-            <div className="text-xs">{review.leaderTitle || 'Leader'}</div>
-            {renderApprovalMeta(leaderSig)}
-          </div>
-        )}
-        <div>
-          <div className="text-xs text-muted-foreground mb-1">Employee Signature</div>
-          <div className="h-20 flex items-end">
-            {employeeSig && <img src={employeeSig.signatureDataUrl} alt="TTD" className="h-16 object-contain" />}
-          </div>
-          <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{employee?.name || review.employeeNameStr || '\u00A0'}</div>
-          <div className="text-xs">{employee?.position || 'Employee'}</div>
-          {renderApprovalMeta(employeeSig)}
-        </div>
-        {review.superiorName && (
-          <div>
-            <div className="text-xs text-muted-foreground mb-1">Superior Signature</div>
-            <div className="h-20 flex items-end">
-              {sectionHeadSig && <img src={sectionHeadSig.signatureDataUrl} alt="TTD" className="h-16 object-contain" />}
-            </div>
-            <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{review.superiorName}</div>
-            <div className="text-xs">{review.superiorTitle || 'Superior'}</div>
-            {renderApprovalMeta(sectionHeadSig)}
-          </div>
-        )}
-        {review.hrName && (
-          <div>
-            <div className="text-xs text-muted-foreground mb-1">HR Signature</div>
-            <div className="h-20 flex items-end">
-              {hrSig && <img src={hrSig.signatureDataUrl} alt="TTD" className="h-16 object-contain" />}
-            </div>
-            <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{review.hrName}</div>
-            <div className="text-xs">{review.hrTitle || 'HR'}</div>
-            {renderApprovalMeta(hrSig)}
-          </div>
-        )}
-        {review.nextSuperiorName && (
-          <div>
-            <div className="text-xs text-muted-foreground mb-1">Next Superior Signature</div>
-            <div className="h-20 flex items-end">
-              {managerSig && <img src={managerSig.signatureDataUrl} alt="TTD" className="h-16 object-contain" />}
-            </div>
-            <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{review.nextSuperiorName}</div>
-            <div className="text-xs">{review.nextSuperiorTitle || 'Manager'}</div>
-            {renderApprovalMeta(managerSig)}
-          </div>
-        )}
+      {(() => {
+        const seenPublicSigners = new Set<string>()
+        const displayPublicSignatories: Array<{
+          key: string
+          label: string
+          name: string
+          title: string
+          step: any
+        }> = []
+
+        const publicCandidates = [
+          {
+            key: 'leader',
+            label: 'Leader Signature',
+            name: review.leaderName,
+            title: review.leaderTitle || 'Leader',
+            step: leaderSig,
+          },
+          {
+            key: 'employee',
+            label: 'Employee Signature',
+            name: employee?.name || review.employeeNameStr || '',
+            title: employee?.position || 'Employee',
+            step: employeeSig,
+          },
+          {
+            key: 'superior',
+            label: 'Superior Signature',
+            name: review.superiorName,
+            title: review.superiorTitle || 'Superior',
+            step: sectionHeadSig,
+          },
+          {
+            key: 'next_superior',
+            label: 'Next Superior Signature',
+            name: review.nextSuperiorName,
+            title: review.nextSuperiorTitle || 'Manager',
+            step: managerSig,
+          },
+          {
+            key: 'hr',
+            label: 'HR Signature',
+            name: review.hrName,
+            title: review.hrTitle || 'HR',
+            step: hrSig,
+          },
+        ]
+
+        for (const cand of publicCandidates) {
+          const normalized = (cand.name || '').trim().toLowerCase()
+          if (!normalized) continue
+          if (seenPublicSigners.has(normalized)) continue
+          seenPublicSigners.add(normalized)
+          displayPublicSignatories.push(cand)
+        }
+
+        return (
+          <div className={`grid grid-cols-2 gap-x-8 ${!achievementBlockOnPage2 ? 'gap-y-4 mb-4' : 'gap-y-8 mb-6'}`}>
+            {displayPublicSignatories.map((sig) => (
+              <div key={sig.key}>
+                <div className="text-xs text-muted-foreground mb-1">{sig.label}</div>
+                <div className="h-20 flex items-end">
+                  {sig.step?.signatureDataUrl && (
+                    <img src={sig.step.signatureDataUrl} alt={`${sig.label} TTD`} className="h-16 object-contain" />
+                  )}
+                </div>
+                <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{sig.name}</div>
+                <div className="text-xs">{sig.title}</div>
+                {renderApprovalMeta(sig.step)}
+              </div>
+            ))}
         <div>
           <div className="font-bold mb-2">Letter Issuance by HR</div>
           <div className="text-[7pt]" style={{ display: 'grid', gap: '4px' }}>
@@ -822,6 +839,8 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
           </div>
         </div>
       </div>
+    )
+  })()}
       <div className="text-right mt-6 text-gray-500 text-[7pt]">
         F.HR.STD.012.00
       </div>

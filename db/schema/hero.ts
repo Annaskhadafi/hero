@@ -3621,11 +3621,15 @@ export const hcEmployeeContractReviews = pgTable('hero_hc_employee_contract_revi
 
   // Signatories
   leaderName: text('leader_name').notNull().default(''),
+  leaderTitle: text('leader_title').notNull().default(''),
   leaderSignatureDataUrl: text('leader_signature_data_url'),
   employeeNameStr: text('employee_name_str').notNull().default(''),
   superiorName: text('superior_name').notNull().default(''),
+  superiorTitle: text('superior_title').notNull().default(''),
   hrName: text('hr_name').notNull().default(''),
+  hrTitle: text('hr_title').notNull().default(''),
   nextSuperiorName: text('next_superior_name').notNull().default(''),
+  nextSuperiorTitle: text('next_superior_title').notNull().default(''),
 
   letterIssuance: text('letter_issuance').notNull().default(''), // permanent_confirmation, contract_extension, unsuccessful_probation, end_of_contract
 

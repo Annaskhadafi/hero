@@ -237,6 +237,12 @@ async function ensureContractReviewWorkflowTables() {
 
 async function ensureContractReviewWorkflowTablesOnce() {
   await db.execute(sql`
+    ALTER TABLE hero_hc_employee_contract_reviews ADD COLUMN IF NOT EXISTS leader_title text NOT NULL DEFAULT '';
+    ALTER TABLE hero_hc_employee_contract_reviews ADD COLUMN IF NOT EXISTS superior_title text NOT NULL DEFAULT '';
+    ALTER TABLE hero_hc_employee_contract_reviews ADD COLUMN IF NOT EXISTS hr_title text NOT NULL DEFAULT '';
+    ALTER TABLE hero_hc_employee_contract_reviews ADD COLUMN IF NOT EXISTS next_superior_title text NOT NULL DEFAULT '';
+  `)
+  await db.execute(sql`
     create table if not exists hero_hc_contract_review_approvals (
       id serial primary key,
       review_id integer not null references hero_hc_employee_contract_reviews(id) on delete cascade,
@@ -2414,9 +2420,13 @@ export async function generateTestContractReview() {
         recommendation: 'contract_extended',
         contractExtendedMonths: 12,
         leaderName: 'Test PJO/TE',
+        leaderTitle: 'PJO/TE',
         superiorName: 'Test Section Head',
+        superiorTitle: 'Section Head',
         hrName: 'Kesuma Bagaskara',
+        hrTitle: 'HR-GA',
         nextSuperiorName: 'Romy Hidayat',
+        nextSuperiorTitle: 'Department Head',
         status: 'draft',
       })
       .returning()
