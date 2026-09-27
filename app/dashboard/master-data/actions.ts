@@ -504,6 +504,14 @@ export async function manageSiteAction(
         return { status: "error", message: "ID is required for update" };
       }
 
+      const [existingSite] = await db
+        .select({ timezone: sites.timezone, headEmployeeId: sites.headEmployeeId })
+        .from(sites)
+        .where(eq(sites.id, id))
+        .limit(1);
+      const previousHeadEmployeeId = existingSite?.headEmployeeId ?? null;
+      const nextHeadEmployeeId = headEmployeeId || null;
+
       await db
         .update(sites)
         .set({
@@ -527,7 +535,7 @@ export async function manageSiteAction(
         })
         .where(eq(sites.id, id));
 
-      if (headEmployeeId) {
+      if (previousHeadEmployeeId !== nextHeadEmployeeId && headEmployeeId) {
         // Get all active department heads
         const depts = await db
           .select({ headEmployeeId: masterDepartments.headEmployeeId })
@@ -545,7 +553,7 @@ export async function manageSiteAction(
               )
             );
         }
-      } else {
+      } else if (previousHeadEmployeeId !== nextHeadEmployeeId) {
         // If Site Head is cleared, set directManagerId of department heads at this site to null
         const depts = await db
           .select({ headEmployeeId: masterDepartments.headEmployeeId })
@@ -565,10 +573,12 @@ export async function manageSiteAction(
         }
       }
 
-      try {
-        await resyncSiteAttendanceToTimesheet(id);
-      } catch (e) {
-        console.error("Resync attendance warning on site update:", e);
+      if (existingSite && existingSite.timezone !== resolvedTimezone) {
+        try {
+          await resyncSiteAttendanceToTimesheet(id);
+        } catch (e) {
+          console.error("Resync attendance warning on site update:", e);
+        }
       }
 
       revalidatePath("/dashboard/master-data");
