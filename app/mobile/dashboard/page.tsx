@@ -131,8 +131,8 @@ export default async function MobileDashboardPage() {
 
   try {
     [data, approvalData, sidebarData, wellnessData] = await Promise.all([
-      getDailyActivityEmployeeData(session.user.email, { ensureSeed: false }),
-      getApprovalCenterData(session.user.email),
+      getDailyActivityEmployeeData(session.user.email, { ensureSeed: false, limit: 10 }),
+      getApprovalCenterData(session.user.email, { skipHistory: true }),
       getSidebarDataForUser(session.user.email),
       getMobileHc(session.user.email),
     ]);

@@ -11,6 +11,11 @@ export function PwaRegistration() {
           return;
         }
 
+        // Skip PWA registration on MAESTRO customer portal
+        if (window.location.hostname.includes("maestro") || window.location.pathname.startsWith("/maestro")) {
+          return;
+        }
+
         if ("caches" in window) {
           const keys = await window.caches.keys();
           await Promise.all(

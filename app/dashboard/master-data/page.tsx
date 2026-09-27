@@ -1,4 +1,5 @@
 import { getMasterDataPageData } from "@/lib/master-data";
+import { getCustomersAction } from "@/app/actions/customer-management";
 import { getCurrentMenuPermission } from "@/lib/hero-access";
 import { MasterDataManagement } from "@/components/master-data-management";
 import { redirect } from "next/navigation";
@@ -8,9 +9,10 @@ export default async function MasterDataPage({
 }: {
   searchParams?: Promise<{ tab?: string }>
 }) {
-  const [data, permission] = await Promise.all([
+  const [data, permission, customerResult] = await Promise.all([
     getMasterDataPageData(),
     getCurrentMenuPermission("master_data"),
+    getCustomersAction({ limit: 1000 }),
   ]);
 
   if (!permission.canView) {
@@ -26,6 +28,7 @@ export default async function MasterDataPage({
         jobTitles={data.jobTitles}
         departments={data.departments}
         sites={data.sites}
+        customers={customerResult.data ?? []}
         positions={data.positions}
         attendanceShifts={data.attendanceShifts}
         categoryOptions={data.categoryOptions}

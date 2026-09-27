@@ -17,6 +17,7 @@ export const userRelations = relations(user, ({ many }) => ({
     warehouseAccesses: many(userWarehouseAccess),
 }));
 export { settings } from "./settings";
+export * from "./maestro";
 
 // Domain tables & Relations
 export * from "./campaigns";

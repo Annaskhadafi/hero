@@ -92,3 +92,34 @@ playwright-report/
 
 /tmp/
 /public/uploads/cache/
+
+# root scratch / test scripts
+test-*.ts
+test-*.js
+sync-data.ts
+test-action.ts
+test-queries.ts
+test-revenue.ts
+search_vision.py
+update_competition_ppt.ps1
+update_ppt_win32.py
+
+# ad-hoc inspection, test and internal audit scripts
+scripts/test-*
+scripts/check-*
+scripts/scratch-*
+scripts/audit-*
+scripts/benchmark-*
+scripts/debug-*
+scripts/kill-*
+scripts/generate_hero_*
+scripts/add-anisah-*
+scripts/alter-*
+scripts/apply-*
+scripts/cleanup-*
+scripts/rbac-audit-results.json
+scripts/run-sync-permissions.mjs
+scripts/safe-v2-migration.ts
+scripts/create-maestro-customer-user.ts
+scripts/grant-more-sites.ts
+scripts/sync-customers-*

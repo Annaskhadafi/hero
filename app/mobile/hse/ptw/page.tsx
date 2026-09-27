@@ -44,7 +44,7 @@ export default async function MobilePtwPage({
       .from(employees)
       .where(eq(employees.isActive, true))
       .orderBy(asc(employees.name)),
-    safeQuery(() => getApprovalCenterData(session.user.email), null, "getApprovalCenterData"),
+    safeQuery(() => getApprovalCenterData(session.user.email, { categoryFilter: 'PTW', skipHistory: true }), null, "getApprovalCenterData"),
   ])
 
   // Find the reverted PTW permit to pre-fill the form

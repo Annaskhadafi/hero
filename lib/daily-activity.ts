@@ -2102,6 +2102,7 @@ type DailyActivityReadOptions = {
   viewScope?: 'own' | 'site' | 'global'
   siteId?: number | null
   sectionId?: number | null
+  limit?: number
 }
 
 export type RouteFolder = {
@@ -2268,8 +2269,13 @@ export async function getDailyActivityEmployeeData(
   email?: string | null,
   options: DailyActivityReadOptions = {}
 ) {
-  if (options.ensureSeed !== false) {
+  if (options.ensureSeed === true) {
     await ensureDailyActivitySeedData()
+  } else if (!globalDailyActivityState.__heroDailyActivitySeedReady) {
+    // Non-blocking background initialization so user page loads immediately
+    ensureDailyActivitySeedData().catch((err) => {
+      console.error('[daily-activity] background seed failed:', err)
+    })
   }
 
   const employee = await getCurrentEmployeeByEmail(email)
@@ -2314,6 +2320,7 @@ export async function getDailyActivityEmployeeData(
     viewSectionId != null ? eq(employees.sectionId, viewSectionId) : undefined,
   ].filter(Boolean)
   const activityScopePredicate = activityEmployeeScope.length > 0 ? and(...activityEmployeeScope) : sql`true`
+  const maxRowsLimit = options.limit && options.limit > 0 ? options.limit : 100
 
   const [
     assignmentRows,
@@ -2390,7 +2397,7 @@ export async function getDailyActivityEmployeeData(
         .leftJoin(activityLibraries, eq(activities.libraryActivityId, activityLibraries.id))
         .where(and(activityScopePredicate, isNull(activities.deletedAt)))
         .orderBy(desc(activities.startTime), desc(activities.id))
-        .limit(100),
+        .limit(maxRowsLimit),
       db
         .select({
           id: dailyActivitySessions.id,
@@ -2409,7 +2416,7 @@ export async function getDailyActivityEmployeeData(
         .leftJoin(employees, eq(dailyActivitySessions.employeeId, employees.id))
         .where(and(activityScopePredicate, isNull(dailyActivitySessions.deletedAt)))
         .orderBy(desc(dailyActivitySessions.createdAt), desc(dailyActivitySessions.id))
-        .limit(100),
+        .limit(maxRowsLimit),
       db
         .select({
           id: pointEvents.id,
@@ -2514,7 +2521,6 @@ export async function getDailyActivityEmployeeData(
             actualPoints: dailyActivitySessionItems.actualPoints,
             startedAt: dailyActivitySessionItems.startedAt,
             endedAt: dailyActivitySessionItems.endedAt,
-            snapshotPayload: dailyActivitySessionItems.snapshotPayload,
           })
           .from(dailyActivitySessionItems)
           .where(inArray(dailyActivitySessionItems.sessionId, sessionIds))

@@ -1,5 +1,6 @@
 const FALLBACK_AUTH_ORIGINS = [
     "https://hero.chitraparatama.com",
+    "https://maestro.chitraparatama.com",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ];

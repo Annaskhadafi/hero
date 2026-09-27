@@ -5,6 +5,8 @@ const tabs = [
   { label: "Navbar Setting", href: "/dashboard/settings/navbar" },
   { label: "Portal Chitra", href: "/dashboard/settings/portal-chitra" },
   { label: "Email Delivery Log", href: "/dashboard/settings/email" },
+  { label: "MAESTRO", href: "/dashboard/settings/maestro" },
+  { label: "MAESTRO Users", href: "/dashboard/settings/maestro/users" },
   { label: "Backup & Restore", href: "/dashboard/settings/system-backup" },
 ];
 

@@ -34,6 +34,7 @@
     "db:import:hiradc": "tsx scripts/import-hiradc.ts",
     "db:seed:recruitment-templates": "tsx scripts/seed-recruitment-templates.ts",
     "db:seed:tire-presets": "tsx scripts/seed-tire-presets.ts",
+    "db:sync:maestro": "tsx scripts/sync-maestro-foundation.ts",
     "db:create:tire-tables": "tsx scripts/create-tire-pattern-tables.ts",
     "db:migrate:hse": "tsx scratch/migrate-hse-inventories.ts",
     "db:up": "docker compose up postgres -d",

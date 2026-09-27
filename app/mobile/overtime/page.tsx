@@ -71,7 +71,7 @@ export default async function MobileOvertimePage({
 
   const [approvals, activeEmployees, rawSections, rawDepartments, rawSites] = await Promise.all([
     safeQuery(
-      () => getApprovalCenterData(session.user.email),
+      () => getApprovalCenterData(session.user.email, { categoryFilter: 'OVERTIME', skipHistory: true }),
       null,
       'getApprovalCenterData'
     ),

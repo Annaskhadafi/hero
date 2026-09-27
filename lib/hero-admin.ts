@@ -103,7 +103,7 @@ declare global {
   var heroGovernanceSeedVersion: string | undefined
 }
 
-const HERO_GOVERNANCE_SEED_VERSION = 'quick-action-admin-v1'
+const HERO_GOVERNANCE_SEED_VERSION = 'maestro-menu-v2'
 
 export async function withDbRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 350): Promise<T> {
   let attempt = 0
@@ -576,6 +576,30 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     openInNewTab: false,
   },
   // Portal Chitra
+  {
+    menuArea: 'main',
+    section: 'MAESTRO',
+    groupLabel: 'Customer Portal',
+    title: 'MAESTRO',
+    url: '/dashboard/settings/maestro',
+    iconName: 'layers',
+    resource: 'settings_maestro',
+    sortOrder: 1,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'MAESTRO',
+    groupLabel: 'Customer Portal',
+    title: 'User Management',
+    url: '/dashboard/settings/maestro/users',
+    iconName: 'users',
+    resource: 'settings_maestro_users',
+    sortOrder: 2,
+    isVisible: true,
+    openInNewTab: false,
+  },
   {
     menuArea: 'main',
     section: 'Portal Chitra',
@@ -4434,6 +4458,17 @@ const QUALITY_CPI_RESOURCES = new Set([
 ])
 
 function getDefaultMenuPermission(roleName: string, resource: string) {
+  if (resource === 'settings_maestro' || resource === 'settings_maestro_users') {
+    const allowed = roleName === 'Super Admin'
+    return {
+      canView: allowed,
+      canEdit: allowed,
+      canDelete: allowed,
+      canSelectAll: allowed,
+      dataScope: 'global' as const,
+    }
+  }
+
   // Daily Activity monitoring: khusus untuk PJO, Head Section, Head Department, keatas
   if (resource === 'daily_activity') {
     const isLeadership = [
@@ -8290,10 +8325,19 @@ export async function getSecurityRoleOptions() {
   return db.select().from(securityRoles).orderBy(securityRoles.name)
 }
 
-export const getSidebarDataForUser = cache(async function getSidebarDataForUser(email: string) {
+export const getSidebarDataForUser = cache(async function getSidebarDataForUser(
+  email: string,
+  options?: { ensureSeed?: boolean }
+) {
   try {
     return await withDbRetry(async () => {
-      await ensureHeroGovernanceSeedData()
+      if (options?.ensureSeed) {
+        await ensureHeroGovernanceSeedData()
+      } else if (!globalThis.heroGovernanceSeeded) {
+        ensureHeroGovernanceSeedData().catch((e) =>
+          console.warn('[hero-admin] background governance seed err:', e)
+        )
+      }
 
       const normalizedEmail = (email || '').trim().toLowerCase()
       const [employee] = await db

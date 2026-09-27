@@ -28,6 +28,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { SearchableEmployeeSelect } from "@/components/searchable-employee-select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
@@ -69,6 +70,7 @@ interface MasterDataManagementProps {
   jobTitles: MasterJobTitle[];
   departments: MasterDepartment[];
   sites: MasterSite[];
+  customers: Array<{ id: number; name: string; customerCode: string }>;
   positions: MasterPosition[];
   attendanceShifts: MasterAttendanceShift[];
   categoryOptions: MasterCategoryOption[];
@@ -129,6 +131,12 @@ type SiteFormState = {
   isActive: boolean;
 };
 
+type MasterCustomerOption = {
+  id: number;
+  name: string;
+  customerCode: string;
+};
+
 const EMPTY_SITE_FORM: SiteFormState = {
   name: "",
   provinceId: "",
@@ -184,6 +192,7 @@ export function MasterDataManagement({
   jobTitles,
   departments,
   sites,
+  customers,
   positions,
   attendanceShifts,
   categoryOptions,
@@ -309,7 +318,7 @@ export function MasterDataManagement({
         </TabsContent>
 
         <TabsContent value="sites" className="space-y-4">
-          <SiteManagement sites={sites} employees={employees} canEdit={canEdit} canDelete={canDelete} />
+          <SiteManagement sites={sites} customers={customers} employees={employees} canEdit={canEdit} canDelete={canDelete} />
         </TabsContent>
 
         <TabsContent value="attendance-shifts" className="space-y-4">
@@ -1407,11 +1416,13 @@ function EmployeeListDialog({
 
 function SiteManagement({
   sites,
+  customers,
   employees,
   canEdit = true,
   canDelete = true,
 }: {
   sites: MasterSite[];
+  customers: MasterCustomerOption[];
   employees: Array<{ id: number; name: string; jobTitle?: string | null }>;
   canEdit?: boolean;
   canDelete?: boolean;
@@ -1441,13 +1452,6 @@ function SiteManagement({
       site.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       site.headEmployeeName?.toLowerCase().includes(searchQuery.toLowerCase())
   );
-  const isSiteLocationComplete = Boolean(
-    formData.provinceId &&
-      formData.regencyId &&
-      formData.districtId &&
-      formData.villageId,
-  );
-
   useEffect(() => {
     if (!isDialogOpen || provinceOptions.length > 0) {
       return;
@@ -1730,59 +1734,74 @@ function SiteManagement({
           </div>
         </div>
 
-        <div className="rounded-lg border">
-          <Table>
+        <div className="overflow-hidden rounded-lg border">
+          <Table
+            className="table-fixed text-xs"
+            containerClassName="overflow-hidden rounded-none border-0 shadow-none"
+          >
+            <colgroup>
+              <col className="w-[14%]" />
+              <col className="w-[7%]" />
+              <col className="w-[7%]" />
+              <col className="w-[18%]" />
+              <col className="w-[13%]" />
+              <col className="w-[10%]" />
+              <col className="w-[11%]" />
+              <col className="w-[7%]" />
+              <col className="w-[6%]" />
+              <col className="w-[7%]" />
+            </colgroup>
             <TableHeader>
               <TableRow className="bg-[#F5F7F9]">
-                <TableHead>Nama Site</TableHead>
-                <TableHead>Jenis Site</TableHead>
-                <TableHead>Zonasi</TableHead>
-                <TableHead>Location</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead>No. Kontrak</TableHead>
-                <TableHead>Head Area</TableHead>
-                <TableHead className="w-[90px] text-center">Jml Karyawan</TableHead>
-                <TableHead className="w-[100px]">Status</TableHead>
-                <TableHead className="w-[100px]">Aksi</TableHead>
+                <TableHead className="whitespace-normal px-2 text-[10px] leading-tight">Nama Site</TableHead>
+                <TableHead className="whitespace-normal px-2 text-[10px] leading-tight">Jenis Site</TableHead>
+                <TableHead className="whitespace-normal px-2 text-[10px] leading-tight">Zonasi</TableHead>
+                <TableHead className="whitespace-normal px-2 text-[10px] leading-tight">Location</TableHead>
+                <TableHead className="whitespace-normal px-2 text-[10px] leading-tight">Customer</TableHead>
+                <TableHead className="whitespace-normal px-2 text-[10px] leading-tight">No. Kontrak</TableHead>
+                <TableHead className="whitespace-normal px-2 text-[10px] leading-tight">Head Area</TableHead>
+                <TableHead className="whitespace-normal px-1 text-center text-[10px] leading-tight">Jml Karyawan</TableHead>
+                <TableHead className="whitespace-normal px-1 text-[10px] leading-tight">Status</TableHead>
+                <TableHead className="whitespace-normal px-1 text-[10px] leading-tight">Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredSites.length > 0 ? (
                 filteredSites.map((site) => (
                   <TableRow key={site.id}>
-                    <TableCell className="font-medium">{site.name}</TableCell>
-                    <TableCell>
+                    <TableCell className="max-w-0 truncate px-2 font-medium" title={site.name}>{site.name}</TableCell>
+                    <TableCell className="px-2">
                       <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
                         {site.siteType || 'Site'}
                       </span>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="px-2">
                       <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700 border border-blue-200">
                         {site.timezone || 'WITA'}
                       </span>
                     </TableCell>
-                    <TableCell className="text-[#64748b]">{site.location}</TableCell>
-                    <TableCell>{site.customerName}</TableCell>
-                    <TableCell>{site.contractNumber}</TableCell>
-                    <TableCell>
+                    <TableCell className="max-w-0 truncate px-2 text-[#64748b]" title={site.location}>{site.location}</TableCell>
+                    <TableCell className="max-w-0 truncate px-2" title={site.customerName}>{site.customerName}</TableCell>
+                    <TableCell className="max-w-0 truncate px-2" title={site.contractNumber}>{site.contractNumber}</TableCell>
+                    <TableCell className="max-w-0 truncate px-2">
                       {site.headEmployeeName ? (
-                        <span className="font-medium text-[#1e293b]">{site.headEmployeeName}</span>
+                        <span className="block truncate font-medium text-[#1e293b]" title={site.headEmployeeName}>{site.headEmployeeName}</span>
                       ) : (
                         <span className="text-[#94a3b8]">-</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-center">
+                    <TableCell className="px-1 text-center">
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => setEmployeeDialogSite(site)}
-                        className="gap-1 text-xs font-medium text-[#64748b] hover:text-[#3b82f6]"
+                        className="h-8 gap-1 px-1 text-xs font-medium text-[#64748b] hover:text-[#3b82f6]"
                       >
                         <Users className="size-3.5" />
                         {site.employeeCount}
                       </Button>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="px-1">
                       <Badge
                         variant={site.isActive ? "default" : "secondary"}
                         className={site.isActive ? "bg-[#10b981] text-white" : "bg-[#cbd5e1] text-[#64748b]"}
@@ -1790,8 +1809,8 @@ function SiteManagement({
                         {site.isActive ? "Aktif" : "Nonaktif"}
                       </Badge>
                     </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
+                    <TableCell className="px-1">
+                      <div className="flex flex-wrap items-center gap-0">
                         {canEdit && (
                           <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(site)} className="size-8 text-[#3b82f6] hover:bg-[#eff6ff]">
                             <Pencil className="size-4" />
@@ -2075,7 +2094,17 @@ function SiteManagement({
             )}
             <div className="space-y-2">
               <Label htmlFor="site-customer">Customer</Label>
-              <Input id="site-customer" value={formData.customerName} onChange={(e) => setFormData({ ...formData, customerName: e.target.value })} required />
+              <SearchableSelect
+                label="Customer"
+                value={formData.customerName}
+                onValueChange={(value) => setFormData({ ...formData, customerName: value })}
+                options={customers.map((customer) => ({
+                  value: customer.name,
+                  label: `${customer.name} · ${customer.customerCode}`,
+                }))}
+                placeholder="Pilih customer"
+                widthClassName="h-12 w-full rounded-md bg-surface-container-low px-4"
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="site-contract">No. Kontrak</Label>
@@ -2110,8 +2139,7 @@ function SiteManagement({
                   isLoadingProvinces ||
                   isLoadingRegencies ||
                   isLoadingDistricts ||
-                  isLoadingVillages ||
-                  !isSiteLocationComplete
+                  isLoadingVillages
                 }
                 className="bg-[#3b82f6] hover:bg-[#2563eb]"
               >

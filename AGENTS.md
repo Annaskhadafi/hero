@@ -36,6 +36,34 @@ Untuk memastikan seluruh berkas yang diunggah dapat diakses secara persisten di 
 
 ---
 
+# MAESTRO Trigger (`/maestro`)
+
+Jika request user menyertakan marker `/maestro`, perlakukan seluruh request
+sebagai fitur portal MAESTRO di `maestro.chitraparatama.com`.
+
+Aturan otomatis:
+
+* Gunakan identity, role, permission, session, audit, dan menu MAESTRO yang
+  terpisah dari sistem internal HERO.
+* Customer memakai satu domain MAESTRO; jangan membuat routing berdasarkan
+  subdomain atau nama customer kecuali diminta eksplisit.
+* Semua query wajib memakai customer scope dari session dan site scope yang
+  sudah diberikan di HERO. Jangan percaya `customerId`, `siteId`, atau `roleId`
+  dari client sebagai sumber otorisasi.
+* Setiap halaman/API baru wajib didaftarkan pada registry permission MAESTRO
+  agar menu, RBAC, dan server guard tersinkron otomatis di HERO.
+* Permission baru default `deny` sampai role customer diberi akses.
+* User customer, role, permission, site access, dan audit dikelola dari area
+  HERO khusus MAESTRO, terpisah dari user/role internal.
+* Fitur customer default read-only dan tidak boleh menambah akses tulis atau
+  transaksi tanpa requirement eksplisit.
+* Gunakan service/query scoped MAESTRO untuk data HERO; jangan menyalin tabel
+  transaksi atau mengamankan data hanya melalui filter UI.
+* Ikuti standar upload proxy, `resolveUploadUrl`, dan `documentation/Design.md`.
+
+Marker `/maestro` adalah trigger konteks kerja, bukan route literal yang harus
+disimpan pada URL atau nama file.
+
 # Agent Execution & Workflow Guide
 
 ## Core Modes \& Phase Separation
