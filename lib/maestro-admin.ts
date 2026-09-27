@@ -9,8 +9,10 @@ import { employees, sites } from '@/db/schema/hero'
 import { customers } from '@/db/schema/customers'
 import {
   maestroAuditLogs,
+  maestroCustomerAccounts,
   maestroCustomerMemberships,
   maestroCustomerLocations,
+  maestroCustomerSessions,
   maestroCustomerUserLocations,
   maestroCustomerSites,
   maestroCustomerUserSites,
@@ -156,10 +158,27 @@ export async function getMaestroUserManagementData() {
     await Promise.all([
       getMaestroCustomerOptions(),
       db
-        .select({ id: sites.id, name: sites.name, location: sites.location })
+        .select({
+          id: sites.id,
+          name: sites.name,
+          location: sites.location,
+          customerName: sites.customerName,
+          employeeCount: sql<number>`count(${employees.id})::int`,
+        })
         .from(sites)
+        .leftJoin(
+          employees,
+          and(
+            eq(employees.siteId, sites.id),
+            or(
+              eq(employees.isActive, true),
+              sql`lower(${employees.employmentStatus}) = 'active'`,
+            ),
+          ),
+        )
         .where(eq(sites.isActive, true))
-        .orderBy(asc(sites.name)),
+        .groupBy(sites.id, sites.name, sites.location, sites.customerName)
+        .orderBy(desc(sql`count(${employees.id})`), asc(sites.name)),
       db
         .select({ id: maestroRoles.id, code: maestroRoles.code, name: maestroRoles.name, description: maestroRoles.description })
         .from(maestroRoles)
@@ -187,21 +206,31 @@ export async function getMaestroUserManagementData() {
     ])
 
   const memberships = new Map(membershipRows.map((row) => [row.userId, row]))
-  const roles = new Map<string, string[]>()
-  for (const row of userRoleRows) roles.set(row.userId, [...(roles.get(row.userId) ?? []), row.roleName])
-  const locationAccess = new Map<string, string[]>()
-  for (const row of userLocationRows) locationAccess.set(row.userId, [...(locationAccess.get(row.userId) ?? []), row.locationName])
+  const roles = new Map<string, Array<{ code: string; name: string }>>()
+  for (const row of userRoleRows) {
+    roles.set(row.userId, [...(roles.get(row.userId) ?? []), { code: row.roleCode, name: row.roleName }])
+  }
+  const locationAccess = new Map<string, Array<{ id: number; name: string }>>()
+  for (const row of userLocationRows) {
+    locationAccess.set(row.userId, [...(locationAccess.get(row.userId) ?? []), { id: row.locationId, name: row.locationName }])
+  }
 
   return {
     customers: customerRows,
     locations: locationRows,
     roles: roleRows,
-    users: userRows.map((user) => ({
-      ...user,
-      customer: memberships.get(user.id) ?? null,
-      roles: roles.get(user.id) ?? [],
-      locations: locationAccess.get(user.id) ?? [],
-    })),
+    users: userRows.map((user) => {
+      const userRoles = roles.get(user.id) ?? []
+      const userLocs = locationAccess.get(user.id) ?? []
+      return {
+        ...user,
+        customer: memberships.get(user.id) ?? null,
+        roles: userRoles.map((r) => r.name),
+        roleCodes: userRoles.map((r) => r.code),
+        locations: userLocs.map((l) => l.name),
+        locationIds: userLocs.map((l) => l.id),
+      }
+    }),
   }
 }
 
@@ -262,6 +291,14 @@ export async function registerMaestroCustomerUser(input: {
     ).onConflictDoNothing()
     await tx.insert(maestroCustomerUserLocations).values(
       locationIds.map((locationId) => ({ userId, customerId: customer.id, locationId })),
+    )
+
+    // Sync sites for session.access.siteIds (Daily Activity, Timesheet, Ticketing)
+    await tx.insert(maestroCustomerSites).values(
+      locationIds.map((siteId) => ({ customerId: customer.id, siteId, isActive: true })),
+    ).onConflictDoNothing()
+    await tx.insert(maestroCustomerUserSites).values(
+      locationIds.map((siteId) => ({ userId, customerId: customer.id, siteId, isActive: true })),
     )
   })
 
@@ -402,3 +439,178 @@ export async function saveMaestroVisibilityPolicy(
     metadata: policy,
   })
 }
+
+export async function updateMaestroCustomerUser(input: {
+  userId: string
+  name: string
+  email: string
+  password?: string
+  customerCode: string
+  roleCode: string
+  locationIds: number[]
+  isActive: boolean
+}) {
+  const { employeeId } = await requireMaestroOperator()
+  const userId = input.userId.trim()
+  if (!userId) throw new Error('User ID diperlukan')
+
+  const email = input.email.trim().toLowerCase()
+  const name = input.name.trim()
+  const locationIds = [...new Set(input.locationIds.map(Number).filter(Number.isInteger))]
+  if (!email || !email.includes('@')) throw new Error('Format email customer tidak valid')
+  if (!name) throw new Error('Nama user wajib diisi')
+  if (input.password && input.password.trim() && input.password.trim().length < 8) {
+    throw new Error('Password baru minimal 8 karakter')
+  }
+  const customerCode = input.customerCode.trim()
+  if (!customerCode) throw new Error('Customer wajib dipilih')
+  if (!input.roleCode.trim()) throw new Error('Role MAESTRO wajib dipilih')
+  if (!locationIds.length) throw new Error('Pilih minimal satu lokasi')
+
+  const [existingUser] = await db
+    .select()
+    .from(maestroCustomerUsers)
+    .where(eq(maestroCustomerUsers.id, userId))
+    .limit(1)
+  if (!existingUser) throw new Error('User customer tidak ditemukan')
+
+  const [duplicateEmail] = await db
+    .select({ id: maestroCustomerUsers.id })
+    .from(maestroCustomerUsers)
+    .where(and(ilike(maestroCustomerUsers.email, email), sql`${maestroCustomerUsers.id} != ${userId}`))
+    .limit(1)
+  if (duplicateEmail) throw new Error('Email sudah digunakan oleh user customer lain')
+
+  const customer = await resolveLocalCustomer(customerCode)
+
+  const [role] = await db
+    .select({ id: maestroRoles.id, code: maestroRoles.code })
+    .from(maestroRoles)
+    .where(and(eq(maestroRoles.code, input.roleCode.trim()), eq(maestroRoles.isActive, true)))
+    .limit(1)
+  if (!role) throw new Error('Role MAESTRO tidak ditemukan')
+
+  const selectedLocations = await db
+    .select({ id: sites.id })
+    .from(sites)
+    .where(and(eq(sites.isActive, true), inArray(sites.id, locationIds)))
+  if (selectedLocations.length !== locationIds.length) {
+    throw new Error('Ada lokasi yang tidak aktif atau tidak ditemukan')
+  }
+
+  await db.transaction(async (tx) => {
+    const updateValues: Record<string, any> = {
+      name,
+      email,
+      isActive: input.isActive,
+      updatedAt: new Date(),
+    }
+    if (input.password && input.password.trim().length >= 8) {
+      updateValues.passwordHash = await hashPassword(input.password.trim())
+    }
+    await tx
+      .update(maestroCustomerUsers)
+      .set(updateValues)
+      .where(eq(maestroCustomerUsers.id, userId))
+
+    await tx.delete(maestroCustomerMemberships).where(eq(maestroCustomerMemberships.userId, userId))
+    await tx.insert(maestroCustomerMemberships).values({
+      userId,
+      customerId: customer.id,
+      isActive: input.isActive,
+    })
+
+    await tx.delete(maestroUserRoles).where(eq(maestroUserRoles.userId, userId))
+    await tx.insert(maestroUserRoles).values({
+      userId,
+      roleId: role.id,
+    })
+
+    await tx.insert(maestroCustomerLocations).values(
+      locationIds.map((locationId) => ({ customerId: customer.id, locationId })),
+    ).onConflictDoNothing()
+
+    await tx.delete(maestroCustomerUserLocations).where(eq(maestroCustomerUserLocations.userId, userId))
+    await tx.insert(maestroCustomerUserLocations).values(
+      locationIds.map((locationId) => ({
+        userId,
+        customerId: customer.id,
+        locationId,
+        isActive: input.isActive,
+      })),
+    )
+
+    // Sync sites for session.access.siteIds (Daily Activity, Timesheet, Ticketing)
+    await tx.insert(maestroCustomerSites).values(
+      locationIds.map((siteId) => ({ customerId: customer.id, siteId, isActive: input.isActive })),
+    ).onConflictDoNothing()
+
+    await tx.delete(maestroCustomerUserSites).where(eq(maestroCustomerUserSites.userId, userId))
+    if (locationIds.length > 0) {
+      await tx.insert(maestroCustomerUserSites).values(
+        locationIds.map((siteId) => ({
+          userId,
+          customerId: customer.id,
+          siteId,
+          isActive: input.isActive,
+        })),
+      )
+    }
+
+    if (!input.isActive) {
+      await tx.delete(maestroCustomerSessions).where(eq(maestroCustomerSessions.userId, userId))
+    }
+  })
+
+  await writeAudit({
+    actorEmployeeId: employeeId,
+    action: 'customer_user.updated',
+    entityType: 'maestro_customer_user',
+    entityId: userId,
+    customerId: customer.id,
+    metadata: { roleCode: role.code, locationIds, isActive: input.isActive },
+  })
+
+  return { success: true }
+}
+
+export async function deleteMaestroCustomerUser(userId: string) {
+  const { employeeId } = await requireMaestroOperator()
+  const trimmedId = userId.trim()
+  if (!trimmedId) throw new Error('User ID diperlukan')
+
+  const [existingUser] = await db
+    .select({ id: maestroCustomerUsers.id, name: maestroCustomerUsers.name, email: maestroCustomerUsers.email })
+    .from(maestroCustomerUsers)
+    .where(eq(maestroCustomerUsers.id, trimmedId))
+    .limit(1)
+  if (!existingUser) throw new Error('User customer tidak ditemukan')
+
+  const [membership] = await db
+    .select({ customerId: maestroCustomerMemberships.customerId })
+    .from(maestroCustomerMemberships)
+    .where(eq(maestroCustomerMemberships.userId, trimmedId))
+    .limit(1)
+
+  await db.transaction(async (tx) => {
+    await tx.delete(maestroCustomerSessions).where(eq(maestroCustomerSessions.userId, trimmedId))
+    await tx.delete(maestroCustomerUserLocations).where(eq(maestroCustomerUserLocations.userId, trimmedId))
+    await tx.delete(maestroCustomerUserSites).where(eq(maestroCustomerUserSites.userId, trimmedId))
+    await tx.delete(maestroUserRoles).where(eq(maestroUserRoles.userId, trimmedId))
+    await tx.delete(maestroCustomerMemberships).where(eq(maestroCustomerMemberships.userId, trimmedId))
+    await tx.delete(maestroCustomerAccounts).where(eq(maestroCustomerAccounts.userId, trimmedId))
+    await tx.delete(maestroCustomerUsers).where(eq(maestroCustomerUsers.id, trimmedId))
+  })
+
+  await writeAudit({
+    actorEmployeeId: employeeId,
+    action: 'customer_user.deleted',
+    entityType: 'maestro_customer_user',
+    entityId: trimmedId,
+    customerId: membership?.customerId ?? null,
+    metadata: { name: existingUser.name, email: existingUser.email },
+  })
+
+  return { success: true }
+}
+

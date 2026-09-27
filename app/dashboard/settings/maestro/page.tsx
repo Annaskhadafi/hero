@@ -33,6 +33,12 @@ export default async function MaestroSettingsPage() {
         <Button asChild size="dense">
           <Link href="/dashboard/settings/maestro/users">User management</Link>
         </Button>
+        <Button asChild size="dense" className="bg-indigo-600 text-white hover:bg-indigo-700">
+          <Link href="/dashboard/settings/maestro/tickets">Ticketing Problem (Live Queue)</Link>
+        </Button>
+        <Button asChild size="dense" variant="outline" className="border-indigo-200 text-indigo-700 hover:bg-indigo-50">
+          <Link href="/dashboard/settings/maestro/tickets/settings">Pengaturan AI &amp; Routing PIC</Link>
+        </Button>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">

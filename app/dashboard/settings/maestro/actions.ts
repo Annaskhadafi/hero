@@ -3,10 +3,12 @@
 import {
   assignMaestroRole,
   createMaestroCustomerUser,
+  deleteMaestroCustomerUser,
   getMaestroUserManagementData,
   grantMaestroSiteAccess,
   registerMaestroCustomerUser,
   saveMaestroVisibilityPolicy,
+  updateMaestroCustomerUser,
 } from '@/lib/maestro-admin'
 
 export async function getMaestroUserManagementDataAction() {
@@ -51,3 +53,21 @@ export async function saveMaestroVisibilityPolicyAction(
 ) {
   return saveMaestroVisibilityPolicy(customerId, policy)
 }
+
+export async function updateMaestroCustomerUserAction(input: {
+  userId: string
+  name: string
+  email: string
+  password?: string
+  customerCode: string
+  roleCode: string
+  locationIds: number[]
+  isActive: boolean
+}) {
+  return updateMaestroCustomerUser(input)
+}
+
+export async function deleteMaestroCustomerUserAction(userId: string) {
+  return deleteMaestroCustomerUser(userId)
+}
+

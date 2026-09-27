@@ -2,6 +2,7 @@
 
 import { getS3ObjectReadUrl, isS3UploadConfigured, uploadAnyFileToS3, uploadAttendancePhotoToS3 } from "@/lib/s3-storage";
 import { getServerSession } from "@/lib/auth-session";
+import { getMaestroServerSession } from "@/lib/maestro-session";
 import { db } from "@/db";
 import { hcContractReviewApprovals } from "@/db/schema/hero";
 import { eq } from "drizzle-orm";
@@ -46,10 +47,14 @@ function isPrivateIpOrHost(urlString: string): boolean {
 
 async function requireUploadSession() {
   const session = await getServerSession();
-  if (!session?.user?.email) {
-    return { success: false as const, error: "Unauthorized" };
+  if (session?.user?.email) {
+    return { success: true as const, session };
   }
-  return { success: true as const, session };
+  const maestroSession = await getMaestroServerSession();
+  if (maestroSession?.user?.email) {
+    return { success: true as const, session: maestroSession };
+  }
+  return { success: false as const, error: "Unauthorized" };
 }
 
 export async function uploadFile(formData: FormData) {

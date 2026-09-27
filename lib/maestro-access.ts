@@ -74,13 +74,17 @@ export async function getMaestroAccessContexts(userId: string): Promise<MaestroA
         ),
       )
 
+    const directSiteIds = sites.map((row) => row.siteId)
+    const locationIds = await getLocationIdsForUserCustomer(userId, membership.customerId)
+    const combinedSiteIds = [...new Set([...directSiteIds, ...locationIds])]
+
     contexts.push({
       userId,
       customerId: membership.customerId,
       roleIds,
       permissions,
-        siteIds: sites.map((row) => row.siteId),
-        locationIds: await getLocationIdsForUserCustomer(userId, membership.customerId),
+      siteIds: combinedSiteIds,
+      locationIds,
     })
   }
 
