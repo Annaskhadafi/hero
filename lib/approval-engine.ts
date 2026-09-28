@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, inArray, or } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm'
 import { db } from '@/db'
 import {
   approvalMatrices,
@@ -566,6 +566,45 @@ async function resolveDynamicApproverForRoleOrSection(options: {
   roleKeywords?: string[]
   defaultLabel: string
 }): Promise<{ id: number | null; name: string; label: string }> {
+  // Special case for Team Billing: prioritize active Billing employee (Andika Ferdiansyah)
+  const isBilling =
+    options.defaultLabel.toLowerCase().includes('billing') ||
+    options.sectionKeywords.some((kw) => kw.toLowerCase().includes('billing'))
+
+  if (isBilling) {
+    const [billingEmp] = await db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        jobTitle: employees.jobTitle,
+      })
+      .from(employees)
+      .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+      .where(
+        and(
+          eq(employees.isActive, true),
+          or(
+            ilike(employees.name, '%andika%ferdiansyah%'),
+            and(ilike(masterSections.name, '%billing%'), ilike(employees.jobTitle, '%billing%')),
+            ilike(employees.jobTitle, '%billing%')
+          )
+        )
+      )
+      .orderBy(
+        sql`CASE WHEN ${employees.name} ILIKE '%Andika%' THEN 0 ELSE 1 END`,
+        asc(employees.id)
+      )
+      .limit(1)
+
+    if (billingEmp?.id && billingEmp?.name) {
+      return {
+        id: billingEmp.id,
+        name: billingEmp.name,
+        label: options.defaultLabel || 'Team Billing',
+      }
+    }
+  }
+
   // 1. Try masterSections by sectionKeywords
   for (const kw of options.sectionKeywords) {
     const [sec] = await db
