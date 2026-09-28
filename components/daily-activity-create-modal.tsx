@@ -675,10 +675,6 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
           toast.error(`Durasi waktu mulai dan selesai wajib diisi untuk "${it.label}"!`)
           return
         }
-        if ((it as any).requiresPhoto && !it.photoUrl && (!it.photos || it.photos.length === 0)) {
-          toast.error(`Foto dokumentasi wajib diunggah untuk "${it.label}"!`)
-          return
-        }
       }
     }
 
@@ -1374,7 +1370,6 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                             item.requiresTireCount ? 'Tire' : null,
                             item.requiresMaterialUsed ? 'Material' : null,
                             item.requiresLocationGps ? 'GPS' : null,
-                            item.requiresPhoto ? 'Photo Wajib' : null,
                           ].filter(Boolean)
 
                           return (
@@ -1488,22 +1483,19 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
 
                             <div className={cn(
                               "rounded-lg border p-2.5 space-y-2 bg-white",
-                              !item.photoUrl && (!item.photos || item.photos.length === 0) ? (item.requiresPhoto ? "border-rose-300 bg-rose-50/30" : "border-amber-200 bg-amber-50/20") : "border-slate-200"
+                              !item.photoUrl && (!item.photos || item.photos.length === 0) ? "border-slate-200 bg-slate-50/20" : "border-slate-200"
                             )}>
                               <div className="flex items-center justify-between">
                                 <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                                  <Camera className="size-3.5 text-slate-500" /> Photo Evidence {item.requiresPhoto ? <span className="text-rose-600 font-bold text-[10px]">(Wajib)</span> : <span className="text-slate-400 font-normal text-[10px]">(Opsional)</span>}
+                                  <Camera className="size-3.5 text-slate-500" /> Photo Evidence <span className="text-slate-400 font-normal text-[10px]">(Opsional)</span>
                                 </span>
                                 {item.photoUrl ? (
                                   <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-semibold">
                                     Foto Terunggah
                                   </Badge>
                                 ) : (
-                                  <span className={cn(
-                                    "text-[10px] font-medium border px-1.5 py-0.5 rounded",
-                                    item.requiresPhoto ? "text-rose-700 bg-rose-50 border-rose-200 font-bold" : "text-slate-500 bg-slate-100 border-slate-200"
-                                  )}>
-                                    {item.requiresPhoto ? "Foto wajib diunggah" : "Foto opsional"}
+                                  <span className="text-[10px] font-medium border px-1.5 py-0.5 rounded text-slate-500 bg-slate-100 border-slate-200">
+                                    Foto opsional
                                   </span>
                                 )}
                               </div>

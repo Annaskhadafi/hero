@@ -1,17 +1,22 @@
 import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { getCurrentEmployee } from '@/lib/get-current-employee'
-import { getEwhSummaryAction, getEwhTeamsAction, getEwhEmployeesAction } from './actions'
+import {
+  getEwhSummaryAction,
+  getEwhTeamsAction,
+  getEwhEmployeesAction,
+  getEwhSiteMonthlyMatrixAction,
+} from './actions'
 import { EwhDashboardClient } from './ewh-dashboard-client'
 
 interface PageProps {
-  searchParams: Promise<{ siteId?: string; period?: string }>
+  searchParams: Promise<{ siteId?: string; period?: string; powerman?: string; tab?: string }>
 }
 
 export const metadata = {
-  title: 'EWH Dashboard — Effective Working Hours',
+  title: 'EWH Dashboard — Effective Working Hours | HERO',
   description:
-    'Monitor jam kerja efektif seluruh karyawan per site per periode. Terhubung dengan Attendance Real dan Daily Activity.',
+    'Monitor jam kerja efektif dan utilitas aktivitas operasional per site. Terintegrasi dengan Attendance Real, Daily Activity, dan Standar 2-Shift (22 Jam/Hari).',
 }
 
 export default async function EwhDashboardPage({ searchParams }: PageProps) {
@@ -23,34 +28,29 @@ export default async function EwhDashboardPage({ searchParams }: PageProps) {
   const now = new Date()
   const defaultPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   const period = params.period ?? defaultPeriod
+  const overridePowerman = params.powerman ? parseInt(params.powerman, 10) : undefined
 
-  const [result, teamsRes, employeesRes] = await Promise.all([
-    getEwhSummaryAction(siteId, period),
-    getEwhTeamsAction(siteId),
-    getEwhEmployeesAction(siteId),
+  const [matrixRes, summaryRes, teamsRes, employeesRes] = await Promise.all([
+    getEwhSiteMonthlyMatrixAction(siteId, period, overridePowerman),
+    getEwhSummaryAction(siteId || 1, period),
+    getEwhTeamsAction(siteId || 1),
+    getEwhEmployeesAction(siteId || 1),
   ])
 
   return (
-    <div className="flex flex-col gap-6 p-6">
-      {/* Header */}
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          EWH — Effective Working Hours
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Jam kerja efektif karyawan berbasis 24 jam. Terintegrasi dengan Attendance Real, Daily
-          Activity, dan SPL/Overtime.
-        </p>
-      </div>
-
-      <Suspense fallback={<div className="text-muted-foreground text-sm">Memuat data EWH…</div>}>
+    <div className="flex flex-col gap-6 p-4 sm:p-6 bg-slate-50/50 min-h-screen">
+      <Suspense fallback={<div className="text-muted-foreground text-sm p-8 text-center">Memuat data EWH & Utilitas…</div>}>
         <EwhDashboardClient
-          rows={result.rows}
-          siteId={siteId}
+          monthlyMatrixData={matrixRes}
+          rows={summaryRes.rows}
+          siteId={matrixRes.siteId}
           period={period}
-          employeeSiteId={employee.siteId}
+          employeeSiteId={employee.siteId || 1}
           teams={teamsRes.teams || []}
           allEmployees={employeesRes.employees || []}
+          allSites={matrixRes.allSites || []}
+          initialPowerman={matrixRes.powerman}
+          initialTab={params.tab}
         />
       </Suspense>
     </div>

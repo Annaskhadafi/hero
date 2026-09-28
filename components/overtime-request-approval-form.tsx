@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { downloadElementAsPdf } from '@/lib/pdf-download'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 
 import { AdminPageShell } from '@/components/admin-page-shell'
 import { Badge } from '@/components/ui/badge'
@@ -166,9 +167,11 @@ function hasVisibleCanvasInk(canvas: HTMLCanvasElement) {
 export function OvertimeRequestApprovalForm({
   data,
   employees: employeesProp = [],
+  activityLibraries = [],
 }: {
   data: OvertimeApprovalData
   employees?: any[]
+  activityLibraries?: any[]
 }) {
   const router = useRouter()
   const { setOpen } = useSidebar()
@@ -296,7 +299,7 @@ export function OvertimeRequestApprovalForm({
   })
   const [sectionHeadTitle, setSectionHeadTitle] = useState<string>(() => {
     const matched = employeesProp.find((e) => String(e.id) === selectedSectionHeadId || e.name === initialSectionHead?.approverName)
-    return matched?.jobTitle || matched?.rank || matched?.position || 'Section Head'
+    return matched?.jobTitle || matched?.rank || matched?.position || 'PJO / Site Lead'
   })
 
   const [selectedManagerId, setSelectedManagerId] = useState<string>(() => {
@@ -366,6 +369,43 @@ export function OvertimeRequestApprovalForm({
 
   const handleRemoveLineItem = (index: number) => {
     setLineItems(lineItems.filter((_, i) => i !== index))
+  }
+
+  const activityLibraryOptions = useMemo(() => {
+    return (activityLibraries || []).map((lib: any) => ({
+      value: lib.activityName,
+      label: `${lib.activityCode ? `[${lib.activityCode}] ` : ''}${lib.activityName}${lib.category ? ` (${lib.category})` : ''}`,
+    }))
+  }, [activityLibraries])
+
+  const selectActivityForLineItem = (index: number, value: string) => {
+    const matched = (activityLibraries || []).find(
+      (lib: any) =>
+        lib.activityName.toLowerCase().trim() === value.toLowerCase().trim() ||
+        lib.activityCode.toLowerCase().trim() === value.toLowerCase().trim()
+    )
+    if (matched) {
+      setLineItems((prev) => {
+        const next = [...prev]
+        const currentTarget = next[index]?.targetUnit
+        const defaultTarget = matched.requiresEquipmentNo ? '1 Unit' : (currentTarget && currentTarget.trim() ? currentTarget : '1 Job')
+        const defaultMinutes = matched.slaHours ? Math.round(Number(matched.slaHours) * 60) : 60
+        const defaultPoints = matched.basePoints ? Number(matched.basePoints) : 5
+
+        next[index] = {
+          ...next[index],
+          lineLabel: matched.activityName,
+          targetUnit: defaultTarget,
+          estimatedMinutes: defaultMinutes,
+          plannedPoints: defaultPoints,
+        }
+        return next
+      })
+    } else {
+      const newItems = [...lineItems]
+      newItems[index].lineLabel = value
+      setLineItems(newItems)
+    }
   }
 
   const getCanvasSignatureDataUrl = () => {
@@ -590,7 +630,7 @@ export function OvertimeRequestApprovalForm({
     const defaultSteps = [
       { stepOrder: 1, stepLabel: 'Karyawan Sign', approverRole: 'employee', id: initialRequester?.id || 1, status: initialRequester?.status || 'pending', approverName: selectedRequester?.name || initialRequester?.approverName || data.requesterName || 'Pemohon', signatureDataUrl: null, remarks: '', signedAt: null },
       { stepOrder: 2, stepLabel: 'Leader / Pengawas', approverRole: 'leader', id: initialLeader?.id || 2, status: initialLeader?.status || 'waiting', approverName: selectedLeader?.name || initialLeader?.approverName || 'Leader / Pengawas', signatureDataUrl: null, remarks: '', signedAt: null },
-      { stepOrder: 3, stepLabel: 'Section Head', approverRole: 'section_head', id: initialSectionHead?.id || 3, status: initialSectionHead?.status || 'waiting', approverName: selectedSectionHead?.name || initialSectionHead?.approverName || 'Section Head', signatureDataUrl: null, remarks: '', signedAt: null },
+      { stepOrder: 3, stepLabel: 'PJO / Site Lead', approverRole: 'pjo', id: initialSectionHead?.id || 3, status: initialSectionHead?.status || 'waiting', approverName: selectedSectionHead?.name || initialSectionHead?.approverName || 'PJO / Site Lead', signatureDataUrl: null, remarks: '', signedAt: null },
     ]
 
     const merged = defaultSteps.map((def) => {
@@ -1059,17 +1099,23 @@ export function OvertimeRequestApprovalForm({
                           <tr key={item.id ? `spl-item-${item.id}` : `spl-it-${(item as any).employeeId ?? (item as any).assignedEmployeeId ?? 'anon'}-${idx}`} className="hover:bg-slate-50/80 transition-colors">
                             <td className="py-2.5 px-3 text-center font-mono text-slate-500 font-semibold">{idx + 1}</td>
                             <td className="py-2 px-3">
-                              <Input
-                                value={item.lineLabel}
-                                disabled={isLocked}
-                                onChange={(e) => {
-                                  const newItems = [...lineItems]
-                                  newItems[idx].lineLabel = e.target.value
-                                  setLineItems(newItems)
-                                }}
-                                placeholder="Nama aktivitas..."
-                                className={cn("h-8 text-xs font-medium", isLocked ? "bg-slate-50 border-slate-200 text-slate-600 cursor-not-allowed" : "bg-white border-slate-200")}
-                              />
+                              {isLocked ? (
+                                <Input
+                                  value={item.lineLabel}
+                                  disabled
+                                  className="h-8 text-xs font-medium bg-slate-50 border-slate-200 text-slate-600 cursor-not-allowed"
+                                />
+                              ) : (
+                                <SearchableSelect
+                                  label="Aktivitas"
+                                  placeholder="Pilih dari Kamus Aktivitas..."
+                                  value={item.lineLabel}
+                                  onValueChange={(val) => selectActivityForLineItem(idx, val)}
+                                  options={activityLibraryOptions}
+                                  allowCustom={true}
+                                  widthClassName="w-full"
+                                />
+                              )}
                             </td>
                             <td className="py-2 px-2.5">
                               <Input
@@ -1274,10 +1320,10 @@ export function OvertimeRequestApprovalForm({
                     />
                   </div>
 
-                  {/* Row 3: Section Head */}
+                  {/* Row 3: PJO / Site Lead */}
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <Label className="text-xs font-semibold text-slate-700">Section Head Name</Label>
+                      <Label className="text-xs font-semibold text-slate-700">PJO / Site Lead Name</Label>
                       {isSectionHeadLocked ? (
                         <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
                           SUDAH DISETUJUI (TERKUNCI)
@@ -1285,31 +1331,31 @@ export function OvertimeRequestApprovalForm({
                       ) : null}
                     </div>
                     <SearchableSelect
-                      label="Section Head"
-                      placeholder="PILIH SECTION HEAD..."
+                      label="PJO / Site Lead"
+                      placeholder="PILIH PJO / SITE LEAD..."
                       disabled={isSectionHeadLocked}
                       value={selectedSectionHeadId}
                       onValueChange={(val) => {
                         setSelectedSectionHeadId(val)
                         const matched = employeesProp.find((e) => String(e.id) === val)
                         if (matched) {
-                          setSectionHeadTitle(matched.jobTitle || matched.rank || matched.position || 'Section Head')
+                          setSectionHeadTitle(matched.jobTitle || matched.rank || matched.position || 'PJO / Site Lead')
                         }
                       }}
                       options={employeesProp.map((emp) => ({
                         value: String(emp.id),
-                        label: `${emp.name} - ${emp.jobTitle || emp.rank || 'Section Head'}`,
+                        label: `${emp.name} - ${emp.jobTitle || emp.rank || 'PJO / Site Lead'}`,
                       }))}
                       widthClassName="w-full"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">Section Head Title</Label>
+                    <Label className="text-xs font-semibold text-slate-700">PJO / Site Lead Title</Label>
                     <Input
                       value={sectionHeadTitle}
                       disabled={isSectionHeadLocked}
                       onChange={(e) => setSectionHeadTitle(e.target.value)}
-                      placeholder="Section Head"
+                      placeholder="PJO / Site Lead"
                       className={cn("h-10 text-xs", isSectionHeadLocked ? "bg-slate-50 border-slate-200 text-slate-600 cursor-not-allowed" : "bg-slate-50/60 border-slate-200")}
                     />
                   </div>
@@ -1758,12 +1804,12 @@ export function OvertimeRequestApprovalForm({
                     )
                   })()}
 
-                  {/* 3. Section Head */}
+                  {/* 3. PJO / Site Lead */}
                   {(() => {
                     const isApproved3 = sectionHeadSig?.status === 'approved'
                     return (
                       <div className="flex flex-col items-center text-center">
-                        <div className="text-[7pt] text-slate-500 font-semibold mb-1">Section Head Signature</div>
+                        <div className="text-[7pt] text-slate-500 font-semibold mb-1">PJO / Site Lead Signature</div>
                         <div className="h-16 w-full flex items-center justify-center my-1">
                           {isApproved3 && sectionHeadSigImage ? (
                             <img src={sectionHeadSigImage} alt="TTD" className="max-h-14 max-w-full object-contain" />
@@ -1776,9 +1822,9 @@ export function OvertimeRequestApprovalForm({
                           )}
                         </div>
                         <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
-                          {sectionHeadSig?.approverName || 'Section Head'}
+                          {sectionHeadSig?.approverName || 'PJO / Site Lead'}
                         </div>
-                        <div className="text-[7pt] text-slate-600 font-medium">{sectionHeadTitle || 'Section Head'}</div>
+                        <div className="text-[7pt] text-slate-600 font-medium">{sectionHeadTitle || 'PJO / Site Lead'}</div>
                         <div className="text-[6.5pt] text-slate-400 mt-0.5">
                           {isApproved3 && sectionHeadSig?.signedAt ? `Waktu TTD: ${fmtDt(sectionHeadSig.signedAt)}` : '—'}
                         </div>

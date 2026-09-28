@@ -36,7 +36,7 @@ export function resolveEmployeeApproverHierarchy(
     return { requester: null, leader: null, superior: null, department: '', section: '' }
   }
 
-  // 1. Resolve Leader (Tahap 1 / Signatory 1: Leader / PJO / Atasan Langsung)
+  // 1. Resolve Leader (Tahap 1 / Signatory 1: Leader / Supervisor / Atasan Langsung)
   let leader: EmployeeHierarchyInfo | null = null
   if (emp.directManagerId) {
     leader = employees.find((e) => e.id === emp.directManagerId) ?? null
@@ -48,39 +48,35 @@ export function resolveEmployeeApproverHierarchy(
     leader = employees.find((e) => e.id === emp.siteHeadId) ?? null
   }
 
-  // 2. Resolve Superior / Section Head (Tahap 2 / Signatory 2: Section Head / Dept Head / PJO)
+  // 2. Resolve PJO / Site Lead (Tahap 2 / Signatory 2: PJO / Site Lead - sama seperti Daily Activity)
   let superior: EmployeeHierarchyInfo | null = null
-  if (emp.sectionHeadId && emp.sectionHeadId !== emp.id) {
-    superior = employees.find((e) => e.id === emp.sectionHeadId) ?? null
-  }
-
-  // If section head is the same as leader (or employee is the section head), elevate to Dept Head or Manager's manager or Site Head
-  if (!superior || superior.id === leader?.id || superior.id === emp.id) {
-    if (leader?.directManagerId && leader.directManagerId !== leader.id && leader.directManagerId !== emp.id) {
-      superior = employees.find((e) => e.id === leader.directManagerId) ?? null
-    } else if (emp.deptHeadId && emp.deptHeadId !== emp.id && emp.deptHeadId !== leader?.id) {
-      superior = employees.find((e) => e.id === emp.deptHeadId) ?? null
-    } else if (emp.siteHeadId && emp.siteHeadId !== emp.id && emp.siteHeadId !== leader?.id) {
-      superior = employees.find((e) => e.id === emp.siteHeadId) ?? null
-    }
-  }
-
-  // If still not found and settings has sectionHeads matrix:
-  if (!superior && emp.section && settings?.approvalMatrix?.sectionHeads) {
-    const secList = Array.isArray(settings.approvalMatrix.sectionHeads)
-      ? settings.approvalMatrix.sectionHeads
-      : Object.values(settings.approvalMatrix.sectionHeads)
-    const matched: any = secList.find((sh: any) =>
-      sh.section && emp.section?.toLowerCase().includes(sh.section.toLowerCase())
-    )
-    if (matched?.email) {
-      superior = employees.find((e) => e.email?.toLowerCase() === matched.email.toLowerCase()) ?? null
-    }
-  }
-
-  // If superior still empty, fallback to leader or site head
-  if (!superior && emp.siteHeadId) {
+  if (emp.siteHeadId && emp.siteHeadId !== emp.id) {
     superior = employees.find((e) => e.id === emp.siteHeadId) ?? null
+  }
+
+  // If superior is not found or is the same as leader, resolve site head from leader or settings
+  if (!superior && leader?.siteHeadId && leader.siteHeadId !== leader.id && leader.siteHeadId !== emp.id) {
+    superior = employees.find((e) => e.id === leader.siteHeadId) ?? null
+  }
+
+  // Match PJO from settings approvalMatrix if available
+  if (!superior && (settings?.approvalMatrix?.pjoName || settings?.approvalMatrix?.leaderName)) {
+    const pjoTarget = settings?.approvalMatrix?.pjoName || settings?.approvalMatrix?.leaderName
+    superior = employees.find((e) => e.name?.toLowerCase().includes(pjoTarget.toLowerCase())) ?? null
+  }
+
+  // Fallback to department head or leader's manager if still empty
+  if (!superior && leader?.directManagerId && leader.directManagerId !== leader.id && leader.directManagerId !== emp.id) {
+    superior = employees.find((e) => e.id === leader.directManagerId) ?? null
+  }
+
+  if (!superior && emp.deptHeadId && emp.deptHeadId !== emp.id && emp.deptHeadId !== leader?.id) {
+    superior = employees.find((e) => e.id === emp.deptHeadId) ?? null
+  }
+
+  // If still empty and leader exists, fallback to leader
+  if (!superior) {
+    superior = leader
   }
 
   return {

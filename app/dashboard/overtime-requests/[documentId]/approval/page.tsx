@@ -1,6 +1,9 @@
 import { getOvertimeApprovalData } from '@/app/dashboard/overtime-requests/actions'
 import { getEmployeesForContract } from '@/app/actions/employee'
 import { OvertimeRequestApprovalForm } from '@/components/overtime-request-approval-form'
+import { db } from '@/db'
+import { activityLibraries } from '@/db/schema/hero'
+import { asc, eq } from 'drizzle-orm'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -17,9 +20,22 @@ export default async function OvertimeApprovalPage({
   const { documentId } = await params
   const documentIdNum = Number(documentId)
 
-  const [data, employeesRaw] = await Promise.all([
+  const [data, employeesRaw, rawActivityLibraries] = await Promise.all([
     getOvertimeApprovalData(documentIdNum),
     getEmployeesForContract(),
+    db
+      .select({
+        id: activityLibraries.id,
+        activityCode: activityLibraries.activityCode,
+        activityName: activityLibraries.activityName,
+        category: activityLibraries.category,
+        basePoints: activityLibraries.basePoints,
+        slaHours: activityLibraries.slaHours,
+        requiresEquipmentNo: activityLibraries.requiresEquipmentNo,
+      })
+      .from(activityLibraries)
+      .where(eq(activityLibraries.isActive, true))
+      .orderBy(asc(activityLibraries.activityName)),
   ])
 
   if (!data) {
@@ -44,6 +60,7 @@ export default async function OvertimeApprovalPage({
     <OvertimeRequestApprovalForm
       data={data}
       employees={employees}
+      activityLibraries={rawActivityLibraries || []}
     />
   )
 }

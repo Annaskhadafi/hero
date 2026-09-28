@@ -2,9 +2,10 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
-import { ExternalLink, Eye, ImageOff, MapPin } from "lucide-react";
+import { ExternalLink, Eye, FileSpreadsheet, ImageOff, MapPin } from "lucide-react";
 import { getTodayAttendanceLogs } from "@/app/actions/attendance";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -13,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
+import { exportAttendanceLogsToExcel } from "@/lib/timesheet/export-attendance-excel";
 
 type AttendanceRecord = {
   id: number;
@@ -308,11 +310,53 @@ export default function AttendanceRecordsPage() {
     .flatMap((log) => getOperationalDetails(log))
     .filter((detail) => detail.toLowerCase().startsWith("lembur:") && !detail.toLowerCase().includes("tidak ada"));
 
+  const handleExportExcel = () => {
+    if (logs.length === 0) {
+      toast.error("Tidak ada record kehadiran untuk diekspor");
+      return;
+    }
+    try {
+      exportAttendanceLogsToExcel(
+        logs.map((log) => {
+          const locLines = getLocationLines(log);
+          const coordText = getLogCoordinateLabel(log);
+          return {
+            id: log.id,
+            employeeName: log.employeeName,
+            employeeEmail: log.employeeEmail,
+            siteName: log.siteName,
+            workLocation: log.workLocation,
+            eventTime: log.eventTime,
+            eventType: log.eventType,
+            operationalDetails: getOperationalDetails(log),
+            locationName: locLines[0] || undefined,
+            coordinates: coordText,
+            hasPhoto: Boolean(log.photoUrl),
+          };
+        }),
+        employee?.siteName || "Site"
+      );
+      toast.success("Log attendance berhasil diekspor ke Excel!");
+    } catch (err) {
+      toast.error("Gagal mengekspor Excel: " + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
   return (
     <div className="space-y-6 p-6 lg:p-8">
-      <div>
-        <p className="industrial-label">Attendance Module</p>
-        <h1 className="mt-2 font-display text-3xl font-semibold tracking-[-0.04em] text-foreground">Records</h1>
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div>
+          <p className="industrial-label">Attendance Module</p>
+          <h1 className="mt-2 font-display text-3xl font-semibold tracking-[-0.04em] text-foreground">Records</h1>
+        </div>
+        <Button
+          onClick={handleExportExcel}
+          variant="outline"
+          className="bg-white hover:bg-slate-50 text-slate-800 border-slate-200 shadow-2xs font-semibold gap-2"
+        >
+          <FileSpreadsheet className="size-4 text-emerald-600" />
+          Export Excel Log
+        </Button>
       </div>
 
       <div className="grid gap-3 md:grid-cols-4">

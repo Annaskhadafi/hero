@@ -153,7 +153,7 @@ export function matchesDateRange(value: Date | string | null | undefined, range?
   return true
 }
 
-export function exportRowsToFile({
+export async function exportRowsToFile({
   columns,
   rows,
   fileName,
@@ -162,13 +162,37 @@ export function exportRowsToFile({
   rows: Array<Array<string | number | null | undefined>>
   fileName?: string | null
 }) {
-  const normalizedRows = [columns, ...rows.map((row) => row.map((cell) => `${cell ?? ''}`))]
-  const baseName = normalizeFileName(fileName)
-  downloadText(
-    buildExcelHtml(normalizedRows),
-    `${baseName}.xls`,
-    'application/vnd.ms-excel;charset=utf-8'
-  )
+  const baseName = normalizeFileName(fileName) || 'export-data'
+  try {
+    const XLSX = await import('xlsx')
+    const wb = XLSX.utils.book_new()
+    const sheetData = [columns, ...rows.map((row) => row.map((cell) => cell ?? ''))]
+    const ws = XLSX.utils.aoa_to_sheet(sheetData)
+
+    // Calculate dynamic column widths so headers and data never overlap
+    const colWidths = columns.map((col, colIdx) => {
+      let maxLen = String(col).length
+      for (const row of rows) {
+        const val = row[colIdx]
+        if (val != null) {
+          const len = String(val).length
+          if (len > maxLen) maxLen = len
+        }
+      }
+      return { wch: Math.min(Math.max(maxLen + 3, 10), 65) }
+    })
+    ws['!cols'] = colWidths
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Data')
+    XLSX.writeFile(wb, `${baseName}.xlsx`)
+  } catch {
+    const normalizedRows = [columns, ...rows.map((row) => row.map((cell) => `${cell ?? ''}`))]
+    downloadText(
+      buildExcelHtml(normalizedRows),
+      `${baseName}.xls`,
+      'application/vnd.ms-excel;charset=utf-8'
+    )
+  }
 }
 
 export function TableDateRangePicker({

@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { CheckCheck, History, PlusCircle } from 'lucide-react'
 
 import { db } from '@/db'
-import { employees, masterDepartments, masterSections, sites } from '@/db/schema/hero'
+import { activityLibraries, employees, masterDepartments, masterSections, sites } from '@/db/schema/hero'
 import { asc, eq } from 'drizzle-orm'
 import { MobileApprovalCenter } from '@/components/mobile/mobile-approval-center'
 import { MobileOvertimeRequestForm } from '@/components/mobile/mobile-overtime-request-form'
@@ -69,7 +69,7 @@ export default async function MobileOvertimePage({
   )
   if (!data) return null
 
-  const [approvals, activeEmployees, rawSections, rawDepartments, rawSites] = await Promise.all([
+  const [approvals, activeEmployees, rawSections, rawDepartments, rawSites, rawActivityLibraries] = await Promise.all([
     safeQuery(
       () => getApprovalCenterData(session.user.email, { categoryFilter: 'OVERTIME', skipHistory: true }),
       null,
@@ -120,6 +120,24 @@ export default async function MobileOvertimePage({
           .from(sites),
       [],
       'sites'
+    ),
+    safeQuery(
+      () =>
+        db
+          .select({
+            id: activityLibraries.id,
+            activityCode: activityLibraries.activityCode,
+            activityName: activityLibraries.activityName,
+            category: activityLibraries.category,
+            basePoints: activityLibraries.basePoints,
+            slaHours: activityLibraries.slaHours,
+            requiresEquipmentNo: activityLibraries.requiresEquipmentNo,
+          })
+          .from(activityLibraries)
+          .where(eq(activityLibraries.isActive, true))
+          .orderBy(asc(activityLibraries.activityName)),
+      [],
+      'activityLibraries'
     ),
   ])
 
@@ -312,6 +330,7 @@ export default async function MobileOvertimePage({
                 <div className="mt-4">
                   <MobileOvertimeRequestForm
                     employees={sanitizedEmployees}
+                    activityLibraries={rawActivityLibraries || []}
                     currentEmployee={{
                       id: data.lead.id,
                       name: data.lead.name,

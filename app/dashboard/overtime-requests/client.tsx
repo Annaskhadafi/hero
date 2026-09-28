@@ -8,6 +8,7 @@ import {
   CheckCheck,
   CheckCircle2,
   CheckSquare,
+  Camera,
   Download,
   Eye,
   FileCheck,
@@ -15,6 +16,7 @@ import {
   FilePenLine,
   FileSpreadsheet,
   FileText,
+  Loader2,
   PenTool,
   Plus,
   Printer,
@@ -32,6 +34,8 @@ import {
 import * as XLSX from 'xlsx'
 import { toast } from 'sonner'
 import { downloadElementAsPdf, downloadHtmlAsPdf, generateElementAsPdfBlob, generateHtmlAsPdfBlob, downloadFilesAsZip } from '@/lib/pdf-download'
+import { uploadFile } from '@/app/actions/upload'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 
 import { AdminPageShell } from '@/components/admin-page-shell'
 import { MissingSignatureDialog } from '@/components/missing-signature-dialog'
@@ -88,6 +92,16 @@ import {
   resolveEmployeeApproverHierarchy,
   type EmployeeHierarchyInfo,
 } from '@/lib/overtime-hierarchy'
+
+export type OvertimeActivityLibraryItem = {
+  id: number
+  activityCode: string
+  activityName: string
+  category?: string | null
+  basePoints?: number | string | null
+  slaHours?: number | string | null
+  requiresEquipmentNo?: boolean | null
+}
 
 export type OvertimeListingRow = {
   id: number
@@ -190,6 +204,7 @@ function ApprovalProgressBadge({ approvals }: { approvals: OvertimeListingRow['a
 export function OvertimeListingClient({
   rows: propRows,
   employees = [],
+  activityLibraries = [],
   initialSettings,
   currentEmployeeId,
   currentEmployeeEmail = null,
@@ -198,6 +213,7 @@ export function OvertimeListingClient({
 }: {
   rows: OvertimeListingRow[]
   employees?: EmployeeHierarchyInfo[]
+  activityLibraries?: OvertimeActivityLibraryItem[]
   initialSettings?: OvertimeWorkflowSettings
   currentEmployeeId?: number | null
   currentEmployeeEmail?: string | null
@@ -309,6 +325,7 @@ export function OvertimeListingClient({
     superiorName: '',
     managerEmployeeId: '',
     managerName: '',
+    photoUrl: '',
     workers: [
       { employeeId: '', employeeName: '', shiftCode: 'DS', rosterType: '5:2', category: 'after_mandatory_ot' },
     ],
@@ -316,6 +333,7 @@ export function OvertimeListingClient({
       { lineLabel: 'Overtime Penanganan & Perbaikan Unit Workshop', targetUnit: '1 Unit', estimatedMinutes: 120, plannedPoints: 10 },
     ],
   })
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false)
 
   const employeeOptions = useMemo(() => {
     return employees.map((emp) => ({
@@ -323,6 +341,41 @@ export function OvertimeListingClient({
       label: `${emp.name} — ${emp.position || emp.department || 'Employee'} (${emp.employeeId || emp.id})`,
     }))
   }, [employees])
+
+  const activityLibraryOptions = useMemo(() => {
+    return (activityLibraries || []).map((lib) => ({
+      value: lib.activityName,
+      label: `${lib.activityCode ? `[${lib.activityCode}] ` : ''}${lib.activityName}${lib.category ? ` (${lib.category})` : ''}`,
+    }))
+  }, [activityLibraries])
+
+  const selectActivityForLineItem = (index: number, value: string) => {
+    const matched = (activityLibraries || []).find(
+      (lib) =>
+        lib.activityName.toLowerCase().trim() === value.toLowerCase().trim() ||
+        lib.activityCode.toLowerCase().trim() === value.toLowerCase().trim()
+    )
+    if (matched) {
+      setCreateForm((prev) => {
+        const next = [...prev.lineItems]
+        const currentTarget = next[index]?.targetUnit
+        const defaultTarget = matched.requiresEquipmentNo ? '1 Unit' : (currentTarget && currentTarget.trim() ? currentTarget : '1 Job')
+        const defaultMinutes = matched.slaHours ? Math.round(Number(matched.slaHours) * 60) : 60
+        const defaultPoints = matched.basePoints ? Number(matched.basePoints) : 5
+
+        next[index] = {
+          ...next[index],
+          lineLabel: matched.activityName,
+          targetUnit: defaultTarget,
+          estimatedMinutes: defaultMinutes,
+          plannedPoints: defaultPoints,
+        }
+        return { ...prev, lineItems: next }
+      })
+    } else {
+      updateLineItemRow(index, 'lineLabel', value)
+    }
+  }
 
   const addWorkerRow = () => {
     setCreateForm((p) => ({
@@ -880,7 +933,7 @@ export function OvertimeListingClient({
             <thead>
               <tr style="background: #f8fafc; font-weight: bold;">
                 <th style="border: 1px solid black; padding: 3px 5px; width: 50%;">Leader / Supervisor</th>
-                <th style="border: 1px solid black; padding: 3px 5px; width: 50%;">Superior / Section Head</th>
+                <th style="border: 1px solid black; padding: 3px 5px; width: 50%;">PJO / Site Lead</th>
               </tr>
             </thead>
             <tbody>
@@ -1036,7 +1089,7 @@ export function OvertimeListingClient({
           <thead>
             <tr style="background: #f8fafc; font-weight: bold;">
               <th style="border: 1px solid black; padding: 3px 5px; width: 50%;">Leader / Supervisor</th>
-              <th style="border: 1px solid black; padding: 3px 5px; width: 50%;">Superior / Section Head</th>
+              <th style="border: 1px solid black; padding: 3px 5px; width: 50%;">PJO / Site Lead</th>
             </tr>
           </thead>
           <tbody>
@@ -1148,6 +1201,10 @@ export function OvertimeListingClient({
       toast.error('Tambahkan minimal 1 aktivitas pekerjaan lembur')
       return
     }
+    if (!createForm.photoUrl) {
+      toast.error('Foto bukti pekerjaan lembur wajib dilampirkan')
+      return
+    }
 
     setIsCreating(true)
     try {
@@ -1159,6 +1216,7 @@ export function OvertimeListingClient({
         workDate: createForm.workDate,
         plannedStartAt: startDateTime,
         plannedEndAt: endDateTime,
+        photoUrl: createForm.photoUrl,
         requestedByEmployeeId: createForm.requesterEmployeeId ? Number(createForm.requesterEmployeeId) : undefined,
         requestNotes: createForm.requestNotes,
         executionNotes: createForm.executionNotes,
@@ -1247,7 +1305,7 @@ export function OvertimeListingClient({
       <HcWorkspaceBanner
         badge="SURAT PERINTAH LEMBUR"
         title="Overtime Approval & Review"
-        description="Review pengajuan lembur tim, tanda tangani digital secara sequential (Leader -> Section Head -> Manager), dan kelola penugasan lembur operasional."
+        description="Review pengajuan lembur tim, tanda tangani digital secara berjenjang (Leader -> PJO / Site Lead), dan kelola penugasan lembur operasional."
         metrics={[
           { label: 'Total Pengajuan', value: rows.length },
           { label: 'Menunggu Review', value: rows.filter((r) => r.status.toLowerCase() === 'submitted').length },
@@ -1846,7 +1904,7 @@ export function OvertimeListingClient({
                         )
                       })()}
 
-                      {/* 3. Section Head */}
+                      {/* 3. PJO / Site Lead */}
                       {(() => {
                         const step3 = currentBatchDoc.approvals.find(a => a.stepOrder === 3)
                         const isApproved3 = step3?.status === 'approved' || Boolean(step3?.signedAt)
@@ -1854,7 +1912,7 @@ export function OvertimeListingClient({
 
                         return (
                           <div className="flex flex-col items-center text-center">
-                            <div className="text-[7pt] text-slate-500 font-semibold mb-1">Section Head Signature</div>
+                            <div className="text-[7pt] text-slate-500 font-semibold mb-1">PJO / Site Lead Signature</div>
                             <div className="h-16 w-full flex items-center justify-center my-1">
                               {sigUrl3 ? (
                                 <img src={sigUrl3} alt="TTD" className="max-h-14 max-w-full object-contain" />
@@ -1867,9 +1925,9 @@ export function OvertimeListingClient({
                               )}
                             </div>
                             <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
-                              {step3?.approverName || 'Section Head'}
+                              {step3?.approverName || 'PJO / Site Lead'}
                             </div>
-                            <div className="text-[7pt] text-slate-600 font-medium">{step3?.stepLabel || 'Section Head'}</div>
+                            <div className="text-[7pt] text-slate-600 font-medium">{step3?.stepLabel || 'PJO / Site Lead'}</div>
                             <div className="text-[6.5pt] text-slate-400 mt-0.5">
                               {step3?.signedAt ? `Waktu TTD: ${formatTimestamp(step3.signedAt)}` : '—'}
                             </div>
@@ -2231,18 +2289,18 @@ export function OvertimeListingClient({
                       <div className="text-[7pt]">{previewSplTarget.approvals.find(a => a.stepOrder === 2)?.stepLabel || 'Leader / Pengawas'}</div>
                     </div>
 
-                    {/* 3. Section Head */}
+                    {/* 3. PJO / Site Lead */}
                     <div>
-                      <div className="text-[7pt] text-gray-500 mb-1">Section Head Signature</div>
+                      <div className="text-[7pt] text-gray-500 mb-1">PJO / Site Lead Signature</div>
                       <div className="h-16 flex items-end">
                         {previewSplTarget.approvals.find(a => a.stepOrder === 3)?.signatureDataUrl && (
                           <img src={previewSplTarget.approvals.find(a => a.stepOrder === 3)!.signatureDataUrl!} alt="TTD" className="h-14 object-contain" />
                         )}
                       </div>
                       <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>
-                        {createForm.superiorName || previewSplTarget.approvals.find(a => a.stepOrder === 3)?.approverName || 'Section Head'}
+                        {createForm.superiorName || previewSplTarget.approvals.find(a => a.stepOrder === 3)?.approverName || 'PJO / Site Lead'}
                       </div>
-                      <div className="text-[7pt]">{previewSplTarget.approvals.find(a => a.stepOrder === 3)?.stepLabel || 'Section Head'}</div>
+                      <div className="text-[7pt]">{previewSplTarget.approvals.find(a => a.stepOrder === 3)?.stepLabel || 'PJO / Site Lead'}</div>
                     </div>
 
                     </div>
@@ -2524,11 +2582,14 @@ export function OvertimeListingClient({
                         {idx + 1}
                       </div>
                       <div className="col-span-5">
-                        <Input
-                          placeholder="Nama aktivitas pekerjaan..."
+                        <SearchableSelect
+                          label="Aktivitas"
+                          placeholder="Pilih dari Kamus Aktivitas..."
                           value={item.lineLabel}
-                          onChange={(e) => updateLineItemRow(idx, 'lineLabel', e.target.value)}
-                          className="h-8 text-xs border-slate-200"
+                          onValueChange={(val) => selectActivityForLineItem(idx, val)}
+                          options={activityLibraryOptions}
+                          allowCustom={true}
+                          widthClassName="w-full"
                         />
                       </div>
                       <div className="col-span-2">
@@ -2588,6 +2649,94 @@ export function OvertimeListingClient({
               </div>
             </div>
 
+            {/* Foto Bukti Pekerjaan Lembur (Wajib) */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
+                <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                  <Camera className="size-3.5 text-indigo-600" />
+                  Foto Bukti Pekerjaan Lembur (Wajib) *
+                </span>
+                {createForm.photoUrl ? (
+                  <Badge variant="secondary" className="text-[11px] font-semibold bg-emerald-50 text-emerald-700 border-emerald-200">
+                    Foto Terlampir
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary" className="text-[11px] font-semibold bg-rose-50 text-rose-700 border-rose-200">
+                    Wajib Diunggah
+                  </Badge>
+                )}
+              </div>
+
+              {createForm.photoUrl ? (
+                <div className="relative inline-block border border-slate-200 rounded-lg overflow-hidden bg-slate-100 group">
+                  <img
+                    src={resolveUploadUrl(createForm.photoUrl)}
+                    alt="Foto Bukti Lembur"
+                    className="h-36 w-auto max-w-full object-cover rounded-md"
+                  />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => setCreateForm((p) => ({ ...p, photoUrl: '' }))}
+                      className="h-7 text-xs font-semibold px-2 cursor-pointer"
+                    >
+                      <Trash2 className="size-3.5 mr-1" /> Hapus Foto
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="border-2 border-dashed border-slate-300 hover:border-slate-400 bg-white rounded-xl p-5 text-center">
+                  <input
+                    type="file"
+                    id="spl-photo-upload"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={isUploadingPhoto}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0]
+                      if (!file) return
+                      setIsUploadingPhoto(true)
+                      const toastId = toast.loading('Mengunggah foto bukti lembur...')
+                      try {
+                        const fd = new FormData()
+                        fd.append('file', file)
+                        fd.append('uploadTarget', 'activity-photos')
+                        const res = await uploadFile(fd)
+                        if (res.success && res.url) {
+                          setCreateForm((p) => ({ ...p, photoUrl: res.readableUrl || res.url }))
+                          toast.success('Foto bukti lembur berhasil diunggah!', { id: toastId })
+                        } else {
+                          toast.error(res.error || 'Gagal mengunggah foto', { id: toastId })
+                        }
+                      } catch (err: any) {
+                        toast.error(err.message || 'Gagal mengunggah foto', { id: toastId })
+                      } finally {
+                        setIsUploadingPhoto(false)
+                      }
+                    }}
+                  />
+                  <label
+                    htmlFor="spl-photo-upload"
+                    className="cursor-pointer flex flex-col items-center justify-center gap-2 text-slate-600 hover:text-slate-900"
+                  >
+                    {isUploadingPhoto ? (
+                      <Loader2 className="size-7 text-indigo-600 animate-spin" />
+                    ) : (
+                      <Camera className="size-7 text-slate-400" />
+                    )}
+                    <span className="text-xs font-semibold text-slate-800">
+                      {isUploadingPhoto ? 'Mengunggah...' : 'Klik untuk Ambil / Unggah Foto Bukti Lembur'}
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      Format JPG, PNG, atau WEBP (Maks 10MB) • Wajib diunggah sebelum submit
+                    </span>
+                  </label>
+                </div>
+              )}
+            </div>
+
             {/* 4. C. Signatories & Verification Matrix (Approval) */}
             <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3">
               <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
@@ -2595,12 +2744,12 @@ export function OvertimeListingClient({
                   <span className="size-2 rounded-full bg-amber-600"></span>
                   C. Signatories & Verification Matrix (Penandatangan Approval SPL)
                 </span>
-                <span className="text-[11px] font-mono text-slate-400">2-Tier Verification</span>
+                <span className="text-[11px] font-mono text-slate-400">2-Tier Verification (Leader & PJO)</span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Leader / Supervisor</Label>
+                  <Label className="text-xs font-semibold text-slate-700">Leader / Pengawas Lapangan</Label>
                   <SearchableSelect
                     label="Leader"
                     placeholder="PILIH LEADER..."
@@ -2620,10 +2769,10 @@ export function OvertimeListingClient({
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Superior / Section Head</Label>
+                  <Label className="text-xs font-semibold text-slate-700">PJO / Site Lead (Tahap Akhir)</Label>
                   <SearchableSelect
-                    label="Section Head"
-                    placeholder="PILIH SECTION HEAD..."
+                    label="PJO / Site Lead"
+                    placeholder="PILIH PJO / SITE LEAD..."
                     value={createForm.superiorEmployeeId}
                     onValueChange={(val) => {
                       const emp = employees.find((e) => String(e.id) === val)
@@ -2636,7 +2785,7 @@ export function OvertimeListingClient({
                     options={employeeOptions}
                     widthClassName="w-full"
                   />
-                  <p className="text-[10px] text-slate-400">Verifikasi tahap 2 (Kepala Seksi Operasional)</p>
+                  <p className="text-[10px] text-slate-400">Verifikasi tahap 2 (PJO / Penanggung Jawab Operasional)</p>
                 </div>
               </div>
             </div>

@@ -99,6 +99,7 @@ import { AttendanceImportPreviewDialog } from '@/components/timesheet/attendance
 import { AttendanceSummaryBar } from '@/components/timesheet/attendance-summary-bar'
 import { AttendanceSourceIndicator } from '@/components/timesheet/attendance-source-indicator'
 import { exportRowsToFile, MinimalTableShell } from '@/components/ui/minimal-table-shell'
+import { exportAttendanceGridToExcel } from '@/lib/timesheet/export-attendance-excel'
 import {
   Table,
   TableBody,
@@ -4406,31 +4407,32 @@ export function SchedulingTimesheetWorkspace({
   }
 
   function exportAttendanceGrid() {
-    const modeLabel = {
-      attendance: 'Attendance',
-      'checkin-checkout': 'Check In Check Out',
-      'work-hours': 'Attendance Jam Kerja',
-    }[attendanceGridExportMode]
-    const columns = ['Nama', ...days.map((day) => `${day} ${weekdayLabel(period, day)}`)]
-    const rows = displayedAttendanceRows.map((row) => [
-      row.employee.name,
-      ...days.map((day) => {
-        const cell = getAttendanceCell(row.employee.id, day)
-        if (attendanceGridExportMode === 'attendance') return attendanceStatusLabel(cell.status)
-        if (attendanceGridExportMode === 'checkin-checkout') {
-          return cell.clockIn || cell.clockOut
-            ? `${cell.clockIn || '-'} / ${cell.clockOut || '-'}`
-            : '-'
-        }
-        const clockIn = minutesFromTime(cell.clockIn)
-        const clockOut = minutesFromTime(cell.clockOut)
-        if (clockIn == null || clockOut == null) return 0
-        return Number(
-          ((clockOut >= clockIn ? clockOut - clockIn : clockOut + 1440 - clockIn) / 60).toFixed(2)
-        )
-      }),
-    ])
-    exportRowsToFile({ columns, rows, fileName: `${modeLabel} Grid` })
+    try {
+      exportAttendanceGridToExcel({
+        siteName: site?.name ?? 'Semua Site',
+        period,
+        days,
+        mode: attendanceGridExportMode,
+        rows: displayedAttendanceRows.map((row) => ({
+          employee: {
+            id: row.employee.id,
+            name: row.employee.name,
+            employeeSn: employeeSnLabel(row.employee),
+            role: row.employee.role,
+            section: row.employee.section,
+            department: row.employee.department,
+          },
+          getAttendanceCell: (day: number) => getAttendanceCell(row.employee.id, day),
+          totalHours: row.totalHours,
+        })),
+        weekdayLabel: (p, d) => weekdayLabel(p, d),
+        attendanceStatusLabel: (status) => attendanceStatusLabel(status),
+        holidaysByDay,
+      })
+      toast.success(`Export Excel Attendance (${attendanceGridExportMode}) berhasil diunduh!`)
+    } catch (err) {
+      toast.error('Gagal mengekspor Excel Attendance: ' + (err instanceof Error ? err.message : String(err)))
+    }
   }
 
   function TabExportActions({

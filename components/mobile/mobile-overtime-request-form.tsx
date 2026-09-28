@@ -3,12 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Camera,
   Check,
   CheckCircle2,
   Download,
   Eye,
   ExternalLink,
   FileText,
+  Loader2,
   Move,
   Plus,
   RotateCcw,
@@ -22,6 +24,8 @@ import {
   createOvertimeCommandLetterAction,
   resubmitOvertimeCommandLetterAction,
 } from "@/app/dashboard/overtime-requests/actions";
+import { uploadFile } from "@/app/actions/upload";
+import { resolveUploadUrl } from "@/lib/resolve-upload-url";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -95,14 +99,26 @@ function formatPtwTime(value: Date | string | null | undefined) {
   return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false }).replace(".", ":");
 }
 
+export type OvertimeActivityLibraryItem = {
+  id: number;
+  activityCode: string;
+  activityName: string;
+  category?: string | null;
+  basePoints?: number | string | null;
+  slaHours?: number | string | null;
+  requiresEquipmentNo?: boolean | null;
+};
+
 export function MobileOvertimeRequestForm({
   employees = [],
+  activityLibraries = [],
   currentEmployee,
   parentSplId,
   editSplId,
   initialSplData,
 }: {
   employees: EmployeeOption[];
+  activityLibraries?: OvertimeActivityLibraryItem[];
   currentEmployee?: EmployeeOption | null;
   parentSplId?: number;
   editSplId?: number;
@@ -166,6 +182,16 @@ export function MobileOvertimeRequestForm({
     doc?.requesterDepartment || doc?.department || initialHierarchy.department || currentEmployee?.department || "Central Services"
   );
   const [requestNotes, setRequestNotes] = useState(doc?.requestNotes || "");
+  const initialPhotoUrl = (() => {
+    if (doc?.photoUrl) return doc.photoUrl;
+    if (doc?.requestNotes && doc.requestNotes.includes('[Foto Bukti SPL]:')) {
+      const match = doc.requestNotes.match(/\[Foto Bukti SPL\]:\s*(\S+)/);
+      if (match?.[1]) return match[1];
+    }
+    return '';
+  })();
+  const [photoUrl, setPhotoUrl] = useState<string>(initialPhotoUrl);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
 
   const isApprovedDoc =
     (doc?.status || '').toLowerCase() === 'approved' ||
@@ -470,6 +496,43 @@ export function MobileOvertimeRequestForm({
     [employees]
   );
 
+  const activityLibraryOptions = useMemo(
+    () =>
+      (activityLibraries || []).map((lib) => ({
+        value: lib.activityName,
+        label: `${lib.activityCode ? `[${lib.activityCode}] ` : ''}${lib.activityName}${lib.category ? ` (${lib.category})` : ''}`,
+      })),
+    [activityLibraries]
+  );
+
+  function selectActivityForLineItem(index: number, value: string) {
+    const matched = (activityLibraries || []).find(
+      (lib) =>
+        lib.activityName.toLowerCase().trim() === value.toLowerCase().trim() ||
+        lib.activityCode.toLowerCase().trim() === value.toLowerCase().trim()
+    );
+    if (matched) {
+      setLineItems((prev) => {
+        const next = [...prev];
+        const currentTarget = next[index]?.targetUnit;
+        const defaultTarget = matched.requiresEquipmentNo ? '1 Unit' : (currentTarget && currentTarget.trim() ? currentTarget : '1 Job');
+        const defaultMinutes = matched.slaHours ? Math.round(Number(matched.slaHours) * 60) : 60;
+        const defaultPoints = matched.basePoints ? Number(matched.basePoints) : 5;
+
+        next[index] = {
+          ...next[index],
+          lineLabel: matched.activityName,
+          targetUnit: defaultTarget,
+          estimatedMinutes: defaultMinutes,
+          plannedPoints: defaultPoints,
+        };
+        return next;
+      });
+    } else {
+      updateLineItem(index, 'lineLabel', value);
+    }
+  }
+
   const totalEstimatedMinutes = useMemo(
     () => lineItems.reduce((sum, item) => sum + (Number(item.estimatedMinutes) || 0), 0),
     [lineItems]
@@ -567,6 +630,11 @@ export function MobileOvertimeRequestForm({
       return;
     }
 
+    if (!photoUrl) {
+      toast.error("Foto bukti pekerjaan lembur wajib dilampirkan.");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const startDateTime = `${plannedStartDate}T${plannedStartTime}`;
@@ -579,6 +647,7 @@ export function MobileOvertimeRequestForm({
           workDate,
           plannedStartAt: startDateTime,
           plannedEndAt: endDateTime,
+          photoUrl: photoUrl,
           requestedByEmployeeId: Number(requesterEmployeeId) || currentEmployee?.id || null,
           requestNotes: requestNotes.trim(),
           status: 'Submitted',
@@ -607,6 +676,7 @@ export function MobileOvertimeRequestForm({
         // Reset state form menjadi bersih
         setTitle("");
         setRequestNotes("");
+        setPhotoUrl("");
         setWorkers([
           {
             employeeId: currentEmployee?.id ? String(currentEmployee.id) : "",
@@ -632,6 +702,7 @@ export function MobileOvertimeRequestForm({
           workDate,
           plannedStartAt: startDateTime,
           plannedEndAt: endDateTime,
+          photoUrl: photoUrl,
           requestedByEmployeeId: Number(requesterEmployeeId) || currentEmployee?.id || null,
           requestNotes: requestNotes.trim(),
           workerParticipants: validWorkers.map((w) => ({
@@ -660,6 +731,7 @@ export function MobileOvertimeRequestForm({
         toast.success("Surat Perintah Lembur (SPL) berhasil diajukan!");
         setTitle("");
         setRequestNotes("");
+        setPhotoUrl("");
         setWorkers([
           {
             employeeId: currentEmployee?.id ? String(currentEmployee.id) : "",
@@ -925,6 +997,96 @@ export function MobileOvertimeRequestForm({
         </div>
       </section>
 
+      {/* ── Foto Bukti Pekerjaan Lembur (Wajib) ── */}
+      <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+          <div className="flex items-center gap-2">
+            <Camera className="size-4 text-indigo-600" />
+            <p className="text-xs font-bold text-slate-800">Foto Bukti Pekerjaan Lembur (Wajib) *</p>
+          </div>
+          {photoUrl ? (
+            <Badge className="bg-emerald-50 text-emerald-700 border-0 font-bold text-[10px]">
+              Foto Terlampir
+            </Badge>
+          ) : (
+            <Badge className="bg-rose-50 text-rose-700 border-0 font-bold text-[10px]">
+              Wajib Diunggah
+            </Badge>
+          )}
+        </div>
+
+        {photoUrl ? (
+          <div className="relative inline-block border border-slate-200 rounded-xl overflow-hidden bg-slate-100 group w-full">
+            <img
+              src={resolveUploadUrl(photoUrl)}
+              alt="Foto Bukti Lembur"
+              className="w-full h-48 object-cover rounded-xl"
+            />
+            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                onClick={() => setPhotoUrl("")}
+                className="h-8 text-xs font-semibold px-3 cursor-pointer"
+              >
+                <Trash2 className="size-3.5 mr-1.5" /> Hapus Foto
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="border-2 border-dashed border-slate-300 hover:border-slate-400 bg-slate-50/60 rounded-xl p-5 text-center">
+            <input
+              type="file"
+              id="mobile-spl-photo-upload"
+              accept="image/*"
+              className="hidden"
+              disabled={isUploadingPhoto}
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setIsUploadingPhoto(true);
+                const toastId = toast.loading("Mengunggah foto bukti lembur...");
+                try {
+                  const fd = new FormData();
+                  fd.append("file", file);
+                  fd.append("uploadTarget", "activity-photos");
+                  const res = await uploadFile(fd);
+                  if (res.success && res.url) {
+                    setPhotoUrl(res.readableUrl || res.url);
+                    toast.success("Foto bukti lembur berhasil diunggah!", { id: toastId });
+                  } else {
+                    toast.error(res.error || "Gagal mengunggah foto", { id: toastId });
+                  }
+                } catch (err: any) {
+                  toast.error(err?.message || "Gagal mengunggah foto", { id: toastId });
+                } finally {
+                  setIsUploadingPhoto(false);
+                }
+              }}
+            />
+            <label
+              htmlFor="mobile-spl-photo-upload"
+              className="cursor-pointer flex flex-col items-center justify-center gap-2 text-slate-600 hover:text-slate-900"
+            >
+              {isUploadingPhoto ? (
+                <Loader2 className="size-8 text-indigo-600 animate-spin" />
+              ) : (
+                <div className="size-12 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
+                  <Camera className="size-6" />
+                </div>
+              )}
+              <span className="text-xs font-bold text-slate-800">
+                {isUploadingPhoto ? "Mengunggah Foto..." : "Ambil Foto / Pilih dari Galeri"}
+              </span>
+              <span className="text-[10px] text-slate-400">
+                Format JPG, PNG, atau WEBP (Maks 10MB) • Wajib diunggah sebelum submit
+              </span>
+            </label>
+          </div>
+        )}
+      </section>
+
       {/* ── 2. Section A: Workers (Peserta Lembur) ── */}
       <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
         <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
@@ -1061,12 +1223,14 @@ export function MobileOvertimeRequestForm({
                 <span className="text-[10px] font-bold text-slate-500 block mb-1">
                   Uraian Aktivitas Pekerjaan *
                 </span>
-                <Input
-                  required
-                  placeholder="Nama aktivitas pekerjaan..."
+                <SearchableSelect
+                  label="Aktivitas"
+                  placeholder="PILIH DARI KAMUS AKTIVITAS..."
                   value={item.lineLabel}
-                  onChange={(e) => updateLineItem(idx, "lineLabel", e.target.value)}
-                  className="h-9 rounded-lg bg-white border-slate-200 text-xs"
+                  onValueChange={(val) => selectActivityForLineItem(idx, val)}
+                  options={activityLibraryOptions}
+                  allowCustom={true}
+                  widthClassName="w-full"
                 />
               </div>
 
@@ -1126,7 +1290,7 @@ export function MobileOvertimeRequestForm({
             </p>
           </div>
           <Badge className="bg-amber-50 text-amber-700 border-0 font-bold text-[10px]">
-            2-Tier Verification
+            2-Tier Verification (Leader & PJO)
           </Badge>
         </div>
 
@@ -1134,7 +1298,7 @@ export function MobileOvertimeRequestForm({
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[11px] font-bold text-slate-700">
-                Leader / Supervisor (Tahap 1)
+                Leader / Pengawas Lapangan (Tahap 1)
               </span>
               {isLeaderLocked ? (
                 <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
@@ -1161,7 +1325,7 @@ export function MobileOvertimeRequestForm({
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[11px] font-bold text-slate-700">
-                Superior / Section Head (Tahap 2)
+                PJO / Site Lead (Tahap Akhir)
               </span>
               {isSuperiorLocked ? (
                 <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
@@ -1170,8 +1334,8 @@ export function MobileOvertimeRequestForm({
               ) : null}
             </div>
             <SearchableSelect
-              label="Section Head"
-              placeholder="PILIH SECTION HEAD..."
+              label="PJO / Site Lead"
+              placeholder="PILIH PJO / SITE LEAD..."
               value={superiorEmployeeId}
               onValueChange={(val) => {
                 if (isSuperiorLocked) return;
@@ -1516,7 +1680,7 @@ export function MobileOvertimeRequestForm({
                       doc.approvals.map((step: any, idx: number) => (
                         <tr key={`spl-preview-step-${step.id || step.stepOrder || idx}`}>
                           <td>{step.stepOrder || idx + 1}</td>
-                          <td className="text-left">{step.stepLabel || (idx === 0 ? 'Leader / Supervisor' : 'Section Head')}</td>
+                          <td className="text-left">{step.stepLabel || (idx === 0 ? 'Leader / Supervisor' : 'PJO / Site Lead')}</td>
                           <td className="text-left">{step.approverName || '-'}</td>
                           <td className="capitalize font-semibold text-black">{step.status || 'pending'}</td>
                           <td className="text-[7pt]">{fmtDt(step.signedAt)}</td>
@@ -1543,7 +1707,7 @@ export function MobileOvertimeRequestForm({
                         </tr>
                         <tr>
                           <td>3</td>
-                          <td className="text-left">Section Head</td>
+                          <td className="text-left">PJO / Site Lead</td>
                           <td className="text-left">{currentSuperiorName || '-'}</td>
                           <td className="capitalize font-semibold text-black">{existingSuperiorApproval?.status || 'Waiting'}</td>
                           <td className="text-[7pt]">{fmtDt(existingSuperiorApproval?.signedAt)}</td>
@@ -1605,9 +1769,9 @@ export function MobileOvertimeRequestForm({
                     </div>
                   </div>
 
-                  {/* 3. Section Head / Superior */}
+                  {/* 3. PJO / Site Lead */}
                   <div className="flex flex-col items-center text-center">
-                    <div className="text-[7pt] text-slate-500 font-semibold mb-1">Section Head Signature</div>
+                    <div className="text-[7pt] text-slate-500 font-semibold mb-1">PJO / Site Lead Signature</div>
                     <div className="h-14 w-full flex items-center justify-center my-1">
                       {existingSuperiorApproval?.signatureDataUrl ? (
                         <img src={existingSuperiorApproval.signatureDataUrl} alt="TTD Superior" className="max-h-12 max-w-full object-contain" />
@@ -1623,7 +1787,7 @@ export function MobileOvertimeRequestForm({
                     <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
                       {currentSuperiorName || '—'}
                     </div>
-                    <div className="text-[7pt] text-slate-600 font-medium">Section Head</div>
+                    <div className="text-[7pt] text-slate-600 font-medium">PJO / Site Lead</div>
                     <div className="text-[6.5pt] text-slate-400 mt-0.5">
                       {isSuperiorSigned && existingSuperiorApproval?.signedAt ? `Waktu TTD: ${fmtDt(existingSuperiorApproval.signedAt)}` : '—'}
                     </div>

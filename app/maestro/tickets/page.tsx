@@ -33,37 +33,37 @@ export default async function MaestroTicketsPage() {
   ])
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] pb-20">
-      {/* Top Header */}
-      <header className="sticky top-0 z-40 border-b border-slate-200/60 bg-white/90 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3.5">
+    <div className="min-h-screen pb-24">
+      {/* Top Header: Frosted Glass */}
+      <header className="sticky top-0 z-40 border-b border-white/60 bg-white/85 backdrop-blur-2xl shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
+        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-4">
             <Link
               href="/dashboard"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200/80 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 shadow-2xs"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-300 bg-white/90 text-slate-700 transition hover:bg-slate-100 hover:text-slate-950 shadow-2xs"
               title="Kembali ke Dashboard"
             >
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft className="h-5 w-5" />
             </Link>
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 shadow-2xs">
-              <Headphones className="h-5 w-5" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-800 border border-indigo-200 shadow-2xs font-bold">
+              <Headphones className="h-6 w-6" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="font-display text-base font-bold tracking-tight text-slate-900">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <span className="font-display text-lg sm:text-xl font-black tracking-tight text-slate-950">
                   Helpdesk &amp; Problem Ticketing
                 </span>
-                <span className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-[10px] font-bold text-indigo-700">
+                <span className="rounded-full bg-indigo-100 border border-indigo-300 px-3 py-0.5 text-xs font-bold text-indigo-950 shadow-2xs">
                   AI-Powered
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400">{session.customer.name}</p>
+              <p className="text-xs font-semibold text-slate-600">{session.customer.name}</p>
             </div>
           </div>
 
           <div className="text-right hidden sm:block">
-            <span className="text-xs font-bold text-slate-900">{session.user.name}</span>
-            <p className="text-[11px] text-slate-400">{session.user.email}</p>
+            <span className="text-sm font-extrabold text-slate-950">{session.user.name}</span>
+            <p className="text-xs font-semibold text-slate-600">{session.user.email}</p>
           </div>
         </div>
       </header>

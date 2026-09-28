@@ -1479,15 +1479,9 @@ export function MobileDailyActivityForm({
                 ✓ Terlampir
               </Badge>
             ) : null}
-            {requiresPhoto ? (
-              <Badge className="border-0 bg-rose-50 px-1.5 py-0 text-[9px] font-bold tracking-[0.14em] text-rose-600 uppercase">
-                Foto Wajib *
-              </Badge>
-            ) : (
-              <Badge className="border-0 bg-slate-100 px-1.5 py-0 text-[9px] font-medium tracking-[0.14em] text-slate-600 uppercase">
-                Opsional
-              </Badge>
-            )}
+            <Badge className="border-0 bg-slate-100 px-1.5 py-0 text-[9px] font-medium tracking-[0.14em] text-slate-600 uppercase">
+              Opsional
+            </Badge>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-2">
@@ -2101,22 +2095,6 @@ export function MobileDailyActivityForm({
       if (library.requiresDuration !== false) {
         if (!entry.startTime || !entry.endTime) {
           return `Durasi waktu mulai dan selesai wajib diisi untuk "${library.activityCode} - ${library.activityName}".`
-        }
-      }
-
-      if (library.requiresPhoto) {
-        const matchingItem = initialSessionData?.sessionItems?.find(
-          (it: any) => String(it.libraryActivityId) === libraryId || String(it.id) === libraryId
-        )
-        const hasSessionPhoto = matchingItem ? extractItemPhotos(matchingItem).length > 0 : false
-        const hasLocalPhoto = Boolean(
-          (entry.previewUrls && entry.previewUrls.length > 0) ||
-            entry.photoFile ||
-            (entry.photoFiles && entry.photoFiles.length > 0) ||
-            entry.restoredPhotoPayload
-        )
-        if (!hasSessionPhoto && !hasLocalPhoto) {
-          return `Foto dokumentasi wajib diunggah untuk "${library.activityCode} - ${library.activityName}".`
         }
       }
 
@@ -2994,11 +2972,6 @@ export function MobileDailyActivityForm({
                     : 'Belum ada activity dipilih'}
                 </p>
               </div>
-              {needsGlobalPhoto ? (
-                <Badge className="border-0 bg-rose-50 text-[9px] font-bold tracking-[0.14em] text-rose-600 uppercase">
-                  Foto Wajib *
-                </Badge>
-              ) : null}
             </div>
 
             {selectedLibraries.length > 0 ? (
@@ -3014,7 +2987,6 @@ export function MobileDailyActivityForm({
                     library.requiresTireCount ? 'Tire' : null,
                     library.requiresMaterialUsed ? 'Material' : null,
                     library.requiresLocationGps ? 'GPS' : null,
-                    library.requiresPhoto ? 'Foto Wajib' : null,
                   ].filter(Boolean)
 
                   return (

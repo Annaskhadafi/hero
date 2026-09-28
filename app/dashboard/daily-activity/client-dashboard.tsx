@@ -15,6 +15,7 @@ import {
   Download,
   ExternalLink,
   Eye,
+  FileSpreadsheet,
   FileText,
   Filter,
   Image as ImageIcon,
@@ -599,6 +600,134 @@ export function DailyActivityClientDashboard({
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+  }
+
+  // Export to formatted Excel (.xlsx) with neat columns
+  const handleExportExcel = async () => {
+    try {
+      const XLSX = await import('xlsx')
+      const wb = XLSX.utils.book_new()
+
+      if (activeTab === 'unsubmitted') {
+        const data = filteredUnsubmittedEmployees.map((e, idx) => ({
+          'No': idx + 1,
+          'Tanggal': initialData.currentDate || '-',
+          'Employee ID': e.employeeId,
+          'Nama Karyawan': e.name,
+          'Jabatan': e.jobTitle,
+          'Departemen': e.department,
+          'Section': e.section || '-',
+          'Roster & Shift': `${e.rosterCode} (${e.expectedShift})`,
+          'Status Kehadiran': e.attendanceStatus,
+          'Jam Check-In': e.checkInTime || '-',
+          'Status Log': 'Belum Mengisi',
+        }))
+
+        const ws = XLSX.utils.json_to_sheet(data)
+        ws['!cols'] = [
+          { wch: 6 },
+          { wch: 14 },
+          { wch: 16 },
+          { wch: 26 },
+          { wch: 22 },
+          { wch: 20 },
+          { wch: 20 },
+          { wch: 20 },
+          { wch: 18 },
+          { wch: 14 },
+          { wch: 16 },
+        ]
+
+        XLSX.utils.book_append_sheet(wb, ws, 'Belum Mengisi')
+        const filename = `Belum_Isi_Daily_Activity_${initialData.currentSite.name.replace(/\s+/g, '_')}_${initialData.currentDate.replace(/\s+/g, '_')}.xlsx`
+        XLSX.writeFile(wb, filename)
+        toast.success('Laporan Excel berhasil diunduh!')
+        return
+      }
+
+      // Submitted tab
+      const data = filteredEmployees.map((e, idx) => ({
+        'No': idx + 1,
+        'Tanggal': initialData.currentDate || '-',
+        'Employee ID': e.employeeId,
+        'Nama Karyawan': e.name,
+        'Jabatan / Section': e.jobTitle,
+        'Shift': e.shift,
+        'Jam Check-in': e.checkInTime,
+        'Jam Checkout': e.checkOutTime || '-',
+        'Aktivitas Utama': e.primaryActivity,
+        'No. Unit / Equipment': e.unitTireId,
+        'Status Aktivitas': e.status,
+        'Progress (%)': `${e.progress}%`,
+        'Update Terakhir': e.lastUpdate,
+      }))
+
+      const ws = XLSX.utils.json_to_sheet(data)
+      ws['!cols'] = [
+        { wch: 6 },
+        { wch: 14 },
+        { wch: 16 },
+        { wch: 26 },
+        { wch: 24 },
+        { wch: 14 },
+        { wch: 14 },
+        { wch: 14 },
+        { wch: 35 },
+        { wch: 22 },
+        { wch: 16 },
+        { wch: 14 },
+        { wch: 18 },
+      ]
+
+      XLSX.utils.book_append_sheet(wb, ws, 'Daily Activity')
+      const filename = `Daily_Activity_${initialData.currentSite.name.replace(/\s+/g, '_')}_${initialData.currentDate.replace(/\s+/g, '_')}.xlsx`
+      XLSX.writeFile(wb, filename)
+      toast.success('Laporan Excel Daily Activity berhasil diunduh!')
+    } catch (err) {
+      toast.error('Gagal mengekspor data ke Excel.')
+    }
+  }
+
+  // Export specific employee's daily activity items to Excel (.xlsx)
+  const handleExportDetailExcel = async (emp: EmployeeActivityRow) => {
+    try {
+      const XLSX = await import('xlsx')
+      const wb = XLSX.utils.book_new()
+
+      const data = emp.tasks.map((t, idx) => ({
+        'No': idx + 1,
+        'Jam Kerja': `${t.startedAt || '-'} - ${t.endedAt || '-'}`,
+        'Durasi': t.durationLabel || '-',
+        'Unit / Equipment': t.unitNumber || '-',
+        'Aktivitas / Tugas': t.label || '-',
+        'Grup / Kategori': t.groupName || '-',
+        'Poin': t.points || 0,
+        'Status': t.status,
+        'Catatan Lapangan': t.remarks || '-',
+        'Link Foto Bukti': t.photoUrl || '-',
+      }))
+
+      const ws = XLSX.utils.json_to_sheet(data)
+      ws['!cols'] = [
+        { wch: 6 },
+        { wch: 18 },
+        { wch: 14 },
+        { wch: 18 },
+        { wch: 35 },
+        { wch: 22 },
+        { wch: 10 },
+        { wch: 14 },
+        { wch: 30 },
+        { wch: 35 },
+      ]
+
+      XLSX.utils.book_append_sheet(wb, ws, 'Detail Tugas')
+      const filename = `Detail_Activity_${emp.name.replace(/\s+/g, '_')}_${(emp.workDate || 'Report').replace(/\s+/g, '_')}.xlsx`
+      XLSX.writeFile(wb, filename)
+      toast.success(`Detail tugas ${emp.name} berhasil diekspor ke Excel!`)
+    } catch (err) {
+      toast.error('Gagal mengekspor detail ke Excel.')
+    }
   }
 
   // Export specific employee's daily activity items to CSV
@@ -1420,11 +1549,21 @@ export function DailyActivityClientDashboard({
             <Button
               variant="outline"
               size="sm"
+              onClick={handleExportExcel}
+              className="h-8 text-xs font-bold text-emerald-800 bg-emerald-50 border-emerald-300 hover:bg-emerald-100 gap-1.5 rounded-lg cursor-pointer"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
+              Export Excel (.xlsx)
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
               onClick={handleExportCsv}
               className="h-8 text-xs font-semibold text-slate-700 border-slate-200 hover:bg-slate-50 gap-1.5 rounded-lg"
             >
               <Download className="w-3.5 h-3.5" />
-              Export rekap
+              Export CSV
             </Button>
 
             <Button
@@ -2136,6 +2275,15 @@ export function DailyActivityClientDashboard({
                     <Button
                       variant="outline"
                       size="sm"
+                      onClick={() => handleExportDetailExcel(activeDetailItem.employee!)}
+                      className="h-8 px-2.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border-emerald-400/40 text-xs font-bold gap-1.5 cursor-pointer"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Ekspor Excel</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={() => handleExportDetailCsv(activeDetailItem.employee!)}
                       className="h-8 px-2.5 rounded-lg bg-white/10 hover:bg-white/20 text-white border-white/20 text-xs font-semibold gap-1.5 cursor-pointer"
                     >
@@ -2456,11 +2604,20 @@ export function DailyActivityClientDashboard({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleExportDetailCsv(activeDetailItem.employee!)}
-                    className="gap-1.5 text-xs text-slate-700"
+                    onClick={() => handleExportDetailExcel(activeDetailItem.employee!)}
+                    className="gap-1.5 text-xs text-emerald-800 bg-emerald-50 border-emerald-300 hover:bg-emerald-100 font-bold cursor-pointer"
                   >
-                    <Download className="w-3.5 h-3.5 text-emerald-600" />
-                    Ekspor Data CSV
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
+                    Ekspor Excel (.xlsx)
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleExportDetailCsv(activeDetailItem.employee!)}
+                    className="gap-1.5 text-xs text-slate-700 cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5 text-slate-500" />
+                    Ekspor CSV
                   </Button>
                   <Button asChild size="sm" className="bg-[#1d72f2] hover:bg-blue-600 text-white gap-1.5 text-xs">
                     <Link href="/dashboard/overtime-requests">

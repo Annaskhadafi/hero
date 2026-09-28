@@ -14,6 +14,23 @@
 
 export const AVAILABILITY_MINUTES = 1440 // 24 jam
 
+export const EWH_ACTIVITY_COLUMNS = [
+  { key: 'p5m', label: 'P5M/Safety Talk', short: 'P5M' },
+  { key: 'checkPressure', label: 'Check Pressure/Day', short: 'Check Pressure' },
+  { key: 'adjustPressure', label: 'Adjust Pressure/Tire', short: 'Adjust Pressure' },
+  { key: 'reseal', label: 'Reseal/Tire', short: 'Reseal' },
+  { key: 'assembly', label: 'Assembly/Tire', short: 'Assembly' },
+  { key: 'disassembly', label: 'Disassembly/Tire', short: 'Disassembly' },
+  { key: 'mounting', label: 'Mounting/Tire', short: 'Mounting' },
+  { key: 'dismounting', label: 'Dismounting/Tire', short: 'Dismounting' },
+  { key: 'pmCheck', label: 'PM Check/Unit', short: 'PM Check' },
+  { key: 'cleanUp', label: 'Clean Up/Day', short: 'Clean Up' },
+  { key: 'maintenanceRim', label: 'Maintenance Rim', short: 'Maint Rim' },
+  { key: 'retorque', label: 'Retorque/Tire', short: 'Retorque' },
+] as const
+
+export type EwhActivityKey = (typeof EWH_ACTIVITY_COLUMNS)[number]['key']
+
 export interface EwhDayInput {
   clockIn: string | null   // "07:00" atau null jika tidak hadir
   clockOut: string | null  // "19:00" atau null

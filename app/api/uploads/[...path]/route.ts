@@ -3,6 +3,7 @@ import { getS3ObjectForProxy, isS3UploadConfigured } from "@/lib/s3-storage"
 import { getServerSession } from "@/lib/auth-session"
 import { join } from "path"
 import { existsSync, readFileSync } from "fs"
+// @ts-ignore
 import heicDecode from "heic-decode"
 import sharp from "sharp"
 

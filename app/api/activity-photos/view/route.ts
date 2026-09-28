@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+// @ts-ignore
 import heicDecode from 'heic-decode'
 import sharp from 'sharp'
 import crypto from 'crypto'

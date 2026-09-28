@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { getServerSession } from '@/lib/auth-session'
 import { db } from '@/db'
 import {
+  activityLibraries,
   employees,
   masterDepartments,
   masterSections,
@@ -49,7 +50,7 @@ export default async function OvertimeRequestsPage() {
 
   const isSiteAdmin = accessRole === 'site admin'
 
-  const [rawSplRecords, allEmployees, rawSections, rawDepartments, rawSites] = await Promise.all([
+  const [rawSplRecords, allEmployees, rawSections, rawDepartments, rawSites, rawActivityLibraries] = await Promise.all([
     db
       .select({
         id: overtimeCommandLetters.id,
@@ -90,6 +91,19 @@ export default async function OvertimeRequestsPage() {
     db.select({ id: masterSections.id, name: masterSections.name, headEmployeeId: masterSections.headEmployeeId }).from(masterSections),
     db.select({ id: masterDepartments.id, name: masterDepartments.name, headEmployeeId: masterDepartments.headEmployeeId }).from(masterDepartments),
     db.select({ id: sites.id, name: sites.name, headEmployeeId: sites.headEmployeeId }).from(sites),
+    db
+      .select({
+        id: activityLibraries.id,
+        activityCode: activityLibraries.activityCode,
+        activityName: activityLibraries.activityName,
+        category: activityLibraries.category,
+        basePoints: activityLibraries.basePoints,
+        slaHours: activityLibraries.slaHours,
+        requiresEquipmentNo: activityLibraries.requiresEquipmentNo,
+      })
+      .from(activityLibraries)
+      .where(eq(activityLibraries.isActive, true))
+      .orderBy(asc(activityLibraries.activityName)),
   ])
 
   const sectionHeadById = new Map(rawSections.map((s) => [s.id, s.headEmployeeId]))
@@ -299,6 +313,7 @@ export default async function OvertimeRequestsPage() {
     <OvertimeListingClient
       rows={rows}
       employees={sanitizedEmployees}
+      activityLibraries={rawActivityLibraries || []}
       initialSettings={initialSettings}
       currentEmployeeId={activeEmployee?.id ?? null}
       currentEmployeeEmail={normalizedEmail}

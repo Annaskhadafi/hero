@@ -6701,9 +6701,6 @@ export async function createDailyActivitySessionAction(input: {
         if (lib.requiresDuration !== false && (!it.startedAt || !it.endedAt)) {
           return { success: false as const, error: `Durasi waktu mulai dan selesai wajib diisi untuk "${label}".` }
         }
-        if (lib.requiresPhoto && !it.photoUrl && (!it.photos || it.photos.length === 0)) {
-          return { success: false as const, error: `Foto dokumentasi wajib diunggah untuk "${label}".` }
-        }
       }
     }
 

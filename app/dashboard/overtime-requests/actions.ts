@@ -209,36 +209,50 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
     }
   }
 
-  // Fallback to database masterSections headEmployeeId if not matched in workflow settings
-  if (!sectionHeadName && (requester?.sectionId || requester?.section)) {
-    const [sectionRow] = requester.sectionId
-      ? await db
-          .select({ headEmployeeId: masterSections.headEmployeeId })
-          .from(masterSections)
-          .where(eq(masterSections.id, requester.sectionId))
-          .limit(1)
-      : await db
-          .select({ headEmployeeId: masterSections.headEmployeeId })
-          .from(masterSections)
-          .where(sql`LOWER(TRIM(${masterSections.name})) = ${(requester.section || '').trim().toLowerCase()}`)
-          .limit(1)
+  // Resolve PJO / Site Lead (Tahap 2 / Final Approval - sama seperti Daily Activity)
+  let pjoName = ''
+  let pjoEmail = ''
+  let pjoEmployeeId: number | null = null
 
-    if (sectionRow?.headEmployeeId) {
-      const [secEmp] = await db
+  if (requester?.siteId) {
+    const [siteRow] = await db
+      .select({ headEmployeeId: sites.headEmployeeId })
+      .from(sites)
+      .where(eq(sites.id, requester.siteId))
+      .limit(1)
+
+    if (siteRow?.headEmployeeId) {
+      const [siteEmp] = await db
         .select({ id: employees.id, name: employees.name, email: employees.email })
         .from(employees)
-        .where(eq(employees.id, sectionRow.headEmployeeId))
+        .where(eq(employees.id, siteRow.headEmployeeId))
         .limit(1)
-      if (secEmp) {
-        sectionHeadEmployeeId = secEmp.id
-        sectionHeadName = secEmp.name
-        sectionHeadEmail = secEmp.email || ''
+      if (siteEmp) {
+        pjoEmployeeId = siteEmp.id
+        pjoName = siteEmp.name
+        pjoEmail = siteEmp.email || ''
       }
     }
   }
 
-  // Fallback to masterDepartments headEmployeeId if still empty
-  if (!sectionHeadName && (requester?.departmentId || requester?.department)) {
+  // Fallback to settings approval matrix if available
+  const matrix = (settings?.approvalMatrix || {}) as Record<string, any>
+  if (!pjoName && (matrix.pjoName || matrix.leaderName)) {
+    const pjoTarget = matrix.pjoName || matrix.leaderName
+    const [empMatch] = await db
+      .select({ id: employees.id, name: employees.name, email: employees.email })
+      .from(employees)
+      .where(sql`LOWER(TRIM(${employees.name})) LIKE ${`%${pjoTarget.trim().toLowerCase()}%`}`)
+      .limit(1)
+    if (empMatch) {
+      pjoEmployeeId = empMatch.id
+      pjoName = empMatch.name
+      pjoEmail = empMatch.email || ''
+    }
+  }
+
+  // Fallback to department head if PJO still not found
+  if (!pjoName && (requester?.departmentId || requester?.department)) {
     const [deptRow] = requester.departmentId
       ? await db
           .select({ headEmployeeId: masterDepartments.headEmployeeId })
@@ -258,33 +272,16 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
         .where(eq(employees.id, deptRow.headEmployeeId))
         .limit(1)
       if (deptEmp) {
-        sectionHeadEmployeeId = deptEmp.id
-        sectionHeadName = deptEmp.name
-        sectionHeadEmail = deptEmp.email || ''
+        pjoEmployeeId = deptEmp.id
+        pjoName = deptEmp.name
+        pjoEmail = deptEmp.email || ''
       }
     }
   }
 
-  // Fallback to Site Head / PJO if still empty
-  if (!sectionHeadName && requester?.siteId) {
-    const [siteRow] = await db
-      .select({ headEmployeeId: sites.headEmployeeId })
-      .from(sites)
-      .where(eq(sites.id, requester.siteId))
-      .limit(1)
-
-    if (siteRow?.headEmployeeId) {
-      const [siteEmp] = await db
-        .select({ id: employees.id, name: employees.name, email: employees.email })
-        .from(employees)
-        .where(eq(employees.id, siteRow.headEmployeeId))
-        .limit(1)
-      if (siteEmp) {
-        sectionHeadEmployeeId = siteEmp.id
-        sectionHeadName = siteEmp.name
-        sectionHeadEmail = siteEmp.email || ''
-      }
-    }
+  if (!pjoName) {
+    pjoName = matrix.pjoName || matrix.managerName || 'PJO / Site Lead'
+    pjoEmail = matrix.pjoEmail || matrix.managerEmail || ''
   }
 
   // Resolve leader approver
@@ -292,17 +289,12 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
   let leaderName = directManager?.name ?? settings.approvalMatrix?.fieldPicName ?? ''
   let leaderEmail = directManager?.email || settings.approvalMatrix?.fieldPicEmail || ''
 
-  if (!leaderEmployeeId && sectionHeadEmployeeId) {
-    leaderEmployeeId = sectionHeadEmployeeId
-    leaderName = sectionHeadName
-    leaderEmail = sectionHeadEmail
+  if (!leaderEmployeeId && pjoEmployeeId) {
+    leaderEmployeeId = pjoEmployeeId
+    leaderName = pjoName
+    leaderEmail = pjoEmail
   }
 
-  // If section head still empty, fallback to settings.approvalMatrix.managerName or Section Head default
-  if (!sectionHeadName) {
-    sectionHeadName = settings.approvalMatrix?.managerName || 'Section Head'
-    sectionHeadEmail = settings.approvalMatrix?.managerEmail || ''
-  }
   if (!leaderName) {
     leaderName = 'Leader Lapangan'
   }
@@ -341,11 +333,11 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
     },
     {
       stepOrder: 3,
-      stepLabel: 'Section Head',
-      approverRole: 'section_head',
-      employeeId: sectionHeadEmployeeId,
-      name: sectionHeadName,
-      email: sectionHeadEmail,
+      stepLabel: 'PJO / Site Lead',
+      approverRole: 'pjo',
+      employeeId: pjoEmployeeId,
+      name: pjoName,
+      email: pjoEmail,
       token: step3Token,
       status: 'waiting',
       signatureDataUrl: null,
@@ -536,6 +528,7 @@ export async function saveOvertimeApprovalForm(params: {
   plannedStartAt?: string | Date | null
   plannedEndAt?: string | Date | null
   requestNotes?: string
+  photoUrl?: string | null
   status?: string
   participants?: Array<{
     id?: number
@@ -578,7 +571,17 @@ export async function saveOvertimeApprovalForm(params: {
     if (params.workDate && !isNaN(new Date(params.workDate).getTime())) updateData.workDate = new Date(params.workDate)
     if (params.plannedStartAt && !isNaN(new Date(params.plannedStartAt).getTime())) updateData.plannedStartAt = new Date(params.plannedStartAt)
     if (params.plannedEndAt && !isNaN(new Date(params.plannedEndAt).getTime())) updateData.plannedEndAt = new Date(params.plannedEndAt)
-    if (params.requestNotes !== undefined) updateData.requestNotes = params.requestNotes
+    if (params.requestNotes !== undefined || params.photoUrl) {
+      let notes = params.requestNotes ?? ''
+      if (params.photoUrl) {
+        if (!notes.includes('[Foto Bukti SPL]')) {
+          notes = notes ? `${notes}\n\n[Foto Bukti SPL]: ${params.photoUrl}` : `[Foto Bukti SPL]: ${params.photoUrl}`
+        } else {
+          notes = notes.replace(/\[Foto Bukti SPL\]:\s*\S+/, `[Foto Bukti SPL]: ${params.photoUrl}`)
+        }
+      }
+      updateData.requestNotes = notes
+    }
     if (params.status) updateData.status = params.status
 
     const [existingDoc] = await db
@@ -777,7 +780,7 @@ export async function saveOvertimeApprovalForm(params: {
           .where(
             and(
               eq(overtimeApprovals.overtimeCommandLetterId, params.documentId),
-              sql`LOWER(${overtimeApprovals.approverRole}) IN ('section_head', 'section_head_confirmation')`,
+              sql`LOWER(${overtimeApprovals.approverRole}) IN ('pjo', 'site_lead', 'section_head', 'section_head_confirmation', 'superior')`,
               sql`LOWER(COALESCE(${overtimeApprovals.status}, '')) NOT IN ('approved', 'signed', 'completed')`
             )
           )
@@ -1425,7 +1428,7 @@ export async function generateTestOvertimeApproval() {
     const steps = [
       { stepOrder: 1, stepLabel: 'Pemohon / Requester', approverRole: 'requester', name: currentEmployee.name, email: testEmail },
       { stepOrder: 2, stepLabel: 'Leader / Supervisor', approverRole: 'leader', name: 'Leader Operasional', email: testEmail },
-      { stepOrder: 3, stepLabel: 'Section Head', approverRole: 'section_head', name: 'Section Head', email: testEmail },
+      { stepOrder: 3, stepLabel: 'PJO / Site Lead', approverRole: 'pjo', name: 'PJO / Site Lead', email: testEmail },
     ]
 
     const links: Array<{ step: number; role: string; name: string; url: string }> = []
@@ -1590,6 +1593,7 @@ export async function createOvertimeCommandLetterAction(payload: {
   requestedByEmployeeId?: number | null
   requestNotes?: string
   executionNotes?: string
+  photoUrl?: string | null
   workerParticipants?: Array<{
     employeeId: number
     shiftCode?: string
@@ -1619,6 +1623,17 @@ export async function createOvertimeCommandLetterAction(payload: {
     const requesterId = payload.requestedByEmployeeId || currentEmp?.id || null
     if (!requesterId) {
       return { success: false as const, error: 'Pilih Pemohon (Requester) terlebih dahulu.' }
+    }
+
+    // MANDATORY PHOTO VALIDATION FOR SPL
+    const hasPhoto = Boolean(payload.photoUrl && payload.photoUrl.trim()) || Boolean(payload.requestNotes && payload.requestNotes.includes('[Foto Bukti SPL]'))
+    if (!hasPhoto) {
+      return { success: false as const, error: 'Foto bukti pekerjaan lembur wajib dilampirkan.' }
+    }
+
+    let finalRequestNotes = payload.requestNotes || ''
+    if (payload.photoUrl && !finalRequestNotes.includes(payload.photoUrl)) {
+      finalRequestNotes = `[Foto Bukti SPL]: ${payload.photoUrl.trim()}\n${finalRequestNotes}`.trim()
     }
 
     const [requesterEmp] = await db
@@ -1708,7 +1723,7 @@ export async function createOvertimeCommandLetterAction(payload: {
         plannedStartAt: safePlannedStart,
         plannedEndAt: safePlannedEnd,
         status: 'Submitted',
-        requestNotes: payload.requestNotes || '',
+        requestNotes: finalRequestNotes,
         executionNotes: payload.executionNotes || '',
         requestedByEmployeeId: requesterId,
         createdAt: new Date(),
@@ -1781,10 +1796,6 @@ export async function createOvertimeCommandLetterAction(payload: {
         ? await db.select({ id: employees.id, name: employees.name, email: employees.email }).from(employees).where(eq(employees.id, payload.superiorEmployeeId)).limit(1)
         : []
 
-      const [validManager] = payload.managerEmployeeId
-        ? await db.select({ id: employees.id, name: employees.name, email: employees.email }).from(employees).where(eq(employees.id, payload.managerEmployeeId)).limit(1)
-        : []
-
       const step1Token = randomUUID()
       const step2Token = randomUUID()
       const step3Token = randomUUID()
@@ -1824,10 +1835,10 @@ export async function createOvertimeCommandLetterAction(payload: {
         {
           overtimeCommandLetterId: inserted.id,
           stepOrder: 3,
-          stepLabel: 'Section Head',
-          approverRole: 'section_head',
+          stepLabel: 'PJO / Site Lead',
+          approverRole: 'pjo',
           approverEmployeeId: validSuperior?.id ?? payload.superiorEmployeeId ?? null,
-          approverName: payload.superiorName || validSuperior?.name || 'Section Head',
+          approverName: payload.superiorName || validSuperior?.name || 'PJO / Site Lead',
           approverEmail: validSuperior?.email || '',
           signatureDataUrl: null,
           signedAt: null,

@@ -16,6 +16,7 @@ import {
   Download,
   ExternalLink,
   Eye,
+  FileSpreadsheet,
   FileText,
   Filter,
   Image as ImageIcon,
@@ -409,6 +410,92 @@ export function MaestroClientActivityDashboard({
     document.body.removeChild(link)
   }
 
+  // Export table to formatted Excel (.xlsx) with neat columns
+  const handleExportExcel = async () => {
+    try {
+      const XLSX = await import('xlsx')
+      const wb = XLSX.utils.book_new()
+
+      if (activeTab === 'unsubmitted') {
+        const data = filteredUnsubmittedEmployees.map((e, idx) => ({
+          'No': idx + 1,
+          'Tanggal': initialData.currentDate || '-',
+          'Employee ID': e.employeeId,
+          'Nama Karyawan': e.name,
+          'Jabatan': e.jobTitle,
+          'Departemen': e.department,
+          'Section': e.section || '-',
+          'Roster & Shift': `${e.rosterCode} (${e.expectedShift})`,
+          'Status Kehadiran': e.attendanceStatus,
+          'Jam Check-In': e.checkInTime || '-',
+          'Status Log': 'Belum Mengisi',
+        }))
+
+        const ws = XLSX.utils.json_to_sheet(data)
+        ws['!cols'] = [
+          { wch: 6 },
+          { wch: 14 },
+          { wch: 16 },
+          { wch: 26 },
+          { wch: 22 },
+          { wch: 20 },
+          { wch: 20 },
+          { wch: 20 },
+          { wch: 18 },
+          { wch: 14 },
+          { wch: 16 },
+        ]
+
+        XLSX.utils.book_append_sheet(wb, ws, 'Belum Mengisi')
+        const filename = `MAESTRO_Belum_Isi_Activity_${customerInfo.name.replace(/\s+/g, '_')}_${(initialData.currentDate || 'Report').replace(/\s+/g, '_')}.xlsx`
+        XLSX.writeFile(wb, filename)
+        toast.success('Laporan Excel berhasil diunduh!')
+        return
+      }
+
+      // Submitted tab
+      const data = filteredEmployees.map((e, idx) => ({
+        'No': idx + 1,
+        'Tanggal': initialData.currentDate || '-',
+        'Employee ID': e.employeeId,
+        'Nama Karyawan': e.name,
+        'Jabatan / Section': e.jobTitle,
+        'Shift': e.shift,
+        'Jam Check-in': e.checkInTime,
+        'Jam Checkout': e.checkOutTime || '-',
+        'Aktivitas Utama': e.primaryActivity,
+        'No. Unit / Equipment': e.unitTireId,
+        'Status Aktivitas': e.status,
+        'Progress (%)': `${e.progress}%`,
+        'Update Terakhir': e.lastUpdate,
+      }))
+
+      const ws = XLSX.utils.json_to_sheet(data)
+      ws['!cols'] = [
+        { wch: 6 },
+        { wch: 14 },
+        { wch: 16 },
+        { wch: 26 },
+        { wch: 24 },
+        { wch: 14 },
+        { wch: 14 },
+        { wch: 14 },
+        { wch: 35 },
+        { wch: 22 },
+        { wch: 16 },
+        { wch: 14 },
+        { wch: 18 },
+      ]
+
+      XLSX.utils.book_append_sheet(wb, ws, 'Daily Activity')
+      const filename = `MAESTRO_Daily_Activity_${customerInfo.name.replace(/\s+/g, '_')}_${(initialData.currentDate || 'Report').replace(/\s+/g, '_')}.xlsx`
+      XLSX.writeFile(wb, filename)
+      toast.success('Laporan Excel Daily Activity berhasil diunduh!')
+    } catch (err) {
+      toast.error('Gagal mengekspor data ke Excel.')
+    }
+  }
+
   // Export specific employee detail tasks to CSV
   const handleExportDetailCsv = (emp: EmployeeActivityRow) => {
     const headers = [
@@ -450,35 +537,77 @@ export function MaestroClientActivityDashboard({
     document.body.removeChild(link)
   }
 
+  // Export specific employee detail tasks to Excel (.xlsx)
+  const handleExportDetailExcel = async (emp: EmployeeActivityRow) => {
+    try {
+      const XLSX = await import('xlsx')
+      const wb = XLSX.utils.book_new()
+
+      const data = emp.tasks.map((t, idx) => ({
+        'No': idx + 1,
+        'Jam Kerja': `${t.startedAt || '-'} - ${t.endedAt || '-'}`,
+        'Durasi': t.durationLabel || '-',
+        'Unit / Equipment': t.unitNumber || '-',
+        'Aktivitas / Tugas': t.label || '-',
+        'Grup / Kategori': t.groupName || '-',
+        'Poin': t.points || 0,
+        'Status': t.status,
+        'Catatan Lapangan': t.remarks || '-',
+        'Link Foto Bukti': t.photoUrl || '-',
+      }))
+
+      const ws = XLSX.utils.json_to_sheet(data)
+      ws['!cols'] = [
+        { wch: 6 },
+        { wch: 18 },
+        { wch: 14 },
+        { wch: 18 },
+        { wch: 35 },
+        { wch: 22 },
+        { wch: 10 },
+        { wch: 14 },
+        { wch: 30 },
+        { wch: 35 },
+      ]
+
+      XLSX.utils.book_append_sheet(wb, ws, 'Detail Tugas')
+      const filename = `MAESTRO_Detail_${emp.name.replace(/\s+/g, '_')}_${(emp.workDate || 'Report').replace(/\s+/g, '_')}.xlsx`
+      XLSX.writeFile(wb, filename)
+      toast.success(`Detail tugas ${emp.name} berhasil diekspor ke Excel!`)
+    } catch (err) {
+      toast.error('Gagal mengekspor detail ke Excel.')
+    }
+  }
+
   const renderStatusBadge = (status: EmployeeActivityRow['status']) => {
     switch (status) {
       case 'Selesai':
         return (
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200/60">
+          <span className="inline-flex items-center px-3.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-950 border border-emerald-300 shadow-2xs">
             Selesai
           </span>
         )
       case 'Berjalan':
         return (
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-sky-50 text-sky-800 border border-sky-200/60">
+          <span className="inline-flex items-center px-3.5 py-1 rounded-full text-xs font-bold bg-sky-100 text-sky-950 border border-sky-300 shadow-2xs">
             Berjalan
           </span>
         )
       case 'Menunggu':
         return (
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-900 border border-amber-200/60">
+          <span className="inline-flex items-center px-3.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-950 border border-amber-300 shadow-2xs">
             Menunggu
           </span>
         )
       case 'Terlambat':
         return (
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-800 border border-rose-200/60">
+          <span className="inline-flex items-center px-3.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-950 border border-rose-300 shadow-2xs">
             Terlambat
           </span>
         )
       default:
         return (
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">
+          <span className="inline-flex items-center px-3.5 py-1 rounded-full text-xs font-bold bg-slate-200/90 text-slate-900 border border-slate-300 shadow-2xs">
             {status}
           </span>
         )
@@ -486,20 +615,20 @@ export function MaestroClientActivityDashboard({
   }
 
   const renderProgressBar = (progress: number, status: EmployeeActivityRow['status']) => {
-    let barColor = 'bg-sky-500'
-    if (status === 'Selesai') barColor = 'bg-emerald-500'
-    if (status === 'Menunggu') barColor = 'bg-amber-500'
-    if (status === 'Terlambat') barColor = 'bg-rose-500'
+    let barColor = 'bg-sky-600'
+    if (status === 'Selesai') barColor = 'bg-emerald-600'
+    if (status === 'Menunggu') barColor = 'bg-amber-600'
+    if (status === 'Terlambat') barColor = 'bg-rose-600'
 
     return (
-      <div className="flex items-center gap-2.5">
-        <div className="w-20 sm:w-24 h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200/50">
+      <div className="flex items-center gap-3">
+        <div className="w-24 sm:w-28 h-2.5 bg-slate-200/80 rounded-full overflow-hidden border border-slate-300/60">
           <div
             className={`h-full rounded-full transition-all duration-300 ${barColor}`}
             style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
           />
         </div>
-        <span className="text-xs font-bold text-slate-800 w-8">{progress}%</span>
+        <span className="text-xs sm:text-sm font-black text-slate-950 w-10">{progress}%</span>
       </div>
     )
   }
@@ -518,166 +647,168 @@ export function MaestroClientActivityDashboard({
   }
 
   return (
-    <div className="w-full space-y-8 text-slate-800">
-      {/* ── Top Header & Context Bar ── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200/60 pb-6">
-        <div>
-          <div className="flex items-center gap-2 mb-2 flex-wrap">
-            <Link
-              href="/dashboard"
-              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-slate-200/70 text-slate-700 hover:bg-slate-50 text-xs font-semibold shadow-2xs transition"
-            >
-              <ArrowLeft className="h-3.5 w-3.5 text-slate-400" />
-              <span>Dashboard</span>
-            </Link>
-            <span className="text-slate-300">/</span>
-            <span className="text-xs font-semibold text-slate-700">Daily Activity Monitoring</span>
-            <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-900 border border-amber-200/60">
-              <Building2 className="w-3.5 h-3.5 text-amber-600" />
-              {customerInfo.name}
-            </span>
+    <div className="w-full space-y-8 text-slate-900">
+      {/* ── Top Header & Context Bar: Frosted Glass Panel ── */}
+      <div className="relative overflow-hidden rounded-3xl border border-white/80 bg-white/85 p-7 sm:p-9 shadow-[0_8px_30px_rgba(0,0,0,0.04)] backdrop-blur-xl">
+        <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2 mb-3 flex-wrap">
+              <Link
+                href="/dashboard"
+                className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-2xl bg-white/90 border border-slate-300 text-slate-800 hover:bg-slate-100 text-xs sm:text-sm font-bold shadow-2xs transition"
+              >
+                <ArrowLeft className="h-4 w-4 text-slate-600" />
+                <span>Dashboard</span>
+              </Link>
+              <span className="text-slate-400 font-bold">/</span>
+              <span className="text-xs sm:text-sm font-extrabold text-slate-800">Daily Activity Monitoring</span>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-950 border border-amber-300 shadow-2xs">
+                <Building2 className="w-3.5 h-3.5 text-amber-700" />
+                {customerInfo.name}
+              </span>
+            </div>
+
+            <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-slate-950 font-display">
+              Daily Activity &amp; Manpower
+            </h1>
+            <p className="text-sm sm:text-base text-slate-700 mt-2 font-medium">
+              Monitoring aktivitas teknisi, log pengerjaan ban, dan progres servis harian di site {currentSiteName}.
+            </p>
           </div>
 
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 font-display">
-            Daily Activity &amp; Manpower
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Monitoring aktivitas teknisi, log pengerjaan ban, dan progres servis harian di site {currentSiteName}.
-          </p>
-        </div>
+          <div className="flex flex-wrap items-center gap-3 self-start sm:self-center">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportCsv}
+              className="h-11 gap-2 rounded-2xl border-slate-300 bg-white/90 px-5 text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100 shadow-2xs"
+            >
+              <Download className="w-4 h-4 text-slate-600" />
+              <span>Export CSV</span>
+            </Button>
 
-        <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-center">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportCsv}
-            className="h-9 gap-1.5 rounded-full border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs"
-          >
-            <Download className="w-3.5 h-3.5 text-slate-400" />
-            <span>Export CSV</span>
-          </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => router.refresh()}
-            disabled={isPending}
-            className="h-9 gap-1.5 rounded-full border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs"
-          >
-            <RefreshCw className={cn("w-3.5 h-3.5 text-slate-400", isPending && "animate-spin")} />
-            <span>Refresh</span>
-          </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => router.refresh()}
+              disabled={isPending}
+              className="h-11 gap-2 rounded-2xl border-slate-300 bg-white/90 px-5 text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100 shadow-2xs"
+            >
+              <RefreshCw className={cn("w-4 h-4 text-slate-600", isPending && "animate-spin")} />
+              <span>Refresh</span>
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* ── 5 KPI Executive Summary Cards ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      {/* ── 5 KPI Executive Summary Cards: High Legibility Frosted Glass ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-5">
         {/* Karyawan Terjadwal */}
-        <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/70 shadow-2xs hover:shadow-xs transition flex flex-col justify-between">
+        <div className="relative overflow-hidden bg-white/85 backdrop-blur-xl rounded-3xl p-6 border border-white/80 shadow-[0_8px_30px_rgba(0,0,0,0.04)] hover:shadow-md transition flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Karyawan Terjadwal</span>
-            <div className="w-10 h-10 rounded-2xl bg-sky-50 flex items-center justify-center text-sky-600">
-              <Users className="w-4 h-4" />
+            <span className="text-xs sm:text-sm font-bold text-slate-700 uppercase tracking-wider">Karyawan Jadwal</span>
+            <div className="w-12 h-12 rounded-2xl bg-sky-100 text-sky-800 flex items-center justify-center font-bold border border-sky-200 shadow-2xs">
+              <Users className="w-6 h-6" />
             </div>
           </div>
-          <div className="mt-4 flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-bold text-slate-900 font-display">
+          <div className="mt-5 flex items-baseline gap-2">
+            <span className="text-3xl sm:text-4xl font-black text-slate-950 font-display">
               {kpis.karyawanAktif.value}
             </span>
-            <span className="text-xs text-slate-400">/ {kpis.karyawanAktif.total} Total</span>
+            <span className="text-sm font-bold text-slate-600">/ {kpis.karyawanAktif.total} Total</span>
           </div>
-          <div className="mt-2 text-[11px] text-slate-400 font-medium">
+          <div className="mt-2 text-xs text-slate-600 font-semibold">
             <span>{kpis.karyawanAktif.change || 'Total teknisi site'}</span>
           </div>
         </div>
 
         {/* Hadir Check-In */}
-        <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/70 shadow-2xs hover:shadow-xs transition flex flex-col justify-between">
+        <div className="relative overflow-hidden bg-white/85 backdrop-blur-xl rounded-3xl p-6 border border-white/80 shadow-[0_8px_30px_rgba(0,0,0,0.04)] hover:shadow-md transition flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Hadir Check-In</span>
-            <div className="w-10 h-10 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600">
-              <CheckCircle2 className="w-4 h-4" />
+            <span className="text-xs sm:text-sm font-bold text-slate-700 uppercase tracking-wider">Hadir Check-In</span>
+            <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold border border-emerald-200 shadow-2xs">
+              <CheckCircle2 className="w-6 h-6" />
             </div>
           </div>
-          <div className="mt-4 flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-bold text-slate-900 font-display">
+          <div className="mt-5 flex items-baseline gap-2">
+            <span className="text-3xl sm:text-4xl font-black text-slate-950 font-display">
               {kpis.hadirCheckIn.value}
             </span>
-            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+            <span className="text-xs font-extrabold text-emerald-950 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full">
               {kpis.karyawanAktif.value > 0
                 ? `${Math.round((kpis.hadirCheckIn.value / kpis.karyawanAktif.value) * 100)}%`
                 : '100%'}
             </span>
           </div>
-          <div className="mt-2 text-[11px] text-slate-400 font-medium">
+          <div className="mt-2 text-xs text-slate-600 font-semibold">
             <span>{kpis.hadirCheckIn.change || 'Tercatat hadir di site'}</span>
           </div>
         </div>
 
         {/* Aktivitas Selesai */}
-        <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/70 shadow-2xs hover:shadow-xs transition flex flex-col justify-between">
+        <div className="relative overflow-hidden bg-white/85 backdrop-blur-xl rounded-3xl p-6 border border-white/80 shadow-[0_8px_30px_rgba(0,0,0,0.04)] hover:shadow-md transition flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Aktivitas Selesai</span>
-            <div className="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600">
-              <Layers className="w-4 h-4" />
+            <span className="text-xs sm:text-sm font-bold text-slate-700 uppercase tracking-wider">Tugas Selesai</span>
+            <div className="w-12 h-12 rounded-2xl bg-indigo-100 text-indigo-800 flex items-center justify-center font-bold border border-indigo-200 shadow-2xs">
+              <Layers className="w-6 h-6" />
             </div>
           </div>
-          <div className="mt-4 flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-bold text-slate-900 font-display">
+          <div className="mt-5 flex items-baseline gap-2">
+            <span className="text-3xl sm:text-4xl font-black text-slate-950 font-display">
               {kpis.aktivitasSelesai.value}
             </span>
-            <span className="text-xs font-semibold text-indigo-600">Tugas</span>
+            <span className="text-xs font-bold text-indigo-800 bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 rounded-full">Tugas Selesai</span>
           </div>
-          <div className="mt-2 text-[11px] text-slate-400 font-medium">
+          <div className="mt-2 text-xs text-slate-600 font-semibold">
             <span>{kpis.aktivitasSelesai.change || 'Pekerjaan selesai 100%'}</span>
           </div>
         </div>
 
         {/* Sedang Berjalan */}
-        <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/70 shadow-2xs hover:shadow-xs transition flex flex-col justify-between">
+        <div className="relative overflow-hidden bg-white/85 backdrop-blur-xl rounded-3xl p-6 border border-white/80 shadow-[0_8px_30px_rgba(0,0,0,0.04)] hover:shadow-md transition flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Sedang Berjalan</span>
-            <div className="w-10 h-10 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-600">
-              <Clock className="w-4 h-4" />
+            <span className="text-xs sm:text-sm font-bold text-slate-700 uppercase tracking-wider">Sedang Berjalan</span>
+            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center font-bold border border-amber-200 shadow-2xs">
+              <Clock className="w-6 h-6" />
             </div>
           </div>
-          <div className="mt-4 flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-bold text-slate-900 font-display">
+          <div className="mt-5 flex items-baseline gap-2">
+            <span className="text-3xl sm:text-4xl font-black text-slate-950 font-display">
               {kpis.sedangBerjalan.value}
             </span>
-            <span className="text-xs font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">In Progress</span>
+            <span className="text-xs font-extrabold text-amber-950 bg-amber-100 border border-amber-300 px-2.5 py-0.5 rounded-full">In Progress</span>
           </div>
-          <div className="mt-2 text-[11px] text-slate-400 font-medium">
+          <div className="mt-2 text-xs text-slate-600 font-semibold">
             <span>{kpis.sedangBerjalan.change || 'Aktif dikerjakan saat ini'}</span>
           </div>
         </div>
 
         {/* Pending / Belum Update */}
-        <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/70 shadow-2xs hover:shadow-xs transition flex flex-col justify-between">
+        <div className="relative overflow-hidden bg-white/85 backdrop-blur-xl rounded-3xl p-6 border border-white/80 shadow-[0_8px_30px_rgba(0,0,0,0.04)] hover:shadow-md transition flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Pending / Terlambat</span>
-            <div className="w-10 h-10 rounded-2xl bg-rose-50 flex items-center justify-center text-rose-600">
-              <AlertTriangle className="w-4 h-4" />
+            <span className="text-xs sm:text-sm font-bold text-slate-700 uppercase tracking-wider">Pending Update</span>
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-800 flex items-center justify-center font-bold border border-rose-200 shadow-2xs">
+              <AlertTriangle className="w-6 h-6" />
             </div>
           </div>
-          <div className="mt-4 flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-bold text-slate-900 font-display">
+          <div className="mt-5 flex items-baseline gap-2">
+            <span className="text-3xl sm:text-4xl font-black text-slate-950 font-display">
               {kpis.terlambatBelumUpdate.value}
             </span>
-            <span className="text-xs font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full">Pending</span>
+            <span className="text-xs font-extrabold text-rose-950 bg-rose-100 border border-rose-300 px-2.5 py-0.5 rounded-full">Perlu Update</span>
           </div>
-          <div className="mt-2 text-[11px] text-slate-400 font-medium">
+          <div className="mt-2 text-xs text-slate-600 font-semibold">
             <span>{kpis.terlambatBelumUpdate.change || 'Belum update progres'}</span>
           </div>
         </div>
       </div>
 
-      {/* ── Advanced Filter Bar ── */}
-      <div className="bg-white rounded-3xl border border-slate-200/70 shadow-2xs p-5 sm:p-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-3.5 items-end">
+      {/* ── Advanced Filter Bar: Frosted Glass Panel ── */}
+      <div className="relative overflow-hidden bg-white/90 backdrop-blur-xl rounded-3xl border border-white/80 shadow-xs p-6 sm:p-7">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-4 items-end">
           {/* Site Selector */}
           <div>
-            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">
+            <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-2 block">
               Site Operasional
             </label>
             <select
@@ -688,7 +819,7 @@ export function MaestroClientActivityDashboard({
                 setSelectedSiteId(val)
                 applyFilters({ siteId: val })
               }}
-              className="w-full text-xs font-semibold bg-[#f8f9fa] border border-slate-200/80 rounded-2xl px-3 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 focus:bg-white cursor-pointer truncate transition"
+              className="w-full h-11 text-xs sm:text-sm font-bold bg-white border border-slate-300 rounded-2xl px-3 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 cursor-pointer truncate shadow-2xs transition"
             >
               {authorizedSites.map((s) => (
                 <option key={s.id} value={String(s.id)}>
@@ -700,7 +831,7 @@ export function MaestroClientActivityDashboard({
 
           {/* Dari Tanggal */}
           <div>
-            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">
+            <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-2 block">
               Dari Tanggal
             </label>
             <input
@@ -712,13 +843,13 @@ export function MaestroClientActivityDashboard({
                 setStartDate(val)
                 applyFilters({ startDate: val })
               }}
-              className="w-full text-xs font-semibold bg-[#f8f9fa] border border-slate-200/80 rounded-2xl px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 focus:bg-white transition"
+              className="w-full h-11 text-xs sm:text-sm font-bold bg-white border border-slate-300 rounded-2xl px-3 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 shadow-2xs transition"
             />
           </div>
 
           {/* Sampai Tanggal */}
           <div>
-            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">
+            <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-2 block">
               Sampai Tanggal
             </label>
             <input
@@ -730,13 +861,13 @@ export function MaestroClientActivityDashboard({
                 setEndDate(val)
                 applyFilters({ endDate: val })
               }}
-              className="w-full text-xs font-semibold bg-[#f8f9fa] border border-slate-200/80 rounded-2xl px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 focus:bg-white transition"
+              className="w-full h-11 text-xs sm:text-sm font-bold bg-white border border-slate-300 rounded-2xl px-3 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 shadow-2xs transition"
             />
           </div>
 
           {/* Department */}
           <div>
-            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">
+            <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-2 block">
               Departemen
             </label>
             <select
@@ -747,7 +878,7 @@ export function MaestroClientActivityDashboard({
                 setSelectedDept(val)
                 applyFilters({ dept: val })
               }}
-              className="w-full text-xs font-semibold bg-[#f8f9fa] border border-slate-200/80 rounded-2xl px-3 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 focus:bg-white cursor-pointer transition"
+              className="w-full h-11 text-xs sm:text-sm font-bold bg-white border border-slate-300 rounded-2xl px-3 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 cursor-pointer shadow-2xs transition"
             >
               <option value="Semua Dept">Semua Dept</option>
               {(initialData.departmentsList || []).map((d) => (
@@ -760,7 +891,7 @@ export function MaestroClientActivityDashboard({
 
           {/* Shift */}
           <div>
-            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">
+            <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-2 block">
               Shift
             </label>
             <select
@@ -771,7 +902,7 @@ export function MaestroClientActivityDashboard({
                 setSelectedShift(val)
                 applyFilters({ shift: val })
               }}
-              className="w-full text-xs font-semibold bg-[#f8f9fa] border border-slate-200/80 rounded-2xl px-3 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 focus:bg-white cursor-pointer transition"
+              className="w-full h-11 text-xs sm:text-sm font-bold bg-white border border-slate-300 rounded-2xl px-3 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 cursor-pointer shadow-2xs transition"
             >
               <option value="Semua Shift">Semua Shift</option>
               <option value="Pagi">Day Shift (Pagi)</option>
@@ -782,7 +913,7 @@ export function MaestroClientActivityDashboard({
 
           {/* Section */}
           <div>
-            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">
+            <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-2 block">
               Section
             </label>
             <select
@@ -793,7 +924,7 @@ export function MaestroClientActivityDashboard({
                 setSelectedSection(val)
                 applyFilters({ section: val })
               }}
-              className="w-full text-xs font-semibold bg-[#f8f9fa] border border-slate-200/80 rounded-2xl px-3 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 focus:bg-white cursor-pointer transition"
+              className="w-full h-11 text-xs sm:text-sm font-bold bg-white border border-slate-300 rounded-2xl px-3 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 cursor-pointer shadow-2xs transition"
             >
               <option value="Semua Section">Semua Section</option>
               {(initialData.sectionsList || []).map((sec) => (
@@ -806,8 +937,8 @@ export function MaestroClientActivityDashboard({
 
           {/* Status */}
           <div>
-            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">
-              Status Aktivitas
+            <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-2 block">
+              Status
             </label>
             <select
               aria-label="Pilih Status"
@@ -817,7 +948,7 @@ export function MaestroClientActivityDashboard({
                 setSelectedEmployeeStatus(val)
                 applyFilters({ status: val })
               }}
-              className="w-full text-xs font-semibold bg-[#f8f9fa] border border-slate-200/80 rounded-2xl px-3 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 focus:bg-white cursor-pointer transition"
+              className="w-full h-11 text-xs sm:text-sm font-bold bg-white border border-slate-300 rounded-2xl px-3 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 cursor-pointer shadow-2xs transition"
             >
               <option value="Semua Status">Semua Status</option>
               <option value="Selesai">Selesai</option>
@@ -829,11 +960,11 @@ export function MaestroClientActivityDashboard({
 
           {/* Search Input */}
           <div>
-            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">
-              Cari Karyawan / Unit
+            <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-2 block">
+              Cari Nama / Unit
             </label>
             <div className="relative">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
               <Input
                 type="text"
                 placeholder="Nama / Unit..."
@@ -845,55 +976,55 @@ export function MaestroClientActivityDashboard({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') applyFilters({ employeeName: employeeNameFilter })
                 }}
-                className="h-[38px] pl-8 text-xs bg-[#f8f9fa] border-slate-200/80 rounded-2xl placeholder:text-slate-400 font-medium focus-visible:ring-2 focus-visible:ring-amber-500/20 focus-visible:border-amber-500 focus-visible:bg-white"
+                className="h-11 pl-10 text-xs sm:text-sm bg-white border-slate-300 rounded-2xl placeholder:text-slate-400 font-bold text-slate-900 focus-visible:ring-2 focus-visible:ring-amber-500 shadow-2xs"
               />
             </div>
           </div>
+        </div>
 
-          {/* Action Buttons */}
-          <div className="flex items-center gap-2">
-            <Button
-              variant="default"
-              size="sm"
-              onClick={() => applyFilters()}
-              className="flex-1 h-[38px] bg-slate-900 hover:bg-slate-800 text-white rounded-full text-xs font-bold shadow-xs transition"
-            >
-              <Filter className="w-3.5 h-3.5 mr-1" />
-              Terapkan
-            </Button>
+        {/* Filter Action Buttons */}
+        <div className="mt-5 pt-4 border-t border-slate-200/70 flex items-center justify-end gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleResetFilters}
+            className="h-11 px-5 border-slate-300 text-slate-700 hover:text-slate-950 rounded-2xl text-xs sm:text-sm font-bold bg-white shadow-2xs"
+          >
+            <X className="w-4 h-4 mr-1.5 text-slate-500" />
+            Reset Filter
+          </Button>
 
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleResetFilters}
-              title="Reset Semua Filter"
-              className="h-[38px] w-[38px] p-0 border-slate-200 text-slate-400 hover:text-slate-800 rounded-full text-xs bg-white shadow-2xs"
-            >
-              <X className="w-3.5 h-3.5" />
-            </Button>
-          </div>
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => applyFilters()}
+            className="h-11 px-6 bg-slate-950 hover:bg-amber-500 hover:text-slate-950 text-white rounded-2xl text-xs sm:text-sm font-black shadow-md transition"
+          >
+            <Filter className="w-4 h-4 mr-2" />
+            Terapkan Filter
+          </Button>
         </div>
       </div>
 
-      {/* ── Main Content Tabs & Tables ── */}
-      <div className="bg-white rounded-3xl border border-slate-200/70 shadow-2xs overflow-hidden">
+      {/* ── Main Content Tabs & Tables: Frosted Glass Panel ── */}
+      <div className="relative overflow-hidden bg-white/90 backdrop-blur-xl rounded-3xl border border-white/80 shadow-xs">
         {/* Navigation Tabs */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 p-4 sm:p-5 gap-3 bg-[#fbfbfc]">
-          <div className="inline-flex items-center gap-1.5 p-1 rounded-full bg-slate-100/90 border border-slate-200/60">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200/80 p-5 sm:p-6 gap-4 bg-slate-50/70">
+          <div className="inline-flex items-center gap-2 p-1.5 rounded-2xl bg-white/90 border border-slate-300/80 shadow-2xs">
             <button
               onClick={() => setActiveTab('submitted')}
               className={cn(
-                "flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-full transition-all cursor-pointer",
+                "flex items-center gap-2.5 px-5 py-2.5 text-xs sm:text-sm font-extrabold rounded-xl transition-all cursor-pointer",
                 activeTab === 'submitted'
-                  ? "bg-white text-slate-900 shadow-xs"
-                  : "text-slate-500 hover:text-slate-800"
+                  ? "bg-slate-950 text-white shadow-md shadow-slate-950/20"
+                  : "text-slate-600 hover:text-slate-950"
               )}
             >
-              <CheckCircle2 className={cn("w-3.5 h-3.5", activeTab === 'submitted' ? "text-amber-500" : "text-slate-400")} />
-              <span>Sudah Mengisi Aktivitas</span>
+              <CheckCircle2 className={cn("w-4 h-4", activeTab === 'submitted' ? "text-amber-400" : "text-slate-500")} />
+              <span>Sudah Mengisi Log Aktivitas</span>
               <span className={cn(
-                "px-2 py-0.5 rounded-full text-[10px] font-bold",
-                activeTab === 'submitted' ? "bg-amber-100 text-amber-900" : "bg-slate-200/70 text-slate-600"
+                "px-2.5 py-0.5 rounded-full text-xs font-black",
+                activeTab === 'submitted' ? "bg-amber-400 text-slate-950" : "bg-slate-200 text-slate-800"
               )}>
                 {filteredEmployees.length}
               </span>
@@ -902,25 +1033,36 @@ export function MaestroClientActivityDashboard({
             <button
               onClick={() => setActiveTab('unsubmitted')}
               className={cn(
-                "flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-full transition-all cursor-pointer",
+                "flex items-center gap-2.5 px-5 py-2.5 text-xs sm:text-sm font-extrabold rounded-xl transition-all cursor-pointer",
                 activeTab === 'unsubmitted'
-                  ? "bg-white text-slate-900 shadow-xs"
-                  : "text-slate-500 hover:text-slate-800"
+                  ? "bg-slate-950 text-white shadow-md shadow-slate-950/20"
+                  : "text-slate-600 hover:text-slate-950"
               )}
             >
-              <AlertTriangle className={cn("w-3.5 h-3.5", activeTab === 'unsubmitted' ? "text-amber-500" : "text-slate-400")} />
-              <span>Belum Mengisi Aktivitas</span>
+              <AlertTriangle className={cn("w-4 h-4", activeTab === 'unsubmitted' ? "text-amber-400" : "text-slate-500")} />
+              <span>Belum Mengisi Log Aktivitas</span>
               <span className={cn(
-                "px-2 py-0.5 rounded-full text-[10px] font-bold",
-                activeTab === 'unsubmitted' ? "bg-amber-100 text-amber-900" : "bg-slate-200/70 text-slate-600"
+                "px-2.5 py-0.5 rounded-full text-xs font-black",
+                activeTab === 'unsubmitted' ? "bg-amber-400 text-slate-950" : "bg-slate-200 text-slate-800"
               )}>
                 {filteredUnsubmittedEmployees.length}
               </span>
             </button>
           </div>
 
-          <div className="text-xs text-slate-400 font-medium self-start sm:self-center">
-            Menampilkan data untuk site <strong className="text-slate-800 font-bold">{currentSiteName}</strong>
+          <div className="flex flex-wrap items-center gap-3 self-start sm:self-center">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportExcel}
+              className="h-11 px-4 gap-2 rounded-2xl border-emerald-300 bg-emerald-50 text-xs sm:text-sm font-black text-emerald-950 hover:bg-emerald-100 shadow-2xs transition cursor-pointer"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+              <span>Export Excel (.xlsx)</span>
+            </Button>
+            <div className="text-xs sm:text-sm text-slate-600 font-semibold hidden md:block">
+              Site <strong className="text-slate-950 font-black">{currentSiteName}</strong>
+            </div>
           </div>
         </div>
 
@@ -928,26 +1070,26 @@ export function MaestroClientActivityDashboard({
         {activeTab === 'submitted' && (
           <div>
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <table className="w-full text-left text-xs sm:text-sm">
                 <thead>
-                  <tr className="bg-[#f8f9fa] border-b border-slate-100 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                    <th className="py-4 px-5">Karyawan &amp; Role</th>
-                    <th className="py-4 px-5">Section / Tim</th>
-                    <th className="py-4 px-5">Shift &amp; Jam Kerja</th>
-                    <th className="py-4 px-5">Unit &amp; Aktivitas Utama</th>
-                    <th className="py-4 px-5">Progress Kerja</th>
-                    <th className="py-4 px-5">Status</th>
-                    <th className="py-4 px-5 text-center">Aksi</th>
+                  <tr className="bg-slate-100/90 border-b border-slate-200 text-xs font-extrabold text-slate-800 uppercase tracking-wider">
+                    <th className="py-4 px-6">Karyawan &amp; Role</th>
+                    <th className="py-4 px-6">Section / Tim</th>
+                    <th className="py-4 px-6">Shift &amp; Jam Kerja</th>
+                    <th className="py-4 px-6">Unit &amp; Aktivitas Utama</th>
+                    <th className="py-4 px-6">Progress Kerja</th>
+                    <th className="py-4 px-6">Status</th>
+                    <th className="py-4 px-6 text-center">Aksi</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                <tbody className="divide-y divide-slate-200/70 font-semibold text-slate-800">
                   {paginatedEmployees.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-16 text-center text-slate-400">
-                        <div className="flex flex-col items-center justify-center gap-2">
-                          <Layers className="w-9 h-9 text-slate-300 stroke-[1.5]" />
-                          <p className="font-bold text-slate-700 text-sm">Tidak Ada Data Aktivitas</p>
-                          <p className="text-xs text-slate-400 max-w-sm">
+                      <td colSpan={7} className="py-20 text-center text-slate-500">
+                        <div className="flex flex-col items-center justify-center gap-3">
+                          <Layers className="w-12 h-12 text-slate-400 stroke-[1.5]" />
+                          <p className="font-extrabold text-slate-900 text-base">Tidak Ada Data Aktivitas</p>
+                          <p className="text-xs sm:text-sm text-slate-600 max-w-md font-medium">
                             Tidak ditemukan data aktivitas karyawan untuk kriteria filter dan periode tanggal yang dipilih.
                           </p>
                         </div>
@@ -955,84 +1097,82 @@ export function MaestroClientActivityDashboard({
                     </tr>
                   ) : (
                     paginatedEmployees.map((row) => (
-                      <tr key={`${row.employeeDbId}-${row.sessionId}`} className="hover:bg-slate-50/70 transition">
+                      <tr key={`${row.employeeDbId}-${row.sessionId}`} className="hover:bg-amber-50/40 transition">
                         {/* Karyawan */}
-                        <td className="py-4 px-5">
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200/80 flex items-center justify-center font-bold text-slate-700 text-xs shrink-0">
+                        <td className="py-4 px-6">
+                          <div className="flex items-center gap-3.5">
+                            <div className="w-10 h-10 rounded-2xl bg-amber-100 border border-amber-300 flex items-center justify-center font-black text-amber-950 text-xs shrink-0 shadow-2xs">
                               {row.name ? row.name.slice(0, 2).toUpperCase() : 'EM'}
                             </div>
                             <div>
-                              <div className="font-bold text-slate-900 text-xs">{row.name}</div>
-                              <div className="text-[11px] text-slate-400 mt-0.5">{row.jobTitle || 'Teknisi'} • ID: {row.employeeId}</div>
+                              <div className="font-extrabold text-slate-950 text-sm">{row.name}</div>
+                              <div className="text-xs font-semibold text-slate-600 mt-0.5">{row.jobTitle || 'Teknisi'} • ID: {row.employeeId}</div>
                             </div>
                           </div>
                         </td>
 
                         {/* Section / Tim */}
-                        <td className="py-4 px-5">
-                          <div className="font-bold text-slate-800 text-xs">{row.section || row.department || '-'}</div>
-                          <div className="text-[11px] text-slate-400 mt-0.5">{row.department}</div>
+                        <td className="py-4 px-6">
+                          <div className="font-bold text-slate-900 text-sm">{row.section || row.department || '-'}</div>
+                          <div className="text-xs font-semibold text-slate-600 mt-0.5">{row.department}</div>
                         </td>
 
                         {/* Shift & Jam Kerja */}
-                        <td className="py-4 px-5">
-                          <div className="flex items-center gap-1.5">
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
+                        <td className="py-4 px-6">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-900 border border-slate-300">
                               {row.shift}
                             </span>
-                            <span className="text-slate-700 font-semibold text-xs">
+                            <span className="text-slate-900 font-extrabold text-xs sm:text-sm">
                               {row.checkInTime || '-'} {row.checkOutTime ? `→ ${row.checkOutTime}` : ''}
                             </span>
                           </div>
                           {row.workDate && (
-                            <div className="text-[10px] text-slate-400 mt-1">{row.workDate}</div>
+                            <div className="text-xs font-semibold text-slate-500 mt-1">{row.workDate}</div>
                           )}
                         </td>
 
                         {/* Unit & Aktivitas Utama */}
-                        <td className="py-4 px-5 max-w-xs">
-                          <div className="font-semibold text-slate-900 text-xs line-clamp-1" title={row.primaryActivity}>
+                        <td className="py-4 px-6 max-w-xs">
+                          <div className="font-bold text-slate-950 text-sm line-clamp-1" title={row.primaryActivity}>
                             {row.primaryActivity || 'Pemeriksaan Rutin'}
                           </div>
-                          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                             {row.unitTireId && row.unitTireId !== '-' ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-sky-800 border border-sky-200/60">
-                                <Truck className="w-2.5 h-2.5" />
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-sky-100 text-sky-950 border border-sky-300 shadow-2xs">
+                                <Truck className="w-3.5 h-3.5 text-sky-700" />
                                 {row.unitTireId}
                               </span>
                             ) : null}
-                            <span className="text-[11px] text-slate-400">
+                            <span className="text-xs font-semibold text-slate-600">
                               {row.tasksCount || row.tasks?.length || 0} Tugas
                             </span>
                           </div>
                         </td>
 
                         {/* Progress */}
-                        <td className="py-4 px-5">
+                        <td className="py-4 px-6">
                           {renderProgressBar(row.progress, row.status)}
-                          <div className="text-[10px] text-slate-400 mt-1">
+                          <div className="text-xs font-semibold text-slate-500 mt-1.5">
                             Update: {row.lastUpdate || '-'}
                           </div>
                         </td>
 
                         {/* Status */}
-                        <td className="py-4 px-5">
-                          <div className="flex items-center gap-2">
-                            {renderStatusBadge(row.status)}
-                          </div>
+                        <td className="py-4 px-6">
+                          {renderStatusBadge(row.status)}
                         </td>
 
                         {/* Aksi: Lihat Detail */}
-                        <td className="py-4 px-5 text-center">
+                        <td className="py-4 px-6 text-center">
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => setActiveDetailEmployee(row)}
-                            className="h-8 px-3 rounded-full border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 shadow-2xs gap-1"
+                            className="h-10 px-4 rounded-2xl border-slate-300 bg-white text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100 hover:text-slate-950 shadow-2xs gap-1.5"
                           >
-                            <Eye className="w-3.5 h-3.5 text-slate-400" />
-                            <span>Detail</span>
+                            <Eye className="w-4 h-4 text-slate-600" />
+                            <span>Lihat Detail</span>
                           </Button>
                         </td>
                       </tr>
@@ -1044,21 +1184,21 @@ export function MaestroClientActivityDashboard({
 
             {/* Pagination Controls */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between px-5 py-4 border-t border-slate-100 bg-[#fbfbfc]">
-                <span className="text-xs text-slate-400 font-medium">
+              <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200/80 bg-slate-50/70">
+                <span className="text-xs sm:text-sm text-slate-700 font-bold">
                   Menampilkan {(currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, filteredEmployees.length)} dari {filteredEmployees.length} Karyawan
                 </span>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
                     size="sm"
                     disabled={currentPage === 1}
                     onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    className="h-8 px-3 text-xs rounded-full border-slate-200 bg-white"
+                    className="h-10 px-4 text-xs sm:text-sm font-bold rounded-2xl border-slate-300 bg-white shadow-2xs"
                   >
                     Sebelumnya
                   </Button>
-                  <span className="px-3 text-xs font-bold text-slate-700">
+                  <span className="px-3 text-xs sm:text-sm font-black text-slate-950">
                     {currentPage} / {totalPages}
                   </span>
                   <Button
@@ -1066,7 +1206,7 @@ export function MaestroClientActivityDashboard({
                     size="sm"
                     disabled={currentPage === totalPages}
                     onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                    className="h-8 px-3 text-xs rounded-full border-slate-200 bg-white"
+                    className="h-10 px-4 text-xs sm:text-sm font-bold rounded-2xl border-slate-300 bg-white shadow-2xs"
                   >
                     Selanjutnya
                   </Button>
@@ -1080,25 +1220,25 @@ export function MaestroClientActivityDashboard({
         {activeTab === 'unsubmitted' && (
           <div>
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <table className="w-full text-left text-xs sm:text-sm">
                 <thead>
-                  <tr className="bg-[#f8f9fa] border-b border-slate-100 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                    <th className="py-4 px-5">Karyawan</th>
-                    <th className="py-4 px-5">Section / Tim</th>
-                    <th className="py-4 px-5">Shift Terjadwal</th>
-                    <th className="py-4 px-5">Jadwal Roster</th>
-                    <th className="py-4 px-5">Status Kehadiran</th>
-                    <th className="py-4 px-5">Status Aktivitas</th>
+                  <tr className="bg-slate-100/90 border-b border-slate-200 text-xs font-extrabold text-slate-800 uppercase tracking-wider">
+                    <th className="py-4 px-6">Karyawan</th>
+                    <th className="py-4 px-6">Section / Tim</th>
+                    <th className="py-4 px-6">Shift Terjadwal</th>
+                    <th className="py-4 px-6">Jadwal Roster</th>
+                    <th className="py-4 px-6">Status Kehadiran</th>
+                    <th className="py-4 px-6">Status Aktivitas</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                <tbody className="divide-y divide-slate-200/70 font-semibold text-slate-800">
                   {paginatedUnsubmittedEmployees.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-16 text-center text-slate-400">
-                        <div className="flex flex-col items-center justify-center gap-2">
-                          <CheckCircle2 className="w-9 h-9 text-emerald-500 stroke-[1.5]" />
-                          <p className="font-bold text-slate-700 text-sm">Semua Karyawan Sudah Mengisi</p>
-                          <p className="text-xs text-slate-400 max-w-sm">
+                      <td colSpan={6} className="py-20 text-center text-slate-500">
+                        <div className="flex flex-col items-center justify-center gap-3">
+                          <CheckCircle2 className="w-12 h-12 text-emerald-600 stroke-[1.5]" />
+                          <p className="font-extrabold text-slate-900 text-base">Semua Karyawan Sudah Mengisi</p>
+                          <p className="text-xs sm:text-sm text-slate-600 max-w-md font-medium">
                             Seluruh karyawan yang terjadwal dan hadir di site telah mengisi log aktivitas harian mereka.
                           </p>
                         </div>
@@ -1106,48 +1246,48 @@ export function MaestroClientActivityDashboard({
                     </tr>
                   ) : (
                     paginatedUnsubmittedEmployees.map((emp) => (
-                      <tr key={emp.employeeDbId} className="hover:bg-slate-50/70 transition">
-                        <td className="py-4 px-5">
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200/80 flex items-center justify-center font-bold text-slate-700 text-xs shrink-0">
+                      <tr key={emp.employeeDbId} className="hover:bg-amber-50/40 transition">
+                        <td className="py-4 px-6">
+                          <div className="flex items-center gap-3.5">
+                            <div className="w-10 h-10 rounded-2xl bg-amber-100 border border-amber-300 flex items-center justify-center font-black text-amber-950 text-xs shrink-0 shadow-2xs">
                               {emp.name ? emp.name.slice(0, 2).toUpperCase() : 'EM'}
                             </div>
                             <div>
-                              <div className="font-bold text-slate-900 text-xs">{emp.name}</div>
-                              <div className="text-[11px] text-slate-400 mt-0.5">{emp.jobTitle} • ID: {emp.employeeId}</div>
+                              <div className="font-extrabold text-slate-950 text-sm">{emp.name}</div>
+                              <div className="text-xs font-semibold text-slate-600 mt-0.5">{emp.jobTitle} • ID: {emp.employeeId}</div>
                             </div>
                           </div>
                         </td>
-                        <td className="py-4 px-5">
-                          <div className="font-bold text-slate-800">{emp.section || emp.department || '-'}</div>
-                          <div className="text-[11px] text-slate-400 mt-0.5">{emp.department}</div>
+                        <td className="py-4 px-6">
+                          <div className="font-bold text-slate-900 text-sm">{emp.section || emp.department || '-'}</div>
+                          <div className="text-xs font-semibold text-slate-600 mt-0.5">{emp.department}</div>
                         </td>
-                        <td className="py-4 px-5">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
+                        <td className="py-4 px-6">
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-900 border border-slate-300">
                             {emp.expectedShift}
                           </span>
                         </td>
-                        <td className="py-4 px-5">
-                          <div className="font-bold text-slate-800">{emp.rosterCode}</div>
-                          <div className="text-[11px] text-slate-400 mt-0.5">{emp.rosterType || '5:2'}</div>
+                        <td className="py-4 px-6">
+                          <div className="font-bold text-slate-900 text-sm">{emp.rosterCode}</div>
+                          <div className="text-xs font-semibold text-slate-600 mt-0.5">{emp.rosterType || '5:2'}</div>
                         </td>
-                        <td className="py-4 px-5">
+                        <td className="py-4 px-6">
                           {emp.attendanceStatus === 'Hadir' ? (
                             <div>
-                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200/60">
+                              <span className="inline-flex items-center px-3.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-950 border border-emerald-300 shadow-2xs">
                                 Hadir
                               </span>
-                              <div className="text-[10px] text-slate-400 mt-1">Check-in: {emp.checkInTime}</div>
+                              <div className="text-xs font-semibold text-slate-600 mt-1">Check-in: {emp.checkInTime}</div>
                             </div>
                           ) : (
-                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">
+                            <span className="inline-flex items-center px-3.5 py-1 rounded-full text-xs font-bold bg-slate-200 text-slate-800 border border-slate-300">
                               Belum Check-In
                             </span>
                           )}
                         </td>
-                        <td className="py-4 px-5">
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-900 border border-amber-200/60">
-                            <Clock className="w-3 h-3 text-amber-600" />
+                        <td className="py-4 px-6">
+                          <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-950 border border-amber-300 shadow-2xs">
+                            <Clock className="w-3.5 h-3.5 text-amber-700" />
                             Belum Mengisi Log
                           </span>
                         </td>
@@ -1160,21 +1300,21 @@ export function MaestroClientActivityDashboard({
 
             {/* Pagination Controls */}
             {unsubmittedTotalPages > 1 && (
-              <div className="flex items-center justify-between px-5 py-4 border-t border-slate-100 bg-[#fbfbfc]">
-                <span className="text-xs text-slate-400 font-medium">
+              <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200/80 bg-slate-50/70">
+                <span className="text-xs sm:text-sm text-slate-700 font-bold">
                   Menampilkan {(unsubmittedPage - 1) * pageSize + 1} - {Math.min(unsubmittedPage * pageSize, filteredUnsubmittedEmployees.length)} dari {filteredUnsubmittedEmployees.length} Karyawan
                 </span>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
                     size="sm"
                     disabled={unsubmittedPage === 1}
                     onClick={() => setUnsubmittedPage((p) => Math.max(1, p - 1))}
-                    className="h-8 px-3 text-xs rounded-full border-slate-200 bg-white"
+                    className="h-10 px-4 text-xs sm:text-sm font-bold rounded-2xl border-slate-300 bg-white shadow-2xs"
                   >
                     Sebelumnya
                   </Button>
-                  <span className="px-3 text-xs font-bold text-slate-700">
+                  <span className="px-3 text-xs sm:text-sm font-black text-slate-950">
                     {unsubmittedPage} / {unsubmittedTotalPages}
                   </span>
                   <Button
@@ -1182,7 +1322,7 @@ export function MaestroClientActivityDashboard({
                     size="sm"
                     disabled={unsubmittedPage === unsubmittedTotalPages}
                     onClick={() => setUnsubmittedPage((p) => Math.min(unsubmittedTotalPages, p + 1))}
-                    className="h-8 px-3 text-xs rounded-full border-slate-200 bg-white"
+                    className="h-10 px-4 text-xs sm:text-sm font-bold rounded-2xl border-slate-300 bg-white shadow-2xs"
                   >
                     Selanjutnya
                   </Button>
@@ -1217,11 +1357,11 @@ export function MaestroClientActivityDashboard({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handleExportDetailCsv(activeDetailEmployee)}
-                  className="h-8 gap-1.5 text-xs font-semibold border-slate-200 text-slate-700 hover:bg-slate-50 rounded-full px-3.5 bg-white shadow-2xs"
+                  onClick={() => handleExportDetailExcel(activeDetailEmployee)}
+                  className="h-10 gap-2 text-xs sm:text-sm font-black border-emerald-300 bg-emerald-50 text-emerald-950 hover:bg-emerald-100 rounded-2xl px-4 shadow-2xs cursor-pointer"
                 >
-                  <Download className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Export CSV</span>
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+                  <span>Export Excel</span>
                 </Button>
               </div>
             </div>
