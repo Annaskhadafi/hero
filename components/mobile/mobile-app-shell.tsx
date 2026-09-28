@@ -401,7 +401,21 @@ export function MobileAppShell({
                       <SheetClose asChild>
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={async () => {
+                            const promptEvent = (window as any).__heroDeferredPrompt
+                            if (promptEvent && typeof promptEvent.prompt === 'function') {
+                              try {
+                                await promptEvent.prompt()
+                                const choice = await promptEvent.userChoice
+                                if (choice?.outcome === 'accepted') {
+                                  localStorage.setItem('hero:pwa-installed', 'true')
+                                  setIsStandalone(true)
+                                  return
+                                }
+                              } catch (err) {
+                                console.warn('Native install prompt failed, showing guide dialog:', err)
+                              }
+                            }
                             window.dispatchEvent(new Event('hero:open-install-prompt'))
                           }}
                           className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#003461] to-[#005bb5] text-xs font-bold text-white shadow-md shadow-blue-900/10 hover:brightness-110 active:scale-[0.98] transition-all"

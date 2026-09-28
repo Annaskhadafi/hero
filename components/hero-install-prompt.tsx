@@ -22,12 +22,34 @@ const DISMISS_COOLDOWN_MS = 24 * 60 * 60 * 1000 // 24 jam cooldown jika user kli
 const DISMISS_KEY = 'hero:pwa-install-dismissed-at'
 const INSTALLED_KEY = 'hero:pwa-installed'
 
+// Helper deteksi perangkat HP / Mobile (BUKAN desktop)
+function checkIsMobile(): boolean {
+  if (typeof window === 'undefined') return false
+  const ua = window.navigator.userAgent.toLowerCase()
+  const isMobileUa = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua)
+  const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0
+  const isNarrow = window.innerWidth < 1024
+
+  // Dianggap mobile jika User Agent mobile ATAU (perangkat layar sentuh dan lebar layar < 1024px)
+  return isMobileUa || (isTouch && isNarrow)
+}
+
+// Helper deteksi apakah sudah terpasang dan dibuka dalam mode PWA Standalone
+function checkIsStandalone(): boolean {
+  if (typeof window === 'undefined') return false
+  return Boolean(
+    window.matchMedia('(display-mode: standalone)').matches ||
+    (window.navigator as any).standalone === true ||
+    document.referrer.includes('android-app://') ||
+    window.location.search.includes('standalone=true')
+  )
+}
+
 export function HeroInstallPrompt() {
   const [show, setShow] = useState(false)
   const [isIos, setIsIos] = useState(false)
   const [isAndroid, setIsAndroid] = useState(false)
   const [showGuide, setShowGuide] = useState(false)
-  const [hasNativePrompt, setHasNativePrompt] = useState(false)
   const [installedSuccess, setInstalledSuccess] = useState(false)
   const deferredPromptRef = useRef<any>(null)
 
@@ -42,68 +64,76 @@ export function HeroInstallPrompt() {
       return
     }
 
-    // 2. Deteksi apakah sudah terpasang dan berjalan dalam mode PWA Standalone
-    const isStandalone =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as any).standalone === true ||
-      document.referrer.includes('android-app://')
-
-    if (isStandalone) {
-      // User sudah menggunakan aplikasi HERO terinstall
-      return
-    }
-
-    // 3. Deteksi platform OS
+    // 2. Deteksi OS
     const ua = window.navigator.userAgent.toLowerCase()
     const iosDevice = /iphone|ipad|ipod/.test(ua) && !(window as any).MSStream
     const androidDevice = /android/.test(ua)
-    const isMobileViewport = window.innerWidth < 768
-
     setIsIos(iosDevice)
     setIsAndroid(androidDevice)
 
-    // 4. Cek cooldown dismissal
-    const dismissedAt = localStorage.getItem(DISMISS_KEY)
-    if (dismissedAt) {
-      const timeSinceDismiss = Date.now() - Number(dismissedAt)
-      if (timeSinceDismiss < DISMISS_COOLDOWN_MS) {
-        return
-      }
+    // Helper cek cooldown
+    const isDismissed = () => {
+      const dismissedAt = localStorage.getItem(DISMISS_KEY)
+      if (!dismissedAt) return false
+      return Date.now() - Number(dismissedAt) < DISMISS_COOLDOWN_MS
     }
 
-    // 5. Tangkap event native PWA 'beforeinstallprompt' (Chrome / Android / Edge)
+    // 3. SELALU tangkap event native PWA 'beforeinstallprompt' dan simpan secara global
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault()
       deferredPromptRef.current = e
-      setHasNativePrompt(true)
-      // Tampilkan popup setelah delay singkat agar halaman selesai termuat
-      setTimeout(() => setShow(true), 2000)
+      ;(window as any).__heroDeferredPrompt = e
+
+      // ATURAN PENTING: JANGAN PERNAH MUNCULKAN OTOMATIS DI DESKTOP
+      if (!checkIsMobile()) {
+        return
+      }
+
+      // Jika sudah standalone atau sedang dalam masa cooldown dismissal, jangan auto-show
+      if (checkIsStandalone() || isDismissed()) {
+        return
+      }
+
+      // Auto-show khusus perangkat mobile setelah delay 2 detik
+      setTimeout(() => {
+        if (checkIsMobile() && !checkIsStandalone()) {
+          setShow(true)
+        }
+      }, 2000)
     }
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
 
-    // 6. Tangkap event ketika instalasi selesai
+    // 4. SELALU dengarkan event ketika aplikasi selesai diinstal
     const handleAppInstalled = () => {
       setInstalledSuccess(true)
       deferredPromptRef.current = null
+      ;(window as any).__heroDeferredPrompt = null
       localStorage.setItem(INSTALLED_KEY, 'true')
-      setTimeout(() => setShow(false), 2500)
+      setTimeout(() => setShow(false), 2000)
     }
 
     window.addEventListener('appinstalled', handleAppInstalled)
 
-    // 7. Listener kustom untuk memanggil popup secara manual (misal dari menu)
-    const handleCustomOpen = () => {
+    // 5. SELALU dengarkan custom event untuk membuka popup secara manual (misal dari menu sidebar mobile)
+    const handleCustomOpen = (event?: any) => {
+      // Jika dipicu secara manual, abaikan cooldown dismissal
+      if (iosDevice) {
+        setShowGuide(true)
+      }
       setShow(true)
     }
+
     window.addEventListener('hero:open-install-prompt', handleCustomOpen)
 
-    // 8. Untuk perangkat mobile (iOS Safari / Android) jika event native tidak otomatis muncul
-    // Munculkan popup dengan delay 2.5 detik
+    // 6. Untuk perangkat HP (iOS Safari / Android) jika event native tidak menembak
+    // Hanya auto-show jika: BENAR-BENAR MOBILE, BELUM STANDALONE, dan BELUM DIDISMISS
     let timer: NodeJS.Timeout | null = null
-    if (iosDevice || (androidDevice && isMobileViewport)) {
+    if (checkIsMobile() && !checkIsStandalone() && !isDismissed()) {
       timer = setTimeout(() => {
-        setShow(true)
+        if (checkIsMobile() && !checkIsStandalone() && !isDismissed()) {
+          setShow(true)
+        }
       }, 2500)
     }
 
@@ -125,10 +155,11 @@ export function HeroInstallPrompt() {
   }
 
   const handleInstallClick = async () => {
-    // Jika browser mendukung native install prompt (Chrome / Android / Edge)
-    if (deferredPromptRef.current) {
+    // Coba ambil prompt dari ref atau global window
+    const promptEvent = deferredPromptRef.current || (typeof window !== 'undefined' ? (window as any).__heroDeferredPrompt : null)
+
+    if (promptEvent && typeof promptEvent.prompt === 'function') {
       try {
-        const promptEvent = deferredPromptRef.current
         promptEvent.prompt()
         const choice = await promptEvent.userChoice
         if (choice.outcome === 'accepted') {
@@ -138,14 +169,19 @@ export function HeroInstallPrompt() {
         } else {
           handleDismiss()
         }
+        deferredPromptRef.current = null
+        if (typeof window !== 'undefined') {
+          ;(window as any).__heroDeferredPrompt = null
+        }
+        return
       } catch (err) {
         console.error('Error saat memicu prompt instalasi:', err)
         setShowGuide(true)
+        return
       }
-      return
     }
 
-    // Jika di iOS Safari atau browser tanpa native prompt, tampilkan panduan langkah demi langkah
+    // Jika di iOS Safari atau browser tanpa native prompt aktif, buka panduan langkah demi langkah
     setShowGuide(true)
   }
 
@@ -164,7 +200,6 @@ export function HeroInstallPrompt() {
       >
         {/* ─── HEADER / BANNER ─── */}
         <div className="relative bg-gradient-to-br from-[#002447] via-[#003461] to-[#004e8c] p-4 text-white">
-          {/* Subtle background glow effect */}
           <div className="pointer-events-none absolute -right-6 -top-6 size-28 rounded-full bg-blue-400/20 blur-2xl" />
 
           <div className="flex items-center justify-between">
