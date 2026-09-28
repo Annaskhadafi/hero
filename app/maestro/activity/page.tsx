@@ -11,7 +11,7 @@ import { MaestroClientActivityDashboard } from './client-activity'
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: 'Daily Activity & Manpower | MAESTRO™ Customer Portal',
+  title: 'Daily Activity & Manpower',
   description:
     'Monitoring log pekerjaan harian, timesheet teknisi, dan progress servis di site - PT Chitra Paratama.',
 }

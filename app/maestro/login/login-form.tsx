@@ -91,7 +91,7 @@ export function MaestroLoginForm() {
               onChange={(e) => setEmail(e.target.value)}
               required
               disabled={isLoading}
-              className="h-12 rounded-xl border-slate-200 bg-white pl-10 pr-4 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
+              className="h-11 rounded-2xl border-slate-200 bg-white pl-10 pr-4 text-xs text-slate-800 placeholder:text-slate-400 focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
             />
           </div>
         </div>
@@ -116,7 +116,7 @@ export function MaestroLoginForm() {
               onChange={(e) => setPassword(e.target.value)}
               required
               disabled={isLoading}
-              className="h-12 rounded-xl border-slate-200 bg-white pl-10 pr-10 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
+              className="h-11 rounded-2xl border-slate-200 bg-white pl-10 pr-10 text-xs text-slate-800 placeholder:text-slate-400 focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
             />
             <button
               type="button"
@@ -135,7 +135,7 @@ export function MaestroLoginForm() {
             <Checkbox
               checked={rememberMe}
               onCheckedChange={(checked) => setRememberMe(checked === true)}
-              className="h-4 w-4 rounded border-amber-600 data-[state=checked]:border-amber-600 data-[state=checked]:bg-amber-600 text-white"
+              className="h-4 w-4 rounded-md border-amber-600 data-[state=checked]:border-amber-600 data-[state=checked]:bg-amber-600 text-white"
             />
             <span className="text-xs font-medium text-slate-600">
               Tetap masuk selama 30 hari
@@ -147,7 +147,7 @@ export function MaestroLoginForm() {
         <Button
           type="submit"
           disabled={isLoading}
-          className="mt-2 h-12 w-full rounded-xl bg-[#14233c] hover:bg-[#1a2e4e] text-white font-semibold text-sm shadow-md transition active:scale-[0.99] flex items-center justify-center gap-2"
+          className="mt-2 h-11 w-full rounded-full bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs shadow-xs transition active:scale-[0.99] flex items-center justify-center gap-2"
         >
           {isLoading ? (
             <span className="flex items-center gap-2">

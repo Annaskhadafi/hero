@@ -15,7 +15,7 @@ import { MaestroLoginForm } from './login-form'
 export const dynamic = 'force-dynamic'
 
 export const metadata = {
-  title: 'MAESTRO™ | PT Chitra Paratama Customer Portal',
+  title: 'MAESTRO™ | PT Chitra Paratama',
   description:
     'Monitoring Aktivitas, Efisiensi, Safety, Transaksi & Reporting Online - PT Chitra Paratama.',
 }
@@ -27,9 +27,9 @@ export default async function MaestroLoginPage() {
   }
 
   return (
-    <div className="relative min-h-screen w-full bg-[#fbfbfc] text-slate-900 flex items-center justify-center overflow-x-hidden">
+    <div className="relative min-h-screen w-full bg-[#f8f9fa] text-slate-900 flex items-center justify-center overflow-x-hidden">
       {/* Background Graphic: Provided bg maestro.png */}
-      <div className="pointer-events-none absolute inset-0 z-0">
+      <div className="pointer-events-none absolute inset-0 z-0 opacity-40">
         <Image
           src="/bg-maestro.png"
           alt="MAESTRO Portal Wallpaper"
@@ -54,7 +54,7 @@ export default async function MaestroLoginPage() {
               width={160}
               height={60}
               priority
-              className="h-10 sm:h-12 w-auto object-contain drop-shadow-sm"
+              className="h-10 sm:h-12 w-auto object-contain drop-shadow-xs"
             />
             <div className="hidden sm:block h-8 w-px bg-slate-300/70" />
             <div>
@@ -62,11 +62,8 @@ export default async function MaestroLoginPage() {
                 <span className="font-display font-extrabold text-lg sm:text-xl tracking-tight text-slate-900">
                   MAESTRO<span className="text-[#c97a00]">™</span>
                 </span>
-                <span className="rounded-full bg-amber-500/10 border border-amber-500/25 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-800">
-                  Customer Portal
-                </span>
               </div>
-              <p className="text-[10px] sm:text-[11px] font-medium text-slate-600 leading-tight">
+              <p className="text-[10px] sm:text-[11px] font-medium text-slate-500 leading-tight">
                 Monitoring Aktivitas, Efisiensi, Safety, Transaksi &amp; Reporting Online
               </p>
             </div>

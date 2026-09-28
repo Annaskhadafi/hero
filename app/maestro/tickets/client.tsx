@@ -212,22 +212,22 @@ export function MaestroTicketsClient({ initialTickets, categories, sites }: Prop
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Top Banner & Action */}
-      <div className="flex flex-col justify-between gap-4 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm sm:flex-row sm:items-center">
+      <div className="flex flex-col justify-between gap-6 rounded-3xl border border-slate-200/70 bg-white p-7 sm:p-9 shadow-2xs sm:flex-row sm:items-center">
         <div>
           <h1 className="font-display text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
             Layanan Pengaduan &amp; Bantuan
           </h1>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-2 text-xs sm:text-sm text-slate-500 leading-relaxed max-w-2xl">
             Sampaikan kendala, pertanyaan teknis, atau permintaan servis. AI Assistant kami akan
-            merespons dengan cepat sebelum dialihkan ke spesialis HERO.
+            merespons dengan cepat sebelum dialihkan ke staf HERO.
           </p>
         </div>
 
         <Button
           onClick={() => setIsDialogOpen(true)}
-          className="h-10 gap-2 rounded-xl bg-indigo-600 px-5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700"
+          className="h-10 gap-2 rounded-full bg-slate-900 px-6 text-xs font-bold text-white shadow-xs hover:bg-slate-800 shrink-0 self-start sm:self-center transition"
         >
           <Plus className="h-4 w-4" />
           <span>Buat Tiket Baru</span>
@@ -236,39 +236,39 @@ export function MaestroTicketsClient({ initialTickets, categories, sites }: Prop
 
       {/* Metrics Row */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
-          <p className="text-xs font-medium text-slate-500">Total Tiket Masuk</p>
-          <p className="mt-1 text-2xl font-bold text-slate-900">{totalCount}</p>
+        <div className="rounded-3xl border border-slate-200/70 bg-white p-6 shadow-2xs flex flex-col justify-between">
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Tiket Masuk</p>
+          <p className="mt-3 text-3xl font-bold text-slate-900 font-display">{totalCount}</p>
         </div>
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
-          <p className="text-xs font-medium text-amber-600">Sedang Berjalan / Ditangani</p>
-          <p className="mt-1 text-2xl font-bold text-amber-600">{activeCount}</p>
+        <div className="rounded-3xl border border-slate-200/70 bg-white p-6 shadow-2xs flex flex-col justify-between">
+          <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">Sedang Berjalan / Ditangani</p>
+          <p className="mt-3 text-3xl font-bold text-amber-600 font-display">{activeCount}</p>
         </div>
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
-          <p className="text-xs font-medium text-emerald-600">Selesai (Resolved)</p>
-          <p className="mt-1 text-2xl font-bold text-emerald-600">{resolvedCount}</p>
+        <div className="rounded-3xl border border-slate-200/70 bg-white p-6 shadow-2xs flex flex-col justify-between">
+          <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Selesai (Resolved)</p>
+          <p className="mt-3 text-3xl font-bold text-emerald-600 font-display">{resolvedCount}</p>
         </div>
       </div>
 
       {/* Search & Filter Bar */}
-      <div className="flex flex-col gap-3 rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 rounded-3xl border border-slate-200/70 bg-white p-4 sm:p-5 shadow-2xs sm:flex-row sm:items-center sm:justify-between">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Cari nomor tiket, judul masalah, atau kategori..."
-            className="h-9 pl-9 text-xs"
+            className="h-10 pl-10 text-xs bg-[#f8f9fa] border-slate-200/80 rounded-2xl placeholder:text-slate-400 focus-visible:bg-white"
           />
         </div>
 
         <div className="flex items-center gap-2">
           <Filter className="h-4 w-4 text-slate-400" />
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="h-9 w-44 text-xs">
+            <SelectTrigger className="h-10 w-44 text-xs font-semibold bg-[#f8f9fa] border-slate-200/80 rounded-2xl">
               <SelectValue placeholder="Status Tiket" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="rounded-2xl">
               <SelectItem value="all">Semua Status</SelectItem>
               <SelectItem value="bot_active">Dijawab AI</SelectItem>
               <SelectItem value="escalated">Dialihkan ke Staf</SelectItem>
@@ -281,12 +281,12 @@ export function MaestroTicketsClient({ initialTickets, categories, sites }: Prop
       </div>
 
       {/* Tickets List */}
-      <div className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-3xl border border-slate-200/70 bg-white shadow-2xs">
         {filteredTickets.length === 0 ? (
-          <div className="p-12 text-center">
+          <div className="p-16 text-center">
             <Headphones className="mx-auto h-10 w-10 text-slate-300" />
-            <h3 className="mt-3 text-sm font-semibold text-slate-900">Belum Ada Tiket</h3>
-            <p className="mt-1 text-xs text-slate-500">
+            <h3 className="mt-3 text-sm font-bold text-slate-900">Belum Ada Tiket</h3>
+            <p className="mt-1 text-xs text-slate-400 max-w-sm mx-auto">
               {search || statusFilter !== 'all'
                 ? 'Tidak ada tiket yang sesuai dengan filter pencarian.'
                 : 'Belum ada tiket pengaduan yang diajukan. Klik "Buat Tiket Baru" untuk memulai.'}
@@ -302,15 +302,15 @@ export function MaestroTicketsClient({ initialTickets, categories, sites }: Prop
                 <Link
                   key={ticket.id}
                   href={`/tickets/${ticket.id}`}
-                  className="group flex flex-col justify-between gap-4 p-5 transition hover:bg-slate-50/80 sm:flex-row sm:items-center"
+                  className="group flex flex-col justify-between gap-4 p-6 transition hover:bg-slate-50/70 sm:flex-row sm:items-center"
                 >
-                  <div className="space-y-1.5 flex-1 min-w-0">
+                  <div className="space-y-2 flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-xs font-bold text-slate-700">
                         {ticket.ticketNumber}
                       </span>
                       <span
-                        className="rounded-md px-2 py-0.5 text-[10px] font-semibold"
+                        className="rounded-full px-2.5 py-0.5 text-[10px] font-bold"
                         style={{
                           backgroundColor: `${ticket.category.color}15`,
                           color: ticket.category.color,
@@ -319,13 +319,13 @@ export function MaestroTicketsClient({ initialTickets, categories, sites }: Prop
                         {ticket.category.name}
                       </span>
                       <span
-                        className={`rounded-md px-2 py-0.5 text-[10px] font-medium ${priorityCfg.badge}`}
+                        className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${priorityCfg.badge}`}
                       >
                         {priorityCfg.label}
                       </span>
                     </div>
 
-                    <h4 className="text-sm font-semibold text-slate-900 group-hover:text-indigo-600 transition truncate">
+                    <h4 className="text-sm font-bold text-slate-900 group-hover:text-indigo-600 transition truncate">
                       {ticket.title}
                     </h4>
 
@@ -351,13 +351,13 @@ export function MaestroTicketsClient({ initialTickets, categories, sites }: Prop
                         })}
                       </span>
                       {ticket.assignedEmployee ? (
-                        <span className="flex items-center gap-1 text-slate-600 font-medium">
-                          <UserCheck className="h-3 w-3 text-emerald-600" />
+                        <span className="flex items-center gap-1 text-slate-700 font-semibold">
+                          <UserCheck className="h-3.5 w-3.5 text-emerald-600" />
                           PIC: {ticket.assignedEmployee.name}
                         </span>
                       ) : ticket.status === 'bot_active' ? (
-                        <span className="flex items-center gap-1 text-indigo-600 font-medium">
-                          <Bot className="h-3 w-3" />
+                        <span className="flex items-center gap-1 text-indigo-600 font-semibold">
+                          <Bot className="h-3.5 w-3.5" />
                           Chitra Smart Ticketing Aktif
                         </span>
                       ) : null}
@@ -366,12 +366,12 @@ export function MaestroTicketsClient({ initialTickets, categories, sites }: Prop
 
                   <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
                     <span
-                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${statusCfg.style}`}
+                      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusCfg.style}`}
                     >
                       {statusCfg.icon}
                       {statusCfg.label}
                     </span>
-                    <span className="text-xs font-medium text-indigo-600 group-hover:translate-x-0.5 transition">
+                    <span className="text-xs font-bold text-indigo-600 group-hover:translate-x-0.5 transition">
                       Buka Chat &rarr;
                     </span>
                   </div>
@@ -384,12 +384,12 @@ export function MaestroTicketsClient({ initialTickets, categories, sites }: Prop
 
       {/* Create Ticket Modal Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border-slate-200/80 bg-white p-6 sm:p-8 shadow-2xl">
           <DialogHeader>
-            <DialogTitle className="text-lg font-bold text-slate-900">
+            <DialogTitle className="text-lg font-bold text-slate-900 font-display">
               Buat Tiket Pengaduan &amp; Bantuan Baru
             </DialogTitle>
-            <DialogDescription className="text-xs text-slate-500">
+            <DialogDescription className="text-xs text-slate-400 mt-1">
               Jelaskan kendala Anda selengkap mungkin. Sistem AI kami akan memberikan respon awal
               dan jika diperlukan akan langsung diteruskan ke tim HERO terkait.
             </DialogDescription>
@@ -398,12 +398,12 @@ export function MaestroTicketsClient({ initialTickets, categories, sites }: Prop
           <form onSubmit={handleSubmitTicket} className="space-y-4 pt-2">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label className="text-xs font-semibold text-slate-700">Site Operasional *</label>
+                <label className="text-xs font-bold text-slate-700">Site Operasional *</label>
                 <Select value={siteId} onValueChange={setSiteId}>
-                  <SelectTrigger className="mt-1 h-9 text-xs">
+                  <SelectTrigger className="mt-1.5 h-10 text-xs font-medium rounded-2xl bg-[#f8f9fa] border-slate-200/80">
                     <SelectValue placeholder="Pilih Site" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="rounded-2xl">
                     {sites.map((s) => (
                       <SelectItem key={s.id} value={String(s.id)}>
                         {s.name}
@@ -414,12 +414,12 @@ export function MaestroTicketsClient({ initialTickets, categories, sites }: Prop
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-700">Kategori Keluhan *</label>
+                <label className="text-xs font-bold text-slate-700">Kategori Keluhan *</label>
                 <Select value={categoryId} onValueChange={setCategoryId}>
-                  <SelectTrigger className="mt-1 h-9 text-xs">
+                  <SelectTrigger className="mt-1.5 h-10 text-xs font-medium rounded-2xl bg-[#f8f9fa] border-slate-200/80">
                     <SelectValue placeholder="Pilih Kategori" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="rounded-2xl">
                     {categories.map((c) => (
                       <SelectItem key={c.id} value={String(c.id)}>
                         <span className="flex items-center gap-2">
@@ -438,23 +438,23 @@ export function MaestroTicketsClient({ initialTickets, categories, sites }: Prop
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div className="sm:col-span-2">
-                <label className="text-xs font-semibold text-slate-700">Judul Masalah / Kendala *</label>
+                <label className="text-xs font-bold text-slate-700">Judul Masalah / Kendala *</label>
                 <Input
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="Misal: Kerusakan sidewall ban unit DT-014 di Pit B"
-                  className="mt-1 h-9 text-xs"
+                  className="mt-1.5 h-10 text-xs rounded-2xl bg-[#f8f9fa] border-slate-200/80 focus-visible:bg-white"
                   required
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-700">Tingkat Urgensi</label>
+                <label className="text-xs font-bold text-slate-700">Tingkat Urgensi</label>
                 <Select value={priority} onValueChange={setPriority}>
-                  <SelectTrigger className="mt-1 h-9 text-xs">
+                  <SelectTrigger className="mt-1.5 h-10 text-xs font-medium rounded-2xl bg-[#f8f9fa] border-slate-200/80">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="rounded-2xl">
                     <SelectItem value="low">Rendah (Low)</SelectItem>
                     <SelectItem value="medium">Normal (Medium)</SelectItem>
                     <SelectItem value="high">Tinggi (High)</SelectItem>
@@ -465,7 +465,7 @@ export function MaestroTicketsClient({ initialTickets, categories, sites }: Prop
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-slate-700">
+              <label className="text-xs font-bold text-slate-700">
                 Uraian Lengkap Keluhan / Pertanyaan *
               </label>
               <Textarea
@@ -473,14 +473,14 @@ export function MaestroTicketsClient({ initialTickets, categories, sites }: Prop
                 onChange={(e) => setMessage(e.target.value)}
                 placeholder="Tuliskan kronologi, nomor seri ban/unit, lokasi spesifik, atau informasi penting lainnya..."
                 rows={4}
-                className="mt-1 text-xs"
+                className="mt-1.5 text-xs rounded-2xl bg-[#f8f9fa] border-slate-200/80 focus-visible:bg-white"
                 required
               />
             </div>
 
             {/* Attachments Section */}
             <div>
-              <label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
                 <span>Lampiran Foto / Dokumen Pendukung</span>
                 <span className="text-[10px] text-slate-400 font-normal">Max 5MB (JPG/PNG/PDF)</span>
               </label>
@@ -491,7 +491,7 @@ export function MaestroTicketsClient({ initialTickets, categories, sites }: Prop
                     {attachments.map((att, idx) => (
                       <div
                         key={idx}
-                        className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-700"
+                        className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700"
                       >
                         {att.type.startsWith('image/') ? (
                           <ImageIcon className="h-3.5 w-3.5 text-indigo-600" />
@@ -511,7 +511,7 @@ export function MaestroTicketsClient({ initialTickets, categories, sites }: Prop
                   </div>
                 )}
 
-                <label className="flex h-20 w-full cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50/50 hover:bg-slate-100/50 transition">
+                <label className="flex h-20 w-full cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-[#f8f9fa] hover:bg-slate-100/60 transition">
                   <div className="flex items-center gap-2 text-xs font-medium text-slate-600">
                     {isUploading ? (
                       <>
@@ -537,19 +537,19 @@ export function MaestroTicketsClient({ initialTickets, categories, sites }: Prop
               </div>
             </div>
 
-            <DialogFooter className="pt-2">
+            <DialogFooter className="pt-4 flex items-center justify-end gap-2">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => setIsDialogOpen(false)}
-                className="h-9 text-xs"
+                className="h-10 text-xs font-semibold rounded-full border-slate-200 px-5"
               >
                 Batal
               </Button>
               <Button
                 type="submit"
                 disabled={isSubmitting || isUploading}
-                className="h-9 gap-1.5 bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-700"
+                className="h-10 gap-1.5 bg-slate-900 text-xs font-bold text-white hover:bg-slate-800 rounded-full px-6 shadow-xs"
               >
                 {isSubmitting ? (
                   <>

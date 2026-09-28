@@ -18,7 +18,7 @@ interface PageProps {
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const resolved = await params
   return {
-    title: `Tiket #${resolved.id} | MAESTRO™ Customer Portal`,
+    title: `Tiket #${resolved.id} | MAESTRO™`,
   }
 }
 
@@ -40,14 +40,14 @@ export default async function MaestroTicketDetailPage({ params }: PageProps) {
   }
 
   return (
-    <div className="flex h-screen flex-col bg-slate-50/70 overflow-hidden">
+    <div className="flex h-screen flex-col bg-[#f8f9fa] overflow-hidden text-slate-900">
       {/* Top Header */}
-      <header className="shrink-0 border-b border-slate-200/80 bg-white/95 backdrop-blur-sm">
+      <header className="shrink-0 border-b border-slate-200/70 bg-white/80 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <Link
               href="/tickets"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200/80 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 shadow-2xs"
               title="Kembali ke Daftar Tiket"
             >
               <ArrowLeft className="h-4 w-4" />
@@ -57,7 +57,7 @@ export default async function MaestroTicketDetailPage({ params }: PageProps) {
                 {result.ticket.ticketNumber}
               </span>
               <span
-                className="rounded-md px-2 py-0.5 text-[10px] font-semibold"
+                className="rounded-full px-2.5 py-0.5 text-[10px] font-semibold"
                 style={{
                   backgroundColor: `${result.ticket.category.color}15`,
                   color: result.ticket.category.color,
