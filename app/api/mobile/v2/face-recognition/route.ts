@@ -83,7 +83,7 @@ async function notifyHrGaLocationAlert(input: {
     recipientEmails: recipients.map((recipient) => recipient.email),
     eventType: 'attendance_location_alert',
     category: 'info',
-    title: input.boundaryStatus === 'outside' ? 'Attendance di luar lokasi' : 'GPS attendance tidak aktif',
+    title: input.boundaryStatus === 'outside' ? 'Attendance di luar lokasi' : 'GPS attendance mati / tidak aktif',
     body: `${input.employeeName} ${input.eventType === 'checked-in' ? 'check-in' : 'check-out'} di ${input.siteName}. Jarak: ${distance}; radius: ${radius}.${input.explanation ? ` Keterangan: ${input.explanation}` : ''}`,
     url: '/dashboard/attendance/live-map',
     tagPrefix: 'attendance-location-alert',
@@ -457,7 +457,11 @@ export async function POST(request: NextRequest) {
         : boundary.status === 'outside'
           ? `[gps-outside] ${boundary.distanceMeters}m/${boundary.radiusMeters}m`
           : '[gps-unavailable]',
-      explanation ? `Keterangan lokasi: ${explanation}` : null,
+      explanation
+        ? (lat === 0 && lng === 0
+            ? `Alasan GPS mati: ${explanation}`
+            : `Keterangan lokasi: ${explanation}`)
+        : null,
       punctuality
         ? `Shift: ${punctuality.shiftCode.toUpperCase()} (masuk ${punctuality.scheduledClockIn})`
         : null,

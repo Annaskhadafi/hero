@@ -7,6 +7,7 @@ import {
   Camera,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   Loader2,
   LogIn,
   LogOut,
@@ -14,6 +15,7 @@ import {
   RefreshCw,
   Zap,
   MapPin,
+  MapPinOff,
   Clock,
   Clock3,
   UserCheck,
@@ -26,7 +28,16 @@ import {
   ChevronRight,
   Briefcase,
   ShieldCheck,
+  Info,
 } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 
 type FlowState =
@@ -203,6 +214,28 @@ export function FaceAttendanceV2Client({
   const [locationExplanation, setLocationExplanation] = useState('')
   const [locationWarning, setLocationWarning] = useState('')
   const [locationPromptEvent, setLocationPromptEvent] = useState<EventType | null>(null)
+  const [showGpsGuide, setShowGpsGuide] = useState(false)
+  const [showGpsReasonModal, setShowGpsReasonModal] = useState(false)
+  const [pendingEventMode, setPendingEventMode] = useState<EventType | null>(null)
+  const [gpsPermissionState, setGpsPermissionState] = useState<'prompt' | 'granted' | 'denied' | 'unknown'>('unknown')
+
+  // Listen to browser geolocation permission state
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && 'permissions' in navigator && (navigator.permissions as any)?.query) {
+      (navigator.permissions as any)
+        .query({ name: 'geolocation' })
+        .then((status: any) => {
+          setGpsPermissionState(status.state)
+          status.onchange = () => {
+            setGpsPermissionState(status.state)
+            if (status.state === 'granted') {
+              void refreshGps()
+            }
+          }
+        })
+        .catch(() => {})
+    }
+  }, [])
   const [calendarMonth, setCalendarMonth] = useState(
     () => new Date(new Date().getFullYear(), new Date().getMonth(), 1)
   )
@@ -335,9 +368,18 @@ export function FaceAttendanceV2Client({
         setGpsError('')
         setLocationPromptEvent(null)
       },
-      () => {
+      (error) => {
         setGpsLoading(false)
-        setGpsError('GPS belum aktif. Aktifkan GPS atau isi keterangan lokasi untuk melanjutkan.')
+        let msg = 'GPS belum aktif. Pastikan GPS menyala dan izin lokasi diizinkan di browser.'
+        if (error.code === 1) {
+          setGpsPermissionState('denied')
+          msg = 'Izin akses lokasi ditolak oleh browser. Mohon izinkan lokasi pada setelan situs browser Anda.'
+        } else if (error.code === 2) {
+          msg = 'Layanan lokasi / GPS pada HP Anda nonaktif. Mohon aktifkan Lokasi / GPS di pengaturan HP.'
+        } else if (error.code === 3) {
+          msg = 'Pencarian sinyal GPS timeout. Pastikan Anda berada di area yang terjangkau sinyal.'
+        }
+        setGpsError(msg)
       },
       { enableHighAccuracy: true, timeout: GPS_TIMEOUT, maximumAge: 0 }
     )
@@ -363,10 +405,19 @@ export function FaceAttendanceV2Client({
           setLocationPromptEvent(null)
           resolve(position)
         },
-        () => {
+        (error) => {
           setGpsLoading(false)
-          setGpsError('GPS belum aktif. Aktifkan GPS atau isi keterangan lokasi untuk melanjutkan.')
-          reject(new Error('GPS tidak tersedia'))
+          let msg = 'GPS belum aktif. Pastikan GPS menyala dan izin lokasi diizinkan di browser.'
+          if (error.code === 1) {
+            setGpsPermissionState('denied')
+            msg = 'Izin akses lokasi ditolak oleh browser. Mohon izinkan lokasi pada setelan situs browser Anda.'
+          } else if (error.code === 2) {
+            msg = 'Layanan lokasi / GPS pada HP Anda nonaktif. Mohon aktifkan Lokasi / GPS di pengaturan HP.'
+          } else if (error.code === 3) {
+            msg = 'Pencarian sinyal GPS timeout. Pastikan Anda berada di area yang terjangkau sinyal.'
+          }
+          setGpsError(msg)
+          reject(new Error(msg))
         },
         { enableHighAccuracy: true, timeout: GPS_TIMEOUT, maximumAge: 0 }
       )
@@ -696,11 +747,23 @@ export function FaceAttendanceV2Client({
     }
   }, [flowState, runRecognitionLoop])
 
+  const handleInitiateAttendance = (mode: EventType) => {
+    if (!gps && !locationExplanation.trim()) {
+      setSelectedEventType(mode)
+      setPendingEventMode(mode)
+      setShowGpsReasonModal(true)
+      setGpsError('GPS belum aktif. Mohon izinkan akses GPS atau berikan alasan kenapa GPS mati.')
+      return
+    }
+    void startFlow(mode)
+  }
+
   const startFlow = async (mode: EventType) => {
     if (!gps && !locationExplanation.trim()) {
       setSelectedEventType(mode)
-      setLocationPromptEvent(mode)
-      setGpsError('GPS belum aktif. Aktifkan GPS atau isi keterangan lokasi untuk melanjutkan.')
+      setPendingEventMode(mode)
+      setShowGpsReasonModal(true)
+      setGpsError('GPS belum aktif. Mohon izinkan akses GPS atau berikan alasan kenapa GPS mati.')
       return
     }
     setLocationPromptEvent(null)
@@ -750,7 +813,13 @@ export function FaceAttendanceV2Client({
     setManualSubmitting(true)
     setErrorMessage('')
     try {
-      const position = await getCurrentGps()
+      let position: GpsPosition
+      try {
+        position = await getCurrentGps()
+      } catch (gpsErr) {
+        if (!locationExplanation.trim()) throw gpsErr
+        position = { latitude: 0, longitude: 0, accuracy: 0 }
+      }
       const response = await fetch('/api/mobile/v2/face-recognition', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -818,12 +887,14 @@ export function FaceAttendanceV2Client({
     setLocationPromptEvent(null)
   }
 
-  const refreshGps = async () => {
+  const refreshGps = async (): Promise<boolean> => {
     setGpsError('')
     try {
       await getCurrentGps()
+      return true
     } catch {
       setGpsError('GPS belum aktif. Aktifkan GPS atau isi keterangan lokasi untuk melanjutkan.')
+      return false
     }
   }
 
@@ -940,6 +1011,78 @@ export function FaceAttendanceV2Client({
         {/* ─── IDLE STATE MAIN DASHBOARD ─── */}
         {flowState === 'idle' && (
           <>
+            {/* ─── PROMINENT NOTIFICATION: AKSES LOKASI & GPS HARUS DIIZINKAN ─── */}
+            {!gps && (
+              <div className="order-0 rounded-2xl border-2 border-amber-300 bg-amber-50/95 p-4 shadow-sm space-y-3" role="alert">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-xl bg-amber-200/80 p-2.5 text-amber-900 shrink-0">
+                    <MapPinOff className="size-5" />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-black uppercase tracking-wider text-amber-950">
+                        Akses Lokasi Wajib Diizinkan
+                      </span>
+                      <span className="rounded-full bg-rose-100 border border-rose-200 px-2 py-0.5 text-[10px] font-bold text-rose-700">
+                        GPS Mati / Nonaktif
+                      </span>
+                    </div>
+                    <p className="text-xs leading-relaxed text-amber-900 font-medium">
+                      Absensi wajah memerlukan koordinat GPS aktif untuk validasi kehadiran di area kerja <strong>{siteName}</strong>. Mohon pastikan GPS HP menyala dan izin lokasi diizinkan di browser.
+                    </p>
+                    {gpsError ? (
+                      <p className="text-[11px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-2 mt-1">
+                        ⚠️ {gpsError}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => void refreshGps()}
+                    disabled={gpsLoading}
+                    className="flex-1 flex min-h-10 items-center justify-center gap-2 rounded-xl bg-amber-800 px-4 text-xs font-bold text-white shadow-xs active:scale-95 disabled:opacity-60"
+                  >
+                    {gpsLoading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+                    {gpsLoading ? 'Mencari GPS...' : 'Aktifkan / Coba GPS Lagi'}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowGpsGuide(!showGpsGuide)}
+                    className="flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-900 hover:bg-amber-100/60"
+                  >
+                    <Info className="size-4 text-amber-700" />
+                    <span>{showGpsGuide ? 'Tutup Panduan' : 'Cara Mengizinkan'}</span>
+                  </button>
+                </div>
+
+                {showGpsGuide && (
+                  <div className="rounded-xl border border-amber-200 bg-white p-3.5 text-xs text-slate-700 space-y-2 mt-2">
+                    <p className="font-bold text-slate-900 flex items-center gap-1.5">
+                      <ShieldCheck className="size-4 text-emerald-600" />
+                      📱 Panduan Mengaktifkan Izin Lokasi di Perangkat Anda:
+                    </p>
+                    <div className="space-y-2 pl-1 text-[11px] leading-relaxed">
+                      <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
+                        <p className="font-bold text-slate-800">1. Pengaturan HP (Android & iPhone):</p>
+                        <p className="text-slate-600">Tarik layar dari atas ke bawah (Control Center / Quick Settings), pastikan ikon <strong>Lokasi / GPS dalam keadaan ON / Menyala</strong>.</p>
+                      </div>
+                      <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
+                        <p className="font-bold text-slate-800">2. Browser Chrome (Android):</p>
+                        <p className="text-slate-600">Klik ikon gembok / setelan situs di sebelah kiri URL (<code className="font-mono text-[10px] bg-white px-1 rounded border">hero.chitraparatama.com</code>) &rarr; pilih <strong>Izin Situs (Permissions)</strong> &rarr; Ubah <strong>Lokasi (Location)</strong> menjadi <strong>Izinkan (Allow)</strong>.</p>
+                      </div>
+                      <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
+                        <p className="font-bold text-slate-800">3. Browser Safari (iPhone/iOS):</p>
+                        <p className="text-slate-600">Buka Pengaturan HP &rarr; Privasi & Keamanan &rarr; Layanan Lokasi (ON) &rarr; pilih <strong>Situs Web Safari</strong> &rarr; pilih <strong>Saat Menggunakan App</strong>.</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <section className="order-2 space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between border-b pb-2.5">
                 <div className="flex items-center gap-2">
@@ -1048,9 +1191,30 @@ export function FaceAttendanceV2Client({
                   </div>
                 </div>
               ) : (
-                <div className="relative flex h-32 flex-col items-center justify-center gap-2 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 text-xs font-semibold text-slate-400">
-                  <Loader2 className="size-6 animate-spin text-[#005bb5]" />
-                  <span>Memuat Peta Lokasi GPS...</span>
+                <div className="relative flex min-h-32 flex-col items-center justify-center gap-2 overflow-hidden rounded-xl border border-rose-200 bg-rose-50/60 p-4 text-center">
+                  <div className="flex items-center gap-2 text-rose-700 font-bold text-xs">
+                    {gpsLoading ? (
+                      <Loader2 className="size-4 animate-spin text-[#005bb5]" />
+                    ) : (
+                      <MapPinOff className="size-4 text-rose-600 shrink-0" />
+                    )}
+                    <span>{gpsLoading ? 'Mencari Sinyal GPS...' : 'Koordinat GPS Tidak Tersedia (GPS Mati)'}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 max-w-[280px]">
+                    {gpsLoading
+                      ? 'Sedang menyinkronkan lokasi perangkat dengan satelit...'
+                      : 'Izin lokasi belum diberikan atau GPS HP nonaktif. Absensi akan tercatat sebagai status "GPS mati".'}
+                  </p>
+                  {!gpsLoading && (
+                    <button
+                      type="button"
+                      onClick={() => void refreshGps()}
+                      className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-white border border-rose-300 px-3 py-1 text-[11px] font-semibold text-rose-800 shadow-2xs hover:bg-rose-100"
+                    >
+                      <RefreshCw className="size-3" />
+                      Coba Segarkan GPS
+                    </button>
+                  )}
                 </div>
               )}
             </section>
@@ -1113,7 +1277,7 @@ export function FaceAttendanceV2Client({
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={() => startFlow('checked-in')}
+                  onClick={() => handleInitiateAttendance('checked-in')}
                   className={cn(
                     'flex min-h-14 items-center justify-center gap-2 rounded-xl text-xs font-bold text-white shadow-sm transition-transform active:scale-[0.98]',
                     currentSuggestedEventType === 'checked-in' ? 'bg-emerald-600' : 'bg-emerald-500'
@@ -1124,7 +1288,7 @@ export function FaceAttendanceV2Client({
 
                 <button
                   type="button"
-                  onClick={() => startFlow('checked-out')}
+                  onClick={() => handleInitiateAttendance('checked-out')}
                   className={cn(
                     'flex min-h-14 items-center justify-center gap-2 rounded-xl text-xs font-bold text-white shadow-sm transition-transform active:scale-[0.98]',
                     currentSuggestedEventType === 'checked-out' ? 'bg-rose-600' : 'bg-rose-500'
@@ -1549,7 +1713,7 @@ export function FaceAttendanceV2Client({
             <div className="flex w-full max-w-sm flex-col gap-2.5">
               <button
                 type="button"
-                onClick={() => startFlow(selectedEventType)}
+                onClick={() => handleInitiateAttendance(selectedEventType)}
                 className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[#005bb5] text-xs font-black text-white uppercase shadow-md active:scale-95"
               >
                 <RefreshCw className="size-4" /> Coba Lagi
@@ -1575,6 +1739,138 @@ export function FaceAttendanceV2Client({
           </div>
         )}
       </main>
+
+      {/* ─── MODAL: WAJIB BERIKAN ALASAN KENAPA GPS MATI ─── */}
+      <Dialog open={showGpsReasonModal} onOpenChange={setShowGpsReasonModal}>
+        <DialogContent className="max-w-md w-[95%] rounded-2xl p-5 border-amber-300">
+          <DialogHeader className="text-left space-y-1.5">
+            <div className="flex items-center gap-2">
+              <div className="rounded-xl bg-rose-100 p-2 text-rose-700">
+                <MapPinOff className="size-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-bold text-slate-900">
+                  GPS Mati / Tidak Aktif
+                </DialogTitle>
+                <p className="text-xs font-semibold text-rose-600">
+                  Absensi {pendingEventMode === 'checked-out' ? 'Check Out' : 'Check In'} Tanpa GPS
+                </p>
+              </div>
+            </div>
+            <DialogDescription className="text-xs text-slate-600 leading-relaxed pt-1">
+              Lokasi GPS perangkat Anda saat ini tidak terdeteksi. Absensi Anda akan dicatat dengan status{' '}
+              <span className="font-bold text-rose-700">GPS mati</span> dan dilaporkan ke HR-GA & Atasan.
+              Anda <strong className="text-slate-900">wajib mengisi alasan kenapa GPS mati</strong> sebelum melanjutkan.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            {/* Quick Preset Chips */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                Pilih Alasan Cepat:
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  'GPS HP error / rusak',
+                  'Sinyal GPS hilang di area site / tambang',
+                  'HP tidak memiliki sensor GPS',
+                  'Izin lokasi browser bermasalah',
+                  'Lokasi di dalam gedung / workshop',
+                ].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setLocationExplanation(preset)}
+                    className={cn(
+                      'rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors text-left',
+                      locationExplanation === preset
+                        ? 'border-amber-600 bg-amber-100 text-amber-950 font-bold'
+                        : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                    )}
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Textarea */}
+            <div className="space-y-1">
+              <label htmlFor="gps-reason-input" className="text-xs font-bold text-slate-800">
+                Alasan Kenapa GPS Mati <span className="text-rose-600">*</span>:
+              </label>
+              <textarea
+                id="gps-reason-input"
+                value={locationExplanation}
+                onChange={(e) => setLocationExplanation(e.target.value.slice(0, 500))}
+                placeholder="Ketik alasan lengkap kenapa GPS tidak aktif saat ini..."
+                className="min-h-24 w-full rounded-xl border border-slate-300 p-2.5 text-xs text-slate-800 outline-none focus:border-amber-600 focus:ring-1 focus:ring-amber-600"
+                autoFocus
+              />
+              <div className="flex items-center justify-between text-[10px]">
+                <span className={cn(
+                  'font-medium',
+                  locationExplanation.trim().length >= 5 ? 'text-emerald-600' : 'text-rose-600 font-semibold'
+                )}>
+                  {locationExplanation.trim().length >= 5
+                    ? '✓ Alasan memenuhi syarat minimal'
+                    : 'Wajib diisi minimal 5 karakter'}
+                </span>
+                <span className="text-slate-400">{locationExplanation.length}/500</span>
+              </div>
+            </div>
+
+            {/* Warning box */}
+            <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-2.5 text-[11px] text-amber-900 space-y-1">
+              <p className="font-semibold flex items-center gap-1">
+                <AlertTriangle className="size-3.5 text-amber-700 shrink-0" />
+                Pemberitahuan HR-GA:
+              </p>
+              <p className="leading-relaxed text-amber-800">
+                Alasan ini akan tercatat permanen di audit absensi dan diverifikasi oleh tim HR-GA. Pastikan alasan yang Anda berikan jujur dan dapat dipertanggungjawabkan.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 pt-1">
+            <button
+              type="button"
+              onClick={async () => {
+                const success = await refreshGps()
+                if (success) {
+                  setShowGpsReasonModal(false)
+                  void startFlow(pendingEventMode || 'checked-in')
+                }
+              }}
+              disabled={gpsLoading}
+              className="flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+            >
+              {gpsLoading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-3.5" />}
+              <span>{gpsLoading ? 'Mencoba GPS...' : 'Coba Aktifkan GPS'}</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={locationExplanation.trim().length < 5}
+              onClick={() => {
+                if (locationExplanation.trim().length < 5) return
+                setShowGpsReasonModal(false)
+                void startFlow(pendingEventMode || 'checked-in')
+              }}
+              className={cn(
+                'flex min-h-11 items-center justify-center gap-2 rounded-xl text-xs font-bold text-white shadow-xs transition-all',
+                locationExplanation.trim().length >= 5
+                  ? 'bg-amber-600 hover:bg-amber-700 active:scale-95'
+                  : 'bg-slate-300 text-slate-500 cursor-not-allowed'
+              )}
+            >
+              <CheckCircle2 className="size-4" />
+              Lanjutkan Absensi Tanpa GPS
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ─── HISTORY REGISTRASI MODAL POPUP ─── */}
       {showHistoryModal && (

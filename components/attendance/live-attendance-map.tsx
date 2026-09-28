@@ -769,6 +769,36 @@ function AttendanceExceptionsTable({
     'gps-off': 'bg-slate-100 text-slate-700',
   }
 
+  const extractGpsOffReason = (locationNote?: string | null): string | null => {
+    if (!locationNote) return null
+    const parts = locationNote.split('|').map((p) => p.trim())
+    const match = parts.find(
+      (p) =>
+        p.toLowerCase().includes('alasan gps') ||
+        p.toLowerCase().includes('keterangan lokasi') ||
+        p.toLowerCase().includes('keterangan:')
+    )
+    if (match) {
+      const cleaned = match
+        .replace(/^(alasan gps mati|alasan gps|keterangan lokasi|keterangan)\s*:\s*/i, '')
+        .trim()
+      if (cleaned && cleaned !== '-' && cleaned !== '[gps-unavailable]') {
+        return cleaned
+      }
+    }
+    for (const part of parts) {
+      if (
+        !part.startsWith('[') &&
+        !part.startsWith('Shift:') &&
+        !part.startsWith('Jarak:') &&
+        part.length > 2
+      ) {
+        return part
+      }
+    }
+    return null
+  }
+
   return (
     <section className="space-y-4 rounded-[1.25rem] border border-[#cfe3df] bg-white p-4 shadow-[0_16px_40px_rgba(20,84,82,0.06)] lg:p-5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
@@ -824,10 +854,10 @@ function AttendanceExceptionsTable({
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-[#e2efec]">
-        <table className="w-full min-w-[920px] text-left text-xs">
+        <table className="w-full min-w-[1020px] text-left text-xs">
           <thead className="bg-[#f2f8f6] text-[10px] tracking-[0.12em] text-[#557b7b] uppercase">
             <tr>
-              {['Karyawan', 'Site', 'Status', 'GPS / Radius', 'Event terakhir'].map((label) => (
+              {['Karyawan', 'Site', 'Status', 'GPS / Radius', 'GPS Mati Kenapa', 'Event terakhir'].map((label) => (
                 <th key={label} className="px-4 py-3">{label}</th>
               ))}
             </tr>
@@ -835,45 +865,66 @@ function AttendanceExceptionsTable({
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-12 text-center text-sm text-[#6b8d8d]">
+                <td colSpan={6} className="px-4 py-12 text-center text-sm text-[#6b8d8d]">
                   Tidak ada pengecualian pada filter ini.
                 </td>
               </tr>
             ) : (
-              filtered.map(({ record, kinds, distanceMeters: distance, punctuality }) => (
-                <tr key={`${record.employeeId}-${record.id}`} className="border-t border-[#e2efec] align-top">
-                  <td className="px-4 py-3">
-                    <div className="font-semibold text-[#0a4f51]">{record.employeeName}</div>
-                    <div className="mt-1 text-[#6b8d8d]">{record.employeeJobTitle || 'Employee'}</div>
-                  </td>
-                  <td className="px-4 py-3 text-[#557b7b]">{record.siteName}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1">
-                      {kinds.map((kind) => (
-                        <span key={kind} className={`rounded-full px-2 py-1 font-semibold ${kindTone[kind]}`}>
-                          {kindLabel[kind]}
+              filtered.map(({ record, kinds, distanceMeters: distance, punctuality }) => {
+                const gpsReason = extractGpsOffReason(record.locationNote)
+                return (
+                  <tr key={`${record.employeeId}-${record.id}`} className="border-t border-[#e2efec] align-top">
+                    <td className="px-4 py-3">
+                      <div className="font-semibold text-[#0a4f51]">{record.employeeName}</div>
+                      <div className="mt-1 text-[#6b8d8d]">{record.employeeJobTitle || 'Employee'}</div>
+                    </td>
+                    <td className="px-4 py-3 text-[#557b7b]">{record.siteName}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {kinds.map((kind) => (
+                          <span key={kind} className={`rounded-full px-2 py-1 font-semibold ${kindTone[kind]}`}>
+                            {kindLabel[kind]}
+                          </span>
+                        ))}
+                      </div>
+                      {punctuality && kinds.includes('late') ? (
+                        <p className="mt-2 text-[#6b8d8d]">{punctuality.replace('Kehadiran: ', '')}</p>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-3 text-[#557b7b]">
+                      {kinds.includes('gps-off') ? (
+                        <span className="font-semibold text-rose-700 flex items-center gap-1.5">
+                          <span className="size-1.5 rounded-full bg-rose-500 animate-pulse" />
+                          Koordinat tidak tersedia
                         </span>
-                      ))}
-                    </div>
-                    {punctuality && kinds.includes('late') ? (
-                      <p className="mt-2 text-[#6b8d8d]">{punctuality.replace('Kehadiran: ', '')}</p>
-                    ) : null}
-                  </td>
-                  <td className="px-4 py-3 text-[#557b7b]">
-                    {kinds.includes('gps-off') ? (
-                      <span className="font-semibold text-slate-700">Koordinat tidak tersedia</span>
-                    ) : distance != null ? (
-                      <>{distance.toLocaleString('id-ID')} m dari titik · radius {record.siteRadiusMeters} m</>
-                    ) : (
-                      'Radius belum dapat dihitung'
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-[#557b7b]">
-                    <div className="font-semibold text-[#0a4f51]">{formatTime(record.eventTime)}</div>
-                    <div className="mt-1">{formatDate(record.eventTime)}</div>
-                  </td>
-                </tr>
-              ))
+                      ) : distance != null ? (
+                        <>{distance.toLocaleString('id-ID')} m dari titik · radius {record.siteRadiusMeters} m</>
+                      ) : (
+                        'Radius belum dapat dihitung'
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-[#557b7b]">
+                      {kinds.includes('gps-off') ? (
+                        gpsReason ? (
+                          <div className="rounded-lg border border-amber-200 bg-amber-50/90 px-2.5 py-1.5 text-xs text-amber-950 font-medium leading-relaxed max-w-[280px]">
+                            {gpsReason}
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500 italic">
+                            Tidak ada alasan
+                          </span>
+                        )
+                      ) : (
+                        <span className="text-slate-300">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-[#557b7b]">
+                      <div className="font-semibold text-[#0a4f51]">{formatTime(record.eventTime)}</div>
+                      <div className="mt-1">{formatDate(record.eventTime)}</div>
+                    </td>
+                  </tr>
+                )
+              })
             )}
           </tbody>
         </table>
