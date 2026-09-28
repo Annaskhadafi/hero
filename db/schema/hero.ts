@@ -1025,6 +1025,8 @@ export const trainingRecords = pgTable('hero_training_records', {
     .references(() => employees.id, { onDelete: 'cascade' }),
   trainingName: text('training_name').notNull(),
   provider: text('provider').notNull(),
+  completedDate: text('completed_date'),
+  completedMonth: text('completed_month'),
   completedYear: integer('completed_year')
     .notNull()
     .default(sql`extract(year from current_date)::integer`),

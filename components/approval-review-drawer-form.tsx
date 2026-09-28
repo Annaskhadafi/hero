@@ -260,11 +260,10 @@ export function ApprovalReviewDrawerForm({ item, group }: ApprovalReviewDrawerFo
   }
 
   const handleDecision = (decision: 'approved' | 'needs_correction' | 'rejected') => {
-    const sigToUse = isUsingProfileSig && profileSig ? profileSig : liveSignatureUrl
+    const sigToUse = liveSignatureUrl || (isUsingProfileSig && profileSig ? profileSig : null)
 
     if (decision === 'approved' && !signatureFile && !sigToUse) {
       toast.error('Mohon bubuhkan tanda tangan digital sebelum menyetujui.')
-      setIsSignPadOpen(true)
       return
     }
 
@@ -333,168 +332,15 @@ export function ApprovalReviewDrawerForm({ item, group }: ApprovalReviewDrawerFo
         <ApprovalRequestDetails item={item} />
       )}
 
-      {/* 2. BAGIAN TENGAH: BUTTON BUAT ISI TANDA TANGAN */}
-      <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-2.5">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <div className="flex items-center gap-2 text-slate-900 font-bold text-xs">
-            <PenLine className="h-4 w-4 text-sky-600 shrink-0" />
-            <span>Tanda Tangan Digital Pemeriksa</span>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            {profileSig && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  if (isUsingProfileSig) {
-                    setIsUsingProfileSig(false)
-                    setLiveSignatureUrl(null)
-                    setSignatureFile(null)
-                    setIsSignPadOpen(true)
-                  } else {
-                    setIsUsingProfileSig(true)
-                    setLiveSignatureUrl(profileSig)
-                    setIsSignPadOpen(false)
-                  }
-                }}
-                className="h-7 text-[11px] font-semibold text-sky-700 hover:text-sky-800 hover:bg-sky-100 px-2"
-              >
-                {isUsingProfileSig ? 'Gambar Manual' : 'Gunakan TTD Profil'}
-              </Button>
-            )}
-
-            <Button
-              type="button"
-              variant={liveSignatureUrl ? 'outline' : 'default'}
-              size="sm"
-              onClick={() => {
-                if (isUsingProfileSig) {
-                  setIsUsingProfileSig(false)
-                  setLiveSignatureUrl(null)
-                  setSignatureFile(null)
-                  setIsSignPadOpen(true)
-                } else {
-                  setIsSignPadOpen(!isSignPadOpen)
-                }
-              }}
-              className={`w-full sm:w-auto h-7 rounded-lg px-2.5 text-xs font-bold transition-all justify-center ${
-                liveSignatureUrl
-                  ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
-                  : 'bg-sky-600 text-white hover:bg-sky-700'
-              }`}
-            >
-              {liveSignatureUrl ? (
-                <span className="flex items-center gap-1.5">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                  <span>{isUsingProfileSig ? 'Ubah TTD' : 'Ganti TTD'}</span>
-                </span>
-              ) : (
-                <span className="flex items-center gap-1.5">
-                  <PenLine className="h-3.5 w-3.5" />
-                  <span>Tanda Tangani</span>
-                </span>
-              )}
-              {isSignPadOpen ? (
-                <ChevronUp className="ml-1 h-3.5 w-3.5" />
-              ) : (
-                <ChevronDown className="ml-1 h-3.5 w-3.5" />
-              )}
-            </Button>
-          </div>
-        </div>
-
-        {/* Mode Tanda Tangan Profil Aktif */}
-        {isUsingProfileSig && profileSig && !isSignPadOpen && (
-          <div className="flex items-center gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50/40 p-2 shadow-2xs">
-            <div className="h-10 w-24 bg-white rounded border border-emerald-200 flex items-center justify-center p-1 shrink-0">
-              <img
-                src={profileSig}
-                alt="Tanda Tangan Profil"
-                className="max-h-full max-w-full object-contain"
-              />
-            </div>
-            <div className="text-xs min-w-0">
-              <p className="font-bold text-emerald-800 truncate flex items-center gap-1">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                TTD Profil HERO Aktif
-              </p>
-              <p className="text-[10px] text-slate-500 leading-tight">
-                Tanda tangan akun Anda otomatis tertera di dokumen saat disetujui.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Preview Tanda Tangan Manual yang sudah digambar */}
-        {!isUsingProfileSig && liveSignatureUrl && !isSignPadOpen && (
-          <div className="flex items-center gap-2.5 rounded-lg border border-emerald-200 bg-white p-2 shadow-2xs">
-            <div className="h-10 w-24 bg-slate-50 rounded border border-slate-200 flex items-center justify-center p-1 shrink-0">
-              <img
-                src={liveSignatureUrl}
-                alt="Tanda Tangan Digital"
-                className="max-h-full max-w-full object-contain"
-              />
-            </div>
-            <div className="text-xs min-w-0 flex-1">
-              <p className="font-bold text-emerald-800 truncate flex items-center gap-1">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                Tanda tangan manual siap
-              </p>
-              <p className="text-[10px] text-slate-500 leading-tight">
-                Otomatis tertera di dokumen saat disetujui.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Canvas Signature Pad */}
-        {isSignPadOpen && (
-          <div className="space-y-2 pt-1 animate-in fade-in-50 duration-200">
-            <p className="text-[11px] text-slate-500">
-              Goreskan tanda tangan Anda dengan jari atau stylus di bawah ini:
-            </p>
-            <div className="bg-white rounded-xl overflow-hidden border-2 border-dashed border-sky-300 shadow-inner">
-              <SignaturePad
-                onSignatureChange={(file) => setSignatureFile(file)}
-                onDataUrlChange={(url) => {
-                  setLiveSignatureUrl(url)
-                  setIsUsingProfileSig(false)
-                }}
-              />
-            </div>
-            <div className="flex items-center justify-between pt-1">
-              {liveSignatureUrl && !isUsingProfileSig ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSaveToProfile}
-                  disabled={isSavingProfileSig}
-                  className="h-7 text-xs rounded-md font-semibold border-sky-200 text-sky-700 hover:bg-sky-50"
-                >
-                  {isSavingProfileSig ? (
-                    <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-                  ) : (
-                    <Save className="mr-1.5 h-3 w-3" />
-                  )}
-                  Simpan ke Profil
-                </Button>
-              ) : <div />}
-
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setIsSignPadOpen(false)}
-                className="h-7 text-xs rounded-md font-semibold bg-sky-50 text-sky-700 hover:bg-sky-100 border-sky-300"
-              >
-                Selesai & Simpan
-              </Button>
-            </div>
-          </div>
-        )}
+      {/* 2. AREA TANDA TANGAN DIGITAL DENGAN UNIFIED SIGNATURE PAD */}
+      <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+        <SignaturePad
+          label="Tanda Tangan Digital Pemeriksa"
+          defaultDataUrl={liveSignatureUrl}
+          onSignatureChange={setSignatureFile}
+          onDataUrlChange={setLiveSignatureUrl}
+          height={130}
+        />
       </div>
 
       {/* 2b. KHUSUS FORM WO: INPUT NOMOR WO CP / WO TERBIT (LIVE SYNC KE DOKUMEN) */}

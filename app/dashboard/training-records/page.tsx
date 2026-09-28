@@ -258,7 +258,7 @@ export default async function TrainingRecordsPage({
                       categoryOptions={scopedOptions.categoryOptions}
                       mode="training"
                     />}
-                    {data.permission.canEdit && <TrainingRecordImportExport />}
+                    <TrainingRecordImportExport records={filteredRows} canEdit={data.permission.canEdit} />
                   </div>
                 }
               >

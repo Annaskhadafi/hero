@@ -637,9 +637,12 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id, publicMode 
               </div>
 
               {!initialData?.signatures?.executorUrl && (
-                <div className="space-y-4 max-w-sm">
-                  <FormLabel className="text-base font-semibold">Tanda Tangan Pelaksana</FormLabel>
-                  <SignaturePad onSignatureChange={setExecutorSignature} />
+                <div className="space-y-2 max-w-md">
+                  <SignaturePad
+                    label="Tanda Tangan Pelaksana"
+                    onSignatureChange={setExecutorSignature}
+                    height={140}
+                  />
                 </div>
               )}
 

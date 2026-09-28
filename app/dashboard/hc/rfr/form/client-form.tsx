@@ -665,10 +665,12 @@ export function RfrClientForm({
               <p className="text-xs text-slate-500">
                 Wajib membubuhkan tanda tangan digital sebelum mengirim form RFR.
               </p>
-              <div className="bg-white rounded-lg overflow-hidden border border-slate-200">
+              <div className="bg-white rounded-xl overflow-hidden border border-slate-200">
                 <SignaturePad
+                  defaultDataUrl={liveSignatureUrl}
                   onSignatureChange={setSignatureFile}
                   onDataUrlChange={setLiveSignatureUrl}
+                  height={150}
                 />
               </div>
             </div>

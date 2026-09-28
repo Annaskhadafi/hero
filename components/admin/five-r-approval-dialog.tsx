@@ -333,28 +333,14 @@ export function FiveRApprovalDialog({ item, group }: FiveRApprovalDialogProps) {
               </div>
 
               {/* Area Tanda Tangan Digital */}
-              <div className="space-y-1.5 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 text-slate-800 font-bold text-xs">
-                    <PenLine className="size-3.5 text-emerald-600" />
-                    <span>Tanda Tangan Digital Approver</span>
-                  </div>
-                  {signatureFile && (
-                    <span className="text-[11px] font-semibold text-emerald-600 flex items-center gap-1">
-                      <CheckCircle2 className="size-3" />
-                      Tersimpan
-                    </span>
-                  )}
-                </div>
-                <p className="text-[11px] text-slate-500">
-                  Goreskan tanda tangan di kotak berikut menggunakan jari / stylus / mouse:
-                </p>
-                <div className="bg-white rounded-lg overflow-hidden border border-slate-300 shadow-inner">
-                  <SignaturePad
-                    onSignatureChange={setSignatureFile}
-                    onDataUrlChange={setLiveSignatureUrl}
-                  />
-                </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                <SignaturePad
+                  label="Tanda Tangan Digital Approver"
+                  defaultDataUrl={liveSignatureUrl}
+                  onSignatureChange={setSignatureFile}
+                  onDataUrlChange={setLiveSignatureUrl}
+                  height={130}
+                />
               </div>
 
               {/* Catatan Keputusan Input */}

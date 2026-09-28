@@ -29,13 +29,25 @@ export const TRAINING_RECORD_IMPORT_FIELDS = [
     key: "trainingName",
     label: "Training",
     required: true,
-    aliases: ["training name", "training_name", "sertifikasi", "course", "pelatihan"],
+    aliases: ["training name", "training_name", "sertifikasi", "course", "pelatihan", "training / program", "training program"],
   },
   {
     key: "provider",
     label: "Provider",
     required: false,
-    aliases: ["vendor", "organizer", "penyelenggara"],
+    aliases: ["vendor", "organizer", "penyelenggara", "provider / vendor", "provider vendor"],
+  },
+  {
+    key: "completedDate",
+    label: "Tanggal",
+    required: false,
+    aliases: ["tanggal", "tgl", "completed date", "completed_date", "training date", "training_date", "date"],
+  },
+  {
+    key: "completedMonth",
+    label: "Bulan",
+    required: false,
+    aliases: ["bulan", "bln", "completed month", "completed_month", "training month", "training_month", "month"],
   },
   {
     key: "completedYear",
@@ -75,9 +87,9 @@ export const INITIAL_TRAINING_RECORD_IMPORT_STATE: TrainingRecordImportState = {
 };
 
 export const TRAINING_RECORD_EXAMPLE_CSV = [
-  "SN,Nama Karyawan,Department,Training,Provider,Tahun,Expired At,Status",
-  '"HC-005","Budi Santoso","HC","Basic Safety","PAMA Training Center","2024","2026-12-31","active"',
-  '"OPS-019","Rizal Pratama","Operation","Rigging & Slinging","Internal","2025","","active"',
+  "SN,Nama Karyawan,Department,Training,Provider,Tanggal,Bulan,Tahun,Expired At,Status",
+  '"HC-005","Budi Santoso","HC","Basic Safety","PAMA Training Center","15","Januari","2024","2026-12-31","active"',
+  '"OPS-019","Rizal Pratama","Operation","Rigging & Slinging","Internal","20","Februari","2025","","active"',
 ].join("\n");
 
 function normalizeHeader(value: string) {

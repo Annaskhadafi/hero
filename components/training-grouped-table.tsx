@@ -27,6 +27,8 @@ interface TrainingRow {
   section: string | null
   trainingName: string
   provider: string
+  completedDate: string | null
+  completedMonth: string | null
   completedYear: number
   expiresAt: Date | string | null
   status: string
@@ -244,9 +246,11 @@ export function TrainingGroupedTable({
                         colSpan={5}
                         className="py-1.5 pl-16 pr-4"
                       >
-                        <div className="grid grid-cols-[1fr_160px_90px_160px_120px_160px_auto] gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                        <div className="grid grid-cols-[1fr_140px_90px_100px_70px_140px_110px_120px_auto] gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                           <span>Nama Pelatihan</span>
                           <span>Provider</span>
+                          <span>Tanggal</span>
+                          <span>Bulan</span>
                           <span>Tahun</span>
                           <span>Expiry</span>
                           <span>Status</span>
@@ -267,7 +271,7 @@ export function TrainingGroupedTable({
                           }`}
                         >
                           <TableCell colSpan={5} className="py-2.5 pl-16 pr-4">
-                            <div className="grid grid-cols-[1fr_160px_90px_160px_120px_160px_auto] gap-2 items-center">
+                            <div className="grid grid-cols-[1fr_140px_90px_100px_70px_140px_110px_120px_auto] gap-2 items-center">
                               {/* Training Name */}
                               <div className="flex items-start gap-2 min-w-0">
                                 <History className="size-3.5 mt-0.5 text-muted-foreground/50 shrink-0" />
@@ -279,6 +283,16 @@ export function TrainingGroupedTable({
                               {/* Provider */}
                               <span className="text-xs text-muted-foreground truncate">
                                 {rec.provider}
+                              </span>
+
+                              {/* Tanggal */}
+                              <span className="text-xs text-foreground truncate">
+                                {rec.completedDate || "–"}
+                              </span>
+
+                              {/* Bulan */}
+                              <span className="text-xs text-foreground truncate">
+                                {rec.completedMonth || "–"}
                               </span>
 
                               {/* Year */}

@@ -258,28 +258,13 @@ export function RfrApprovalDialog({ item, trigger }: RfrApprovalDialogProps) {
           <div className="rounded-2xl bg-white p-4 border border-slate-200 shadow-sm flex flex-col justify-between overflow-y-auto h-full space-y-3">
             <div className="space-y-3">
               {/* Area Tanda Tangan Digital */}
-              <div className="space-y-1.5 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 text-slate-800 font-bold text-xs">
-                    <PenLine className="h-3.5 w-3.5 text-sky-600" />
-                    <span>Tanda Tangan Digital Approver *</span>
-                  </div>
-                  {liveSignatureUrl && (
-                    <span className="text-[11px] font-semibold text-emerald-600 flex items-center gap-1">
-                      <CheckCircle2 className="h-3 w-3" />
-                      Tersimpan
-                    </span>
-                  )}
-                </div>
-                <p className="text-[11px] text-slate-500">
-                  Bubuhkan tanda tangan pada area bawah ini sebelum menyetujui.
-                </p>
-                <div className="bg-white rounded-xl overflow-hidden border border-slate-200 shadow-2xs">
-                  <SignaturePad
-                    onDataUrlChange={setLiveSignatureUrl}
-                    height={140}
-                  />
-                </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                <SignaturePad
+                  label="Tanda Tangan Digital Approver"
+                  defaultDataUrl={liveSignatureUrl}
+                  onDataUrlChange={setLiveSignatureUrl}
+                  height={130}
+                />
               </div>
 
               {/* Catatan Approval Input */}

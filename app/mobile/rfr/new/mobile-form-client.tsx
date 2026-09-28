@@ -416,21 +416,13 @@ export function MobileRfrCreateFormClient({
       </div>
 
       {/* 6. Section E: Signature Pad */}
-      <div className="rounded-2xl border border-sky-200 bg-sky-50/40 p-4 shadow-xs space-y-2">
-        <h2 className="text-xs font-black text-sky-950 uppercase tracking-wider flex items-center gap-1.5">
-          <PenTool className="h-4 w-4 text-sky-700" />
-          <span>Tanda Tangan Pemohon *</span>
-        </h2>
-        <p className="text-[11px] text-slate-500">
-          Goreskan tanda tangan digital Anda pada kanvas di bawah ini:
-        </p>
-
-        <div className="rounded-xl border border-sky-300 bg-white p-2 shadow-2xs">
-          <SignaturePad
-            onDataUrlChange={setLiveSignatureUrl}
-            height={160}
-          />
-        </div>
+      <div className="rounded-2xl border border-sky-200 bg-sky-50/40 p-3.5 shadow-xs">
+        <SignaturePad
+          label="Tanda Tangan Pemohon"
+          defaultDataUrl={liveSignatureUrl}
+          onDataUrlChange={setLiveSignatureUrl}
+          height={140}
+        />
       </div>
 
       {/* 7. Submit Action Button */}

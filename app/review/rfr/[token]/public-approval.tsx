@@ -1,13 +1,13 @@
 'use client'
 
-import { useRef, useState, useTransition } from 'react'
-import SignatureCanvas from 'react-signature-canvas'
+import { useState, useTransition } from 'react'
 import { approveRfrStep, rejectRfrStep } from '@/app/actions/rfr'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { CheckCircle2, XCircle, FileCheck, Download, Printer } from 'lucide-react'
 import { RfrDocumentPreview } from '@/components/rfr-document-preview'
+import { SignaturePad } from '@/components/signature-pad'
 
 type RfrPublicApprovalProps = {
   token: string
@@ -16,53 +16,24 @@ type RfrPublicApprovalProps = {
   approvals: any[]
 }
 
-function hasVisibleCanvasInk(canvas: HTMLCanvasElement) {
-  const context = canvas.getContext('2d', { willReadFrequently: true })
-  if (!context) return false
-  const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data
-  for (let i = 3; i < pixels.length; i += 4) {
-    if (pixels[i] > 0) return true
-  }
-  return false
-}
-
 export function RfrPublicApproval({ token, approval, rfr, approvals }: RfrPublicApprovalProps) {
-  const signatureRef = useRef<SignatureCanvas | null>(null)
   const [remarks, setRemarks] = useState(approval.remarks || '')
   const [error, setError] = useState('')
   const [done, setDone] = useState(approval.status === 'approved')
   const [rejected, setRejected] = useState(approval.status === 'rejected')
-  const [liveSignatureUrl, setLiveSignatureUrl] = useState<string | null>(null)
+  const [liveSignatureUrl, setLiveSignatureUrl] = useState<string | null>(approval.signatureDataUrl || null)
   const [isPending, startTransition] = useTransition()
-
-  function getSignatureDataUrl() {
-    const signature = signatureRef.current
-    if (!signature) return ''
-    const canvas = signature.getCanvas()
-    if (!hasVisibleCanvasInk(canvas) && signature.isEmpty()) return ''
-    try {
-      return signature.getTrimmedCanvas().toDataURL('image/png')
-    } catch {
-      return signature.toDataURL('image/png')
-    }
-  }
-
-  function handleClearSignature() {
-    signatureRef.current?.clear()
-    setLiveSignatureUrl(null)
-  }
 
   function handleApprove() {
     setError('')
-    const signatureDataUrl = getSignatureDataUrl()
-    if (!signatureDataUrl) {
-      setError('Tanda tangan digital wajib diisi pada kotak canvas.')
+    if (!liveSignatureUrl) {
+      setError('Tanda tangan digital wajib dibubuhkan terlebih dahulu.')
       return
     }
 
     startTransition(async () => {
       const res = await approveRfrStep(token, {
-        signatureDataUrl,
+        signatureDataUrl: liveSignatureUrl,
         remarks,
       })
       if (res.success) {
@@ -177,25 +148,12 @@ export function RfrPublicApproval({ token, approval, rfr, approvals }: RfrPublic
                   Bubuhkan Tanda Tangan Digital
                 </h3>
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      Canvas Tanda Tangan Digital
-                    </label>
-                    <Button variant="ghost" size="sm" type="button" onClick={handleClearSignature} className="text-xs text-rose-600">
-                      Bersihkan Canvas
-                    </Button>
-                  </div>
-                  <div className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-900 p-2">
-                    <SignatureCanvas
-                      ref={(ref) => { signatureRef.current = ref }}
-                      onEnd={() => {
-                        setLiveSignatureUrl(getSignatureDataUrl() || null)
-                      }}
-                      canvasProps={{
-                        className: 'w-full h-44 bg-transparent cursor-crosshair',
-                      }}
-                    />
-                  </div>
+                  <SignaturePad
+                    label="Canvas Tanda Tangan Digital"
+                    defaultDataUrl={liveSignatureUrl}
+                    onDataUrlChange={setLiveSignatureUrl}
+                    height={150}
+                  />
                 </div>
 
                 <div>

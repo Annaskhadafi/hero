@@ -34,6 +34,8 @@ import {
   type MasterSiteRecord,
 } from '@/app/actions/cargo-master'
 import { Combobox } from '@/components/ui/combobox'
+import { SignaturePad } from '@/components/signature-pad'
+import { getUserSignatureAction } from '@/app/actions/user-signature'
 
 function OnlineSignatureInput({
   defaultName = '',
@@ -42,117 +44,39 @@ function OnlineSignatureInput({
   defaultName?: string
   defaultSignature?: string
 }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [signatureName, setSignatureName] = useState(defaultName)
   const [signatureDataUrl, setSignatureDataUrl] = useState(defaultSignature)
-  const isDrawingRef = useRef(false)
-
-  const getPoint = (
-    event: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>
-  ) => {
-    const canvas = canvasRef.current!
-    const rect = canvas.getBoundingClientRect()
-    const point = 'touches' in event ? (event.touches[0] ?? event.changedTouches[0]) : event
-    return {
-      x: ((point.clientX - rect.left) / rect.width) * canvas.width,
-      y: ((point.clientY - rect.top) / rect.height) * canvas.height,
-    }
-  }
-
-  const startDrawing = (
-    event: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>
-  ) => {
-    event.preventDefault()
-    const context = canvasRef.current?.getContext('2d')
-    if (!context) return
-    const point = getPoint(event)
-    isDrawingRef.current = true
-    context.beginPath()
-    context.moveTo(point.x, point.y)
-  }
-
-  const draw = (
-    event: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>
-  ) => {
-    if (!isDrawingRef.current) return
-    event.preventDefault()
-    const canvas = canvasRef.current
-    const context = canvas?.getContext('2d')
-    if (!canvas || !context) return
-    const point = getPoint(event)
-    context.lineWidth = 2.5
-    context.lineCap = 'round'
-    context.lineJoin = 'round'
-    context.strokeStyle = '#0f172a'
-    context.lineTo(point.x, point.y)
-    context.stroke()
-  }
-
-  const stopDrawing = () => {
-    const canvas = canvasRef.current
-    if (!isDrawingRef.current || !canvas) return
-    isDrawingRef.current = false
-    setSignatureDataUrl(canvas.toDataURL('image/png'))
-  }
-
-  const clearSignature = () => {
-    const canvas = canvasRef.current
-    const context = canvas?.getContext('2d')
-    if (!canvas || !context) return
-    context.clearRect(0, 0, canvas.width, canvas.height)
-    setSignatureDataUrl('')
-  }
 
   useEffect(() => {
-    const canvas = canvasRef.current
-    const context = canvas?.getContext('2d')
-    if (!canvas || !context || !defaultSignature) return
-    const image = new Image()
-    image.onload = () => context.drawImage(image, 0, 0, canvas.width, canvas.height)
-    image.src = defaultSignature
-  }, [defaultSignature])
+    if (!defaultName) {
+      getUserSignatureAction().then((res) => {
+        if (res.success && res.employeeName && !signatureName) {
+          setSignatureName(res.employeeName)
+        }
+      })
+    }
+  }, [defaultName, signatureName])
 
   return (
-    <div className="bg-surface-container-low ring-border/40 rounded-2xl p-3 ring-1">
-      <div className="grid gap-3 sm:grid-cols-2">
+    <div className="bg-surface-container-low ring-border/40 rounded-2xl p-3.5 ring-1 space-y-3">
+      <div className="grid gap-3 sm:grid-cols-2 items-start">
         <Label className="grid gap-1.5 text-sm font-medium">
-          Nama Signature
+          Nama Penandatangan
           <Input
             name="signatureName"
-            defaultValue={defaultName}
+            value={signatureName}
+            onChange={(e) => setSignatureName(e.target.value)}
             placeholder="Nama penandatangan..."
             className="h-9"
           />
         </Label>
-        <div className="grid gap-1.5">
-          <div className="flex items-center justify-between gap-3">
-            <Label className="text-sm font-medium">TTD Online</Label>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={clearSignature}
-              className="h-8 rounded-lg px-3 text-xs"
-            >
-              Clear
-            </Button>
-          </div>
+        <div className="space-y-1">
           <input type="hidden" name="signatureDataUrl" value={signatureDataUrl} />
-          <canvas
-            ref={canvasRef}
-            width={520}
-            height={160}
-            className="ring-border/60 h-36 w-full touch-none rounded-xl bg-white shadow-inner ring-1"
-            onMouseDown={startDrawing}
-            onMouseMove={draw}
-            onMouseUp={stopDrawing}
-            onMouseLeave={stopDrawing}
-            onTouchStart={startDrawing}
-            onTouchMove={draw}
-            onTouchEnd={stopDrawing}
+          <SignaturePad
+            defaultDataUrl={defaultSignature}
+            onDataUrlChange={(url) => setSignatureDataUrl(url || '')}
+            height={130}
           />
-          <p className="text-muted-foreground text-xs">
-            Tulis tanda tangan langsung di area putih.
-          </p>
         </div>
       </div>
     </div>

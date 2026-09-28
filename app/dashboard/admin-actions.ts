@@ -3611,6 +3611,8 @@ const manageTrainingRecordSchema = z.object({
   employeeId: z.coerce.number().int().positive().optional(),
   trainingName: z.string().trim().max(200).optional().default(''),
   provider: z.string().trim().max(160).optional().default('-'),
+  completedDate: z.string().trim().optional().default(''),
+  completedMonth: z.string().trim().optional().default(''),
   completedYear: z.coerce
     .number()
     .int()
@@ -9611,6 +9613,8 @@ export async function manageTrainingRecordAction(formData: FormData): Promise<Ad
         employeeId: payload.employeeId,
         trainingName: payload.trainingName,
         provider: payload.provider,
+        completedDate: payload.completedDate || null,
+        completedMonth: payload.completedMonth || null,
         completedYear: payload.completedYear,
         expiresAt: parseOptionalOperationalDate(payload.expiresAt),
         status: payload.status,
@@ -9642,6 +9646,8 @@ export async function manageTrainingRecordAction(formData: FormData): Promise<Ad
           employeeId: payload.employeeId,
           trainingName: payload.trainingName,
           provider: payload.provider,
+          completedDate: payload.completedDate || null,
+          completedMonth: payload.completedMonth || null,
           completedYear: payload.completedYear,
           expiresAt: parseOptionalOperationalDate(payload.expiresAt),
           status: payload.status,
@@ -9727,7 +9733,16 @@ export async function importTrainingRecordsAction(
       }
     }
 
-    const mapping = autoMapTrainingRecordHeaders(parsed.headers)
+    let mapping = autoMapTrainingRecordHeaders(parsed.headers)
+    const customMappingRaw = `${formData.get('mapping') ?? ''}`.trim()
+    if (customMappingRaw) {
+      try {
+        const customMapping = JSON.parse(customMappingRaw) as Record<string, string>
+        mapping = { ...mapping, ...customMapping }
+      } catch (err) {
+        console.error('[importTrainingRecordsAction] Failed to parse custom mapping:', err)
+      }
+    }
     if (!mapping.trainingName || !mapping.completedYear) {
       return {
         status: 'error',
@@ -9821,7 +9836,25 @@ export async function importTrainingRecordsAction(
       )
       const trainingName = getTrainingRecordImportValue(row, mapping, 'trainingName')
       const provider = getTrainingRecordImportValue(row, mapping, 'provider') || '-'
-      const completedYearValue = getTrainingRecordImportValue(row, mapping, 'completedYear')
+      const completedDate = getTrainingRecordImportValue(row, mapping, 'completedDate') || null
+      let completedMonth = getTrainingRecordImportValue(row, mapping, 'completedMonth') || null
+      let completedYearValue = getTrainingRecordImportValue(row, mapping, 'completedYear')
+      if (!completedMonth && completedDate) {
+        const d = parseOptionalOperationalDate(completedDate)
+        if (d) {
+          const MONTH_NAMES = [
+            'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+            'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+          ]
+          completedMonth = MONTH_NAMES[d.getMonth()] ?? null
+        }
+      }
+      if (!completedYearValue && completedDate) {
+        const d = parseOptionalOperationalDate(completedDate)
+        if (d) {
+          completedYearValue = `${d.getFullYear()}`
+        }
+      }
       const expiresAtValue = getTrainingRecordImportValue(row, mapping, 'expiresAt')
       const rawStatus = getTrainingRecordImportValue(row, mapping, 'status')
 
@@ -9868,6 +9901,8 @@ export async function importTrainingRecordsAction(
           .update(trainingRecords)
           .set({
             provider,
+            completedDate,
+            completedMonth,
             expiresAt,
             status,
           })
@@ -9880,6 +9915,8 @@ export async function importTrainingRecordsAction(
         employeeId: employee.id,
         trainingName,
         provider,
+        completedDate,
+        completedMonth,
         completedYear,
         expiresAt,
         status,

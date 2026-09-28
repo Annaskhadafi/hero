@@ -262,86 +262,14 @@ export function MobileRfrApprovalCard({ item }: { item: RfrInboxItem }) {
         </div>
       )}
 
-      {/* 2. BAGIAN BAWAH: BUTTON BUAT ISI TANDA TANGAN */}
-      <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-2.5">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <div className="flex items-center gap-2 text-slate-900 font-bold text-xs">
-            <PenLine className="h-4 w-4 text-sky-600 shrink-0" />
-            <span>Tanda Tangan Digital Pemeriksa</span>
-          </div>
-
-          <Button
-            type="button"
-            variant={liveSignatureUrl ? 'outline' : 'default'}
-            size="sm"
-            onClick={() => setIsSignPadOpen(!isSignPadOpen)}
-            className={`w-full sm:w-auto h-8 rounded-lg px-3 text-xs font-bold transition-all justify-center ${
-              liveSignatureUrl
-                ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
-                : 'bg-sky-600 text-white hover:bg-sky-700'
-            }`}
-          >
-            {liveSignatureUrl ? (
-              <span className="flex items-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                <span>Ubah Tanda Tangan</span>
-              </span>
-            ) : (
-              <span className="flex items-center gap-1.5">
-                <PenLine className="h-3.5 w-3.5" />
-                <span>Tanda Tangani</span>
-              </span>
-            )}
-            {isSignPadOpen ? (
-              <ChevronUp className="ml-1 h-3.5 w-3.5" />
-            ) : (
-              <ChevronDown className="ml-1 h-3.5 w-3.5" />
-            )}
-          </Button>
-        </div>
-
-        {/* Preview Tanda Tangan yang sudah dibubuhkan */}
-        {liveSignatureUrl && !isSignPadOpen && (
-          <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50/50 p-2 text-xs text-emerald-900">
-            <img
-              src={liveSignatureUrl}
-              alt="Tanda Tangan"
-              className="h-9 max-w-[120px] object-contain rounded bg-white p-0.5 border border-emerald-200"
-            />
-            <span className="text-[11px] font-semibold">Tanda tangan siap disubmit ke dokumen.</span>
-          </div>
-        )}
-
-        {/* Canvas Tanda Tangan Digital (Bisa di-expand/collapse) */}
-        {isSignPadOpen && (
-          <div className="space-y-1.5 pt-1">
-            <p className="text-[11px] text-slate-500">
-              Goreskan tanda tangan Anda pada kanvas sentuh di bawah ini:
-            </p>
-            <div className="bg-white rounded-lg overflow-hidden border border-slate-300 shadow-inner">
-              <SignaturePad
-                onDataUrlChange={(url) => {
-                  setLiveSignatureUrl(url)
-                  if (url) {
-                    // Update state
-                  }
-                }}
-                height={140}
-              />
-            </div>
-            <div className="flex justify-end pt-1">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setIsSignPadOpen(false)}
-                className="h-7 px-2.5 text-[11px] font-bold"
-              >
-                Selesai Gores
-              </Button>
-            </div>
-          </div>
-        )}
+      {/* 2. BAGIAN BAWAH: TANDA TANGAN DIGITAL */}
+      <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+        <SignaturePad
+          label="Tanda Tangan Digital Pemeriksa"
+          defaultDataUrl={liveSignatureUrl}
+          onDataUrlChange={setLiveSignatureUrl}
+          height={140}
+        />
       </div>
 
       {/* 3. BAGIAN BAWAH: BUTTON APPROVE, REJECT, REVERT */}

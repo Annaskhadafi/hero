@@ -93,6 +93,8 @@ type TrainingRow = {
   employeeId: number;
   trainingName: string;
   provider: string;
+  completedDate?: string | null;
+  completedMonth?: string | null;
   completedYear: number;
   expiresAt: TimestampValue;
   status: string;
@@ -703,6 +705,8 @@ export function TrainingRowActions({
           <div className="grid gap-3 sm:grid-cols-2">
             <TextField name="trainingName" label="Training" defaultValue={row.trainingName} />
             <TextField name="provider" label="Provider" defaultValue={row.provider} />
+            <TextField name="completedDate" label="Tanggal" defaultValue={row.completedDate ?? ""} placeholder="Contoh: 15 atau 2024-05-15" />
+            <TextField name="completedMonth" label="Bulan" defaultValue={row.completedMonth ?? ""} placeholder="Contoh: Januari" />
             <TextField name="completedYear" label="Tahun selesai" type="number" defaultValue={row.completedYear} />
             <TextField name="expiresAt" label="Tanggal expiry" type="date" defaultValue={formatDateInput(row.expiresAt)} />
             <SelectField name="status" label="Status" defaultValue={row.status}>
@@ -1128,6 +1132,10 @@ export function HcCrudForms({
         <SearchableEmployeeSelect employees={employees} />
         <TextField name="trainingName" label="Training" placeholder="Nama training / sertifikasi" />
         <TextField name="provider" label="Provider" placeholder="Provider training" defaultValue="-" />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <TextField name="completedDate" label="Tanggal" placeholder="Contoh: 15 atau 2024-05-15" />
+          <TextField name="completedMonth" label="Bulan" placeholder="Contoh: Januari" />
+        </div>
         <TextField name="completedYear" label="Tahun selesai" type="number" defaultValue={new Date().getFullYear()} />
         <TextField name="expiresAt" label="Tanggal expiry" type="date" placeholder="Opsional" />
         <SelectField name="status" label="Status" defaultValue="active">
