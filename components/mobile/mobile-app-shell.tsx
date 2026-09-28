@@ -9,6 +9,7 @@ import {
   BookOpen,
   CheckCircle2,
   ClipboardList,
+  Download,
   Dumbbell,
   FileText,
   FileSignature,
@@ -293,12 +294,18 @@ export function MobileAppShell({
   }
 
   const [isEmbed, setIsEmbed] = useState(false)
+  const [isStandalone, setIsStandalone] = useState(true)
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       if (window.self !== window.top || window.location.search.includes('embed=1')) {
         setIsEmbed(true)
       }
+      const standalone =
+        window.matchMedia('(display-mode: standalone)').matches ||
+        (window.navigator as any).standalone === true ||
+        document.referrer.includes('android-app://')
+      setIsStandalone(standalone)
     }
   }, [])
 
@@ -389,7 +396,21 @@ export function MobileAppShell({
                       )
                     })}
                   </nav>
-                  <div className="px-4 pb-5">
+                  <div className="space-y-2 px-4 pb-5">
+                    {!isStandalone && (
+                      <SheetClose asChild>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            window.dispatchEvent(new Event('hero:open-install-prompt'))
+                          }}
+                          className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#003461] to-[#005bb5] text-xs font-bold text-white shadow-md shadow-blue-900/10 hover:brightness-110 active:scale-[0.98] transition-all"
+                        >
+                          <Download className="size-4" />
+                          <span>Instal Aplikasi HERO</span>
+                        </button>
+                      </SheetClose>
+                    )}
                     <LogoutButton
                       variant="default"
                       label="Logout"

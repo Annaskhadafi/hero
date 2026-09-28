@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { PwaRegistration } from "@/components/pwa-registration";
+import { HeroInstallPrompt } from "@/components/hero-install-prompt";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Suspense } from "react";
 import { NavigationProgressBar } from "@/components/navigation-progress-bar";
@@ -54,6 +55,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <NavigationProgressBar />
           </Suspense>
           <PwaRegistration />
+          <HeroInstallPrompt />
           {children}
         </ThemeProvider>
       </body>
