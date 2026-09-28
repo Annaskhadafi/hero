@@ -23,9 +23,13 @@ interface PageProps {
     startDate?: string
     endDate?: string
     shift?: string
+    dept?: string
+    section?: string
     status?: string
+    activityType?: string
     q?: string
     search?: string
+    employeeName?: string
   }>
 }
 
@@ -73,7 +77,7 @@ export default async function MaestroDailyActivityPage({ searchParams }: PagePro
   }
 
   // 3. Fetch daily activity data scoped strictly to effectiveSiteId
-  const searchKeyword = resolvedParams.q || resolvedParams.search
+  const searchKeyword = resolvedParams.employeeName || resolvedParams.q || resolvedParams.search
   const data = await getDailyActivityDashboardData({
     siteId: String(effectiveSiteId),
     date: resolvedParams.date,
@@ -82,17 +86,29 @@ export default async function MaestroDailyActivityPage({ searchParams }: PagePro
     shift: resolvedParams.shift,
     status: resolvedParams.status,
     search: searchKeyword,
+    employeeName: resolvedParams.employeeName,
   })
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] py-8 px-4 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl">
+    <div className="min-h-screen bg-[#f8fafc] py-6 px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-[1720px]">
         <MaestroClientActivityDashboard
           initialData={data}
           customerInfo={session.customer}
+          userInfo={session.user}
           authorizedSites={authorizedSites}
           currentSiteId={effectiveSiteId}
-          currentDate={resolvedParams.date}
+          initialFilters={{
+            siteId: String(effectiveSiteId),
+            startDate: resolvedParams.startDate || resolvedParams.date,
+            endDate: resolvedParams.endDate || resolvedParams.date,
+            shift: resolvedParams.shift,
+            dept: resolvedParams.dept,
+            section: resolvedParams.section,
+            status: resolvedParams.status,
+            activityType: resolvedParams.activityType,
+            search: searchKeyword,
+          }}
         />
       </div>
     </div>
