@@ -62,6 +62,15 @@ import { INITIAL_KPC_CAI, INITIAL_OTHER_CAI } from '@/lib/constants/master-cai-i
 import type { CustomerRecord } from '@/app/actions/customer-management'
 import { FormWoDocumentPreviewDialog } from '@/components/form-wo-document-preview-dialog'
 import { isCiptaKridatamaCustomer } from '@/lib/form-wo-customer'
+import {
+  ColumnHeaderWithPaste,
+  ColumnPasteModal,
+  TablePasteModal,
+  formatDateForInput,
+  formatPriceValue,
+  matchCategory,
+  matchCustomerOption,
+} from './excel-paste-dialogs'
 import { SignaturePad } from '@/components/signature-pad'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -1158,6 +1167,268 @@ function CreateOrEditWoDialog({
     })
   }
 
+  // Excel Paste Modals State & Handlers
+  const [columnPasteModal, setColumnPasteModal] = useState<{
+    open: boolean
+    columnKey: string
+    columnTitle: string
+    initialText: string
+  }>({
+    open: false,
+    columnKey: '',
+    columnTitle: '',
+    initialText: '',
+  })
+
+  const [tablePasteModalOpen, setTablePasteModalOpen] = useState(false)
+
+  const applyColumnData = (colKey: string, colTitle: string, lines: string[]) => {
+    if (lines.length === 0) return
+
+    if (jenisPengajuan === 'service') {
+      setServiceItems((prev) => {
+        const base = prev[0] || {
+          id: '1',
+          description: 'Labour Service',
+          job: '',
+          customer: '',
+          site: '',
+          serialNo: '',
+          refNo: '',
+          noWoCp: '',
+          price: '',
+          noPo: noPo || '',
+          tanggalPo: tanggalPo || '',
+        }
+        const targetLen = Math.max(prev.length, lines.length)
+        const next: ServiceItemRow[] = []
+        for (let i = 0; i < targetLen; i++) {
+          let row: ServiceItemRow
+          if (i < prev.length) {
+            row = { ...prev[i] }
+          } else {
+            row = {
+              id: String(Date.now() + i),
+              description: base.description || 'Labour Service',
+              job: base.job || '',
+              customer: base.customer || '',
+              site: base.site || '',
+              serialNo: '',
+              refNo: '',
+              noWoCp: base.noWoCp || '',
+              price: '',
+              noPo: base.noPo || noPo || '',
+              tanggalPo: base.tanggalPo || tanggalPo || '',
+            }
+          }
+          if (i < lines.length) {
+            let val = lines[i]
+            if (colKey === 'tanggalPo') val = formatDateForInput(val)
+            if (colKey === 'price') val = formatPriceValue(val)
+            if (colKey === 'customer') val = matchCustomerOption(val, allCustomerOptions)
+            ;(row as any)[colKey] = val
+          }
+          next.push(row)
+        }
+        return next
+      })
+      toast.success(`Berhasil mengisi ${lines.length} baris pada kolom "${colTitle}".`)
+    } else {
+      setRepairItems((prev) => {
+        const base = prev[0] || {
+          id: '1',
+          customer: '',
+          site: '',
+          size: '',
+          description: '',
+          brand: '',
+          category: 'R1',
+          price: '',
+          noWoCp: '',
+          noPo: noPo || '',
+          tanggalPo: tanggalPo || '',
+          pos: '',
+          noUnit: '',
+        }
+        const targetLen = Math.max(prev.length, lines.length)
+        const next: RepairItemRow[] = []
+        for (let i = 0; i < targetLen; i++) {
+          let row: RepairItemRow
+          if (i < prev.length) {
+            row = { ...prev[i] }
+          } else {
+            row = {
+              id: String(Date.now() + i),
+              customer: base.customer || '',
+              site: base.site || '',
+              size: base.size || '',
+              description: '',
+              brand: base.brand || '',
+              category: base.category || 'R1',
+              price: '',
+              noWoCp: base.noWoCp || '',
+              noPo: base.noPo || noPo || '',
+              tanggalPo: base.tanggalPo || tanggalPo || '',
+              pos: '',
+              noUnit: '',
+            }
+          }
+          if (i < lines.length) {
+            let val = lines[i]
+            if (colKey === 'tanggalPo') val = formatDateForInput(val)
+            if (colKey === 'price') val = formatPriceValue(val)
+            if (colKey === 'customer') val = matchCustomerOption(val, allCustomerOptions)
+            if (colKey === 'category') val = matchCategory(val)
+            ;(row as any)[colKey] = val
+
+            // Auto-calculate master price if customer, size, or category is changed
+            if (colKey === 'customer' || colKey === 'size' || colKey === 'category') {
+              const targetCategory = jenisPengajuan === 'retread' ? 'Retread' : 'Repair'
+              const foundPrice = findMatchingMasterPrice(
+                masterPriceList,
+                targetCategory,
+                row.customer,
+                row.size,
+                row.category
+              )
+              if (foundPrice) {
+                const num = parseFloat(foundPrice.replace(/[^0-9.-]+/g, ''))
+                if (!isNaN(num) && num > 0) {
+                  row.price = num.toLocaleString('en-US')
+                } else {
+                  row.price = foundPrice
+                }
+              }
+            }
+          }
+          next.push(row)
+        }
+        return next
+      })
+      toast.success(`Berhasil mengisi ${lines.length} baris pada kolom "${colTitle}".`)
+    }
+  }
+
+  const handlePasteColumn = async (colKey: string, colTitle: string) => {
+    try {
+      if (navigator?.clipboard?.readText) {
+        let text = ''
+        try {
+          text = await navigator.clipboard.readText()
+        } catch (clipErr) {
+          console.warn('Clipboard readText restricted:', clipErr)
+        }
+
+        if (text && text.trim().length > 0) {
+          const { parseExcelColumn } = await import('./excel-paste-dialogs')
+          const { lines } = parseExcelColumn(text, colKey, colTitle, false)
+          if (lines.length > 0) {
+            applyColumnData(colKey, colTitle, lines)
+            return
+          }
+        }
+      }
+    } catch {}
+
+    // Fallback: open column paste modal
+    setColumnPasteModal({
+      open: true,
+      columnKey: colKey,
+      columnTitle: colTitle,
+      initialText: '',
+    })
+  }
+
+  const handleApplyTablePaste = (
+    parsedRows: Record<string, string>[],
+    mode: 'replace' | 'append'
+  ) => {
+    if (parsedRows.length === 0) return
+
+    if (jenisPengajuan === 'service') {
+      const formatted: ServiceItemRow[] = parsedRows.map((r, idx) => ({
+        id: String(Date.now() + idx),
+        description: r.description || 'Labour Service',
+        job: r.job || '',
+        customer: matchCustomerOption(r.customer || '', allCustomerOptions),
+        site: r.site || '',
+        serialNo: r.serialNo || '',
+        refNo: r.refNo || '',
+        noWoCp: r.noWoCp || '',
+        price: r.price ? formatPriceValue(r.price) : '',
+        noPo: r.noPo || noPo || '',
+        tanggalPo: r.tanggalPo ? formatDateForInput(r.tanggalPo) : tanggalPo || '',
+      }))
+
+      setServiceItems((prev) => {
+        if (mode === 'replace') return formatted
+        if (
+          prev.length === 1 &&
+          !prev[0].job &&
+          !prev[0].customer &&
+          !prev[0].site &&
+          !prev[0].serialNo
+        ) {
+          return formatted
+        }
+        return [...prev, ...formatted]
+      })
+      toast.success(`Berhasil menerapkan ${formatted.length} baris ke tabel Service dari Excel.`)
+    } else {
+      const targetCategory = jenisPengajuan === 'retread' ? 'Retread' : 'Repair'
+      const formatted: RepairItemRow[] = parsedRows.map((r, idx) => {
+        const row: RepairItemRow = {
+          id: String(Date.now() + idx),
+          customer: matchCustomerOption(r.customer || '', allCustomerOptions),
+          site: r.site || '',
+          size: r.size || '',
+          description: r.description || '',
+          noUnit: r.noUnit || '',
+          brand: r.brand || '',
+          category: matchCategory(r.category || 'R1'),
+          price: r.price ? formatPriceValue(r.price) : '',
+          noWoCp: r.noWoCp || '',
+          noPo: r.noPo || noPo || '',
+          tanggalPo: r.tanggalPo ? formatDateForInput(r.tanggalPo) : tanggalPo || '',
+          pos: r.pos || '',
+        }
+        if (!row.price && row.customer && row.size) {
+          const found = findMatchingMasterPrice(
+            masterPriceList,
+            targetCategory,
+            row.customer,
+            row.size,
+            row.category
+          )
+          if (found) {
+            const num = parseFloat(found.replace(/[^0-9.-]+/g, ''))
+            if (!isNaN(num) && num > 0) {
+              row.price = num.toLocaleString('en-US')
+            } else {
+              row.price = found
+            }
+          }
+        }
+        return row
+      })
+
+      setRepairItems((prev) => {
+        if (mode === 'replace') return formatted
+        if (
+          prev.length === 1 &&
+          !prev[0].customer &&
+          !prev[0].site &&
+          !prev[0].size &&
+          !prev[0].description
+        ) {
+          return formatted
+        }
+        return [...prev, ...formatted]
+      })
+      toast.success(`Berhasil menerapkan ${formatted.length} baris ke tabel Repair dari Excel.`)
+    }
+  }
+
   const handleSubmit = () => {
     startTransition(async () => {
       const firstService = serviceItems[0]
@@ -1488,7 +1759,7 @@ function CreateOrEditWoDialog({
 
           {/* Table Spreadsheet Section */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="flex items-center gap-2 text-sm font-bold text-slate-800">
                 Rincian Pekerjaan (
                 {jenisPengajuan === 'service'
@@ -1498,16 +1769,28 @@ function CreateOrEditWoDialog({
                     : 'Form WO Repair'}
                 )
               </h3>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={jenisPengajuan === 'service' ? addServiceRow : addRepairRow}
-                className="h-8 border-indigo-200 text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
-              >
-                <Plus className="mr-1 h-3.5 w-3.5" />
-                Tambah Baris Pekerjaan
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setTablePasteModalOpen(true)}
+                  className="h-8 border-emerald-300 bg-emerald-50/80 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 hover:border-emerald-400 shadow-2xs"
+                >
+                  <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5 text-emerald-600" />
+                  Paste from Excel (Tabel Penuh)
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={jenisPengajuan === 'service' ? addServiceRow : addRepairRow}
+                  className="h-8 border-indigo-200 text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
+                >
+                  <Plus className="mr-1 h-3.5 w-3.5" />
+                  Tambah Baris Pekerjaan
+                </Button>
+              </div>
             </div>
 
             {/* Table Spreadsheet Editor for SERVICE */}
@@ -1517,16 +1800,77 @@ function CreateOrEditWoDialog({
                   <TableHeader className="border-b border-slate-200 bg-slate-100/80 font-bold text-slate-700">
                     <TableRow>
                       <TableHead className="w-12 text-center">No</TableHead>
-                      <TableHead className="min-w-[190px]">Description</TableHead>
-                      <TableHead className="min-w-[220px]">Job</TableHead>
-                      <TableHead className="min-w-[200px]">Customer</TableHead>
-                      <TableHead className="min-w-[140px]">Site</TableHead>
-                      <TableHead className="min-w-[140px]">Serial No</TableHead>
-                      <TableHead className="min-w-[200px]">No Surat Jalan / Ref</TableHead>
-                      <TableHead className="min-w-[140px]">Nomor PO</TableHead>
-                      <TableHead className="min-w-[140px]">Date PO</TableHead>
-                      <TableHead className="min-w-[140px]">No WO CP</TableHead>
-                      <TableHead className="min-w-[150px] text-right">Price / Amount</TableHead>
+                      <TableHead className="min-w-[190px]">
+                        <ColumnHeaderWithPaste
+                          title="Description"
+                          columnKey="description"
+                          onPaste={handlePasteColumn}
+                        />
+                      </TableHead>
+                      <TableHead className="min-w-[220px]">
+                        <ColumnHeaderWithPaste
+                          title="Job"
+                          columnKey="job"
+                          onPaste={handlePasteColumn}
+                        />
+                      </TableHead>
+                      <TableHead className="min-w-[210px]">
+                        <ColumnHeaderWithPaste
+                          title="Customer"
+                          columnKey="customer"
+                          onPaste={handlePasteColumn}
+                        />
+                      </TableHead>
+                      <TableHead className="min-w-[150px]">
+                        <ColumnHeaderWithPaste
+                          title="Site"
+                          columnKey="site"
+                          onPaste={handlePasteColumn}
+                        />
+                      </TableHead>
+                      <TableHead className="min-w-[150px]">
+                        <ColumnHeaderWithPaste
+                          title="Serial No"
+                          columnKey="serialNo"
+                          onPaste={handlePasteColumn}
+                        />
+                      </TableHead>
+                      <TableHead className="min-w-[200px]">
+                        <ColumnHeaderWithPaste
+                          title="No Surat Jalan / Ref"
+                          columnKey="refNo"
+                          onPaste={handlePasteColumn}
+                        />
+                      </TableHead>
+                      <TableHead className="min-w-[150px]">
+                        <ColumnHeaderWithPaste
+                          title="Nomor PO"
+                          columnKey="noPo"
+                          onPaste={handlePasteColumn}
+                        />
+                      </TableHead>
+                      <TableHead className="min-w-[150px]">
+                        <ColumnHeaderWithPaste
+                          title="Date PO"
+                          columnKey="tanggalPo"
+                          onPaste={handlePasteColumn}
+                        />
+                      </TableHead>
+                      <TableHead className="min-w-[150px]">
+                        <ColumnHeaderWithPaste
+                          title="No WO CP"
+                          columnKey="noWoCp"
+                          onPaste={handlePasteColumn}
+                        />
+                      </TableHead>
+                      <TableHead className="min-w-[160px] text-right">
+                        <ColumnHeaderWithPaste
+                          title="Price / Amount"
+                          columnKey="price"
+                          onPaste={handlePasteColumn}
+                          align="right"
+                        />
+                      </TableHead>
                       <TableHead className="w-10 text-center"></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1657,20 +2001,94 @@ function CreateOrEditWoDialog({
                   <TableHeader className="border-b border-slate-200 bg-slate-100/80 font-bold text-slate-700">
                     <TableRow>
                       <TableHead className="w-10 text-center">No</TableHead>
-                      <TableHead className="min-w-[200px]">Customer</TableHead>
-                      <TableHead className="min-w-[140px]">Site</TableHead>
-                      <TableHead className="min-w-[160px]">Tire Size</TableHead>
-                      <TableHead className="min-w-[180px]">SN Tire</TableHead>
+                      <TableHead className="min-w-[210px]">
+                        <ColumnHeaderWithPaste
+                          title="Customer"
+                          columnKey="customer"
+                          onPaste={handlePasteColumn}
+                        />
+                      </TableHead>
+                      <TableHead className="min-w-[150px]">
+                        <ColumnHeaderWithPaste
+                          title="Site"
+                          columnKey="site"
+                          onPaste={handlePasteColumn}
+                        />
+                      </TableHead>
+                      <TableHead className="min-w-[160px]">
+                        <ColumnHeaderWithPaste
+                          title="Tire Size"
+                          columnKey="size"
+                          onPaste={handlePasteColumn}
+                        />
+                      </TableHead>
+                      <TableHead className="min-w-[180px]">
+                        <ColumnHeaderWithPaste
+                          title="SN Tire"
+                          columnKey="description"
+                          onPaste={handlePasteColumn}
+                        />
+                      </TableHead>
                       {repairItems.some((r) => isCiptaKridatamaCustomer(r.customer)) && (
-                        <TableHead className="min-w-[140px]">ID Unit</TableHead>
+                        <TableHead className="min-w-[150px]">
+                          <ColumnHeaderWithPaste
+                            title="ID Unit"
+                            columnKey="noUnit"
+                            onPaste={handlePasteColumn}
+                          />
+                        </TableHead>
                       )}
-                      <TableHead className="min-w-[140px]">Brand</TableHead>
-                      <TableHead className="min-w-[140px]">Cat. Injury</TableHead>
-                      <TableHead className="min-w-[160px] text-right">Price</TableHead>
-                      <TableHead className="min-w-[140px]">WO CP</TableHead>
-                      <TableHead className="min-w-[140px]">Number PO</TableHead>
-                      <TableHead className="min-w-[140px]">Date PO</TableHead>
-                      <TableHead className="min-w-[80px] text-center">POS</TableHead>
+                      <TableHead className="min-w-[150px]">
+                        <ColumnHeaderWithPaste
+                          title="Brand"
+                          columnKey="brand"
+                          onPaste={handlePasteColumn}
+                        />
+                      </TableHead>
+                      <TableHead className="min-w-[150px]">
+                        <ColumnHeaderWithPaste
+                          title="Cat. Injury"
+                          columnKey="category"
+                          onPaste={handlePasteColumn}
+                        />
+                      </TableHead>
+                      <TableHead className="min-w-[160px] text-right">
+                        <ColumnHeaderWithPaste
+                          title="Price"
+                          columnKey="price"
+                          onPaste={handlePasteColumn}
+                          align="right"
+                        />
+                      </TableHead>
+                      <TableHead className="min-w-[150px]">
+                        <ColumnHeaderWithPaste
+                          title="WO CP"
+                          columnKey="noWoCp"
+                          onPaste={handlePasteColumn}
+                        />
+                      </TableHead>
+                      <TableHead className="min-w-[150px]">
+                        <ColumnHeaderWithPaste
+                          title="Number PO"
+                          columnKey="noPo"
+                          onPaste={handlePasteColumn}
+                        />
+                      </TableHead>
+                      <TableHead className="min-w-[150px]">
+                        <ColumnHeaderWithPaste
+                          title="Date PO"
+                          columnKey="tanggalPo"
+                          onPaste={handlePasteColumn}
+                        />
+                      </TableHead>
+                      <TableHead className="min-w-[90px] text-center">
+                        <ColumnHeaderWithPaste
+                          title="POS"
+                          columnKey="pos"
+                          onPaste={handlePasteColumn}
+                          align="center"
+                        />
+                      </TableHead>
                       <TableHead className="w-10 text-center"></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1869,6 +2287,26 @@ function CreateOrEditWoDialog({
             {isPending ? 'Menyimpan...' : editItem ? 'Simpan Perubahan WO' : 'Simpan Form WO'}
           </Button>
         </DialogFooter>
+
+        {/* Single Column Paste Modal */}
+        <ColumnPasteModal
+          open={columnPasteModal.open}
+          onOpenChange={(op) => setColumnPasteModal((p) => ({ ...p, open: op }))}
+          columnKey={columnPasteModal.columnKey}
+          columnTitle={columnPasteModal.columnTitle}
+          initialText={columnPasteModal.initialText}
+          onApply={(lines) =>
+            applyColumnData(columnPasteModal.columnKey, columnPasteModal.columnTitle, lines)
+          }
+        />
+
+        {/* Full Table Paste Modal */}
+        <TablePasteModal
+          open={tablePasteModalOpen}
+          onOpenChange={setTablePasteModalOpen}
+          jenisPengajuan={jenisPengajuan}
+          onApply={handleApplyTablePaste}
+        />
       </DialogContent>
     </Dialog>
   )
