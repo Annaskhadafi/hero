@@ -257,6 +257,45 @@ export async function getMenuPermissionForRole(
     }
   }
 
+  if (resource.startsWith('scheduling_timesheet_')) {
+    const [parentPermission] = await db
+      .select({
+        canView: roleMenuPermissions.canView,
+        canEdit: roleMenuPermissions.canEdit,
+        canDelete: roleMenuPermissions.canDelete,
+        canSelectAll: roleMenuPermissions.canSelectAll,
+        dataScope: roleMenuPermissions.dataScope,
+      })
+      .from(roleMenuPermissions)
+      .innerJoin(securityRoles, eq(roleMenuPermissions.roleId, securityRoles.id))
+      .innerJoin(navbarMenuItems, eq(roleMenuPermissions.menuItemId, navbarMenuItems.id))
+      .where(
+        and(
+          sql`lower(${securityRoles.name}) = lower(${roleName})`,
+          eq(navbarMenuItems.resource, 'scheduling_timesheet')
+        )
+      )
+      .limit(1)
+
+    if (parentPermission) {
+      const dataScope = normalizeDataScope(parentPermission.dataScope)
+      const hasInvalidDataScope =
+        parentPermission.dataScope != null &&
+        parentPermission.dataScope !== 'own' &&
+        parentPermission.dataScope !== 'site' &&
+        parentPermission.dataScope !== 'global'
+
+      return {
+        roleName,
+        canView: hasInvalidDataScope ? false : parentPermission.canView,
+        canEdit: hasInvalidDataScope ? false : parentPermission.canEdit,
+        canDelete: hasInvalidDataScope ? false : parentPermission.canDelete,
+        canSelectAll: hasInvalidDataScope ? false : parentPermission.canSelectAll,
+        dataScope,
+      }
+    }
+  }
+
   return {
     roleName,
     canView: false,

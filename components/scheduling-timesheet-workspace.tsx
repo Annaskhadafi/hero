@@ -4492,9 +4492,9 @@ export function SchedulingTimesheetWorkspace({
           {iconOnly ? (
             <span className="sr-only">Export {excelInsteadOfCsv ? 'Excel' : 'CSV'}</span>
           ) : excelInsteadOfCsv ? (
-            'Ekspor Excel'
+            'Export Excel'
           ) : (
-            'Ekspor CSV'
+            'Export CSV'
           )}
         </Button>
       </div>

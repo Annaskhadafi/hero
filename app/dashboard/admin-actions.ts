@@ -518,7 +518,7 @@ export async function saveSchedulingTimesheetPlanAction(
   input: z.infer<typeof saveSchedulingTimesheetPlanSchema>
 ) {
   const payload = saveSchedulingTimesheetPlanSchema.parse(input)
-  await requireSchedulingTimesheetAccess('edit')
+  await assertSchedulingSiteScope(payload.siteId, 'edit', 'scheduling_timesheet_setup')
   await ensureSchedulingTimesheetTables()
   await assertSchedulingPeriodOpen(payload.siteId, payload.period)
   const actorEmail = await getCurrentActorEmail()
@@ -917,7 +917,7 @@ export async function createSchedulingTimesheetPlanV2Action(
   input: z.infer<typeof scheduleV2KeySchema>
 ) {
   const payload = scheduleV2KeySchema.parse(input)
-  await assertSchedulingSiteScope(payload.siteId, 'edit')
+  await assertSchedulingSiteScope(payload.siteId, 'edit', 'scheduling_timesheet_schedule_v2')
   await ensureSchedulingTimesheetTables()
   await assertSchedulingPeriodOpen(payload.siteId, payload.period)
   const actorEmail = await getCurrentActorEmail()
@@ -984,7 +984,7 @@ export async function saveSchedulingTimesheetPlanV2DraftAction(
   input: z.infer<typeof saveScheduleV2Schema>
 ) {
   const payload = saveScheduleV2Schema.parse(input)
-  await assertSchedulingSiteScope(payload.siteId, 'edit')
+  await assertSchedulingSiteScope(payload.siteId, 'edit', 'scheduling_timesheet_schedule_v2')
   await ensureSchedulingTimesheetTables()
   await assertSchedulingPeriodOpen(payload.siteId, payload.period)
   const draftRows = await normalizeScheduleV2DraftRows(payload.siteId, payload.period, payload.rows)
@@ -1039,7 +1039,7 @@ export async function updateSchedulingTimesheetPlanV2CellAction(
   input: z.infer<typeof updateScheduleV2CellSchema>
 ) {
   const payload = updateScheduleV2CellSchema.parse(input)
-  await assertSchedulingSiteScope(payload.siteId, 'edit')
+  await assertSchedulingSiteScope(payload.siteId, 'edit', 'scheduling_timesheet_schedule_v2')
   await ensureSchedulingTimesheetTables()
   await assertSchedulingPeriodOpen(payload.siteId, payload.period)
   const actorEmail = await getCurrentActorEmail()
@@ -1122,7 +1122,7 @@ export async function syncScheduleV2EmployeeAssignmentAction(
   input: z.infer<typeof scheduleV2EmployeeAssignmentSchema>
 ) {
   const payload = scheduleV2EmployeeAssignmentSchema.parse(input)
-  await assertSchedulingSiteScope(payload.siteId, 'edit')
+  await assertSchedulingSiteScope(payload.siteId, 'edit', 'scheduling_timesheet_schedule_v2')
   await ensureSchedulingTimesheetTables()
   await assertSchedulingPeriodOpen(payload.siteId, payload.period)
 
@@ -1255,7 +1255,7 @@ export async function activateSchedulingTimesheetPlanV2Action(
   input: z.infer<typeof saveScheduleV2Schema>
 ) {
   const payload = saveScheduleV2Schema.parse(input)
-  await assertSchedulingSiteScope(payload.siteId, 'edit')
+  await assertSchedulingSiteScope(payload.siteId, 'edit', 'scheduling_timesheet_schedule_v2')
   await ensureSchedulingTimesheetTables()
   await assertSchedulingPeriodOpen(payload.siteId, payload.period)
   await validateScheduleV2Rows(payload.siteId, payload.period, payload.rows)
@@ -1325,7 +1325,7 @@ export async function deleteSchedulingTimesheetPlanV2Action(
   input: z.infer<typeof scheduleV2KeySchema>
 ) {
   const payload = scheduleV2KeySchema.parse(input)
-  await assertSchedulingSiteScope(payload.siteId, 'edit')
+  await assertSchedulingSiteScope(payload.siteId, 'edit', 'scheduling_timesheet_schedule_v2')
   await ensureSchedulingTimesheetTables()
   await assertSchedulingPeriodOpen(payload.siteId, payload.period)
   const actorEmail = await getCurrentActorEmail()
@@ -1384,7 +1384,7 @@ export async function deleteSchedulingTimesheetPlanAction(
   input: z.infer<typeof deleteSchedulingTimesheetPlanSchema>
 ) {
   const payload = deleteSchedulingTimesheetPlanSchema.parse(input)
-  await requireSchedulingTimesheetAccess('edit')
+  await assertSchedulingSiteScope(payload.siteId, 'edit', 'scheduling_timesheet_setup')
   await ensureSchedulingTimesheetTables()
   await assertSchedulingPeriodOpen(payload.siteId, payload.period)
   const actorEmail = await getCurrentActorEmail()
@@ -1469,7 +1469,7 @@ export async function saveTimesheetFieldBreakPlansAction(
       throw new Error('Selesai Field Break tidak boleh sebelum Next Field Break.')
     }
   }
-  await assertSchedulingSiteScope(payload.siteId, 'edit')
+  await assertSchedulingSiteScope(payload.siteId, 'edit', 'scheduling_timesheet_field_break')
   await ensureSchedulingTimesheetTables()
   await assertSchedulingPeriodOpen(payload.siteId, payload.period)
   const actorEmail = await getCurrentActorEmail()
@@ -2927,7 +2927,7 @@ export async function saveSchedulingConfigAction(
   input: z.input<typeof saveSchedulingConfigSchema>
 ) {
   const payload = saveSchedulingConfigSchema.parse(input)
-  await assertSchedulingSiteScope(payload.siteId, 'edit')
+  await assertSchedulingSiteScope(payload.siteId, 'edit', 'scheduling_timesheet_setup')
   await ensureSchedulingTimesheetTables()
   const actorEmail = await getCurrentActorEmail()
   const savedByUserId = await getCurrentActorUserId(actorEmail)
