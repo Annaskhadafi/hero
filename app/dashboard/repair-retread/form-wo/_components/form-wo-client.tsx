@@ -18,6 +18,7 @@ import {
   Eye,
   FilePlus,
   FileSpreadsheet,
+  FileText,
   Filter,
   Layers,
   Pencil,
@@ -219,6 +220,10 @@ const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const
 const HARI_OPTIONS = ['Senin', 'Selasa', 'Rabu', 'Kamis', "Jum'at", 'Sabtu', 'Minggu']
 
 const STATUS_CONFIG: Record<string, { label: string; cls: string }> = {
+  draft: {
+    label: 'Draft',
+    cls: 'border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 font-medium',
+  },
   pending: {
     label: 'Pending',
     cls: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200',
@@ -788,8 +793,9 @@ function CreateOrEditWoDialog({
   const [pemohon, setPemohon] = useState('')
   const [catatanPengajuan, setCatatanPengajuan] = useState('')
   const [statusPengajuan, setStatusPengajuan] = useState<
-    'pending' | 'approved' | 'rejected' | 'diproses'
+    'draft' | 'pending' | 'approved' | 'rejected' | 'diproses'
   >('pending')
+  const [isDraftSaving, setIsDraftSaving] = useState(false)
   const [noWoTerbit, setNoWoTerbit] = useState('')
   const [noPo, setNoPo] = useState('')
   const [tanggalPo, setTanggalPo] = useState('')
@@ -1429,7 +1435,8 @@ function CreateOrEditWoDialog({
     }
   }
 
-  const handleSubmit = () => {
+  const handleSave = (asDraft: boolean = false) => {
+    setIsDraftSaving(asDraft)
     startTransition(async () => {
       const firstService = serviceItems[0]
       const firstRepair = repairItems[0]
@@ -1442,7 +1449,9 @@ function CreateOrEditWoDialog({
       const headerTanggalPo =
         tanggalPo || (isService ? firstService?.tanggalPo : firstRepair?.tanggalPo)
 
-      // Upload signature if provided
+      // Signature handling:
+      // If user uploaded a physical signature file via picker, upload it.
+      // Otherwise, use submitterSignatureUrl or profileSig directly for instantaneous save!
       let sigUrl = submitterSignatureUrl || undefined
       if (signatureFile && signatureFile.size > 0) {
         try {
@@ -1456,27 +1465,16 @@ function CreateOrEditWoDialog({
         } catch (err) {
           console.error('Signature upload error:', err)
         }
-      } else if (isUsingProfileSig && profileSig && profileSig.startsWith('data:')) {
-        try {
-          const res = await fetch(profileSig)
-          const blob = await res.blob()
-          const file = new File([blob], 'submitter_signature.png', { type: 'image/png' })
-          const { uploadFile } = await import('@/app/actions/upload')
-          const fd = new FormData()
-          fd.append('file', file)
-          const uploadResult = await uploadFile(fd)
-          if (uploadResult && uploadResult.success) {
-            sigUrl = uploadResult.url
-          } else {
-            sigUrl = profileSig
-          }
-        } catch (err) {
-          console.error('Signature upload error:', err)
-          sigUrl = profileSig
-        }
+      } else if (!sigUrl && isUsingProfileSig && profileSig) {
+        sigUrl = profileSig
       }
 
-      if (!editItem && !sigUrl && !submitterSignatureUrl) {
+      const effectiveStatus = asDraft
+        ? 'draft'
+        : (statusPengajuan === 'draft' ? 'pending' : statusPengajuan)
+
+      // TTD hanya wajib saat diajukan (bukan draft)
+      if (!asDraft && !editItem && !sigUrl) {
         toast.error('Tanda tangan digital pemohon wajib diisi sebelum mengajukan Form WO.')
         return
       }
@@ -1486,7 +1484,7 @@ function CreateOrEditWoDialog({
         tanggal: tanggal || undefined,
         pemohon: pemohon || undefined,
         catatanPengajuan: catatanPengajuan || undefined,
-        statusPengajuan,
+        statusPengajuan: effectiveStatus as 'draft' | 'pending' | 'approved' | 'rejected' | 'diproses',
         noWoTerbit: noWoTerbit || undefined,
         noPo: headerNoPo || undefined,
         tanggalPo: headerTanggalPo || undefined,
@@ -1519,9 +1517,13 @@ function CreateOrEditWoDialog({
 
       if (result.success) {
         toast.success(
-          editItem
-            ? 'Form WO berhasil diperbarui.'
-            : `Form WO berhasil dibuat (${result.noPengajuan || ''})`
+          asDraft
+            ? `Draft Form WO berhasil disimpan (${result.noPengajuan || ''})`
+            : editItem
+              ? editItem.statusPengajuan === 'draft'
+                ? `Form WO berhasil diajukan (${result.noPengajuan || ''})`
+                : 'Form WO berhasil diperbarui.'
+              : `Form WO berhasil dibuat (${result.noPengajuan || ''})`
         )
         onOpenChange(false)
         onSuccess()
@@ -1530,6 +1532,8 @@ function CreateOrEditWoDialog({
       }
     })
   }
+
+  const handleSubmit = () => handleSave(false)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1636,6 +1640,7 @@ function CreateOrEditWoDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="draft">Draft</SelectItem>
                     <SelectItem value="pending">Pending</SelectItem>
                     <SelectItem value="diproses">Diproses</SelectItem>
                     <SelectItem value="approved">Approved</SelectItem>
@@ -2269,7 +2274,7 @@ function CreateOrEditWoDialog({
           </div>
         </div>
 
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between w-full">
           <Button
             type="button"
             variant="outline"
@@ -2278,14 +2283,48 @@ function CreateOrEditWoDialog({
           >
             Batal
           </Button>
-          <Button
-            type="button"
-            onClick={handleSubmit}
-            disabled={isPending}
-            className="bg-indigo-600 font-semibold text-white hover:bg-indigo-700"
-          >
-            {isPending ? 'Menyimpan...' : editItem ? 'Simpan Perubahan WO' : 'Simpan Form WO'}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleSave(true)}
+              disabled={isPending}
+              className="border-slate-300 text-slate-700 hover:bg-slate-100 font-medium"
+            >
+              {isPending && isDraftSaving ? (
+                <>
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin text-slate-500" />
+                  Menyimpan Draft...
+                </>
+              ) : (
+                <>
+                  <FileText className="mr-1.5 h-4 w-4 text-slate-500" />
+                  {editItem && editItem.statusPengajuan === 'draft' ? 'Perbarui Draft' : 'Simpan Draft'}
+                </>
+              )}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => handleSave(false)}
+              disabled={isPending}
+              className="bg-indigo-600 font-semibold text-white hover:bg-indigo-700"
+            >
+              {isPending && !isDraftSaving ? (
+                <>
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin text-white" />
+                  Menyimpan...
+                </>
+              ) : editItem ? (
+                editItem.statusPengajuan === 'draft' ? (
+                  'Ajukan Form WO'
+                ) : (
+                  'Simpan Perubahan WO'
+                )
+              ) : (
+                'Simpan Form WO'
+              )}
+            </Button>
+          </div>
         </DialogFooter>
 
         {/* Single Column Paste Modal */}
@@ -3315,7 +3354,7 @@ function DaftarPengajuanTab({
   // Inline Server Actions
   async function handleInlineStatusChange(
     id: number,
-    status: 'pending' | 'diproses' | 'approved' | 'rejected'
+    status: 'draft' | 'pending' | 'diproses' | 'approved' | 'rejected'
   ) {
     const item = data.find((d) => d.id === id)
     if (item) {
@@ -3678,6 +3717,7 @@ function DaftarPengajuanTab({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={ALL_FILTER}>Semua status</SelectItem>
+                  <SelectItem value="draft">Draft</SelectItem>
                   <SelectItem value="pending">Pending</SelectItem>
                   <SelectItem value="diproses">Diproses</SelectItem>
                   <SelectItem value="approved">Approved</SelectItem>
@@ -3900,6 +3940,9 @@ function DaftarPengajuanTab({
                               </Badge>
                             </SelectTrigger>
                             <SelectContent>
+                              <SelectItem value="draft" className="text-xs">
+                                Draft
+                              </SelectItem>
                               <SelectItem value="pending" className="text-xs">
                                 Pending
                               </SelectItem>
@@ -6719,8 +6762,10 @@ export function FormWoClient({
     setDeleteDialogOpen(true)
   }
 
+  const router = useRouter()
   function refreshList() {
-    window.location.reload()
+    setActiveTab('pengajuan')
+    router.refresh()
   }
 
   const totalCaiCount =
