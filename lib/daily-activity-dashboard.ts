@@ -11,15 +11,18 @@ import {
   masterPositions,
   masterSections,
   overtimeCommandLetters,
+  overtimeCommandLetterParticipants,
   sites,
 } from '@/db/schema/hero'
 import {
+  timesheetSchedulingConfigs,
   timesheetSchedulingPlansV2,
   timesheetSchedulingPlans,
   timesheetFieldBreakPlans,
 } from '@/db/schema/timesheet'
 import { and, desc, eq, inArray, isNull, like, or, sql, ilike } from 'drizzle-orm'
 import { resolveUploadUrl } from '@/lib/resolve-upload-url'
+import { calcClockDuration } from '@/lib/ewh/calculate-ewh'
 
 export interface DailyActivityFilterParams {
   siteId?: string
@@ -110,6 +113,12 @@ export interface EmployeeActivityRow {
   ewhTargetHours: number
   ewhLabel: string
   ewhPercentage: number
+  rosterClockIn?: string
+  rosterClockOut?: string
+  isRosterOff?: boolean
+  baseNormalHours?: number
+  overtimeHours?: number
+  rosterScheduleCode?: string
 }
 
 
@@ -340,6 +349,118 @@ function formatDateDisplay(date?: Date | string | null): string {
   } catch {
     return '24 Sep 2026'
   }
+}
+
+function getDatesInRange(startStr: string, endStr: string, maxDays = 31): string[] {
+  if (!startStr && !endStr) return ['2026-09-24']
+  const s = startStr || endStr
+  const e = endStr || startStr
+  try {
+    const startDate = new Date(`${s}T00:00:00Z`)
+    const endDate = new Date(`${e}T00:00:00Z`)
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+      return [s]
+    }
+    const dates: string[] = []
+    const curr = new Date(startDate)
+    let count = 0
+    while (curr <= endDate && count < maxDays) {
+      dates.push(curr.toISOString().split('T')[0])
+      curr.setUTCDate(curr.getUTCDate() + 1)
+      count++
+    }
+    return dates.length > 0 ? dates : [s]
+  } catch {
+    return [s]
+  }
+}
+
+interface RosterClockTimes {
+  clockIn: string
+  clockOut: string
+  source: string
+}
+
+function resolveRosterClocksForEmployee(params: {
+  siteConfig?: {
+    scheduleType?: string
+    rosterType?: string
+    fieldBreakConfig?: any
+  } | null
+  shiftCode?: string | null
+  rosterScheduleCode?: string | null
+}): RosterClockTimes {
+  const { siteConfig, shiftCode, rosterScheduleCode } = params
+  const fbConfig = siteConfig?.fieldBreakConfig && typeof siteConfig.fieldBreakConfig === 'object'
+    ? (siteConfig.fieldBreakConfig as Record<string, unknown>)
+    : {}
+
+  const readTime = (key: string, fallback: string): string => {
+    const val = fbConfig[key]
+    return typeof val === 'string' && val.trim().length > 0 ? val.trim() : fallback
+  }
+
+  // 1. If roster schedule code has explicit time range (e.g. "08:00-17:00" or "06:00-18:00")
+  if (rosterScheduleCode) {
+    const rangeMatch = rosterScheduleCode.match(/(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})/)
+    if (rangeMatch) {
+      return {
+        clockIn: rangeMatch[1],
+        clockOut: rangeMatch[2],
+        source: 'schedule-code-range',
+      }
+    }
+  }
+
+  const normShift = normalizeShift(shiftCode)
+  const normCode = (rosterScheduleCode || '').trim().toUpperCase()
+  const isNight =
+    normShift === 'Malam' ||
+    normCode === 'NS' ||
+    normCode.includes('MALAM') ||
+    normCode.includes('NIGHT')
+
+  if (isNight) {
+    return {
+      clockIn: readTime('nightShiftClockIn', '18:00'),
+      clockOut: readTime('nightShiftClockOut', '06:00'),
+      source: 'site-night-shift-config',
+    }
+  }
+
+  if (normShift === 'Siang') {
+    return {
+      clockIn: readTime('dayShiftClockIn', '14:00'),
+      clockOut: readTime('dayShiftClockOut', '22:00'),
+      source: 'site-middle-shift-config',
+    }
+  }
+
+  // Day shift / Shift Pagi:
+  // If scheduleType is 'office' and defaultClockIn/defaultClockOut are configured:
+  if (siteConfig?.scheduleType === 'office') {
+    return {
+      clockIn: readTime('defaultClockIn', readTime('dayShiftClockIn', '07:00')),
+      clockOut: readTime('defaultClockOut', readTime('dayShiftClockOut', '17:00')),
+      source: 'site-office-config',
+    }
+  }
+
+  // Default site shift
+  return {
+    clockIn: readTime('dayShiftClockIn', '06:00'),
+    clockOut: readTime('dayShiftClockOut', '18:00'),
+    source: 'site-day-shift-config',
+  }
+}
+
+function computeRosterNetHours(clockIn: string, clockOut: string): number {
+  const diffM = calcClockDuration(clockIn, clockOut)
+  if (diffM <= 0) return 11 // fallback
+  const grossHours = diffM / 60
+  // Istirahat 1 jam tidak dihitung (dikurangi 1 jam)
+  const netHours = Math.max(1, grossHours - 1)
+  return Math.round(netHours * 10) / 10
 }
 
 export async function getDailyActivityDashboardData(
@@ -636,6 +757,8 @@ export async function getDailyActivityDashboardData(
 
   // 4b. Real Attendance from hero_attendance_records
   const targetDateStr = effectiveStartDate || effectiveEndDate || '2026-09-24'
+  const evalDates = getDatesInRange(effectiveStartDate || targetDateStr, effectiveEndDate || targetDateStr)
+  const evalPeriods = Array.from(new Set(evalDates.map((d) => d.slice(0, 7))))
 
   const attendanceConditions = []
   if (effectiveStartDate && effectiveEndDate) {
@@ -674,20 +797,35 @@ export async function getDailyActivityDashboardData(
   ])
 
   const attendanceByEmployee = new Map<number, { checkIn: Date | null; checkOut: Date | null }>()
+  const attendanceByEmpAndDate = new Map<string, { checkIn: Date | null; checkOut: Date | null }>()
+
   for (const ev of attendanceEventsRes) {
-    if (!ev.employeeId) continue
+    if (!ev.employeeId || !ev.eventTime) continue
+    const evTime = new Date(ev.eventTime)
+    const evDateStr = evTime.toISOString().split('T')[0]
+    const dateKey = `${ev.employeeId}-${evDateStr}`
+
     const curr = attendanceByEmployee.get(ev.employeeId) || { checkIn: null, checkOut: null }
+    const currDate = attendanceByEmpAndDate.get(dateKey) || { checkIn: null, checkOut: null }
     const evType = (ev.eventType || '').toLowerCase()
-    if (evType.includes('in') && ev.eventTime) {
-      if (!curr.checkIn || new Date(ev.eventTime) < curr.checkIn) {
-        curr.checkIn = new Date(ev.eventTime)
+
+    if (evType.includes('in')) {
+      if (!curr.checkIn || evTime < curr.checkIn) {
+        curr.checkIn = evTime
       }
-    } else if (evType.includes('out') && ev.eventTime) {
-      if (!curr.checkOut || new Date(ev.eventTime) > curr.checkOut) {
-        curr.checkOut = new Date(ev.eventTime)
+      if (!currDate.checkIn || evTime < currDate.checkIn) {
+        currDate.checkIn = evTime
+      }
+    } else if (evType.includes('out')) {
+      if (!curr.checkOut || evTime > curr.checkOut) {
+        curr.checkOut = evTime
+      }
+      if (!currDate.checkOut || evTime > currDate.checkOut) {
+        currDate.checkOut = evTime
       }
     }
     attendanceByEmployee.set(ev.employeeId, curr)
+    attendanceByEmpAndDate.set(dateKey, currDate)
   }
 
   const realHadirAttendance = Number(attendanceCountRes[0]?.uniqueEmployees || 0)
@@ -755,6 +893,187 @@ export async function getDailyActivityDashboardData(
     cutiIzin: Math.round(siteEmployeesCount * 0.05),
     offShift: Math.round(siteEmployeesCount * 0.1),
     total: siteEmployeesCount,
+  }
+
+  // 7b. Query Scheduling Configs & Active Plans for Roster Resolution & Unsubmitted Tracking
+  const v2Conditions = [inArray(timesheetSchedulingPlansV2.period, evalPeriods)]
+  if (currentSite.id !== 0) {
+    v2Conditions.push(eq(timesheetSchedulingPlansV2.siteId, currentSite.id))
+  }
+
+  const v1Conditions = [inArray(timesheetSchedulingPlans.period, evalPeriods)]
+  if (currentSite.id !== 0) {
+    v1Conditions.push(eq(timesheetSchedulingPlans.siteId, currentSite.id))
+  }
+
+  const fbConditions = []
+  if (currentSite.id !== 0) {
+    fbConditions.push(eq(timesheetFieldBreakPlans.siteId, currentSite.id))
+  }
+
+  const [rawSchedulingConfigs, v2Plans, v1Plans, fbPlans] = await Promise.all([
+    db
+      .select({
+        siteId: timesheetSchedulingConfigs.siteId,
+        scheduleType: timesheetSchedulingConfigs.scheduleType,
+        rosterType: timesheetSchedulingConfigs.rosterType,
+        fieldBreakConfig: timesheetSchedulingConfigs.fieldBreakConfig,
+      })
+      .from(timesheetSchedulingConfigs)
+      .where(currentSite.id !== 0 ? eq(timesheetSchedulingConfigs.siteId, currentSite.id) : undefined)
+      .catch((err) => {
+        console.error('[daily-activity:timesheetSchedulingConfigs] Query failed:', err)
+        return []
+      }),
+    evalPeriods.length > 0
+      ? db
+          .select({
+            siteId: timesheetSchedulingPlansV2.siteId,
+            period: timesheetSchedulingPlansV2.period,
+            status: timesheetSchedulingPlansV2.status,
+            activeSchedule: timesheetSchedulingPlansV2.activeSchedule,
+            draftSchedule: timesheetSchedulingPlansV2.draftSchedule,
+          })
+          .from(timesheetSchedulingPlansV2)
+          .where(and(...v2Conditions))
+          .catch((err) => {
+            console.error('[daily-activity:timesheetSchedulingPlansV2] Query failed:', err)
+            return []
+          })
+      : Promise.resolve([]),
+    evalPeriods.length > 0
+      ? db
+          .select({
+            siteId: timesheetSchedulingPlans.siteId,
+            period: timesheetSchedulingPlans.period,
+            fixedSchedule: timesheetSchedulingPlans.fixedSchedule,
+          })
+          .from(timesheetSchedulingPlans)
+          .where(and(...v1Conditions))
+          .catch((err) => {
+            console.error('[daily-activity:timesheetSchedulingPlans] Query failed:', err)
+            return []
+          })
+      : Promise.resolve([]),
+    db
+      .select({
+        siteId: timesheetFieldBreakPlans.siteId,
+        employeeId: timesheetFieldBreakPlans.employeeId,
+        fieldBreakDate: timesheetFieldBreakPlans.fieldBreakDate,
+        fieldBreakEndDate: timesheetFieldBreakPlans.fieldBreakEndDate,
+      })
+      .from(timesheetFieldBreakPlans)
+      .where(fbConditions.length > 0 ? and(...fbConditions) : undefined)
+      .catch((err) => {
+        console.error('[daily-activity:timesheetFieldBreakPlans] Query failed:', err)
+        return []
+      }),
+  ])
+
+  const schedulingConfigsBySiteId = new Map<number, (typeof rawSchedulingConfigs)[0]>()
+  for (const cfg of rawSchedulingConfigs) {
+    if (cfg.siteId) {
+      schedulingConfigsBySiteId.set(cfg.siteId, cfg)
+    }
+  }
+
+  type SchedRow = { employeeId: number; schedule: string[] }
+  const scheduleBySiteAndPeriod = new Map<string, Map<number, string[]>>()
+
+  for (const plan of v2Plans) {
+    const key = `${plan.siteId}:${plan.period}`
+    const rows =
+      plan.status === 'active' && Array.isArray(plan.activeSchedule) && plan.activeSchedule.length > 0
+        ? (plan.activeSchedule as SchedRow[])
+        : Array.isArray(plan.draftSchedule)
+        ? (plan.draftSchedule as SchedRow[])
+        : []
+    if (!scheduleBySiteAndPeriod.has(key)) {
+      const empMap = new Map<number, string[]>()
+      for (const r of rows) {
+        if (r && r.employeeId && Array.isArray(r.schedule)) {
+          empMap.set(r.employeeId, r.schedule)
+        }
+      }
+      scheduleBySiteAndPeriod.set(key, empMap)
+    }
+  }
+
+  for (const plan of v1Plans) {
+    const key = `${plan.siteId}:${plan.period}`
+    if (!scheduleBySiteAndPeriod.has(key) && Array.isArray(plan.fixedSchedule)) {
+      const empMap = new Map<number, string[]>()
+      for (const r of plan.fixedSchedule as SchedRow[]) {
+        if (r && r.employeeId && Array.isArray(r.schedule)) {
+          empMap.set(r.employeeId, r.schedule)
+        }
+      }
+      scheduleBySiteAndPeriod.set(key, empMap)
+    }
+  }
+
+  const fbByEmployee = new Map<number, Array<{ start: string; end: string }>>()
+  for (const fb of fbPlans) {
+    if (fb.employeeId && fb.fieldBreakDate) {
+      const list = fbByEmployee.get(fb.employeeId) || []
+      list.push({
+        start: String(fb.fieldBreakDate),
+        end: String(fb.fieldBreakEndDate || fb.fieldBreakDate),
+      })
+      fbByEmployee.set(fb.employeeId, list)
+    }
+  }
+
+  // Query approved/submitted SPL (overtime command letters) for overtime tracking
+  const splQuery = employeeIds.length > 0
+    ? await db
+        .select({
+          splId: overtimeCommandLetters.id,
+          workDate: overtimeCommandLetters.workDate,
+          plannedStartAt: overtimeCommandLetters.plannedStartAt,
+          plannedEndAt: overtimeCommandLetters.plannedEndAt,
+          status: overtimeCommandLetters.status,
+          employeeId: overtimeCommandLetterParticipants.employeeId,
+          category: overtimeCommandLetterParticipants.category,
+          overtimeCreditMinutes: overtimeCommandLetterParticipants.overtimeCreditMinutes,
+        })
+        .from(overtimeCommandLetterParticipants)
+        .innerJoin(
+          overtimeCommandLetters,
+          eq(overtimeCommandLetterParticipants.overtimeCommandLetterId, overtimeCommandLetters.id)
+        )
+        .where(
+          and(
+            inArray(overtimeCommandLetterParticipants.employeeId, employeeIds),
+            sql`lower(${overtimeCommandLetters.status}) in ('approved', 'completed', 'submitted')`
+          )
+        )
+        .catch((err) => {
+          console.error('[daily-activity:overtimeCommandLetters] Query failed:', err)
+          return []
+        })
+    : []
+
+  const splByEmployeeAndDate = new Map<string, number>()
+  for (const spl of splQuery) {
+    if (!spl.employeeId || !spl.workDate) continue
+    const splDateStr = new Date(spl.workDate).toISOString().split('T')[0]
+    const key = `${spl.employeeId}-${splDateStr}`
+    let minutes = 0
+    if (spl.overtimeCreditMinutes && spl.overtimeCreditMinutes > 0) {
+      minutes = spl.overtimeCreditMinutes
+    } else if (spl.plannedStartAt && spl.plannedEndAt) {
+      const s = new Date(spl.plannedStartAt).getTime()
+      const e = new Date(spl.plannedEndAt).getTime()
+      const diffM = Math.round((e - s) / 60000)
+      if (diffM > 0 && diffM <= 18 * 60) {
+        minutes = diffM
+      }
+    }
+    if (minutes > 0) {
+      const curr = splByEmployeeAndDate.get(key) || 0
+      splByEmployeeAndDate.set(key, curr + minutes)
+    }
   }
 
   // 8. Build Real Employee Activity Rows - Grouped by Employee (100% Real Live DB Data)
@@ -1007,25 +1326,121 @@ export async function getDailyActivityDashboardData(
     const actualHoursCalc = Math.round((totalEffectiveMinutes / 60) * 10) / 10
     const ewhActualHours = Number(actualHoursCalc.toFixed(1))
 
-    // Target EWH: Standar shift tambang 12 jam, istirahat 1 jam tidak dihitung -> target net = 11 jam.
-    // Jika check-in & check-out presensi riil ada, hitung selisih jam dikurangi 1 jam istirahat.
-    let targetHours = 11
-    const empAtt = attendanceByEmployee.get(firstSession.employeeId)
-    if (empAtt?.checkIn && empAtt?.checkOut) {
-      const inMs = new Date(empAtt.checkIn).getTime()
-      const outMs = new Date(empAtt.checkOut).getTime()
-      let diffMs = outMs - inMs
-      if (diffMs < 0) {
-        // Shift malam melintasi tengah malam
-        diffMs += 24 * 3600 * 1000
-      }
-      const grossHours = diffMs / (3600 * 1000)
-      if (grossHours >= 4 && grossHours <= 24) {
-        // Pengurangan istirahat 1 jam
-        const netHours = Math.max(1, grossHours - 1)
-        targetHours = Math.round(netHours * 10) / 10
+    // Resolve roster schedule code and clocks for this employee
+    const sDateStr = firstSession.workDate ? new Date(firstSession.workDate).toISOString().split('T')[0] : targetDateStr
+    const sPeriod = sDateStr ? sDateStr.slice(0, 7) : ''
+    const sDay = sDateStr ? parseInt(sDateStr.slice(8, 10), 10) : 0
+    const empSiteId = firstSession.siteId || currentSite.id
+    const siteKey = `${empSiteId}:${sPeriod}`
+    const empSchedules = scheduleBySiteAndPeriod.get(siteKey)
+    const empRosterCode = empSchedules && sDay > 0 ? empSchedules.get(firstSession.employeeId)?.[sDay - 1] : undefined
+    const siteCfg = (empSiteId ? schedulingConfigsBySiteId.get(empSiteId) : undefined) || (currentSite.id ? schedulingConfigsBySiteId.get(currentSite.id) : undefined)
+
+    // Resolve roster clocks and net hours directly from site/roster configuration
+    const rosterClocks = resolveRosterClocksForEmployee({
+      siteConfig: siteCfg,
+      shiftCode: firstSession.shiftCode,
+      rosterScheduleCode: empRosterCode,
+    })
+    const rosterNetHours = computeRosterNetHours(rosterClocks.clockIn, rosterClocks.clockOut)
+
+    // Base normal net working hours:
+    // 1. Mengikuti konfigurasi roster site secara langsung (misal: Balikpapan 08:00 - 17:00 -> 9 jam - 1 jam istirahat = 8 jam kerja net).
+    // 2. Jika pola roster 5:2 (seperti Balikpapan, Head Office, Gresik) -> standar jam kerja normal adalah 8 jam.
+    // 3. Untuk site tambang shift 12 jam (seperti Tabang, BIB, Sangatta 06:00 - 18:00) -> 12 jam - 1 jam istirahat = 11 jam kerja net.
+    let baseNormalHours = rosterNetHours
+    if (baseNormalHours <= 0) {
+      baseNormalHours = (siteCfg?.rosterType === '5:2' || siteCfg?.scheduleType === 'office') ? 8 : 11
+    } else if (siteCfg?.rosterType === '5:2' && baseNormalHours > 8) {
+      baseNormalHours = 8
+    }
+
+    // Check if today is an OFF / Libur / Field Break day in roster
+    const empFbs = fbByEmployee.get(firstSession.employeeId) || []
+    const isFieldBreak = sDateStr ? empFbs.some((range) => sDateStr >= range.start && sDateStr <= range.end) : false
+    const rawRosterCode = (empRosterCode || '').trim().toUpperCase()
+    let isRosterOff = isFieldBreak ||
+      rawRosterCode === 'OFF' ||
+      rawRosterCode === 'LIBUR' ||
+      rawRosterCode === 'FB' ||
+      rawRosterCode === 'CUTI' ||
+      rawRosterCode === 'IJIN'
+
+    // If no explicit roster code in schedule plan, check default roster pattern (5:2 or 6:1)
+    if (!isRosterOff && !empRosterCode && sDateStr) {
+      const dateObj = new Date(`${sDateStr}T00:00:00Z`)
+      const dayOfWeek = dateObj.getUTCDay() // 0 = Sunday, 6 = Saturday
+      const rType = (siteCfg?.rosterType || '5:2').trim()
+      if (rType === '5:2' && (dayOfWeek === 0 || dayOfWeek === 6)) {
+        isRosterOff = true
+      } else if (rType === '6:1' && dayOfWeek === 0) {
+        isRosterOff = true
       }
     }
+
+    // Check attendance records for this employee on this date
+    const dateKey = `${firstSession.employeeId}-${sDateStr}`
+    const empAtt = (sDateStr ? attendanceByEmpAndDate.get(dateKey) : null) || attendanceByEmployee.get(firstSession.employeeId)
+
+    // Check for next day checkout if night shift
+    let checkOutEvent = empAtt?.checkOut
+    if (!checkOutEvent && sDateStr) {
+      try {
+        const nextDate = new Date(`${sDateStr}T00:00:00Z`)
+        nextDate.setUTCDate(nextDate.getUTCDate() + 1)
+        const nextDateStr = nextDate.toISOString().split('T')[0]
+        const nextDayAtt = attendanceByEmpAndDate.get(`${firstSession.employeeId}-${nextDateStr}`)
+        if (nextDayAtt?.checkOut) {
+          checkOutEvent = nextDayAtt.checkOut
+        }
+      } catch {}
+    }
+
+    // Determine if employee has a valid checkout for this shift
+    let hasValidCheckout = false
+    let actualAttendanceHours: number | null = null
+
+    if (empAtt?.checkIn && checkOutEvent) {
+      const inMs = new Date(empAtt.checkIn).getTime()
+      const outMs = new Date(checkOutEvent).getTime()
+      const diffMs = outMs - inMs
+      if (diffMs > 0) {
+        const grossHours = diffMs / (3600 * 1000)
+        // Valid shift checkout is between 4 and 18 hours after check-in
+        if (grossHours >= 4 && grossHours <= 18) {
+          hasValidCheckout = true
+          const netHours = Math.max(1, grossHours - 1)
+          actualAttendanceHours = Math.round(netHours * 10) / 10
+        }
+      }
+    }
+
+    // Overtime Calculation (Approved SPL or Real Presence exceeding normal hours)
+    const splMinutes = sDateStr ? (splByEmployeeAndDate.get(`${firstSession.employeeId}-${sDateStr}`) || 0) : 0
+    const splOtHours = Math.round((splMinutes / 60) * 10) / 10
+
+    let overtimeHours = 0
+    let targetHours: number
+
+    if (isRosterOff) {
+      // Jadwal OFF / Libur:
+      // Jam kerja normal = 0. Seluruh durasi kerjanya dihitung dari jam lemburnya (SPL, presensi hari libur, atau aktivitas riil).
+      const presenceOtHours = actualAttendanceHours !== null ? actualAttendanceHours : 0
+      overtimeHours = Math.max(splOtHours, presenceOtHours, ewhActualHours)
+      targetHours = overtimeHours > 0 ? overtimeHours : (actualAttendanceHours || baseNormalHours)
+    } else {
+      // Hari Kerja Normal:
+      // Standar: 8 jam (office) atau 11 jam (site, 12 jam shift - 1 jam istirahat).
+      // Jika karyawan bekerja melebihi jam kerja normal (lembur di luar jam lembur wajib untuk site):
+      // Maka dihitung durasi kerjanya dari jam lemburnya, sehingga target total bertambah seragam (normal + lembur).
+      let presenceOtHours = 0
+      if (hasValidCheckout && actualAttendanceHours !== null && actualAttendanceHours > baseNormalHours) {
+        presenceOtHours = Math.round((actualAttendanceHours - baseNormalHours) * 10) / 10
+      }
+      overtimeHours = Math.max(presenceOtHours, splOtHours)
+      targetHours = baseNormalHours + overtimeHours
+    }
+
     const ewhTargetHours = Number(targetHours.toFixed(1))
     const ewhPercentage = ewhTargetHours > 0 ? Math.min(100, Math.round((ewhActualHours / ewhTargetHours) * 100)) : 0
     const ewhLabel = `${ewhActualHours}/${ewhTargetHours} Jam`
@@ -1045,15 +1460,12 @@ export async function getDailyActivityDashboardData(
       workDate: formatDateDisplay(firstSession.workDate),
       shift: normalizeShift(firstSession.shiftCode),
       checkInTime: (() => {
-        const empAtt = attendanceByEmployee.get(firstSession.employeeId)
         if (empAtt?.checkIn) return formatTimeHHmm(empAtt.checkIn)
         if (earliestStartTime) return formatTimeHHmm(earliestStartTime)
         return formatTimeHHmm(firstSession.startedAt || firstSession.submittedAt)
       })(),
       checkOutTime: (() => {
-        const empAtt = attendanceByEmployee.get(firstSession.employeeId)
-        if (empAtt?.checkOut) return formatTimeHHmm(empAtt.checkOut)
-        if (latestEndTime) return formatTimeHHmm(latestEndTime)
+        if (hasValidCheckout && checkOutEvent) return formatTimeHHmm(checkOutEvent)
         return '-'
       })(),
       primaryActivity,
@@ -1073,6 +1485,12 @@ export async function getDailyActivityDashboardData(
       ewhTargetHours,
       ewhLabel,
       ewhPercentage,
+      rosterClockIn: rosterClocks.clockIn,
+      rosterClockOut: rosterClocks.clockOut,
+      isRosterOff,
+      baseNormalHours,
+      overtimeHours,
+      rosterScheduleCode: empRosterCode || (isRosterOff ? 'OFF' : 'NORMAL'),
     })
   }
 
@@ -1191,33 +1609,6 @@ export async function getDailyActivityDashboardData(
     if (act.employeeId) submittedEmpIds.add(act.employeeId)
   }
 
-  function getDatesInRange(startStr: string, endStr: string, maxDays = 31): string[] {
-    if (!startStr && !endStr) return ['2026-09-24']
-    const s = startStr || endStr
-    const e = endStr || startStr
-    try {
-      const startDate = new Date(`${s}T00:00:00Z`)
-      const endDate = new Date(`${e}T00:00:00Z`)
-      if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
-        return [s]
-      }
-      const dates: string[] = []
-      const curr = new Date(startDate)
-      let count = 0
-      while (curr <= endDate && count < maxDays) {
-        dates.push(curr.toISOString().split('T')[0])
-        curr.setUTCDate(curr.getUTCDate() + 1)
-        count++
-      }
-      return dates.length > 0 ? dates : [s]
-    } catch {
-      return [s]
-    }
-  }
-
-  const evalDates = getDatesInRange(effectiveStartDate || targetDateStr, effectiveEndDate || targetDateStr)
-  const evalPeriods = Array.from(new Set(evalDates.map((d) => d.slice(0, 7))))
-
   const employeeWhere = [
     eq(employees.isActive, true),
     sql`lower(${employees.employmentStatus}) != 'inactive'`,
@@ -1226,137 +1617,30 @@ export async function getDailyActivityDashboardData(
     employeeWhere.push(eq(employees.siteId, currentSite.id))
   }
 
-  const v2Conditions = [inArray(timesheetSchedulingPlansV2.period, evalPeriods)]
-  if (currentSite.id !== 0) {
-    v2Conditions.push(eq(timesheetSchedulingPlansV2.siteId, currentSite.id))
-  }
-
-  const v1Conditions = [inArray(timesheetSchedulingPlans.period, evalPeriods)]
-  if (currentSite.id !== 0) {
-    v1Conditions.push(eq(timesheetSchedulingPlans.siteId, currentSite.id))
-  }
-
-  const fbConditions = []
-  if (currentSite.id !== 0) {
-    fbConditions.push(eq(timesheetFieldBreakPlans.siteId, currentSite.id))
-  }
-
-  const [allActiveEmployees, v2Plans, v1Plans, fbPlans] = await Promise.all([
-    db
-      .select({
-        id: employees.id,
-        employeeSn: employees.employeeSn,
-        name: employees.name,
-        jobTitle: employees.jobTitle,
-        department: employees.department,
-        deptName: masterDepartments.name,
-        section: employees.section,
-        sectionName: masterSections.name,
-        siteId: employees.siteId,
-        siteName: sites.name,
-        rosterType: sql<string>`'5:2'`.as('roster_type'),
-      })
-      .from(employees)
-      .leftJoin(sites, eq(employees.siteId, sites.id))
-      .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
-      .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
-      .where(and(...employeeWhere))
-      .orderBy(employees.name)
-      .catch((err) => {
-        console.error('[daily-activity:employees] Query failed:', err)
-        return []
-      }),
-    evalPeriods.length > 0
-      ? db
-          .select({
-            siteId: timesheetSchedulingPlansV2.siteId,
-            period: timesheetSchedulingPlansV2.period,
-            status: timesheetSchedulingPlansV2.status,
-            activeSchedule: timesheetSchedulingPlansV2.activeSchedule,
-            draftSchedule: timesheetSchedulingPlansV2.draftSchedule,
-          })
-          .from(timesheetSchedulingPlansV2)
-          .where(and(...v2Conditions))
-          .catch((err) => {
-            console.error('[daily-activity:timesheetSchedulingPlansV2] Query failed:', err)
-            return []
-          })
-      : Promise.resolve([]),
-    evalPeriods.length > 0
-      ? db
-          .select({
-            siteId: timesheetSchedulingPlans.siteId,
-            period: timesheetSchedulingPlans.period,
-            fixedSchedule: timesheetSchedulingPlans.fixedSchedule,
-          })
-          .from(timesheetSchedulingPlans)
-          .where(and(...v1Conditions))
-          .catch((err) => {
-            console.error('[daily-activity:timesheetSchedulingPlans] Query failed:', err)
-            return []
-          })
-      : Promise.resolve([]),
-    db
-      .select({
-        siteId: timesheetFieldBreakPlans.siteId,
-        employeeId: timesheetFieldBreakPlans.employeeId,
-        fieldBreakDate: timesheetFieldBreakPlans.fieldBreakDate,
-        fieldBreakEndDate: timesheetFieldBreakPlans.fieldBreakEndDate,
-      })
-      .from(timesheetFieldBreakPlans)
-      .where(fbConditions.length > 0 ? and(...fbConditions) : undefined)
-      .catch((err) => {
-        console.error('[daily-activity:timesheetFieldBreakPlans] Query failed:', err)
-        return []
-      }),
-  ])
-
-  type SchedRow = { employeeId: number; schedule: string[] }
-  const scheduleBySiteAndPeriod = new Map<string, Map<number, string[]>>()
-
-  for (const plan of v2Plans) {
-    const key = `${plan.siteId}:${plan.period}`
-    const rows =
-      plan.status === 'active' && Array.isArray(plan.activeSchedule) && plan.activeSchedule.length > 0
-        ? (plan.activeSchedule as SchedRow[])
-        : Array.isArray(plan.draftSchedule)
-        ? (plan.draftSchedule as SchedRow[])
-        : []
-    if (!scheduleBySiteAndPeriod.has(key)) {
-      const empMap = new Map<number, string[]>()
-      for (const r of rows) {
-        if (r && r.employeeId && Array.isArray(r.schedule)) {
-          empMap.set(r.employeeId, r.schedule)
-        }
-      }
-      scheduleBySiteAndPeriod.set(key, empMap)
-    }
-  }
-
-  for (const plan of v1Plans) {
-    const key = `${plan.siteId}:${plan.period}`
-    if (!scheduleBySiteAndPeriod.has(key) && Array.isArray(plan.fixedSchedule)) {
-      const empMap = new Map<number, string[]>()
-      for (const r of plan.fixedSchedule as SchedRow[]) {
-        if (r && r.employeeId && Array.isArray(r.schedule)) {
-          empMap.set(r.employeeId, r.schedule)
-        }
-      }
-      scheduleBySiteAndPeriod.set(key, empMap)
-    }
-  }
-
-  const fbByEmployee = new Map<number, Array<{ start: string; end: string }>>()
-  for (const fb of fbPlans) {
-    if (fb.employeeId && fb.fieldBreakDate) {
-      const list = fbByEmployee.get(fb.employeeId) || []
-      list.push({
-        start: String(fb.fieldBreakDate),
-        end: String(fb.fieldBreakEndDate || fb.fieldBreakDate),
-      })
-      fbByEmployee.set(fb.employeeId, list)
-    }
-  }
+  const allActiveEmployees = await db
+    .select({
+      id: employees.id,
+      employeeSn: employees.employeeSn,
+      name: employees.name,
+      jobTitle: employees.jobTitle,
+      department: employees.department,
+      deptName: masterDepartments.name,
+      section: employees.section,
+      sectionName: masterSections.name,
+      siteId: employees.siteId,
+      siteName: sites.name,
+      rosterType: sql<string>`'5:2'`.as('roster_type'),
+    })
+    .from(employees)
+    .leftJoin(sites, eq(employees.siteId, sites.id))
+    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+    .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+    .where(and(...employeeWhere))
+    .orderBy(employees.name)
+    .catch((err) => {
+      console.error('[daily-activity:employees] Query failed:', err)
+      return []
+    })
 
   const unsubmittedEmployees: UnsubmittedEmployeeRow[] = []
 

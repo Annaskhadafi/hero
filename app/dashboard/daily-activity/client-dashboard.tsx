@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   ArrowDownRight,
   ArrowUpRight,
+  BarChart3,
   Bell,
   Calendar,
   CheckCircle2,
@@ -44,6 +45,7 @@ import {
   DelayedJobItem,
   TimelineActivityEvent,
 } from '@/lib/daily-activity-dashboard'
+import { DailyActivityEmployeeAnalyticsModal } from '@/components/daily-activity-employee-analytics-modal'
 import { cn } from '@/lib/utils'
 import { formatPhotoDisplayUrl } from '@/lib/photo-url'
 import { Button } from '@/components/ui/button'
@@ -200,6 +202,32 @@ export function DailyActivityClientDashboard({
     delayedJob?: DelayedJobItem
     employee?: EmployeeActivityRow
   } | null>(null)
+
+  // Employee EWH & Activity History Analytics Modal state
+  const [analyticsEmployee, setAnalyticsEmployee] = useState<{
+    employeeDbId: number
+    name: string
+    employeeSn: string
+    siteName?: string
+  } | null>(null)
+
+  const handleOpenAnalytics = (emp?: {
+    employeeDbId?: number
+    name?: string
+    employeeId?: string
+    siteName?: string
+  } | null) => {
+    if (!emp || !emp.employeeDbId) {
+      toast.error('Data ID karyawan tidak tersedia untuk analitik')
+      return
+    }
+    setAnalyticsEmployee({
+      employeeDbId: emp.employeeDbId,
+      name: emp.name || 'Karyawan',
+      employeeSn: emp.employeeId || '-',
+      siteName: emp.siteName || initialData.currentSite.name,
+    })
+  }
 
   const [lightboxPhoto, setLightboxPhoto] = useState<{
     url: string
@@ -1734,34 +1762,55 @@ export function DailyActivityClientDashboard({
                               <span className="size-1.5 rounded-full bg-emerald-500 inline-block" />
                               {emp.checkInTime}
                             </span>
-                            {emp.checkOutTime && emp.checkOutTime !== '-' && (
+                            {emp.checkOutTime && emp.checkOutTime !== '-' ? (
                               <span className="text-slate-400 text-[10px] flex items-center gap-1" title="Jam Pulang / Checkout">
                                 <span className="size-1.5 rounded-full bg-blue-500 inline-block" />
                                 {emp.checkOutTime}
+                              </span>
+                            ) : (
+                              <span
+                                className="text-slate-400 text-[10px] flex items-center gap-1"
+                                title={emp.rosterClockOut ? `Belum Checkout (Jadwal Roster: ${emp.rosterClockIn || '-'}-${emp.rosterClockOut})` : 'Belum Checkout'}
+                              >
+                                <span className="size-1.5 rounded-full bg-amber-400 inline-block" />
+                                -
                               </span>
                             )}
                           </div>
                         </td>
                         <td className="py-3 px-4">
                           <div className="flex flex-col gap-0.5">
-                            <span
+                            <button
+                              type="button"
+                              onClick={() => handleOpenAnalytics(emp)}
                               className={cn(
-                                'inline-flex items-center gap-1 font-mono font-bold text-xs px-2 py-0.5 rounded border w-fit whitespace-nowrap',
+                                'group inline-flex items-center gap-1 font-mono font-bold text-xs px-2 py-0.5 rounded border w-fit whitespace-nowrap transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs hover:scale-[1.02]',
                                 emp.ewhPercentage >= 80
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100/80 hover:border-emerald-300'
                                   : emp.ewhPercentage >= 50
-                                  ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                  ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100/80 hover:border-blue-300'
                                   : emp.ewhActualHours > 0
-                                  ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                  : 'bg-slate-100 text-slate-600 border-slate-200'
+                                  ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100/80 hover:border-amber-300'
+                                  : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200/80 hover:border-slate-300'
                               )}
-                              title={`EWH: ${emp.ewhActualHours} jam kerja dari target ${emp.ewhTargetHours} jam (istirahat 1 jam tidak dihitung)`}
+                              title="Klik untuk melihat Grafik Tren & Riwayat Analitik EWH Karyawan"
                             >
-                              {emp.ewhActualHours}/{emp.ewhTargetHours} Jam
-                            </span>
-                            <span className="text-[10px] text-slate-400 font-medium pl-0.5 whitespace-nowrap">
-                              {emp.ewhPercentage}% Efektif
-                            </span>
+                              <BarChart3 className="w-3 h-3 text-slate-400 group-hover:text-current transition-colors" />
+                              <span>{emp.ewhActualHours}/{emp.ewhTargetHours} Jam</span>
+                            </button>
+                            <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium pl-0.5 whitespace-nowrap">
+                              <span>{emp.ewhPercentage}% Efektif</span>
+                              {emp.isRosterOff && (
+                                <span className="text-[9px] px-1 py-0.2 rounded font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                  OFF / Lembur
+                                </span>
+                              )}
+                              {!emp.isRosterOff && emp.overtimeHours && emp.overtimeHours > 0 ? (
+                                <span className="text-[9px] px-1 py-0.2 rounded font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                                  +{emp.overtimeHours}j Lembur
+                                </span>
+                              ) : null}
+                            </div>
                           </div>
                         </td>
                     <td className="py-3 px-4">
@@ -1831,6 +1880,13 @@ export function DailyActivityClientDashboard({
                           <DropdownMenuItem onClick={() => handleExportDetailCsv(emp)}>
                             <Download className="w-3.5 h-3.5 mr-2 text-emerald-600" />
                             Ekspor CSV Aktivitas
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleOpenAnalytics(emp)}
+                            className="cursor-pointer"
+                          >
+                            <BarChart3 className="w-3.5 h-3.5 mr-2 text-indigo-600" />
+                            Riwayat &amp; Analitik EWH
                           </DropdownMenuItem>
                           <DropdownMenuItem asChild>
                             <Link href="/dashboard/overtime-requests">
@@ -2023,6 +2079,15 @@ export function DailyActivityClientDashboard({
                           <Link href="/dashboard/scheduling-timesheet" title="Lihat jadwal roster lengkap">
                             <Users className="w-3.5 h-3.5" />
                           </Link>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleOpenAnalytics(emp)}
+                          className="h-7 text-xs text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 px-2 cursor-pointer"
+                          title="Lihat riwayat & analitik EWH karyawan"
+                        >
+                          <BarChart3 className="w-3.5 h-3.5" />
                         </Button>
                       </div>
                     </td>
@@ -2328,6 +2393,15 @@ export function DailyActivityClientDashboard({
                     <Button
                       variant="outline"
                       size="sm"
+                      onClick={() => handleOpenAnalytics(activeDetailItem.employee)}
+                      className="h-8 px-2.5 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-sky-200 border-blue-400/40 text-xs font-bold gap-1.5 cursor-pointer"
+                    >
+                      <BarChart3 className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Analitik &amp; Tren EWH</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={() => handleExportDetailExcel(activeDetailItem.employee!)}
                       className="h-8 px-2.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border-emerald-400/40 text-xs font-bold gap-1.5 cursor-pointer"
                     >
@@ -2453,7 +2527,7 @@ export function DailyActivityClientDashboard({
                           className="font-mono font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 text-[11px]"
                           title="Jam Pulang / Checkout"
                         >
-                          Checkout: {activeDetailItem.employee.checkOutTime || '-'}
+                          Checkout: {activeDetailItem.employee.checkOutTime && activeDetailItem.employee.checkOutTime !== '-' ? activeDetailItem.employee.checkOutTime : 'Belum Checkout'}
                         </span>
                       </div>
                     </div>
@@ -2464,7 +2538,17 @@ export function DailyActivityClientDashboard({
                       </span>
                     </div>
                     <div>
-                      <span className="text-[11px] text-slate-400 block font-medium">EWH Harian (Efektif)</span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-slate-400 block font-medium">EWH Harian (Efektif)</span>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenAnalytics(activeDetailItem.employee)}
+                          className="text-[10px] font-semibold text-blue-600 hover:text-blue-800 underline inline-flex items-center gap-0.5 cursor-pointer"
+                        >
+                          <BarChart3 className="w-2.5 h-2.5" />
+                          Tren EWH
+                        </button>
+                      </div>
                       <div className="mt-1 flex items-center gap-1.5">
                         <span className="font-bold text-slate-900 font-mono text-sm">
                           {activeDetailItem.employee.ewhActualHours}/{activeDetailItem.employee.ewhTargetHours} Jam
@@ -2485,7 +2569,11 @@ export function DailyActivityClientDashboard({
                         </span>
                       </div>
                       <span className="text-[10px] text-slate-400 block mt-0.5">
-                        Target net (1 jam istirahat tidak dihitung)
+                        {activeDetailItem.employee.isRosterOff
+                          ? `Hari Libur / OFF (Target dihitung dari ${activeDetailItem.employee.overtimeHours || activeDetailItem.employee.ewhTargetHours} jam lembur)`
+                          : activeDetailItem.employee.overtimeHours && activeDetailItem.employee.overtimeHours > 0
+                          ? `Standar ${activeDetailItem.employee.baseNormalHours || 8} jam normal + ${activeDetailItem.employee.overtimeHours} jam lembur di luar jam reguler`
+                          : `Standar shift normal ${activeDetailItem.employee.baseNormalHours || 8} jam net (1 jam istirahat tidak dihitung)`}
                       </span>
                     </div>
                   </div>
@@ -2891,6 +2979,18 @@ export function DailyActivityClientDashboard({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ── Employee EWH & Activity History Analytics Modal ── */}
+      {analyticsEmployee && (
+        <DailyActivityEmployeeAnalyticsModal
+          isOpen={!!analyticsEmployee}
+          onClose={() => setAnalyticsEmployee(null)}
+          employeeDbId={analyticsEmployee.employeeDbId}
+          employeeName={analyticsEmployee.name}
+          employeeSn={analyticsEmployee.employeeSn}
+          siteName={analyticsEmployee.siteName}
+        />
+      )}
     </div>
   )
 }

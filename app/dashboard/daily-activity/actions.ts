@@ -138,3 +138,28 @@ export async function deleteDailyActivityRecordAction(input: {
     return { success: false, error: error.message || 'Gagal menghapus data aktivitas.' }
   }
 }
+
+export async function getEmployeeEwhAnalyticsAction(
+  employeeDbId: number,
+  startDate?: string,
+  endDate?: string
+) {
+  try {
+    const session = await getServerSession()
+    if (!session?.user?.email) {
+      return { success: false, error: 'Sesi login tidak valid atau kadaluarsa.' }
+    }
+
+    const { getEmployeeEwhAnalytics } = await import('@/lib/employee-ewh-analytics')
+    const data = await getEmployeeEwhAnalytics(employeeDbId, startDate, endDate)
+    if (!data) {
+      return { success: false, error: 'Data karyawan tidak ditemukan.' }
+    }
+
+    return { success: true, data }
+  } catch (error: any) {
+    console.error('[getEmployeeEwhAnalyticsAction] error:', error)
+    return { success: false, error: error.message || 'Gagal memuat analitik EWH karyawan.' }
+  }
+}
+
