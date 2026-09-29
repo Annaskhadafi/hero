@@ -12,6 +12,8 @@ import {
   Calendar,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Download,
   ExternalLink,
@@ -121,12 +123,24 @@ export function DailyActivityClientDashboard({
     (currentUser?.isSectionHead && currentUser?.assignedSection ? currentUser.assignedSection : 'Semua Section')
 
   const [selectedSiteId, setSelectedSiteId] = useState<string>(initialSiteVal)
-  const [startDate, setStartDate] = useState<string>(
-    searchParams.get('startDate') || initialData.startDate || searchParams.get('date') || ''
-  )
-  const [endDate, setEndDate] = useState<string>(
-    searchParams.get('endDate') || initialData.endDate || searchParams.get('date') || ''
-  )
+
+  // Local today ISO string (YYYY-MM-DD)
+  const todayIso = useMemo(() => {
+    const d = new Date()
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+  }, [])
+
+  const initialDateVal =
+    searchParams.get('date') ||
+    searchParams.get('startDate') ||
+    initialData.currentDateIso ||
+    todayIso
+
+  const [selectedDate, setSelectedDate] = useState<string>(initialDateVal)
+
   const [selectedShift, setSelectedShift] = useState<string>(
     searchParams.get('shift') || initialData.selectedShift
   )
@@ -157,8 +171,15 @@ export function DailyActivityClientDashboard({
       setSelectedSiteId(siteParam !== null ? siteParam : String(initialData.currentSite.id))
     }
 
-    setStartDate(searchParams.get('startDate') || initialData.startDate || searchParams.get('date') || '')
-    setEndDate(searchParams.get('endDate') || initialData.endDate || searchParams.get('date') || '')
+    const urlDate = searchParams.get('date') || searchParams.get('startDate')
+    if (urlDate) {
+      setSelectedDate(urlDate)
+    } else if (initialData.currentDateIso) {
+      setSelectedDate(initialData.currentDateIso)
+    } else {
+      setSelectedDate(todayIso)
+    }
+
     setSelectedShift(searchParams.get('shift') || initialData.selectedShift || 'Semua Shift')
 
     const deptParam = searchParams.get('dept')
@@ -186,8 +207,8 @@ export function DailyActivityClientDashboard({
     searchParams,
     initialData.currentSite.id,
     initialData.selectedShift,
-    initialData.startDate,
-    initialData.endDate,
+    initialData.currentDateIso,
+    todayIso,
     currentUser,
   ])
 
@@ -299,11 +320,42 @@ export function DailyActivityClientDashboard({
     }
   }
 
+  const isToday = selectedDate === todayIso
+
+  const handleDateChange = (newDate: string) => {
+    if (!newDate) return
+    setSelectedDate(newDate)
+    applyFilters({ date: newDate })
+  }
+
+  const handlePreviousDay = () => {
+    const base = selectedDate ? new Date(selectedDate) : new Date()
+    base.setDate(base.getDate() - 1)
+    const y = base.getFullYear()
+    const m = String(base.getMonth() + 1).padStart(2, '0')
+    const d = String(base.getDate()).padStart(2, '0')
+    const prevDate = `${y}-${m}-${d}`
+    handleDateChange(prevDate)
+  }
+
+  const handleNextDay = () => {
+    const base = selectedDate ? new Date(selectedDate) : new Date()
+    base.setDate(base.getDate() + 1)
+    const y = base.getFullYear()
+    const m = String(base.getMonth() + 1).padStart(2, '0')
+    const d = String(base.getDate()).padStart(2, '0')
+    const nextDate = `${y}-${m}-${d}`
+    handleDateChange(nextDate)
+  }
+
+  const handleToday = () => {
+    handleDateChange(todayIso)
+  }
+
   // Sync navigation when filters change
   const applyFilters = (overrides?: {
     siteId?: string
-    startDate?: string
-    endDate?: string
+    date?: string
     shift?: string
     status?: string
     dept?: string
@@ -316,8 +368,7 @@ export function DailyActivityClientDashboard({
       ? String(currentUser.assignedSiteId)
       : (overrides?.siteId !== undefined ? overrides.siteId : selectedSiteId)
 
-    const sDate = overrides?.startDate !== undefined ? overrides.startDate : startDate
-    const eDate = overrides?.endDate !== undefined ? overrides.endDate : endDate
+    const curDate = overrides?.date !== undefined ? overrides.date : selectedDate
     const sh = overrides?.shift !== undefined ? overrides.shift : selectedShift
     const st = overrides?.status !== undefined ? overrides.status : selectedEmployeeStatus
     const dpt = overrides?.dept !== undefined ? overrides.dept : selectedDept
@@ -327,8 +378,7 @@ export function DailyActivityClientDashboard({
 
     const params = new URLSearchParams()
     if (sId && sId !== '0' && sId !== 'all') params.set('siteId', sId)
-    if (sDate) params.set('startDate', sDate)
-    if (eDate) params.set('endDate', eDate)
+    if (curDate) params.set('date', curDate)
     if (sh && sh !== 'Semua Shift') params.set('shift', sh)
     if (st && st !== 'Semua Status') params.set('status', st)
     if (dpt && dpt !== 'Semua Tim') params.set('dept', dpt)
@@ -355,8 +405,7 @@ export function DailyActivityClientDashboard({
       : 'Semua Section'
 
     setSelectedSiteId(defaultSite)
-    setStartDate('')
-    setEndDate('')
+    setSelectedDate(todayIso)
     setSelectedShift('Semua Shift')
     setSelectedDept(defaultDpt)
     setSelectedSection(defaultSec)
@@ -369,11 +418,12 @@ export function DailyActivityClientDashboard({
 
     const params = new URLSearchParams()
     if (defaultSite !== '0') params.set('siteId', defaultSite)
+    params.set('date', todayIso)
     if (defaultDpt !== 'Semua Tim') params.set('dept', defaultDpt)
     if (defaultSec !== 'Semua Section') params.set('section', defaultSec)
 
     startTransition(() => {
-      router.push(`/dashboard/daily-activity${params.toString() ? `?${params.toString()}` : ''}`)
+      router.push(`/dashboard/daily-activity?${params.toString()}`)
     })
   }
 
@@ -972,36 +1022,54 @@ export function DailyActivityClientDashboard({
             </select>
           </div>
 
-          {/* Dari Tanggal */}
-          <div>
-            <label className="text-[11px] font-semibold text-slate-500 mb-1 block">Dari Tanggal</label>
-            <input
-              type="date"
-              aria-label="Pilih Dari Tanggal"
-              value={startDate}
-              onChange={(e) => {
-                const val = e.target.value
-                setStartDate(val)
-                applyFilters({ startDate: val })
-              }}
-              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-          </div>
-
-          {/* Sampai Tanggal */}
-          <div>
-            <label className="text-[11px] font-semibold text-slate-500 mb-1 block">Sampai Tanggal</label>
-            <input
-              type="date"
-              aria-label="Pilih Sampai Tanggal"
-              value={endDate}
-              onChange={(e) => {
-                const val = e.target.value
-                setEndDate(val)
-                applyFilters({ endDate: val })
-              }}
-              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
+          {/* Tanggal Operasional (Day Navigator: Hari Sebelumnya, Date Picker, Hari Berikutnya, Hari Ini) */}
+          <div className="sm:col-span-2">
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[11px] font-semibold text-slate-500">Tanggal Operasional</label>
+              {isToday ? (
+                <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                  Hari Ini
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleToday}
+                  disabled={isPending}
+                  className="text-[9px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer"
+                  title="Kembali ke Hari Ini"
+                >
+                  Ke Hari Ini
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg p-0.5">
+              <button
+                type="button"
+                onClick={handlePreviousDay}
+                disabled={isPending}
+                className="h-[31px] w-8 rounded-md flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-200/80 disabled:opacity-40 transition-colors cursor-pointer shrink-0"
+                title="Hari Sebelumnya"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <input
+                type="date"
+                aria-label="Pilih Tanggal Operasional"
+                value={selectedDate}
+                onChange={(e) => handleDateChange(e.target.value)}
+                disabled={isPending}
+                className="w-full text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono cursor-pointer"
+              />
+              <button
+                type="button"
+                onClick={handleNextDay}
+                disabled={isPending}
+                className="h-[31px] w-8 rounded-md flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-200/80 disabled:opacity-40 transition-colors cursor-pointer shrink-0"
+                title="Hari Berikutnya"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {/* Nama Karyawan */}

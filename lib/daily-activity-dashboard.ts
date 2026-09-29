@@ -175,6 +175,8 @@ export interface DailyActivityDashboardData {
   sectionsList: Array<{ id: number; name: string; departmentId?: number | null }>
   currentSite: DailyActivitySiteItem
   currentDate: string
+  currentDateIso?: string
+  isToday?: boolean
   startDate?: string
   endDate?: string
   selectedShift: string
@@ -341,13 +343,24 @@ function formatTimeHHmm(date?: Date | string | null): string {
 
 
 
+function getTodayIsoString(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 function formatDateDisplay(date?: Date | string | null): string {
-  if (!date) return '24 Sep 2026'
+  if (!date) {
+    const today = new Date()
+    return today.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+  }
   try {
     const d = new Date(date)
     return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
   } catch {
-    return '24 Sep 2026'
+    return String(date)
   }
 }
 
@@ -518,13 +531,20 @@ export async function getDailyActivityDashboardData(
   }
 
   // 2. Fetch real sessions from DB
+  const defaultToday = getTodayIsoString()
+  const requestedDate = params.date?.trim()
+  const requestedStart = params.startDate?.trim()
+  const requestedEnd = params.endDate?.trim()
+
+  // Operating mode: defaults to today if neither date nor date range is provided
+  const singleDate = requestedDate || (!requestedStart && !requestedEnd ? defaultToday : (requestedStart === requestedEnd ? requestedStart : ''))
+  const effectiveStartDate = singleDate || requestedStart || defaultToday
+  const effectiveEndDate = singleDate || requestedEnd || defaultToday
+
   const sessionConditions = []
   if (currentSite.id !== 0) {
     sessionConditions.push(eq(dailyActivitySessions.siteId, currentSite.id))
   }
-
-  const effectiveStartDate = params.startDate?.trim() || (params.date ? params.date.trim() : '')
-  const effectiveEndDate = params.endDate?.trim() || (params.date ? params.date.trim() : '')
 
   if (effectiveStartDate && effectiveEndDate) {
     sessionConditions.push(
@@ -756,7 +776,7 @@ export async function getDailyActivityDashboardData(
     : Number(activeEmployeesRes[0]?.count || 0)
 
   // 4b. Real Attendance from hero_attendance_records
-  const targetDateStr = effectiveStartDate || effectiveEndDate || '2026-09-24'
+  const targetDateStr = singleDate || effectiveStartDate || effectiveEndDate || defaultToday
   const evalDates = getDatesInRange(effectiveStartDate || targetDateStr, effectiveEndDate || targetDateStr)
   const evalPeriods = Array.from(new Set(evalDates.map((d) => d.slice(0, 7))))
 
@@ -1738,19 +1758,9 @@ export async function getDailyActivityDashboardData(
     })
   }
 
-  let latestSessionDate = '24 Sep 2026'
-  if (effectiveStartDate && effectiveEndDate) {
-    if (effectiveStartDate === effectiveEndDate) {
-      latestSessionDate = formatDateDisplay(effectiveStartDate)
-    } else {
-      latestSessionDate = `${formatDateDisplay(effectiveStartDate)} - ${formatDateDisplay(effectiveEndDate)}`
-    }
-  } else if (effectiveStartDate) {
-    latestSessionDate = formatDateDisplay(effectiveStartDate)
-  } else if (params.date) {
-    latestSessionDate = formatDateDisplay(params.date)
-  } else if (effectiveSessions[0]?.workDate) {
-    latestSessionDate = formatDateDisplay(effectiveSessions[0].workDate)
+  let latestSessionDate = formatDateDisplay(targetDateStr)
+  if (effectiveStartDate && effectiveEndDate && effectiveStartDate !== effectiveEndDate) {
+    latestSessionDate = `${formatDateDisplay(effectiveStartDate)} - ${formatDateDisplay(effectiveEndDate)}`
   }
 
   return {
@@ -1759,6 +1769,8 @@ export async function getDailyActivityDashboardData(
     sectionsList: allSections,
     currentSite,
     currentDate: latestSessionDate,
+    currentDateIso: targetDateStr,
+    isToday: targetDateStr === defaultToday,
     startDate: effectiveStartDate || undefined,
     endDate: effectiveEndDate || undefined,
     selectedShift: params.shift || 'Semua Shift',
