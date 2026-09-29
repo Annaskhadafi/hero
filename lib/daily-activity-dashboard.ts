@@ -106,6 +106,10 @@ export interface EmployeeActivityRow {
   totalPoints: number
   tasks: ActivityTaskItem[]
   sessions: EmployeeSessionMeta[]
+  ewhActualHours: number
+  ewhTargetHours: number
+  ewhLabel: string
+  ewhPercentage: number
 }
 
 
@@ -247,6 +251,47 @@ function formatDuration(start?: Date | string | null, end?: Date | string | null
     } catch {}
   }
   return fallback || '-'
+}
+
+function parseDurationMinutes(
+  start?: Date | string | null,
+  end?: Date | string | null,
+  fallback?: any
+): number {
+  if (start && end) {
+    try {
+      const s = new Date(start).getTime()
+      const e = new Date(end).getTime()
+      const diffMs = e - s
+      if (!Number.isNaN(diffMs) && diffMs > 0 && diffMs <= 18 * 3600 * 1000) {
+        return Math.round(diffMs / 60000)
+      }
+    } catch {}
+  }
+
+  if (fallback !== undefined && fallback !== null && fallback !== '') {
+    if (typeof fallback === 'number' && fallback > 0) {
+      return Math.round(fallback)
+    }
+    if (typeof fallback === 'string') {
+      const str = fallback.trim().toLowerCase()
+      if (str && str !== '-') {
+        let mins = 0
+        const hoursMatch = str.match(/(\d+(?:\.\d+)?)\s*(?:j|jam|h|hours?)/)
+        if (hoursMatch) mins += parseFloat(hoursMatch[1]) * 60
+        const minsMatch = str.match(/(\d+(?:\.\d+)?)\s*(?:m|menit|mins?)/)
+        if (minsMatch) mins += parseFloat(minsMatch[1])
+        if (mins > 0) return Math.round(mins)
+
+        const num = parseFloat(str)
+        if (!Number.isNaN(num) && num > 0) {
+          return num <= 16 ? Math.round(num * 60) : Math.round(num)
+        }
+      }
+    }
+  }
+
+  return 0
 }
 
 function normalizeUnit(unit?: string | null): string {
@@ -536,6 +581,7 @@ export async function getDailyActivityDashboardData(
           unitNumber: activities.unitNumber,
           remarks: activities.remarks,
           startTime: activities.startTime,
+          endTime: activities.endTime,
           status: activities.status,
           pointsAwarded: activities.pointsAwarded,
         })
@@ -731,6 +777,7 @@ export async function getDailyActivityDashboardData(
     let latestEndTime: Date | null = null
     let latestUpdateTime: Date | null = null
     let totalPoints = 0
+    let totalEffectiveMinutes = 0
 
     // Iterate through all sessions of this employee
     for (const s of empSessions) {
@@ -786,6 +833,11 @@ export async function getDailyActivityDashboardData(
             if (!latestEndTime || iEnd > latestEndTime) latestEndTime = iEnd
           }
 
+          const itemMins = parseDurationMinutes(itemStart, itemEnd, parsedPayload.duration)
+          if (itemMins > 0) {
+            totalEffectiveMinutes += itemMins
+          }
+
           const durationStr = formatDuration(itemStart, itemEnd, parsedPayload.duration)
           const points = item.actualPoints || 0
           totalPoints += points
@@ -820,6 +872,21 @@ export async function getDailyActivityDashboardData(
             sessionUnits.add(uNum)
           }
 
+          const actStart = act.startTime
+          const actEnd = act.endTime
+          if (actStart) {
+            const ast = new Date(actStart)
+            if (!earliestStartTime || ast < earliestStartTime) earliestStartTime = ast
+          }
+          if (actEnd) {
+            const aend = new Date(actEnd)
+            if (!latestEndTime || aend > latestEndTime) latestEndTime = aend
+          }
+
+          const actMins = parseDurationMinutes(actStart, actEnd)
+          if (actMins > 0) {
+            totalEffectiveMinutes += actMins
+          }
 
           const actPhotos = photosByActId.get(act.id) || []
           const actStatus = normalizeStatus(act.status)
@@ -835,8 +902,8 @@ export async function getDailyActivityDashboardData(
             status: actStatus,
             progress: actStatus === 'Selesai' ? 100 : 50,
             startedAt: formatTimeHHmm(act.startTime),
-            endedAt: undefined,
-            durationLabel: '-',
+            endedAt: formatTimeHHmm(act.endTime),
+            durationLabel: formatDuration(act.startTime, act.endTime),
             points: pts,
             remarks: act.remarks || undefined,
             photoUrl: actPhotos[0] || null,
@@ -922,6 +989,47 @@ export async function getDailyActivityDashboardData(
       progress = status === 'Selesai' ? 100 : status === 'Berjalan' ? 50 : 0
     }
 
+    // Fallback if no task item duration was found: calculate from session timestamps
+    if (totalEffectiveMinutes === 0) {
+      for (const s of empSessions) {
+        if (s.startedAt && (s.submittedAt || s.updatedAt)) {
+          const sStart = new Date(s.startedAt).getTime()
+          const sEnd = new Date(s.submittedAt || s.updatedAt || s.startedAt).getTime()
+          const diffMs = sEnd - sStart
+          if (!Number.isNaN(diffMs) && diffMs > 0 && diffMs <= 18 * 3600 * 1000) {
+            totalEffectiveMinutes += Math.round(diffMs / 60000)
+          }
+        }
+      }
+    }
+
+    // Actual EWH in hours
+    const actualHoursCalc = Math.round((totalEffectiveMinutes / 60) * 10) / 10
+    const ewhActualHours = Number(actualHoursCalc.toFixed(1))
+
+    // Target EWH: Standar shift tambang 12 jam, istirahat 1 jam tidak dihitung -> target net = 11 jam.
+    // Jika check-in & check-out presensi riil ada, hitung selisih jam dikurangi 1 jam istirahat.
+    let targetHours = 11
+    const empAtt = attendanceByEmployee.get(firstSession.employeeId)
+    if (empAtt?.checkIn && empAtt?.checkOut) {
+      const inMs = new Date(empAtt.checkIn).getTime()
+      const outMs = new Date(empAtt.checkOut).getTime()
+      let diffMs = outMs - inMs
+      if (diffMs < 0) {
+        // Shift malam melintasi tengah malam
+        diffMs += 24 * 3600 * 1000
+      }
+      const grossHours = diffMs / (3600 * 1000)
+      if (grossHours >= 4 && grossHours <= 24) {
+        // Pengurangan istirahat 1 jam
+        const netHours = Math.max(1, grossHours - 1)
+        targetHours = Math.round(netHours * 10) / 10
+      }
+    }
+    const ewhTargetHours = Number(targetHours.toFixed(1))
+    const ewhPercentage = ewhTargetHours > 0 ? Math.min(100, Math.round((ewhActualHours / ewhTargetHours) * 100)) : 0
+    const ewhLabel = `${ewhActualHours}/${ewhTargetHours} Jam`
+
     employeesList.push({
       sessionId: firstSession.id,
       employeeDbId: firstSession.employeeId,
@@ -961,6 +1069,10 @@ export async function getDailyActivityDashboardData(
       totalPoints,
       tasks: allTasks,
       sessions: sessionMetaList,
+      ewhActualHours,
+      ewhTargetHours,
+      ewhLabel,
+      ewhPercentage,
     })
   }
 

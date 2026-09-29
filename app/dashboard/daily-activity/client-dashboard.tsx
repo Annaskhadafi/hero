@@ -386,6 +386,7 @@ export function DailyActivityClientDashboard({
           emp.primaryActivity.toLowerCase().includes(effectiveSearch) ||
           emp.unitTireId.toLowerCase().includes(effectiveSearch) ||
           emp.jobTitle.toLowerCase().includes(effectiveSearch) ||
+          (emp.siteName && emp.siteName.toLowerCase().includes(effectiveSearch)) ||
           (emp.section && emp.section.toLowerCase().includes(effectiveSearch)) ||
           emp.department.toLowerCase().includes(effectiveSearch)
         )
@@ -432,6 +433,7 @@ export function DailyActivityClientDashboard({
           emp.employeeId.toLowerCase().includes(effectiveSearch) ||
           emp.jobTitle.toLowerCase().includes(effectiveSearch) ||
           emp.department.toLowerCase().includes(effectiveSearch) ||
+          (emp.siteName && emp.siteName.toLowerCase().includes(effectiveSearch)) ||
           (emp.section && emp.section.toLowerCase().includes(effectiveSearch)) ||
           emp.rosterCode.toLowerCase().includes(effectiveSearch)
         )
@@ -524,6 +526,7 @@ export function DailyActivityClientDashboard({
       const headers = [
         'Employee ID',
         'Nama Karyawan',
+        'Site',
         'Jabatan',
         'Departemen / Section',
         'Shift Roster',
@@ -535,6 +538,7 @@ export function DailyActivityClientDashboard({
       const rows = filteredUnsubmittedEmployees.map((e) => [
         `"${e.employeeId}"`,
         `"${e.name}"`,
+        `"${e.siteName || initialData.currentSite.name}"`,
         `"${e.jobTitle}"`,
         `"${e.department}${e.section ? ` - ${e.section}` : ''}"`,
         `"${e.rosterCode} (${e.expectedShift})"`,
@@ -562,10 +566,13 @@ export function DailyActivityClientDashboard({
     const headers = [
       'Employee ID',
       'Nama Karyawan',
+      'Site',
       'Jabatan / Tim',
       'Shift',
       'Jam Check-in',
       'Jam Checkout',
+      'EWH (Efektif/Target)',
+      'EWH (%)',
       'Aktivitas Utama',
       'Unit / Tire ID',
       'Status Aktivitas',
@@ -576,10 +583,13 @@ export function DailyActivityClientDashboard({
     const rows = filteredEmployees.map((e) => [
       `"${e.employeeId}"`,
       `"${e.name}"`,
+      `"${e.siteName || initialData.currentSite.name}"`,
       `"${e.jobTitle}"`,
       `"${e.shift}"`,
       `"${e.checkInTime}"`,
       `"${e.checkOutTime || '-'}"`,
+      `"${e.ewhActualHours}/${e.ewhTargetHours} Jam"`,
+      `"${e.ewhPercentage}%"`,
       `"${e.primaryActivity}"`,
       `"${e.unitTireId}"`,
       `"${e.status}"`,
@@ -614,6 +624,7 @@ export function DailyActivityClientDashboard({
           'Tanggal': initialData.currentDate || '-',
           'Employee ID': e.employeeId,
           'Nama Karyawan': e.name,
+          'Site': e.siteName || initialData.currentSite.name,
           'Jabatan': e.jobTitle,
           'Departemen': e.department,
           'Section': e.section || '-',
@@ -629,6 +640,7 @@ export function DailyActivityClientDashboard({
           { wch: 14 },
           { wch: 16 },
           { wch: 26 },
+          { wch: 18 },
           { wch: 22 },
           { wch: 20 },
           { wch: 20 },
@@ -651,10 +663,13 @@ export function DailyActivityClientDashboard({
         'Tanggal': initialData.currentDate || '-',
         'Employee ID': e.employeeId,
         'Nama Karyawan': e.name,
+        'Site': e.siteName || initialData.currentSite.name,
         'Jabatan / Section': e.jobTitle,
         'Shift': e.shift,
         'Jam Check-in': e.checkInTime,
         'Jam Checkout': e.checkOutTime || '-',
+        'EWH (Efektif)': `${e.ewhActualHours}/${e.ewhTargetHours} Jam`,
+        'EWH (%)': `${e.ewhPercentage}%`,
         'Aktivitas Utama': e.primaryActivity,
         'No. Unit / Equipment': e.unitTireId,
         'Status Aktivitas': e.status,
@@ -668,10 +683,13 @@ export function DailyActivityClientDashboard({
         { wch: 14 },
         { wch: 16 },
         { wch: 26 },
+        { wch: 18 },
         { wch: 24 },
         { wch: 14 },
         { wch: 14 },
         { wch: 14 },
+        { wch: 18 },
+        { wch: 12 },
         { wch: 35 },
         { wch: 22 },
         { wch: 16 },
@@ -1657,66 +1675,95 @@ export function DailyActivityClientDashboard({
                 <thead>
                   <tr className="bg-slate-50/70 text-slate-500 font-semibold border-b border-slate-200/80">
                     <th className="py-3 px-4">Employee ID</th>
-                <th className="py-3 px-4">Nama Karyawan</th>
-                <th className="py-3 px-4">Jabatan / Tim</th>
-                <th className="py-3 px-4">Shift</th>
-                <th className="py-3 px-4">Jam Presensi</th>
-                <th className="py-3 px-4">Aktivitas Utama</th>
-                <th className="py-3 px-4">Unit / Tire ID</th>
-                <th className="py-3 px-4">Status Aktivitas</th>
-                <th className="py-3 px-4 min-w-[130px]">Progres</th>
-                <th className="py-3 px-4">Update Terakhir</th>
-                <th className="py-3 px-4 text-center">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {paginatedEmployees.length === 0 ? (
-                <tr>
-                  <td colSpan={11} className="py-8 text-center text-slate-400">
-                    Tidak ada aktivitas karyawan yang sesuai dengan kriteria filter.
-                  </td>
-                </tr>
-              ) : (
-                paginatedEmployees.map((emp, idx) => (
-                  <tr
-                    key={`emp-row-${emp.sessionId ?? ''}-${emp.employeeId}-${idx}`}
-                    className="hover:bg-slate-50/60 transition-colors"
-                  >
-                    <td className="py-3 px-4 font-mono font-medium text-slate-700">
-                      {emp.employeeId}
-                    </td>
-                    <td className="py-3 px-4">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setActiveDetailItem({
-                            type: 'employee',
-                            employee: emp,
-                          })
-                        }
-                        className="font-semibold text-blue-600 hover:text-blue-800 hover:underline text-left inline-flex items-center gap-1 group cursor-pointer"
-                        title="Klik untuk melihat formulir detail aktivitas harian lengkap"
+                    <th className="py-3 px-4">Nama Karyawan</th>
+                    <th className="py-3 px-4">Site</th>
+                    <th className="py-3 px-4">Jabatan / Tim</th>
+                    <th className="py-3 px-4">Shift</th>
+                    <th className="py-3 px-4">Jam Presensi</th>
+                    <th className="py-3 px-4">EWH</th>
+                    <th className="py-3 px-4">Aktivitas Utama</th>
+                    <th className="py-3 px-4">Unit / Tire ID</th>
+                    <th className="py-3 px-4">Status Aktivitas</th>
+                    <th className="py-3 px-4 min-w-[130px]">Progres</th>
+                    <th className="py-3 px-4">Update Terakhir</th>
+                    <th className="py-3 px-4 text-center">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {paginatedEmployees.length === 0 ? (
+                    <tr>
+                      <td colSpan={13} className="py-8 text-center text-slate-400">
+                        Tidak ada aktivitas karyawan yang sesuai dengan kriteria filter.
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedEmployees.map((emp, idx) => (
+                      <tr
+                        key={`emp-row-${emp.sessionId ?? ''}-${emp.employeeId}-${idx}`}
+                        className="hover:bg-slate-50/60 transition-colors"
                       >
-                        <span>{emp.name}</span>
-                        <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 text-blue-600 transition-opacity" />
-                      </button>
-                    </td>
-                    <td className="py-3 px-4 text-slate-600">{emp.jobTitle}</td>
-                    <td className="py-3 px-4 text-slate-600">{emp.shift}</td>
-                    <td className="py-3 px-4 font-mono">
-                      <div className="flex flex-col text-[11px] leading-tight gap-0.5">
-                        <span className="text-slate-900 font-semibold flex items-center gap-1" title="Jam Masuk / Check-in">
-                          <span className="size-1.5 rounded-full bg-emerald-500 inline-block" />
-                          {emp.checkInTime}
-                        </span>
-                        {emp.checkOutTime && emp.checkOutTime !== '-' && (
-                          <span className="text-slate-400 text-[10px] flex items-center gap-1" title="Jam Pulang / Checkout">
-                            <span className="size-1.5 rounded-full bg-blue-500 inline-block" />
-                            {emp.checkOutTime}
+                        <td className="py-3 px-4 font-mono font-medium text-slate-700">
+                          {emp.employeeId}
+                        </td>
+                        <td className="py-3 px-4">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setActiveDetailItem({
+                                type: 'employee',
+                                employee: emp,
+                              })
+                            }
+                            className="font-semibold text-blue-600 hover:text-blue-800 hover:underline text-left inline-flex items-center gap-1 group cursor-pointer"
+                            title="Klik untuk melihat formulir detail aktivitas harian lengkap"
+                          >
+                            <span>{emp.name}</span>
+                            <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 text-blue-600 transition-opacity" />
+                          </button>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 whitespace-nowrap">
+                            {emp.siteName || initialData.currentSite.name}
                           </span>
-                        )}
-                      </div>
-                    </td>
+                        </td>
+                        <td className="py-3 px-4 text-slate-600">{emp.jobTitle}</td>
+                        <td className="py-3 px-4 text-slate-600">{emp.shift}</td>
+                        <td className="py-3 px-4 font-mono">
+                          <div className="flex flex-col text-[11px] leading-tight gap-0.5">
+                            <span className="text-slate-900 font-semibold flex items-center gap-1" title="Jam Masuk / Check-in">
+                              <span className="size-1.5 rounded-full bg-emerald-500 inline-block" />
+                              {emp.checkInTime}
+                            </span>
+                            {emp.checkOutTime && emp.checkOutTime !== '-' && (
+                              <span className="text-slate-400 text-[10px] flex items-center gap-1" title="Jam Pulang / Checkout">
+                                <span className="size-1.5 rounded-full bg-blue-500 inline-block" />
+                                {emp.checkOutTime}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex flex-col gap-0.5">
+                            <span
+                              className={cn(
+                                'inline-flex items-center gap-1 font-mono font-bold text-xs px-2 py-0.5 rounded border w-fit whitespace-nowrap',
+                                emp.ewhPercentage >= 80
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : emp.ewhPercentage >= 50
+                                  ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                  : emp.ewhActualHours > 0
+                                  ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                  : 'bg-slate-100 text-slate-600 border-slate-200'
+                              )}
+                              title={`EWH: ${emp.ewhActualHours} jam kerja dari target ${emp.ewhTargetHours} jam (istirahat 1 jam tidak dihitung)`}
+                            >
+                              {emp.ewhActualHours}/{emp.ewhTargetHours} Jam
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-medium pl-0.5 whitespace-nowrap">
+                              {emp.ewhPercentage}% Efektif
+                            </span>
+                          </div>
+                        </td>
                     <td className="py-3 px-4">
                       <div className="font-medium text-slate-800 flex items-center flex-wrap gap-1">
                         <span>{emp.primaryActivity}</span>
@@ -1876,6 +1923,7 @@ export function DailyActivityClientDashboard({
               <tr className="bg-slate-50/70 text-slate-500 font-semibold border-b border-slate-200/80">
                 <th className="py-3 px-4">Employee ID</th>
                 <th className="py-3 px-4">Nama Karyawan</th>
+                <th className="py-3 px-4">Site</th>
                 <th className="py-3 px-4">Jabatan / Tim</th>
                 <th className="py-3 px-4">Shift Roster</th>
                 <th className="py-3 px-4">Status Kehadiran</th>
@@ -1887,7 +1935,7 @@ export function DailyActivityClientDashboard({
             <tbody className="divide-y divide-slate-100">
               {paginatedUnsubmittedEmployees.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
+                  <td colSpan={9} className="py-12 text-center text-slate-400">
                     <div className="flex flex-col items-center justify-center gap-2 max-w-md mx-auto">
                       <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
                         <CheckCircle2 className="w-5 h-5" />
@@ -1913,6 +1961,11 @@ export function DailyActivityClientDashboard({
                     <td className="py-3 px-4">
                       <span className="font-semibold text-slate-900">
                         {emp.name}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 whitespace-nowrap">
+                        {emp.siteName || initialData.currentSite.name}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-slate-600">
@@ -2408,6 +2461,31 @@ export function DailyActivityClientDashboard({
                       <span className="text-[11px] text-slate-400 block font-medium">Akumulasi Poin Harian</span>
                       <span className="font-bold text-emerald-600 text-sm font-mono">
                         {activeDetailItem.employee.totalPoints} Poin
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-400 block font-medium">EWH Harian (Efektif)</span>
+                      <div className="mt-1 flex items-center gap-1.5">
+                        <span className="font-bold text-slate-900 font-mono text-sm">
+                          {activeDetailItem.employee.ewhActualHours}/{activeDetailItem.employee.ewhTargetHours} Jam
+                        </span>
+                        <span
+                          className={cn(
+                            "px-1.5 py-0.5 rounded text-[10px] font-bold border",
+                            activeDetailItem.employee.ewhPercentage >= 80
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              : activeDetailItem.employee.ewhPercentage >= 50
+                              ? "bg-blue-50 text-blue-700 border-blue-200"
+                              : activeDetailItem.employee.ewhActualHours > 0
+                              ? "bg-amber-50 text-amber-700 border-amber-200"
+                              : "bg-slate-100 text-slate-600 border-slate-200"
+                          )}
+                        >
+                          {activeDetailItem.employee.ewhPercentage}% Efektif
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">
+                        Target net (1 jam istirahat tidak dihitung)
                       </span>
                     </div>
                   </div>
