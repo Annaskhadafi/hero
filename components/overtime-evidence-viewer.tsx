@@ -44,6 +44,7 @@ import {
 } from '@/components/ui/dialog'
 import { toast } from 'sonner'
 import { resolveUploadUrl } from '@/lib/resolve-upload-url'
+import { cn } from '@/lib/utils'
 import type { OvertimeEvidenceData } from '@/lib/overtime-evidence-data'
 
 function formatDate(val: Date | string | null | undefined) {
@@ -90,7 +91,15 @@ function formatTimeOnly(val: Date | string | null | undefined) {
   }
 }
 
-export function OvertimeEvidenceViewer({ data }: { data: OvertimeEvidenceData }) {
+export function OvertimeEvidenceViewer({
+  data,
+  isModal = false,
+  onClose,
+}: {
+  data: OvertimeEvidenceData
+  isModal?: boolean
+  onClose?: () => void
+}) {
   const [selectedPhoto, setSelectedPhoto] = useState<OvertimeEvidenceData['evidencePhotos'][0] | null>(null)
   const [zoomLevel, setZoomLevel] = useState<number>(1)
   const [rotation, setRotation] = useState<number>(0)
@@ -132,9 +141,12 @@ export function OvertimeEvidenceViewer({ data }: { data: OvertimeEvidenceData })
     data.header.status.toLowerCase() === 'completed'
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-50/70 via-slate-50 to-white text-slate-800 pb-16 antialiased">
+    <div className={cn(
+      "bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-50/70 via-slate-50 to-white text-slate-800 antialiased",
+      isModal ? "w-full pb-10" : "min-h-screen pb-16"
+    )}>
       {/* ── TOP HEADER / BRAND BAR ── */}
-      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/80 backdrop-blur-md transition-all shadow-2xs">
+      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-md transition-all shadow-2xs">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="size-9 rounded-xl bg-[#003f78] text-white flex items-center justify-center font-black text-sm shadow-xs tracking-wider">
@@ -183,6 +195,17 @@ export function OvertimeEvidenceViewer({ data }: { data: OvertimeEvidenceData })
               <Printer className="size-3.5" />
               <span className="hidden sm:inline">Cetak / PDF</span>
             </Button>
+            {onClose && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onClose}
+                className="size-8 p-0 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100"
+                title="Tutup Modal Bukti"
+              >
+                <X className="size-4" />
+              </Button>
+            )}
           </div>
         </div>
       </header>

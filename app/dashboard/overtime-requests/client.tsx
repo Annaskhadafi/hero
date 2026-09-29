@@ -1267,14 +1267,9 @@ export function OvertimeListingClient({
         `
 
     return `
-      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
-        <div style="flex: 1; text-align: center; padding-left: 50px;">
-          <h1 class="text-center font-bold" style="font-size: 11pt; margin-bottom: 2px; text-transform: uppercase;">SURAT PERINTAH LEMBUR (SPL)</h1>
-          <p class="text-center font-bold" style="font-size: 8pt; color: #475569; margin: 0;">PT CHITRAPARATAMA • HUMAN CAPITAL</p>
-        </div>
-        <div style="flex-shrink: 0;">
-          ${qrImgHtml}
-        </div>
+      <div style="text-align: center; margin-bottom: 12px;">
+        <h1 style="text-align: center; font-weight: bold; font-size: 11pt; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.5px;">SURAT PERINTAH LEMBUR (SPL)</h1>
+        <p style="text-align: center; font-weight: bold; font-size: 8pt; color: #475569; margin: 0; letter-spacing: 0.5px;">PT CHITRAPARATAMA • HUMAN CAPITAL</p>
       </div>
 
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 0.5rem;">
@@ -1383,8 +1378,16 @@ export function OvertimeListingClient({
         </tbody>
       </table>
 
-      <div style="text-align: right; font-size: 7pt; color: #64748b; margin-top: 8px;">
-        F.HC.SPL.001.01 • PT Chitra Paratama
+      <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 10px;">
+        <div style="font-size: 6.5pt; color: #64748b;">
+          * Dokumen ini sah dan diterbitkan secara digital oleh HERO System PT Chitra Paratama.
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+          ${qrImgHtml}
+          <div style="text-align: right; font-size: 7pt; color: #64748b; font-family: monospace;">
+            F.HC.SPL.001.01 • PT Chitra Paratama
+          </div>
+        </div>
       </div>
     `
   }
@@ -2103,14 +2106,9 @@ export function OvertimeListingClient({
                     }}
                   >
                     {/* Header Document */}
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex-1 text-center pl-16">
-                        <h1 className="text-center font-bold text-[11pt] mb-1 uppercase tracking-wide">SURAT PERINTAH LEMBUR (SPL)</h1>
-                        <p className="text-center font-semibold text-[8pt] text-slate-700">PT CHITRA PARATAMA • HUMAN CAPITAL</p>
-                      </div>
-                      <div className="shrink-0 -mt-2">
-                        <SplEvidenceQrBox splId={currentBatchDoc.id} splNumber={currentBatchDoc.splNumber} />
-                      </div>
+                    <div className="text-center mb-3">
+                      <h1 className="text-center font-bold text-[11.5pt] mb-1 uppercase tracking-wide">SURAT PERINTAH LEMBUR (SPL)</h1>
+                      <p className="text-center font-semibold text-[8pt] text-slate-700">PT CHITRA PARATAMA • HUMAN CAPITAL</p>
                     </div>
 
                     {/* Section 1: Details */}
@@ -2340,8 +2338,17 @@ export function OvertimeListingClient({
                       })()}
                     </div>
 
-                    <div className="text-right text-[7pt] text-gray-500 mt-2">
-                      F.HC.SPL.001.01 • PT Chitra Paratama
+                    {/* Bottom Info & Evidence QR Code */}
+                    <div className="flex items-end justify-between mt-3 pt-1">
+                      <div className="text-[6.5pt] text-slate-500 font-sans max-w-[100mm]">
+                        * Dokumen ini sah dan diterbitkan secara digital oleh HERO System PT Chitra Paratama.
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <SplEvidenceQrBox splId={currentBatchDoc.id} splNumber={currentBatchDoc.splNumber} />
+                        <div className="text-right text-[7pt] text-gray-500 font-mono mt-0.5">
+                          F.HC.SPL.001.01 • PT Chitra Paratama
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2533,14 +2540,9 @@ export function OvertimeListingClient({
                   }}
                 >
                   {/* Header Document */}
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex-1 text-center pl-16">
-                      <h1 className="text-center font-bold text-[11pt] mb-1 uppercase tracking-wide">SURAT PERINTAH LEMBUR (SPL)</h1>
-                      <p className="text-center font-semibold text-[8pt] text-slate-700">PT CHITRA PARATAMA • HUMAN CAPITAL</p>
-                    </div>
-                    <div className="shrink-0 -mt-2">
-                      <SplEvidenceQrBox splId={previewSplTarget.id} splNumber={previewSplTarget.splNumber} />
-                    </div>
+                  <div className="text-center mb-3">
+                    <h1 className="text-center font-bold text-[11.5pt] mb-1 uppercase tracking-wide">SURAT PERINTAH LEMBUR (SPL)</h1>
+                    <p className="text-center font-semibold text-[8pt] text-slate-700">PT CHITRA PARATAMA • HUMAN CAPITAL</p>
                   </div>
 
                   {/* Section 1: Details */}
@@ -2727,8 +2729,17 @@ export function OvertimeListingClient({
                     </div>
                   </div>
 
-                  <div className="text-right text-[7pt] text-gray-500 mt-2">
-                    F.HC.SPL.001.01 • PT Chitra Paratama
+                  {/* Bottom Info & Evidence QR Code */}
+                  <div className="flex items-end justify-between mt-3 pt-1">
+                    <div className="text-[6.5pt] text-slate-500 font-sans max-w-[100mm]">
+                      * Dokumen ini sah dan diterbitkan secara digital oleh HERO System PT Chitra Paratama.
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <SplEvidenceQrBox splId={previewSplTarget.id} splNumber={previewSplTarget.splNumber} />
+                      <div className="text-right text-[7pt] text-gray-500 font-mono mt-0.5">
+                        F.HC.SPL.001.01 • PT Chitra Paratama
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

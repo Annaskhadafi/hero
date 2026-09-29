@@ -3005,3 +3005,17 @@ export async function saveOvertimeWorkflowSettings(settings: OvertimeWorkflowSet
   }
 }
 
+export async function getOvertimeEvidenceDataAction(idOrSplNumber: number | string) {
+  try {
+    const { getPublicOvertimeEvidenceData } = await import('@/lib/overtime-evidence-data')
+    const data = await getPublicOvertimeEvidenceData(idOrSplNumber)
+    if (!data) {
+      return { success: false as const, error: 'Dokumen SPL tidak ditemukan' }
+    }
+    return { success: true as const, data }
+  } catch (err: any) {
+    console.error('Error fetching overtime evidence data:', err)
+    return { success: false as const, error: err?.message || 'Gagal memuat bukti lembur' }
+  }
+}
+

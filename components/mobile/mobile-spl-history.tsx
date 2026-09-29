@@ -663,18 +663,13 @@ export function MobileSplHistory({
                       }}
                     >
                       {/* Header Document */}
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex-1 text-center pl-16">
-                          <h1 className="font-bold text-[11pt] uppercase text-black leading-tight">
-                            SURAT PERINTAH LEMBUR (SPL)
-                          </h1>
-                          <p className="font-semibold text-[8pt] text-slate-700 uppercase tracking-wide">
-                            PT CHITRA PARATAMA • HUMAN CAPITAL
-                          </p>
-                        </div>
-                        <div className="shrink-0 -mt-2">
-                          <SplEvidenceQrBox splId={doc.id} splNumber={doc.splNumber} />
-                        </div>
+                      <div className="text-center mb-3">
+                        <h1 className="font-bold text-[11.5pt] uppercase text-black leading-tight tracking-wide">
+                          SURAT PERINTAH LEMBUR (SPL)
+                        </h1>
+                        <p className="font-semibold text-[8pt] text-slate-700 uppercase tracking-widest mt-0.5">
+                          PT CHITRA PARATAMA • HUMAN CAPITAL
+                        </p>
                       </div>
 
                       {/* Section 1: Details & Request Profile */}
@@ -897,8 +892,17 @@ export function MobileSplHistory({
                         </div>
                       </div>
 
-                      <div className="text-right text-[7pt] text-slate-500 mt-2 font-mono">
-                        F.HC.SPL.001.01 • PT Chitra Paratama
+                      {/* Bottom Info & Evidence QR Code */}
+                      <div className="flex items-end justify-between mt-3 pt-1">
+                        <div className="text-[6.5pt] text-slate-500 font-sans max-w-[100mm]">
+                          * Dokumen ini sah dan diterbitkan secara digital oleh HERO System PT Chitra Paratama.
+                        </div>
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <SplEvidenceQrBox splId={doc.id} splNumber={doc.splNumber} />
+                          <div className="text-right text-[7pt] text-slate-500 font-mono mt-0.5">
+                            F.HC.SPL.001.01 • PT Chitra Paratama
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>

@@ -40,6 +40,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { SpeechTextarea as Textarea } from "@/components/ui/speech-textarea";
 import { downloadElementAsPdf } from "@/lib/pdf-download";
 import { resolveEmployeeApproverHierarchy, type EmployeeHierarchyInfo } from "@/lib/overtime-hierarchy";
+import { SplEvidenceQrBox } from "@/components/overtime-document-qr";
 import { cn } from "@/lib/utils";
 
 function fmtDate(d: string | Date | null | undefined): string {
@@ -1674,8 +1675,17 @@ export function MobileOvertimeRequestForm({
                   </div>
                 </div>
 
-                <div className="text-right text-[7pt] text-slate-500 mt-2 font-mono">
-                  F.HC.SPL.001.01 • PT Chitra Paratama
+                {/* Bottom Info & Evidence QR Code */}
+                <div className="flex items-end justify-between mt-3 pt-1">
+                  <div className="text-[6.5pt] text-slate-500 font-sans max-w-[100mm]">
+                    * Dokumen ini sah dan diterbitkan secara digital oleh HERO System PT Chitra Paratama.
+                  </div>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    {doc?.id && <SplEvidenceQrBox splId={doc.id} splNumber={doc.splNumber} />}
+                    <div className="text-right text-[7pt] text-slate-500 font-mono mt-0.5">
+                      F.HC.SPL.001.01 • PT Chitra Paratama
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
