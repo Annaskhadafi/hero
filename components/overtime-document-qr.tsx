@@ -9,10 +9,12 @@ export function SplEvidenceQrBox({
   splId,
   splNumber,
   className = '',
+  size = 56,
 }: {
   splId: number | string
   splNumber?: string
   className?: string
+  size?: number
 }) {
   const [qrDataUrl, setQrDataUrl] = useState<string>('')
   const [evidenceUrl, setEvidenceUrl] = useState<string>('')
@@ -25,7 +27,7 @@ export function SplEvidenceQrBox({
     setEvidenceUrl(targetUrl)
 
     QRCode.toDataURL(targetUrl, {
-      margin: 1,
+      margin: 0,
       width: 140,
       errorCorrectionLevel: 'M',
     })
@@ -46,28 +48,25 @@ export function SplEvidenceQrBox({
       <a
         href={evidenceUrl || `/overtime-evidence/${splId}`}
         onClick={handleClick}
-        className={`inline-flex flex-col items-center justify-center p-1.5 rounded-lg border border-slate-300 bg-white/95 hover:bg-slate-50 transition-all group text-decoration-none shadow-2xs cursor-pointer select-none ${className}`}
+        className={`inline-block transition-opacity hover:opacity-80 cursor-pointer select-none ${className}`}
         title="Klik untuk membuka jendela galeri foto bukti lembur (atau scan dengan HP untuk membuka halaman web)"
         style={{ textDecoration: 'none', color: 'inherit' }}
       >
-        <div className="size-13 flex items-center justify-center bg-white rounded border border-slate-200 p-0.5 group-hover:border-[#003f78] group-hover:shadow-xs transition-all">
-          {qrDataUrl ? (
-            <img src={qrDataUrl} alt="QR Validasi SPL" className="size-full object-contain" />
-          ) : (
-            <div className="size-full flex flex-col items-center justify-center text-[7px] font-mono text-slate-400">
-              <QrCode className="size-5 mb-0.5 text-slate-400" />
-              <span>QR CODE</span>
-            </div>
-          )}
-        </div>
-        <div className="mt-1 text-center leading-tight">
-          <span className="text-[6.5pt] font-black text-[#003f78] uppercase tracking-wider block flex items-center justify-center gap-0.5">
-            Scan / Klik Bukti ↗
-          </span>
-          <span className="text-[5.5pt] text-slate-500 font-medium block">
-            Validasi Digital
-          </span>
-        </div>
+        {qrDataUrl ? (
+          <img
+            src={qrDataUrl}
+            alt="QR Validasi SPL"
+            style={{ width: `${size}px`, height: `${size}px`, display: 'block' }}
+            className="object-contain"
+          />
+        ) : (
+          <div
+            style={{ width: `${size}px`, height: `${size}px` }}
+            className="flex items-center justify-center text-[7px] font-mono text-slate-400"
+          >
+            <QrCode className="size-6 text-slate-400" />
+          </div>
+        )}
       </a>
 
       {/* Floating Evidence Modal */}

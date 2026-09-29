@@ -43,6 +43,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { DailyActivityEvidenceModal } from '@/components/daily-activity-evidence-modal'
+import { SplEvidenceQrBox } from '@/components/overtime-document-qr'
 import { SopWinAccessSettingsModal } from '@/components/sop-win/sop-win-access-settings-modal'
 import { getDepartmentSignatories, getDepartmentWorkflowSteps } from '@/components/sop-win/sop-win-approval-workspace'
 import { approveApprovalGroupAction, reviewApprovalAction } from '@/app/dashboard/admin-actions'
@@ -3098,9 +3099,9 @@ export function InboxTab({
                             </tbody>
                           </table>
 
-                          {/* Section 5: Signatories */}
+                          {/* Section 5: Signatories (2-Grid Pemohon & Leader/PJO) */}
                           <div className="font-bold mb-2 text-[8.5pt]">Signatories</div>
-                          <div className="grid grid-cols-3 gap-x-6 gap-y-4 mb-4 text-center">
+                          <div className="grid grid-cols-2 gap-x-8 gap-y-4 mb-3 text-center">
                             {/* 1. Serviceman / Karyawan */}
                             {(() => {
                               const approvals = (currentBatchDoc.rawOvertime as any).approvals || []
@@ -3135,16 +3136,16 @@ export function InboxTab({
                               )
                             })()}
 
-                            {/* 2. Leader / Pengawas */}
+                            {/* 2. Leader / PJO */}
                             {(() => {
                               const approvals = (currentBatchDoc.rawOvertime as any).approvals || []
-                              const step2 = approvals.find((s: any) => s.stepOrder === 2)
+                              const step2 = approvals.find((s: any) => s.stepOrder === 2 || s.stepOrder === 3)
                               const isApproved2 = step2?.status === 'approved' || Boolean(step2?.signedAt)
                               const sigUrl2 = step2?.signatureDataUrl
 
                               return (
                                 <div className="flex flex-col items-center text-center">
-                                  <div className="text-[7pt] text-slate-500 font-semibold mb-1">Leader / Supervisor Signature</div>
+                                  <div className="text-[7pt] text-slate-500 font-semibold mb-1">Leader / PJO Signature</div>
                                   <div className="h-16 w-full flex items-center justify-center my-1">
                                     {sigUrl2 ? (
                                       <img src={sigUrl2} alt="TTD" className="max-h-14 max-w-full object-contain" />
@@ -3159,52 +3160,43 @@ export function InboxTab({
                                     )}
                                   </div>
                                   <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
-                                    {step2?.approverName || 'Leader / Supervisor'}
+                                    {step2?.approverName || 'Leader / PJO Site'}
                                   </div>
-                                  <div className="text-[7pt] text-slate-600 font-medium">{step2?.stepLabel || 'Leader / Supervisor'}</div>
+                                  <div className="text-[7pt] text-slate-600 font-medium">{step2?.stepLabel || 'Leader / PJO'}</div>
                                   <div className="text-[6.5pt] text-slate-400 mt-0.5">
                                     {isApproved2 && step2?.signedAt ? `Waktu TTD: ${formatTimestamp(step2.signedAt)}` : '—'}
                                   </div>
                                 </div>
                               )
                             })()}
-
-                            {/* 3. Section Head */}
-                            {(() => {
-                              const approvals = (currentBatchDoc.rawOvertime as any).approvals || []
-                              const step3 = approvals.find((s: any) => s.stepOrder === 3)
-                              const isApproved3 = step3?.status === 'approved' || Boolean(step3?.signedAt)
-                              const sigUrl3 = step3?.signatureDataUrl
-
-                              return (
-                                <div className="flex flex-col items-center text-center">
-                                  <div className="text-[7pt] text-slate-500 font-semibold mb-1">Section Head Signature</div>
-                                  <div className="h-16 w-full flex items-center justify-center my-1">
-                                    {sigUrl3 ? (
-                                      <img src={sigUrl3} alt="TTD" className="max-h-14 max-w-full object-contain" />
-                                    ) : isApproved3 ? (
-                                      <div className="flex flex-col items-center justify-center text-center">
-                                        <span className="text-[6.5pt] font-bold text-emerald-600">✓ Approved ({formatTimestamp(step3?.signedAt)})</span>
-                                      </div>
-                                    ) : step3?.status === 'reverted' ? (
-                                      <span className="text-amber-600 font-semibold italic text-[7pt]">(Dikembalikan)</span>
-                                    ) : (
-                                      <span className="text-slate-400 italic text-[7pt]">(Belum Disetujui)</span>
-                                    )}
-                                  </div>
-                                  <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
-                                    {step3?.approverName || 'Section Head'}
-                                  </div>
-                                  <div className="text-[7pt] text-slate-600 font-medium">{step3?.stepLabel || 'Section Head'}</div>
-                                  <div className="text-[6.5pt] text-slate-400 mt-0.5">
-                                    {isApproved3 && step3?.signedAt ? `Waktu TTD: ${formatTimestamp(step3.signedAt)}` : '—'}
-                                  </div>
-                                </div>
-                              )
-                            })()}
                           </div>
 
-                          <div className="text-right text-[7pt] text-slate-400 mt-4">PT Chitra Paratama • HERO Platform</div>
+                          {/* Bottom Info & QR Code */}
+                          <div className="flex items-end justify-between mt-3 pt-1">
+                            <div className="text-[6.5pt] text-slate-500 font-sans max-w-[100mm]">
+                              * Dokumen ini sah dan diterbitkan secara digital oleh HERO System PT Chitra Paratama.
+                            </div>
+                            <div className="flex flex-col items-end gap-1 shrink-0">
+                              {(() => {
+                                const targetSplId =
+                                  (currentBatchDoc.rawOvertime as any)?.splId ||
+                                  (currentBatchDoc.rawOvertime as any)?.id ||
+                                  (currentBatchDoc.rawOvertime as any)?.documentId ||
+                                  (typeof currentBatchDoc.id === 'string'
+                                    ? currentBatchDoc.id.replace(/^overtime-/, '')
+                                    : currentBatchDoc.id)
+                                return (
+                                  <SplEvidenceQrBox
+                                    splId={targetSplId}
+                                    splNumber={currentBatchDoc.documentNumber}
+                                  />
+                                )
+                              })()}
+                              <div className="text-right text-[7pt] text-slate-500 font-mono mt-0.5">
+                                F.HC.SPL.001.01 • PT Chitra Paratama
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       )}
 

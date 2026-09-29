@@ -1408,9 +1408,8 @@ export function OvertimeListingClient({
         try {
           const qrDataUrl = await QRCode.toDataURL(evidenceUrl, { margin: 1, width: 140, errorCorrectionLevel: 'M' })
           qrImgHtml = `
-            <a href="${evidenceUrl}" target="_blank" style="text-decoration: none; color: inherit; display: inline-block; text-align: center; border: 1px solid #cbd5e1; padding: 3px; border-radius: 6px; background: #ffffff;">
-              <img src="${qrDataUrl}" width="50" height="50" style="display: block; margin: 0 auto;" alt="QR Evidence" />
-              <div style="font-size: 5.5pt; font-weight: bold; color: #003f78; margin-top: 2px;">Scan / Klik Foto Bukti ↗</div>
+            <a href="${evidenceUrl}" target="_blank" style="text-decoration: none; color: inherit; display: inline-block;">
+              <img src="${qrDataUrl}" width="54" height="54" style="display: block; margin: 0 auto;" alt="QR Evidence" />
             </a>
           `
         } catch (e) {
@@ -1471,9 +1470,8 @@ export function OvertimeListingClient({
       try {
         const qrDataUrl = await QRCode.toDataURL(evidenceUrl, { margin: 1, width: 140, errorCorrectionLevel: 'M' })
         qrImgHtml = `
-          <a href="${evidenceUrl}" target="_blank" style="text-decoration: none; color: inherit; display: inline-block; text-align: center; border: 1px solid #cbd5e1; padding: 3px; border-radius: 6px; background: #ffffff;">
-            <img src="${qrDataUrl}" width="50" height="50" style="display: block; margin: 0 auto;" alt="QR Evidence" />
-            <div style="font-size: 5.5pt; font-weight: bold; color: #003f78; margin-top: 2px;">Scan / Klik Foto Bukti ↗</div>
+          <a href="${evidenceUrl}" target="_blank" style="text-decoration: none; color: inherit; display: inline-block;">
+            <img src="${qrDataUrl}" width="54" height="54" style="display: block; margin: 0 auto;" alt="QR Evidence" />
           </a>
         `
       } catch (e) {
