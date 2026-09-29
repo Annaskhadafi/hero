@@ -24,7 +24,16 @@ export default async function EwhDashboardPage({ searchParams }: PageProps) {
   if (!employee) redirect('/sign-in')
 
   const params = await searchParams
-  const siteId = params.siteId ? parseInt(params.siteId, 10) : employee.siteId
+  let siteId: string | number | null = employee.siteId || 1
+  if (params.siteId !== undefined) {
+    if (params.siteId === 'ALL' || params.siteId === 'all' || params.siteId === '') {
+      siteId = 'ALL'
+    } else {
+      const parsed = parseInt(params.siteId, 10)
+      if (!isNaN(parsed) && parsed > 0) siteId = parsed
+    }
+  }
+
   const now = new Date()
   const defaultPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   const period = params.period ?? defaultPeriod
@@ -32,9 +41,9 @@ export default async function EwhDashboardPage({ searchParams }: PageProps) {
 
   const [matrixRes, summaryRes, teamsRes, employeesRes] = await Promise.all([
     getEwhSiteMonthlyMatrixAction(siteId, period, departmentId),
-    getEwhSummaryAction(siteId || 1, period, departmentId),
-    getEwhTeamsAction(siteId || 1),
-    getEwhEmployeesAction(siteId || 1, departmentId),
+    getEwhSummaryAction(siteId, period, departmentId),
+    getEwhTeamsAction(siteId),
+    getEwhEmployeesAction(siteId, departmentId),
   ])
 
   return (

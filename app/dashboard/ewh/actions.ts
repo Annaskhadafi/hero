@@ -390,17 +390,23 @@ export async function recalculateUnitUtility(
 // ============================================================
 
 /**
- * Ambil summary EWH semua karyawan untuk satu site satu period.
+ * Ambil summary EWH semua karyawan untuk satu site satu period (atau Semua Site jika siteIdParam = 'ALL' / null).
  * Menghubungkan Master Data hero_employees dengan real attendance, daily activities, dan approved SPL.
  */
 export async function getEwhSummaryAction(
-  siteId: number,
-  period: string,
+  siteIdParam?: number | null | string,
+  period: string = '',
   departmentIdParam?: number | null | string
 ) {
+  let parsedSiteId: number | null = null
+  if (siteIdParam && siteIdParam !== 'ALL' && siteIdParam !== 'all') {
+    const parsed = typeof siteIdParam === 'number' ? siteIdParam : parseInt(String(siteIdParam), 10)
+    if (!isNaN(parsed) && parsed > 0) parsedSiteId = parsed
+  }
+
   let parsedDeptId: number | null = null
-  if (departmentIdParam && departmentIdParam !== 'ALL') {
-    const parsed = typeof departmentIdParam === 'number' ? departmentIdParam : parseInt(departmentIdParam, 10)
+  if (departmentIdParam && departmentIdParam !== 'ALL' && departmentIdParam !== 'all') {
+    const parsed = typeof departmentIdParam === 'number' ? departmentIdParam : parseInt(String(departmentIdParam), 10)
     if (!isNaN(parsed) && parsed > 0) parsedDeptId = parsed
   }
 
@@ -418,15 +424,17 @@ export async function getEwhSummaryAction(
   const year = parseInt(yearStr, 10) || new Date().getFullYear()
   const month = parseInt(monthStr, 10) || new Date().getMonth() + 1
   const daysInMonth = new Date(year, month, 0).getDate()
-  const monthStart = new Date(year, month - 1, 1, 0, 0, 0, 0)
-  const monthEnd = new Date(year, month, 0, 23, 59, 59, 999)
+  const monthStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0))
+  const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999))
 
   // 1. Query Master Data Karyawan Aktif
   const empWhere = [
-    eq(employees.siteId, siteId),
     eq(employees.isActive, true),
     eq(employees.employmentStatus, 'active'),
   ]
+  if (parsedSiteId !== null) {
+    empWhere.push(eq(employees.siteId, parsedSiteId))
+  }
   if (parsedDeptId) {
     empWhere.push(
       or(
@@ -444,6 +452,7 @@ export async function getEwhSummaryAction(
       section: employees.section,
       department: employees.department,
       departmentId: employees.departmentId,
+      siteId: employees.siteId,
     })
     .from(employees)
     .where(and(...empWhere))
@@ -456,6 +465,44 @@ export async function getEwhSummaryAction(
   const targetEmpIds = targetEmployees.map((e) => e.id)
 
   // 2. Fetch parallel data
+  const attOverrideWhere = [
+    eq(timesheetAttendanceRealOverrides.period, period),
+    inArray(timesheetAttendanceRealOverrides.employeeId, targetEmpIds),
+  ]
+  if (parsedSiteId !== null) {
+    attOverrideWhere.push(eq(timesheetAttendanceRealOverrides.siteId, parsedSiteId))
+  }
+
+  const rawAttWhere = [
+    inArray(attendanceRecords.employeeId, targetEmpIds),
+    gte(attendanceRecords.eventTime, monthStart),
+    lte(attendanceRecords.eventTime, monthEnd),
+  ]
+  if (parsedSiteId !== null) {
+    rawAttWhere.push(eq(attendanceRecords.siteId, parsedSiteId))
+  }
+
+  const sessionsWhere = [
+    inArray(dailyActivitySessions.employeeId, targetEmpIds),
+    gte(dailyActivitySessions.workDate, monthStart),
+    lte(dailyActivitySessions.workDate, monthEnd),
+  ]
+  if (parsedSiteId !== null) {
+    sessionsWhere.push(eq(dailyActivitySessions.siteId, parsedSiteId))
+  }
+
+  const directActsWhere = [
+    inArray(activities.employeeId, targetEmpIds),
+    isNull(activities.deletedAt),
+    or(
+      and(gte(activities.startTime, monthStart), lte(activities.startTime, monthEnd)),
+      and(gte(activities.submissionTime, monthStart), lte(activities.submissionTime, monthEnd))
+    ),
+  ]
+  if (parsedSiteId !== null) {
+    directActsWhere.push(eq(activities.siteId, parsedSiteId))
+  }
+
   const [
     attOverrides,
     rawAttRecords,
@@ -474,13 +521,7 @@ export async function getEwhSummaryAction(
         status: timesheetAttendanceRealOverrides.status,
       })
       .from(timesheetAttendanceRealOverrides)
-      .where(
-        and(
-          eq(timesheetAttendanceRealOverrides.siteId, siteId),
-          eq(timesheetAttendanceRealOverrides.period, period),
-          inArray(timesheetAttendanceRealOverrides.employeeId, targetEmpIds)
-        )
-      ),
+      .where(and(...attOverrideWhere)),
 
     // Raw biometric / face attendance logs
     db
@@ -490,14 +531,7 @@ export async function getEwhSummaryAction(
         eventType: attendanceRecords.eventType,
       })
       .from(attendanceRecords)
-      .where(
-        and(
-          eq(attendanceRecords.siteId, siteId),
-          inArray(attendanceRecords.employeeId, targetEmpIds),
-          gte(attendanceRecords.eventTime, monthStart),
-          lte(attendanceRecords.eventTime, monthEnd)
-        )
-      ),
+      .where(and(...rawAttWhere)),
 
     // Daily activity sessions
     db
@@ -509,14 +543,7 @@ export async function getEwhSummaryAction(
         submittedAt: dailyActivitySessions.submittedAt,
       })
       .from(dailyActivitySessions)
-      .where(
-        and(
-          eq(dailyActivitySessions.siteId, siteId),
-          inArray(dailyActivitySessions.employeeId, targetEmpIds),
-          gte(dailyActivitySessions.workDate, monthStart),
-          lte(dailyActivitySessions.workDate, monthEnd)
-        )
-      ),
+      .where(and(...sessionsWhere)),
 
     // Direct Activities
     db
@@ -528,17 +555,7 @@ export async function getEwhSummaryAction(
         submissionTime: activities.submissionTime,
       })
       .from(activities)
-      .where(
-        and(
-          eq(activities.siteId, siteId),
-          inArray(activities.employeeId, targetEmpIds),
-          isNull(activities.deletedAt),
-          or(
-            and(gte(activities.startTime, monthStart), lte(activities.startTime, monthEnd)),
-            and(gte(activities.submissionTime, monthStart), lte(activities.submissionTime, monthEnd))
-          )
-        )
-      ),
+      .where(and(...directActsWhere)),
 
     // Approved Overtime (SPL)
     db
@@ -566,7 +583,12 @@ export async function getEwhSummaryAction(
     db
       .select({ breakMinutes: ewhShiftConfig.breakMinutes, shiftCode: ewhShiftConfig.shiftCode })
       .from(ewhShiftConfig)
-      .where(and(eq(ewhShiftConfig.siteId, siteId), eq(ewhShiftConfig.isActive, true))),
+      .where(
+        and(
+          parsedSiteId !== null ? eq(ewhShiftConfig.siteId, parsedSiteId) : undefined,
+          eq(ewhShiftConfig.isActive, true)
+        )!
+      ),
   ])
 
   // Fetch session items count
@@ -706,7 +728,7 @@ export async function getEwhSummaryAction(
 
       snapshotsToUpsert.push({
         employeeId: emp.id,
-        siteId,
+        siteId: emp.siteId || parsedSiteId || 1,
         workDate,
         period,
         shiftCode,
@@ -966,11 +988,19 @@ export async function upsertEwhShiftConfigAction(data: {
 // EWH TEAM CRUD
 // ============================================================
 
-export async function getEwhTeamsAction(siteId: number) {
+export async function getEwhTeamsAction(siteIdParam?: number | null | string) {
+  let parsedSiteId: number | null = null
+  if (siteIdParam && siteIdParam !== 'ALL' && siteIdParam !== 'all') {
+    const parsed = typeof siteIdParam === 'number' ? siteIdParam : parseInt(String(siteIdParam), 10)
+    if (!isNaN(parsed) && parsed > 0) parsedSiteId = parsed
+  }
+
+  const whereConditions = parsedSiteId !== null ? [eq(ewhTeams.siteId, parsedSiteId)] : []
+
   const teams = await db
     .select()
     .from(ewhTeams)
-    .where(eq(ewhTeams.siteId, siteId))
+    .where(whereConditions.length > 0 ? and(...whereConditions) : undefined)
     .orderBy(ewhTeams.name)
 
   const teamsWithMembers = await Promise.all(
@@ -1072,12 +1102,18 @@ export async function deleteEwhTeamAction(teamId: number) {
 }
 
 export async function getEwhEmployeesAction(
-  siteId: number,
+  siteIdParam?: number | null | string,
   departmentIdParam?: number | null | string
 ) {
+  let parsedSiteId: number | null = null
+  if (siteIdParam && siteIdParam !== 'ALL' && siteIdParam !== 'all') {
+    const parsed = typeof siteIdParam === 'number' ? siteIdParam : parseInt(String(siteIdParam), 10)
+    if (!isNaN(parsed) && parsed > 0) parsedSiteId = parsed
+  }
+
   let parsedDeptId: number | null = null
-  if (departmentIdParam && departmentIdParam !== 'ALL') {
-    const parsed = typeof departmentIdParam === 'number' ? departmentIdParam : parseInt(departmentIdParam, 10)
+  if (departmentIdParam && departmentIdParam !== 'ALL' && departmentIdParam !== 'all') {
+    const parsed = typeof departmentIdParam === 'number' ? departmentIdParam : parseInt(String(departmentIdParam), 10)
     if (!isNaN(parsed) && parsed > 0) parsedDeptId = parsed
   }
 
@@ -1092,10 +1128,13 @@ export async function getEwhEmployeesAction(
   }
 
   const whereConditions = [
-    eq(employees.siteId, siteId),
     eq(employees.isActive, true),
     eq(employees.employmentStatus, 'active'),
   ]
+
+  if (parsedSiteId !== null) {
+    whereConditions.push(eq(employees.siteId, parsedSiteId))
+  }
 
   if (parsedDeptId) {
     whereConditions.push(
@@ -1206,7 +1245,7 @@ export interface EwhYtdSummary {
 
 export interface EwhSiteMonthlyMatrixResult {
   success: boolean
-  siteId: number
+  siteId: number | null
   siteName: string
   departmentId: number | null
   departmentName: string
@@ -1256,7 +1295,7 @@ const MONTH_SHORTS = [
 ]
 
 export async function getEwhSiteMonthlyMatrixAction(
-  siteIdParam?: number | null,
+  siteIdParam?: number | null | string,
   periodParam?: string | null,
   departmentIdParam?: number | null | string
 ): Promise<EwhSiteMonthlyMatrixResult> {
@@ -1273,8 +1312,15 @@ export async function getEwhSiteMonthlyMatrixAction(
       .orderBy(masterDepartments.name),
   ])
 
-  const activeSiteId = siteIdParam || allSites[0]?.id || 1
-  const siteRecord = allSites.find((s) => s.id === activeSiteId) || allSites[0] || { id: activeSiteId, name: `Site #${activeSiteId}` }
+  let activeSiteId: number | null = null
+  if (siteIdParam && siteIdParam !== 'ALL' && siteIdParam !== 'all') {
+    const parsed = typeof siteIdParam === 'number' ? siteIdParam : parseInt(String(siteIdParam), 10)
+    if (!isNaN(parsed) && parsed > 0) activeSiteId = parsed
+  }
+
+  const siteRecord = activeSiteId
+    ? allSites.find((s) => s.id === activeSiteId) || { id: activeSiteId, name: `Site #${activeSiteId}` }
+    : { id: 0, name: 'Semua Site' }
 
   const now = new Date()
   const defaultPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
@@ -1306,8 +1352,10 @@ export async function getEwhSiteMonthlyMatrixAction(
   const empWhere = [
     eq(employees.isActive, true),
     eq(employees.employmentStatus, 'active'),
-    eq(employees.siteId, activeSiteId),
   ]
+  if (activeSiteId !== null) {
+    empWhere.push(eq(employees.siteId, activeSiteId))
+  }
   if (parsedDeptId && selectedDept) {
     empWhere.push(
       or(
@@ -1332,6 +1380,40 @@ export async function getEwhSiteMonthlyMatrixAction(
   const targetEmployeeIdSet = new Set(targetEmployees.map((e) => e.id))
 
   // 2. Query Year Sessions & Direct Activities for YTD & Current Month + Month Attendance
+  const sessionWhere = [
+    gte(dailyActivitySessions.workDate, yearStart),
+    lte(dailyActivitySessions.workDate, yearEnd),
+  ]
+  if (activeSiteId !== null) {
+    sessionWhere.push(eq(dailyActivitySessions.siteId, activeSiteId))
+  }
+
+  const directActsWhere = [
+    isNull(activities.deletedAt),
+    or(
+      and(gte(activities.startTime, yearStart), lte(activities.startTime, yearEnd)),
+      and(gte(activities.submissionTime, yearStart), lte(activities.submissionTime, yearEnd))
+    ),
+  ]
+  if (activeSiteId !== null) {
+    directActsWhere.push(eq(activities.siteId, activeSiteId))
+  }
+
+  const attOverridesWhere = [
+    eq(timesheetAttendanceRealOverrides.period, period),
+  ]
+  if (activeSiteId !== null) {
+    attOverridesWhere.push(eq(timesheetAttendanceRealOverrides.siteId, activeSiteId))
+  }
+
+  const attRecordsWhere = [
+    gte(attendanceRecords.eventTime, monthStart),
+    lte(attendanceRecords.eventTime, monthEnd),
+  ]
+  if (activeSiteId !== null) {
+    attRecordsWhere.push(eq(attendanceRecords.siteId, activeSiteId))
+  }
+
   const [allYearSessions, allYearDirectActs, allMonthAttOverrides, allMonthAttRecords] = await Promise.all([
     db
       .select({
@@ -1343,13 +1425,7 @@ export async function getEwhSiteMonthlyMatrixAction(
         siteId: dailyActivitySessions.siteId,
       })
       .from(dailyActivitySessions)
-      .where(
-        and(
-          eq(dailyActivitySessions.siteId, activeSiteId),
-          gte(dailyActivitySessions.workDate, yearStart),
-          lte(dailyActivitySessions.workDate, yearEnd)
-        )
-      ),
+      .where(and(...sessionWhere)),
     db
       .select({
         id: activities.id,
@@ -1363,16 +1439,7 @@ export async function getEwhSiteMonthlyMatrixAction(
         siteId: activities.siteId,
       })
       .from(activities)
-      .where(
-        and(
-          eq(activities.siteId, activeSiteId),
-          isNull(activities.deletedAt),
-          or(
-            and(gte(activities.startTime, yearStart), lte(activities.startTime, yearEnd)),
-            and(gte(activities.submissionTime, yearStart), lte(activities.submissionTime, yearEnd))
-          )
-        )
-      ),
+      .where(and(...directActsWhere)),
     db
       .select({
         employeeId: timesheetAttendanceRealOverrides.employeeId,
@@ -1382,12 +1449,7 @@ export async function getEwhSiteMonthlyMatrixAction(
         clockOut: timesheetAttendanceRealOverrides.clockOut,
       })
       .from(timesheetAttendanceRealOverrides)
-      .where(
-        and(
-          eq(timesheetAttendanceRealOverrides.siteId, activeSiteId),
-          eq(timesheetAttendanceRealOverrides.period, period)
-        )
-      ),
+      .where(and(...attOverridesWhere)),
     db
       .select({
         employeeId: attendanceRecords.employeeId,
@@ -1395,13 +1457,7 @@ export async function getEwhSiteMonthlyMatrixAction(
         eventType: attendanceRecords.eventType,
       })
       .from(attendanceRecords)
-      .where(
-        and(
-          eq(attendanceRecords.siteId, activeSiteId),
-          gte(attendanceRecords.eventTime, monthStart),
-          lte(attendanceRecords.eventTime, monthEnd)
-        )
-      ),
+      .where(and(...attRecordsWhere)),
   ])
 
   // Filter aktivitas khusus karyawan terpilih jika ada filter departemen tertentu
@@ -1463,13 +1519,8 @@ export async function getEwhSiteMonthlyMatrixAction(
     return p ? p.month === month && p.year === year : false
   })
 
-  // 3. Powerman Otomatis dari Master Data Karyawan Aktif & Active Submissions
-  const uniqueActiveWorkers = new Set<number>()
-  monthSessions.forEach((s) => uniqueActiveWorkers.add(s.employeeId))
-  monthDirectActs.forEach((a) => uniqueActiveWorkers.add(a.employeeId))
-  targetEmployees.forEach((e) => uniqueActiveWorkers.add(e.id))
-
-  const defaultPowerman = Math.max(targetEmployees.length, uniqueActiveWorkers.size, 1)
+  // 3. Powerman Otomatis dari Master Data Karyawan Aktif (hero_employees)
+  const defaultPowerman = targetEmployees.length > 0 ? targetEmployees.length : 1
   const powerman = defaultPowerman
   const shiftHours = 22 // 2 Shift operasional sehari (22 Jam/Hari)
 
@@ -1632,7 +1683,7 @@ export async function getEwhSiteMonthlyMatrixAction(
     }
 
     const ewhRatio = powerman > 0 ? (durasiKerjaHours / (shiftHours * powerman)) * 100 : 0
-    const ewhHoursPerPerson = powerman > 0 ? Math.round((durasiKerjaHours / powerman) * 100) / 100 : 0
+    const ewhHoursPerPerson = powerman > 0 ? Math.round((durasiKerjaHours / shiftHours / powerman) * 100) / 100 : 0
 
     matrix.push({
       day,

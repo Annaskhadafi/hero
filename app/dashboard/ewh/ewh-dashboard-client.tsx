@@ -132,7 +132,7 @@ interface EwhTeam {
 interface Props {
   monthlyMatrixData: EwhSiteMonthlyMatrixResult
   rows: EwhRow[]
-  siteId: number
+  siteId: number | string | null
   departmentId?: number | null
   period: string
   employeeSiteId: number
@@ -204,7 +204,7 @@ export function EwhDashboardClient({
   const liveMatrix = useMemo(() => {
     return monthlyMatrixData.matrix.map((r) => {
       const ewhRatio = currentPowerman > 0 ? (r.durasiKerjaHours / (22 * currentPowerman)) * 100 : 0
-      const ewhHoursPerPerson = currentPowerman > 0 ? Math.round((r.durasiKerjaHours / currentPowerman) * 100) / 100 : 0
+      const ewhHoursPerPerson = currentPowerman > 0 ? Math.round((r.durasiKerjaHours / 22 / currentPowerman) * 100) / 100 : 0
       return {
         ...r,
         ewhHoursPerPerson,
@@ -558,12 +558,14 @@ export function EwhDashboardClient({
 
   const handleDepartmentChange = (newDeptId: string) => {
     const deptParam = newDeptId === 'ALL' ? '' : `&departmentId=${newDeptId}`
-    router.push(`/dashboard/ewh?siteId=${siteId}&period=${period}${deptParam}&tab=${activeTab}`)
+    const siteParam = siteId === 'ALL' || !siteId ? 'ALL' : siteId
+    router.push(`/dashboard/ewh?siteId=${siteParam}&period=${period}${deptParam}&tab=${activeTab}`)
   }
 
   const handlePeriodChange = (newPeriod: string) => {
     const deptQuery = departmentId ? `&departmentId=${departmentId}` : ''
-    router.push(`/dashboard/ewh?siteId=${siteId}&period=${newPeriod}${deptQuery}&tab=${activeTab}`)
+    const siteParam = siteId === 'ALL' || !siteId ? 'ALL' : siteId
+    router.push(`/dashboard/ewh?siteId=${siteParam}&period=${newPeriod}${deptQuery}&tab=${activeTab}`)
   }
 
   // Team Modal Handlers
@@ -590,6 +592,7 @@ export function EwhDashboardClient({
     }
     setSavingTeam(true)
     try {
+      const targetSiteId = typeof siteId === 'number' ? siteId : (allSites[0]?.id || 1)
       if (editingTeam) {
         await updateEwhTeamAction(editingTeam.id, {
           name: teamName,
@@ -600,7 +603,7 @@ export function EwhDashboardClient({
       } else {
         await createEwhTeamAction({
           name: teamName,
-          siteId,
+          siteId: targetSiteId,
           section: teamSection,
           employeeIds: selectedMembers,
         })
@@ -655,10 +658,11 @@ export function EwhDashboardClient({
           <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
             <MapPin className="size-3.5 text-slate-500" />
             <select
-              value={String(siteId)}
+              value={siteId === 'ALL' || !siteId ? 'ALL' : String(siteId)}
               onChange={(e) => handleSiteChange(e.target.value)}
               className="bg-transparent text-xs font-bold text-slate-700 outline-hidden cursor-pointer"
             >
+              <option value="ALL">Semua Site</option>
               {allSites.map((s) => (
                 <option key={s.id} value={String(s.id)}>
                   {s.name}
