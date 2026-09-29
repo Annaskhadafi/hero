@@ -75,9 +75,20 @@ type WorkerRow = {
 
 type LineItemRow = {
   lineLabel: string;
-  targetUnit: string;
-  estimatedMinutes: number;
-  plannedPoints: number;
+  targetUnit?: string;
+  estimatedMinutes?: number;
+  plannedPoints?: number;
+  code?: string;
+  name?: string;
+  unitNumber?: string;
+  tireCount?: number;
+  materialUsed?: string;
+  startTime?: string;
+  endTime?: string;
+  duration?: string;
+  remark?: string;
+  photoUrl?: string | null;
+  photos?: string[];
 };
 
 function dateInputValue(value = new Date()) {
@@ -339,8 +350,8 @@ export function MobileOvertimeRequestForm({
     }
     return [
       {
-        lineLabel: "Overtime Pemasangan & Dismounting Tyre OTR",
-        targetUnit: "1 Unit HD",
+        lineLabel: "",
+        targetUnit: "1 Unit",
         estimatedMinutes: 120,
         plannedPoints: 10,
       },
@@ -630,11 +641,6 @@ export function MobileOvertimeRequestForm({
       return;
     }
 
-    if (!photoUrl) {
-      toast.error("Foto bukti pekerjaan lembur wajib dilampirkan.");
-      return;
-    }
-
     setIsSubmitting(true);
     try {
       const startDateTime = `${plannedStartDate}T${plannedStartTime}`;
@@ -659,7 +665,7 @@ export function MobileOvertimeRequestForm({
           })),
           lineItems: validItems.map((item) => ({
             lineLabel: item.lineLabel.trim(),
-            targetUnit: item.targetUnit.trim(),
+            targetUnit: (item.targetUnit || "").trim(),
             estimatedMinutes: Number(item.estimatedMinutes) || 60,
             plannedPoints: Number(item.plannedPoints) || 0,
           })),
@@ -685,14 +691,7 @@ export function MobileOvertimeRequestForm({
             category: "after_mandatory_ot",
           },
         ]);
-        setLineItems([
-          {
-            lineLabel: "Overtime Pemasangan & Dismounting Tyre OTR",
-            targetUnit: "1 Unit HD",
-            estimatedMinutes: 120,
-            plannedPoints: 10,
-          },
-        ]);
+        setLineItems([]);
         setSubmittedSummary(null);
         router.push("/mobile/overtime?tab=approval&submitted=1");
         router.refresh();
@@ -713,7 +712,7 @@ export function MobileOvertimeRequestForm({
           })),
           lineItems: validItems.map((item) => ({
             lineLabel: item.lineLabel.trim(),
-            targetUnit: item.targetUnit.trim(),
+            targetUnit: (item.targetUnit || "").trim(),
             estimatedMinutes: Number(item.estimatedMinutes) || 60,
             plannedPoints: Number(item.plannedPoints) || 0,
           })),
@@ -740,14 +739,7 @@ export function MobileOvertimeRequestForm({
             category: "after_mandatory_ot",
           },
         ]);
-        setLineItems([
-          {
-            lineLabel: "Overtime Pemasangan & Dismounting Tyre OTR",
-            targetUnit: "1 Unit HD",
-            estimatedMinutes: 120,
-            plannedPoints: 10,
-          },
-        ]);
+        setLineItems([]);
         setSubmittedSummary(null);
         router.push("/mobile/overtime?tab=approval&submitted=1");
         router.refresh();
@@ -997,95 +989,7 @@ export function MobileOvertimeRequestForm({
         </div>
       </section>
 
-      {/* ── Foto Bukti Pekerjaan Lembur (Wajib) ── */}
-      <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-          <div className="flex items-center gap-2">
-            <Camera className="size-4 text-indigo-600" />
-            <p className="text-xs font-bold text-slate-800">Foto Bukti Pekerjaan Lembur (Wajib) *</p>
-          </div>
-          {photoUrl ? (
-            <Badge className="bg-emerald-50 text-emerald-700 border-0 font-bold text-[10px]">
-              Foto Terlampir
-            </Badge>
-          ) : (
-            <Badge className="bg-rose-50 text-rose-700 border-0 font-bold text-[10px]">
-              Wajib Diunggah
-            </Badge>
-          )}
-        </div>
 
-        {photoUrl ? (
-          <div className="relative inline-block border border-slate-200 rounded-xl overflow-hidden bg-slate-100 group w-full">
-            <img
-              src={resolveUploadUrl(photoUrl)}
-              alt="Foto Bukti Lembur"
-              className="w-full h-48 object-cover rounded-xl"
-            />
-            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="destructive"
-                onClick={() => setPhotoUrl("")}
-                className="h-8 text-xs font-semibold px-3 cursor-pointer"
-              >
-                <Trash2 className="size-3.5 mr-1.5" /> Hapus Foto
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="border-2 border-dashed border-slate-300 hover:border-slate-400 bg-slate-50/60 rounded-xl p-5 text-center">
-            <input
-              type="file"
-              id="mobile-spl-photo-upload"
-              accept="image/*"
-              className="hidden"
-              disabled={isUploadingPhoto}
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                setIsUploadingPhoto(true);
-                const toastId = toast.loading("Mengunggah foto bukti lembur...");
-                try {
-                  const fd = new FormData();
-                  fd.append("file", file);
-                  fd.append("uploadTarget", "activity-photos");
-                  const res = await uploadFile(fd);
-                  if (res.success && res.url) {
-                    setPhotoUrl(res.readableUrl || res.url);
-                    toast.success("Foto bukti lembur berhasil diunggah!", { id: toastId });
-                  } else {
-                    toast.error(res.error || "Gagal mengunggah foto", { id: toastId });
-                  }
-                } catch (err: any) {
-                  toast.error(err?.message || "Gagal mengunggah foto", { id: toastId });
-                } finally {
-                  setIsUploadingPhoto(false);
-                }
-              }}
-            />
-            <label
-              htmlFor="mobile-spl-photo-upload"
-              className="cursor-pointer flex flex-col items-center justify-center gap-2 text-slate-600 hover:text-slate-900"
-            >
-              {isUploadingPhoto ? (
-                <Loader2 className="size-8 text-indigo-600 animate-spin" />
-              ) : (
-                <div className="size-12 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
-                  <Camera className="size-6" />
-                </div>
-              )}
-              <span className="text-xs font-bold text-slate-800">
-                {isUploadingPhoto ? "Mengunggah Foto..." : "Ambil Foto / Pilih dari Galeri"}
-              </span>
-              <span className="text-[10px] text-slate-400">
-                Format JPG, PNG, atau WEBP (Maks 10MB) • Wajib diunggah sebelum submit
-              </span>
-            </label>
-          </div>
-        )}
-      </section>
 
       {/* ── 2. Section A: Workers (Peserta Lembur) ── */}
       <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
@@ -1290,7 +1194,7 @@ export function MobileOvertimeRequestForm({
             </p>
           </div>
           <Badge className="bg-amber-50 text-amber-700 border-0 font-bold text-[10px]">
-            2-Tier Verification (Leader & PJO)
+            1-Tier Approver (Leader / PJO)
           </Badge>
         </div>
 
@@ -1298,55 +1202,31 @@ export function MobileOvertimeRequestForm({
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[11px] font-bold text-slate-700">
-                Leader / Pengawas Lapangan (Tahap 1)
+                Leader / PJO (Site Lead / Pengawas)
               </span>
-              {isLeaderLocked ? (
+              {isLeaderLocked || isSuperiorLocked ? (
                 <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                   SUDAH DISETUJUI (TERKUNCI)
                 </span>
               ) : null}
             </div>
             <SearchableSelect
-              label="Leader"
-              placeholder="PILIH LEADER..."
-              value={leaderEmployeeId}
+              label="Leader / PJO"
+              placeholder="PILIH LEADER / PJO..."
+              value={leaderEmployeeId || superiorEmployeeId}
               onValueChange={(val) => {
-                if (isLeaderLocked) return;
+                if (isLeaderLocked && isSuperiorLocked) return;
                 setLeaderEmployeeId(val);
-                const emp = employees.find((e) => String(e.id) === val);
-                setLeaderName(emp?.name || "");
-              }}
-              options={employeeOptions}
-              widthClassName="w-full"
-              disabled={isLeaderLocked}
-            />
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[11px] font-bold text-slate-700">
-                PJO / Site Lead (Tahap Akhir)
-              </span>
-              {isSuperiorLocked ? (
-                <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                  SUDAH DISETUJUI (TERKUNCI)
-                </span>
-              ) : null}
-            </div>
-            <SearchableSelect
-              label="PJO / Site Lead"
-              placeholder="PILIH PJO / SITE LEAD..."
-              value={superiorEmployeeId}
-              onValueChange={(val) => {
-                if (isSuperiorLocked) return;
                 setSuperiorEmployeeId(val);
                 const emp = employees.find((e) => String(e.id) === val);
+                setLeaderName(emp?.name || "");
                 setSuperiorName(emp?.name || "");
               }}
               options={employeeOptions}
               widthClassName="w-full"
-              disabled={isSuperiorLocked}
+              disabled={isLeaderLocked && isSuperiorLocked}
             />
+            <p className="text-[10px] text-slate-400 mt-1">Verifikasi & persetujuan langsung (Pemohon &rarr; Leader / PJO &rarr; Selesai)</p>
           </div>
         </div>
       </section>
@@ -1640,23 +1520,55 @@ export function MobileOvertimeRequestForm({
                 <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[7.5pt] sm:text-[8pt]">
                   <thead>
                     <tr className="bg-slate-50 text-center font-bold text-black">
-                      <th className="w-[8%]">#</th>
-                      <th className="text-left w-[40%]">Activity</th>
-                      <th className="w-[18%]">Target</th>
-                      <th className="w-[14%]">Minutes</th>
-                      <th className="w-[20%]">Points</th>
+                      <th className="w-[6%]">#</th>
+                      <th className="text-left w-[34%]">Activity</th>
+                      <th className="w-[15%]">Target / Unit</th>
+                      <th className="w-[15%]">Waktu</th>
+                      <th className="w-[12%]">Tire / Material</th>
+                      <th className="w-[8%]">Poin</th>
+                      <th className="w-[10%]">Evidence</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {lineItems.filter(item => Boolean(item.lineLabel.trim())).map((item, idx) => (
-                      <tr key={idx}>
-                        <td className="text-center font-mono">{idx + 1}</td>
-                        <td className="font-medium text-black">{item.lineLabel}</td>
-                        <td className="text-center font-mono text-black">{item.targetUnit || '—'}</td>
-                        <td className="text-center font-mono text-black">{item.estimatedMinutes} m</td>
-                        <td className="text-center font-bold font-mono text-black">{item.plannedPoints} pts</td>
+                    {lineItems.filter(item => Boolean(item.lineLabel.trim())).length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="text-center text-slate-400 py-2">Belum ada rincian tugas lembur.</td>
                       </tr>
-                    ))}
+                    ) : (
+                      lineItems.filter(item => Boolean(item.lineLabel.trim())).map((item, idx) => {
+                        const actName = item.name || item.lineLabel
+                        const actCode = item.code ? `[${item.code}] ` : ''
+                        const tireMat = [
+                          item.tireCount ? `${item.tireCount} Ban` : null,
+                          item.materialUsed ? item.materialUsed : null,
+                        ].filter(Boolean).join(' • ') || '—'
+                        const timeStr = item.startTime && item.endTime ? `${item.startTime} - ${item.endTime}` : (item.estimatedMinutes ? `${item.estimatedMinutes} m` : '—')
+                        const hasPhoto = item.photoUrl || (Array.isArray(item.photos) && item.photos.length > 0)
+                        return (
+                          <tr key={idx}>
+                            <td className="text-center font-mono">{idx + 1}</td>
+                            <td className="font-medium text-black text-left">
+                              {actCode ? <strong className="font-mono">{actCode}</strong> : null}
+                              {actName}
+                            </td>
+                            <td className="text-center font-mono text-black">{item.unitNumber || item.targetUnit || '—'}</td>
+                            <td className="text-center font-mono text-black">{timeStr}</td>
+                            <td className="text-center text-black">{tireMat}</td>
+                            <td className="text-center font-bold font-mono text-black">{item.plannedPoints || 0} pts</td>
+                            <td className="text-center text-[7pt]">
+                              {hasPhoto ? (
+                                <span className="font-bold text-emerald-600">📷 Ada Foto</span>
+                              ) : (
+                                <span className="text-slate-400">—</span>
+                              )}
+                              {item.remark && (
+                                <div className="text-[6.5pt] text-slate-500 truncate max-w-[80px] mx-auto">{item.remark}</div>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })
+                    )}
                   </tbody>
                 </table>
 
@@ -1668,11 +1580,11 @@ export function MobileOvertimeRequestForm({
                   <thead>
                     <tr className="bg-slate-50 font-bold text-black">
                       <th className="w-[6%]">#</th>
-                      <th className="text-left w-[20%]">Tahap</th>
-                      <th className="text-left w-[22%]">Approver</th>
+                      <th className="text-left w-[22%]">Tahap</th>
+                      <th className="text-left w-[24%]">Approver</th>
                       <th className="w-[14%]">Status</th>
                       <th className="w-[16%]">Waktu</th>
-                      <th className="text-left w-[22%]">Catatan</th>
+                      <th className="text-left w-[18%]">Catatan</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1680,7 +1592,7 @@ export function MobileOvertimeRequestForm({
                       doc.approvals.map((step: any, idx: number) => (
                         <tr key={`spl-preview-step-${step.id || step.stepOrder || idx}`}>
                           <td>{step.stepOrder || idx + 1}</td>
-                          <td className="text-left">{step.stepLabel || (idx === 0 ? 'Leader / Supervisor' : 'PJO / Site Lead')}</td>
+                          <td className="text-left">{step.stepLabel || (idx === 0 ? 'Pemohon' : 'Leader / PJO')}</td>
                           <td className="text-left">{step.approverName || '-'}</td>
                           <td className="capitalize font-semibold text-black">{step.status || 'pending'}</td>
                           <td className="text-[7pt]">{fmtDt(step.signedAt)}</td>
@@ -1691,7 +1603,7 @@ export function MobileOvertimeRequestForm({
                       <>
                         <tr>
                           <td>1</td>
-                          <td className="text-left">Karyawan Sign</td>
+                          <td className="text-left">Pemohon (Serviceman)</td>
                           <td className="text-left">{requesterName}</td>
                           <td className="capitalize font-semibold text-black">Draft</td>
                           <td className="text-[7pt]">—</td>
@@ -1699,28 +1611,20 @@ export function MobileOvertimeRequestForm({
                         </tr>
                         <tr>
                           <td>2</td>
-                          <td className="text-left">Leader / Supervisor</td>
-                          <td className="text-left">{currentLeaderName || '-'}</td>
-                          <td className="capitalize font-semibold text-black">{existingLeaderApproval?.status || 'Waiting'}</td>
-                          <td className="text-[7pt]">{fmtDt(existingLeaderApproval?.signedAt)}</td>
-                          <td className="text-left text-[7pt] text-slate-600">{existingLeaderApproval?.remarks || '—'}</td>
-                        </tr>
-                        <tr>
-                          <td>3</td>
-                          <td className="text-left">PJO / Site Lead</td>
-                          <td className="text-left">{currentSuperiorName || '-'}</td>
-                          <td className="capitalize font-semibold text-black">{existingSuperiorApproval?.status || 'Waiting'}</td>
-                          <td className="text-[7pt]">{fmtDt(existingSuperiorApproval?.signedAt)}</td>
-                          <td className="text-left text-[7pt] text-slate-600">{existingSuperiorApproval?.remarks || '—'}</td>
+                          <td className="text-left">Leader / PJO (Site Lead)</td>
+                          <td className="text-left">{currentLeaderName || currentSuperiorName || '-'}</td>
+                          <td className="capitalize font-semibold text-black">{existingLeaderApproval?.status || existingSuperiorApproval?.status || 'Waiting'}</td>
+                          <td className="text-[7pt]">{fmtDt(existingLeaderApproval?.signedAt || existingSuperiorApproval?.signedAt)}</td>
+                          <td className="text-left text-[7pt] text-slate-600">{existingLeaderApproval?.remarks || existingSuperiorApproval?.remarks || '—'}</td>
                         </tr>
                       </>
                     )}
                   </tbody>
                 </table>
 
-                {/* Section 5: Signatories Grid */}
+                {/* Section 5: Signatories Grid (2-Grid Pemohon & Leader/PJO) */}
                 <div className="font-bold mb-2 text-[8pt] text-black">Signatories</div>
-                <div className="grid grid-cols-3 gap-3 mb-3 text-center">
+                <div className="grid grid-cols-2 gap-6 mb-3 text-center">
                   {/* 1. Serviceman / Requester */}
                   <div className="flex flex-col items-center text-center">
                     <div className="text-[7pt] text-slate-500 font-semibold mb-1">Employee Signature</div>
@@ -1745,13 +1649,13 @@ export function MobileOvertimeRequestForm({
                     </div>
                   </div>
 
-                  {/* 2. Leader / Supervisor */}
+                  {/* 2. Leader / PJO */}
                   <div className="flex flex-col items-center text-center">
-                    <div className="text-[7pt] text-slate-500 font-semibold mb-1">Leader / Supervisor Signature</div>
+                    <div className="text-[7pt] text-slate-500 font-semibold mb-1">Leader / PJO Signature</div>
                     <div className="h-14 w-full flex items-center justify-center my-1">
-                      {existingLeaderApproval?.signatureDataUrl ? (
-                        <img src={existingLeaderApproval.signatureDataUrl} alt="TTD Leader" className="max-h-12 max-w-full object-contain" />
-                      ) : isLeaderSigned ? (
+                      {(existingLeaderApproval?.signatureDataUrl || existingSuperiorApproval?.signatureDataUrl) ? (
+                        <img src={(existingLeaderApproval?.signatureDataUrl || existingSuperiorApproval?.signatureDataUrl)!} alt="TTD Leader/PJO" className="max-h-12 max-w-full object-contain" />
+                      ) : (isLeaderSigned || isSuperiorSigned) ? (
                         <svg className="h-10 w-24 text-slate-900" viewBox="0 0 100 40" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M12 26 C22 10, 32 32, 48 18 C62 6, 68 28, 82 14 C89 8, 92 10, 88 18 C82 24, 72 26, 68 22 C58 16, 48 18, 42 22" />
                           <path d="M22 30 C38 32, 60 28, 84 26" />
@@ -1761,35 +1665,11 @@ export function MobileOvertimeRequestForm({
                       )}
                     </div>
                     <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
-                      {currentLeaderName || '—'}
+                      {currentLeaderName || currentSuperiorName || '—'}
                     </div>
-                    <div className="text-[7pt] text-slate-600 font-medium">Leader / Supervisor</div>
+                    <div className="text-[7pt] text-slate-600 font-medium">{existingLeaderApproval?.stepLabel || existingSuperiorApproval?.stepLabel || 'Leader / PJO Site'}</div>
                     <div className="text-[6.5pt] text-slate-400 mt-0.5">
-                      {isLeaderSigned && existingLeaderApproval?.signedAt ? `Waktu TTD: ${fmtDt(existingLeaderApproval.signedAt)}` : '—'}
-                    </div>
-                  </div>
-
-                  {/* 3. PJO / Site Lead */}
-                  <div className="flex flex-col items-center text-center">
-                    <div className="text-[7pt] text-slate-500 font-semibold mb-1">PJO / Site Lead Signature</div>
-                    <div className="h-14 w-full flex items-center justify-center my-1">
-                      {existingSuperiorApproval?.signatureDataUrl ? (
-                        <img src={existingSuperiorApproval.signatureDataUrl} alt="TTD Superior" className="max-h-12 max-w-full object-contain" />
-                      ) : isSuperiorSigned ? (
-                        <svg className="h-10 w-24 text-slate-900" viewBox="0 0 100 40" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M12 26 C22 10, 32 32, 48 18 C62 6, 68 28, 82 14 C89 8, 92 10, 88 18 C82 24, 72 26, 68 22 C58 16, 48 18, 42 22" />
-                          <path d="M22 30 C38 32, 60 28, 84 26" />
-                        </svg>
-                      ) : (
-                        <span className="text-slate-400 italic text-[7pt]">(Belum Disetujui)</span>
-                      )}
-                    </div>
-                    <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
-                      {currentSuperiorName || '—'}
-                    </div>
-                    <div className="text-[7pt] text-slate-600 font-medium">PJO / Site Lead</div>
-                    <div className="text-[6.5pt] text-slate-400 mt-0.5">
-                      {isSuperiorSigned && existingSuperiorApproval?.signedAt ? `Waktu TTD: ${fmtDt(existingSuperiorApproval.signedAt)}` : '—'}
+                      {(isLeaderSigned || isSuperiorSigned) && (existingLeaderApproval?.signedAt || existingSuperiorApproval?.signedAt) ? `Waktu TTD: ${fmtDt(existingLeaderApproval?.signedAt || existingSuperiorApproval?.signedAt)}` : '—'}
                     </div>
                   </div>
                 </div>

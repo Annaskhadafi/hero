@@ -5,10 +5,12 @@ import { useRouter } from 'next/navigation'
 import {
   AlertCircle,
   Bug,
+  Camera,
+  Check,
   CheckCheck,
   CheckCircle2,
   CheckSquare,
-  Camera,
+  ChevronRight,
   Download,
   Eye,
   FileCheck,
@@ -16,6 +18,9 @@ import {
   FilePenLine,
   FileSpreadsheet,
   FileText,
+  ImagePlus,
+  Layers,
+  ListFilter,
   Loader2,
   PenTool,
   Plus,
@@ -36,6 +41,9 @@ import { toast } from 'sonner'
 import { downloadElementAsPdf, downloadHtmlAsPdf, generateElementAsPdfBlob, generateHtmlAsPdfBlob, downloadFilesAsZip } from '@/lib/pdf-download'
 import { uploadFile } from '@/app/actions/upload'
 import { resolveUploadUrl } from '@/lib/resolve-upload-url'
+import type { RouteFolder } from '@/lib/daily-activity'
+import { SplEvidenceQrBox } from '@/components/overtime-document-qr'
+import QRCode from 'qrcode'
 
 import { AdminPageShell } from '@/components/admin-page-shell'
 import { MissingSignatureDialog } from '@/components/missing-signature-dialog'
@@ -103,6 +111,32 @@ export type OvertimeActivityLibraryItem = {
   requiresEquipmentNo?: boolean | null
 }
 
+export type OvertimeCreateLineItem = {
+  lineLabel: string
+  code?: string
+  name?: string
+  unitNumber?: string
+  materialUsed?: string
+  tireCount?: number
+  startTime?: string
+  endTime?: string
+  duration?: string
+  points?: number
+  targetUnit?: string
+  estimatedMinutes?: number
+  plannedPoints?: number
+  remark?: string
+  photoUrl?: string | null
+  photos?: string[]
+  libraryActivityId?: number
+  requiresEquipmentNo?: boolean
+  requiresDuration?: boolean
+  requiresLocationGps?: boolean
+  requiresTireCount?: boolean
+  requiresMaterialUsed?: boolean
+  requiresPhoto?: boolean
+}
+
 export type OvertimeListingRow = {
   id: number
   splNumber: string
@@ -127,6 +161,17 @@ export type OvertimeListingRow = {
     targetUnit?: string | null
     estimatedMinutes: number
     plannedPoints: number
+    code?: string
+    name?: string
+    unitNumber?: string | null
+    tireCount?: number | null
+    materialUsed?: string | null
+    startTime?: string | null
+    endTime?: string | null
+    duration?: string | null
+    remark?: string | null
+    photoUrl?: string | null
+    photos?: string[]
   }>
   approvals: Array<{
     stepOrder: number
@@ -205,6 +250,7 @@ export function OvertimeListingClient({
   rows: propRows,
   employees = [],
   activityLibraries = [],
+  routeFolders = [],
   initialSettings,
   currentEmployeeId,
   currentEmployeeEmail = null,
@@ -214,6 +260,7 @@ export function OvertimeListingClient({
   rows: OvertimeListingRow[]
   employees?: EmployeeHierarchyInfo[]
   activityLibraries?: OvertimeActivityLibraryItem[]
+  routeFolders?: RouteFolder[]
   initialSettings?: OvertimeWorkflowSettings
   currentEmployeeId?: number | null
   currentEmployeeEmail?: string | null
@@ -307,7 +354,37 @@ export function OvertimeListingClient({
   // Create modal
   const [createOpen, setCreateOpen] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
-  const [createForm, setCreateForm] = useState({
+  const [createForm, setCreateForm] = useState<{
+    title: string
+    workDate: string
+    plannedStartDate: string
+    plannedStartTime: string
+    plannedEndDate: string
+    plannedEndTime: string
+    requesterEmployeeId: string
+    requesterName: string
+    requesterDepartment: string
+    requestNotes: string
+    executionNotes: string
+    leaderEmployeeId: string
+    leaderName: string
+    superiorEmployeeId: string
+    superiorName: string
+    managerEmployeeId: string
+    managerName: string
+    photoUrl: string
+    sourceMode?: 'self_input' | 'assigned' | 'custom'
+    assignmentId?: string
+    customDescription?: string
+    workers: Array<{
+      employeeId: string
+      employeeName: string
+      shiftCode: string
+      rosterType: string
+      category: string
+    }>
+    lineItems: OvertimeCreateLineItem[]
+  }>({
     title: '',
     workDate: new Date().toISOString().split('T')[0],
     plannedStartDate: new Date().toISOString().split('T')[0],
@@ -326,12 +403,13 @@ export function OvertimeListingClient({
     managerEmployeeId: '',
     managerName: '',
     photoUrl: '',
+    sourceMode: 'self_input',
+    assignmentId: '',
+    customDescription: '',
     workers: [
       { employeeId: '', employeeName: '', shiftCode: 'DS', rosterType: '5:2', category: 'after_mandatory_ot' },
     ],
-    lineItems: [
-      { lineLabel: 'Overtime Penanganan & Perbaikan Unit Workshop', targetUnit: '1 Unit', estimatedMinutes: 120, plannedPoints: 10 },
-    ],
+    lineItems: [],
   })
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false)
 
@@ -342,40 +420,354 @@ export function OvertimeListingClient({
     }))
   }, [employees])
 
-  const activityLibraryOptions = useMemo(() => {
-    return (activityLibraries || []).map((lib) => ({
-      value: lib.activityName,
-      label: `${lib.activityCode ? `[${lib.activityCode}] ` : ''}${lib.activityName}${lib.category ? ` (${lib.category})` : ''}`,
-    }))
+  // Floating Window: Kamus Aktivitas route picker dialog
+  const [isPickerModalOpen, setIsPickerModalOpen] = useState(false)
+  const [pickerSearch, setPickerSearch] = useState('')
+  const [expandedPickerGroups, setExpandedPickerGroups] = useState<Set<string>>(new Set())
+
+  const normalizedPickerSearch = useMemo(() => {
+    return (pickerSearch || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+  }, [pickerSearch])
+
+  const availableLibraryMap = useMemo(() => {
+    const map = new Map<string, OvertimeActivityLibraryItem>()
+    for (const p of activityLibraries || []) {
+      map.set(String(p.id), p)
+      if (p.activityCode) map.set(p.activityCode.toLowerCase(), p)
+      if (p.activityName) map.set(p.activityName.toLowerCase(), p)
+    }
+    return map
   }, [activityLibraries])
 
-  const selectActivityForLineItem = (index: number, value: string) => {
-    const matched = (activityLibraries || []).find(
-      (lib) =>
-        lib.activityName.toLowerCase().trim() === value.toLowerCase().trim() ||
-        lib.activityCode.toLowerCase().trim() === value.toLowerCase().trim()
-    )
-    if (matched) {
-      setCreateForm((prev) => {
-        const next = [...prev.lineItems]
-        const currentTarget = next[index]?.targetUnit
-        const defaultTarget = matched.requiresEquipmentNo ? '1 Unit' : (currentTarget && currentTarget.trim() ? currentTarget : '1 Job')
-        const defaultMinutes = matched.slaHours ? Math.round(Number(matched.slaHours) * 60) : 60
-        const defaultPoints = matched.basePoints ? Number(matched.basePoints) : 5
+  const groupedLibraryIdSet = useMemo(() => {
+    const set = new Set<string>()
+    for (const folder of routeFolders || []) {
+      const folderCode = (folder.routeCode || '').trim().toLowerCase()
+      const folderName = (folder.routeName || '').trim().toLowerCase()
 
-        next[index] = {
-          ...next[index],
-          lineLabel: matched.activityName,
-          targetUnit: defaultTarget,
-          estimatedMinutes: defaultMinutes,
-          plannedPoints: defaultPoints,
+      for (const lib of availableLibraryMap.values()) {
+        const libCode = (lib.activityCode || '').trim().toLowerCase()
+        const libName = (lib.activityName || '').trim().toLowerCase()
+
+        if (
+          (libCode && (folderCode === `grp-${libCode}` || folderCode === libCode)) ||
+          (libName && (folderName === `group: ${libName}` || folderName === libName))
+        ) {
+          set.add(String(lib.id))
         }
-        return { ...prev, lineItems: next }
+      }
+
+      for (const group of folder.groups || []) {
+        const groupKey = ((group as any).groupKey || '').trim().toLowerCase()
+        const groupName = (group.groupName || '').trim().toLowerCase()
+
+        for (const lib of availableLibraryMap.values()) {
+          const libCode = (lib.activityCode || '').trim().toLowerCase()
+          const libName = (lib.activityName || '').trim().toLowerCase()
+
+          if (
+            (libCode && (groupKey === `grp-${libCode}` || groupKey === libCode)) ||
+            (libName && (groupName === `group: ${libName}` || groupName === libName))
+          ) {
+            set.add(String(lib.id))
+          }
+        }
+
+        for (const item of group.items || []) {
+          if (item.libraryActivityId != null) {
+            set.add(String(item.libraryActivityId))
+          }
+        }
+      }
+    }
+    return set
+  }, [routeFolders, availableLibraryMap])
+
+  const matchingRouteFolders = useMemo(() => {
+    return (routeFolders || [])
+      .map((route) => {
+        const matchingGroups = (route.groups || [])
+          .map((group) => {
+            const matchingItems = (group.items || [])
+              .map((i) => {
+                if (i.libraryActivityId != null) {
+                  const lib = availableLibraryMap.get(String(i.libraryActivityId))
+                  if (lib) {
+                    const isTire = (i.itemLabel || lib.activityName || '').toLowerCase().includes('tire') || (i.itemLabel || lib.activityName || '').toLowerCase().includes('ban')
+                    return {
+                      id: lib.id,
+                      code: i.itemCode || lib.activityCode,
+                      name: i.itemLabel || lib.activityName,
+                      basePoints: i.pointOverride != null ? i.pointOverride : (lib.basePoints ? Number(lib.basePoints) : 10),
+                      category: lib.category || 'Route Activity',
+                      requiresEquipmentNo: i.requiresUnit != null ? i.requiresUnit : Boolean(lib.requiresEquipmentNo),
+                      requiresDuration: i.requiresTime != null ? i.requiresTime : true,
+                      requiresPhoto: i.requiresPhoto != null ? i.requiresPhoto : false,
+                      requiresTireCount: isTire,
+                      requiresMaterialUsed: false,
+                    }
+                  }
+                }
+                const isTire = (i.itemLabel || '').toLowerCase().includes('tire') || (i.itemLabel || '').toLowerCase().includes('ban')
+                return {
+                  id: -(i.id || Math.abs((i.itemCode || i.itemLabel || 'item').split('').reduce((acc, c) => ((acc << 5) - acc) + c.charCodeAt(0), 0))),
+                  code: i.itemCode || 'CUSTOM',
+                  name: i.itemLabel || 'Aktivitas Route',
+                  basePoints: i.pointOverride ?? 10,
+                  category: 'Route Activity',
+                  requiresEquipmentNo: i.requiresUnit ?? false,
+                  requiresDuration: i.requiresTime ?? true,
+                  requiresPhoto: i.requiresPhoto ?? false,
+                  requiresTireCount: isTire,
+                  requiresMaterialUsed: false,
+                }
+              })
+              .filter((lib) => {
+                if (!normalizedPickerSearch) return true
+                const nCode = (lib.code || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+                const nName = (lib.name || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+                return nCode.includes(normalizedPickerSearch) || nName.includes(normalizedPickerSearch)
+              })
+            return { ...group, matchingItems }
+          })
+          .filter((group) => (normalizedPickerSearch ? group.matchingItems.length > 0 : true))
+
+        return { ...route, matchingGroups }
       })
+      .filter((route) => route.matchingGroups.length > 0)
+  }, [routeFolders, availableLibraryMap, normalizedPickerSearch])
+
+  const standaloneLibraries = useMemo(() => {
+    const presets = activityLibraries || []
+    return presets
+      .filter((p) => !groupedLibraryIdSet.has(String(p.id)))
+      .filter((p) => {
+        if (!normalizedPickerSearch) return true
+        const nCode = (p.activityCode || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+        const nName = (p.activityName || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+        return nCode.includes(normalizedPickerSearch) || nName.includes(normalizedPickerSearch)
+      })
+      .sort((a, b) => (Number(b.basePoints) || 0) - (Number(a.basePoints) || 0))
+  }, [activityLibraries, groupedLibraryIdSet, normalizedPickerSearch])
+
+  const totalVisibleLibraryCount = useMemo(() => {
+    const groupCount = (matchingRouteFolders || []).reduce(
+      (sum, r) => sum + (r?.matchingGroups || []).reduce((gSum, g) => gSum + (g?.matchingItems?.length || 0), 0),
+      0
+    )
+    return groupCount + (standaloneLibraries || []).length
+  }, [matchingRouteFolders, standaloneLibraries])
+
+  const [isUploadingLinePhoto, setIsUploadingLinePhoto] = useState<Record<number | string, boolean>>({})
+
+  const toggleGroupItems = (items: Array<{ id: number; name: string; code?: string; basePoints?: number | string | null; requiresEquipmentNo?: boolean; requiresDuration?: boolean; requiresTireCount?: boolean; requiresMaterialUsed?: boolean; requiresPhoto?: boolean }>) => {
+    const isAllSelected = items.every((sub) =>
+      (createForm.lineItems || []).some(
+        (i) => i.lineLabel === sub.name || (sub.code && i.lineLabel.includes(sub.code)) || i.lineLabel.includes(sub.name)
+      )
+    )
+
+    if (isAllSelected) {
+      setCreateForm((p) => ({
+        ...p,
+        lineItems: p.lineItems.filter(
+          (i) => !items.some((sub) => i.lineLabel === sub.name || (sub.code && i.lineLabel.includes(sub.code)) || i.lineLabel.includes(sub.name))
+        ),
+      }))
     } else {
-      updateLineItemRow(index, 'lineLabel', value)
+      const missing = items.filter(
+        (sub) => !(createForm.lineItems || []).some(
+          (i) => i.lineLabel === sub.name || (sub.code && i.lineLabel.includes(sub.code)) || i.lineLabel.includes(sub.name)
+        )
+      )
+      setCreateForm((p) => ({
+        ...p,
+        lineItems: [
+          ...p.lineItems,
+          ...missing.map((sub) => ({
+            lineLabel: `${sub.code ? `${sub.code} - ` : ''}${sub.name}`,
+            code: sub.code,
+            name: sub.name,
+            unitNumber: '',
+            materialUsed: '',
+            tireCount: sub.requiresTireCount ? 1 : 0,
+            startTime: p.plannedStartTime || '17:00',
+            endTime: p.plannedEndTime || '21:00',
+            duration: '120m',
+            points: Number(sub.basePoints) || 10,
+            targetUnit: '1 Job',
+            estimatedMinutes: 120,
+            plannedPoints: Number(sub.basePoints) || 10,
+            remark: '',
+            photoUrl: null,
+            photos: [],
+            libraryActivityId: sub.id > 0 ? sub.id : undefined,
+            requiresEquipmentNo: sub.requiresEquipmentNo ?? false,
+            requiresDuration: sub.requiresDuration ?? true,
+            requiresTireCount: sub.requiresTireCount ?? false,
+            requiresMaterialUsed: sub.requiresMaterialUsed ?? false,
+            requiresPhoto: sub.requiresPhoto ?? false,
+          })),
+        ],
+      }))
     }
   }
+
+  const toggleLineItem = (name: string, code?: string, basePoints?: number | string | null, meta?: Partial<{ requiresEquipmentNo: boolean; requiresDuration: boolean; requiresTireCount: boolean; requiresMaterialUsed: boolean; requiresPhoto: boolean }>) => {
+    setCreateForm((p) => {
+      const existingIdx = p.lineItems.findIndex(
+        (i) => i.lineLabel === name || (code && i.lineLabel.includes(code)) || i.lineLabel.includes(name)
+      )
+      if (existingIdx >= 0) {
+        return {
+          ...p,
+          lineItems: p.lineItems.filter((_, idx) => idx !== existingIdx),
+        }
+      }
+      const isTire = meta?.requiresTireCount ?? ((name || '').toLowerCase().includes('tire') || (name || '').toLowerCase().includes('ban'))
+      return {
+        ...p,
+        lineItems: [
+          ...p.lineItems,
+          {
+            lineLabel: `${code ? `${code} - ` : ''}${name}`,
+            code,
+            name,
+            unitNumber: '',
+            materialUsed: '',
+            tireCount: isTire ? 1 : 0,
+            startTime: p.plannedStartTime || '17:00',
+            endTime: p.plannedEndTime || '21:00',
+            duration: '120m',
+            points: Number(basePoints) || 10,
+            targetUnit: '1 Job',
+            estimatedMinutes: 120,
+            plannedPoints: Number(basePoints) || 10,
+            remark: '',
+            photoUrl: null,
+            photos: [],
+            requiresEquipmentNo: meta?.requiresEquipmentNo ?? false,
+            requiresDuration: meta?.requiresDuration ?? true,
+            requiresTireCount: isTire,
+            requiresMaterialUsed: meta?.requiresMaterialUsed ?? false,
+            requiresPhoto: meta?.requiresPhoto ?? false,
+          },
+        ],
+      }
+    })
+  }
+
+  const updateLineItemRow = (idx: number, field: string, val: any) => {
+    setCreateForm((p) => {
+      const next = [...p.lineItems]
+      if (next[idx]) {
+        next[idx] = { ...next[idx], [field]: val }
+      }
+      return { ...p, lineItems: next }
+    })
+  }
+
+  const handleLinePhotoUpload = async (targetIdx: number, file?: File) => {
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      toast.error('File harus berupa gambar (JPG, PNG, WebP)')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Ukuran foto maksimal 5MB')
+      return
+    }
+
+    setIsUploadingLinePhoto((prev) => ({ ...prev, [targetIdx]: true }))
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('uploadTarget', 'activity-photos')
+      const res = await uploadFile(formData)
+      if (res.success && (res.readableUrl || res.url)) {
+        const finalUrl = res.readableUrl || res.url
+        updateLineItemRow(targetIdx, 'photoUrl', finalUrl)
+        updateLineItemRow(targetIdx, 'photos', [finalUrl])
+        toast.success('Foto evidence berhasil diunggah')
+      } else {
+        const reader = new FileReader()
+        reader.onload = () => {
+          const base64Url = reader.result as string
+          updateLineItemRow(targetIdx, 'photoUrl', base64Url)
+          updateLineItemRow(targetIdx, 'photos', [base64Url])
+          toast.success('Foto evidence tersimpan')
+        }
+        reader.readAsDataURL(file)
+      }
+    } catch {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const base64Url = reader.result as string
+        updateLineItemRow(targetIdx, 'photoUrl', base64Url)
+        updateLineItemRow(targetIdx, 'photos', [base64Url])
+        toast.success('Foto evidence tersimpan')
+      }
+      reader.readAsDataURL(file)
+    } finally {
+      setIsUploadingLinePhoto((prev) => ({ ...prev, [targetIdx]: false }))
+    }
+  }
+
+  const removeLineItemRow = (idx: number) => {
+    setCreateForm((p) => ({
+      ...p,
+      lineItems: p.lineItems.filter((_, i) => i !== idx),
+    }))
+  }
+
+  const addCustomLineItemRow = () => {
+    setCreateForm((p) => ({
+      ...p,
+      lineItems: [
+        ...p.lineItems,
+        {
+          lineLabel: '',
+          name: '',
+          targetUnit: '1 Unit',
+          estimatedMinutes: 120,
+          plannedPoints: 10,
+          startTime: p.plannedStartTime || '17:00',
+          endTime: p.plannedEndTime || '21:00',
+          duration: '120m',
+          points: 10,
+          remark: '',
+        },
+      ],
+    }))
+  }
+
+  const addAssignedLineItemRow = () => {
+    setCreateForm((p) => ({
+      ...p,
+      lineItems: [
+        ...p.lineItems,
+        {
+          lineLabel: '',
+          name: '',
+          targetUnit: '1 Unit',
+          estimatedMinutes: 120,
+          plannedPoints: 10,
+          startTime: p.plannedStartTime || '17:00',
+          endTime: p.plannedEndTime || '21:00',
+          duration: '120m',
+          points: 10,
+          remark: '',
+        },
+      ],
+    }))
+  }
+
+  const activitySelectOptions = useMemo(() => {
+    return (activityLibraries || []).map((lib) => ({
+      value: `${lib.activityCode ? `${lib.activityCode} - ` : ''}${lib.activityName}`,
+      label: `${lib.activityCode ? `[${lib.activityCode}] ` : ''}${lib.activityName}`,
+    }))
+  }, [activityLibraries])
 
   const addWorkerRow = () => {
     setCreateForm((p) => ({
@@ -443,34 +835,6 @@ export function OvertimeListingClient({
         superiorName: autoSuperiorName,
       }
     })
-  }
-
-  const addLineItemRow = () => {
-    setCreateForm((p) => ({
-      ...p,
-      lineItems: [...p.lineItems, { lineLabel: '', targetUnit: '', estimatedMinutes: 60, plannedPoints: 5 }],
-    }))
-  }
-
-  const removeLineItemRow = (idx: number) => {
-    setCreateForm((p) => ({
-      ...p,
-      lineItems: p.lineItems.filter((_, i) => i !== idx),
-    }))
-  }
-
-  const updateLineItemRow = (idx: number, field: string, val: any) => {
-    setCreateForm((p) => ({
-      ...p,
-      lineItems: p.lineItems.map((item, i) => (i === idx ? { ...item, [field]: val } : item)),
-    }))
-  }
-
-  const addPresetLineItem = (lineLabel: string, targetUnit = '1 Unit', estimatedMinutes = 120, plannedPoints = 10) => {
-    setCreateForm((p) => ({
-      ...p,
-      lineItems: [...p.lineItems, { lineLabel, targetUnit, estimatedMinutes, plannedPoints }],
-    }))
   }
 
   // Import modal
@@ -838,6 +1202,193 @@ export function OvertimeListingClient({
     }
   }
 
+  function renderSplHtmlTemplate(row: OvertimeListingRow, qrImgHtml: string) {
+    const requesterApproval = (row.approvals || []).find((a) => a.stepOrder === 1)
+    const leaderApproval = (row.approvals || []).find((a) => a.stepOrder === 2 || a.stepOrder === 3)
+    const isLeaderApproved = leaderApproval?.status === 'approved'
+
+    const participantsListHtml = row.participants && row.participants.length > 0
+      ? row.participants.map((p, idx) => `
+          <tr>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">${idx + 1}</td>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: left; font-weight: bold;">${p.employeeName}</td>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">${p.shiftCode || 'DS'}</td>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">${p.rosterType || '5:2'}</td>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center; text-transform: capitalize; font-size: 7.5pt;">${(p.category || 'after_mandatory_ot').replace(/_/g, ' ')}</td>
+          </tr>
+        `).join('')
+      : `
+          <tr>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">1</td>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: left; font-weight: bold;">${row.requesterName}</td>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">DS</td>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">5:2</td>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center; text-transform: capitalize; font-size: 7.5pt;">After Mandatory OT</td>
+          </tr>
+        `
+
+    const lineItemsListHtml = row.lineItems && row.lineItems.length > 0
+      ? row.lineItems.map((item, idx) => {
+          const actName = item.name || item.lineLabel || row.title
+          const actCode = item.code ? `<strong>[${item.code}]</strong> ` : ''
+          const tireMat = [
+            item.tireCount ? `${item.tireCount} Ban` : null,
+            item.materialUsed ? item.materialUsed : null,
+          ].filter(Boolean).join(' • ') || '—'
+          const timeStr = item.startTime && item.endTime ? `${item.startTime} - ${item.endTime}` : (item.estimatedMinutes ? `${item.estimatedMinutes} m` : '—')
+          const hasPhoto = item.photoUrl || (Array.isArray(item.photos) && item.photos.length > 0)
+          return `
+            <tr>
+              <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">${idx + 1}</td>
+              <td style="border: 1px solid black; padding: 3px 5px; text-align: left;">
+                <div style="font-weight: 600;">${actCode}${actName}</div>
+              </td>
+              <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">${item.unitNumber || item.targetUnit || '—'}</td>
+              <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">${timeStr}</td>
+              <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">${tireMat}</td>
+              <td style="border: 1px solid black; padding: 3px 5px; text-align: center; font-weight: bold;">${item.plannedPoints || 0} pts</td>
+              <td style="border: 1px solid black; padding: 3px 5px; text-align: center; font-size: 7pt;">
+                ${hasPhoto ? '<span style="color: #059669; font-weight: bold;">📷 Ada Foto</span>' : '<span style="color: #94a3b8;">—</span>'}
+                ${item.remark ? `<div style="color: #475569; font-size: 6.5pt; margin-top: 1px;">${item.remark}</div>` : ''}
+              </td>
+            </tr>
+          `
+        }).join('')
+      : `
+          <tr>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">1</td>
+            <td style="border: 1px solid black; padding: 3px 5px; font-weight: 500;">${row.title}</td>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">—</td>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">60 m</td>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">—</td>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center; font-weight: bold;">10 pts</td>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center; color: #94a3b8; font-size: 7pt;">—</td>
+          </tr>
+        `
+
+    return `
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+        <div style="flex: 1; text-align: center; padding-left: 50px;">
+          <h1 class="text-center font-bold" style="font-size: 11pt; margin-bottom: 2px; text-transform: uppercase;">SURAT PERINTAH LEMBUR (SPL)</h1>
+          <p class="text-center font-bold" style="font-size: 8pt; color: #475569; margin: 0;">PT CHITRAPARATAMA • HUMAN CAPITAL</p>
+        </div>
+        <div style="flex-shrink: 0;">
+          ${qrImgHtml}
+        </div>
+      </div>
+
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 0.5rem;">
+        <tbody>
+          <tr><td colspan="4" style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Details & Request Profile</td></tr>
+          <tr>
+            <td style="border: 1px solid black; padding: 3px 5px; width: 25%; font-weight: bold; background: #f8fafc;">SPL Number</td>
+            <td style="border: 1px solid black; padding: 3px 5px; width: 25%; font-family: monospace; font-weight: bold;">${row.splNumber}</td>
+            <td style="border: 1px solid black; padding: 3px 5px; width: 25%; font-weight: bold; background: #f8fafc;">Work Date</td>
+            <td style="border: 1px solid black; padding: 3px 5px; width: 25%; font-weight: bold;">${formatDate(row.workDate)}</td>
+          </tr>
+          <tr>
+            <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Title / Keperluan</td>
+            <td colspan="3" style="border: 1px solid black; padding: 3px 5px; font-weight: bold;">${row.title || 'Overtime Command'}</td>
+          </tr>
+          <tr>
+            <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Requester Name</td>
+            <td style="border: 1px solid black; padding: 3px 5px;">${row.requesterName || '—'}</td>
+            <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Department</td>
+            <td style="border: 1px solid black; padding: 3px 5px;">${row.requesterDepartment || 'Central Services'}</td>
+          </tr>
+          <tr>
+            <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Planned Schedule</td>
+            <td colspan="3" style="border: 1px solid black; padding: 3px 5px;">${formatDate(row.workDate)} (${formatTime(row.plannedStartAt)} s.d. ${formatTime(row.plannedEndAt)})</td>
+          </tr>
+          ${row.requestNotes ? `
+            <tr>
+              <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Request Notes</td>
+              <td colspan="3" style="border: 1px solid black; padding: 3px 5px;">${row.requestNotes}</td>
+            </tr>
+          ` : ''}
+          <tr>
+            <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Status Dokumen</td>
+            <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; text-transform: uppercase; color: #065f46;">${row.status}</td>
+            <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Total Pekerja</td>
+            <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold;">${row.workerCount} Orang</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div style="font-weight: bold; margin-bottom: 0.25rem;">A. Workers (${row.workerCount} Orang)</div>
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 0.5rem; text-align: center;">
+        <thead>
+          <tr style="background: #f8fafc; font-weight: bold;">
+            <th style="border: 1px solid black; padding: 3px 5px; width: 8%;">#</th>
+            <th style="border: 1px solid black; padding: 3px 5px; text-align: left; width: 42%;">Name</th>
+            <th style="border: 1px solid black; padding: 3px 5px; width: 15%;">Shift</th>
+            <th style="border: 1px solid black; padding: 3px 5px; width: 15%;">Roster</th>
+            <th style="border: 1px solid black; padding: 3px 5px; width: 20%;">Category</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${participantsListHtml}
+        </tbody>
+      </table>
+
+      <div style="font-weight: bold; margin-bottom: 0.25rem;">B. Line Items (Aktivitas Pekerjaan)</div>
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 0.5rem;">
+        <thead>
+          <tr style="background: #f8fafc; font-weight: bold; text-align: center;">
+            <th style="border: 1px solid black; padding: 3px 5px; width: 6%;">#</th>
+            <th style="border: 1px solid black; padding: 3px 5px; text-align: left; width: 34%;">Activity</th>
+            <th style="border: 1px solid black; padding: 3px 5px; width: 15%;">Target / Unit</th>
+            <th style="border: 1px solid black; padding: 3px 5px; width: 15%;">Waktu</th>
+            <th style="border: 1px solid black; padding: 3px 5px; width: 12%;">Tire / Material</th>
+            <th style="border: 1px solid black; padding: 3px 5px; width: 8%;">Poin</th>
+            <th style="border: 1px solid black; padding: 3px 5px; width: 10%;">Evidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${lineItemsListHtml}
+        </tbody>
+      </table>
+
+      <div style="font-weight: bold; margin-bottom: 0.25rem;">C. Signatories & Approval Steps</div>
+      <table style="width: 100%; border-collapse: collapse; text-align: center;">
+        <thead>
+          <tr style="background: #f8fafc; font-weight: bold;">
+            <th style="border: 1px solid black; padding: 3px 5px; width: 50%;">Pemohon (Serviceman)</th>
+            <th style="border: 1px solid black; padding: 3px 5px; width: 50%;">Leader / PJO (Site Lead)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="border: 1px solid black; height: 60px; vertical-align: bottom; padding: 4px;">
+              <div style="font-size: 7.5pt; color: #059669; font-weight: bold; margin-bottom: 6px;">
+                ${requesterApproval?.signatureDataUrl ? `<img src="${requesterApproval.signatureDataUrl}" style="height: 32px; max-width: 120px; object-fit: contain; display: block; margin: 0 auto 2px;" />` : ''}
+                <div>Tanda Tangan Sah</div>
+              </div>
+              <div style="border-top: 1px solid #cbd5e1; padding-top: 2px;">
+                <p style="font-weight: bold; font-size: 8pt; margin: 0;">${requesterApproval?.approverName || row.requesterName}</p>
+                <p style="font-size: 7pt; color: #64748b; margin: 0;">${requesterApproval?.signedAt ? new Date(requesterApproval.signedAt).toLocaleDateString('id-ID') : formatDate(row.workDate)}</p>
+              </div>
+            </td>
+            <td style="border: 1px solid black; height: 60px; vertical-align: bottom; padding: 4px;">
+              <div style="font-size: 7.5pt; color: ${isLeaderApproved ? '#059669' : '#94a3b8'}; font-weight: bold; margin-bottom: 6px;">
+                ${leaderApproval?.signatureDataUrl ? `<img src="${leaderApproval.signatureDataUrl}" style="height: 32px; max-width: 120px; object-fit: contain; display: block; margin: 0 auto 2px;" />` : ''}
+                <div>${isLeaderApproved ? 'Tanda Tangan Sah' : '<span style="font-style: italic;">Menunggu Persetujuan</span>'}</div>
+              </div>
+              <div style="border-top: 1px solid #cbd5e1; padding-top: 2px;">
+                <p style="font-weight: bold; font-size: 8pt; margin: 0;">${leaderApproval?.approverName || 'Leader / PJO Site'}</p>
+                <p style="font-size: 7pt; color: #64748b; margin: 0;">${leaderApproval?.signedAt ? new Date(leaderApproval.signedAt).toLocaleDateString('id-ID') : '—'}</p>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div style="text-align: right; font-size: 7pt; color: #64748b; margin-top: 8px;">
+        F.HC.SPL.001.01 • PT Chitra Paratama
+      </div>
+    `
+  }
+
   const handleDownloadSplPdf = async (row: OvertimeListingRow) => {
     setIsDownloadingPdf(true)
     toast.loading('Menyiapkan file PDF...', { id: 'spl-pdf-dl' })
@@ -848,115 +1399,22 @@ export function OvertimeListingClient({
       if (targetEl) {
         await downloadElementAsPdf(targetEl, `SPL_${row.splNumber.replace(/[\/\\]/g, '_')}.pdf`)
       } else {
-        const contentHtml = `
-          <h1 class="text-center font-bold" style="font-size: 11pt; margin-bottom: 2px;">SURAT PERINTAH LEMBUR (SPL)</h1>
-          <p class="text-center font-bold" style="font-size: 8pt; color: #475569; margin-bottom: 12px;">PT CHITRAPARATAMA • HUMAN CAPITAL</p>
+        const origin = typeof window !== 'undefined' ? window.location.origin : ''
+        const evidenceUrl = `${origin}/overtime-evidence/${row.id}`
+        let qrImgHtml = ''
+        try {
+          const qrDataUrl = await QRCode.toDataURL(evidenceUrl, { margin: 1, width: 140, errorCorrectionLevel: 'M' })
+          qrImgHtml = `
+            <a href="${evidenceUrl}" target="_blank" style="text-decoration: none; color: inherit; display: inline-block; text-align: center; border: 1px solid #cbd5e1; padding: 3px; border-radius: 6px; background: #ffffff;">
+              <img src="${qrDataUrl}" width="50" height="50" style="display: block; margin: 0 auto;" alt="QR Evidence" />
+              <div style="font-size: 5.5pt; font-weight: bold; color: #003f78; margin-top: 2px;">Scan / Klik Foto Bukti ↗</div>
+            </a>
+          `
+        } catch (e) {
+          console.error('QR code generation error:', e)
+        }
 
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 0.5rem;">
-            <tbody>
-              <tr><td colspan="4" style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Details & Request Profile</td></tr>
-              <tr>
-                <td style="border: 1px solid black; padding: 3px 5px; width: 25%; font-weight: bold; background: #f8fafc;">SPL Number</td>
-                <td style="border: 1px solid black; padding: 3px 5px; width: 25%; font-family: monospace; font-weight: bold;">${row.splNumber}</td>
-                <td style="border: 1px solid black; padding: 3px 5px; width: 25%; font-weight: bold; background: #f8fafc;">Work Date</td>
-                <td style="border: 1px solid black; padding: 3px 5px; width: 25%; font-weight: bold;">${formatDate(row.workDate)}</td>
-              </tr>
-              <tr>
-                <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Title / Keperluan</td>
-                <td colspan="3" style="border: 1px solid black; padding: 3px 5px; font-weight: bold;">${row.title || 'Overtime Command'}</td>
-              </tr>
-              <tr>
-                <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Requester Name</td>
-                <td style="border: 1px solid black; padding: 3px 5px;">${row.requesterName || '—'}</td>
-                <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Department</td>
-                <td style="border: 1px solid black; padding: 3px 5px;">${row.requesterDepartment || 'Central Services'}</td>
-              </tr>
-              <tr>
-                <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Planned Schedule</td>
-                <td colspan="3" style="border: 1px solid black; padding: 3px 5px;">${formatDate(row.workDate)} (${formatTime(row.plannedStartAt)} s.d. ${formatTime(row.plannedEndAt)})</td>
-              </tr>
-              <tr>
-                <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Status Dokumen</td>
-                <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; text-transform: uppercase; color: #065f46;">${row.status}</td>
-                <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Total Pekerja</td>
-                <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold;">${row.workerCount} Orang</td>
-              </tr>
-            </tbody>
-          </table>
-
-          <div style="font-weight: bold; margin-bottom: 0.25rem;">A. Workers (${row.workerCount} Orang)</div>
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 0.5rem; text-align: center;">
-            <thead>
-              <tr style="background: #f8fafc; font-weight: bold;">
-                <th style="border: 1px solid black; padding: 3px 5px; width: 8%;">#</th>
-                <th style="border: 1px solid black; padding: 3px 5px; text-align: left; width: 42%;">Name</th>
-                <th style="border: 1px solid black; padding: 3px 5px; width: 15%;">Shift</th>
-                <th style="border: 1px solid black; padding: 3px 5px; width: 15%;">Roster</th>
-                <th style="border: 1px solid black; padding: 3px 5px; width: 20%;">Category</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td style="border: 1px solid black; padding: 3px 5px;">1</td>
-                <td style="border: 1px solid black; padding: 3px 5px; text-align: left; font-weight: bold;">${row.requesterName}</td>
-                <td style="border: 1px solid black; padding: 3px 5px;">DS</td>
-                <td style="border: 1px solid black; padding: 3px 5px;">5:2</td>
-                <td style="border: 1px solid black; padding: 3px 5px; text-transform: capitalize; font-size: 7.5pt;">After Mandatory OT</td>
-              </tr>
-            </tbody>
-          </table>
-
-          <div style="font-weight: bold; margin-bottom: 0.25rem;">B. Line Items (Aktivitas Pekerjaan)</div>
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 0.5rem;">
-            <thead>
-              <tr style="background: #f8fafc; font-weight: bold; text-align: center;">
-                <th style="border: 1px solid black; padding: 3px 5px; width: 8%;">#</th>
-                <th style="border: 1px solid black; padding: 3px 5px; text-align: left; width: 40%;">Activity</th>
-                <th style="border: 1px solid black; padding: 3px 5px; width: 18%;">Target</th>
-                <th style="border: 1px solid black; padding: 3px 5px; width: 14%;">Minutes</th>
-                <th style="border: 1px solid black; padding: 3px 5px; width: 20%;">Points</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">1</td>
-                <td style="border: 1px solid black; padding: 3px 5px; font-weight: 500;">${row.title}</td>
-                <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">—</td>
-                <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">60 m</td>
-                <td style="border: 1px solid black; padding: 3px 5px; text-align: center; font-weight: bold;">10 pts</td>
-              </tr>
-            </tbody>
-          </table>
-
-          <div style="font-weight: bold; margin-bottom: 0.25rem;">C. Signatories & Approval Steps</div>
-          <table style="width: 100%; border-collapse: collapse; text-align: center;">
-            <thead>
-              <tr style="background: #f8fafc; font-weight: bold;">
-                <th style="border: 1px solid black; padding: 3px 5px; width: 50%;">Leader / Supervisor</th>
-                <th style="border: 1px solid black; padding: 3px 5px; width: 50%;">PJO / Site Lead</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                ${row.approvals.map((a) => `
-                  <td style="border: 1px solid black; height: 60px; vertical-align: bottom; padding: 4px;">
-                    <div style="font-size: 7.5pt; color: #059669; font-weight: bold; margin-bottom: 8px;">
-                      ${a.status === 'approved' ? 'Tanda Tangan Sah' : '<span style="color: #94a3b8; font-style: italic;">Menunggu TTD</span>'}
-                    </div>
-                    <div style="border-top: 1px solid #cbd5e1; padding-top: 2px;">
-                      <p style="font-weight: bold; font-size: 8pt;">${a.approverName || '—'}</p>
-                      <p style="font-size: 7pt; color: #64748b;">${a.signedAt ? new Date(a.signedAt).toLocaleDateString('id-ID') : '—'}</p>
-                    </div>
-                  </td>
-                `).join('')}
-              </tr>
-            </tbody>
-          </table>
-
-          <div style="text-align: right; font-size: 7pt; color: #64748b; margin-top: 8px;">
-            F.HC.SPL.001.01 • PT Chitra Paratama
-          </div>
-        `
+        const contentHtml = renderSplHtmlTemplate(row, qrImgHtml)
         await downloadHtmlAsPdf(contentHtml, `SPL_${row.splNumber.replace(/[\/\\]/g, '_')}.pdf`)
       }
       toast.success('PDF berhasil diunduh!', { id: 'spl-pdf-dl' })
@@ -1004,115 +1462,22 @@ export function OvertimeListingClient({
       const blob = await generateElementAsPdfBlob(targetEl)
       return { name: fileName, blob }
     } else {
-      const contentHtml = `
-        <h1 class="text-center font-bold" style="font-size: 11pt; margin-bottom: 2px;">SURAT PERINTAH LEMBUR (SPL)</h1>
-        <p class="text-center font-bold" style="font-size: 8pt; color: #475569; margin-bottom: 12px;">PT CHITRAPARATAMA • HUMAN CAPITAL</p>
+      const origin = typeof window !== 'undefined' ? window.location.origin : ''
+      const evidenceUrl = `${origin}/overtime-evidence/${row.id}`
+      let qrImgHtml = ''
+      try {
+        const qrDataUrl = await QRCode.toDataURL(evidenceUrl, { margin: 1, width: 140, errorCorrectionLevel: 'M' })
+        qrImgHtml = `
+          <a href="${evidenceUrl}" target="_blank" style="text-decoration: none; color: inherit; display: inline-block; text-align: center; border: 1px solid #cbd5e1; padding: 3px; border-radius: 6px; background: #ffffff;">
+            <img src="${qrDataUrl}" width="50" height="50" style="display: block; margin: 0 auto;" alt="QR Evidence" />
+            <div style="font-size: 5.5pt; font-weight: bold; color: #003f78; margin-top: 2px;">Scan / Klik Foto Bukti ↗</div>
+          </a>
+        `
+      } catch (e) {
+        console.error('QR code generation error:', e)
+      }
 
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 0.5rem;">
-          <tbody>
-            <tr><td colspan="4" style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Details & Request Profile</td></tr>
-            <tr>
-              <td style="border: 1px solid black; padding: 3px 5px; width: 25%; font-weight: bold; background: #f8fafc;">SPL Number</td>
-              <td style="border: 1px solid black; padding: 3px 5px; width: 25%; font-family: monospace; font-weight: bold;">${row.splNumber}</td>
-              <td style="border: 1px solid black; padding: 3px 5px; width: 25%; font-weight: bold; background: #f8fafc;">Work Date</td>
-              <td style="border: 1px solid black; padding: 3px 5px; width: 25%; font-weight: bold;">${formatDate(row.workDate)}</td>
-            </tr>
-            <tr>
-              <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Title / Keperluan</td>
-              <td colspan="3" style="border: 1px solid black; padding: 3px 5px; font-weight: bold;">${row.title || 'Overtime Command'}</td>
-            </tr>
-            <tr>
-              <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Requester Name</td>
-              <td style="border: 1px solid black; padding: 3px 5px;">${row.requesterName || '—'}</td>
-              <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Department</td>
-              <td style="border: 1px solid black; padding: 3px 5px;">${row.requesterDepartment || 'Central Services'}</td>
-            </tr>
-            <tr>
-              <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Planned Schedule</td>
-              <td colspan="3" style="border: 1px solid black; padding: 3px 5px;">${formatDate(row.workDate)} (${formatTime(row.plannedStartAt)} s.d. ${formatTime(row.plannedEndAt)})</td>
-            </tr>
-            <tr>
-              <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Status Dokumen</td>
-              <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; text-transform: uppercase; color: #065f46;">${row.status}</td>
-              <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Total Pekerja</td>
-              <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold;">${row.workerCount} Orang</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div style="font-weight: bold; margin-bottom: 0.25rem;">A. Workers (${row.workerCount} Orang)</div>
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 0.5rem; text-align: center;">
-          <thead>
-            <tr style="background: #f8fafc; font-weight: bold;">
-              <th style="border: 1px solid black; padding: 3px 5px; width: 8%;">#</th>
-              <th style="border: 1px solid black; padding: 3px 5px; text-align: left; width: 42%;">Name</th>
-              <th style="border: 1px solid black; padding: 3px 5px; width: 15%;">Shift</th>
-              <th style="border: 1px solid black; padding: 3px 5px; width: 15%;">Roster</th>
-              <th style="border: 1px solid black; padding: 3px 5px; width: 20%;">Category</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td style="border: 1px solid black; padding: 3px 5px;">1</td>
-              <td style="border: 1px solid black; padding: 3px 5px; text-align: left; font-weight: bold;">${row.requesterName}</td>
-              <td style="border: 1px solid black; padding: 3px 5px;">DS</td>
-              <td style="border: 1px solid black; padding: 3px 5px;">5:2</td>
-              <td style="border: 1px solid black; padding: 3px 5px; text-transform: capitalize; font-size: 7.5pt;">After Mandatory OT</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div style="font-weight: bold; margin-bottom: 0.25rem;">B. Line Items (Aktivitas Pekerjaan)</div>
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 0.5rem;">
-          <thead>
-            <tr style="background: #f8fafc; font-weight: bold; text-align: center;">
-              <th style="border: 1px solid black; padding: 3px 5px; width: 8%;">#</th>
-              <th style="border: 1px solid black; padding: 3px 5px; text-align: left; width: 40%;">Activity</th>
-              <th style="border: 1px solid black; padding: 3px 5px; width: 18%;">Target</th>
-              <th style="border: 1px solid black; padding: 3px 5px; width: 14%;">Minutes</th>
-              <th style="border: 1px solid black; padding: 3px 5px; width: 20%;">Points</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">1</td>
-              <td style="border: 1px solid black; padding: 3px 5px; font-weight: 500;">${row.title}</td>
-              <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">—</td>
-              <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">60 m</td>
-              <td style="border: 1px solid black; padding: 3px 5px; text-align: center; font-weight: bold;">10 pts</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div style="font-weight: bold; margin-bottom: 0.25rem;">C. Signatories & Approval Steps</div>
-        <table style="width: 100%; border-collapse: collapse; text-align: center;">
-          <thead>
-            <tr style="background: #f8fafc; font-weight: bold;">
-              <th style="border: 1px solid black; padding: 3px 5px; width: 50%;">Leader / Supervisor</th>
-              <th style="border: 1px solid black; padding: 3px 5px; width: 50%;">PJO / Site Lead</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              ${(row.approvals || []).map((a) => `
-                <td style="border: 1px solid black; height: 60px; vertical-align: bottom; padding: 4px;">
-                  <div style="font-size: 7.5pt; color: #059669; font-weight: bold; margin-bottom: 8px;">
-                    ${a.status === 'approved' ? 'Tanda Tangan Sah' : '<span style="color: #94a3b8; font-style: italic;">Menunggu TTD</span>'}
-                  </div>
-                  <div style="border-top: 1px solid #cbd5e1; padding-top: 2px;">
-                    <p style="font-weight: bold; font-size: 8pt;">${a.approverName || '—'}</p>
-                    <p style="font-size: 7pt; color: #64748b;">${a.signedAt ? new Date(a.signedAt).toLocaleDateString('id-ID') : '—'}</p>
-                  </div>
-                </td>
-              `).join('')}
-            </tr>
-          </tbody>
-        </table>
-
-        <div style="text-align: right; font-size: 7pt; color: #64748b; margin-top: 8px;">
-          F.HC.SPL.001.01 • PT Chitra Paratama
-        </div>
-      `
+      const contentHtml = renderSplHtmlTemplate(row, qrImgHtml)
       const blob = await generateHtmlAsPdfBlob(contentHtml)
       return { name: fileName, blob }
     }
@@ -1201,22 +1566,41 @@ export function OvertimeListingClient({
       toast.error('Tambahkan minimal 1 aktivitas pekerjaan lembur')
       return
     }
-    if (!createForm.photoUrl) {
-      toast.error('Foto bukti pekerjaan lembur wajib dilampirkan')
-      return
+
+    // Validasi ketat: Foto Evidence WAJIB diunggah untuk setiap aktivitas lembur
+    for (let i = 0; i < validLineItems.length; i++) {
+      const item = validLineItems[i]
+      const hasPhoto = Boolean(item.photoUrl?.trim() || (Array.isArray(item.photos) && item.photos.length > 0 && item.photos[0]?.trim()))
+      if (!hasPhoto) {
+        toast.error(`Foto evidence wajib diunggah untuk aktivitas #${i + 1} (${item.name || item.lineLabel})`)
+        return
+      }
+      if (item.requiresEquipmentNo && !item.unitNumber?.trim()) {
+        toast.error(`No. Equipment / Unit wajib diisi untuk aktivitas #${i + 1}`)
+        return
+      }
+      if (item.requiresTireCount && (!item.tireCount || item.tireCount < 1)) {
+        toast.error(`Jumlah Tire wajib diisi minimal 1 untuk aktivitas #${i + 1}`)
+        return
+      }
+      if (item.requiresMaterialUsed && !item.materialUsed?.trim()) {
+        toast.error(`Material Used wajib diisi untuk aktivitas #${i + 1}`)
+        return
+      }
     }
 
     setIsCreating(true)
     try {
       const startDateTime = new Date(`${createForm.plannedStartDate}T${createForm.plannedStartTime}:00`)
       const endDateTime = new Date(`${createForm.plannedEndDate}T${createForm.plannedEndTime}:00`)
+      const firstPhoto = validLineItems.find((i) => i.photoUrl || (i.photos && i.photos.length > 0))?.photoUrl || createForm.photoUrl || undefined
 
       const res = await createOvertimeCommandLetterAction({
         title: createForm.title,
         workDate: createForm.workDate,
         plannedStartAt: startDateTime,
         plannedEndAt: endDateTime,
-        photoUrl: createForm.photoUrl,
+        photoUrl: firstPhoto,
         requestedByEmployeeId: createForm.requesterEmployeeId ? Number(createForm.requesterEmployeeId) : undefined,
         requestNotes: createForm.requestNotes,
         executionNotes: createForm.executionNotes,
@@ -1227,7 +1611,25 @@ export function OvertimeListingClient({
           category: w.category,
         })),
         workerEmployeeIds: validWorkers.map((w) => Number(w.employeeId)),
-        lineItems: validLineItems,
+        lineItems: validLineItems.map((item) => ({
+          lineLabel: item.lineLabel,
+          code: item.code,
+          name: item.name || item.lineLabel,
+          unitNumber: item.unitNumber || item.targetUnit || undefined,
+          tireCount: item.tireCount,
+          materialUsed: item.materialUsed,
+          startTime: item.startTime || createForm.plannedStartTime || '17:00',
+          endTime: item.endTime || createForm.plannedEndTime || '21:00',
+          duration: item.duration || (item.estimatedMinutes ? `${item.estimatedMinutes}m` : undefined),
+          targetUnit: item.unitNumber || item.targetUnit || '1 Unit',
+          estimatedMinutes: item.estimatedMinutes || 60,
+          plannedPoints: item.plannedPoints || item.points || 10,
+          points: item.points || item.plannedPoints || 10,
+          lineDescription: item.remark || undefined,
+          remark: item.remark,
+          photoUrl: item.photoUrl,
+          photos: item.photos || (item.photoUrl ? [item.photoUrl] : []),
+        })),
         leaderEmployeeId: createForm.leaderEmployeeId ? Number(createForm.leaderEmployeeId) : undefined,
         leaderName: createForm.leaderName || undefined,
         superiorEmployeeId: createForm.superiorEmployeeId ? Number(createForm.superiorEmployeeId) : undefined,
@@ -1701,8 +2103,15 @@ export function OvertimeListingClient({
                     }}
                   >
                     {/* Header Document */}
-                    <h1 className="text-center font-bold text-[11pt] mb-1 uppercase">SURAT PERINTAH LEMBUR (SPL)</h1>
-                    <p className="text-center font-semibold text-[8pt] text-slate-700 mb-3">PT CHITRA PARATAMA • HUMAN CAPITAL</p>
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex-1 text-center pl-16">
+                        <h1 className="text-center font-bold text-[11pt] mb-1 uppercase tracking-wide">SURAT PERINTAH LEMBUR (SPL)</h1>
+                        <p className="text-center font-semibold text-[8pt] text-slate-700">PT CHITRA PARATAMA • HUMAN CAPITAL</p>
+                      </div>
+                      <div className="shrink-0 -mt-2">
+                        <SplEvidenceQrBox splId={currentBatchDoc.id} splNumber={currentBatchDoc.splNumber} />
+                      </div>
+                    </div>
 
                     {/* Section 1: Details */}
                     <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8.5pt]">
@@ -1777,27 +2186,53 @@ export function OvertimeListingClient({
                     <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 text-[8pt]">
                       <thead>
                         <tr className="bg-slate-50 text-center font-bold">
-                          <th className="w-[8%]">#</th>
-                          <th className="text-left w-[40%]">Activity</th>
-                          <th className="w-[18%]">Target</th>
-                          <th className="w-[14%]">Minutes</th>
-                          <th className="w-[20%]">Points</th>
+                          <th className="w-[6%]">#</th>
+                          <th className="text-left w-[34%]">Activity</th>
+                          <th className="w-[15%]">Target / Unit</th>
+                          <th className="w-[15%]">Waktu</th>
+                          <th className="w-[12%]">Tire / Material</th>
+                          <th className="w-[8%]">Poin</th>
+                          <th className="w-[10%]">Evidence</th>
                         </tr>
                       </thead>
                       <tbody>
                         {currentBatchDoc.lineItems && currentBatchDoc.lineItems.length > 0 ? (
-                          currentBatchDoc.lineItems.map((item, idx) => (
-                            <tr key={idx}>
-                              <td className="text-center">{idx + 1}</td>
-                              <td className="font-medium">{item.lineLabel}</td>
-                              <td className="text-center">{item.targetUnit || '—'}</td>
-                              <td className="text-center">{item.estimatedMinutes} m</td>
-                              <td className="text-center font-bold">{item.plannedPoints} pts</td>
-                            </tr>
-                          ))
+                          currentBatchDoc.lineItems.map((item, idx) => {
+                            const actName = item.name || item.lineLabel || currentBatchDoc.title
+                            const actCode = item.code ? `[${item.code}] ` : ''
+                            const tireMat = [
+                              item.tireCount ? `${item.tireCount} Ban` : null,
+                              item.materialUsed ? item.materialUsed : null,
+                            ].filter(Boolean).join(' • ') || '—'
+                            const timeStr = item.startTime && item.endTime ? `${item.startTime} - ${item.endTime}` : (item.estimatedMinutes ? `${item.estimatedMinutes} m` : '—')
+                            const hasPhoto = item.photoUrl || (Array.isArray(item.photos) && item.photos.length > 0)
+                            return (
+                              <tr key={idx}>
+                                <td className="text-center">{idx + 1}</td>
+                                <td className="font-medium text-left">
+                                  {actCode ? <strong className="font-mono">{actCode}</strong> : null}
+                                  {actName}
+                                </td>
+                                <td className="text-center">{item.unitNumber || item.targetUnit || '—'}</td>
+                                <td className="text-center">{timeStr}</td>
+                                <td className="text-center">{tireMat}</td>
+                                <td className="text-center font-bold">{item.plannedPoints || 0} pts</td>
+                                <td className="text-center text-[7pt]">
+                                  {hasPhoto ? (
+                                    <span className="font-bold text-emerald-600">📷 Ada Foto</span>
+                                  ) : (
+                                    <span className="text-slate-400">—</span>
+                                  )}
+                                  {item.remark && (
+                                    <div className="text-[6.5pt] text-slate-500 truncate max-w-[80px] mx-auto">{item.remark}</div>
+                                  )}
+                                </td>
+                              </tr>
+                            )
+                          })
                         ) : (
                           <tr>
-                            <td colSpan={5} className="text-center text-slate-400 py-2">Belum ada rincian tugas lembur.</td>
+                            <td colSpan={7} className="text-center text-slate-400 py-2">Belum ada rincian tugas lembur.</td>
                           </tr>
                         )}
                       </tbody>
@@ -1839,9 +2274,9 @@ export function OvertimeListingClient({
                       </tbody>
                     </table>
 
-                    {/* Section 5: Signatories */}
+                    {/* Section 5: Signatories (2-Grid Pemohon & Leader/PJO) */}
                     <div className="font-bold mb-2 text-[8.5pt]">Signatories</div>
-                    <div className="grid grid-cols-3 gap-x-6 gap-y-4 mb-4 text-center">
+                    <div className="grid grid-cols-2 gap-x-8 gap-y-4 mb-4 text-center">
                       {/* 1. Serviceman / Karyawan */}
                       {(() => {
                         const step1 = currentBatchDoc.approvals.find(a => a.stepOrder === 1)
@@ -1873,15 +2308,15 @@ export function OvertimeListingClient({
                         )
                       })()}
 
-                      {/* 2. Leader / Pengawas */}
+                      {/* 2. Leader / PJO */}
                       {(() => {
-                        const step2 = currentBatchDoc.approvals.find(a => a.stepOrder === 2)
+                        const step2 = currentBatchDoc.approvals.find(a => a.stepOrder === 2 || a.stepOrder === 3)
                         const isApproved2 = step2?.status === 'approved' || Boolean(step2?.signedAt)
                         const sigUrl2 = step2?.signatureDataUrl
 
                         return (
                           <div className="flex flex-col items-center text-center">
-                            <div className="text-[7pt] text-slate-500 font-semibold mb-1">Leader / Supervisor Signature</div>
+                            <div className="text-[7pt] text-slate-500 font-semibold mb-1">Leader / PJO Signature</div>
                             <div className="h-16 w-full flex items-center justify-center my-1">
                               {sigUrl2 ? (
                                 <img src={sigUrl2} alt="TTD" className="max-h-14 max-w-full object-contain" />
@@ -1894,42 +2329,11 @@ export function OvertimeListingClient({
                               )}
                             </div>
                             <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
-                              {step2?.approverName || 'Leader / Supervisor'}
+                              {step2?.approverName || 'Leader / PJO Site'}
                             </div>
-                            <div className="text-[7pt] text-slate-600 font-medium">{step2?.stepLabel || 'Leader / Supervisor'}</div>
+                            <div className="text-[7pt] text-slate-600 font-medium">{step2?.stepLabel || 'Leader / PJO Site'}</div>
                             <div className="text-[6.5pt] text-slate-400 mt-0.5">
                               {step2?.signedAt ? `Waktu TTD: ${formatTimestamp(step2.signedAt)}` : '—'}
-                            </div>
-                          </div>
-                        )
-                      })()}
-
-                      {/* 3. PJO / Site Lead */}
-                      {(() => {
-                        const step3 = currentBatchDoc.approvals.find(a => a.stepOrder === 3)
-                        const isApproved3 = step3?.status === 'approved' || Boolean(step3?.signedAt)
-                        const sigUrl3 = step3?.signatureDataUrl
-
-                        return (
-                          <div className="flex flex-col items-center text-center">
-                            <div className="text-[7pt] text-slate-500 font-semibold mb-1">PJO / Site Lead Signature</div>
-                            <div className="h-16 w-full flex items-center justify-center my-1">
-                              {sigUrl3 ? (
-                                <img src={sigUrl3} alt="TTD" className="max-h-14 max-w-full object-contain" />
-                              ) : isApproved3 ? (
-                                <div className="flex flex-col items-center justify-center text-center">
-                                  <span className="text-[6.5pt] font-bold text-emerald-600">✓ Approved ({formatTimestamp(step3?.signedAt)})</span>
-                                </div>
-                              ) : (
-                                <span className="text-slate-400 italic text-[7pt]">(Belum Disetujui)</span>
-                              )}
-                            </div>
-                            <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
-                              {step3?.approverName || 'PJO / Site Lead'}
-                            </div>
-                            <div className="text-[7pt] text-slate-600 font-medium">{step3?.stepLabel || 'PJO / Site Lead'}</div>
-                            <div className="text-[6.5pt] text-slate-400 mt-0.5">
-                              {step3?.signedAt ? `Waktu TTD: ${formatTimestamp(step3.signedAt)}` : '—'}
                             </div>
                           </div>
                         )
@@ -2129,8 +2533,15 @@ export function OvertimeListingClient({
                   }}
                 >
                   {/* Header Document */}
-                  <h1 className="text-center font-bold text-[11pt] mb-1 uppercase">SURAT PERINTAH LEMBUR (SPL)</h1>
-                  <p className="text-center font-semibold text-[8pt] text-slate-700 mb-3">PT CHITRA PARATAMA • HUMAN CAPITAL</p>
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex-1 text-center pl-16">
+                      <h1 className="text-center font-bold text-[11pt] mb-1 uppercase tracking-wide">SURAT PERINTAH LEMBUR (SPL)</h1>
+                      <p className="text-center font-semibold text-[8pt] text-slate-700">PT CHITRA PARATAMA • HUMAN CAPITAL</p>
+                    </div>
+                    <div className="shrink-0 -mt-2">
+                      <SplEvidenceQrBox splId={previewSplTarget.id} splNumber={previewSplTarget.splNumber} />
+                    </div>
+                  </div>
 
                   {/* Section 1: Details */}
                   <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8.5pt]">
@@ -2205,27 +2616,53 @@ export function OvertimeListingClient({
                   <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 text-[8pt]">
                     <thead>
                       <tr className="bg-slate-50 text-center font-bold">
-                        <th className="w-[8%]">#</th>
-                        <th className="text-left w-[40%]">Activity</th>
-                        <th className="w-[18%]">Target</th>
-                        <th className="w-[14%]">Minutes</th>
-                        <th className="w-[20%]">Points</th>
+                        <th className="w-[6%]">#</th>
+                        <th className="text-left w-[34%]">Activity</th>
+                        <th className="w-[15%]">Target / Unit</th>
+                        <th className="w-[15%]">Waktu</th>
+                        <th className="w-[12%]">Tire / Material</th>
+                        <th className="w-[8%]">Poin</th>
+                        <th className="w-[10%]">Evidence</th>
                       </tr>
                     </thead>
                     <tbody>
                       {previewSplTarget.lineItems && previewSplTarget.lineItems.length > 0 ? (
-                        previewSplTarget.lineItems.map((item, idx) => (
-                          <tr key={idx}>
-                            <td className="text-center">{idx + 1}</td>
-                            <td className="font-medium">{item.lineLabel}</td>
-                            <td className="text-center">{item.targetUnit || '—'}</td>
-                            <td className="text-center">{item.estimatedMinutes} m</td>
-                            <td className="text-center font-bold">{item.plannedPoints} pts</td>
-                          </tr>
-                        ))
+                        previewSplTarget.lineItems.map((item, idx) => {
+                          const actName = item.name || item.lineLabel || previewSplTarget.title
+                          const actCode = item.code ? `[${item.code}] ` : ''
+                          const tireMat = [
+                            item.tireCount ? `${item.tireCount} Ban` : null,
+                            item.materialUsed ? item.materialUsed : null,
+                          ].filter(Boolean).join(' • ') || '—'
+                          const timeStr = item.startTime && item.endTime ? `${item.startTime} - ${item.endTime}` : (item.estimatedMinutes ? `${item.estimatedMinutes} m` : '—')
+                          const hasPhoto = item.photoUrl || (Array.isArray(item.photos) && item.photos.length > 0)
+                          return (
+                            <tr key={idx}>
+                              <td className="text-center">{idx + 1}</td>
+                              <td className="font-medium text-left">
+                                {actCode ? <strong className="font-mono">{actCode}</strong> : null}
+                                {actName}
+                              </td>
+                              <td className="text-center">{item.unitNumber || item.targetUnit || '—'}</td>
+                              <td className="text-center">{timeStr}</td>
+                              <td className="text-center">{tireMat}</td>
+                              <td className="text-center font-bold">{item.plannedPoints || 0} pts</td>
+                              <td className="text-center text-[7pt]">
+                                {hasPhoto ? (
+                                  <span className="font-bold text-emerald-600">📷 Ada Foto</span>
+                                ) : (
+                                  <span className="text-slate-400">—</span>
+                                )}
+                                {item.remark && (
+                                  <div className="text-[6.5pt] text-slate-500 truncate max-w-[80px] mx-auto">{item.remark}</div>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })
                       ) : (
                         <tr>
-                          <td colSpan={5} className="text-center text-slate-400 py-2">Belum ada rincian tugas lembur.</td>
+                          <td colSpan={7} className="text-center text-slate-400 py-2">Belum ada rincian tugas lembur.</td>
                         </tr>
                       )}
                     </tbody>
@@ -2258,9 +2695,9 @@ export function OvertimeListingClient({
                     </tbody>
                   </table>
 
-                  {/* Section 5: Signatories (Persis Form Edit 3-Grid 1 Baris) */}
+                  {/* Section 5: Signatories (2-Grid Pemohon & Leader/PJO) */}
                   <div className="font-bold mb-3">Signatories</div>
-                  <div className="grid grid-cols-3 gap-x-6 gap-y-4 mb-4">
+                  <div className="grid grid-cols-2 gap-x-8 gap-y-4 mb-4">
                     {/* 1. Serviceman / Karyawan */}
                     <div>
                       <div className="text-[7pt] text-gray-500 mb-1">Employee Signature</div>
@@ -2269,41 +2706,26 @@ export function OvertimeListingClient({
                           <img src={previewSplTarget.approvals.find(a => a.stepOrder === 1)!.signatureDataUrl!} alt="TTD" className="h-14 object-contain" />
                         )}
                       </div>
-                      <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>
+                      <div className="mb-1 border-b" style={{ width: '65%', borderColor: '#9ca3af' }}>
                         {previewSplTarget.approvals.find(a => a.stepOrder === 1)?.approverName || createForm.requesterName || previewSplTarget.requesterName}
                       </div>
                       <div className="text-[7pt]">Serviceman / Pemohon</div>
                     </div>
 
-                    {/* 2. Leader / Pengawas */}
+                    {/* 2. Leader / PJO */}
                     <div>
-                      <div className="text-[7pt] text-gray-500 mb-1">Leader / Supervisor Signature</div>
+                      <div className="text-[7pt] text-gray-500 mb-1">Leader / PJO Signature</div>
                       <div className="h-16 flex items-end">
-                        {previewSplTarget.approvals.find(a => a.stepOrder === 2)?.signatureDataUrl && (
-                          <img src={previewSplTarget.approvals.find(a => a.stepOrder === 2)!.signatureDataUrl!} alt="TTD" className="h-14 object-contain" />
+                        {(previewSplTarget.approvals.find(a => a.stepOrder === 2)?.signatureDataUrl || previewSplTarget.approvals.find(a => a.stepOrder === 3)?.signatureDataUrl) && (
+                          <img src={(previewSplTarget.approvals.find(a => a.stepOrder === 2)?.signatureDataUrl || previewSplTarget.approvals.find(a => a.stepOrder === 3)?.signatureDataUrl)!} alt="TTD" className="h-14 object-contain" />
                         )}
                       </div>
-                      <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>
-                        {createForm.leaderName || previewSplTarget.approvals.find(a => a.stepOrder === 2)?.approverName || 'Leader / Pengawas'}
+                      <div className="mb-1 border-b" style={{ width: '65%', borderColor: '#9ca3af' }}>
+                        {previewSplTarget.approvals.find(a => a.stepOrder === 2)?.approverName || previewSplTarget.approvals.find(a => a.stepOrder === 3)?.approverName || createForm.leaderName || createForm.superiorName || 'Leader / PJO Site'}
                       </div>
-                      <div className="text-[7pt]">{previewSplTarget.approvals.find(a => a.stepOrder === 2)?.stepLabel || 'Leader / Pengawas'}</div>
+                      <div className="text-[7pt]">{previewSplTarget.approvals.find(a => a.stepOrder === 2)?.stepLabel || 'Leader / PJO'}</div>
                     </div>
-
-                    {/* 3. PJO / Site Lead */}
-                    <div>
-                      <div className="text-[7pt] text-gray-500 mb-1">PJO / Site Lead Signature</div>
-                      <div className="h-16 flex items-end">
-                        {previewSplTarget.approvals.find(a => a.stepOrder === 3)?.signatureDataUrl && (
-                          <img src={previewSplTarget.approvals.find(a => a.stepOrder === 3)!.signatureDataUrl!} alt="TTD" className="h-14 object-contain" />
-                        )}
-                      </div>
-                      <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>
-                        {createForm.superiorName || previewSplTarget.approvals.find(a => a.stepOrder === 3)?.approverName || 'PJO / Site Lead'}
-                      </div>
-                      <div className="text-[7pt]">{previewSplTarget.approvals.find(a => a.stepOrder === 3)?.stepLabel || 'PJO / Site Lead'}</div>
-                    </div>
-
-                    </div>
+                  </div>
 
                   <div className="text-right text-[7pt] text-gray-500 mt-2">
                     F.HC.SPL.001.01 • PT Chitra Paratama
@@ -2550,192 +2972,746 @@ export function OvertimeListingClient({
               </div>
             </div>
 
-            {/* 3. B. Line Items (Aktivitas Pekerjaan) */}
-            <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3">
+            {/* 1.5. SOURCE MODE SELECTION (SINKRON DENGAN MOBILE & DAILY ACTIVITY) */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-slate-700">Source Mode *</Label>
+              <select
+                value={createForm.sourceMode || 'self_input'}
+                onChange={(e) => {
+                  const mode = e.target.value as 'self_input' | 'assigned' | 'custom'
+                  setCreateForm((p) => ({
+                    ...p,
+                    sourceMode: mode,
+                    lineItems:
+                      mode === 'custom' && p.lineItems.length === 0
+                        ? [
+                            {
+                              lineLabel: '',
+                              name: '',
+                              targetUnit: '1 Unit',
+                              estimatedMinutes: 120,
+                              plannedPoints: 10,
+                              startTime: p.plannedStartTime || '17:00',
+                              endTime: p.plannedEndTime || '21:00',
+                              duration: '120m',
+                              points: 10,
+                              remark: '',
+                            },
+                          ]
+                        : mode === 'assigned' && p.lineItems.length === 0
+                          ? [
+                              {
+                                lineLabel: '',
+                                name: '',
+                                targetUnit: '1 Unit',
+                                estimatedMinutes: 120,
+                                plannedPoints: 10,
+                                startTime: p.plannedStartTime || '17:00',
+                                endTime: p.plannedEndTime || '21:00',
+                                duration: '120m',
+                                points: 10,
+                                remark: '',
+                              },
+                            ]
+                          : p.lineItems,
+                  }))
+                }}
+                className="w-full h-9 rounded-md border border-slate-200 bg-white px-3 py-1 text-xs shadow-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="self_input">Self-input activity (Kamus Aktivitas)</option>
+                <option value="assigned">Assigned activity (Penugasan)</option>
+                <option value="custom">Custom activity (Bebas / Kustom)</option>
+              </select>
+            </div>
+
+            {/* 3. B. Line Items (Aktivitas Pekerjaan Lembur) - Adaptive per Source Mode */}
+            {createForm.sourceMode === 'custom' ? (
+              /* ── CUSTOM ACTIVITY MODE ── */
+              <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
+                  <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                    <span className="size-2 rounded-full bg-amber-500"></span>
+                    B. Line Items (Aktivitas Kustom / Bebas)
+                  </span>
+                  <Badge variant="secondary" className="text-[11px] font-semibold bg-amber-50 text-amber-700 border-amber-200">
+                    {createForm.lineItems.filter((i) => i.lineLabel.trim()).length} Aktivitas Kustom
+                  </Badge>
+                </div>
+
+                <div className="space-y-3">
+                  {createForm.lineItems.map((item, idx) => (
+                    <div key={idx} className="rounded-xl border border-slate-200 bg-white p-3.5 space-y-3 shadow-2xs relative">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-700">Aktivitas Kustom #{idx + 1}</span>
+                        {createForm.lineItems.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeLineItemRow(idx)}
+                            className="size-6 flex items-center justify-center rounded-full bg-slate-100 hover:bg-rose-100 hover:text-rose-600 text-slate-500 transition-colors text-xs font-bold"
+                            title="Hapus baris"
+                          >
+                            <X className="size-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold text-slate-700">
+                          Uraian Aktivitas Pekerjaan Lembur <span className="text-rose-500">*</span>
+                        </Label>
+                        <Input
+                          placeholder="Contoh: Overtime Fabrikasi Bracket & Welding Workshop..."
+                          value={item.lineLabel}
+                          onChange={(e) => {
+                            updateLineItemRow(idx, 'lineLabel', e.target.value)
+                            updateLineItemRow(idx, 'name', e.target.value)
+                          }}
+                          className="h-8 text-xs bg-slate-50/50 border-slate-200 font-medium"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2.5">
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-700">Target / Unit</Label>
+                          <Input
+                            placeholder="Contoh: 1 Unit HD / 2 Pcs"
+                            value={item.targetUnit || ''}
+                            onChange={(e) => {
+                              updateLineItemRow(idx, 'targetUnit', e.target.value)
+                              updateLineItemRow(idx, 'unitNumber', e.target.value)
+                            }}
+                            className="h-8 text-xs bg-slate-50/50 border-slate-200"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-700">Durasi (Mnt)</Label>
+                          <Input
+                            type="number"
+                            min={15}
+                            value={item.estimatedMinutes || 120}
+                            onChange={(e) => updateLineItemRow(idx, 'estimatedMinutes', Number(e.target.value))}
+                            className="h-8 text-xs bg-slate-50/50 border-slate-200 font-semibold text-center"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-700">Poin</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={item.plannedPoints || 10}
+                            onChange={(e) => updateLineItemRow(idx, 'plannedPoints', Number(e.target.value))}
+                            className="h-8 text-xs bg-slate-50/50 border-slate-200 font-bold text-center"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-700">Mulai <span className="text-red-500 font-bold">*</span></Label>
+                          <Input
+                            type="time"
+                            value={item.startTime || createForm.plannedStartTime || '17:00'}
+                            onChange={(e) => updateLineItemRow(idx, 'startTime', e.target.value)}
+                            className="h-8 text-xs bg-slate-50/50 border-slate-200 text-center font-mono"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-700">Selesai <span className="text-red-500 font-bold">*</span></Label>
+                          <Input
+                            type="time"
+                            value={item.endTime || createForm.plannedEndTime || '21:00'}
+                            onChange={(e) => updateLineItemRow(idx, 'endTime', e.target.value)}
+                            className="h-8 text-xs bg-slate-50/50 border-slate-200 text-center font-mono"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Photo Evidence Box */}
+                      <div className={cn(
+                        "rounded-lg border p-2.5 space-y-2 bg-white",
+                        !item.photoUrl && (!item.photos || item.photos.length === 0) ? "border-rose-200 bg-rose-50/10" : "border-slate-200"
+                      )}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                            <Camera className="size-3.5 text-slate-500" /> Photo Evidence <span className="text-rose-500 font-bold text-[10px]">* (Wajib Diunggah)</span>
+                          </span>
+                          {item.photoUrl || (Array.isArray(item.photos) && item.photos.length > 0) ? (
+                            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-semibold">
+                              Foto Terunggah
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-rose-50 text-rose-700 border-rose-200 text-[10px] font-semibold">
+                              Wajib Diunggah
+                            </Badge>
+                          )}
+                        </div>
+
+                        {item.photoUrl ? (
+                          <div className="relative inline-block border border-slate-200 rounded-lg p-1 bg-slate-50">
+                            <img
+                              src={resolveUploadUrl(item.photoUrl)}
+                              alt={`Evidence #${idx + 1}`}
+                              className="size-20 object-cover rounded-md border border-slate-300"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                updateLineItemRow(idx, 'photoUrl', '')
+                                updateLineItemRow(idx, 'photos', [])
+                              }}
+                              className="absolute -top-1.5 -right-1.5 bg-rose-600 text-white rounded-full p-1 shadow-sm hover:bg-rose-700 transition-colors"
+                              title="Hapus foto"
+                            >
+                              <X className="size-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <label className={cn(
+                              "cursor-pointer inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors",
+                              isUploadingLinePhoto[idx] && "opacity-50 pointer-events-none"
+                            )}>
+                              <Camera className="size-3.5 text-slate-600" />
+                              {isUploadingLinePhoto[idx] ? "Mengunggah..." : "Kamera"}
+                              <input
+                                type="file"
+                                accept="image/*"
+                                capture="environment"
+                                disabled={isUploadingLinePhoto[idx]}
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0]
+                                  if (file) handleLinePhotoUpload(idx, file)
+                                  e.target.value = ''
+                                }}
+                                className="hidden"
+                              />
+                            </label>
+                            <label className={cn(
+                              "cursor-pointer inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors",
+                              isUploadingLinePhoto[idx] && "opacity-50 pointer-events-none"
+                            )}>
+                              <ImagePlus className="size-3.5 text-slate-600" />
+                              {isUploadingLinePhoto[idx] ? "Mengunggah..." : "Galeri"}
+                              <input
+                                type="file"
+                                accept="image/*"
+                                disabled={isUploadingLinePhoto[idx]}
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0]
+                                  if (file) handleLinePhotoUpload(idx, file)
+                                  e.target.value = ''
+                                }}
+                                className="hidden"
+                              />
+                            </label>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold text-slate-700">Keterangan / Catatan Tambahan</Label>
+                        <Input
+                          placeholder="Instruksi khusus, lokasi unit, atau catatan hasil kerja..."
+                          value={item.remark || ''}
+                          onChange={(e) => updateLineItemRow(idx, 'remark', e.target.value)}
+                          className="h-8 text-xs bg-slate-50/50 border-slate-200"
+                        />
+                      </div>
+                    </div>
+                  ))}
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={addCustomLineItemRow}
+                    className="w-full h-9 rounded-xl border-dashed border-slate-300 text-slate-700 hover:border-slate-400 hover:bg-slate-50 text-xs font-semibold gap-1.5"
+                  >
+                    <Plus className="size-3.5 text-slate-500" /> + Tambah Baris Aktivitas Kustom
+                  </Button>
+                </div>
+              </div>
+            ) : createForm.sourceMode === 'assigned' ? (
+              /* ── ASSIGNED ACTIVITY MODE ── */
+              <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
+                  <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                    <span className="size-2 rounded-full bg-blue-600"></span>
+                    B. Line Items (Penugasan Aktivitas Lembur)
+                  </span>
+                  <Badge variant="secondary" className="text-[11px] font-semibold bg-blue-50 text-blue-700 border-blue-200">
+                    {createForm.lineItems.filter((i) => i.lineLabel.trim()).length} Penugasan Terpilih
+                  </Badge>
+                </div>
+
+                <div className="space-y-3">
+                  {createForm.lineItems.map((item, idx) => (
+                    <div key={idx} className="rounded-xl border border-slate-200 bg-white p-3.5 space-y-3 shadow-2xs relative">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-700">Penugasan #{idx + 1}</span>
+                        {createForm.lineItems.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeLineItemRow(idx)}
+                            className="size-6 flex items-center justify-center rounded-full bg-slate-100 hover:bg-rose-100 hover:text-rose-600 text-slate-500 transition-colors text-xs font-bold"
+                            title="Hapus baris"
+                          >
+                            <X className="size-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold text-slate-700">
+                          Pilih Aktivitas Penugasan <span className="text-rose-500">*</span>
+                        </Label>
+                        <SearchableSelect
+                          label="Aktivitas"
+                          placeholder="PILIH DARI DAFTAR AKTIVITAS / JOB..."
+                          value={item.lineLabel}
+                          onValueChange={(val) => {
+                            const lib = activityLibraries.find(
+                              (l) => `${l.activityCode ? `${l.activityCode} - ` : ''}${l.activityName}` === val || l.activityName === val || (l.activityCode && val.includes(l.activityCode))
+                            )
+                            updateLineItemRow(idx, 'lineLabel', val)
+                            updateLineItemRow(idx, 'name', lib?.activityName || val)
+                            if (lib?.activityCode) updateLineItemRow(idx, 'code', lib.activityCode)
+                            if (lib?.basePoints) {
+                              updateLineItemRow(idx, 'plannedPoints', Number(lib.basePoints))
+                              updateLineItemRow(idx, 'points', Number(lib.basePoints))
+                            }
+                          }}
+                          options={activitySelectOptions}
+                          allowCustom={true}
+                          widthClassName="w-full"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2.5">
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-700">Target Unit / Equipment</Label>
+                          <Input
+                            placeholder="e.g. Unit HD-785"
+                            value={item.targetUnit || ''}
+                            onChange={(e) => {
+                              updateLineItemRow(idx, 'targetUnit', e.target.value)
+                              updateLineItemRow(idx, 'unitNumber', e.target.value)
+                            }}
+                            className="h-8 text-xs bg-slate-50/50 border-slate-200"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-700">Durasi (Mnt)</Label>
+                          <Input
+                            type="number"
+                            min={15}
+                            value={item.estimatedMinutes || 120}
+                            onChange={(e) => updateLineItemRow(idx, 'estimatedMinutes', Number(e.target.value))}
+                            className="h-8 text-xs bg-slate-50/50 border-slate-200 font-semibold text-center"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-700">Poin</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={item.plannedPoints || 10}
+                            onChange={(e) => updateLineItemRow(idx, 'plannedPoints', Number(e.target.value))}
+                            className="h-8 text-xs bg-slate-50/50 border-slate-200 font-bold text-center"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-700">Mulai <span className="text-red-500 font-bold">*</span></Label>
+                          <Input
+                            type="time"
+                            value={item.startTime || createForm.plannedStartTime || '17:00'}
+                            onChange={(e) => updateLineItemRow(idx, 'startTime', e.target.value)}
+                            className="h-8 text-xs bg-slate-50/50 border-slate-200 text-center font-mono"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-700">Selesai <span className="text-red-500 font-bold">*</span></Label>
+                          <Input
+                            type="time"
+                            value={item.endTime || createForm.plannedEndTime || '21:00'}
+                            onChange={(e) => updateLineItemRow(idx, 'endTime', e.target.value)}
+                            className="h-8 text-xs bg-slate-50/50 border-slate-200 text-center font-mono"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Photo Evidence Box */}
+                      <div className={cn(
+                        "rounded-lg border p-2.5 space-y-2 bg-white",
+                        !item.photoUrl && (!item.photos || item.photos.length === 0) ? "border-rose-200 bg-rose-50/10" : "border-slate-200"
+                      )}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                            <Camera className="size-3.5 text-slate-500" /> Photo Evidence <span className="text-rose-500 font-bold text-[10px]">* (Wajib Diunggah)</span>
+                          </span>
+                          {item.photoUrl || (Array.isArray(item.photos) && item.photos.length > 0) ? (
+                            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-semibold">
+                              Foto Terunggah
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-rose-50 text-rose-700 border-rose-200 text-[10px] font-semibold">
+                              Wajib Diunggah
+                            </Badge>
+                          )}
+                        </div>
+
+                        {item.photoUrl ? (
+                          <div className="relative inline-block border border-slate-200 rounded-lg p-1 bg-slate-50">
+                            <img
+                              src={resolveUploadUrl(item.photoUrl)}
+                              alt={`Evidence #${idx + 1}`}
+                              className="size-20 object-cover rounded-md border border-slate-300"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                updateLineItemRow(idx, 'photoUrl', '')
+                                updateLineItemRow(idx, 'photos', [])
+                              }}
+                              className="absolute -top-1.5 -right-1.5 bg-rose-600 text-white rounded-full p-1 shadow-sm hover:bg-rose-700 transition-colors"
+                              title="Hapus foto"
+                            >
+                              <X className="size-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <label className={cn(
+                              "cursor-pointer inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors",
+                              isUploadingLinePhoto[idx] && "opacity-50 pointer-events-none"
+                            )}>
+                              <Camera className="size-3.5 text-slate-600" />
+                              {isUploadingLinePhoto[idx] ? "Mengunggah..." : "Kamera"}
+                              <input
+                                type="file"
+                                accept="image/*"
+                                capture="environment"
+                                disabled={isUploadingLinePhoto[idx]}
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0]
+                                  if (file) handleLinePhotoUpload(idx, file)
+                                  e.target.value = ''
+                                }}
+                                className="hidden"
+                              />
+                            </label>
+                            <label className={cn(
+                              "cursor-pointer inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors",
+                              isUploadingLinePhoto[idx] && "opacity-50 pointer-events-none"
+                            )}>
+                              <ImagePlus className="size-3.5 text-slate-600" />
+                              {isUploadingLinePhoto[idx] ? "Mengunggah..." : "Galeri"}
+                              <input
+                                type="file"
+                                accept="image/*"
+                                disabled={isUploadingLinePhoto[idx]}
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0]
+                                  if (file) handleLinePhotoUpload(idx, file)
+                                  e.target.value = ''
+                                }}
+                                className="hidden"
+                              />
+                            </label>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold text-slate-700">Keterangan SPK / Instruksi Leader</Label>
+                        <Input
+                          placeholder="Nomor SPK / instruksi penugasan kerja..."
+                          value={item.remark || ''}
+                          onChange={(e) => updateLineItemRow(idx, 'remark', e.target.value)}
+                          className="h-8 text-xs bg-slate-50/50 border-slate-200"
+                        />
+                      </div>
+                    </div>
+                  ))}
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={addAssignedLineItemRow}
+                    className="w-full h-9 rounded-xl border-dashed border-slate-300 text-slate-700 hover:border-slate-400 hover:bg-slate-50 text-xs font-semibold gap-1.5"
+                  >
+                    <Plus className="size-3.5 text-slate-500" /> + Tambah Penugasan Aktivitas
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              /* ── SELF-INPUT (KAMUS AKTIVITAS) MODE ── */
+              <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3">
               <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
                 <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
                   <span className="size-2 rounded-full bg-emerald-600"></span>
                   B. Line Items (Aktivitas Pekerjaan Lembur)
                 </span>
                 <Badge variant="secondary" className="text-[11px] font-semibold bg-emerald-50 text-emerald-700 border-emerald-200">
-                  {createForm.lineItems.filter((i) => i.lineLabel.trim()).length} Aktivitas • {createForm.lineItems.reduce((s, i) => s + (Number(i.estimatedMinutes) || 0), 0)} Menit
+                  {createForm.lineItems.filter((i) => i.lineLabel.trim()).length} Aktivitas Terpilih
                 </Badge>
               </div>
 
-
-
-              {/* Line Items Table */}
-              <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
-                <div className="grid grid-cols-12 gap-2 bg-slate-100/80 px-3 py-2 text-[11px] font-bold text-slate-700 border-b border-slate-200">
-                  <div className="col-span-1 text-center">#</div>
-                  <div className="col-span-5">Uraian Aktivitas Pekerjaan *</div>
-                  <div className="col-span-2">Target / Unit</div>
-                  <div className="col-span-2 text-center">Durasi (Menit)</div>
-                  <div className="col-span-1 text-center">Poin</div>
-                  <div className="col-span-1 text-center">Aksi</div>
+              {/* LIBRARY ACTIVITY & GROUP KAMUS AKTIVITAS TRIGGER BOX */}
+              <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 space-y-2.5 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                    LIBRARY ACTIVITY &amp; GROUP KAMUS AKTIVITAS
+                  </span>
+                  <span className="rounded-full bg-slate-100 border border-slate-200 px-2.5 py-0.5 text-[10px] font-extrabold text-slate-700 uppercase tracking-wider">
+                    {createForm.lineItems.filter((i) => i?.lineLabel?.trim()).length} DIPILIH
+                  </span>
                 </div>
 
-                <div className="divide-y divide-slate-100 max-h-56 overflow-y-auto">
-                  {createForm.lineItems.map((item, idx) => (
-                    <div key={idx} className="grid grid-cols-12 gap-2 px-3 py-2 items-center hover:bg-slate-50/50">
-                      <div className="col-span-1 text-center font-bold text-slate-500 text-[11px]">
-                        {idx + 1}
-                      </div>
-                      <div className="col-span-5">
-                        <SearchableSelect
-                          label="Aktivitas"
-                          placeholder="Pilih dari Kamus Aktivitas..."
-                          value={item.lineLabel}
-                          onValueChange={(val) => selectActivityForLineItem(idx, val)}
-                          options={activityLibraryOptions}
-                          allowCustom={true}
-                          widthClassName="w-full"
-                        />
-                      </div>
-                      <div className="col-span-2">
-                        <Input
-                          placeholder="e.g. 2 Unit HD"
-                          value={item.targetUnit}
-                          onChange={(e) => updateLineItemRow(idx, 'targetUnit', e.target.value)}
-                          className="h-8 text-xs border-slate-200"
-                        />
-                      </div>
-                      <div className="col-span-2">
-                        <Input
-                          type="number"
-                          value={item.estimatedMinutes}
-                          onChange={(e) => updateLineItemRow(idx, 'estimatedMinutes', Number(e.target.value))}
-                          className="h-8 text-xs text-center border-slate-200 font-semibold"
-                        />
-                      </div>
-                      <div className="col-span-1">
-                        <Input
-                          type="number"
-                          value={item.plannedPoints}
-                          onChange={(e) => updateLineItemRow(idx, 'plannedPoints', Number(e.target.value))}
-                          className="h-8 text-xs text-center border-slate-200 font-bold"
-                        />
-                      </div>
-                      <div className="col-span-1 text-center">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          className="size-7 p-0 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md"
-                          onClick={() => removeLineItemRow(idx)}
-                          disabled={createForm.lineItems.length <= 1}
-                        >
-                          <Trash2 className="size-3.5" />
-                        </Button>
-                      </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      setPickerSearch('')
+                      setIsPickerModalOpen(true)
+                    }}
+                    className="h-9 text-xs font-bold gap-2 bg-[#003f78] hover:bg-[#002f5a] text-white rounded-xl shadow-xs px-4 transition-all"
+                  >
+                    <ListFilter className="size-4 text-blue-200" />
+                    Buka Kamus Aktivitas (Route Group Tree)
+                  </Button>
+                </div>
+              </div>
+
+              {/* SELECTED LIBRARY CHECKLIST CARDS */}
+              {createForm.lineItems.filter((i) => i?.lineLabel?.trim()).length > 0 ? (
+                <div className="rounded-xl border border-slate-200 bg-white p-3.5 space-y-3 shadow-2xs">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <div>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">SELECTED LIBRARY CHECKLIST</span>
+                      <h5 className="text-xs font-bold text-slate-800">
+                        {createForm.lineItems.filter((i) => i?.lineLabel?.trim()).length} activity siap diisi
+                      </h5>
                     </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex justify-between items-center pt-1">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={addLineItemRow}
-                  className="h-8 text-xs font-semibold gap-1.5 border-dashed border-slate-300 text-slate-700 hover:border-slate-400 hover:bg-white"
-                >
-                  <Plus className="size-3.5 text-slate-500" /> Tambah Baris Aktivitas
-                </Button>
-                <p className="text-[11px] text-slate-400">
-                  Item aktivitas lembur tercantum di dokumen resmi SPL & dievaluasi saat approval.
-                </p>
-              </div>
-            </div>
-
-            {/* Foto Bukti Pekerjaan Lembur (Wajib) */}
-            <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
-                <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
-                  <Camera className="size-3.5 text-indigo-600" />
-                  Foto Bukti Pekerjaan Lembur (Wajib) *
-                </span>
-                {createForm.photoUrl ? (
-                  <Badge variant="secondary" className="text-[11px] font-semibold bg-emerald-50 text-emerald-700 border-emerald-200">
-                    Foto Terlampir
-                  </Badge>
-                ) : (
-                  <Badge variant="secondary" className="text-[11px] font-semibold bg-rose-50 text-rose-700 border-rose-200">
-                    Wajib Diunggah
-                  </Badge>
-                )}
-              </div>
-
-              {createForm.photoUrl ? (
-                <div className="relative inline-block border border-slate-200 rounded-lg overflow-hidden bg-slate-100 group">
-                  <img
-                    src={resolveUploadUrl(createForm.photoUrl)}
-                    alt="Foto Bukti Lembur"
-                    className="h-36 w-auto max-w-full object-cover rounded-md"
-                  />
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                     <Button
                       type="button"
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => setCreateForm((p) => ({ ...p, photoUrl: '' }))}
-                      className="h-7 text-xs font-semibold px-2 cursor-pointer"
+                      onClick={() => {
+                        setPickerSearch('')
+                        setIsPickerModalOpen(true)
+                      }}
+                      className="h-8 text-xs font-semibold gap-1.5 bg-[#003f78] hover:bg-[#002f5a] text-white shadow-xs rounded-lg px-3.5 transition-all"
                     >
-                      <Trash2 className="size-3.5 mr-1" /> Hapus Foto
+                      <Layers className="size-3.5 text-blue-200" />
+                      + Tambah Dari Kamus
                     </Button>
                   </div>
+
+                  <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                    {createForm.lineItems
+                      .filter((i) => i?.lineLabel?.trim())
+                      .map((item, idx) => {
+                        const requirementBadges = [
+                          item.requiresDuration !== false ? 'DURATION' : null,
+                          item.requiresTireCount ? 'TIRE' : null,
+                          item.requiresEquipmentNo ? 'EQUIPMENT' : null,
+                          item.requiresMaterialUsed ? 'MATERIAL' : null,
+                          'PHOTO (WAJIB)',
+                        ].filter(Boolean)
+
+                        const codeLabel = item.code || (item.lineLabel.includes(' - ') ? item.lineLabel.split(' - ')[0] : 'SVC')
+                        const nameLabel = item.name || (item.lineLabel.includes(' - ') ? item.lineLabel.split(' - ')[1] : item.lineLabel)
+
+                        return (
+                          <div key={idx} className="rounded-xl border border-slate-200 bg-slate-50/50 p-3 space-y-2.5 relative">
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <p className="text-xs font-bold font-mono text-slate-500">
+                                  #{idx + 1} • {codeLabel}
+                                </p>
+                                <h6 className="text-xs font-bold text-slate-800">{nameLabel}</h6>
+                                {requirementBadges.length > 0 ? (
+                                  <div className="flex flex-wrap gap-1 pt-1">
+                                    {requirementBadges.map((badge, bIdx) => (
+                                      <span
+                                        key={bIdx}
+                                        className="rounded-md bg-white border border-slate-200 px-1.5 py-0.5 text-[8.5px] font-bold text-[#003f78] uppercase tracking-wider"
+                                      >
+                                        {badge}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => removeLineItemRow(idx)}
+                                className="size-6 flex items-center justify-center rounded-full bg-slate-100 hover:bg-rose-100 hover:text-rose-600 text-slate-500 transition-colors text-xs font-bold"
+                                title="Hapus activity"
+                              >
+                                <X className="size-3.5" />
+                              </button>
+                            </div>
+
+                            {item.requiresEquipmentNo ? (
+                              <div className="space-y-1">
+                                <Label className="text-xs font-semibold text-slate-700">No. Equipment / Unit <span className="text-red-500 font-bold">*</span></Label>
+                                <Input
+                                  placeholder="Contoh: DT-451 / BAY-03..."
+                                  value={item.unitNumber || ''}
+                                  onChange={(e) => updateLineItemRow(idx, 'unitNumber', e.target.value)}
+                                  className="h-8 text-xs bg-white border-slate-200"
+                                />
+                              </div>
+                            ) : null}
+
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                              <div className="space-y-1">
+                                <Label className="text-xs font-semibold text-slate-700">Mulai <span className="text-red-500 font-bold">*</span></Label>
+                                <Input
+                                  type="time"
+                                  value={item.startTime || createForm.plannedStartTime || '17:00'}
+                                  onChange={(e) => updateLineItemRow(idx, 'startTime', e.target.value)}
+                                  className="h-8 text-xs bg-white border-slate-200 text-center font-mono"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs font-semibold text-slate-700">Selesai <span className="text-red-500 font-bold">*</span></Label>
+                                <Input
+                                  type="time"
+                                  value={item.endTime || createForm.plannedEndTime || '21:00'}
+                                  onChange={(e) => updateLineItemRow(idx, 'endTime', e.target.value)}
+                                  className="h-8 text-xs bg-white border-slate-200 text-center font-mono"
+                                />
+                              </div>
+                            </div>
+
+                            {item.requiresTireCount ? (
+                              <div className="space-y-1">
+                                <Label className="text-xs font-semibold text-slate-700">Jumlah Tire <span className="text-red-500 font-bold">*</span></Label>
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  value={item.tireCount ?? 1}
+                                  onChange={(e) => updateLineItemRow(idx, 'tireCount', Math.max(1, parseInt(e.target.value, 10) || 1))}
+                                  className="h-8 text-xs bg-white border-slate-200"
+                                />
+                              </div>
+                            ) : null}
+
+                            {item.requiresMaterialUsed ? (
+                              <div className="space-y-1">
+                                <Label className="text-xs font-semibold text-slate-700">Material Used <span className="text-red-500 font-bold">*</span></Label>
+                                <Input
+                                  placeholder="Material / tools dipakai..."
+                                  value={item.materialUsed || ''}
+                                  onChange={(e) => updateLineItemRow(idx, 'materialUsed', e.target.value)}
+                                  className="h-8 text-xs bg-white border-slate-200"
+                                />
+                              </div>
+                            ) : null}
+
+                            <div className={cn(
+                              "rounded-lg border p-2.5 space-y-2 bg-white",
+                              !item.photoUrl && (!item.photos || item.photos.length === 0) ? "border-rose-200 bg-rose-50/10" : "border-slate-200"
+                            )}>
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                                  <Camera className="size-3.5 text-slate-500" /> Photo Evidence <span className="text-rose-500 font-bold text-[10px]">* (Wajib Diunggah)</span>
+                                </span>
+                                {item.photoUrl || (Array.isArray(item.photos) && item.photos.length > 0) ? (
+                                  <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-semibold">
+                                    Foto Terunggah
+                                  </Badge>
+                                ) : (
+                                  <Badge className="bg-rose-50 text-rose-700 border-rose-200 text-[10px] font-semibold">
+                                    Wajib Diunggah
+                                  </Badge>
+                                )}
+                              </div>
+
+                              {item.photoUrl ? (
+                                <div className="relative inline-block border border-slate-200 rounded-lg p-1 bg-slate-50">
+                                  <img
+                                    src={resolveUploadUrl(item.photoUrl)}
+                                    alt={`Evidence #${idx + 1}`}
+                                    className="size-20 object-cover rounded-md border border-slate-300"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      updateLineItemRow(idx, 'photoUrl', '')
+                                      updateLineItemRow(idx, 'photos', [])
+                                    }}
+                                    className="absolute -top-1.5 -right-1.5 bg-rose-600 text-white rounded-full p-1 shadow-sm hover:bg-rose-700 transition-colors"
+                                    title="Hapus foto"
+                                  >
+                                    <X className="size-3" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <label className={cn(
+                                    "cursor-pointer inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors",
+                                    isUploadingLinePhoto[idx] && "opacity-50 pointer-events-none"
+                                  )}>
+                                    <Camera className="size-3.5 text-slate-600" />
+                                    {isUploadingLinePhoto[idx] ? "Mengunggah..." : "Kamera"}
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      capture="environment"
+                                      disabled={isUploadingLinePhoto[idx]}
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0]
+                                        if (file) handleLinePhotoUpload(idx, file)
+                                        e.target.value = ''
+                                      }}
+                                      className="hidden"
+                                    />
+                                  </label>
+                                  <label className={cn(
+                                    "cursor-pointer inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors",
+                                    isUploadingLinePhoto[idx] && "opacity-50 pointer-events-none"
+                                  )}>
+                                    <ImagePlus className="size-3.5 text-slate-600" />
+                                    {isUploadingLinePhoto[idx] ? "Mengunggah..." : "Galeri"}
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      disabled={isUploadingLinePhoto[idx]}
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0]
+                                        if (file) handleLinePhotoUpload(idx, file)
+                                        e.target.value = ''
+                                      }}
+                                      className="hidden"
+                                    />
+                                  </label>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="space-y-1">
+                              <Label className="text-xs font-semibold text-slate-700">Catatan Item</Label>
+                              <Input
+                                placeholder="Hasil kerja, temuan, atau catatan lembur..."
+                                value={item.remark || ''}
+                                onChange={(e) => updateLineItemRow(idx, 'remark', e.target.value)}
+                                className="h-8 text-xs bg-white border-slate-200"
+                              />
+                            </div>
+                          </div>
+                        )
+                      })}
+                  </div>
                 </div>
-              ) : (
-                <div className="border-2 border-dashed border-slate-300 hover:border-slate-400 bg-white rounded-xl p-5 text-center">
-                  <input
-                    type="file"
-                    id="spl-photo-upload"
-                    accept="image/*"
-                    className="hidden"
-                    disabled={isUploadingPhoto}
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0]
-                      if (!file) return
-                      setIsUploadingPhoto(true)
-                      const toastId = toast.loading('Mengunggah foto bukti lembur...')
-                      try {
-                        const fd = new FormData()
-                        fd.append('file', file)
-                        fd.append('uploadTarget', 'activity-photos')
-                        const res = await uploadFile(fd)
-                        if (res.success && res.url) {
-                          setCreateForm((p) => ({ ...p, photoUrl: res.readableUrl || res.url }))
-                          toast.success('Foto bukti lembur berhasil diunggah!', { id: toastId })
-                        } else {
-                          toast.error(res.error || 'Gagal mengunggah foto', { id: toastId })
-                        }
-                      } catch (err: any) {
-                        toast.error(err.message || 'Gagal mengunggah foto', { id: toastId })
-                      } finally {
-                        setIsUploadingPhoto(false)
-                      }
-                    }}
-                  />
-                  <label
-                    htmlFor="spl-photo-upload"
-                    className="cursor-pointer flex flex-col items-center justify-center gap-2 text-slate-600 hover:text-slate-900"
-                  >
-                    {isUploadingPhoto ? (
-                      <Loader2 className="size-7 text-indigo-600 animate-spin" />
-                    ) : (
-                      <Camera className="size-7 text-slate-400" />
-                    )}
-                    <span className="text-xs font-semibold text-slate-800">
-                      {isUploadingPhoto ? 'Mengunggah...' : 'Klik untuk Ambil / Unggah Foto Bukti Lembur'}
-                    </span>
-                    <span className="text-[10px] text-slate-400">
-                      Format JPG, PNG, atau WEBP (Maks 10MB) • Wajib diunggah sebelum submit
-                    </span>
-                  </label>
-                </div>
-              )}
+              ) : null}
             </div>
+            )}
+
+
 
             {/* 4. C. Signatories & Verification Matrix (Approval) */}
             <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3">
@@ -2744,49 +3720,29 @@ export function OvertimeListingClient({
                   <span className="size-2 rounded-full bg-amber-600"></span>
                   C. Signatories & Verification Matrix (Penandatangan Approval SPL)
                 </span>
-                <span className="text-[11px] font-mono text-slate-400">2-Tier Verification (Leader & PJO)</span>
+                <span className="text-[11px] font-mono text-slate-400">1-Tier Approver (Leader / PJO)</span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Leader / Pengawas Lapangan</Label>
-                  <SearchableSelect
-                    label="Leader"
-                    placeholder="PILIH LEADER..."
-                    value={createForm.leaderEmployeeId}
-                    onValueChange={(val) => {
-                      const emp = employees.find((e) => String(e.id) === val)
-                      setCreateForm((p) => ({
-                        ...p,
-                        leaderEmployeeId: val,
-                        leaderName: emp?.name || '',
-                      }))
-                    }}
-                    options={employeeOptions}
-                    widthClassName="w-full"
-                  />
-                  <p className="text-[10px] text-slate-400">Verifikasi tahap 1 (Leader Lapangan / Pengawas)</p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">PJO / Site Lead (Tahap Akhir)</Label>
-                  <SearchableSelect
-                    label="PJO / Site Lead"
-                    placeholder="PILIH PJO / SITE LEAD..."
-                    value={createForm.superiorEmployeeId}
-                    onValueChange={(val) => {
-                      const emp = employees.find((e) => String(e.id) === val)
-                      setCreateForm((p) => ({
-                        ...p,
-                        superiorEmployeeId: val,
-                        superiorName: emp?.name || '',
-                      }))
-                    }}
-                    options={employeeOptions}
-                    widthClassName="w-full"
-                  />
-                  <p className="text-[10px] text-slate-400">Verifikasi tahap 2 (PJO / Penanggung Jawab Operasional)</p>
-                </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-700">Leader / PJO (Site Lead / Pengawas)</Label>
+                <SearchableSelect
+                  label="Leader / PJO"
+                  placeholder="PILIH LEADER / PJO..."
+                  value={createForm.leaderEmployeeId || createForm.superiorEmployeeId}
+                  onValueChange={(val) => {
+                    const emp = employees.find((e) => String(e.id) === val)
+                    setCreateForm((p) => ({
+                      ...p,
+                      leaderEmployeeId: val,
+                      leaderName: emp?.name || '',
+                      superiorEmployeeId: val,
+                      superiorName: emp?.name || '',
+                    }))
+                  }}
+                  options={employeeOptions}
+                  widthClassName="w-full"
+                />
+                <p className="text-[10px] text-slate-400">Verifikasi & persetujuan SPL langsung (Pemohon &rarr; Leader / PJO &rarr; Selesai)</p>
               </div>
             </div>
           </div>
@@ -2799,6 +3755,262 @@ export function OvertimeListingClient({
               {isCreating ? 'Menyimpan...' : 'Simpan'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* FLOATING WINDOW: PILIH KAMUS AKTIVITAS (PARITY WITH DAILY ACTIVITY ROUTE GROUPS) */}
+      <Dialog open={isPickerModalOpen} onOpenChange={setIsPickerModalOpen}>
+        <DialogContent className="max-w-2xl p-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+          {/* Header Dark Minimalist */}
+          <div className="bg-[#003f78] px-5 py-3.5 text-white flex items-center justify-between">
+            <div>
+              <DialogTitle className="text-base font-bold text-white">Pilih Kamus Aktivitas Lembur</DialogTitle>
+              <p className="text-xs text-blue-100 mt-0.5">Pilih aktivitas berdasarkan route group &amp; aktivitas mandiri</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsPickerModalOpen(false)}
+              className="text-blue-200 hover:text-white p-1 rounded-md transition-colors"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+
+          <div className="p-4 space-y-3">
+            {/* Search Bar */}
+            <div className="rounded-xl bg-slate-50 px-3.5 py-2.5 flex items-center gap-2 border border-slate-200 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition">
+              <Search className="size-4 text-slate-400" />
+              <input
+                type="text"
+                value={pickerSearch}
+                onChange={(e) => setPickerSearch(e.target.value)}
+                placeholder="Cari kode atau nama activity..."
+                className="w-full bg-transparent text-xs font-semibold text-slate-800 outline-none placeholder:text-slate-400"
+              />
+              {pickerSearch ? (
+                <button
+                  type="button"
+                  onClick={() => setPickerSearch('')}
+                  className="text-slate-400 hover:text-slate-600"
+                >
+                  <X className="size-3.5" />
+                </button>
+              ) : null}
+            </div>
+
+            {/* Status Count Bar */}
+            <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3.5 py-2 text-xs font-bold text-slate-600 border border-slate-200/80">
+              <span>{totalVisibleLibraryCount} library tampil</span>
+              <span>{(createForm.lineItems || []).filter((i) => i?.lineLabel?.trim()).length} dipilih</span>
+            </div>
+
+            {/* Scrollable Content */}
+            <div className="max-h-[380px] overflow-y-auto space-y-3 pr-1">
+              {/* 1. Dynamic Route Groups & Folders Accordion */}
+              {matchingRouteFolders.map((route) => {
+                const isRouteExpanded = expandedPickerGroups.has(route.routeName) || Boolean(pickerSearch)
+                return (
+                  <div key={route.id} className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExpandedPickerGroups((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(route.routeName)) next.delete(route.routeName)
+                          else next.add(route.routeName)
+                          return next
+                        })
+                      }}
+                      className="w-full flex items-center justify-between bg-slate-50/90 hover:bg-slate-100/90 px-3.5 py-2.5 text-left font-bold text-slate-800 text-xs transition-colors"
+                    >
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <Layers className="size-4 text-[#003f78] shrink-0" />
+                        <span className="truncate">{route.routeName}</span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-[11px] font-semibold text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">
+                          {(route?.matchingGroups || []).reduce((acc, g) => acc + (g?.matchingItems?.length || 0), 0)} Activity
+                        </span>
+                        <ChevronRight className={`size-4 transition-transform text-slate-500 ${isRouteExpanded ? 'rotate-90' : ''}`} />
+                      </div>
+                    </button>
+
+                    {isRouteExpanded && (
+                      <div className="p-2 space-y-2.5 bg-slate-50/40 border-t border-slate-100">
+                        {route.matchingGroups.map((group) => {
+                          const isAllGroupSelected =
+                            group.matchingItems.length > 0 &&
+                            group.matchingItems.every((sub) =>
+                              (createForm.lineItems || []).some(
+                                (i) => i?.lineLabel === sub.name || (sub.code && i?.lineLabel?.includes(sub.code)) || i?.lineLabel?.includes(sub.name)
+                              )
+                            )
+                          const selectedInGroupCount = group.matchingItems.filter((sub) =>
+                            (createForm.lineItems || []).some(
+                              (i) => i?.lineLabel === sub.name || (sub.code && i?.lineLabel?.includes(sub.code)) || i?.lineLabel?.includes(sub.name)
+                            )
+                          ).length
+
+                          return (
+                            <div key={group.id} className="space-y-1.5 rounded-xl border border-slate-200/80 bg-white p-2.5 shadow-2xs">
+                              <div className="flex w-full items-center justify-between px-1 text-left text-xs font-bold text-slate-700">
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                  <span className="truncate">{group.groupName}</span>
+                                  {group.matchingItems.length > 0 && (
+                                    <span className="text-[10px] font-bold text-[#003f78] bg-[#eaf4fb] px-1.5 py-0.5 rounded-full shrink-0">
+                                      {selectedInGroupCount}/{group.matchingItems.length}
+                                    </span>
+                                  )}
+                                </div>
+                                {group.matchingItems.length > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      toggleGroupItems(group.matchingItems)
+                                    }}
+                                    className={
+                                      isAllGroupSelected
+                                        ? 'text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-lg bg-rose-100 text-rose-700 hover:bg-rose-200 active:scale-95 transition shrink-0'
+                                        : 'text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-lg bg-[#003f78] text-white hover:bg-[#002f5a] active:scale-95 transition shadow-xs shrink-0'
+                                    }
+                                  >
+                                    {isAllGroupSelected ? 'Hapus Semua' : 'Pilih Group (Semua)'}
+                                  </button>
+                                )}
+                              </div>
+
+                              <div className="space-y-1.5 pt-1">
+                                {group.matchingItems.map((sub) => {
+                                  const isSelected = (createForm.lineItems || []).some(
+                                    (i) => i?.lineLabel === sub.name || (sub.code && i?.lineLabel?.includes(sub.code)) || i?.lineLabel?.includes(sub.name)
+                                  )
+
+                                  return (
+                                    <div
+                                      key={sub.id}
+                                      onClick={() => {
+                                        toggleLineItem(sub.name, sub.code, sub.basePoints, sub)
+                                      }}
+                                      className={`flex items-center justify-between rounded-xl p-3 cursor-pointer transition border ${
+                                        isSelected
+                                          ? 'bg-[#003f78] text-white border-[#003f78] shadow-sm'
+                                          : 'bg-white text-slate-800 border-slate-200/90 hover:bg-slate-50'
+                                      }`}
+                                    >
+                                      <div className="min-w-0 flex-1 pr-2 space-y-0.5">
+                                        <div className="flex items-center gap-2">
+                                          <span className={`text-[11px] font-black tracking-wider uppercase ${isSelected ? 'text-white' : 'text-[#003f78]'}`}>
+                                            {sub.code}
+                                          </span>
+                                        </div>
+                                        <p className={`text-xs font-semibold truncate ${isSelected ? 'text-blue-100' : 'text-slate-800'}`}>
+                                          {sub.name}
+                                        </p>
+                                      </div>
+                                      <span
+                                        className={`size-6 shrink-0 flex items-center justify-center rounded-full transition ${
+                                          isSelected
+                                            ? 'bg-white text-[#003f78]'
+                                            : 'bg-white border border-slate-200 text-slate-400'
+                                        }`}
+                                      >
+                                        {isSelected ? <Check className="size-3.5 stroke-[3]" /> : <ListFilter className="size-3.5" />}
+                                      </span>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+
+              {/* 2. Standalone / Aktivitas Mandiri Section */}
+              {standaloneLibraries.length > 0 && (
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center gap-1.5 px-1 py-1 text-xs font-bold text-[#486275] uppercase tracking-wider">
+                    <Sparkles className="size-3.5 text-amber-500" />
+                    <span>Aktivitas Mandiri / Kamus Lainnya ({standaloneLibraries.length})</span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    {standaloneLibraries.map((item) => {
+                      const isSelected = (createForm.lineItems || []).some(
+                        (i) => i?.lineLabel === item.activityName || (item.activityCode && i?.lineLabel?.includes(item.activityCode)) || i?.lineLabel?.includes(item.activityName)
+                      )
+
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => {
+                            toggleLineItem(item.activityName, item.activityCode, item.basePoints, {
+                              requiresEquipmentNo: Boolean(item.requiresEquipmentNo),
+                              requiresDuration: true,
+                              requiresTireCount: (item.activityName || '').toLowerCase().includes('tire') || (item.activityName || '').toLowerCase().includes('ban'),
+                              requiresMaterialUsed: false,
+                              requiresPhoto: false,
+                            })
+                          }}
+                          className={`flex items-center justify-between rounded-xl p-3 cursor-pointer transition border ${
+                            isSelected
+                              ? 'bg-[#003f78] text-white border-[#003f78] shadow-sm'
+                              : 'bg-white text-slate-800 border-slate-200/90 hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1 pr-2 space-y-0.5">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-[11px] font-black tracking-wider uppercase ${isSelected ? 'text-white' : 'text-[#003f78]'}`}>
+                                {item.activityCode}
+                              </span>
+                              {item.category ? (
+                                <span className={`rounded-md px-1.5 py-0.5 text-[9px] font-bold ${
+                                  isSelected ? 'bg-white/20 text-white' : 'bg-[#eaf4fb] text-[#003f78]'
+                                }`}>
+                                  {item.category}
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className={`text-xs font-semibold truncate ${isSelected ? 'text-blue-100' : 'text-slate-800'}`}>
+                              {item.activityName}
+                            </p>
+                          </div>
+                          <span
+                            className={`size-6 shrink-0 flex items-center justify-center rounded-full transition ${
+                              isSelected
+                                ? 'bg-white text-[#003f78]'
+                                : 'bg-white border border-slate-200 text-slate-400'
+                            }`}
+                          >
+                            {isSelected ? <Check className="size-3.5 stroke-[3]" /> : <ListFilter className="size-3.5" />}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {totalVisibleLibraryCount === 0 && (
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 p-6 text-center text-xs font-semibold text-slate-500">
+                  Tidak ada kamus aktivitas yang cocok dengan pencarian &quot;{pickerSearch}&quot;.
+                </div>
+              )}
+            </div>
+
+            {/* Bottom Submit Button */}
+            <Button
+              type="button"
+              onClick={() => setIsPickerModalOpen(false)}
+              className="h-10 w-full rounded-xl bg-[#003f78] hover:bg-[#00315c] text-white font-bold text-xs shadow-xs mt-2"
+            >
+              PAKAI {(createForm.lineItems || []).filter((i) => i?.lineLabel?.trim()).length} AKTIVITAS
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

@@ -98,6 +98,7 @@
     "dotenv": "^17.2.1",
     "drizzle-orm": "^0.36.1",
     "embla-carousel-react": "^8.6.0",
+    "exceljs": "^4.4.0",
     "fabric": "^6.9.1",
     "face-api.js": "^0.22.2",
     "fuse.js": "^7.3.0",

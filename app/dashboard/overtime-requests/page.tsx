@@ -3,6 +3,9 @@ import { getServerSession } from '@/lib/auth-session'
 import { db } from '@/db'
 import {
   activityLibraries,
+  activityRouteGroups,
+  activityRouteItems,
+  activityRouteTemplates,
   employees,
   masterDepartments,
   masterSections,
@@ -16,6 +19,7 @@ import { asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { OvertimeListingClient, type OvertimeListingRow } from './client'
 import { getOvertimeWorkflowSettings } from './actions'
 import { getCurrentEmployee } from '@/lib/get-current-employee'
+import type { RouteFolder } from '@/lib/daily-activity'
 
 export const metadata = {
   title: 'Overtime Requests Approval - HERO',
@@ -50,7 +54,7 @@ export default async function OvertimeRequestsPage() {
 
   const isSiteAdmin = accessRole === 'site admin'
 
-  const [rawSplRecords, allEmployees, rawSections, rawDepartments, rawSites, rawActivityLibraries] = await Promise.all([
+  const [rawSplRecords, allEmployees, rawSections, rawDepartments, rawSites, rawActivityLibraries, routeTemplateRows, routeGroupRows, routeItemRows] = await Promise.all([
     db
       .select({
         id: overtimeCommandLetters.id,
@@ -104,7 +108,65 @@ export default async function OvertimeRequestsPage() {
       .from(activityLibraries)
       .where(eq(activityLibraries.isActive, true))
       .orderBy(asc(activityLibraries.activityName)),
+    db
+      .select({
+        id: activityRouteTemplates.id,
+        routeCode: activityRouteTemplates.routeCode,
+        routeName: activityRouteTemplates.routeName,
+      })
+      .from(activityRouteTemplates)
+      .where(eq(activityRouteTemplates.isActive, true))
+      .orderBy(asc(activityRouteTemplates.routeName)),
+    db
+      .select({
+        id: activityRouteGroups.id,
+        routeTemplateId: activityRouteGroups.routeTemplateId,
+        groupName: activityRouteGroups.groupName,
+      })
+      .from(activityRouteGroups)
+      .orderBy(asc(activityRouteGroups.sortOrder)),
+    db
+      .select({
+        id: activityRouteItems.id,
+        routeGroupId: activityRouteItems.routeGroupId,
+        libraryActivityId: activityRouteItems.libraryActivityId,
+        itemCode: activityRouteItems.itemCode,
+        itemLabel: activityRouteItems.itemLabel,
+        pointOverride: activityRouteItems.pointOverride,
+        requiresUnit: activityRouteItems.requiresUnit,
+        requiresTime: activityRouteItems.requiresTime,
+        requiresPhoto: activityRouteItems.requiresPhoto,
+      })
+      .from(activityRouteItems)
+      .orderBy(asc(activityRouteItems.sortOrder)),
   ])
+
+  const itemsByGroupId = new Map<number, any[]>()
+  for (const item of routeItemRows || []) {
+    const list = itemsByGroupId.get(item.routeGroupId) || []
+    list.push(item)
+    itemsByGroupId.set(item.routeGroupId, list)
+  }
+
+  const groupsByTemplateId = new Map<number, any[]>()
+  for (const group of routeGroupRows || []) {
+    const list = groupsByTemplateId.get(group.routeTemplateId) || []
+    list.push({
+      id: group.id,
+      groupName: group.groupName,
+      items: itemsByGroupId.get(group.id) || [],
+    })
+    groupsByTemplateId.set(group.routeTemplateId, list)
+  }
+
+  const availableRouteFolders: RouteFolder[] = (routeTemplateRows || [])
+    .map((t) => ({
+      id: t.id,
+      routeCode: t.routeCode,
+      routeName: t.routeName,
+      groups: groupsByTemplateId.get(t.id) || [],
+    }))
+    .filter((t) => t.groups.length > 0)
 
   const sectionHeadById = new Map(rawSections.map((s) => [s.id, s.headEmployeeId]))
   const sectionHeadByName = new Map(rawSections.map((s) => [s.name.toLowerCase().trim(), s.headEmployeeId]))
@@ -218,6 +280,7 @@ export default async function OvertimeRequestsPage() {
           .select({
             overtimeCommandLetterId: overtimeCommandLetterItems.overtimeCommandLetterId,
             lineLabel: overtimeCommandLetterItems.lineLabel,
+            lineDescription: overtimeCommandLetterItems.lineDescription,
             targetUnit: overtimeCommandLetterItems.targetUnit,
             estimatedMinutes: overtimeCommandLetterItems.estimatedMinutes,
             plannedPoints: overtimeCommandLetterItems.plannedPoints,
@@ -258,12 +321,30 @@ export default async function OvertimeRequestsPage() {
 
   const itemsMap = new Map<number, any[]>()
   for (const item of itemsList) {
+    let meta: any = {}
+    try {
+      if (item.lineDescription && item.lineDescription.startsWith('{')) {
+        meta = JSON.parse(item.lineDescription)
+      }
+    } catch {}
+
     const list = itemsMap.get(item.overtimeCommandLetterId) || []
     list.push({
-      lineLabel: item.lineLabel || 'Aktivitas Lembur',
-      targetUnit: item.targetUnit || '—',
-      estimatedMinutes: Number(item.estimatedMinutes) || 60,
+      lineLabel: item.lineLabel || meta.name || 'Aktivitas Lembur',
+      targetUnit: item.targetUnit || meta.unitNumber || '—',
+      estimatedMinutes: Number(item.estimatedMinutes) || Number(meta.duration) || 60,
       plannedPoints: Number(item.plannedPoints) || 0,
+      code: meta.code || '',
+      name: meta.name || item.lineLabel || 'Aktivitas Lembur',
+      unitNumber: meta.unitNumber || item.targetUnit || null,
+      tireCount: meta.tireCount ?? null,
+      materialUsed: meta.materialUsed || null,
+      startTime: meta.startTime || null,
+      endTime: meta.endTime || null,
+      duration: meta.duration || null,
+      remark: meta.remark || (!item.lineDescription?.startsWith('{') ? item.lineDescription : null),
+      photoUrl: meta.photoUrl || meta.photos?.[0] || null,
+      photos: Array.isArray(meta.photos) ? meta.photos : meta.photoUrl ? [meta.photoUrl] : [],
     })
     itemsMap.set(item.overtimeCommandLetterId, list)
   }
@@ -314,6 +395,7 @@ export default async function OvertimeRequestsPage() {
       rows={rows}
       employees={sanitizedEmployees}
       activityLibraries={rawActivityLibraries || []}
+      routeFolders={availableRouteFolders || []}
       initialSettings={initialSettings}
       currentEmployeeId={activeEmployee?.id ?? null}
       currentEmployeeEmail={normalizedEmail}

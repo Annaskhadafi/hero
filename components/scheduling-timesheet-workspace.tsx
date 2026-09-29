@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState, useTransition } from 'reac
 import Fuse from 'fuse.js'
 import { useRouter } from 'next/navigation'
 import {
+  Activity,
   AlertTriangle,
   CalendarDays,
   Calculator,
@@ -12,6 +13,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Clock,
   Clock3,
   Download,
   Eye,
@@ -38,6 +40,14 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -4406,13 +4416,14 @@ export function SchedulingTimesheetWorkspace({
     printable.document.close()
   }
 
-  function exportAttendanceGrid() {
+  async function exportAttendanceGrid(customMode?: 'attendance' | 'checkin-checkout' | 'work-hours') {
+    const activeMode = customMode ?? attendanceGridExportMode
     try {
-      exportAttendanceGridToExcel({
+      await exportAttendanceGridToExcel({
         siteName: site?.name ?? 'Semua Site',
         period,
         days,
-        mode: attendanceGridExportMode,
+        mode: activeMode,
         rows: displayedAttendanceRows.map((row) => ({
           employee: {
             id: row.employee.id,
@@ -4429,7 +4440,12 @@ export function SchedulingTimesheetWorkspace({
         attendanceStatusLabel: (status) => attendanceStatusLabel(status),
         holidaysByDay,
       })
-      toast.success(`Export Excel Attendance (${attendanceGridExportMode}) berhasil diunduh!`)
+      const modeLabelMap: Record<string, string> = {
+        attendance: 'Status Kehadiran',
+        'checkin-checkout': 'Jam Masuk & Pulang',
+        'work-hours': 'Durasi Jam Kerja',
+      }
+      toast.success(`Export Excel Visual Grid (${modeLabelMap[activeMode] || activeMode}) berhasil diunduh!`)
     } catch (err) {
       toast.error('Gagal mengekspor Excel Attendance: ' + (err instanceof Error ? err.message : String(err)))
     }
@@ -9576,66 +9592,142 @@ export function SchedulingTimesheetWorkspace({
                           ? `(${selectedOvertimeEmployeeIds.length})`
                           : ''}
                       </Button>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-muted-foreground hidden text-[11px] font-semibold sm:inline">
-                          Export Grid:
-                        </span>
-                        <NativeSelect
-                          value={attendanceGridExportMode}
-                          onValueChange={(value) =>
-                            setAttendanceGridExportMode(
-                              value as 'attendance' | 'checkin-checkout' | 'work-hours'
-                            )
-                          }
-                          options={[
-                            { value: 'attendance', label: 'Attendance' },
-                            { value: 'checkin-checkout', label: 'Check In / Check Out' },
-                            { value: 'work-hours', label: 'Attendance Jam Kerja' },
-                          ]}
-                          className="h-8.5 min-w-[170px] bg-white text-xs"
-                        />
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={exportAttendanceGrid}
-                          disabled={displayedAttendanceRows.length === 0}
-                          className="h-8.5 bg-white text-xs"
-                          aria-label="Export Excel Grid Attendance"
-                          title="Export Excel Grid Attendance"
-                        >
-                          <FileSpreadsheet className="mr-1.5 size-3.5" />
-                          Export Grid
-                        </Button>
-                      </div>
-                      <TabExportActions
-                        tabTitle="Attendance"
-                        columns={[
-                          'Nama',
-                          'Masuk',
-                          'Belum',
-                          'Sakit',
-                          'Izin',
-                          'Alpha',
-                          'Manual',
-                          'Excel',
-                          'FaceLoc',
-                        ]}
-                        exportRows={rows.map((row) => {
-                          const cells = days.map((day) => getAttendanceCell(row.employee.id, day))
-                          const statuses = cells.map((cell) => cell.status)
-                          return [
-                            row.employee.name,
-                            statuses.filter((status) => status === 'present').length,
-                            statuses.filter((status) => status === 'empty').length,
-                            statuses.filter((status) => status === 'sick').length,
-                            statuses.filter((status) => status === 'leave').length,
-                            statuses.filter((status) => status === 'absent').length,
-                            cells.filter((cell) => cell.source === 'manual').length,
-                            cells.filter((cell) => cell.source === 'excel').length,
-                            cells.filter((cell) => cell.source === 'attendance').length,
-                          ]
-                        })}
-                      />
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8.5 rounded-lg bg-white text-xs font-medium gap-1.5 shadow-2xs"
+                            disabled={displayedAttendanceRows.length === 0 && rows.length === 0}
+                          >
+                            <Download className="size-3.5 text-slate-500" />
+                            <span>Ekspor Data</span>
+                            <ChevronDown className="size-3 text-slate-400" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-64">
+                          <DropdownMenuLabel className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                            Visual Grid (.xlsx)
+                          </DropdownMenuLabel>
+                          <DropdownMenuItem
+                            onClick={() => exportAttendanceGrid('attendance')}
+                            disabled={displayedAttendanceRows.length === 0}
+                            className="cursor-pointer gap-2 py-2"
+                          >
+                            <FileSpreadsheet className="size-4 text-emerald-600 shrink-0" />
+                            <div className="flex flex-col">
+                              <span className="font-medium text-xs text-foreground">Status Kehadiran</span>
+                              <span className="text-[10px] text-muted-foreground">Grid warna visual status harian</span>
+                            </div>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => exportAttendanceGrid('checkin-checkout')}
+                            disabled={displayedAttendanceRows.length === 0}
+                            className="cursor-pointer gap-2 py-2"
+                          >
+                            <Clock className="size-4 text-blue-600 shrink-0" />
+                            <div className="flex flex-col">
+                              <span className="font-medium text-xs text-foreground">Jam Masuk & Pulang</span>
+                              <span className="text-[10px] text-muted-foreground">Grid waktu Clock In & Out harian</span>
+                            </div>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => exportAttendanceGrid('work-hours')}
+                            disabled={displayedAttendanceRows.length === 0}
+                            className="cursor-pointer gap-2 py-2"
+                          >
+                            <Activity className="size-4 text-purple-600 shrink-0" />
+                            <div className="flex flex-col">
+                              <span className="font-medium text-xs text-foreground">Durasi Jam Kerja</span>
+                              <span className="text-[10px] text-muted-foreground">Grid total jam kerja aktif per hari</span>
+                            </div>
+                          </DropdownMenuItem>
+
+                          <DropdownMenuSeparator />
+
+                          <DropdownMenuLabel className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                            Dokumen & Ringkasan
+                          </DropdownMenuLabel>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              const columns = [
+                                'Nama',
+                                'Masuk',
+                                'Belum',
+                                'Sakit',
+                                'Izin',
+                                'Alpha',
+                                'Manual',
+                                'Excel',
+                                'FaceLoc',
+                              ]
+                              const exportRows = rows.map((row) => {
+                                const cells = days.map((day) => getAttendanceCell(row.employee.id, day))
+                                const statuses = cells.map((cell) => cell.status)
+                                return [
+                                  row.employee.name,
+                                  statuses.filter((status) => status === 'present').length,
+                                  statuses.filter((status) => status === 'empty').length,
+                                  statuses.filter((status) => status === 'sick').length,
+                                  statuses.filter((status) => status === 'leave').length,
+                                  statuses.filter((status) => status === 'absent').length,
+                                  cells.filter((cell) => cell.source === 'manual').length,
+                                  cells.filter((cell) => cell.source === 'excel').length,
+                                  cells.filter((cell) => cell.source === 'attendance').length,
+                                ]
+                              })
+                              exportSummaryPdf('Attendance', columns, exportRows)
+                            }}
+                            disabled={rows.length === 0}
+                            className="cursor-pointer gap-2 py-2"
+                          >
+                            <FileText className="size-4 text-rose-600 shrink-0" />
+                            <div className="flex flex-col">
+                              <span className="font-medium text-xs text-foreground">Ekspor PDF Ringkasan</span>
+                              <span className="text-[10px] text-muted-foreground">Format landscape siap cetak</span>
+                            </div>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              const columns = [
+                                'Nama',
+                                'Masuk',
+                                'Belum',
+                                'Sakit',
+                                'Izin',
+                                'Alpha',
+                                'Manual',
+                                'Excel',
+                                'FaceLoc',
+                              ]
+                              const exportRows = rows.map((row) => {
+                                const cells = days.map((day) => getAttendanceCell(row.employee.id, day))
+                                const statuses = cells.map((cell) => cell.status)
+                                return [
+                                  row.employee.name,
+                                  statuses.filter((status) => status === 'present').length,
+                                  statuses.filter((status) => status === 'empty').length,
+                                  statuses.filter((status) => status === 'sick').length,
+                                  statuses.filter((status) => status === 'leave').length,
+                                  statuses.filter((status) => status === 'absent').length,
+                                  cells.filter((cell) => cell.source === 'manual').length,
+                                  cells.filter((cell) => cell.source === 'excel').length,
+                                  cells.filter((cell) => cell.source === 'attendance').length,
+                                ]
+                              })
+                              exportCsv('Attendance', columns, exportRows)
+                            }}
+                            disabled={rows.length === 0}
+                            className="cursor-pointer gap-2 py-2"
+                          >
+                            <Download className="size-4 text-slate-600 shrink-0" />
+                            <div className="flex flex-col">
+                              <span className="font-medium text-xs text-foreground">Ekspor CSV Ringkasan</span>
+                              <span className="text-[10px] text-muted-foreground">File data rekapitulasi numerik</span>
+                            </div>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
                 </Card>

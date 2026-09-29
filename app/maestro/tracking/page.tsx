@@ -42,7 +42,7 @@ export default async function MaestroTrackingPage({ searchParams }: PageProps) {
   }
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] pb-24 text-slate-900">
+    <div className="min-h-screen pb-24 text-slate-800">
       <MaestroClientTracking
         initialData={result.data}
         customerUser={session.user}

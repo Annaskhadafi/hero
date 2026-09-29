@@ -60,6 +60,7 @@ import {
   Activity,
   BarChart2,
   BarChart3,
+  Building2,
   Calendar,
   CalendarDays,
   CalendarRange,
@@ -132,6 +133,7 @@ interface Props {
   monthlyMatrixData: EwhSiteMonthlyMatrixResult
   rows: EwhRow[]
   siteId: number
+  departmentId?: number | null
   period: string
   employeeSiteId: number
   teams: EwhTeam[]
@@ -144,7 +146,7 @@ interface Props {
     section: string
   }[]
   allSites: { id: number; name: string }[]
-  initialPowerman: number
+  allDepartments: { id: number; code: string; name: string }[]
   initialTab?: string
 }
 
@@ -160,11 +162,12 @@ export function EwhDashboardClient({
   monthlyMatrixData,
   rows,
   siteId,
+  departmentId,
   period,
   teams,
   allEmployees,
   allSites,
-  initialPowerman,
+  allDepartments,
   initialTab,
 }: Props) {
   const router = useRouter()
@@ -181,9 +184,8 @@ export function EwhDashboardClient({
   // Table Visibility Toggle: true = tampilkan, false = sembunyikan/collapse
   const [showTable, setShowTable] = useState<boolean>(true)
 
-  // Powerman state (dinamis sesuai site)
-  const [powermanInput, setPowermanInput] = useState<string>(String(initialPowerman || monthlyMatrixData.powerman || 1))
-  const currentPowerman = parseInt(powermanInput, 10) || initialPowerman || monthlyMatrixData.powerman || 1
+  // Powerman otomatis dari Master Data (Single Source of Truth)
+  const currentPowerman = monthlyMatrixData.powerman || 1
 
   // Search & Filter state for individual/team
   const [search, setSearch] = useState('')
@@ -550,16 +552,18 @@ export function EwhDashboardClient({
 
   // Navigation handlers
   const handleSiteChange = (newSiteId: string) => {
-    router.push(`/dashboard/ewh?siteId=${newSiteId}&period=${period}&tab=${activeTab}`)
+    const deptQuery = departmentId ? `&departmentId=${departmentId}` : ''
+    router.push(`/dashboard/ewh?siteId=${newSiteId}&period=${period}${deptQuery}&tab=${activeTab}`)
+  }
+
+  const handleDepartmentChange = (newDeptId: string) => {
+    const deptParam = newDeptId === 'ALL' ? '' : `&departmentId=${newDeptId}`
+    router.push(`/dashboard/ewh?siteId=${siteId}&period=${period}${deptParam}&tab=${activeTab}`)
   }
 
   const handlePeriodChange = (newPeriod: string) => {
-    router.push(`/dashboard/ewh?siteId=${siteId}&period=${newPeriod}&tab=${activeTab}`)
-  }
-
-  const handleApplyPowerman = () => {
-    router.push(`/dashboard/ewh?siteId=${siteId}&period=${period}&powerman=${currentPowerman}&tab=${activeTab}`)
-    toast.success(`Powerman disetel menjadi ${currentPowerman} orang`)
+    const deptQuery = departmentId ? `&departmentId=${departmentId}` : ''
+    router.push(`/dashboard/ewh?siteId=${siteId}&period=${newPeriod}${deptQuery}&tab=${activeTab}`)
   }
 
   // Team Modal Handlers
@@ -632,27 +636,17 @@ export function EwhDashboardClient({
   return (
     <div className="flex flex-col gap-6 max-w-[1720px] mx-auto w-full">
       {/* Top Banner & Title */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-black tracking-widest text-emerald-700 uppercase bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-200">
-              OPERATIONAL UTILITIES
-            </span>
-            <span className="text-[10px] font-bold text-slate-400">•</span>
-            <span className="text-[11px] font-bold text-slate-500">PT Chitra Paratama</span>
-          </div>
-          <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight mt-1 flex items-center gap-2">
+          <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
             EWH — Effective Working Hours
             <Badge className="bg-[#003461] text-white border-0 text-[11px] font-bold px-2.5 py-0.5">
               {monthlyMatrixData.siteName}
             </Badge>
             <Badge className="bg-emerald-700 text-white border-0 text-[11px] font-bold px-2.5 py-0.5">
-              Dept. Service
+              {monthlyMatrixData.departmentName}
             </Badge>
           </h1>
-          <p className="text-xs text-slate-500 mt-1 max-w-2xl">
-            Perhitungan jam kerja efektif teknisi Departemen Service berbasis rasio durasi aktivitas terhadap kapasitas 2 shift (22 Jam/Hari) dan alokasi powerman Service per site.
-          </p>
         </div>
 
         {/* Global Controls */}
@@ -673,6 +667,23 @@ export function EwhDashboardClient({
             </select>
           </div>
 
+          {/* Department Selector */}
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
+            <Building2 className="size-3.5 text-slate-500" />
+            <select
+              value={departmentId !== null && departmentId !== undefined ? String(departmentId) : 'ALL'}
+              onChange={(e) => handleDepartmentChange(e.target.value)}
+              className="bg-transparent text-xs font-bold text-slate-700 outline-hidden cursor-pointer"
+            >
+              <option value="ALL">Semua Departemen</option>
+              {allDepartments.map((d) => (
+                <option key={d.id} value={String(d.id)}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* Period Selector */}
           <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
             <Clock className="size-3.5 text-slate-500" />
@@ -682,6 +693,16 @@ export function EwhDashboardClient({
               onChange={(e) => handlePeriodChange(e.target.value)}
               className="bg-transparent text-xs font-bold text-slate-700 outline-hidden cursor-pointer"
             />
+          </div>
+
+          {/* Powerman Metric (Master Data) */}
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
+            <Users className="size-3.5 text-blue-600" />
+            <span className="text-xs font-medium text-slate-600">Powerman:</span>
+            <span className="text-xs font-black text-slate-900">{currentPowerman} Orang</span>
+            <span className="text-[10px] font-bold text-blue-700 bg-blue-100/70 border border-blue-200 rounded px-1.5 py-0.5">
+              Master Data
+            </span>
           </div>
 
           {/* Export Excel */}
@@ -708,7 +729,7 @@ export function EwhDashboardClient({
             }`}
           >
             <BarChart3 className="size-3.5" />
-            Matriks Bulanan & Chart (Sesuai Format)
+            Matriks Bulanan &amp; Chart
           </button>
           <button
             type="button"
@@ -720,7 +741,7 @@ export function EwhDashboardClient({
             }`}
           >
             <Users className="size-3.5" />
-            Rekap Individu Karyawan (Service)
+            Rekap Individu Karyawan
           </button>
           <button
             type="button"
@@ -744,58 +765,10 @@ export function EwhDashboardClient({
       </div>
 
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* TAB 1: MATRIKS BULANAN & CHART (MULTI-VIEW & MULTI-CHART) */}
+      {/* TAB 1: MATRIKS BULANAN & CHART */}
       {/* ───────────────────────────────────────────────────────────── */}
       {activeTab === 'matrix' && (
         <div className="space-y-6">
-          {/* Formula Info Banner & Powerman Configurator */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-center bg-gradient-to-r from-blue-900 via-[#003461] to-slate-900 text-white p-4 sm:p-5 rounded-2xl shadow-sm">
-            <div className="lg:col-span-8 space-y-1.5">
-              <div className="flex items-center gap-2">
-                <span className="bg-amber-400/20 text-amber-300 text-[10px] font-black uppercase px-2 py-0.5 rounded border border-amber-400/30">
-                  FORMULA PERHITUNGAN EWH SITE (DEPT. SERVICE)
-                </span>
-                <span className="text-slate-300 text-xs font-mono">
-                  Site: {monthlyMatrixData.siteName}
-                </span>
-              </div>
-              <p className="text-sm font-bold text-white tracking-wide font-mono">
-                =SUM(Durasi Kerja 1..31) ÷ 22 ÷ Powerman ({currentPowerman} Orang) = {liveEwhAverage.toFixed(1)}
-              </p>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                Menghitung jumlah seluruh teknisi Departemen Service total durasi kerja sebulan dibagi 22 jam kerja (2 shift) dibagi powerman ({currentPowerman} orang persite).
-              </p>
-            </div>
-
-            {/* Powerman Control Box */}
-            <div className="lg:col-span-4 bg-white/10 backdrop-blur-xs border border-white/15 rounded-xl p-3 flex items-center justify-between gap-3">
-              <div>
-                <Label className="text-[11px] font-bold text-amber-200 block">
-                  Powerman Dept. Service ({monthlyMatrixData.siteName})
-                </Label>
-                <span className="text-[10px] text-slate-300">Default DB: {monthlyMatrixData.defaultPowerman} orang</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Input
-                  type="number"
-                  min={1}
-                  max={50}
-                  value={powermanInput}
-                  onChange={(e) => setPowermanInput(e.target.value)}
-                  className="w-16 h-8 text-center text-xs font-black bg-white text-slate-900 rounded-lg border-0"
-                />
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={handleApplyPowerman}
-                  className="h-8 text-xs font-bold px-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 border-0 rounded-lg cursor-pointer"
-                >
-                  Terapkan
-                </Button>
-              </div>
-            </div>
-          </div>
-
           {/* Metric Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <Card className="rounded-2xl border-slate-200/80 shadow-2xs">
@@ -804,9 +777,8 @@ export function EwhDashboardClient({
                   <Users className="size-5" />
                 </div>
                 <div>
-                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Powerman Service</p>
+                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Powerman ({monthlyMatrixData.departmentName})</p>
                   <p className="text-xl font-black text-slate-900 mt-0.5">{currentPowerman} <span className="text-xs font-semibold text-slate-500">Orang</span></p>
-                  <p className="text-[10px] text-slate-400">Teknisi Dept. Service site {monthlyMatrixData.siteName}</p>
                 </div>
               </CardContent>
             </Card>
@@ -819,7 +791,6 @@ export function EwhDashboardClient({
                 <div>
                   <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Shift Kapasitas</p>
                   <p className="text-xl font-black text-slate-900 mt-0.5">22 <span className="text-xs font-semibold text-slate-500">Jam / Hari</span></p>
-                  <p className="text-[10px] text-slate-400">2 Shift Operasional (DS + NS)</p>
                 </div>
               </CardContent>
             </Card>
@@ -841,9 +812,6 @@ export function EwhDashboardClient({
                       : (monthlyMatrixData.sumRow?.totalDurasiKerjaHours ?? 0).toFixed(1)}{' '}
                     <span className="text-xs font-semibold text-slate-500">Hours</span>
                   </p>
-                  <p className="text-[10px] text-slate-400">
-                    {viewMode === 'ytd' ? 'Akumulasi 12 bulan' : viewMode === 'mtd' ? `Hingga tgl ${monthlyMatrixData.mtdSummary?.cutoffDay ?? 1}` : 'Total durasi sebulan'}
-                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -864,13 +832,6 @@ export function EwhDashboardClient({
                       ? (currentPowerman > 0 ? ((monthlyMatrixData.mtdSummary?.totalHours ?? 0) / 22 / currentPowerman).toFixed(1) : '0.0')
                       : liveEwhAverage.toFixed(1)}{' '}
                     <span className="text-xs font-bold text-emerald-700">Jam/Orang</span>
-                  </p>
-                  <p className="text-[10px] text-emerald-700 font-semibold">
-                    {viewMode === 'ytd'
-                      ? `${monthlyMatrixData.ytdSummary?.ytdAverageEfficiency ?? 0}% Rata-rata Efisiensi`
-                      : viewMode === 'mtd'
-                      ? `${monthlyMatrixData.mtdSummary?.mtdEfficiencyPercent ?? 0}% Efisiensi MTD`
-                      : `${monthlyMatrixData.sumRow?.monthlyEfficiencyPercent ?? 0}% Efisiensi Shift`}
                   </p>
                 </div>
               </CardContent>
@@ -923,56 +884,8 @@ export function EwhDashboardClient({
               </button>
             </div>
 
-            {/* Right controls: Chart type selector & Table hide/show toggle */}
+            {/* Right controls: Table hide/show toggle */}
             <div className="flex flex-wrap items-center gap-2">
-              {/* Chart Type Selector (Only relevant for daily view or generic) */}
-              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
-                <button
-                  type="button"
-                  title="Diagram Batang"
-                  onClick={() => setChartType('bar')}
-                  className={`p-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
-                    chartType === 'bar' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  <BarChart2 className="size-3.5" />
-                  <span className="hidden sm:inline">Batang</span>
-                </button>
-                <button
-                  type="button"
-                  title="Grafik Tren Garis"
-                  onClick={() => setChartType('line')}
-                  className={`p-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
-                    chartType === 'line' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  <LineChartIcon className="size-3.5" />
-                  <span className="hidden sm:inline">Garis / Tren</span>
-                </button>
-                <button
-                  type="button"
-                  title="Target 8.0 Jam (Kombinasi)"
-                  onClick={() => setChartType('composed')}
-                  className={`p-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
-                    chartType === 'composed' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  <TrendingUp className="size-3.5" />
-                  <span className="hidden sm:inline">Target 8.0h</span>
-                </button>
-                <button
-                  type="button"
-                  title="Radar Distribusi 12 Aktivitas"
-                  onClick={() => setChartType('radar')}
-                  className={`p-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
-                    chartType === 'radar' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  <PieIcon className="size-3.5" />
-                  <span className="hidden sm:inline">Radar</span>
-                </button>
-              </div>
-
               {/* Show / Hide Table Toggle */}
               <Button
                 type="button"

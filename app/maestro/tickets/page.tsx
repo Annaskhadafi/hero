@@ -33,19 +33,19 @@ export default async function MaestroTicketsPage() {
   ])
 
   return (
-    <div className="min-h-screen pb-24">
-      {/* Top Header: Frosted Glass */}
-      <header className="sticky top-0 z-40 border-b border-white/60 bg-white/85 backdrop-blur-2xl shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
-        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen pb-24 text-slate-800">
+      {/* Top Header: Antigravity Floating Bar */}
+      <header className="sticky top-0 z-40 border-b-2 border-slate-300 bg-white shadow-xs">
+        <div className="mx-auto flex h-20 w-full max-w-[1720px] items-center justify-between px-4 sm:px-6 lg:px-8 xl:px-12">
           <div className="flex items-center gap-4">
             <Link
               href="/dashboard"
-              className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-300 bg-white/90 text-slate-700 transition hover:bg-slate-100 hover:text-slate-950 shadow-2xs"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border-2 border-slate-300 bg-slate-100 text-slate-700 transition-all hover:bg-slate-200 hover:text-slate-950 shadow-2xs"
               title="Kembali ke Dashboard"
             >
-              <ArrowLeft className="h-5 w-5" />
+              <ArrowLeft className="h-5 w-5 text-slate-700" />
             </Link>
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-800 border border-indigo-200 shadow-2xs font-bold">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-100 text-blue-700 border border-blue-300 shadow-xs font-bold">
               <Headphones className="h-6 w-6" />
             </div>
             <div>
@@ -53,23 +53,23 @@ export default async function MaestroTicketsPage() {
                 <span className="font-display text-lg sm:text-xl font-black tracking-tight text-slate-950">
                   Helpdesk &amp; Problem Ticketing
                 </span>
-                <span className="rounded-full bg-indigo-100 border border-indigo-300 px-3 py-0.5 text-xs font-bold text-indigo-950 shadow-2xs">
+                <span className="rounded-full bg-blue-100 border border-blue-300 px-3 py-0.5 text-xs font-bold text-blue-950">
                   AI-Powered
                 </span>
               </div>
-              <p className="text-xs font-semibold text-slate-600">{session.customer.name}</p>
+              <p className="text-xs font-bold text-slate-700">{session.customer.name}</p>
             </div>
           </div>
 
           <div className="text-right hidden sm:block">
-            <span className="text-sm font-extrabold text-slate-950">{session.user.name}</span>
-            <p className="text-xs font-semibold text-slate-600">{session.user.email}</p>
+            <span className="text-sm font-black text-slate-950">{session.user.name}</span>
+            <p className="text-xs font-bold text-slate-600">{session.user.email}</p>
           </div>
         </div>
       </header>
 
       {/* Main Container */}
-      <main className="mx-auto max-w-7xl px-4 pt-8 sm:px-6 lg:px-8">
+      <main className="mx-auto w-full max-w-[1720px] px-4 pt-8 sm:px-6 lg:px-8 xl:px-12">
         <MaestroTicketsClient
           initialTickets={ticketsResult.data || []}
           categories={categories}

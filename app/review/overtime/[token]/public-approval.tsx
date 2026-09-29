@@ -39,6 +39,7 @@ import {
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { downloadElementAsPdf } from '@/lib/pdf-download'
+import { SplEvidenceQrBox } from '@/components/overtime-document-qr'
 
 function formatDateTime(value: string | Date | null | undefined) {
   if (!value) return '-'
@@ -637,13 +638,20 @@ export function OvertimePublicApproval({
               }}
             >
               <div className="pt-28 pb-16 px-12 space-y-4">
-                <div className="text-center border-b border-slate-300 pb-2">
-                  <h2 className="text-sm font-black tracking-wider uppercase text-slate-900">
-                    SURAT PERINTAH LEMBUR (SPL)
-                  </h2>
-                  <p className="text-[10px] font-mono font-bold text-slate-600">
-                    Nomor: {data?.splNumber || 'SPL-DRAFT'}
-                  </p>
+                <div className="flex items-start justify-between border-b border-slate-300 pb-2">
+                  <div className="flex-1 text-center pl-14">
+                    <h2 className="text-sm font-black tracking-wider uppercase text-slate-900">
+                      SURAT PERINTAH LEMBUR (SPL)
+                    </h2>
+                    <p className="text-[10px] font-mono font-bold text-slate-600">
+                      Nomor: {data?.splNumber || 'SPL-DRAFT'}
+                    </p>
+                  </div>
+                  {data?.documentId && (
+                    <div className="shrink-0 -mt-2">
+                      <SplEvidenceQrBox splId={data.documentId} splNumber={data.splNumber} />
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[10px]">

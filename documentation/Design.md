@@ -221,3 +221,55 @@ Use this as the default blueprint for every desktop table in HERO:
    Do not show date range for static master data, leaderboard/ranking snapshots, role lists, category summaries, or tables without a meaningful date field.
 7. Action behavior:
    Every page-level table should include a table-level action menu for reset/preset behavior, while row-level actions remain in the `Aksi` or `Action` column when relevant.
+
+---
+
+## MAESTRO Portal Design System (Senior-Accessible High Contrast Enterprise)
+
+The MAESTRO customer portal (`maestro.chitraparatama.com` / `app/maestro`) is tailored specifically for senior stakeholders, site managers, and enterprise decision-makers who require high legibility, clear visual structure, and zero eye fatigue.
+
+### 1. Canvas & Background
+- Solid, comfortable light canvas: `bg-slate-100/90 text-slate-950`.
+- Ban muddy neumorphic insets and low-contrast grey-on-grey textures.
+
+### 2. Card Containers (Stats, Bento, Table Wrappers)
+- High-contrast white surfaces with prominent boundaries:
+  `bg-white border-2 border-slate-300 rounded-2xl shadow-sm hover:border-slate-400 transition-all`
+- Comfortable padding: `p-4 sm:p-5` (KPI cards) or `p-6 sm:p-7` (headers, hero panels, dialogs).
+
+### 3. Metric & KPI Cards
+- Extra bold/black dark numbers: `text-2xl sm:text-3xl font-black text-slate-950 font-display`
+- High-contrast labels: `text-xs font-black text-slate-700 uppercase tracking-wider`
+- Distinct icon badges: `h-10 w-10 sm:h-11 sm:w-11 rounded-xl bg-*-100 text-*-900 border border-*-300 font-black` (blue, emerald, amber, indigo, rose, sky).
+
+### 4. Inputs, Search Bars & Filter Selects
+- Deep legible borders and dark bold text:
+  `h-11 text-xs sm:text-sm font-bold bg-white border-2 border-slate-300 rounded-xl px-3.5 py-2 text-slate-950 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 shadow-sm transition-all`
+
+### 5. Tabs & Status Filters
+- **Active Tab Pill:** `bg-blue-700 text-white font-black shadow-sm`
+- **Inactive Tab Pill:** `bg-slate-200 text-slate-800 font-bold hover:bg-slate-300`
+- **Active Counter Badge:** `bg-white/20 text-white border border-white/30 font-black`
+- **Inactive Counter Badge:** `bg-slate-300 text-slate-950 font-black`
+
+### 6. Table & Data Grid Architecture
+- **Wrapper:** `rounded-2xl border-2 border-slate-300 bg-white shadow-sm overflow-hidden`
+- **Header (`thead`):** `bg-slate-200/90 text-xs font-black uppercase tracking-wider text-slate-950 border-b-2 border-slate-300 py-3.5 px-4`
+- **Rows (`tbody`):** `hover:bg-blue-50/60 divide-y divide-slate-200 font-semibold text-slate-900 text-xs sm:text-sm transition-colors`
+- **Subtext / Detail text:** `text-slate-700 font-semibold` (never washed-out `text-slate-400` for readable information).
+
+### 7. Status Badges & Pills (Ultra-High Contrast)
+- **Active / Success:** `bg-emerald-100 text-emerald-950 border border-emerald-400 font-black`
+- **Info / In-Progress:** `bg-blue-100 text-blue-950 border border-blue-400 font-black` or `bg-sky-100 text-sky-950 border border-sky-400 font-black`
+- **Warning / Pending:** `bg-amber-100 text-amber-950 border border-amber-400 font-black`
+- **Danger / Urgent:** `bg-rose-100 text-rose-950 border border-rose-400 font-black`
+- **Neutral / Draft:** `bg-slate-200 text-slate-950 border border-slate-400 font-black`
+
+### 8. Interactive Action Buttons
+- **Primary Buttons:** `bg-blue-700 hover:bg-blue-800 text-white rounded-xl shadow-sm font-bold text-xs sm:text-sm h-10 px-4 transition-colors cursor-pointer`
+- **Secondary Buttons:** `bg-white border-2 border-slate-300 text-slate-900 hover:bg-slate-100 rounded-xl shadow-sm font-bold text-xs h-9 px-3 transition-colors cursor-pointer`
+
+### 9. Dialogs & Modals
+- `bg-white rounded-2xl border-2 border-slate-300 shadow-xl max-h-[90vh] overflow-y-auto`
+- Internal summary panels: `rounded-xl bg-slate-100/90 border-2 border-slate-300 p-4 text-xs sm:text-sm font-bold text-slate-950`
+

@@ -62,9 +62,9 @@ export function MaestroLoginForm() {
   return (
     <div className="space-y-5">
       {error && (
-        <Alert className="border-red-200 bg-red-50 text-red-700 text-xs py-2.5">
-          <AlertCircle className="h-4 w-4 text-red-600 shrink-0" />
-          <AlertDescription className="font-medium leading-relaxed">
+        <Alert className="border-2 border-rose-400 bg-rose-100 text-rose-950 text-xs py-2.5 rounded-xl">
+          <AlertCircle className="h-4 w-4 text-rose-700 shrink-0" />
+          <AlertDescription className="font-bold leading-relaxed">
             {error}
           </AlertDescription>
         </Alert>
@@ -75,12 +75,12 @@ export function MaestroLoginForm() {
         <div className="space-y-1.5">
           <Label
             htmlFor="maestro-email"
-            className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500"
+            className="text-xs font-black uppercase tracking-[0.14em] text-slate-900"
           >
             Email
           </Label>
           <div className="relative">
-            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
+            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-600">
               <Mail className="h-4 w-4" />
             </div>
             <Input
@@ -91,7 +91,7 @@ export function MaestroLoginForm() {
               onChange={(e) => setEmail(e.target.value)}
               required
               disabled={isLoading}
-              className="h-11 rounded-2xl border-slate-200 bg-white pl-10 pr-4 text-xs text-slate-800 placeholder:text-slate-400 focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
+              className="h-11 rounded-xl border-2 border-slate-300 bg-white pl-10 pr-3 text-xs sm:text-sm font-bold text-slate-950 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 shadow-sm transition-all"
             />
           </div>
         </div>
@@ -100,12 +100,12 @@ export function MaestroLoginForm() {
         <div className="space-y-1.5">
           <Label
             htmlFor="maestro-password"
-            className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500"
+            className="text-xs font-black uppercase tracking-[0.14em] text-slate-900"
           >
             Kata Sandi
           </Label>
           <div className="relative">
-            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
+            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-600">
               <Lock className="h-4 w-4" />
             </div>
             <Input
@@ -116,12 +116,12 @@ export function MaestroLoginForm() {
               onChange={(e) => setPassword(e.target.value)}
               required
               disabled={isLoading}
-              className="h-11 rounded-2xl border-slate-200 bg-white pl-10 pr-10 text-xs text-slate-800 placeholder:text-slate-400 focus:border-slate-800 focus:ring-1 focus:ring-slate-800 transition"
+              className="h-11 rounded-xl border-2 border-slate-300 bg-white pl-10 pr-10 text-xs sm:text-sm font-bold text-slate-950 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 shadow-sm transition-all"
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400 hover:text-slate-600 transition"
+              className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-600 hover:text-slate-900 transition"
               tabIndex={-1}
             >
               {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -135,9 +135,9 @@ export function MaestroLoginForm() {
             <Checkbox
               checked={rememberMe}
               onCheckedChange={(checked) => setRememberMe(checked === true)}
-              className="h-4 w-4 rounded-md border-amber-600 data-[state=checked]:border-amber-600 data-[state=checked]:bg-amber-600 text-white"
+              className="h-4 w-4 rounded-md border-2 border-slate-400 data-[state=checked]:border-blue-700 data-[state=checked]:bg-blue-700 text-white shadow-sm"
             />
-            <span className="text-xs font-medium text-slate-600">
+            <span className="text-xs sm:text-sm font-bold text-slate-800">
               Tetap masuk selama 30 hari
             </span>
           </label>
@@ -147,17 +147,17 @@ export function MaestroLoginForm() {
         <Button
           type="submit"
           disabled={isLoading}
-          className="mt-2 h-11 w-full rounded-full bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs shadow-xs transition active:scale-[0.99] flex items-center justify-center gap-2"
+          className="mt-2 h-11 w-full rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-bold text-sm shadow-sm transition-colors flex items-center justify-center gap-2 cursor-pointer"
         >
           {isLoading ? (
             <span className="flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin text-amber-400" />
+              <Loader2 className="h-4 w-4 animate-spin text-white" />
               Memproses...
             </span>
           ) : (
             <>
               <span>Masuk ke MAESTRO</span>
-              <ArrowRight className="h-4 w-4 text-amber-400" />
+              <ArrowRight className="h-4 w-4 text-blue-200" />
             </>
           )}
         </Button>

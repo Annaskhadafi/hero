@@ -10,13 +10,13 @@ import {
 import { EwhDashboardClient } from './ewh-dashboard-client'
 
 interface PageProps {
-  searchParams: Promise<{ siteId?: string; period?: string; powerman?: string; tab?: string }>
+  searchParams: Promise<{ siteId?: string; period?: string; departmentId?: string; tab?: string }>
 }
 
 export const metadata = {
   title: 'EWH Dashboard — Effective Working Hours | HERO',
   description:
-    'Monitor jam kerja efektif dan utilitas aktivitas operasional per site. Terintegrasi dengan Attendance Real, Daily Activity, dan Standar 2-Shift (22 Jam/Hari).',
+    'Monitor jam kerja efektif dan utilitas aktivitas operasional per site dan departemen. Terintegrasi dengan Attendance Real, Daily Activity, dan Standar 2-Shift (22 Jam/Hari).',
 }
 
 export default async function EwhDashboardPage({ searchParams }: PageProps) {
@@ -28,13 +28,13 @@ export default async function EwhDashboardPage({ searchParams }: PageProps) {
   const now = new Date()
   const defaultPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   const period = params.period ?? defaultPeriod
-  const overridePowerman = params.powerman ? parseInt(params.powerman, 10) : undefined
+  const departmentId = params.departmentId ?? undefined
 
   const [matrixRes, summaryRes, teamsRes, employeesRes] = await Promise.all([
-    getEwhSiteMonthlyMatrixAction(siteId, period, overridePowerman),
-    getEwhSummaryAction(siteId || 1, period),
+    getEwhSiteMonthlyMatrixAction(siteId, period, departmentId),
+    getEwhSummaryAction(siteId || 1, period, departmentId),
     getEwhTeamsAction(siteId || 1),
-    getEwhEmployeesAction(siteId || 1),
+    getEwhEmployeesAction(siteId || 1, departmentId),
   ])
 
   return (
@@ -44,12 +44,13 @@ export default async function EwhDashboardPage({ searchParams }: PageProps) {
           monthlyMatrixData={matrixRes}
           rows={summaryRes.rows}
           siteId={matrixRes.siteId}
+          departmentId={matrixRes.departmentId}
           period={period}
           employeeSiteId={employee.siteId || 1}
           teams={teamsRes.teams || []}
           allEmployees={employeesRes.employees || []}
           allSites={matrixRes.allSites || []}
-          initialPowerman={matrixRes.powerman}
+          allDepartments={matrixRes.allDepartments || []}
           initialTab={params.tab}
         />
       </Suspense>

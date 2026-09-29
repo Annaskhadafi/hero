@@ -145,136 +145,130 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
   }, [initialData.vhsList, searchQuery])
 
   return (
-    <div className="mx-auto max-w-7xl px-4 pt-8 sm:px-6 lg:px-8 space-y-8 text-slate-900 pb-20">
-      {/* Top Header: Frosted Glass Panel */}
-      <div className="relative overflow-hidden rounded-3xl border border-white/80 bg-white/85 p-7 sm:p-9 shadow-[0_8px_30px_rgba(0,0,0,0.04)] backdrop-blur-xl">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
+    <div className="mx-auto w-full max-w-[1720px] px-4 pt-6 sm:px-6 lg:px-8 xl:px-12 space-y-6 text-slate-950 pb-20">
+      {/* Top Header */}
+      <div className="relative overflow-hidden rounded-2xl border-2 border-slate-300 bg-white p-6 sm:p-7 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <div className="flex items-center gap-2 mb-2 flex-wrap text-xs font-bold text-slate-700">
               <Link
                 href="/dashboard"
-                className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-2xl bg-white/90 border border-slate-300 text-slate-800 hover:bg-slate-100 text-xs sm:text-sm font-bold shadow-2xs transition"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-900 transition-colors"
               >
-                <ArrowLeft className="h-4 w-4 text-slate-600" />
+                <ArrowLeft className="h-3.5 w-3.5" />
                 <span>Dashboard</span>
               </Link>
-              <span className="text-slate-400 font-bold">/</span>
-              <span className="text-xs sm:text-sm font-extrabold text-slate-800">PO &amp; Cargo Tracking</span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 border border-amber-300 px-3 py-1 text-xs font-extrabold text-amber-950 shadow-2xs">
-                <Truck className="h-4 w-4 text-amber-700" />
+              <span>/</span>
+              <span>PO &amp; Cargo Tracking</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 border border-amber-400 px-2.5 py-0.5 text-xs font-black text-amber-950">
+                <Truck className="h-3.5 w-3.5 text-amber-700" />
                 Supply Chain &amp; Cargo
               </span>
             </div>
 
-            <h1 className="font-display text-2xl sm:text-4xl font-black tracking-tight text-slate-950">
+            <h1 className="font-display text-2xl sm:text-3xl font-black tracking-tight text-slate-950">
               PO &amp; Cargo Tracking
             </h1>
-            <p className="text-sm sm:text-base text-slate-700 mt-2 font-medium">
-              Pelacakan manifest kargo, status DO SAP / surat jalan, Purchase Order servis, dan pemakaian konsinyasi eVHS untuk site {initialData.customerName}.
+            <p className="mt-1 text-xs sm:text-sm text-slate-700 font-semibold">
+              Pelacakan status manifest kargo pengiriman, nomor PO pelanggan, surat jalan DO, dan konsinyasi eVHS.
             </p>
           </div>
 
-          <div className="flex items-center gap-3 self-start sm:self-center">
+          <div className="flex items-center gap-2 self-start sm:self-center">
             <Button
               variant="outline"
               size="sm"
               onClick={() => router.refresh()}
-              className="h-11 gap-2 rounded-2xl border-slate-300 bg-white/90 px-5 text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100 shadow-2xs"
+              className="h-10 gap-1.5 rounded-xl border-2 border-slate-300 bg-white px-4 text-xs font-bold text-slate-900 hover:bg-slate-100 shadow-sm transition-colors cursor-pointer"
             >
-              <RefreshCw className="h-4 w-4 text-slate-600" />
+              <RefreshCw className="h-4 w-4 text-slate-700" />
               <span>Segarkan Data</span>
             </Button>
           </div>
         </div>
       </div>
 
-      {/* 4 KPI Summary Cards: Frosted Glass */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
+      {/* 4 KPI Summary Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
         {/* 1. Total Cargo Manifest */}
-        <div className="relative overflow-hidden bg-white/85 backdrop-blur-xl rounded-3xl p-6 border border-white/80 shadow-[0_8px_30px_rgba(0,0,0,0.04)] hover:shadow-md transition flex flex-col justify-between">
+        <div className="bg-white rounded-2xl p-4 sm:p-5 border-2 border-slate-300 shadow-sm hover:border-slate-400 transition-all flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs sm:text-sm font-bold text-slate-700 uppercase tracking-wider">Cargo Manifest</span>
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-100 text-sky-800 font-bold border border-sky-200 shadow-2xs">
-              <Truck className="h-6 w-6" />
+            <span className="text-xs font-black text-slate-700 uppercase tracking-wider">Cargo Manifest</span>
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-900 border border-blue-300 font-black">
+              <Truck className="h-5 w-5" />
             </div>
           </div>
-          <div className="mt-5">
-            <span className="font-display text-3xl sm:text-4xl font-black text-slate-950">
+          <div className="mt-3">
+            <span className="font-display text-2xl sm:text-3xl font-black text-slate-950">
               {initialData.kpis.totalManifest}
             </span>
-            <p className="text-xs text-slate-600 font-semibold mt-1">Total pengiriman kargo</p>
           </div>
         </div>
 
         {/* 2. Pengiriman Dalam Perjalanan */}
-        <div className="relative overflow-hidden bg-white/85 backdrop-blur-xl rounded-3xl p-6 border border-white/80 shadow-[0_8px_30px_rgba(0,0,0,0.04)] hover:shadow-md transition flex flex-col justify-between">
+        <div className="bg-white rounded-2xl p-4 sm:p-5 border-2 border-slate-300 shadow-sm hover:border-slate-400 transition-all flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs sm:text-sm font-bold text-slate-700 uppercase tracking-wider">Dalam Perjalanan</span>
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-100 text-amber-800 font-bold border border-amber-200 shadow-2xs">
-              <Package className="h-6 w-6" />
+            <span className="text-xs font-black text-slate-700 uppercase tracking-wider">Dalam Perjalanan</span>
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-900 border border-amber-300 font-black">
+              <Package className="h-5 w-5" />
             </div>
           </div>
-          <div className="mt-5">
-            <span className="font-display text-3xl sm:text-4xl font-black text-amber-900">
+          <div className="mt-3">
+            <span className="font-display text-2xl sm:text-3xl font-black text-slate-950">
               {initialData.kpis.sentManifest || initialData.kpis.inTransitDeliveries}
             </span>
-            <p className="text-xs text-slate-600 font-semibold mt-1">Status Sent / In Transit</p>
           </div>
         </div>
 
         {/* 3. Pengiriman Diterima */}
-        <div className="relative overflow-hidden bg-white/85 backdrop-blur-xl rounded-3xl p-6 border border-white/80 shadow-[0_8px_30px_rgba(0,0,0,0.04)] hover:shadow-md transition flex flex-col justify-between">
+        <div className="bg-white rounded-2xl p-4 sm:p-5 border-2 border-slate-300 shadow-sm hover:border-slate-400 transition-all flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs sm:text-sm font-bold text-slate-700 uppercase tracking-wider">Sampai di Site</span>
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-800 font-bold border border-emerald-200 shadow-2xs">
-              <PackageCheck className="h-6 w-6" />
+            <span className="text-xs font-black text-slate-700 uppercase tracking-wider">Sampai di Site</span>
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-900 border border-emerald-300 font-black">
+              <PackageCheck className="h-5 w-5" />
             </div>
           </div>
-          <div className="mt-5">
-            <span className="font-display text-3xl sm:text-4xl font-black text-emerald-700">
+          <div className="mt-3">
+            <span className="font-display text-2xl sm:text-3xl font-black text-emerald-700">
               {initialData.kpis.deliveredManifest || initialData.kpis.receivedDeliveries}
             </span>
-            <p className="text-xs text-slate-600 font-semibold mt-1">Status Delivered / Selesai</p>
           </div>
         </div>
 
         {/* 4. Total Purchase Orders */}
-        <div className="relative overflow-hidden bg-white/85 backdrop-blur-xl rounded-3xl p-6 border border-white/80 shadow-[0_8px_30px_rgba(0,0,0,0.04)] hover:shadow-md transition flex flex-col justify-between">
+        <div className="bg-white rounded-2xl p-4 sm:p-5 border-2 border-slate-300 shadow-sm hover:border-slate-400 transition-all flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs sm:text-sm font-bold text-slate-700 uppercase tracking-wider">Total Purchase Order</span>
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-800 font-bold border border-indigo-200 shadow-2xs">
-              <FileCheck className="h-6 w-6" />
+            <span className="text-xs font-black text-slate-700 uppercase tracking-wider">Total Purchase Order</span>
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100 text-indigo-900 border border-indigo-300 font-black">
+              <FileCheck className="h-5 w-5" />
             </div>
           </div>
-          <div className="mt-5">
-            <div className="flex items-baseline gap-2">
-              <span className="font-display text-3xl sm:text-4xl font-black text-slate-950">
-                {initialData.kpis.totalPo}
-              </span>
-              <span className="text-sm font-bold text-slate-600">PO</span>
-            </div>
-            <p className="text-xs text-slate-600 font-semibold mt-1">{initialData.kpis.totalTiresDelivered} Unit Ban Terkirim</p>
+          <div className="mt-3 flex items-baseline gap-1.5">
+            <span className="font-display text-2xl sm:text-3xl font-black text-slate-950">
+              {initialData.kpis.totalPo}
+            </span>
+            <span className="text-xs font-bold text-slate-600">PO</span>
           </div>
         </div>
       </div>
 
-      {/* Filter Toolbar & Tab Switcher: Frosted Glass */}
-      <div className="relative overflow-hidden rounded-3xl border border-white/80 bg-white/90 p-6 shadow-xs backdrop-blur-xl space-y-5">
+      {/* Filter Toolbar & Tab Switcher */}
+      <div className="bg-white rounded-2xl border-2 border-slate-300 p-4 sm:p-5 shadow-sm space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           {/* Pill Tab Switcher */}
-          <div className="inline-flex rounded-2xl bg-slate-100/90 p-1.5 shadow-2xs self-start overflow-x-auto max-w-full border border-slate-300/70">
+          <div className="inline-flex rounded-xl bg-slate-200/80 p-1.5 self-start overflow-x-auto max-w-full border-2 border-slate-300 gap-1">
             <button
               type="button"
               onClick={() => setActiveTab('manifest')}
-              className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs sm:text-sm font-extrabold transition-all whitespace-nowrap ${
+              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
                 activeTab === 'manifest'
-                  ? 'bg-slate-950 text-white shadow-md shadow-slate-950/20'
-                  : 'text-slate-600 hover:text-slate-950'
+                  ? 'bg-blue-700 text-white font-black shadow-sm'
+                  : 'bg-slate-200 text-slate-800 font-bold hover:bg-slate-300'
               }`}
             >
-              <Truck className="h-4 w-4" />
+              <Truck className={`h-4 w-4 ${activeTab === 'manifest' ? 'text-white' : 'text-slate-700'}`} />
               <span>Cargo Manifest</span>
-              <span className={`rounded-full px-2.5 py-0.5 text-xs font-black ${activeTab === 'manifest' ? 'bg-amber-400 text-slate-950' : 'bg-slate-200 text-slate-800'}`}>
+              <span className={`rounded-full px-2 py-0.5 text-xs font-black ${activeTab === 'manifest' ? 'bg-white/20 text-white border border-white/30' : 'bg-slate-300 text-slate-950'}`}>
                 {initialData.cargoManifests.length}
               </span>
             </button>
@@ -282,15 +276,15 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
             <button
               type="button"
               onClick={() => setActiveTab('po')}
-              className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs sm:text-sm font-extrabold transition-all whitespace-nowrap ${
+              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
                 activeTab === 'po'
-                  ? 'bg-slate-950 text-white shadow-md shadow-slate-950/20'
-                  : 'text-slate-600 hover:text-slate-950'
+                  ? 'bg-blue-700 text-white font-black shadow-sm'
+                  : 'bg-slate-200 text-slate-800 font-bold hover:bg-slate-300'
               }`}
             >
-              <Package className="h-4 w-4" />
+              <Package className={`h-4 w-4 ${activeTab === 'po' ? 'text-white' : 'text-slate-700'}`} />
               <span>Purchase Order (PO)</span>
-              <span className={`rounded-full px-2.5 py-0.5 text-xs font-black ${activeTab === 'po' ? 'bg-amber-400 text-slate-950' : 'bg-slate-200 text-slate-800'}`}>
+              <span className={`rounded-full px-2 py-0.5 text-xs font-black ${activeTab === 'po' ? 'bg-white/20 text-white border border-white/30' : 'bg-slate-300 text-slate-950'}`}>
                 {initialData.poList.length}
               </span>
             </button>
@@ -298,15 +292,15 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
             <button
               type="button"
               onClick={() => setActiveTab('deliveries')}
-              className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs sm:text-sm font-extrabold transition-all whitespace-nowrap ${
+              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
                 activeTab === 'deliveries'
-                  ? 'bg-slate-950 text-white shadow-md shadow-slate-950/20'
-                  : 'text-slate-600 hover:text-slate-950'
+                  ? 'bg-blue-700 text-white font-black shadow-sm'
+                  : 'bg-slate-200 text-slate-800 font-bold hover:bg-slate-300'
               }`}
             >
-              <PackageCheck className="h-4 w-4" />
+              <PackageCheck className={`h-4 w-4 ${activeTab === 'deliveries' ? 'text-white' : 'text-slate-700'}`} />
               <span>Surat Jalan &amp; DO</span>
-              <span className={`rounded-full px-2.5 py-0.5 text-xs font-black ${activeTab === 'deliveries' ? 'bg-amber-400 text-slate-950' : 'bg-slate-200 text-slate-800'}`}>
+              <span className={`rounded-full px-2 py-0.5 text-xs font-black ${activeTab === 'deliveries' ? 'bg-white/20 text-white border border-white/30' : 'bg-slate-300 text-slate-950'}`}>
                 {initialData.deliveriesList.length}
               </span>
             </button>
@@ -314,28 +308,28 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
             <button
               type="button"
               onClick={() => setActiveTab('vhs')}
-              className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs sm:text-sm font-extrabold transition-all whitespace-nowrap ${
+              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
                 activeTab === 'vhs'
-                  ? 'bg-slate-950 text-white shadow-md shadow-slate-950/20'
-                  : 'text-slate-600 hover:text-slate-950'
+                  ? 'bg-blue-700 text-white font-black shadow-sm'
+                  : 'bg-slate-200 text-slate-800 font-bold hover:bg-slate-300'
               }`}
             >
-              <FileCheck className="h-4 w-4" />
+              <FileCheck className={`h-4 w-4 ${activeTab === 'vhs' ? 'text-white' : 'text-slate-700'}`} />
               <span>Konsinyasi (eVHS)</span>
-              <span className={`rounded-full px-2.5 py-0.5 text-xs font-black ${activeTab === 'vhs' ? 'bg-amber-400 text-slate-950' : 'bg-slate-200 text-slate-800'}`}>
+              <span className={`rounded-full px-2 py-0.5 text-xs font-black ${activeTab === 'vhs' ? 'bg-white/20 text-white border border-white/30' : 'bg-slate-300 text-slate-950'}`}>
                 {initialData.vhsList.length}
               </span>
             </button>
           </div>
 
           {/* Search & Status Filters */}
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
             <div className="min-w-[160px]">
               <select
                 aria-label="Filter Status"
                 value={selectedStatus}
                 onChange={(e) => setSelectedStatus(e.target.value)}
-                className="w-full h-11 text-xs sm:text-sm font-bold bg-white border border-slate-300 rounded-2xl px-3 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 cursor-pointer shadow-2xs transition"
+                className="w-full h-11 text-xs sm:text-sm font-bold bg-white border-2 border-slate-300 rounded-xl px-3 py-2 text-slate-950 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer transition shadow-sm"
               >
                 <option value="all">Semua Status</option>
                 <option value="delivered">Delivered / Selesai</option>
@@ -345,12 +339,12 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
             </div>
 
             <div className="relative min-w-[240px] flex-1 sm:flex-initial">
-              <Search className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-600" />
               <Input
                 placeholder="Cari manifest, no. PO, tujuan..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-11 rounded-2xl border-slate-300 bg-white pl-10 pr-4 text-xs sm:text-sm font-bold text-slate-900 focus:ring-2 focus:ring-amber-500 shadow-2xs"
+                className="h-11 rounded-xl bg-white border-2 border-slate-300 pl-9 pr-3 text-xs sm:text-sm font-bold text-slate-950 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm"
               />
             </div>
           </div>
@@ -359,25 +353,25 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
 
       {/* Tab 1: Cargo Manifests */}
       {activeTab === 'manifest' && (
-        <div className="relative overflow-hidden rounded-3xl border border-white/80 bg-white/90 shadow-xs backdrop-blur-xl">
+        <div className="rounded-2xl border-2 border-slate-300 bg-white shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs sm:text-sm text-slate-800">
-              <thead className="bg-slate-100/90 text-xs font-extrabold uppercase tracking-wider text-slate-800 border-b border-slate-200">
+            <table className="w-full text-left text-xs sm:text-sm text-slate-900">
+              <thead className="bg-slate-200/90 text-xs font-black uppercase tracking-wider text-slate-950 border-b-2 border-slate-300">
                 <tr>
-                  <th className="py-4 pl-6 pr-2 w-10"></th>
-                  <th className="py-4 px-4">No. Manifest</th>
-                  <th className="py-4 px-4">Tanggal</th>
-                  <th className="py-4 px-4">Site / Tujuan</th>
-                  <th className="py-4 px-4">Transport / Ekspedisi</th>
-                  <th className="py-4 px-4">Items / Qty</th>
-                  <th className="py-4 px-4">Status</th>
-                  <th className="py-4 pl-4 pr-6 text-right">Rincian</th>
+                  <th className="py-3.5 pl-5 pr-2 w-10"></th>
+                  <th className="py-3.5 px-4">No. Manifest</th>
+                  <th className="py-3.5 px-4">Tanggal</th>
+                  <th className="py-3.5 px-4">Site / Tujuan</th>
+                  <th className="py-3.5 px-4">Transport / Ekspedisi</th>
+                  <th className="py-3.5 px-4">Items / Qty</th>
+                  <th className="py-3.5 px-4">Status</th>
+                  <th className="py-3.5 pl-4 pr-6 text-right">Aksi</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200/70 font-semibold text-slate-800">
+              <tbody className="divide-y divide-slate-200 font-semibold text-slate-900">
                 {filteredManifests.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-16 text-center text-sm font-medium text-slate-500">
+                    <td colSpan={8} className="py-16 text-center text-sm font-bold text-slate-700">
                       Tidak ada data Cargo Manifest yang sesuai filter.
                     </td>
                   </tr>
@@ -389,12 +383,12 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
 
                     return (
                       <React.Fragment key={manifest.id}>
-                        <tr className="hover:bg-amber-50/40 transition-colors">
-                          <td className="py-4 pl-6 pr-2">
+                        <tr className="hover:bg-blue-50/60 transition-colors">
+                          <td className="py-4 pl-5 pr-2">
                             <button
                               type="button"
                               onClick={() => toggleManifestRow(manifest.id)}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-slate-700 hover:bg-amber-100 hover:text-amber-950 transition"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-slate-200 border border-slate-300 text-slate-800 hover:bg-slate-300 hover:text-slate-950 transition font-bold"
                             >
                               {isExpanded ? (
                                 <ChevronDown className="h-4 w-4" />
@@ -403,31 +397,31 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
                               )}
                             </button>
                           </td>
-                          <td className="py-4 px-4 font-mono font-black text-slate-950 text-sm">
+                          <td className="py-4 px-4 font-mono font-black text-slate-950 text-xs sm:text-sm">
                             {manifest.manifestNumber}
                           </td>
-                          <td className="py-4 px-4 text-xs sm:text-sm text-slate-700 font-semibold">{manifest.date}</td>
+                          <td className="py-4 px-4 text-xs sm:text-sm text-slate-700 font-bold">{manifest.date}</td>
                           <td className="py-4 px-4">
-                            <div className="flex items-center gap-1.5 text-xs sm:text-sm text-slate-900">
-                              <MapPin className="h-4 w-4 text-amber-600 shrink-0" />
+                            <div className="flex items-center gap-1.5 text-xs sm:text-sm text-slate-950">
+                              <MapPin className="h-3.5 w-3.5 text-slate-600 shrink-0" />
                               <span className="font-bold">{manifest.siteName || manifest.finalDestination || 'Site'}</span>
                             </div>
                             {manifest.attention && (
-                              <p className="text-xs text-slate-500 pl-5 font-medium">Attn: {manifest.attention}</p>
+                              <p className="text-xs text-slate-600 font-semibold pl-5">Attn: {manifest.attention}</p>
                             )}
                           </td>
                           <td className="py-4 px-4">
-                            <p className="font-bold text-slate-900 text-sm">{manifest.transportVia || 'Darat'}</p>
+                            <p className="font-bold text-slate-950">{manifest.transportVia || 'Darat'}</p>
                             {manifest.shippedVia && (
-                              <p className="text-xs text-slate-500 font-semibold">{manifest.shippedVia}</p>
+                              <p className="text-xs text-slate-600 font-semibold">{manifest.shippedVia}</p>
                             )}
                           </td>
                           <td className="py-4 px-4">
-                            <span className="font-black text-slate-950 text-sm">{totalQty} Unit</span>
-                            <p className="text-xs text-slate-500 font-medium">{manifest.items.length} Baris Item</p>
+                            <span className="font-black text-slate-950">{totalQty} Unit</span>
+                            <p className="text-xs text-slate-600 font-bold">{manifest.items.length} Baris Item</p>
                           </td>
                           <td className="py-4 px-4">
-                            <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${statusStyle}`}>
+                            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-black ${statusStyle}`}>
                               {manifest.status}
                             </span>
                           </td>
@@ -436,37 +430,37 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
                               variant="outline"
                               size="sm"
                               onClick={() => setSelectedManifest(manifest)}
-                              className="h-10 px-4 rounded-2xl border-slate-300 bg-white text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100 shadow-2xs"
+                              className="h-8 px-3 rounded-lg border-2 border-slate-300 bg-white text-xs font-bold text-slate-900 hover:bg-slate-100 shadow-sm transition-colors cursor-pointer"
                             >
-                              <Eye className="h-4 w-4 mr-1 text-slate-600" />
-                              Lihat Detail
+                              <Eye className="h-3.5 w-3.5 mr-1 text-slate-700" />
+                              Detail
                             </Button>
                           </td>
                         </tr>
 
                         {/* Collapsible item details */}
                         {isExpanded && (
-                          <tr className="bg-slate-50/80">
-                            <td colSpan={8} className="py-4 px-6 sm:px-12">
-                              <div className="rounded-2xl border border-slate-300 bg-white p-5 shadow-2xs">
-                                <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-700 mb-3">
+                          <tr className="bg-slate-100/70">
+                            <td colSpan={8} className="py-3.5 px-6 sm:px-12">
+                              <div className="rounded-xl border-2 border-slate-300 bg-white p-4 shadow-sm">
+                                <h4 className="text-xs font-black uppercase tracking-wider text-slate-900 mb-2.5">
                                   Daftar Item Barang &amp; Ban Terangkut
                                 </h4>
-                                <div className="divide-y divide-slate-200/70 text-xs sm:text-sm">
+                                <div className="divide-y divide-slate-200 text-xs sm:text-sm">
                                   {manifest.items.map((it) => (
-                                    <div key={it.id} className="py-3 flex items-center justify-between">
+                                    <div key={it.id} className="py-2.5 flex items-center justify-between">
                                       <div className="flex items-center gap-3">
-                                        <span className="font-mono text-xs font-bold text-slate-400">{it.no}.</span>
+                                        <span className="font-mono text-xs font-bold text-slate-600">{it.no}.</span>
                                         <div>
                                           <p className="font-bold text-slate-950">{it.description}</p>
                                           {it.serialNumber && (
-                                            <p className="text-xs font-mono font-semibold text-slate-600 mt-0.5">SN: {it.serialNumber}</p>
+                                            <p className="text-xs font-mono font-semibold text-slate-700 mt-0.5">SN: {it.serialNumber}</p>
                                           )}
                                         </div>
                                       </div>
                                       <div className="text-right">
                                         <span className="font-black text-slate-950">{it.qty} Unit</span>
-                                        {it.remark && <p className="text-xs text-slate-500 font-medium">{it.remark}</p>}
+                                        {it.remark && <p className="text-xs text-slate-600 font-semibold">{it.remark}</p>}
                                       </div>
                                     </div>
                                   ))}
@@ -487,23 +481,23 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
 
       {/* Tab 2: POs */}
       {activeTab === 'po' && (
-        <div className="relative overflow-hidden rounded-3xl border border-white/80 bg-white/90 shadow-xs backdrop-blur-xl">
+        <div className="rounded-2xl border-2 border-slate-300 bg-white shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs sm:text-sm text-slate-800">
-              <thead className="bg-slate-100/90 text-xs font-extrabold uppercase tracking-wider text-slate-800 border-b border-slate-200">
+            <table className="w-full text-left text-xs sm:text-sm text-slate-900">
+              <thead className="bg-slate-200/90 text-xs font-black uppercase tracking-wider text-slate-950 border-b-2 border-slate-300">
                 <tr>
-                  <th className="py-4 pl-6 pr-4">No. PO Pelanggan</th>
-                  <th className="py-4 px-4">Tanggal Order</th>
-                  <th className="py-4 px-4">Kategori / Tujuan</th>
-                  <th className="py-4 px-4">Jumlah Item / Qty</th>
-                  <th className="py-4 px-4">Status Pengiriman</th>
-                  <th className="py-4 pl-4 pr-6 text-right">Rincian</th>
+                  <th className="py-3.5 pl-6 pr-4">No. PO Pelanggan</th>
+                  <th className="py-3.5 px-4">Tanggal Order</th>
+                  <th className="py-3.5 px-4">Kategori / Tujuan</th>
+                  <th className="py-3.5 px-4">Jumlah Item / Qty</th>
+                  <th className="py-3.5 px-4">Status Pengiriman</th>
+                  <th className="py-3.5 pl-4 pr-6 text-right">Aksi</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200/70 font-semibold text-slate-800">
+              <tbody className="divide-y divide-slate-200 font-semibold text-slate-900">
                 {filteredPo.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-16 text-center text-sm font-medium text-slate-500">
+                    <td colSpan={6} className="py-16 text-center text-sm font-bold text-slate-700">
                       Tidak ada data Purchase Order yang sesuai filter.
                     </td>
                   </tr>
@@ -512,14 +506,14 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
                     const statusStyle = getPoStatusStyle(po.status)
 
                     return (
-                      <tr key={po.id} className="hover:bg-amber-50/40 transition-colors">
+                      <tr key={po.id} className="hover:bg-blue-50/60 transition-colors">
                         <td className="py-4 pl-6 pr-4">
                           <p className="font-mono text-xs sm:text-sm font-black text-slate-950">{po.customerPo}</p>
                           {po.invoiceNumber && po.invoiceNumber !== '-' && (
-                            <p className="text-xs font-semibold text-slate-500 mt-0.5">Inv: {po.invoiceNumber}</p>
+                            <p className="text-xs text-slate-700 font-semibold mt-0.5">Inv: {po.invoiceNumber}</p>
                           )}
                         </td>
-                        <td className="py-4 px-4 text-xs sm:text-sm text-slate-700 font-semibold">
+                        <td className="py-4 px-4 text-xs sm:text-sm text-slate-700 font-bold">
                           {new Date(po.salesDate).toLocaleDateString('id-ID', {
                             day: '2-digit',
                             month: 'short',
@@ -527,20 +521,20 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
                           })}
                         </td>
                         <td className="py-4 px-4">
-                          <div className="flex items-center gap-1.5 text-xs sm:text-sm text-slate-900">
-                            <MapPin className="h-4 w-4 text-amber-600 shrink-0" />
+                          <div className="flex items-center gap-1.5 text-xs sm:text-sm text-slate-950">
+                            <MapPin className="h-3.5 w-3.5 text-slate-600 shrink-0" />
                             <span className="font-bold">{po.tripDestination || 'Site Operasional'}</span>
                           </div>
                           {po.categoryProduct && (
-                            <p className="text-xs text-slate-500 pl-5 font-medium">{po.categoryProduct}</p>
+                            <p className="text-xs text-slate-600 font-semibold pl-5">{po.categoryProduct}</p>
                           )}
                         </td>
                         <td className="py-4 px-4">
-                          <span className="font-black text-slate-950 text-sm">{po.totalQty} Unit</span>
-                          <p className="text-xs text-slate-500 font-medium">{po.totalItems} Jenis Barang</p>
+                          <span className="font-black text-slate-950">{po.totalQty} Unit</span>
+                          <p className="text-xs text-slate-600 font-bold">{po.totalItems} Jenis Barang</p>
                         </td>
                         <td className="py-4 px-4">
-                          <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${statusStyle}`}>
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-black ${statusStyle}`}>
                             {po.status}
                           </span>
                         </td>
@@ -549,10 +543,10 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
                             variant="outline"
                             size="sm"
                             onClick={() => setSelectedPo(po)}
-                            className="h-10 px-4 rounded-2xl border-slate-300 bg-white text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100 shadow-2xs"
+                            className="h-8 px-3 rounded-lg border-2 border-slate-300 bg-white text-xs font-bold text-slate-900 hover:bg-slate-100 shadow-sm transition-colors cursor-pointer"
                           >
-                            <Eye className="h-4 w-4 mr-1 text-slate-600" />
-                            Lihat Detail
+                            <Eye className="h-3.5 w-3.5 mr-1 text-slate-700" />
+                            Detail
                           </Button>
                         </td>
                       </tr>
@@ -567,23 +561,23 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
 
       {/* Tab 3: Deliveries */}
       {activeTab === 'deliveries' && (
-        <div className="relative overflow-hidden rounded-3xl border border-white/80 bg-white/90 shadow-xs backdrop-blur-xl">
+        <div className="rounded-2xl border-2 border-slate-300 bg-white shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs sm:text-sm text-slate-800">
-              <thead className="bg-slate-100/90 text-xs font-extrabold uppercase tracking-wider text-slate-800 border-b border-slate-200">
+            <table className="w-full text-left text-xs sm:text-sm text-slate-900">
+              <thead className="bg-slate-200/90 text-xs font-black uppercase tracking-wider text-slate-950 border-b-2 border-slate-300">
                 <tr>
-                  <th className="py-4 pl-6 pr-4">No. DO SAP / Surat Jalan</th>
-                  <th className="py-4 px-4">Ref. PO Pelanggan</th>
-                  <th className="py-4 px-4">Jadwal Kirim</th>
-                  <th className="py-4 px-4">Ekspedisi / Driver</th>
-                  <th className="py-4 px-4">Status Pengiriman</th>
-                  <th className="py-4 pl-4 pr-6 text-right">Rincian</th>
+                  <th className="py-3.5 pl-6 pr-4">No. DO SAP / Surat Jalan</th>
+                  <th className="py-3.5 px-4">Ref. PO Pelanggan</th>
+                  <th className="py-3.5 px-4">Jadwal Kirim</th>
+                  <th className="py-3.5 px-4">Ekspedisi / Driver</th>
+                  <th className="py-3.5 px-4">Status Pengiriman</th>
+                  <th className="py-3.5 pl-4 pr-6 text-right">Aksi</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200/70 font-semibold text-slate-800">
+              <tbody className="divide-y divide-slate-200 font-semibold text-slate-900">
                 {filteredDeliveries.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-16 text-center text-sm font-medium text-slate-500">
+                    <td colSpan={6} className="py-16 text-center text-sm font-bold text-slate-700">
                       Tidak ada data Surat Jalan / DO yang sesuai filter.
                     </td>
                   </tr>
@@ -592,19 +586,19 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
                     const statusStyle = getDeliveryStatusStyle(del.status)
 
                     return (
-                      <tr key={del.id} className="hover:bg-amber-50/40 transition-colors">
+                      <tr key={del.id} className="hover:bg-blue-50/60 transition-colors">
                         <td className="py-4 pl-6 pr-4">
                           <p className="font-mono text-xs sm:text-sm font-black text-slate-950">
                             {del.doSap || del.deliveryNumber}
                           </p>
                           {del.doSap && (
-                            <p className="text-xs text-slate-500 font-semibold mt-0.5">Hero: {del.deliveryNumber}</p>
+                            <p className="text-xs text-slate-700 font-semibold mt-0.5">Hero: {del.deliveryNumber}</p>
                           )}
                         </td>
-                        <td className="py-4 px-4 font-mono text-xs sm:text-sm font-bold text-slate-900">
+                        <td className="py-4 px-4 font-mono text-xs sm:text-sm font-bold text-slate-950">
                           {del.customerPo}
                         </td>
-                        <td className="py-4 px-4 text-xs sm:text-sm text-slate-700 font-semibold">
+                        <td className="py-4 px-4 text-xs sm:text-sm text-slate-700 font-bold">
                           {new Date(del.scheduledDate).toLocaleDateString('id-ID', {
                             day: '2-digit',
                             month: 'short',
@@ -612,15 +606,15 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
                           })}
                         </td>
                         <td className="py-4 px-4">
-                          <p className="font-bold text-slate-900 text-sm">
+                          <p className="font-bold text-slate-950">
                             {del.vendorName || del.driverName || 'Armada Internal HERO'}
                           </p>
                           {del.vehicleNumber && (
-                            <p className="text-xs text-slate-500 font-semibold">{del.vehicleNumber}</p>
+                            <p className="text-xs text-slate-600 font-semibold">{del.vehicleNumber}</p>
                           )}
                         </td>
                         <td className="py-4 px-4">
-                          <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${statusStyle}`}>
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-black ${statusStyle}`}>
                             {del.status}
                           </span>
                         </td>
@@ -629,10 +623,10 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
                             variant="outline"
                             size="sm"
                             onClick={() => setSelectedDelivery(del)}
-                            className="h-10 px-4 rounded-2xl border-slate-300 bg-white text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100 shadow-2xs"
+                            className="h-8 px-3 rounded-lg border-2 border-slate-300 bg-white text-xs font-bold text-slate-900 hover:bg-slate-100 shadow-sm transition-colors cursor-pointer"
                           >
-                            <Eye className="h-4 w-4 mr-1 text-slate-600" />
-                            Lihat Detail
+                            <Eye className="h-3.5 w-3.5 mr-1 text-slate-700" />
+                            Detail
                           </Button>
                         </td>
                       </tr>
@@ -647,43 +641,43 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
 
       {/* Tab 4: VHS */}
       {activeTab === 'vhs' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filteredVhs.length === 0 ? (
-            <div className="col-span-full rounded-3xl border border-white/80 bg-white/90 p-12 text-center text-sm font-medium text-slate-500 shadow-xs backdrop-blur-xl">
+            <div className="col-span-full rounded-2xl border-2 border-slate-300 bg-white p-12 text-center text-sm font-bold text-slate-700 shadow-sm">
               Tidak ada data catatan konsinyasi eVHS yang tersedia.
             </div>
           ) : (
             filteredVhs.map((vhs) => (
               <div
                 key={vhs.id}
-                className="rounded-3xl border border-white/80 bg-white/90 p-6 shadow-xs backdrop-blur-xl hover:shadow-md hover:border-slate-300 transition-all flex flex-col justify-between"
+                className="rounded-2xl border-2 border-slate-300 bg-white p-5 shadow-sm hover:border-slate-400 transition-all flex flex-col justify-between"
               >
                 <div>
-                  <div className="flex items-center justify-between gap-2 mb-3">
-                    <span className="font-mono text-xs sm:text-sm font-black text-slate-900">{vhs.vhsNo}</span>
-                    <span className="rounded-full bg-emerald-100 text-emerald-950 border border-emerald-300 px-3 py-1 text-xs font-bold shadow-2xs">
+                  <div className="flex items-center justify-between gap-2 mb-2.5">
+                    <span className="font-mono text-xs font-black text-slate-950 bg-slate-200 px-2.5 py-0.5 rounded-md border border-slate-300">{vhs.vhsNo}</span>
+                    <span className="rounded-full bg-emerald-100 text-emerald-950 border border-emerald-400 px-2.5 py-0.5 text-xs font-black">
                       {vhs.totalQty} Ban Terpasang
                     </span>
                   </div>
 
-                  <h3 className="font-bold text-base text-slate-950">
+                  <h3 className="font-black text-sm text-slate-950 font-display">
                     WO: {vhs.woNo || 'Reguler Maintenance'}
                   </h3>
-                  <div className="mt-2 text-xs sm:text-sm text-slate-600 font-medium">
+                  <div className="mt-1.5 text-xs text-slate-700 font-semibold">
                     <span>Gudang Site: </span>
-                    <strong className="text-slate-950 font-bold">{vhs.warehouseName}</strong>
+                    <strong className="text-slate-950 font-black">{vhs.warehouseName}</strong>
                   </div>
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-slate-200/70 flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-500">{vhs.date}</span>
+                <div className="mt-5 pt-3 border-t border-slate-200 flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-600">{vhs.date}</span>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setSelectedVhs(vhs)}
-                    className="h-9 px-4 rounded-2xl border-slate-300 bg-white text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100 shadow-2xs"
+                    className="h-8 px-3 rounded-lg border-2 border-slate-300 bg-white text-xs font-bold text-slate-900 hover:bg-slate-100 shadow-sm transition-colors cursor-pointer"
                   >
-                    <Eye className="h-4 w-4 mr-1 text-slate-600" />
+                    <Eye className="h-3.5 w-3.5 mr-1 text-slate-700" />
                     <span>Rincian</span>
                   </Button>
                 </div>
@@ -695,62 +689,62 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
 
       {/* Cargo Manifest Detail Dialog */}
       <Dialog open={Boolean(selectedManifest)} onOpenChange={(open) => !open && setSelectedManifest(null)}>
-        <DialogContent className="max-w-2xl rounded-3xl p-6 sm:p-8 max-h-[90vh] overflow-y-auto bg-white/95 backdrop-blur-2xl border-white/80 shadow-2xl">
+        <DialogContent className="max-w-2xl rounded-2xl p-6 sm:p-7 max-h-[90vh] overflow-y-auto bg-white border-2 border-slate-300 shadow-xl">
           {selectedManifest && (
-            <div className="space-y-6">
+            <div className="space-y-5">
               <DialogHeader>
-                <div className="flex items-center gap-2 mb-2 flex-wrap">
-                  <span className="font-mono text-sm font-black text-slate-950">{selectedManifest.manifestNumber}</span>
-                  <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${getManifestStatusStyle(selectedManifest.status)}`}>
+                <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                  <span className="font-mono text-xs font-black text-slate-950 bg-slate-200 px-2.5 py-0.5 rounded-md border border-slate-300">{selectedManifest.manifestNumber}</span>
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-black ${getManifestStatusStyle(selectedManifest.status)}`}>
                     {selectedManifest.status}
                   </span>
                 </div>
-                <DialogTitle className="text-xl font-black text-slate-950">
+                <DialogTitle className="text-xl font-black text-slate-950 font-display">
                   Detail Dokumen Cargo Manifest
                 </DialogTitle>
               </DialogHeader>
 
-              <div className="grid grid-cols-2 gap-4 rounded-2xl bg-slate-50/90 border border-slate-200/80 p-5 text-xs sm:text-sm">
+              <div className="grid grid-cols-2 gap-3.5 rounded-xl bg-slate-100/90 border-2 border-slate-300 p-4 text-xs sm:text-sm">
                 <div>
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Tanggal Kirim</span>
+                  <span className="text-xs font-black text-slate-700 uppercase tracking-wider block">Tanggal Kirim</span>
                   <span className="font-bold text-slate-950">{selectedManifest.date}</span>
                 </div>
                 <div>
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Site / Tujuan Akhir</span>
+                  <span className="text-xs font-black text-slate-700 uppercase tracking-wider block">Site / Tujuan Akhir</span>
                   <span className="font-bold text-slate-950">
                     {selectedManifest.siteName || selectedManifest.finalDestination || 'Site'}
                   </span>
                 </div>
                 <div>
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Moda Transport</span>
+                  <span className="text-xs font-black text-slate-700 uppercase tracking-wider block">Moda Transport</span>
                   <span className="font-bold text-slate-950">{selectedManifest.transportVia || '-'}</span>
                 </div>
                 <div>
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Shipped Via / Ekspedisi</span>
+                  <span className="text-xs font-black text-slate-700 uppercase tracking-wider block">Shipped Via / Ekspedisi</span>
                   <span className="font-bold text-slate-950">{selectedManifest.shippedVia || '-'}</span>
                 </div>
               </div>
 
               {/* Items Table */}
               <div>
-                <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-700 mb-3">Rincian Barang Cargo</h4>
-                <div className="overflow-x-auto rounded-2xl border border-slate-200/80 bg-white">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-950 mb-2.5">Rincian Barang Cargo</h4>
+                <div className="overflow-x-auto rounded-xl border-2 border-slate-300 bg-white">
                   <table className="w-full text-left text-xs sm:text-sm">
-                    <thead className="bg-slate-100/90 text-xs font-extrabold uppercase tracking-wider text-slate-800 border-b border-slate-200">
+                    <thead className="bg-slate-200/90 text-xs font-black uppercase tracking-wider text-slate-950 border-b-2 border-slate-300">
                       <tr>
-                        <th className="py-3 px-4">No</th>
-                        <th className="py-3 px-4">Deskripsi Barang / Ban</th>
-                        <th className="py-3 px-4">Serial Number</th>
-                        <th className="py-3 px-4 text-right">Qty</th>
+                        <th className="py-2.5 px-3.5">No</th>
+                        <th className="py-2.5 px-3.5">Deskripsi Barang / Ban</th>
+                        <th className="py-2.5 px-3.5">Serial Number</th>
+                        <th className="py-2.5 px-3.5 text-right">Qty</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-200/70 font-semibold">
+                    <tbody className="divide-y divide-slate-200 font-semibold text-slate-900">
                       {selectedManifest.items.map((it) => (
-                        <tr key={it.id}>
-                          <td className="py-3 px-4 font-bold text-slate-500">{it.no}</td>
-                          <td className="py-3 px-4 font-bold text-slate-950">{it.description}</td>
-                          <td className="py-3 px-4 font-mono text-xs font-semibold text-slate-600">{it.serialNumber || '-'}</td>
-                          <td className="py-3 px-4 text-right font-black text-slate-950">{it.qty} Unit</td>
+                        <tr key={it.id} className="hover:bg-blue-50/60 transition-colors">
+                          <td className="py-3 px-3.5 font-bold text-slate-700">{it.no}</td>
+                          <td className="py-3 px-3.5 font-bold text-slate-950">{it.description}</td>
+                          <td className="py-3 px-3.5 font-mono text-xs font-bold text-slate-700">{it.serialNumber || '-'}</td>
+                          <td className="py-3 px-3.5 text-right font-black text-slate-950">{it.qty} Unit</td>
                         </tr>
                       ))}
                     </tbody>
@@ -764,60 +758,60 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
 
       {/* PO Detail Dialog */}
       <Dialog open={Boolean(selectedPo)} onOpenChange={(open) => !open && setSelectedPo(null)}>
-        <DialogContent className="max-w-2xl rounded-3xl p-6 sm:p-8 max-h-[90vh] overflow-y-auto bg-white/95 backdrop-blur-2xl border-white/80 shadow-2xl">
+        <DialogContent className="max-w-2xl rounded-2xl p-6 sm:p-7 max-h-[90vh] overflow-y-auto bg-white border-2 border-slate-300 shadow-xl">
           {selectedPo && (
-            <div className="space-y-6">
+            <div className="space-y-5">
               <DialogHeader>
-                <div className="flex items-center gap-2 mb-2 flex-wrap">
-                  <span className="font-mono text-sm font-black text-slate-950">{selectedPo.customerPo}</span>
-                  <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${getPoStatusStyle(selectedPo.status)}`}>
+                <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                  <span className="font-mono text-xs font-black text-slate-950 bg-slate-200 px-2.5 py-0.5 rounded-md border border-slate-300">{selectedPo.customerPo}</span>
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-black ${getPoStatusStyle(selectedPo.status)}`}>
                     {selectedPo.status}
                   </span>
                 </div>
-                <DialogTitle className="text-xl font-black text-slate-950">
+                <DialogTitle className="text-xl font-black text-slate-950 font-display">
                   Purchase Order Detail
                 </DialogTitle>
               </DialogHeader>
 
-              <div className="grid grid-cols-2 gap-4 rounded-2xl bg-slate-50/90 border border-slate-200/80 p-5 text-xs sm:text-sm">
+              <div className="grid grid-cols-2 gap-3.5 rounded-xl bg-slate-100/90 border-2 border-slate-300 p-4 text-xs sm:text-sm">
                 <div>
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Tanggal PO</span>
+                  <span className="text-xs font-black text-slate-700 uppercase tracking-wider block">Tanggal PO</span>
                   <span className="font-bold text-slate-950">
                     {new Date(selectedPo.salesDate).toLocaleDateString('id-ID', { dateStyle: 'long' })}
                   </span>
                 </div>
                 <div>
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Lokasi / Destinasi</span>
+                  <span className="text-xs font-black text-slate-700 uppercase tracking-wider block">Lokasi / Destinasi</span>
                   <span className="font-bold text-slate-950">{selectedPo.tripDestination || 'Site Operasional'}</span>
                 </div>
                 <div>
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Total Kuantitas</span>
+                  <span className="text-xs font-black text-slate-700 uppercase tracking-wider block">Total Kuantitas</span>
                   <span className="font-black text-slate-950">{selectedPo.totalQty} Unit</span>
                 </div>
                 <div>
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">No. Invoice Terbit</span>
+                  <span className="text-xs font-black text-slate-700 uppercase tracking-wider block">No. Invoice Terbit</span>
                   <span className="font-mono font-bold text-slate-950">{selectedPo.invoiceNumber}</span>
                 </div>
               </div>
 
               {/* Items Table */}
               <div>
-                <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-700 mb-3">Daftar Barang &amp; Ban</h4>
-                <div className="overflow-x-auto rounded-2xl border border-slate-200/80 bg-white">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-950 mb-2.5">Daftar Barang &amp; Ban</h4>
+                <div className="overflow-x-auto rounded-xl border-2 border-slate-300 bg-white">
                   <table className="w-full text-left text-xs sm:text-sm">
-                    <thead className="bg-slate-100/90 text-xs font-extrabold uppercase tracking-wider text-slate-800 border-b border-slate-200">
+                    <thead className="bg-slate-200/90 text-xs font-black uppercase tracking-wider text-slate-950 border-b-2 border-slate-300">
                       <tr>
-                        <th className="py-3 px-4">Deskripsi Ban / Material</th>
-                        <th className="py-3 px-4">Part Number</th>
-                        <th className="py-3 px-4 text-right">Qty</th>
+                        <th className="py-2.5 px-3.5">Deskripsi Ban / Material</th>
+                        <th className="py-2.5 px-3.5">Part Number</th>
+                        <th className="py-2.5 px-3.5 text-right">Qty</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-200/70 font-semibold">
+                    <tbody className="divide-y divide-slate-200 font-semibold text-slate-900">
                       {selectedPo.items.map((it) => (
-                        <tr key={it.id}>
-                          <td className="py-3 px-4 font-bold text-slate-950">{it.description}</td>
-                          <td className="py-3 px-4 font-mono text-xs font-semibold text-slate-600">{it.partNumber || '-'}</td>
-                          <td className="py-3 px-4 text-right font-black text-slate-950">{it.quantity} Unit</td>
+                        <tr key={it.id} className="hover:bg-blue-50/60 transition-colors">
+                          <td className="py-3 px-3.5 font-bold text-slate-950">{it.description}</td>
+                          <td className="py-3 px-3.5 font-mono text-xs font-bold text-slate-700">{it.partNumber || '-'}</td>
+                          <td className="py-3 px-3.5 text-right font-black text-slate-950">{it.quantity} Unit</td>
                         </tr>
                       ))}
                     </tbody>
@@ -831,42 +825,42 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
 
       {/* Delivery Detail Dialog */}
       <Dialog open={Boolean(selectedDelivery)} onOpenChange={(open) => !open && setSelectedDelivery(null)}>
-        <DialogContent className="max-w-xl rounded-3xl p-6 sm:p-8 max-h-[90vh] overflow-y-auto bg-white/95 backdrop-blur-2xl border-white/80 shadow-2xl">
+        <DialogContent className="max-w-xl rounded-2xl p-6 sm:p-7 max-h-[90vh] overflow-y-auto bg-white border-2 border-slate-300 shadow-xl">
           {selectedDelivery && (
-            <div className="space-y-6">
+            <div className="space-y-5">
               <DialogHeader>
-                <div className="flex items-center gap-2 mb-2 flex-wrap">
-                  <span className="font-mono text-sm font-black text-slate-950">
+                <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                  <span className="font-mono text-xs font-black text-slate-950 bg-slate-200 px-2.5 py-0.5 rounded-md border border-slate-300">
                     {selectedDelivery.doSap || selectedDelivery.deliveryNumber}
                   </span>
-                  <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${getDeliveryStatusStyle(selectedDelivery.status)}`}>
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-black ${getDeliveryStatusStyle(selectedDelivery.status)}`}>
                     {selectedDelivery.status}
                   </span>
                 </div>
-                <DialogTitle className="text-xl font-black text-slate-950">
+                <DialogTitle className="text-xl font-black text-slate-950 font-display">
                   Surat Jalan &amp; Tracking DO
                 </DialogTitle>
               </DialogHeader>
 
-              <div className="grid grid-cols-2 gap-4 rounded-2xl bg-slate-50/90 border border-slate-200/80 p-5 text-xs sm:text-sm">
+              <div className="grid grid-cols-2 gap-3.5 rounded-xl bg-slate-100/90 border-2 border-slate-300 p-4 text-xs sm:text-sm">
                 <div>
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Ref. PO Pelanggan</span>
+                  <span className="text-xs font-black text-slate-700 uppercase tracking-wider block">Ref. PO Pelanggan</span>
                   <span className="font-mono font-bold text-slate-950">{selectedDelivery.customerPo}</span>
                 </div>
                 <div>
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Jadwal Kirim</span>
+                  <span className="text-xs font-black text-slate-700 uppercase tracking-wider block">Jadwal Kirim</span>
                   <span className="font-bold text-slate-950">
                     {new Date(selectedDelivery.scheduledDate).toLocaleDateString('id-ID')}
                   </span>
                 </div>
                 <div>
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Driver / Ekspedisi</span>
+                  <span className="text-xs font-black text-slate-700 uppercase tracking-wider block">Driver / Ekspedisi</span>
                   <span className="font-bold text-slate-950">
                     {selectedDelivery.vendorName || selectedDelivery.driverName || 'Armada HERO'}
                   </span>
                 </div>
                 <div>
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Plat Nomor / Resi</span>
+                  <span className="text-xs font-black text-slate-700 uppercase tracking-wider block">Plat Nomor / Resi</span>
                   <span className="font-mono font-bold text-slate-950">
                     {selectedDelivery.vehicleNumber || selectedDelivery.awbNumber || '-'}
                   </span>
@@ -875,8 +869,8 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
 
               {selectedDelivery.shippingAddress && (
                 <div>
-                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-700 mb-1.5">Alamat Tujuan Pengiriman</h4>
-                  <p className="text-xs sm:text-sm text-slate-800 bg-slate-50/90 p-4 rounded-2xl border border-slate-200 font-medium leading-relaxed">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-950 mb-1.5">Alamat Tujuan Pengiriman</h4>
+                  <p className="text-xs sm:text-sm text-slate-900 bg-slate-100 p-3.5 rounded-xl border-2 border-slate-300 font-semibold leading-relaxed">
                     {selectedDelivery.shippingAddress}
                   </p>
                 </div>
@@ -885,16 +879,16 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
               {/* DO Scan Document if available */}
               {selectedDelivery.scanDoDocument && (
                 <div>
-                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-700 mb-2">Scan Dokumen Bukti Terima</h4>
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-950 mb-2">Scan Dokumen Bukti Terima</h4>
                   <a
                     href={resolveUploadUrl(selectedDelivery.scanDoDocument)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-5 py-3 text-xs sm:text-sm font-bold text-slate-900 hover:bg-slate-100 shadow-2xs transition"
+                    className="inline-flex items-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-4 py-2.5 text-xs sm:text-sm font-bold text-slate-950 hover:bg-slate-100 shadow-sm transition-colors"
                   >
                     <FileText className="h-4 w-4 text-amber-600" />
                     <span>Lihat Bukti Surat Jalan (Scan DO)</span>
-                    <ExternalLink className="h-4 w-4 opacity-60 ml-1" />
+                    <ExternalLink className="h-3.5 w-3.5 text-slate-600 ml-1" />
                   </a>
                 </div>
               )}
@@ -905,40 +899,40 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
 
       {/* VHS Detail Dialog */}
       <Dialog open={Boolean(selectedVhs)} onOpenChange={(open) => !open && setSelectedVhs(null)}>
-        <DialogContent className="max-w-xl rounded-3xl p-6 sm:p-8 max-h-[90vh] overflow-y-auto bg-white/95 backdrop-blur-2xl border-white/80 shadow-2xl">
+        <DialogContent className="max-w-xl rounded-2xl p-6 sm:p-7 max-h-[90vh] overflow-y-auto bg-white border-2 border-slate-300 shadow-xl">
           {selectedVhs && (
-            <div className="space-y-6">
+            <div className="space-y-5">
               <DialogHeader>
-                <div className="flex items-center gap-2 mb-2 flex-wrap">
-                  <span className="font-mono text-sm font-black text-slate-950">{selectedVhs.vhsNo}</span>
-                  <span className="rounded-full bg-emerald-100 text-emerald-950 border border-emerald-300 px-3 py-1 text-xs font-bold shadow-2xs">
+                <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                  <span className="font-mono text-xs font-black text-slate-950 bg-slate-200 px-2.5 py-0.5 rounded-md border border-slate-300">{selectedVhs.vhsNo}</span>
+                  <span className="rounded-full bg-emerald-100 text-emerald-950 border border-emerald-400 px-2.5 py-0.5 text-xs font-black">
                     {selectedVhs.status}
                   </span>
                 </div>
-                <DialogTitle className="text-xl font-black text-slate-950">
+                <DialogTitle className="text-xl font-black text-slate-950 font-display">
                   Rincian Pemakaian Ban Konsinyasi
                 </DialogTitle>
               </DialogHeader>
 
-              <div className="rounded-2xl border border-slate-200/80 bg-white overflow-hidden">
+              <div className="rounded-xl border-2 border-slate-300 bg-white overflow-hidden">
                 <table className="w-full text-left text-xs sm:text-sm">
-                  <thead className="bg-slate-100/90 text-xs font-extrabold uppercase tracking-wider text-slate-800 border-b border-slate-200">
+                  <thead className="bg-slate-200/90 text-xs font-black uppercase tracking-wider text-slate-950 border-b-2 border-slate-300">
                     <tr>
-                      <th className="py-3 px-4">Tipe Ban</th>
-                      <th className="py-3 px-4">Serial Number</th>
-                      <th className="py-3 px-4">Unit / Posisi</th>
-                      <th className="py-3 px-4 text-right">Qty</th>
+                      <th className="py-2.5 px-3.5">Tipe Ban</th>
+                      <th className="py-2.5 px-3.5">Serial Number</th>
+                      <th className="py-2.5 px-3.5">Unit / Posisi</th>
+                      <th className="py-2.5 px-3.5 text-right">Qty</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200/70 font-semibold">
+                  <tbody className="divide-y divide-slate-200 font-semibold text-slate-900">
                     {selectedVhs.items.map((it) => (
-                      <tr key={it.id}>
-                        <td className="py-3 px-4 font-bold text-slate-950">{it.productName}</td>
-                        <td className="py-3 px-4 font-mono text-xs font-semibold text-slate-600">{it.serialNumber || '-'}</td>
-                        <td className="py-3 px-4 text-slate-800 font-semibold">
+                      <tr key={it.id} className="hover:bg-blue-50/60 transition-colors">
+                        <td className="py-3 px-3.5 font-bold text-slate-950">{it.productName}</td>
+                        <td className="py-3 px-3.5 font-mono text-xs font-bold text-slate-700">{it.serialNumber || '-'}</td>
+                        <td className="py-3 px-3.5 text-slate-800 font-bold">
                           {it.unitId ? `${it.unitId} (${it.pos || '-'})` : '-'}
                         </td>
-                        <td className="py-3 px-4 text-right font-black text-slate-950">{it.qty} Unit</td>
+                        <td className="py-3 px-3.5 text-right font-black text-slate-950">{it.qty} Unit</td>
                       </tr>
                     ))}
                   </tbody>
@@ -955,11 +949,11 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
 function getManifestStatusStyle(status: string) {
   switch (status?.toLowerCase()) {
     case 'delivered':
-      return 'bg-emerald-100 text-emerald-950 border border-emerald-300 shadow-2xs'
+      return 'bg-emerald-100 text-emerald-950 border border-emerald-400'
     case 'sent':
-      return 'bg-amber-100 text-amber-950 border border-amber-300 shadow-2xs'
+      return 'bg-amber-100 text-amber-950 border border-amber-400'
     default:
-      return 'bg-slate-200 text-slate-900 border border-slate-300 shadow-2xs'
+      return 'bg-slate-200 text-slate-950 border border-slate-400'
   }
 }
 
@@ -967,12 +961,12 @@ function getPoStatusStyle(status: string) {
   switch (status?.toLowerCase()) {
     case 'completed':
     case 'selesai':
-      return 'bg-emerald-100 text-emerald-950 border border-emerald-300 shadow-2xs'
+      return 'bg-emerald-100 text-emerald-950 border border-emerald-400'
     case 'delivered':
     case 'terkirim':
-      return 'bg-sky-100 text-sky-950 border border-sky-300 shadow-2xs'
+      return 'bg-sky-100 text-sky-950 border border-sky-400'
     default:
-      return 'bg-amber-100 text-amber-950 border border-amber-300 shadow-2xs'
+      return 'bg-amber-100 text-amber-950 border border-amber-400'
   }
 }
 
@@ -980,12 +974,12 @@ function getDeliveryStatusStyle(status: string) {
   switch (status?.toLowerCase()) {
     case 'delivered':
     case 'completed':
-      return 'bg-emerald-100 text-emerald-950 border border-emerald-300 shadow-2xs'
+      return 'bg-emerald-100 text-emerald-950 border border-emerald-400'
     case 'in_transit':
     case 'scheduled':
     case 'on_delivery':
-      return 'bg-amber-100 text-amber-950 border border-amber-300 shadow-2xs'
+      return 'bg-amber-100 text-amber-950 border border-amber-400'
     default:
-      return 'bg-slate-200 text-slate-900 border border-slate-300 shadow-2xs'
+      return 'bg-slate-200 text-slate-950 border border-slate-400'
   }
 }
