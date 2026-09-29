@@ -700,12 +700,16 @@ export function MobileSplHistory({
                               {doc.plannedStartDate ? fmtDate(doc.plannedStartDate) : ''} ({doc.plannedStartTime || '17:00'} s.d. {doc.plannedEndTime || '21:00'})
                             </td>
                           </tr>
-                          {doc.requestNotes ? (
-                            <tr>
-                              <td className="font-bold bg-slate-50 text-black">Request Notes</td>
-                              <td colSpan={3} className="text-black">{doc.requestNotes}</td>
-                            </tr>
-                          ) : null}
+                          {(() => {
+                            const cleanedNotes = (doc.requestNotes || '').replace(/\[Foto Bukti SPL\]:\s*\S+/gi, '').trim()
+                            if (!cleanedNotes) return null
+                            return (
+                              <tr>
+                                <td className="font-bold bg-slate-50 text-black">Request Notes</td>
+                                <td colSpan={3} className="text-black">{cleanedNotes}</td>
+                              </tr>
+                            )
+                          })()}
                         </tbody>
                       </table>
 

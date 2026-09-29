@@ -1295,12 +1295,16 @@ export function OvertimeListingClient({
             <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Planned Schedule</td>
             <td colspan="3" style="border: 1px solid black; padding: 3px 5px;">${formatDate(row.workDate)} (${formatTime(row.plannedStartAt)} s.d. ${formatTime(row.plannedEndAt)})</td>
           </tr>
-          ${row.requestNotes ? `
-            <tr>
-              <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Request Notes</td>
-              <td colspan="3" style="border: 1px solid black; padding: 3px 5px;">${row.requestNotes}</td>
-            </tr>
-          ` : ''}
+          ${(() => {
+            const cleaned = (row.requestNotes || '').replace(/\[Foto Bukti SPL\]:\s*\S+/gi, '').trim()
+            if (!cleaned) return ''
+            return `
+              <tr>
+                <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Request Notes</td>
+                <td colspan="3" style="border: 1px solid black; padding: 3px 5px;">${cleaned}</td>
+              </tr>
+            `
+          })()}
           <tr>
             <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Status Dokumen</td>
             <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; text-transform: uppercase; color: #065f46;">${row.status}</td>
@@ -2137,12 +2141,16 @@ export function OvertimeListingClient({
                             {formatDate(currentBatchDoc.workDate)} ({formatTime(currentBatchDoc.plannedStartAt)} s.d. {formatTime(currentBatchDoc.plannedEndAt)})
                           </td>
                         </tr>
-                        {currentBatchDoc.requestNotes && (
-                          <tr>
-                            <td className="font-bold bg-slate-50">Request Notes</td>
-                            <td colSpan={3}>{currentBatchDoc.requestNotes}</td>
-                          </tr>
-                        )}
+                        {(() => {
+                          const cleaned = (currentBatchDoc.requestNotes || '').replace(/\[Foto Bukti SPL\]:\s*\S+/gi, '').trim()
+                          if (!cleaned) return null
+                          return (
+                            <tr>
+                              <td className="font-bold bg-slate-50">Request Notes</td>
+                              <td colSpan={3}>{cleaned}</td>
+                            </tr>
+                          )
+                        })()}
                       </tbody>
                     </table>
 
@@ -2571,12 +2579,16 @@ export function OvertimeListingClient({
                           {formatDate(previewSplTarget.workDate)} ({formatTime(previewSplTarget.plannedStartAt)} s.d. {formatTime(previewSplTarget.plannedEndAt)})
                         </td>
                       </tr>
-                      {previewSplTarget.requestNotes && (
-                        <tr>
-                          <td className="font-bold bg-slate-50">Request Notes</td>
-                          <td colSpan={3}>{previewSplTarget.requestNotes}</td>
-                        </tr>
-                      )}
+                      {(() => {
+                        const cleaned = (previewSplTarget.requestNotes || '').replace(/\[Foto Bukti SPL\]:\s*\S+/gi, '').trim()
+                        if (!cleaned) return null
+                        return (
+                          <tr>
+                            <td className="font-bold bg-slate-50">Request Notes</td>
+                            <td colSpan={3}>{cleaned}</td>
+                          </tr>
+                        )
+                      })()}
                     </tbody>
                   </table>
 

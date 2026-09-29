@@ -14,7 +14,13 @@ import {
 import { timesheetAttendanceRealOverrides } from '@/db/schema/timesheet'
 import { overtimeCommandLetters, overtimeCommandLetterParticipants } from '@/db/schema/hero'
 import { and, eq, gte, lte, sql, inArray, isNull, or, ilike } from 'drizzle-orm'
-import { calculateEwhDay, EWH_ACTIVITY_COLUMNS, type EwhActivityKey } from '@/lib/ewh/calculate-ewh'
+import {
+  calculateEwhDay,
+  categorizeSessionActivity,
+  parseDateYMD,
+  EWH_ACTIVITY_COLUMNS,
+  type EwhActivityKey,
+} from '@/lib/ewh/calculate-ewh'
 import { calculateUnitUtility, type SessionItemEntry } from '@/lib/ewh/calculate-unit-utility'
 import { getCurrentEmployee } from '@/lib/get-current-employee'
 import { revalidatePath } from 'next/cache'
@@ -605,8 +611,8 @@ export async function getEwhSummaryAction(
       if (!clockIn || !clockOut) {
         const dayLogs = rawAttRecords.filter((r) => {
           if (r.employeeId !== emp.id) return false
-          const logDate = new Date(r.eventTime)
-          return logDate.getDate() === day && logDate.getMonth() === month - 1 && logDate.getFullYear() === year
+          const p = parseDateYMD(r.eventTime)
+          return p ? p.day === day && p.month === month && p.year === year : false
         })
         for (const log of dayLogs) {
           const timeStr = `${String(log.eventTime.getHours()).padStart(2, '0')}:${String(log.eventTime.getMinutes()).padStart(2, '0')}`
@@ -621,8 +627,8 @@ export async function getEwhSummaryAction(
       // C. Daily Activity Sessions
       const daySessions = sessions.filter((s) => {
         if (s.employeeId !== emp.id) return false
-        const sDate = new Date(s.workDate)
-        return sDate.getDate() === day && sDate.getMonth() === month - 1 && sDate.getFullYear() === year
+        const p = parseDateYMD(s.workDate)
+        return p ? p.day === day && p.month === month && p.year === year : false
       })
 
       let checkedItemCount = 0
@@ -638,15 +644,15 @@ export async function getEwhSummaryAction(
       // D. Direct Activities
       const dayDirect = directActs.filter((a) => {
         if (a.employeeId !== emp.id) return false
-        const aDate = new Date(a.startTime || a.submissionTime || new Date())
-        return aDate.getDate() === day && aDate.getMonth() === month - 1 && aDate.getFullYear() === year
+        const p = parseDateYMD(a.startTime || a.submissionTime)
+        return p ? p.day === day && p.month === month && p.year === year : false
       })
 
       // E. Overtime (SPL)
       const dayOt = approvedOt.filter((o) => {
         if (o.employeeId !== emp.id) return false
-        const oDate = new Date(o.workDate)
-        return oDate.getDate() === day && oDate.getMonth() === month - 1 && oDate.getFullYear() === year
+        const p = parseDateYMD(o.workDate)
+        return p ? p.day === day && p.month === month && p.year === year : false
       })
       let overtimeMinutes = 0
       for (const ot of dayOt) {
@@ -1239,23 +1245,6 @@ export interface EwhSiteMonthlyMatrixResult {
   allDepartments: Array<{ id: number; code: string; name: string }>
 }
 
-function categorizeSessionActivity(label: string): EwhActivityKey | null {
-  const l = (label || '').toLowerCase().trim()
-  if (l.includes('p5m') || l.includes('safety talk') || l.includes('briefing') || l.includes('toolbox') || l.includes('meeting')) return 'p5m'
-  if (l.includes('check pressure') || l.includes('pemeriksaan tekanan') || l.includes('cek tekanan') || l.includes('pressure check')) return 'checkPressure'
-  if (l.includes('adjust pressure') || l.includes('tambah angin') || l.includes('penyesuaian tekanan') || l.includes('pump') || l.includes('isi angin')) return 'adjustPressure'
-  if (l.includes('reseal') || l.includes('re-seal') || l.includes('seal') || l.includes('o-ring')) return 'reseal'
-  if (l.includes('disassembly') || l.includes('bongkar ban') || l.includes('dismantle') || l.includes('lepas velg')) return 'disassembly'
-  if (l.includes('assembly') || l.includes('rakit ban') || l.includes('perakitan') || l.includes('pasang velg')) return 'assembly'
-  if (l.includes('dismounting') || l.includes('lepas ban') || l.includes('copot ban') || l.includes('remove tire') || l.includes('bongkar roda')) return 'dismounting'
-  if (l.includes('mounting') || l.includes('pasang ban') || l.includes('install tire') || l.includes('pasang roda')) return 'mounting'
-  if (l.includes('pm check') || l.includes('preventive maintenance') || l.includes('daily check') || l.includes('inspeksi') || l.includes('inspection')) return 'pmCheck'
-  if (l.includes('clean up') || l.includes('housekeeping') || l.includes('pembersihan') || l.includes('5r') || l.includes('kebersihan')) return 'cleanUp'
-  if (l.includes('maintenance rim') || l.includes('velg') || l.includes('rim') || l.includes('cat rim') || l.includes('gerinda')) return 'maintenanceRim'
-  if (l.includes('retorque') || l.includes('re-torque') || l.includes('torsi') || l.includes('torque')) return 'retorque'
-  return null
-}
-
 const MONTH_NAMES = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
@@ -1296,15 +1285,11 @@ export async function getEwhSiteMonthlyMatrixAction(
 
   // Resolve department filter
   let parsedDeptId: number | null = null
-  if (departmentIdParam === 'ALL') {
+  if (departmentIdParam === 'ALL' || departmentIdParam === '' || departmentIdParam === undefined || departmentIdParam === null) {
     parsedDeptId = null
-  } else if (departmentIdParam !== undefined && departmentIdParam !== null) {
+  } else {
     const parsed = typeof departmentIdParam === 'number' ? departmentIdParam : parseInt(String(departmentIdParam), 10)
     if (!isNaN(parsed) && parsed > 0) parsedDeptId = parsed
-  } else {
-    // Default to Service department if available in master data
-    const serviceDept = allDepartments.find((d) => d.name.toLowerCase().includes('service') || d.code.toLowerCase().includes('srv'))
-    if (serviceDept) parsedDeptId = serviceDept.id
   }
 
   const selectedDept = parsedDeptId ? allDepartments.find((d) => d.id === parsedDeptId) : null
@@ -1312,11 +1297,10 @@ export async function getEwhSiteMonthlyMatrixAction(
 
   // Hitung jumlah hari dalam bulan tsb (28-31)
   const daysInMonth = new Date(year, month, 0).getDate()
-  const monthStart = new Date(year, month - 1, 1, 0, 0, 0, 0)
-  const monthEnd = new Date(year, month, 0, 23, 59, 59, 999)
-
-  const yearStart = new Date(year, 0, 1, 0, 0, 0, 0)
-  const yearEnd = new Date(year, 11, 31, 23, 59, 59, 999)
+  const yearStart = new Date(Date.UTC(year, 0, 1, 0, 0, 0, 0))
+  const yearEnd = new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999))
+  const monthStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0))
+  const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999))
 
   // 1. Query Data Karyawan Master Data (Single Source of Truth: hero_employees)
   const empWhere = [
@@ -1324,11 +1308,11 @@ export async function getEwhSiteMonthlyMatrixAction(
     eq(employees.employmentStatus, 'active'),
     eq(employees.siteId, activeSiteId),
   ]
-  if (parsedDeptId) {
+  if (parsedDeptId && selectedDept) {
     empWhere.push(
       or(
         eq(employees.departmentId, parsedDeptId),
-        selectedDept ? ilike(employees.department, `%${selectedDept.name}%`) : undefined
+        ilike(employees.department, `%${selectedDept.name}%`)
       )!
     )
   }
@@ -1356,6 +1340,7 @@ export async function getEwhSiteMonthlyMatrixAction(
         employeeId: dailyActivitySessions.employeeId,
         startedAt: dailyActivitySessions.startedAt,
         submittedAt: dailyActivitySessions.submittedAt,
+        siteId: dailyActivitySessions.siteId,
       })
       .from(dailyActivitySessions)
       .where(
@@ -1375,6 +1360,7 @@ export async function getEwhSiteMonthlyMatrixAction(
         endTime: activities.endTime,
         submissionTime: activities.submissionTime,
         status: activities.status,
+        siteId: activities.siteId,
       })
       .from(activities)
       .where(
@@ -1418,11 +1404,19 @@ export async function getEwhSiteMonthlyMatrixAction(
       ),
   ])
 
-  // Filter aktivitas khusus karyawan terpilih (Master Data site + department)
-  const yearSessions = allYearSessions.filter((s) => targetEmployeeIdSet.has(s.employeeId))
-  const yearDirectActs = allYearDirectActs.filter((a) => targetEmployeeIdSet.has(a.employeeId))
-  const monthAttOverrides = allMonthAttOverrides.filter((att) => targetEmployeeIdSet.has(att.employeeId))
-  const monthAttRecords = allMonthAttRecords.filter((att) => targetEmployeeIdSet.has(att.employeeId))
+  // Filter aktivitas khusus karyawan terpilih jika ada filter departemen tertentu
+  const yearSessions = parsedDeptId
+    ? allYearSessions.filter((s) => targetEmployeeIdSet.has(s.employeeId))
+    : allYearSessions
+  const yearDirectActs = parsedDeptId
+    ? allYearDirectActs.filter((a) => targetEmployeeIdSet.has(a.employeeId))
+    : allYearDirectActs
+  const monthAttOverrides = parsedDeptId
+    ? allMonthAttOverrides.filter((att) => targetEmployeeIdSet.has(att.employeeId))
+    : allMonthAttOverrides
+  const monthAttRecords = parsedDeptId
+    ? allMonthAttRecords.filter((att) => targetEmployeeIdSet.has(att.employeeId))
+    : allMonthAttRecords
 
   let yearSessionItems: Array<{
     sessionId: number
@@ -1455,22 +1449,27 @@ export async function getEwhSiteMonthlyMatrixAction(
     }))
   }
 
-  // Filter for the selected month
+  // Filter for the selected month using timezone-safe parseDateYMD
   const monthSessions = yearSessions.filter((s) => {
-    const d = new Date(s.workDate)
-    return d.getMonth() === month - 1 && d.getFullYear() === year
+    const p = parseDateYMD(s.workDate)
+    return p ? p.month === month && p.year === year : false
   })
   const monthSessionItems = yearSessionItems.filter((it) => {
-    const d = new Date(it.workDate)
-    return d.getMonth() === month - 1 && d.getFullYear() === year
+    const p = parseDateYMD(it.workDate)
+    return p ? p.month === month && p.year === year : false
   })
   const monthDirectActs = yearDirectActs.filter((act) => {
-    const d = new Date(act.startTime || act.submissionTime || new Date())
-    return d.getMonth() === month - 1 && d.getFullYear() === year
+    const p = parseDateYMD(act.startTime || act.submissionTime)
+    return p ? p.month === month && p.year === year : false
   })
 
-  // 3. Powerman Otomatis dari Master Data Karyawan Aktif
-  const defaultPowerman = targetEmployees.length > 0 ? targetEmployees.length : 1
+  // 3. Powerman Otomatis dari Master Data Karyawan Aktif & Active Submissions
+  const uniqueActiveWorkers = new Set<number>()
+  monthSessions.forEach((s) => uniqueActiveWorkers.add(s.employeeId))
+  monthDirectActs.forEach((a) => uniqueActiveWorkers.add(a.employeeId))
+  targetEmployees.forEach((e) => uniqueActiveWorkers.add(e.id))
+
+  const defaultPowerman = Math.max(targetEmployees.length, uniqueActiveWorkers.size, 1)
   const powerman = defaultPowerman
   const shiftHours = 22 // 2 Shift operasional sehari (22 Jam/Hari)
 
@@ -1521,16 +1520,16 @@ export async function getEwhSiteMonthlyMatrixAction(
       continue
     }
 
-    // Filter Session Items untuk hari ini
+    // Filter Session Items untuk hari ini menggunakan parseDateYMD
     const daySessionItems = monthSessionItems.filter((it) => {
-      const d = new Date(it.workDate)
-      return d.getDate() === day
+      const p = parseDateYMD(it.workDate)
+      return p ? p.day === day : false
     })
 
-    // Filter Direct Activities untuk hari ini
+    // Filter Direct Activities untuk hari ini menggunakan parseDateYMD
     const dayDirectActs = monthDirectActs.filter((act) => {
-      const d = new Date(act.startTime || act.submissionTime || new Date())
-      return d.getDate() === day
+      const p = parseDateYMD(act.startTime || act.submissionTime)
+      return p ? p.day === day : false
     })
 
     const dayCounts: Record<EwhActivityKey, number> = {
@@ -1565,7 +1564,10 @@ export async function getEwhSiteMonthlyMatrixAction(
 
     // Kehadiran dari Biometric Records
     monthAttRecords
-      .filter((att) => new Date(att.eventTime).getDate() === day)
+      .filter((att) => {
+        const p = parseDateYMD(att.eventTime)
+        return p ? p.day === day : false
+      })
       .forEach((att) => {
         dayWorkers.add(att.employeeId)
       })
@@ -1573,7 +1575,7 @@ export async function getEwhSiteMonthlyMatrixAction(
     // Hitung dari Session Items
     daySessionItems.forEach((it) => {
       const cat = categorizeSessionActivity(it.label)
-      if (cat) dayCounts[cat] = (dayCounts[cat] || 0) + 1
+      dayCounts[cat] = (dayCounts[cat] || 0) + 1
 
       let itemDuration = 60
       if (it.startedAt && it.endedAt) {
@@ -1586,8 +1588,8 @@ export async function getEwhSiteMonthlyMatrixAction(
     })
 
     const daySessions = monthSessions.filter((s) => {
-      const d = new Date(s.workDate)
-      return d.getDate() === day
+      const p = parseDateYMD(s.workDate)
+      return p ? p.day === day : false
     })
     daySessions.forEach((s) => {
       dayWorkers.add(s.employeeId)
@@ -1607,7 +1609,7 @@ export async function getEwhSiteMonthlyMatrixAction(
       dayWorkers.add(act.employeeId)
       const label = act.customActivityName || act.title || ''
       const cat = categorizeSessionActivity(label)
-      if (cat) dayCounts[cat] = (dayCounts[cat] || 0) + 1
+      dayCounts[cat] = (dayCounts[cat] || 0) + 1
 
       let actDuration = 60
       if (act.startTime && act.endTime) {
@@ -1639,7 +1641,7 @@ export async function getEwhSiteMonthlyMatrixAction(
       durasiKerjaHours,
       ewhHoursPerPerson,
       ewhRatioPercent: Math.round(ewhRatio * 100) / 100,
-      workerCount: dayWorkers.size || (durasiKerjaHours > 0 ? powerman : 0),
+      workerCount: dayWorkers.size || (durasiKerjaHours > 0 ? 1 : 0),
     })
   }
 
@@ -1696,7 +1698,7 @@ export async function getEwhSiteMonthlyMatrixAction(
       totalHours: Math.round(weekHours * 100) / 100,
       ewhHoursPerPerson: weekEwhPerPerson,
       ewhRatioPercent: Math.round(weekRatio * 100) / 100,
-      workerCount: weekWorkers || powerman,
+      workerCount: weekWorkers || (weekHours > 0 ? 1 : 0),
     })
   })
 
@@ -1758,16 +1760,16 @@ export async function getEwhSiteMonthlyMatrixAction(
 
     // Filter sessions & activities for month m
     const mSessions = yearSessions.filter((s) => {
-      const d = new Date(s.workDate)
-      return d.getMonth() === m - 1
+      const p = parseDateYMD(s.workDate)
+      return p ? p.month === m && p.year === year : false
     })
     const mItems = yearSessionItems.filter((it) => {
-      const d = new Date(it.workDate)
-      return d.getMonth() === m - 1
+      const p = parseDateYMD(it.workDate)
+      return p ? p.month === m && p.year === year : false
     })
     const mDirect = yearDirectActs.filter((act) => {
-      const d = new Date(act.startTime || act.submissionTime || new Date())
-      return d.getMonth() === m - 1
+      const p = parseDateYMD(act.startTime || act.submissionTime)
+      return p ? p.month === m && p.year === year : false
     })
 
     const mWorkers = new Set<number>()
@@ -1775,7 +1777,7 @@ export async function getEwhSiteMonthlyMatrixAction(
     mDirect.forEach((a) => mWorkers.add(a.employeeId))
 
     let mMinutes = 0
-    let mActCount = mItems.length + mDirect.length
+    const mActCount = mItems.length + mDirect.length
 
     mItems.forEach((it) => {
       let dur = 60
@@ -1795,6 +1797,18 @@ export async function getEwhSiteMonthlyMatrixAction(
         if (diff > 0 && diff <= 720) dur = diff
       }
       mMinutes += dur
+    })
+
+    mSessions.forEach((s) => {
+      const hasItems = mItems.some((it) => it.sessionId === s.id)
+      if (!hasItems) {
+        let dur = 60
+        if (s.startedAt && s.submittedAt) {
+          const diff = (new Date(s.submittedAt).getTime() - new Date(s.startedAt).getTime()) / 60000
+          if (diff > 0 && diff <= 720) dur = diff
+        }
+        mMinutes += dur
+      }
     })
 
     const mHours = Math.round((mMinutes / 60) * 100) / 100

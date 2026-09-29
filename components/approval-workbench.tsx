@@ -2965,12 +2965,17 @@ export function InboxTab({
                                   {formatDate(currentBatchDoc.workDate)} ({formatTime(currentBatchDoc.rawOvertime.plannedStartAt)} s.d. {formatTime(currentBatchDoc.rawOvertime.plannedEndAt)})
                                 </td>
                               </tr>
-                              {Boolean((currentBatchDoc.rawOvertime as any).requestNotes || (currentBatchDoc.rawOvertime as any).notes) && (
-                                <tr>
-                                  <td className="font-bold bg-slate-50">Request Notes</td>
-                                  <td colSpan={3}>{(currentBatchDoc.rawOvertime as any).requestNotes || (currentBatchDoc.rawOvertime as any).notes}</td>
-                                </tr>
-                              )}
+                              {(() => {
+                                const raw = (currentBatchDoc.rawOvertime as any).requestNotes || (currentBatchDoc.rawOvertime as any).notes || ''
+                                const cleaned = raw.replace(/\[Foto Bukti SPL\]:\s*\S+/gi, '').trim()
+                                if (!cleaned) return null
+                                return (
+                                  <tr>
+                                    <td className="font-bold bg-slate-50">Request Notes</td>
+                                    <td colSpan={3}>{cleaned}</td>
+                                  </tr>
+                                )
+                              })()}
                             </tbody>
                           </table>
 
@@ -5228,12 +5233,17 @@ export function HistoryTab({
                                     : formatDate(doc.workDate)}
                                 </td>
                               </tr>
-                              {Boolean(doc.requestNotes || (doc as any).notes) && (
-                                <tr>
-                                  <td className="font-bold bg-slate-50 text-black">Request Notes</td>
-                                  <td colSpan={3} className="text-black">{doc.requestNotes || (doc as any).notes}</td>
-                                </tr>
-                              )}
+                              {(() => {
+                                const raw = doc.requestNotes || (doc as any).notes || ''
+                                const cleaned = raw.replace(/\[Foto Bukti SPL\]:\s*\S+/gi, '').trim()
+                                if (!cleaned) return null
+                                return (
+                                  <tr>
+                                    <td className="font-bold bg-slate-50 text-black">Request Notes</td>
+                                    <td colSpan={3} className="text-black">{cleaned}</td>
+                                  </tr>
+                                )
+                              })()}
                             </tbody>
                           </table>
 

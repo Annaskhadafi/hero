@@ -127,3 +127,204 @@ export function formatMinutesToHours(minutes: number): string {
   if (m === 0) return `${h}j`
   return `${h}j ${m}m`
 }
+
+/**
+ * Normalisasi dan ekstraksi komponen tahun, bulan, hari dari Date / ISO string.
+ * Menghindari offset pergeseran timezone (UTC vs Local).
+ */
+export function parseDateYMD(d: Date | string | null | undefined): { year: number; month: number; day: number } | null {
+  if (!d) return null
+  const iso = d instanceof Date ? d.toISOString() : String(d)
+  const datePart = iso.split('T')[0]
+  const [y, m, day] = datePart.split('-').map(Number)
+  if (!y || !m || !day) return null
+  return { year: y, month: m, day }
+}
+
+/**
+ * Mengkategorikan label task/aktivitas daily activity session item atau direct activity
+ * ke salah satu dari 12 kolom standar EWH Matriks.
+ */
+export function categorizeSessionActivity(label: string): EwhActivityKey {
+  const l = (label || '').toLowerCase().trim()
+
+  // 1. P5M & Safety
+  if (
+    l.includes('p5m') ||
+    l.includes('safety') ||
+    l.includes('briefing') ||
+    l.includes('toolbox') ||
+    l.includes('meeting') ||
+    l.includes('loto') ||
+    l.includes('lock out') ||
+    l.includes('hse') ||
+    l.includes('k3') ||
+    l.includes('bbs') ||
+    l.includes('apd')
+  ) {
+    return 'p5m'
+  }
+
+  // 2. Adjust Pressure (diperiksa sebelum check pressure bila mengandung kata adjust / pump / isi angin)
+  if (
+    l.includes('adjust') ||
+    l.includes('penyesuaian tekanan') ||
+    l.includes('tambah angin') ||
+    l.includes('kurang angin') ||
+    l.includes('pump') ||
+    l.includes('pompa') ||
+    l.includes('isi angin') ||
+    l.includes('buang angin')
+  ) {
+    return 'adjustPressure'
+  }
+
+  // 3. Check Pressure & Inspection
+  if (
+    l.includes('pressure') ||
+    l.includes('tekanan') ||
+    l.includes('tyre inspection') ||
+    l.includes('tire inspection') ||
+    l.includes('cek angin') ||
+    l.includes('ukur angin')
+  ) {
+    return 'checkPressure'
+  }
+
+  // 4. Reseal
+  if (
+    l.includes('reseal') ||
+    l.includes('re-seal') ||
+    l.includes('resea') ||
+    l.includes('seal') ||
+    l.includes('o-ring') ||
+    l.includes('oring') ||
+    l.includes('gasket')
+  ) {
+    return 'reseal'
+  }
+
+  // 5. Retorque
+  if (
+    l.includes('retorque') ||
+    l.includes('re-torque') ||
+    l.includes('retorqe') ||
+    l.includes('torsi') ||
+    l.includes('torque') ||
+    l.includes('torq') ||
+    l.includes('kencangkan baut') ||
+    l.includes('cek baut')
+  ) {
+    return 'retorque'
+  }
+
+  // 6. Disassembly (Copot/bongkar velg dan ban)
+  if (
+    l.includes('disassembly') ||
+    l.includes('bongkar ban') ||
+    l.includes('dismantle') ||
+    l.includes('lepas velg') ||
+    l.includes('strip down') ||
+    l.includes('disas')
+  ) {
+    return 'disassembly'
+  }
+
+  // 7. Assembly (Rakit ban dan velg)
+  if (
+    l.includes('assembly') ||
+    l.includes('rakit ban') ||
+    l.includes('perakitan') ||
+    l.includes('pasang velg') ||
+    l.includes('build up') ||
+    l.includes('rakit')
+  ) {
+    return 'assembly'
+  }
+
+  // 8. Dismounting (Lepas ban dari unit)
+  if (
+    l.includes('dismount') ||
+    l.includes('lepas ban') ||
+    l.includes('copot ban') ||
+    l.includes('remove tire') ||
+    l.includes('remove tyre') ||
+    l.includes('bongkar roda') ||
+    l.includes('turun ban') ||
+    l.includes('lepas roda')
+  ) {
+    return 'dismounting'
+  }
+
+  // 9. Mounting & Tyre Change & Rotation (Pasang ban ke unit)
+  if (
+    l.includes('mount') ||
+    l.includes('pasang ban') ||
+    l.includes('install tire') ||
+    l.includes('install tyre') ||
+    l.includes('pasang roda') ||
+    l.includes('tyre change') ||
+    l.includes('tire change') ||
+    l.includes('ganti ban') ||
+    l.includes('replacement tyre') ||
+    l.includes('replacement tire') ||
+    l.includes('rotasi') ||
+    l.includes('rotation')
+  ) {
+    return 'mounting'
+  }
+
+  // 10. Maintenance Rim & Wheel
+  if (
+    l.includes('rim') ||
+    l.includes('velg') ||
+    l.includes('wheel') ||
+    l.includes('brushing') ||
+    l.includes('cat rim') ||
+    l.includes('sandblast') ||
+    l.includes('gerinda')
+  ) {
+    return 'maintenanceRim'
+  }
+
+  // 11. PM Check & Inspeksi / Pemeriksaan Rutin
+  if (
+    l.includes('pm') ||
+    l.includes('preventive') ||
+    l.includes('pemeriksaan') ||
+    l.includes('inspeksi') ||
+    l.includes('inspection') ||
+    l.includes('survey') ||
+    l.includes('audit') ||
+    l.includes('daily check') ||
+    l.includes('cek rutin') ||
+    l.includes('trouble') ||
+    l.includes('investigasi')
+  ) {
+    return 'pmCheck'
+  }
+
+  // 12. Clean Up, Housekeeping, Support, Admin & Others
+  if (
+    l.includes('clean') ||
+    l.includes('housekeeping') ||
+    l.includes('pembersihan') ||
+    l.includes('5r') ||
+    l.includes('kebersihan') ||
+    l.includes('cuci') ||
+    l.includes('admin') ||
+    l.includes('report') ||
+    l.includes('laporan') ||
+    l.includes('invoice') ||
+    l.includes('wo') ||
+    l.includes('work order') ||
+    l.includes('support') ||
+    l.includes('liaison')
+  ) {
+    return 'cleanUp'
+  }
+
+  // Fallback default: jika ada aktivitas yang tidak masuk kategori di atas,
+  // dialokasikan ke cleanUp agar tidak hilang dari matriks dan durasi kerja tetap tercatat
+  return 'cleanUp'
+}

@@ -1465,12 +1465,16 @@ export function MobileOvertimeRequestForm({
                         {plannedStartDate ? fmtDate(plannedStartDate) : ''} ({plannedStartTime} s.d. {plannedEndTime})
                       </td>
                     </tr>
-                    {requestNotes ? (
-                      <tr>
-                        <td className="font-bold bg-slate-50 text-black">Request Notes</td>
-                        <td colSpan={3} className="text-black">{requestNotes}</td>
-                      </tr>
-                    ) : null}
+                    {(() => {
+                      const cleanedNotes = (requestNotes || '').replace(/\[Foto Bukti SPL\]:\s*\S+/gi, '').trim()
+                      if (!cleanedNotes) return null
+                      return (
+                        <tr>
+                          <td className="font-bold bg-slate-50 text-black">Request Notes</td>
+                          <td colSpan={3} className="text-black">{cleanedNotes}</td>
+                        </tr>
+                      )
+                    })()}
                   </tbody>
                 </table>
 
