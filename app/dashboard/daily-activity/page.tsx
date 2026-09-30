@@ -167,12 +167,8 @@ export default async function DailyActivityPage({ searchParams }: PageProps) {
   const assignedSection = sectionHeadSections[0]?.name || emp?.sectionName || emp?.section || null
 
   // 4. Resolve filtering parameters according to role master data rules:
-  // Rule 4: untuk PJO / leader Lokasi filter otomatis hanya melihat lokasi nya saja
-  let effectiveSiteId = resolvedParams.siteId
-  if (isPjoOrLocationLeader && assignedSiteId) {
-    // Strictly lock site to user's assigned location
-    effectiveSiteId = String(assignedSiteId)
-  }
+  // Semua role (termasuk PJO / Leader Lokasi) bebas memilih semua lokasi
+  const effectiveSiteId = resolvedParams.siteId
 
   // Rule 3: untuk Head Departement filter otomatis di Departement tersebut
   let effectiveDept = resolvedParams.dept
@@ -188,9 +184,11 @@ export default async function DailyActivityPage({ searchParams }: PageProps) {
 
   const searchKeyword = resolvedParams.employeeName || resolvedParams.q
 
-  // 5. Fetch dashboard data with effective siteId
+  // 5. Fetch dashboard data: jika multi-site (comma-separated), tidak filter site di server-side
+  // Client-side akan handle filtering berdasarkan selectedSiteIds
+  const isMultiSite = effectiveSiteId && effectiveSiteId.includes(',')
   const data = await getDailyActivityDashboardData({
-    siteId: effectiveSiteId,
+    siteId: isMultiSite ? undefined : effectiveSiteId,
     date: resolvedParams.date,
     startDate: resolvedParams.startDate,
     endDate: resolvedParams.endDate,

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useMemo, useEffect, useTransition } from 'react'
+import React, { useState, useMemo, useEffect, useTransition, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
@@ -109,10 +109,14 @@ export function DailyActivityClientDashboard({
   const searchParams = useSearchParams()
   const [isPending, startTransition] = useTransition()
 
-  // Top context bar & filters
-  const initialSiteVal = currentUser?.isPjoOrLocationLeader && currentUser?.assignedSiteId
-    ? String(currentUser.assignedSiteId)
-    : (searchParams.get('siteId') || initialFilters?.siteId || String(initialData.currentSite.id))
+  // Top context bar & filters - site multi-select (tidak ada lock berdasarkan role)
+  const initialSiteIdsVal: string[] = (() => {
+    const param = searchParams.get('siteId') || initialFilters?.siteId || ''
+    if (!param || param === '0' || param === 'all') return []
+    return param.split(',').filter(Boolean)
+  })()
+
+  const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>(initialSiteIdsVal)
 
   const initialDeptVal = searchParams.get('dept') ||
     initialFilters?.dept ||
@@ -121,8 +125,6 @@ export function DailyActivityClientDashboard({
   const initialSectionVal = searchParams.get('section') ||
     initialFilters?.section ||
     (currentUser?.isSectionHead && currentUser?.assignedSection ? currentUser.assignedSection : 'Semua Section')
-
-  const [selectedSiteId, setSelectedSiteId] = useState<string>(initialSiteVal)
 
   // Local today ISO string (YYYY-MM-DD)
   const todayIso = useMemo(() => {
@@ -164,11 +166,11 @@ export function DailyActivityClientDashboard({
 
   // Keep state synchronized whenever URL searchParams or server initialData changes
   useEffect(() => {
-    if (currentUser?.isPjoOrLocationLeader && currentUser?.assignedSiteId) {
-      setSelectedSiteId(String(currentUser.assignedSiteId))
+    const siteParam = searchParams.get('siteId') || ''
+    if (!siteParam || siteParam === '0' || siteParam === 'all') {
+      setSelectedSiteIds([])
     } else {
-      const siteParam = searchParams.get('siteId')
-      setSelectedSiteId(siteParam !== null ? siteParam : String(initialData.currentSite.id))
+      setSelectedSiteIds(siteParam.split(',').filter(Boolean))
     }
 
     const urlDate = searchParams.get('date') || searchParams.get('startDate')
@@ -273,6 +275,20 @@ export function DailyActivityClientDashboard({
   const [deletingEmployee, setDeletingEmployee] = useState<EmployeeActivityRow | null>(null)
   const [isDeleting, setIsDeleting] = useState<boolean>(false)
   const [deletedEmployeeKeys, setDeletedEmployeeKeys] = useState<string[]>([])
+  const [isSiteDropdownOpen, setIsSiteDropdownOpen] = useState(false)
+  const siteDropdownRef = useRef<HTMLDivElement>(null)
+
+  // Close site dropdown on outside click
+  useEffect(() => {
+    if (!isSiteDropdownOpen) return
+    const handler = (e: MouseEvent) => {
+      if (siteDropdownRef.current && !siteDropdownRef.current.contains(e.target as Node)) {
+        setIsSiteDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [isSiteDropdownOpen])
 
   const handleDeleteEmployeeActivity = async () => {
     if (!deletingEmployee) return
@@ -354,6 +370,7 @@ export function DailyActivityClientDashboard({
 
   // Sync navigation when filters change
   const applyFilters = (overrides?: {
+    siteIds?: string[]
     siteId?: string
     date?: string
     shift?: string
@@ -363,10 +380,12 @@ export function DailyActivityClientDashboard({
     q?: string
     employeeName?: string
   }) => {
-    // If PJO / Leader Lokasi, lock siteId
-    const sId = (currentUser?.isPjoOrLocationLeader && currentUser?.assignedSiteId)
-      ? String(currentUser.assignedSiteId)
-      : (overrides?.siteId !== undefined ? overrides.siteId : selectedSiteId)
+    // Resolve siteIds: either from overrides or from current state
+    const resolvedSiteIds = overrides?.siteIds !== undefined
+      ? overrides.siteIds
+      : (overrides?.siteId !== undefined
+        ? (overrides.siteId && overrides.siteId !== '0' && overrides.siteId !== 'all' ? [overrides.siteId] : [])
+        : selectedSiteIds)
 
     const curDate = overrides?.date !== undefined ? overrides.date : selectedDate
     const sh = overrides?.shift !== undefined ? overrides.shift : selectedShift
@@ -377,7 +396,7 @@ export function DailyActivityClientDashboard({
     const q = overrides?.q !== undefined ? overrides.q : searchQuery
 
     const params = new URLSearchParams()
-    if (sId && sId !== '0' && sId !== 'all') params.set('siteId', sId)
+    if (resolvedSiteIds.length > 0) params.set('siteId', resolvedSiteIds.join(','))
     if (curDate) params.set('date', curDate)
     if (sh && sh !== 'Semua Shift') params.set('shift', sh)
     if (st && st !== 'Semua Status') params.set('status', st)
@@ -394,9 +413,6 @@ export function DailyActivityClientDashboard({
   }
 
   const handleResetFilters = () => {
-    const defaultSite = currentUser?.isPjoOrLocationLeader && currentUser?.assignedSiteId
-      ? String(currentUser.assignedSiteId)
-      : '0'
     const defaultDpt = currentUser?.isDeptHead && currentUser?.assignedDepartment
       ? currentUser.assignedDepartment
       : 'Semua Tim'
@@ -404,7 +420,7 @@ export function DailyActivityClientDashboard({
       ? currentUser.assignedSection
       : 'Semua Section'
 
-    setSelectedSiteId(defaultSite)
+    setSelectedSiteIds([])
     setSelectedDate(todayIso)
     setSelectedShift('Semua Shift')
     setSelectedDept(defaultDpt)
@@ -417,7 +433,6 @@ export function DailyActivityClientDashboard({
     setUnsubmittedPage(1)
 
     const params = new URLSearchParams()
-    if (defaultSite !== '0') params.set('siteId', defaultSite)
     params.set('date', todayIso)
     if (defaultDpt !== 'Semua Tim') params.set('dept', defaultDpt)
     if (defaultSec !== 'Semua Section') params.set('section', defaultSec)
@@ -432,17 +447,9 @@ export function DailyActivityClientDashboard({
     return initialData.employees
       .filter((emp) => !deletedEmployeeKeys.includes(`${emp.employeeDbId}-${emp.sessionId}`))
       .filter((emp) => {
-      if (currentUser?.isPjoOrLocationLeader && currentUser?.assignedSiteId) {
-        if (emp.siteId !== undefined && emp.siteId !== currentUser.assignedSiteId) {
-          return false
-        }
-      } else if (
-        selectedSiteId !== '0' &&
-        selectedSiteId !== 'all' &&
-        emp.siteId !== undefined &&
-        String(emp.siteId) !== selectedSiteId
-      ) {
-        return false
+      // Multi-site filter: jika ada lokasi yang dipilih, filter; jika kosong = semua lokasi
+      if (selectedSiteIds.length > 0 && emp.siteId !== undefined) {
+        if (!selectedSiteIds.includes(String(emp.siteId))) return false
       }
       if (selectedShift !== 'Semua Shift' && emp.shift !== selectedShift) return false
       if (selectedDept !== 'Semua Tim' && emp.department !== selectedDept) return false
@@ -474,7 +481,7 @@ export function DailyActivityClientDashboard({
   }, [
     initialData.employees,
     deletedEmployeeKeys,
-    selectedSiteId,
+    selectedSiteIds,
     selectedShift,
     selectedDept,
     selectedSection,
@@ -482,23 +489,14 @@ export function DailyActivityClientDashboard({
     selectedEmployeeStatus,
     searchQuery,
     employeeNameFilter,
-    currentUser,
   ])
 
   // Filter unsubmitted employees (Belum Mengisi, excluding Roster OFF)
   const filteredUnsubmittedEmployees = useMemo(() => {
     return (initialData.unsubmittedEmployees || []).filter((emp) => {
-      if (currentUser?.isPjoOrLocationLeader && currentUser?.assignedSiteId) {
-        if (emp.siteId !== undefined && emp.siteId !== currentUser.assignedSiteId) {
-          return false
-        }
-      } else if (
-        selectedSiteId !== '0' &&
-        selectedSiteId !== 'all' &&
-        emp.siteId !== undefined &&
-        String(emp.siteId) !== selectedSiteId
-      ) {
-        return false
+      // Multi-site filter: jika ada lokasi yang dipilih, filter; jika kosong = semua lokasi
+      if (selectedSiteIds.length > 0 && emp.siteId !== undefined) {
+        if (!selectedSiteIds.includes(String(emp.siteId))) return false
       }
       if (selectedShift !== 'Semua Shift' && emp.expectedShift !== selectedShift) return false
       if (selectedDept !== 'Semua Tim' && emp.department !== selectedDept) return false
@@ -520,30 +518,16 @@ export function DailyActivityClientDashboard({
     })
   }, [
     initialData.unsubmittedEmployees,
-    selectedSiteId,
+    selectedSiteIds,
     selectedShift,
     selectedDept,
     selectedSection,
     searchQuery,
     employeeNameFilter,
-    currentUser,
   ])
 
-  // Available sites list (restricted to assigned site for PJO / Leader Lokasi)
-  const availableSites = useMemo(() => {
-    if (currentUser?.isPjoOrLocationLeader && currentUser?.assignedSiteId) {
-      const match = initialData.sitesList.filter((s) => s.id === currentUser.assignedSiteId)
-      if (match.length > 0) return match
-      return [{
-        id: currentUser.assignedSiteId,
-        name: currentUser.assignedSiteName || 'Site Anda',
-        customerName: '-',
-        pjoName: currentUser.name || null,
-        pjoJobTitle: currentUser.role || null,
-      }]
-    }
-    return initialData.sitesList
-  }, [initialData.sitesList, currentUser])
+  // Available sites list - semua lokasi tersedia untuk semua role, hapus entry "Semua Site" (id:0)
+  const availableSites = initialData.sitesList.filter((s) => s.id !== 0)
 
   // Available sections list from masterSections and employee records
   const availableSections = useMemo(() => {
@@ -974,7 +958,7 @@ export function DailyActivityClientDashboard({
               {currentUser?.isSuperAdmin
                 ? 'Hak Akses: Super Admin (Akses Penuh)'
                 : currentUser?.isPjoOrLocationLeader
-                ? `Hak Akses: PJO / Lokasi (${currentUser.assignedSiteName || initialData.currentSite.name})`
+                ? `Hak Akses: PJO / Lokasi Leader`
                 : currentUser?.isDeptHead
                 ? `Hak Akses: Head Dept (${currentUser.assignedDepartment || 'Department'})`
                 : currentUser?.isSectionHead
@@ -988,38 +972,74 @@ export function DailyActivityClientDashboard({
       {/* ── Secondary Filter Bar Card ── */}
       <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs p-3.5">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-2.5 items-end">
-          {/* Site */}
-          <div>
-            <label className="text-[11px] font-semibold text-slate-500 mb-1 flex items-center justify-between">
-              <span>Site</span>
-              {currentUser?.isPjoOrLocationLeader && (
-                <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1 py-0.2 rounded border border-amber-200">
-                  Terkunci
-                </span>
-              )}
+          {/* Site - Multi Select */}
+          <div className="relative" ref={siteDropdownRef}>
+            <label className="text-[11px] font-semibold text-slate-500 mb-1 block">
+              Site / Lokasi
             </label>
-            <select
-              aria-label="Pilih Site"
-              value={selectedSiteId}
-              disabled={currentUser?.isPjoOrLocationLeader}
-              onChange={(e) => {
-                const val = e.target.value
-                setSelectedSiteId(val)
-                applyFilters({ siteId: val })
-              }}
-              className={cn(
-                "w-full text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500",
-                currentUser?.isPjoOrLocationLeader
-                  ? "bg-slate-100 border border-slate-300 text-slate-500 cursor-not-allowed"
-                  : "bg-slate-50 border border-slate-200 text-slate-800 cursor-pointer"
-              )}
+            <button
+              type="button"
+              onClick={() => setIsSiteDropdownOpen((v) => !v)}
+              className="w-full text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-slate-50 border border-slate-200 text-slate-800 cursor-pointer flex items-center justify-between gap-1 min-h-[33px]"
             >
-              {availableSites.map((s) => (
-                <option key={s.id} value={String(s.id)}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+              <span className="truncate">
+                {selectedSiteIds.length === 0
+                  ? 'Semua Lokasi'
+                  : selectedSiteIds.length === 1
+                  ? (availableSites.find((s) => String(s.id) === selectedSiteIds[0])?.name || selectedSiteIds[0])
+                  : `${selectedSiteIds.length} Lokasi`}
+              </span>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            </button>
+            {isSiteDropdownOpen && (
+              <div className="absolute z-50 top-full mt-1 left-0 w-56 bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden">
+                <div className="max-h-52 overflow-y-auto">
+                  {/* Opsi: Semua Lokasi */}
+                  <label className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-xs font-semibold text-slate-700 border-b border-slate-100">
+                    <input
+                      type="checkbox"
+                      checked={selectedSiteIds.length === 0}
+                      onChange={() => {
+                        setSelectedSiteIds([])
+                        setIsSiteDropdownOpen(false)
+                        applyFilters({ siteIds: [] })
+                      }}
+                      className="rounded border-slate-300 text-blue-600 w-3.5 h-3.5"
+                    />
+                    Semua Lokasi
+                  </label>
+                  {availableSites.map((s) => (
+                    <label
+                      key={s.id}
+                      className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-xs text-slate-700"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedSiteIds.includes(String(s.id))}
+                        onChange={(e) => {
+                          const newIds = e.target.checked
+                            ? [...selectedSiteIds, String(s.id)]
+                            : selectedSiteIds.filter((id) => id !== String(s.id))
+                          setSelectedSiteIds(newIds)
+                          applyFilters({ siteIds: newIds })
+                        }}
+                        className="rounded border-slate-300 text-blue-600 w-3.5 h-3.5"
+                      />
+                      {s.name}
+                    </label>
+                  ))}
+                </div>
+                <div className="border-t border-slate-100 px-3 py-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setIsSiteDropdownOpen(false)}
+                    className="text-[10px] text-slate-500 hover:text-slate-700 cursor-pointer"
+                  >
+                    Tutup
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Tanggal Operasional (Day Navigator: Hari Sebelumnya, Date Picker, Hari Berikutnya, Hari Ini) */}
