@@ -43,7 +43,27 @@ type MasterHeadMap = {
   departments?: Record<string, { headEmployeeId?: number | null; headName?: string; headEmail?: string; headTitle?: string }>
 }
 
-export function ContractReviewClientForm({ employees, orgNodes = [], initialData, approvalSettings, approvalHistory, activityTemplates = [], masterHeadMap, adminMode = false }: { employees: any[], orgNodes?: any[], initialData?: any, approvalSettings?: any, approvalHistory?: any[], activityTemplates?: any[], masterHeadMap?: MasterHeadMap, adminMode?: boolean }) {
+export function ContractReviewClientForm({
+  employees,
+  orgNodes = [],
+  initialData,
+  approvalSettings,
+  approvalHistory,
+  activityTemplates = [],
+  masterHeadMap,
+  adminMode = false,
+  currentUser,
+}: {
+  employees: any[]
+  orgNodes?: any[]
+  initialData?: any
+  approvalSettings?: any
+  approvalHistory?: any[]
+  activityTemplates?: any[]
+  masterHeadMap?: MasterHeadMap
+  adminMode?: boolean
+  currentUser?: { name: string; jobTitle: string; signatureDataUrl?: string } | null
+}) {
   const router = useRouter()
   const pathname = usePathname()
   const isMobileRoute = pathname.startsWith('/mobile/')
@@ -68,8 +88,12 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
   const [isPending, startTransition] = useTransition()
   const [isResending, startResend] = useTransition()
   const leaderSigRef = useRef<SignatureCanvas | null>(null)
-  const [previewLeaderSig, setPreviewLeaderSig] = useState<string>(initialData?.leaderSignatureDataUrl || '')
-  const [registeredSignature, setRegisteredSignature] = useState<string | null>(null)
+  const [previewLeaderSig, setPreviewLeaderSig] = useState<string>(
+    initialData?.leaderSignatureDataUrl || currentUser?.signatureDataUrl || ''
+  )
+  const [registeredSignature, setRegisteredSignature] = useState<string | null>(
+    currentUser?.signatureDataUrl || null
+  )
   const [leaderSignatureOverride, setLeaderSignatureOverride] = useState('')
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [adminSignaturePending, setAdminSignaturePending] = useState<number | null>(null)
@@ -79,9 +103,14 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
 
   useEffect(() => {
     getUserSignatureAction().then((result) => {
-      if (result.success && result.signatureDataUrl) setRegisteredSignature(result.signatureDataUrl)
+      if (result.success && result.signatureDataUrl) {
+        setRegisteredSignature(result.signatureDataUrl)
+        if (!initialData?.id && !previewLeaderSig) {
+          setPreviewLeaderSig(result.signatureDataUrl)
+        }
+      }
     }).catch(() => {})
-  }, [])
+  }, [initialData?.id, previewLeaderSig])
 
   const hasVisibleCanvasInk = (canvas: HTMLCanvasElement) => {
     const context = canvas.getContext('2d', { willReadFrequently: true })
@@ -188,11 +217,11 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     compTeamworkAch: initialData?.compTeamworkAch === 'meet' ? '100' : initialData?.compTeamworkAch === 'below' ? '80' : initialData?.compTeamworkAch === 'exceed' ? '115' : initialData?.compTeamworkAch || "",
     compTeamworkRemark: initialData?.compTeamworkRemark || "",
     
-    recommendation: initialData?.recommendation || "",
-    contractExtendedMonths: initialData?.contractExtendedMonths || "",
-    
-    leaderName: initialData?.leaderName || "",
-    leaderTitle: initialData?.leaderTitle || (initialData?.leaderName ? resolveEmployeeTitle(initialData.leaderName, "Leader") : ""),
+    leaderName: initialData?.leaderName || (!initialData?.id ? (currentUser?.name || "") : ""),
+    leaderTitle:
+      initialData?.leaderTitle ||
+      (!initialData?.id ? (currentUser?.jobTitle || "") : "") ||
+      (initialData?.leaderName ? resolveEmployeeTitle(initialData.leaderName, "Leader") : ""),
     employeeNameStr: initialData?.employeeNameStr || "",
     superiorName: initialData?.superiorName || "",
     superiorTitle: initialData?.superiorTitle || (initialData?.superiorName ? resolveEmployeeTitle(initialData.superiorName, "Superior") : ""),
@@ -296,7 +325,8 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
       let hrName = currentForm.hrName || approvalSettings?.approvalMatrix?.hrName || "Kesuma Bagaskara"
       let hrTitle = currentForm.hrTitle || resolveEmployeeTitle(hrName, "HR-GA")
 
-      const finalLeaderName = currentForm.leaderName || leaderName
+      const finalLeaderName =
+        currentForm.leaderName || (!initialData?.id ? (currentUser?.name || "") : "") || leaderName
       const finalSuperiorName = currentForm.superiorName || superiorName
       const finalNextSuperiorName = currentForm.nextSuperiorName || managerName
 
@@ -304,7 +334,11 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
         ...currentForm,
         employeeId,
         leaderName: finalLeaderName,
-        leaderTitle: currentForm.leaderTitle || leaderTitle || resolveEmployeeTitle(finalLeaderName, "Leader"),
+        leaderTitle:
+          currentForm.leaderTitle ||
+          (finalLeaderName === currentUser?.name
+            ? currentUser?.jobTitle || "Leader"
+            : leaderTitle || resolveEmployeeTitle(finalLeaderName, "Leader")),
         superiorName: finalSuperiorName,
         superiorTitle: currentForm.superiorTitle || superiorTitle || resolveEmployeeTitle(finalSuperiorName, "Superior"),
         nextSuperiorName: finalNextSuperiorName,
@@ -417,7 +451,8 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
       }
     }
 
-    const finalLeaderName = currentForm.leaderName || newLeaderName
+    const finalLeaderName =
+      currentForm.leaderName || (!initialData?.id ? (currentUser?.name || "") : "") || newLeaderName
     const finalSuperiorName = currentForm.superiorName || newSupName
     const finalNextSuperiorName = currentForm.nextSuperiorName || newNextSupName
     const finalHrName = newHrName || currentForm.hrName || 'Kesuma Bagaskara'
@@ -426,7 +461,11 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
       ...currentForm,
       employeeId,
       leaderName: finalLeaderName,
-      leaderTitle: currentForm.leaderTitle || newLeaderTitle || resolveEmployeeTitle(finalLeaderName, 'Leader'),
+      leaderTitle:
+        currentForm.leaderTitle ||
+        (finalLeaderName === currentUser?.name
+          ? currentUser?.jobTitle || "Leader"
+          : newLeaderTitle || resolveEmployeeTitle(finalLeaderName, 'Leader')),
       superiorName: finalSuperiorName,
       superiorTitle: currentForm.superiorTitle || newSupTitle || resolveEmployeeTitle(finalSuperiorName, 'Superior'),
       nextSuperiorName: finalNextSuperiorName,

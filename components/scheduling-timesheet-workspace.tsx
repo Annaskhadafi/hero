@@ -190,6 +190,7 @@ type EmployeeOption = {
   email: string
   employeeSn?: string | null
   role: string
+  jobTitle?: string | null
   departmentId?: number | null
   sectionId?: number | null
   department?: string | null
@@ -940,17 +941,24 @@ function normalizeLocation(value: string) {
     .trim()
 }
 
-// Detect staff/non-staff from "Peran" field in User Management
+// Detect staff/non-staff from "Peran" and "Jabatan" in User Management
 // "Non Staff ..." = non-staff, "Staff ..." = staff
-// Default: non-staff (mayoritas karyawan lapangan)
-function isStaffRole(role?: string | null): boolean {
-  const r = (role ?? '').toLowerCase().trim()
+// Technical Engineer, Leader, Analyst, Officer, etc. = staff
+function isStaffRole(role?: string | null, jobTitle?: string | null): boolean {
+  const combined = `${role ?? ''} ${jobTitle ?? ''}`.toLowerCase().trim()
+  if (!combined) return false
   // Explicit "non staff" or "non-staff" = non-staff
-  if (r.includes('non staff') || r.includes('non-staff') || r.includes('nonstaff')) return false
+  if (combined.includes('non staff') || combined.includes('non-staff') || combined.includes('nonstaff')) return false
+  // Explicit field operational positions that are strictly non-staff
+  if (/^(serviceman|repairman|operator|mekanik|mechanic|helper|driver|technician pa)/i.test((role ?? '').trim()) && !combined.includes('leader') && !combined.includes('spv')) {
+    return false
+  }
   // Explicit "staff" without "non" = staff
-  if (r.includes('staff')) return true
-  // Manager/supervisor/admin = staff
-  if (/manager|supervisor|admin|koordinator|coord/i.test(r)) return true
+  if (combined.includes('staff')) return true
+  // Managerial, leadership, engineering, specialist, analytical, administrative = staff
+  if (/manager|supervisor|spv|admin|koordinator|coord|leader|lead|head|superintendent|engineer|analyst|officer|specialist|director|trainer|support|secretary|planning|planing/i.test(combined)) {
+    return true
+  }
   // Default: non-staff
   return false
 }
@@ -2465,7 +2473,7 @@ export function SchedulingTimesheetWorkspace({
                     scheduleType,
                     period,
                     siteConfig.rosterType,
-                    isStaffRole(employee.role),
+                    isStaffRole(employee.role, employee.jobTitle),
                     (fieldBreakPlansByEmployee.get(employee.id) ?? []).find(
                       (plan) => plan.onSiteDate
                     )?.onSiteDate
@@ -2490,7 +2498,7 @@ export function SchedulingTimesheetWorkspace({
         const msaDays = schedule.filter((code) => isMsaEligibleDay(code)).length
         const fieldBreakDays = schedule.filter((code) => code === 'FB').length
         const totalHours = schedule.reduce((sum, code) => sum + hoursFromCode(code), 0)
-        const staff = isStaffRole(employee.role)
+        const staff = isStaffRole(employee.role, employee.jobTitle)
         const benefitRule = getEmployeeBenefitRule(siteConfig.employeeBenefitConfig, {
           manpower: employee.manpower,
           pointOfHire: employee.pointOfHire,
@@ -5284,7 +5292,7 @@ export function SchedulingTimesheetWorkspace({
   const attendanceConflicts =
     mode === 'attendance'
       ? rows.flatMap((row) => {
-          const staff = isStaffRole(row.employee.role)
+          const staff = isStaffRole(row.employee.role, row.employee.jobTitle)
           return row.schedule
             .map((code, index) => {
               const day = index + 1
@@ -5680,7 +5688,7 @@ export function SchedulingTimesheetWorkspace({
       await import('@/lib/timesheet/generate-attendance-pdf')
     const employeeRow = rows.find((row) => row.employee.id === employee.id)
     const employeeSchedule = employeeRow?.schedule ?? []
-    const staff = isStaffRole(employee.role)
+    const staff = isStaffRole(employee.role, employee.jobTitle)
     const dayData = buildAttendanceDayData({
       period,
       dayCount,
@@ -5877,7 +5885,7 @@ export function SchedulingTimesheetWorkspace({
     for (const [dept, sections] of grouped) {
       for (const [section, sectionRows] of sections) {
         for (const row of sectionRows) {
-          const staff = isStaffRole(row.employee.role)
+          const staff = isStaffRole(row.employee.role, row.employee.jobTitle)
           // Nilai tiap hari — samakan persis dengan tabel di layar
           const dailyValues = days.map((day) => {
             const code = row.schedule[day - 1] as string
@@ -6753,7 +6761,7 @@ export function SchedulingTimesheetWorkspace({
   }
 
   function getAllowanceAmounts(row: (typeof rows)[number], day: number) {
-    const staff = isStaffRole(row.employee.role)
+    const staff = isStaffRole(row.employee.role, row.employee.jobTitle)
     const rule = getEmployeeBenefitRule(siteConfig.employeeBenefitConfig, {
       manpower: row.employee.manpower,
       pointOfHire: row.employee.pointOfHire,
@@ -6793,7 +6801,7 @@ export function SchedulingTimesheetWorkspace({
   const payrollRows =
     mode === 'payroll'
       ? rows.map((row) => {
-          const staff = isStaffRole(row.employee.role)
+          const staff = isStaffRole(row.employee.role, row.employee.jobTitle)
           let msaDays = 0
           let mealsDays = 0
           let msa = 0
@@ -6882,7 +6890,7 @@ export function SchedulingTimesheetWorkspace({
                     day,
                     cell.clockIn,
                     cell.clockOut,
-                    isStaffRole(row.employee.role),
+                    isStaffRole(row.employee.role, row.employee.jobTitle),
                     row.employee.id
                   ).totalHours
                 : 0
@@ -6916,7 +6924,7 @@ export function SchedulingTimesheetWorkspace({
     let totalTlk = 0
     let totalOvertimeHours = 0
     const items = payrollRows.flatMap((row) => {
-      const staff = isStaffRole(row.employee.role)
+      const staff = isStaffRole(row.employee.role, row.employee.jobTitle)
       return days.map((day) => {
         const cell = getAttendanceCell(row.employee.id, day)
         const scheduleCode = row.schedule[day - 1] as string
@@ -10634,7 +10642,7 @@ export function SchedulingTimesheetWorkspace({
                                             scheduleCode === 'FB' ||
                                             scheduleCode === 'Libur' ||
                                             scheduleCode === 'Sakit'
-                                          const staff = isStaffRole(row.employee.role)
+                                          const staff = isStaffRole(row.employee.role, row.employee.jobTitle)
 
                                           // MSA/Meals/OVT view
                                           if (attendanceView !== 'attendance') {
@@ -10959,7 +10967,7 @@ export function SchedulingTimesheetWorkspace({
                                         {/* Total column for MSA/Meals/OVT views */}
                                         {attendanceView !== 'attendance'
                                           ? (() => {
-                                              const staff = isStaffRole(row.employee.role)
+                                              const staff = isStaffRole(row.employee.role, row.employee.jobTitle)
                                               let total = 0
                                               for (const day of days) {
                                                 const cell = getAttendanceCell(row.employee.id, day)
@@ -11988,7 +11996,7 @@ export function SchedulingTimesheetWorkspace({
                     (dialogRosterCode === 'NS' && dialogActualShiftCode === 'DS'))
                 const dialogNeedsShiftCheck =
                   dialogIsShiftMismatch || (selectedAttendanceValue.lateMinutes ?? 0) > 60
-                const isStaffForDialog = isStaffRole(selectedAttendanceEmployee?.role || '')
+                const isStaffForDialog = isStaffRole(selectedAttendanceEmployee?.role, selectedAttendanceEmployee?.jobTitle)
                 const defaultOtCalculation = calculateDayOvertime(
                   employeeScheduleForDialog,
                   selectedAttendanceCell.day,

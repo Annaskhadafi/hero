@@ -9,6 +9,7 @@ import {
   approveContractReviewStep,
   deleteContractReviewAttachment,
   revertContractReviewStep,
+  updateContractReviewApproverDetails,
   updateContractReviewByApproverToken,
 } from '@/app/actions/contract-review'
 import { getUserSignatureAction } from '@/app/actions/user-signature'
@@ -290,6 +291,66 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
         }
       } catch (err: any) {
         alert(err?.message || 'Gagal menambahkan approver.')
+      }
+    })
+  }
+
+  const [isEditApproverModalOpen, setIsEditApproverModalOpen] = useState(false)
+  const [isEditApproverPending, startEditApproverTransition] = useTransition()
+  const [selectedApproverToEdit, setSelectedApproverToEdit] = useState<any | null>(null)
+  const [editApproverName, setEditApproverName] = useState('')
+  const [editApproverRole, setEditApproverRole] = useState('')
+  const [editApproverEmail, setEditApproverEmail] = useState('')
+
+  function handleOpenEditApprover(step?: any) {
+    const nonEmployeeApprovals = approvalHistory.filter(
+      (s: any) => s.approverRole !== 'employee' && s.stepOrder !== 2
+    )
+    const target = step || nonEmployeeApprovals[0]
+    if (!target) {
+      alert('Tidak ada penandatangan yang dapat diubah.')
+      return
+    }
+    setSelectedApproverToEdit(target)
+    setEditApproverName(target.approverName || '')
+    setEditApproverRole(target.approverRole || '')
+    setEditApproverEmail(target.approverEmail || '')
+    setIsEditApproverModalOpen(true)
+  }
+
+  function handleSaveApproverDetails() {
+    if (!selectedApproverToEdit || !editApproverName.trim()) {
+      alert('Nama penandatangan wajib diisi.')
+      return
+    }
+    startEditApproverTransition(async () => {
+      try {
+        const res = await updateContractReviewApproverDetails(token, selectedApproverToEdit.id, {
+          approverName: editApproverName.trim(),
+          approverRole: editApproverRole.trim(),
+          approverEmail: editApproverEmail.trim(),
+        })
+        if (res.success) {
+          setApprovalHistory((prev) =>
+            prev.map((s) =>
+              s.id === selectedApproverToEdit.id
+                ? {
+                    ...s,
+                    approverName: editApproverName.trim(),
+                    approverRole: editApproverRole.trim() || s.approverRole,
+                    approverEmail: editApproverEmail.trim(),
+                  }
+                : s
+            )
+          )
+          setIsEditApproverModalOpen(false)
+          alert('Data penandatangan berhasil diperbarui.')
+          router.refresh()
+        } else {
+          alert('Gagal: ' + res.error)
+        }
+      } catch (err: any) {
+        alert(err?.message || 'Gagal mengubah penandatangan.')
       }
     })
   }
@@ -1068,14 +1129,79 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
             </div>
           </section>
 
+          {/* Action Bar untuk Reviewer / Atasan */}
+          {!isEmployee && (
+            <section className={isMobileRoute ? 'rounded-xl bg-white p-3 shadow-sm ring-1 ring-slate-200/70 space-y-2' : 'rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200/70 sm:p-5 space-y-2'}>
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-slate-950">Pengaturan Review & Approver</h2>
+                <Badge variant="outline" className="text-[10px] font-normal text-indigo-700 bg-indigo-50 border-indigo-200">Akses Reviewer</Badge>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                Ubah rekomendasi review atau perbarui susunan penandatangan sebelum / sesudah bertanda tangan.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="text-xs h-8.5 font-medium border-slate-200 hover:bg-slate-50 justify-start"
+                  onClick={() => setIsEditReviewModalOpen(true)}
+                >
+                  <Edit className="size-3.5 mr-1.5 text-indigo-600 shrink-0" /> Edit Rekomendasi
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="text-xs h-8.5 font-medium border-slate-200 hover:bg-slate-50 justify-start"
+                  onClick={() => handleOpenEditApprover()}
+                >
+                  <Edit className="size-3.5 mr-1.5 text-amber-600 shrink-0" /> Edit Reviewer
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="text-xs h-8.5 font-medium border-slate-200 hover:bg-slate-50 justify-start"
+                  onClick={() => setIsAddApproverModalOpen(true)}
+                >
+                  <UserPlus className="size-3.5 mr-1.5 text-emerald-600 shrink-0" /> + Tambah Reviewer
+                </Button>
+              </div>
+            </section>
+          )}
+
           {/* Status Approval */}
           <section className={isMobileRoute ? 'rounded-xl bg-white p-3 shadow-sm ring-1 ring-slate-200/70' : 'rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200/70 sm:p-5'}>
-            <h2 className="text-sm font-semibold text-slate-950 mb-3">Status Approval</h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-slate-950">Status Approval</h2>
+              {!isEmployee && (
+                <button
+                  type="button"
+                  onClick={() => setIsAddApproverModalOpen(true)}
+                  className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+                >
+                  <UserPlus className="size-3" /> Tambah
+                </button>
+              )}
+            </div>
             <div className="max-h-[44vh] space-y-2 overflow-y-auto pr-1 xl:max-h-none xl:overflow-visible xl:pr-0">
               {approvalHistoryForDisplay.map((step: any, idx: number) => (
                 <div key={idx} className="flex items-start justify-between gap-3 rounded-lg border p-2.5">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-slate-900">{step.approverName}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium text-slate-900">{step.approverName}</p>
+                      {!isEmployee && step.approverRole !== 'employee' && step.stepOrder !== 2 && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditApprover(step)}
+                          className="rounded p-0.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
+                          title="Edit nama / peran penandatangan ini"
+                        >
+                          <Edit className="size-3" />
+                        </button>
+                      )}
+                    </div>
                     <p className="text-[10px] text-slate-500">Step {step.stepOrder} • {ROLE_LABELS[step.approverRole] || step.approverRole}</p>
                     {['approved', 'preview'].includes(step.status) ? (
                       <div className="mt-1 space-y-0.5 text-[10px] text-slate-500">
@@ -1396,30 +1522,6 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                         Karyawan belum menyelesaikan ujian online. Tombol persetujuan terkunci hingga ujian selesai.
                       </p>
                     )}
-                  </div>
-                )}
-
-                {/* Approver Action Bar: Public Edit & Dynamic Approver Insertion */}
-                {!isEmployee && (
-                  <div className="flex flex-wrap gap-2 pt-1 pb-1">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="text-xs h-8 flex-1"
-                      onClick={() => setIsEditReviewModalOpen(true)}
-                    >
-                      <Edit className="size-3 mr-1.5" /> Edit Review & Rekomendasi
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="text-xs h-8 flex-1"
-                      onClick={() => setIsAddApproverModalOpen(true)}
-                    >
-                      <UserPlus className="size-3 mr-1.5" /> + Tambah Approver
-                    </Button>
                   </div>
                 )}
 
@@ -2039,6 +2141,100 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
             </Button>
             <Button onClick={handleAddApproverRow} disabled={isAddApproverPending}>
               {isAddApproverPending ? 'Menambahkan...' : 'Sisipkan Approver'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Edit Penandatangan (Reviewer) */}
+      <Dialog open={isEditApproverModalOpen} onOpenChange={setIsEditApproverModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Data Penandatangan (Reviewer)</DialogTitle>
+            <DialogDescription>
+              Ubah nama, peran/jabatan, atau email penandatangan di alur persetujuan dokumen ini.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-3.5 py-3 text-sm">
+            {approvalHistory.filter((s: any) => s.approverRole !== 'employee' && s.stepOrder !== 2).length > 1 && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Pilih Penandatangan</Label>
+                <select
+                  aria-label="Pilih Penandatangan"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs ring-offset-background"
+                  value={selectedApproverToEdit?.id ?? ''}
+                  onChange={(e) => {
+                    const found = approvalHistory.find((s: any) => s.id === Number(e.target.value))
+                    if (found) {
+                      setSelectedApproverToEdit(found)
+                      setEditApproverName(found.approverName || '')
+                      setEditApproverRole(found.approverRole || '')
+                      setEditApproverEmail(found.approverEmail || '')
+                    }
+                  }}
+                >
+                  {approvalHistory
+                    .filter((s: any) => s.approverRole !== 'employee' && s.stepOrder !== 2)
+                    .map((s: any) => (
+                      <option key={s.id} value={s.id}>
+                        Step {s.stepOrder}: {s.approverName} ({ROLE_LABELS[s.approverRole] || s.approverRole})
+                      </option>
+                    ))}
+                </select>
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label htmlFor="editApproverName" className="text-xs font-semibold">
+                Nama Penandatangan <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="editApproverName"
+                value={editApproverName}
+                onChange={(e) => setEditApproverName(e.target.value)}
+                placeholder="Contoh: Budi Santoso"
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="editApproverRole" className="text-xs font-semibold">
+                Jabatan / Peran Approval
+              </Label>
+              <Input
+                id="editApproverRole"
+                value={editApproverRole}
+                onChange={(e) => setEditApproverRole(e.target.value)}
+                placeholder="Contoh: Section Head / PJO"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="editApproverEmail" className="text-xs font-semibold">
+                Email Penandatangan (Opsional)
+              </Label>
+              <Input
+                id="editApproverEmail"
+                type="email"
+                value={editApproverEmail}
+                onChange={(e) => setEditApproverEmail(e.target.value)}
+                placeholder="contoh: budi@chitraparatama.com"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsEditApproverModalOpen(false)}
+              disabled={isEditApproverPending}
+            >
+              Batal
+            </Button>
+            <Button onClick={handleSaveApproverDetails} disabled={isEditApproverPending}>
+              {isEditApproverPending ? 'Menyimpan...' : 'Simpan Perubahan'}
             </Button>
           </DialogFooter>
         </DialogContent>

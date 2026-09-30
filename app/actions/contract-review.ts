@@ -2351,19 +2351,45 @@ export async function approveContractReviewStep(
       return { success: false, error: 'Approval ini sudah diproses atau tidak lagi aktif.' }
     }
 
-    const [nextApproval] = await db
+    // Check ALL remaining steps for this review
+    const allRemainingSteps = await db
       .select()
       .from(hcContractReviewApprovals)
-      .where(and(eq(hcContractReviewApprovals.reviewId, approval.reviewId), eq(hcContractReviewApprovals.status, 'waiting')))
+      .where(
+        and(
+          eq(hcContractReviewApprovals.reviewId, approval.reviewId),
+          ne(hcContractReviewApprovals.id, approval.id)
+        )
+      )
       .orderBy(asc(hcContractReviewApprovals.stepOrder))
-      .limit(1)
 
-    if (nextApproval) {
-      await db.update(hcContractReviewApprovals).set({ status: 'pending' }).where(eq(hcContractReviewApprovals.id, nextApproval.id))
-      const [review] = await db.select().from(hcEmployeeContractReviews).where(eq(hcEmployeeContractReviews.id, approval.reviewId)).limit(1)
+    const unapprovedSteps = allRemainingSteps.filter((s) => s.status !== 'approved')
+
+    if (unapprovedSteps.length > 0) {
+      // Document is STILL IN PROGRESS.
+      // Activate the next step in line if none is already pending
+      const hasPendingStep = unapprovedSteps.some((s) => s.status === 'pending')
+      if (!hasPendingStep) {
+        const nextStepToActivate = unapprovedSteps[0]
+        await db
+          .update(hcContractReviewApprovals)
+          .set({ status: 'pending' })
+          .where(eq(hcContractReviewApprovals.id, nextStepToActivate.id))
+      }
+
+      await db
+        .update(hcEmployeeContractReviews)
+        .set({ status: 'in_progress', updatedAt: new Date() })
+        .where(eq(hcEmployeeContractReviews.id, approval.reviewId))
+
+      const [review] = await db
+        .select()
+        .from(hcEmployeeContractReviews)
+        .where(eq(hcEmployeeContractReviews.id, approval.reviewId))
+        .limit(1)
       if (review) await sendPendingContractReviewApprovalEmail(review)
     } else {
-      // Final step completed — update contract dates based on recommendation
+      // Final step completed — ALL approvals are truly approved!
       const [review] = await db.select().from(hcEmployeeContractReviews).where(eq(hcEmployeeContractReviews.id, approval.reviewId)).limit(1)
       if (review) {
         const today = new Date()
@@ -3022,9 +3048,15 @@ export async function addContractReviewApproverRow(
         approverName: newApprover.approverName.trim(),
         approverEmail: newApprover.approverEmail.trim(),
         approverRole: newApprover.approverRole.trim() || 'Co-PJO / Supervisor',
-        status: 'pending',
+        status: currentApproval.status === 'approved' ? 'pending' : 'waiting',
       })
       .returning()
+
+    // Ensure review status remains in_progress if it was previously completed
+    await db
+      .update(hcEmployeeContractReviews)
+      .set({ status: 'in_progress', updatedAt: new Date() })
+      .where(eq(hcEmployeeContractReviews.id, currentApproval.reviewId))
 
     safeRevalidatePath('/dashboard/hc/contract-review')
     safeRevalidatePath(`/dashboard/hc/contract-review/${currentApproval.reviewId}`)
@@ -3034,6 +3066,89 @@ export async function addContractReviewApproverRow(
   } catch (error: any) {
     console.error('Error adding contract review approver row:', error)
     return { success: false, error: error.message || 'Gagal menambahkan baris approver.' }
+  }
+}
+
+export async function updateContractReviewApproverDetails(
+  token: string,
+  approvalId: number,
+  data: {
+    approverName: string
+    approverRole?: string
+    approverEmail?: string
+  }
+) {
+  try {
+    await ensureContractReviewWorkflowTables()
+    const [currentApproval] = await db
+      .select()
+      .from(hcContractReviewApprovals)
+      .where(eq(hcContractReviewApprovals.approvalToken, token))
+      .limit(1)
+
+    if (!currentApproval) {
+      return { success: false, error: 'Approval step tidak ditemukan.' }
+    }
+
+    if (currentApproval.approverRole === 'employee' || currentApproval.stepOrder === 2) {
+      return {
+        success: false,
+        error: 'Karyawan yang sedang dievaluasi tidak memiliki izin untuk mengedit approver.',
+      }
+    }
+
+    if (!data.approverName.trim()) {
+      return { success: false, error: 'Nama penandatangan wajib diisi.' }
+    }
+
+    const [targetApproval] = await db
+      .select()
+      .from(hcContractReviewApprovals)
+      .where(
+        and(
+          eq(hcContractReviewApprovals.id, approvalId),
+          eq(hcContractReviewApprovals.reviewId, currentApproval.reviewId)
+        )
+      )
+      .limit(1)
+
+    if (!targetApproval) {
+      return { success: false, error: 'Target penandatangan tidak ditemukan.' }
+    }
+
+    if (targetApproval.approverRole === 'employee' || targetApproval.stepOrder === 2) {
+      return { success: false, error: 'Step penandatangan karyawan tidak dapat diubah.' }
+    }
+
+    await db
+      .update(hcContractReviewApprovals)
+      .set({
+        approverName: data.approverName.trim(),
+        approverRole: data.approverRole?.trim() || targetApproval.approverRole,
+        approverEmail: data.approverEmail?.trim() ?? targetApproval.approverEmail,
+      })
+      .where(eq(hcContractReviewApprovals.id, approvalId))
+
+    // If step 1 (leader/creator), keep leaderName and leaderTitle on review table in sync
+    if (targetApproval.stepOrder === 1) {
+      await db
+        .update(hcEmployeeContractReviews)
+        .set({
+          leaderName: data.approverName.trim(),
+          leaderTitle: data.approverRole?.trim() || undefined,
+          updatedAt: new Date(),
+        })
+        .where(eq(hcEmployeeContractReviews.id, currentApproval.reviewId))
+    }
+
+    safeRevalidatePath('/dashboard/hc/contract-review')
+    safeRevalidatePath(`/dashboard/hc/contract-review/${currentApproval.reviewId}`)
+    safeRevalidatePath(`/review/${token}`)
+
+    return { success: true }
+  } catch (error: any) {
+    console.error('Error updating contract review approver details:', error)
+    return { success: false, error: error.message || 'Gagal mengubah penandatangan.' }
   }
 }
 

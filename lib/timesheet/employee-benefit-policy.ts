@@ -84,11 +84,18 @@ export function normalizeEmployeeBenefitConfig(
 }
 
 export function isLocalEmployee(manpower: string | null | undefined) {
-  return !String(manpower ?? 'Lokal')
+  const normalized = String(manpower ?? 'Lokal')
     .trim()
     .toLowerCase()
     .replace(/[-_]/g, ' ')
-    .startsWith('non ')
+  if (
+    normalized.startsWith('non ') ||
+    normalized.includes('non lokal') ||
+    normalized.includes('non local')
+  ) {
+    return false
+  }
+  return true
 }
 
 function normalizeLocation(value: string | null | undefined) {
@@ -107,6 +114,24 @@ function isSameLocation(left: string, right: string) {
 }
 
 export function isNonLocalEmployee(identity: EmployeeBenefitIdentity) {
+  const manpowerStr = String(identity.manpower ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[-_]/g, ' ')
+
+  // Prioritize explicit database manpower status if available
+  if (
+    manpowerStr.startsWith('non ') ||
+    manpowerStr.includes('non lokal') ||
+    manpowerStr.includes('non local')
+  ) {
+    return true
+  }
+  if (manpowerStr.includes('lokal') || manpowerStr.includes('local')) {
+    return false
+  }
+
+  // Fallback to pointOfHire vs workLocations comparison if manpower is not explicitly set
   const pointOfHire = normalizeLocation(identity.pointOfHire)
   const workLocations = (identity.workLocations ?? []).map(normalizeLocation).filter(Boolean)
 

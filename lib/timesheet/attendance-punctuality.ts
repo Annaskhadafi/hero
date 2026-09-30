@@ -85,11 +85,17 @@ export function resolveSiteAttendanceClockConfig(
   })
 }
 
-export function isStaffRole(role?: string | null): boolean {
-  const r = (role ?? '').toLowerCase().trim()
-  if (r.includes('non staff') || r.includes('non-staff') || r.includes('nonstaff')) return false
-  if (r.includes('staff')) return true
-  if (/manager|supervisor|admin|koordinator|coord|lead|head|superintendent|engineer|officer/i.test(r)) return true
+export function isStaffRole(role?: string | null, jobTitle?: string | null): boolean {
+  const combined = `${role ?? ''} ${jobTitle ?? ''}`.toLowerCase().trim()
+  if (!combined) return false
+  if (combined.includes('non staff') || combined.includes('non-staff') || combined.includes('nonstaff')) return false
+  if (/^(serviceman|repairman|operator|mekanik|mechanic|helper|driver|technician pa)/i.test((role ?? '').trim()) && !combined.includes('leader') && !combined.includes('spv')) {
+    return false
+  }
+  if (combined.includes('staff')) return true
+  if (/manager|supervisor|spv|admin|koordinator|coord|leader|lead|head|superintendent|engineer|analyst|officer|specialist|director|trainer|support|secretary|planning|planing/i.test(combined)) {
+    return true
+  }
   return false
 }
 
