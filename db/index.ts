@@ -70,8 +70,8 @@ function getPool(): Pool {
   const pool = new Pool({
     connectionString,
     ssl: getSslConfig(connectionString),
-    idleTimeoutMillis: process.env.NODE_ENV === "production" ? 15000 : 5000,
-    connectionTimeoutMillis: 30000,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 6000,
     max: maxConnections,
     keepAlive: true,
     keepAliveInitialDelayMillis: 5000,

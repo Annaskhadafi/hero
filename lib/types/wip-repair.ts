@@ -26,6 +26,8 @@ export type WipRepairRecord = {
   bast_date: string | null
   invoice: string | null
   invoice_date: string | null
+  is_hero?: boolean
+  source?: 'hero' | 'api' | string
 }
 
 export type WipRepairApiResponse = {

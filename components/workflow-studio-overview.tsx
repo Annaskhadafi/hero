@@ -586,6 +586,7 @@ function WorkflowBuilderDialog({
       if (lower.includes('junaidi')) map.set('junaidi', e.id.toString())
       if (lower.includes('iqbal')) map.set('iqbal', e.id.toString())
       if (lower.includes('ali') && lower.includes('rahman')) map.set('alirahman', e.id.toString())
+      if (lower.includes('renaldo')) map.set('renaldo', e.id.toString())
     }
     return map
   }, [employeeOptions])
@@ -925,6 +926,10 @@ function WorkflowBuilderDialog({
     { id: 'step-1', label: 'Admin / PJO / HSE', type: 'employee' },
   ]
 
+  const jobcardQcDefaults: ApprovalStep[] = [
+    { id: 'step-1', label: 'Sign QC / Leader', type: 'employee' },
+  ]
+
   const generalDefaults: ApprovalStep[] = [
     { id: 'step-0', label: 'Section', type: 'section' },
     { id: 'step-1', label: 'Leader', type: 'employee' },
@@ -945,7 +950,8 @@ function WorkflowBuilderDialog({
 
   function buildInitialSteps(): ApprovalStep[] {
     const menuKeyLower = (selectedMenuKey || initial?.id || '').toLowerCase()
-    const isFormWo = menuKeyLower.includes('wo')
+    const isJobcard = menuKeyLower.includes('jobcard')
+    const isFormWo = menuKeyLower.includes('wo') && !isJobcard
     const isRfr = menuKeyLower.includes('rfr')
     const isFiveR = menuKeyLower.includes('5r') || menuKeyLower.includes('five-r')
     const isSummary = menuKeyLower.includes('summary')
@@ -958,19 +964,21 @@ function WorkflowBuilderDialog({
       ? formWoServiceDefaults
       : formWoRepairDefaults
 
-    const defaults = isRfr
-      ? rfrDefaults
-      : isFormWo
-        ? formWoDefaults
-        : isFiveR
-          ? fiveRDefaults
-          : isMaterialTools
-            ? materialToolsDefaults
-            : isSummary
-              ? summaryApdDefaults
-              : isApd
-                ? apdDefaults
-                : generalDefaults
+    const defaults = isJobcard
+      ? jobcardQcDefaults
+      : isRfr
+        ? rfrDefaults
+        : isFormWo
+          ? formWoDefaults
+          : isFiveR
+            ? fiveRDefaults
+            : isMaterialTools
+              ? materialToolsDefaults
+              : isSummary
+                ? summaryApdDefaults
+                : isApd
+                  ? apdDefaults
+                  : generalDefaults
 
     if (isSummary) {
       const filteredExisting = (initial?.globalSteps || []).filter((gs) => {
@@ -1553,6 +1561,18 @@ function WorkflowBuilderDialog({
       })
     }
 
+    if (menuKeyLower.includes('jobcard')) {
+      const defaultQcId = employeeLookupByName.get('renaldo') ?? '5'
+      return MASTER_CATEGORIZED_SITES.map((site, index) => ({
+        key: `site-jc-${index}-${site.id}`,
+        siteId: site.id.toString(),
+        departmentId: '',
+        values: {
+          'step-1': defaultQcId,
+        },
+      }))
+    }
+
     return []
   })
 
@@ -2003,6 +2023,18 @@ function WorkflowBuilderDialog({
                         })
                       }
                     }
+                    setSiteData(autoRows)
+                  } else if (newKey.toLowerCase().includes('jobcard')) {
+                    setApprovalSteps(jobcardQcDefaults)
+                    const defaultQcId = employeeLookupByName.get('renaldo') ?? '5'
+                    const autoRows = MASTER_CATEGORIZED_SITES.map((site, index) => ({
+                      key: `site-jc-${index}-${site.id}`,
+                      siteId: site.id.toString(),
+                      departmentId: '',
+                      values: {
+                        'step-1': defaultQcId,
+                      },
+                    }))
                     setSiteData(autoRows)
                   } else {
                     setApprovalSteps(generalDefaults)

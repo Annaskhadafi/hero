@@ -9,6 +9,7 @@ import { approvals, employees } from '@/db/schema/hero'
 import { resolveApprovalRouteForActivity } from '@/lib/approval-engine'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import { repairFormWo, repairWipPo } from '@/db/schema/form-wo'
+import { tireRepairInspections } from '@/db/schema/tire-repair'
 import { getCurrentEmployee } from '@/lib/get-current-employee'
 import { getCurrentMenuPermission } from '@/lib/hero-access'
 import {
@@ -174,33 +175,93 @@ export async function getWaitingWoFromApi(forceRefresh = false): Promise<WipRepa
   }
 
   try {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 6000)
+    let apiList: WipRepairRecord[] = []
+    try {
+      const response = await fetch(WIP_REPAIR_API_URL, {
+        next: { revalidate: 300 },
+      })
 
-    const response = await fetch(WIP_REPAIR_API_URL, {
-      signal: controller.signal,
-      next: { revalidate: 300 },
-    }).finally(() => clearTimeout(timeoutId))
-
-    if (!response.ok) {
-      console.error(`Failed to fetch WIP Repair API: ${response.status}`)
-      return waitingWoCache?.data || []
+      if (response.ok) {
+        const contentType = response.headers.get('content-type') || ''
+        if (contentType.includes('application/json')) {
+          const payload = (await response.json()) as { data: WipRepairRecord[] }
+          if (payload && Array.isArray(payload.data)) {
+            apiList = payload.data
+              .filter((item) => isWaitingWorkOrder(item.wo))
+              .map((item) => ({ ...item, is_hero: false, source: 'api' }))
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch external WIP Repair API:', err)
     }
 
-    const contentType = response.headers.get('content-type') || ''
-    if (!contentType.includes('application/json')) {
-      console.error('Non-JSON response from WIP Repair API')
-      return waitingWoCache?.data || []
+    // Fetch local HERO tire repair inspections from database
+    let heroWipList: WipRepairRecord[] = []
+    try {
+      await ensureFormWoTable()
+      const inspections = await db
+        .select()
+        .from(tireRepairInspections)
+        .orderBy(desc(tireRepairInspections.createdAt))
+
+      const existingFormWos = await db
+        .select({ tireSn: repairFormWo.tireSn, idWo: repairFormWo.idWo })
+        .from(repairFormWo)
+      const existingSnSet = new Set(
+        existingFormWos
+          .map((f) => (f.tireSn || f.idWo || '').trim().toLowerCase())
+          .filter(Boolean)
+      )
+
+      heroWipList = inspections
+        .filter((insp) => !existingSnSet.has(insp.serialNumber.trim().toLowerCase()))
+        .map((insp) => {
+          const formatDateStr = (d: Date | null | undefined) => {
+            if (!d) return ''
+            try {
+              return d.toISOString().split('T')[0]
+            } catch {
+              return String(d)
+            }
+          }
+          return {
+            id_wo: `HERO-${insp.id}`,
+            wo: 'Waiting WO',
+            job_type: insp.status || 'Repair',
+            status: insp.status || 'Repair',
+            size: insp.tireSize,
+            brand: insp.brand || '-',
+            pattern: insp.pattern || '-',
+            type: insp.typeConstruction || 'RADIAL',
+            nocargo: insp.cargoManifestNo || null,
+            tire_sn: insp.serialNumber,
+            injury: insp.repairDuration || 'R1',
+            remark: insp.remarks || '',
+            customer: insp.customer || 'PT Kaltim Prima Coal',
+            site: insp.customerSite || insp.inspectLocation || 'Sangatta KPC',
+            store_loc: insp.inspectLocation || 'Workshop Sangatta',
+            inspect_date: formatDateStr(insp.dateInspect),
+            inspector: insp.reportBy,
+            createby: insp.reportBy,
+            wo_date: null,
+            received_date: formatDateStr(insp.dateReceived),
+            receiver: insp.reportBy,
+            po: null,
+            bast: null,
+            po_date: null,
+            bast_date: null,
+            invoice: null,
+            invoice_date: null,
+            is_hero: true,
+            source: 'hero',
+          }
+        })
+    } catch (e) {
+      console.error('Failed to query local HERO tire repair inspections:', e)
     }
 
-    const payload = (await response.json()) as { data: WipRepairRecord[] }
-
-    if (!payload || !Array.isArray(payload.data)) {
-      return waitingWoCache?.data || []
-    }
-
-    // Filter hanya yang "waiting wo"
-    let waitingList = payload.data.filter((item) => isWaitingWorkOrder(item.wo))
+    let waitingList = [...heroWipList, ...apiList]
 
     // Merge saved PO numbers & PO dates from database repair_wip_po
     try {

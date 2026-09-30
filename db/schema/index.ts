@@ -148,6 +148,7 @@ export { marketingCampaigns, campaignRecipients, marketingCampaignsRelations, ca
 export { slowMovingProducts, slowMovingProductsRelations } from "./slow-moving-products";
 export { cosmeticTires, cosmeticTiresRelations } from "./cosmetic-tires";
 export { tirePerformanceRecords, tirePerformanceRecordsRelations } from "./tire-performance";
+export { tireRepairInspections, tireRepairPhotos, tireRepairInspectionsRelations, tireRepairPhotosRelations } from "./tire-repair";
 export { rmiRecords, quarterlyExchangeRates, rmiWeights, rmiRecordsRelations, quarterlyExchangeRatesRelations, rmiWeightsRelations } from "./rmi";
 export { repairMasterItems, repairMasterSites } from "./repair-master";
 export { zmc9StockSap, me2lPurchDocsSap, zvendorPoReportSap, salesRevenueSap, salesRevenueSap as historyOrders, coverLetterSigners } from "./sap";

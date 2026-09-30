@@ -564,6 +564,7 @@ async function resolveDynamicApproverForRoleOrSection(options: {
   sectionKeywords: string[]
   nodeKeywords?: string[]
   roleKeywords?: string[]
+  preferredName?: string
   defaultLabel: string
 }): Promise<{ id: number | null; name: string; label: string }> {
   // Special case for Team Billing: prioritize active Billing employee (Andika Ferdiansyah)
@@ -605,7 +606,47 @@ async function resolveDynamicApproverForRoleOrSection(options: {
     }
   }
 
-  // 1. Try masterSections by sectionKeywords
+  // 1. Try preferredName if supplied
+  if (options.preferredName) {
+    const [emp] = await db
+      .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle })
+      .from(employees)
+      .where(and(ilike(employees.name, `%${options.preferredName}%`), eq(employees.isActive, true)))
+      .limit(1)
+
+    if (emp?.id && emp?.name) {
+      return {
+        id: emp.id,
+        name: emp.name,
+        label: emp.jobTitle || options.defaultLabel,
+      }
+    }
+  }
+
+  // 2. Try roleKeywords / nodeKeywords in employees table
+  const specificRoleTerms = [...(options.roleKeywords || []), ...(options.nodeKeywords || [])]
+  for (const term of specificRoleTerms) {
+    const [emp] = await db
+      .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle })
+      .from(employees)
+      .where(
+        and(
+          or(ilike(employees.jobTitle, `%${term}%`), ilike(employees.name, `%${term}%`)),
+          eq(employees.isActive, true)
+        )
+      )
+      .limit(1)
+
+    if (emp?.id && emp?.name) {
+      return {
+        id: emp.id,
+        name: emp.name,
+        label: emp.jobTitle || options.defaultLabel,
+      }
+    }
+  }
+
+  // 3. Try masterSections by sectionKeywords
   for (const kw of options.sectionKeywords) {
     const [sec] = await db
       .select({
@@ -628,7 +669,7 @@ async function resolveDynamicApproverForRoleOrSection(options: {
     }
   }
 
-  // 2. Try orgChartNodes by nodeKeywords / roleKeywords / sectionKeywords
+  // 4. Try orgChartNodes by nodeKeywords / roleKeywords / sectionKeywords
   const nodeSearchTerms = [
     ...(options.nodeKeywords || []),
     ...(options.roleKeywords || []),
@@ -662,7 +703,7 @@ async function resolveDynamicApproverForRoleOrSection(options: {
     }
   }
 
-  // 3. Try employees table by section or jobTitle
+  // 5. Try employees table by section or jobTitle
   for (const kw of options.sectionKeywords) {
     const [emp] = await db
       .select({
@@ -821,14 +862,16 @@ async function resolveFormWoRepairRetreadApprovalRoute(
   const qcApprover = await resolveDynamicApproverForRoleOrSection({
     sectionKeywords: ['Repair / Retread Operation', 'Repair', 'Retread'],
     nodeKeywords: ['QC / Leader', 'QC', 'Leader Repair'],
-    roleKeywords: ['QC / Leader', 'QC Staff', 'Leader Repair / Retread Operation'],
+    roleKeywords: ['QC / Leader', 'QC Staff', 'Repair/Retread Planner', 'Leader Repair / Retread Operation'],
+    preferredName: 'Renaldo',
     defaultLabel: 'QC / Leader',
   })
 
   const repairSpvApprover = await resolveDynamicApproverForRoleOrSection({
     sectionKeywords: ['Repair / Retread Operation', 'Repair', 'Retread'],
     nodeKeywords: ['Repair Retread Operation SPV', 'SPV Repair / Retread', 'Repair / Retread Operation SPV'],
-    roleKeywords: ['Leader Repair / Retread Operation', 'Repair / Retread Operation SPV'],
+    roleKeywords: ['Repair Retread Operation SPV', 'Repair / Retread SPV', 'SPV Repair / Retread'],
+    preferredName: 'Ary Maulana',
     defaultLabel: 'Repair Retread Operation SPV',
   })
 
@@ -924,6 +967,9 @@ async function resolveFormWoRepairRetreadApprovalRoute(
     steps,
   }
 }
+
+
+
 
 
 async function resolveApdApprovalRoute(context: ApprovalContext): Promise<ApprovalRouteResolution> {
@@ -1664,6 +1710,7 @@ export async function resolveApprovalRouteForActivity(
         ],
       }
     }
+
     if (context.transactionType === 'form_wo_service_mvc') {
       return resolveFormWoServiceApprovalRoute(context, 'trakindo')
     }

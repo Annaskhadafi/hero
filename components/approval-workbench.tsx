@@ -895,6 +895,7 @@ export function InboxTab({
         const isSummary = apdItem?.activityType === 'Summary APD' || apdItem?.title?.toLowerCase().includes('summary')
         const isMaterial = apdItem?.activityType?.toLowerCase().includes('material') || apdItem?.title?.toLowerCase().includes('material')
         const isTools = apdItem?.activityType?.toLowerCase().includes('tools') || apdItem?.title?.toLowerCase().includes('tools')
+        const isJobcard = apdItem?.activityType === 'Jobcard Repair (QC)' || apdItem?.activityType === 'jobcard_qc' || (apdItem?.title || '').toLowerCase().includes('job card') || (apdItem?.title || '').toLowerCase().includes('jobcard')
 
         const resolvedCategory = isSummary
           ? 'SUMMARY'
@@ -902,6 +903,8 @@ export function InboxTab({
           ? 'MATERIAL'
           : isTools
           ? 'TOOLS'
+          : isJobcard
+          ? 'JOBCARD'
           : isApd
           ? 'APD'
           : 'GENERAL'
@@ -912,6 +915,8 @@ export function InboxTab({
           ? 'Permintaan Material'
           : isTools
           ? 'Permintaan Tools'
+          : isJobcard
+          ? 'Jobcard Repair (QC)'
           : isApd
           ? 'Permintaan APD'
           : 'Form Activity'
@@ -3988,6 +3993,52 @@ export function InboxTab({
                           </div>
                         )
                       })()}
+
+                      {/* Jobcard Repair (QC) Document Preview */}
+                      {(currentBatchDoc.category === 'JOBCARD' || (currentBatchDoc as any).activityType === 'Jobcard Repair (QC)' || (currentBatchDoc as any).activityType === 'jobcard_qc') && (
+                        <div>
+                          <div className="text-center mb-3">
+                            <p className="font-bold text-[10pt] text-black mb-0.5 uppercase">PT. CHITRA PARATAMA</p>
+                            <h2 className="font-bold text-[11.5pt] text-black uppercase tracking-wider">
+                              REPAIR JOB CARD (F.INPR.REM.003.00)
+                            </h2>
+                          </div>
+
+                          <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-2 [&_td]:py-1 text-[8.5pt]">
+                            <tbody>
+                              <tr>
+                                <td colSpan={4} className="font-bold bg-slate-50 text-black py-0.5">Informasi Job Card &amp; Otorisasi QC</td>
+                              </tr>
+                              <tr>
+                                <td className="w-1/4 font-bold bg-slate-50 text-black">Nomor Job Card</td>
+                                <td className="w-1/4 font-mono font-semibold text-black">{currentBatchDoc.documentNumber || 'JC-DRAFT'}</td>
+                                <td className="w-1/4 font-bold bg-slate-50 text-black">Tanggal Submit</td>
+                                <td className="w-1/4 font-semibold text-black">{formatDate(currentBatchDoc.submittedAt)}</td>
+                              </tr>
+                              <tr>
+                                <td className="font-bold bg-slate-50 text-black">Serial Number (SN)</td>
+                                <td className="font-mono font-bold text-black">{currentBatchDoc.unitNumber || '-'}</td>
+                                <td className="font-bold bg-slate-50 text-black">Pelanggan / Site</td>
+                                <td className="font-semibold text-black">{currentBatchDoc.customerName || 'PT Kaltim Prima Coal'} ({currentBatchDoc.siteName || 'Workshop Sangatta'})</td>
+                              </tr>
+                              <tr>
+                                <td className="font-bold bg-slate-50 text-black">Nama Pemohon</td>
+                                <td className="font-semibold text-black">{currentBatchDoc.employeeName || 'Teknisi Workshop'}</td>
+                                <td className="font-bold bg-slate-50 text-black">Approver QC / Leader</td>
+                                <td className="font-semibold text-black">{currentBatchDoc.approverName || 'Renaldo'}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+
+                          <div className="p-3 bg-slate-50 border border-slate-300 rounded-lg text-xs space-y-1 mb-3">
+                            <div className="font-bold text-slate-800">Ringkasan Pengajuan:</div>
+                            <div className="text-slate-700">{currentBatchDoc.title || 'Job Card Repair Otorisasi QC'}</div>
+                            {currentBatchDoc.decisionNote && (
+                              <div className="text-slate-600 text-[11px] italic mt-1">Catatan Persetujuan: {currentBatchDoc.decisionNote}</div>
+                            )}
+                          </div>
+                        </div>
+                      )}
 
                       {/* General Group (Form Activity) */}
                       {!isApdDoc &&

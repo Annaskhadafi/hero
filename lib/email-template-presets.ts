@@ -471,6 +471,7 @@ Silakan tinjau lampiran PDF RFR pada email ini dan lakukan tanda tangan digital 
       approvalLink: 'https://hero.chitraparatama.com/review/rfr/token123',
     },
   },
+
   {
     name: 'RFR Completed & Lowongan Generated',
     templateCode: 'rfr_completed_notification',

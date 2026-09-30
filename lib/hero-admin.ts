@@ -1533,6 +1533,30 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'Central Service',
+    groupLabel: 'Repair & Retread',
+    title: 'Tire Inspection Report',
+    url: '/dashboard/repair-retread/inspection',
+    iconName: 'file-check',
+    resource: 'repair_retread_inspection',
+    sortOrder: 7,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Central Service',
+    groupLabel: 'Repair & Retread',
+    title: 'Repair Job Card',
+    url: '/dashboard/repair-retread/jobcard',
+    iconName: 'file-text',
+    resource: 'repair_jobcard',
+    sortOrder: 8,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Central Service',
     groupLabel: 'Warehouse Repair',
     title: 'Dashboard',
     url: '/dashboard/warehouse-repair',
@@ -2207,6 +2231,7 @@ Nomor Request: #{{requestId}}
 Silakan masuk ke dashboard approval untuk meninjau dan mengambil tindakan.`,
     isActive: true,
   },
+
   {
     name: 'Approval SLA Reminder',
     templateCode: 'approval_sla_reminder',

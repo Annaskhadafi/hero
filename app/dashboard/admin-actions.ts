@@ -4588,6 +4588,10 @@ async function applyApprovalDecision(params: {
       apdSiteId: apdRequests.siteId,
       repairFormWoId: approvals.repairFormWoId,
       apdSummaryId: approvals.apdSummaryId ?? null,
+      rawActivityType: approvals.activityType,
+      rawResolutionSource: approvals.resolutionSource,
+      rawFormName: approvals.formName,
+      rawRequestNumber: approvals.requestNumber,
     })
     .from(approvals)
     .leftJoin(activities, eq(approvals.activityId, activities.id))
@@ -4666,6 +4670,8 @@ async function applyApprovalDecision(params: {
       note: params.note,
     })
   }
+
+
 
   // Summary APD approval handling
   if (

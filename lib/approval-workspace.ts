@@ -38,6 +38,7 @@ import {
   notificationDeliveries,
 } from '@/db/schema/hero'
 import { apdSummaries } from '@/db/schema/apd-summary'
+import { tireRepairJobcards } from '@/db/schema/tire-repair'
 import { ensurePtwApprovalsExist, syncPtwApproverNames } from '@/app/dashboard/hse/izin-kerja-ptw/actions'
 import type { ApprovalRouteResolution } from '@/lib/approval-engine'
 import { parseApprovalNoteEntries } from '@/lib/approval-notes'
@@ -891,7 +892,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
               ? 'Summary APD'
               : row.apdRequestId != null
                 ? `Request ${apd?.requestCategory ?? 'APD'}`
-                : 'Unknown'
+                : ((row as any).rawActivityType === 'jobcard_qc' ? 'Jobcard Repair (QC)' : ((row as any).rawActivityType ?? 'Workflow'))
 
     const currentRepairWo = row.repairFormWoId ? (repairWoMap.get(row.repairFormWoId) ?? null) : null
 
@@ -904,6 +905,8 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       title = currentRepairWo
         ? `WO ${(currentRepairWo.jenisPengajuan || 'WO').toUpperCase()} - ${currentRepairWo.noPengajuan || currentRepairWo.idWo || 'Draft'}`
         : (row.activityTitle || row.remarks || 'Work Order')
+    } else if ((row as any).rawActivityTitle) {
+      title = (row as any).rawActivityTitle
     } else if (titleFromSnapshot) {
       title = titleFromSnapshot
     } else if (row.apdSummaryId != null) {
@@ -949,27 +952,36 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
     }
 
     let resolvedRequesterName = 'Unknown Requester'
+    const jcCreatedById = (row as any).jobcardCreatedBy ? Number((row as any).jobcardCreatedBy) : null
+    const jcCreatorEmp = jcCreatedById ? requesterMap.get(jcCreatedById) : null
+
     if (fiveR?.auditorName) {
       resolvedRequesterName = fiveR.auditorName
     } else if (currentRepairWo?.pemohon) {
       resolvedRequesterName = currentRepairWo.pemohon
+    } else if (jcCreatorEmp?.name) {
+      resolvedRequesterName = jcCreatorEmp.name
     } else if (requester?.name) {
       resolvedRequesterName = requester.name
+    } else if ((row as any).rawActivityType === 'jobcard_qc') {
+      resolvedRequesterName = 'Teknisi Workshop'
     } else if (row.apdSummaryId != null) {
       resolvedRequesterName = 'Pemohon Summary APD'
     } else if (row.approverName) {
       resolvedRequesterName = row.approverName
     }
 
-    const resolvedRequesterEmail = fiveR?.auditorEmail || requester?.email || ''
-    const resolvedDepartment = requester?.department || (fiveR ? 'Quality Management' : (row.apdSummaryId != null ? 'HSE / Safety' : ''))
-    const resolvedSection = requester?.section || (row.apdSummaryId != null && summary ? (summary.sectionId === 33 || summary.sectionId === 34 ? 'Service Operation' : '') : '') || (fiveR ? 'CPI' : '')
-    const resolvedJobTitle = requester?.jobTitle || (currentRepairWo ? 'Pemohon WO' : fiveR ? 'Auditor 5R' : (row.apdSummaryId != null ? 'Submitter Summary' : ''))
-    const resolvedSiteName = currentRepairWo?.site || (row.apdSummaryId != null && summary ? (summary.targetSite === 'VALE' ? 'Vale' : 'Gabungan Site') : null) || site?.name || siteNameFromSnapshot || (fiveR ? 'Balikpapan' : '-')
+    const resolvedRequesterEmail = fiveR?.auditorEmail || jcCreatorEmp?.email || requester?.email || ''
+    const resolvedDepartment = requester?.department || jcCreatorEmp?.department || (fiveR ? 'Quality Management' : (row.apdSummaryId != null ? 'HSE / Safety' : ''))
+    const resolvedSection = requester?.section || jcCreatorEmp?.section || (row.apdSummaryId != null && summary ? (summary.sectionId === 33 || summary.sectionId === 34 ? 'Service Operation' : '') : '') || (fiveR ? 'CPI' : '')
+    const resolvedJobTitle = requester?.jobTitle || jcCreatorEmp?.jobTitle || (currentRepairWo ? 'Pemohon WO' : fiveR ? 'Auditor 5R' : (row.apdSummaryId != null ? 'Submitter Summary' : ''))
+    const resolvedSiteName = (row as any).jobcardPlant || currentRepairWo?.site || (row.apdSummaryId != null && summary ? (summary.targetSite === 'VALE' ? 'Vale' : 'Gabungan Site') : null) || site?.name || siteNameFromSnapshot || (fiveR ? 'Balikpapan' : '-')
 
     let resolvedUnitNumber = '-'
     if (row.repairFormWoId != null) {
       resolvedUnitNumber = currentRepairWo?.tireSn || currentRepairWo?.idWo || '-'
+    } else if ((row as any).jobcardSn) {
+      resolvedUnitNumber = (row as any).jobcardSn
     } else if (row.unitNumber) {
       resolvedUnitNumber = row.unitNumber
     } else if (unitNumberFromSnapshot) {
@@ -989,7 +1001,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       submissionId: row.submissionId,
       requestNumber: fiveR?.reportNumber || spl?.splNumber || row.requestNumber,
       formName:
-        fiveR ? '5R Audit Report' : (row.templateName || (row.approvalActivityId ? 'Daily Activity' : 'Workflow Request')),
+        fiveR ? '5R Audit Report' : ((row as any).rawFormName || row.templateName || (row.approvalActivityId ? 'Daily Activity' : 'Jobcard Repair (QC)')),
       approvalStepId: row.approvalStepId,
       level: row.level,
       status: fiveR
@@ -1324,6 +1336,11 @@ async function fetchApprovalRows(options?: { onlyActivities?: boolean; onlyPendi
       status: approvals.status,
       approverName: approvals.approverName,
       approverEmployeeId: approvals.approverEmployeeId,
+      approverEmail: approvals.approverEmail,
+      rawActivityType: approvals.activityType,
+      rawActivityCode: approvals.activityCode,
+      rawActivityTitle: approvals.activityTitle,
+      rawFormName: approvals.formName,
       submittedAt: approvals.submittedAt,
       reviewedAt: approvals.reviewedAt,
       overtimeMinutes: approvals.overtimeMinutes,
@@ -1359,11 +1376,21 @@ async function fetchApprovalRows(options?: { onlyActivities?: boolean; onlyPendi
       signatureUrl: approvals.signatureUrl,
       apdSummaryId: approvals.apdSummaryId,
       fiveRReportId: approvals.fiveRReportId,
+      tireJobcardId: approvals.tireJobcardId,
+      jobcardSn: tireRepairJobcards.serialNumber,
+      jobcardTireSize: tireRepairJobcards.tireSize,
+      jobcardBrand: tireRepairJobcards.brand,
+      jobcardCustomer: tireRepairJobcards.customerName,
+      jobcardPlant: tireRepairJobcards.plant,
+      jobcardCreatedBy: tireRepairJobcards.createdBy,
     })
     .from(approvals)
     .leftJoin(activities, eq(approvals.activityId, activities.id))
     .leftJoin(formSubmissions, eq(approvals.submissionId, formSubmissions.id))
-    .leftJoin(formTemplates, eq(formSubmissions.templateId, formTemplates.id))
+    .leftJoin(
+      tireRepairJobcards,
+      or(eq(approvals.tireJobcardId, tireRepairJobcards.id), eq(approvals.requestNumber, tireRepairJobcards.jobcardNo))
+    )
 
   if (whereClause) {
     query = (query as any).where(whereClause)
@@ -1489,14 +1516,7 @@ async function fetchApprovalRowsForUser(
         (normalizedEmail && normalizeMatchValue(row.requesterEmail) === normalizedEmail) ||
         (employeeEmailNorm && normalizeMatchValue(row.requesterEmail) === employeeEmailNorm)
 
-      const hasSpecificAssignedApprover =
-        row.approverEmployeeId != null &&
-        row.approverEmployeeId > 0 &&
-        currentEmployee?.id != null &&
-        row.approverEmployeeId !== currentEmployee.id
-
       const roleSectionMatches =
-        !hasSpecificAssignedApprover &&
         isRoleOrSectionMatching(currentEmployee, row.approverName, row.routeSnapshot)
 
       return emailMatches || employeeMatches || nameMatches || requesterMatches || roleSectionMatches
@@ -3182,7 +3202,7 @@ export async function getApprovalCenterData(
     const normalizedEmail = normalizeMatchValue(email)
     const employeeEmailNorm = normalizeMatchValue(currentEmployee?.email)
     const normalizedEmployeeName = normalizeMatchValue(currentEmployee?.name)
-    const isAdmin = checkIsAdmin(email, currentEmployee as any)
+    const isAdmin = checkIsAdmin(email, currentEmployee as any) || isSuperAdminRole(currentEmployee?.accessRole)
 
     const isDailyOnly = options?.categoryFilter === 'DAILY_ACTIVITY'
     const isOvertimeOnly = options?.categoryFilter === 'OVERTIME'
@@ -3231,6 +3251,10 @@ export async function getApprovalCenterData(
     (item) => {
       if (!item.isPending) return false
 
+      if (isAdmin) {
+        return true
+      }
+
       const emailMatches =
         (normalizedEmail && normalizeMatchValue(item.approverEmail) === normalizedEmail) ||
         (employeeEmailNorm && normalizeMatchValue(item.approverEmail) === employeeEmailNorm)
@@ -3239,14 +3263,7 @@ export async function getApprovalCenterData(
       const nameMatches =
         normalizedEmployeeName && normalizeMatchValue(item.approverName) === normalizedEmployeeName
 
-      const hasSpecificAssignedApprover =
-        item.approverEmployeeId != null &&
-        item.approverEmployeeId > 0 &&
-        currentEmployee?.id != null &&
-        item.approverEmployeeId !== currentEmployee.id
-
       const roleSectionMatches =
-        !hasSpecificAssignedApprover &&
         isRoleOrSectionMatching(currentEmployee, item.approverName, item.routeSnapshot)
 
       return emailMatches || employeeMatches || nameMatches || roleSectionMatches

@@ -24,9 +24,17 @@ export const MOBILE_ALWAYS_ALLOWED_HREFS = [
   '/mobile/sop-win',
   '/mobile/rfr',
   '/mobile/rfr/new',
+  '/mobile/tire-repair',
+  '/mobile/tire-repair/inspection',
+  '/mobile/tire-repair/inspection/new',
+  '/mobile/tire-repair/jobcard',
+  '/mobile/tire-repair/jobcard/new',
 ] as const
 
 const desktopToMobileRoutes: Array<{ desktop: string; mobile: string }> = [
+  { desktop: '/dashboard/repair-retread/inspection', mobile: '/mobile/tire-repair/inspection' },
+  { desktop: '/dashboard/repair-retread/jobcard', mobile: '/mobile/tire-repair/jobcard' },
+  { desktop: '/dashboard/repair-retread', mobile: '/mobile/tire-repair' },
   { desktop: '/dashboard/hc/rfr', mobile: '/mobile/rfr' },
   { desktop: '/dashboard/recruitment', mobile: '/mobile/rfr' },
   { desktop: '/dashboard/sop-win', mobile: '/mobile/sop-win' },
@@ -117,6 +125,7 @@ const fallbackMobileSegments = new Set([
   'site-condition',
   'summary',
   'timesheet',
+  'tire-repair',
   'training',
   'wellness',
   'leader-performance',

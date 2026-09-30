@@ -38,55 +38,57 @@ export default async function MobileLayout({ children }: { children: ReactNode }
   let notificationCount = 0;
   let eligibleBroadcasts: Awaited<ReturnType<typeof getEligibleBroadcastsForMobile>> = [];
   let allowedLinks: ReturnType<typeof buildMobileAllowedLinks> = buildMobileAllowedLinks([]);
-
-  try {
-    notificationCount = session.user.email
-      ? await getMobileNotificationCount(session.user.email)
-      : 0;
-  } catch (err) {
-    console.error("[mobile/layout] getMobileNotificationCount failed:", err);
-  }
-
-  try {
-    eligibleBroadcasts = await getEligibleBroadcastsForMobile();
-  } catch (err) {
-    console.error("[mobile/layout] getEligibleBroadcastsForMobile failed:", err);
-  }
-
   let permissions = {};
-
-  try {
-    if (session.user.email) {
-      const sidebarData = await getSidebarDataForUser(session.user.email);
-      allowedLinks = buildMobileAllowedLinks([
-        ...sidebarData.navMain,
-        ...sidebarData.navSecondary,
-        ...sidebarData.documents,
-      ]);
-      permissions = await getUserMobilePermissions(session.user.email);
-    }
-  } catch (err) {
-    console.error("[mobile/layout] getSidebarDataForUser failed:", err);
-  }
-
   let isFaceRegistered = true;
   let employeeId = null;
   let siteId = null;
-  if (session.user.email) {
-    try {
-      const empData = await getEmployeeDisplayDataByEmail(session.user.email, session.user.id);
-      if (empData && (empData.isActive === false || empData.employmentStatus === 'inactive')) {
-        redirect('/sign-in?error=account_deactivated');
+
+  const email = session.user.email;
+
+  const timeoutFallback = <T,>(promise: Promise<T>, ms: number, fallback: T): Promise<T> => {
+    return Promise.race([
+      promise,
+      new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+    ]);
+  };
+
+  try {
+    const [notifRes, broadcastRes, sidebarRes, permRes, empRes] = await Promise.allSettled([
+      email ? timeoutFallback(getMobileNotificationCount(email), 3500, 0) : Promise.resolve(0),
+      timeoutFallback(getEligibleBroadcastsForMobile(), 3500, []),
+      email ? timeoutFallback(getSidebarDataForUser(email), 3500, { navMain: [], navSecondary: [], documents: [] } as any) : Promise.resolve({ navMain: [], navSecondary: [], documents: [] }),
+      email ? timeoutFallback(getUserMobilePermissions(email), 3500, {}) : Promise.resolve({}),
+      email ? timeoutFallback(getEmployeeDisplayDataByEmail(email, session.user.id), 3500, null) : Promise.resolve(null),
+    ]);
+
+    if (notifRes.status === "fulfilled") notificationCount = notifRes.value;
+    if (broadcastRes.status === "fulfilled") eligibleBroadcasts = broadcastRes.value;
+
+    if (sidebarRes.status === "fulfilled" && sidebarRes.value) {
+      const sidebarData = sidebarRes.value;
+      allowedLinks = buildMobileAllowedLinks([
+        ...(sidebarData.navMain || []),
+        ...(sidebarData.navSecondary || []),
+        ...(sidebarData.documents || []),
+      ]);
+    }
+
+    if (permRes.status === "fulfilled" && permRes.value) permissions = permRes.value;
+
+    if (empRes.status === "fulfilled" && empRes.value) {
+      const empData = empRes.value;
+      if (empData && (empData.isActive === false || empData.employmentStatus === "inactive")) {
+        redirect("/sign-in?error=account_deactivated");
       }
       isFaceRegistered = !!(empData?.faceRegisteredAt || empData?.faceRarayRegisteredAt);
       employeeId = empData?.id;
       siteId = empData?.siteId;
-    } catch (err) {
-      if ((err as any)?.digest?.startsWith('NEXT_REDIRECT')) {
-        throw err;
-      }
-      console.error("[mobile/layout] getEmployeeDisplayDataByEmail failed:", err);
     }
+  } catch (err) {
+    if ((err as any)?.digest?.startsWith("NEXT_REDIRECT")) {
+      throw err;
+    }
+    console.error("[mobile/layout] Parallel layout fetch error:", err);
   }
 
   return (

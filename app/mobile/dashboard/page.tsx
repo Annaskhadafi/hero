@@ -130,28 +130,47 @@ export default async function MobileDashboardPage() {
   let wellnessData: Awaited<ReturnType<typeof getMobileHc>> | null = null;
 
   try {
-    [data, approvalData, sidebarData, wellnessData] = await Promise.all([
+    const [dataRes, approvalRes, sidebarRes, wellnessRes] = await Promise.allSettled([
       getDailyActivityEmployeeData(session.user.email, { ensureSeed: false, limit: 10 }),
       getApprovalCenterData(session.user.email, { skipHistory: true }),
       getSidebarDataForUser(session.user.email),
       getMobileHc(session.user.email),
     ]);
+
+    if (dataRes.status === "fulfilled") data = dataRes.value;
+    if (approvalRes.status === "fulfilled") approvalData = approvalRes.value;
+    if (sidebarRes.status === "fulfilled") sidebarData = sidebarRes.value;
+    if (wellnessRes.status === "fulfilled") wellnessData = wellnessRes.value;
   } catch (err) {
     console.error("[mobile/dashboard] data fetch failed:", err);
-    return (
-      <div className="space-y-4 rounded-[1.25rem] bg-white p-5 text-sm font-semibold text-[#486275] shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
-        <p>Gagal memuat dashboard.</p>
-        <p className="text-xs font-normal text-slate-400">
-          {err instanceof Error ? err.message : "Terjadi kesalahan saat mengambil data."}
-        </p>
-      </div>
-    );
   }
 
   if (!data) {
     return (
-      <div className="rounded-[1.5rem] bg-white p-5 text-sm font-semibold text-[#486275] shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
-        Data employee belum tersedia untuk akun ini.
+      <div className="space-y-4 rounded-[1.3rem] bg-white p-5 text-sm font-semibold text-[#486275] shadow-[0_16px_36px_rgba(8,32,51,0.08)] border border-slate-100">
+        <div className="flex items-center gap-2 text-[#082033]">
+          <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+          <h2 className="text-base font-black">Koneksi Database Terputus</h2>
+        </div>
+        <p className="text-xs text-[#486275] leading-relaxed">
+          Koneksi ke server database remote (`31.97.187.38`) mengalami kendala jaringan atau timeout.
+        </p>
+        <div className="pt-2 flex flex-col gap-2">
+          <Link
+            prefetch={false}
+            href="/mobile/dashboard"
+            className="flex h-11 items-center justify-center rounded-xl bg-[#003f78] text-xs font-black uppercase tracking-wider text-white shadow-xs active:scale-[0.98]"
+          >
+            Coba Muat Ulang Dashboard
+          </Link>
+          <Link
+            prefetch={false}
+            href="/mobile/tire-repair"
+            className="flex h-11 items-center justify-center rounded-xl bg-slate-100 text-xs font-bold text-[#082033] hover:bg-slate-200 active:scale-[0.98]"
+          >
+            Buka Tire Repair Hub Directly
+          </Link>
+        </div>
       </div>
     );
   }
@@ -228,7 +247,7 @@ export default async function MobileDashboardPage() {
             <p className="text-[9px] font-black uppercase tracking-[0.22em] text-[#f4a78d]">Approval Center</p>
             <h2 className="mt-1 text-base font-black leading-tight text-[#082033]">
               {(approvalData?.inboxMetrics.pendingActivities ?? 0) > 0
-                ? `${approvalData.inboxMetrics.pendingActivities} Item Menunggu`
+                ? `${approvalData?.inboxMetrics.pendingActivities ?? 0} Item Menunggu`
                 : "Inbox Approval Bersih"}
             </h2>
           </div>

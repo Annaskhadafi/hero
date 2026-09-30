@@ -172,6 +172,13 @@ export function MobileDashboardServices({
       isRequestGroup: true,
     },
     {
+      title: 'Tire Repair Form',
+      href: '/mobile/tire-repair',
+      resource: 'tire_service',
+      icon: Wrench,
+      bg: 'bg-emerald-500/10 text-emerald-600',
+    },
+    {
       title: 'Deteksi Kerusakan Ban',
       href: '/mobile/hse/tire-damage',
       resource: 'hse_tire_inspection',
