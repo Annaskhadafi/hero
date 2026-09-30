@@ -85,7 +85,36 @@ export function resolveSiteAttendanceClockConfig(
   })
 }
 
-export function isStaffRole(role?: string | null, jobTitle?: string | null): boolean {
+export function isStaffRole(
+  role?: string | null,
+  jobTitle?: string | null,
+  levelName?: string | null
+): boolean {
+  if (levelName) {
+    const lvl = levelName.trim().toLowerCase()
+    if (lvl.includes('non staff') || lvl.includes('non-staff') || lvl.includes('nonstaff')) {
+      return false
+    }
+    if (
+      lvl.includes('staff') ||
+      lvl.includes('supervisor') ||
+      lvl.includes('spv') ||
+      lvl.includes('manager') ||
+      lvl.includes('coordinator') ||
+      lvl.includes('coord') ||
+      lvl.includes('leader') ||
+      lvl.includes('lead') ||
+      lvl.includes('head') ||
+      lvl.includes('engineer') ||
+      lvl.includes('officer') ||
+      lvl.includes('analyst') ||
+      lvl.includes('executive') ||
+      lvl.includes('bod') ||
+      lvl.includes('director')
+    ) {
+      return true
+    }
+  }
   const combined = `${role ?? ''} ${jobTitle ?? ''}`.toLowerCase().trim()
   if (!combined) return false
   if (combined.includes('non staff') || combined.includes('non-staff') || combined.includes('nonstaff')) return false

@@ -1,4 +1,3 @@
-import { AdminMetricGrid } from "@/components/admin-metric-grid";
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { AdminStatusBadge } from "@/components/admin-status-badge";
 import { AdminTableCard } from "@/components/admin-table-card";
@@ -28,12 +27,9 @@ export default async function HcPage() {
   const wellnessStatuses = Array.from(new Set(wellness.map((row) => row.status))).sort();
 
   return (
-    <AdminPageShell
-      eyebrow="M7 • Human Capital Suite"
-      title="HC & Workforce Desk"
-      description="Tampilan backend web untuk attendance review, training expiry, dan wellness status karyawan."
-    >
+    <AdminPageShell>
       <HcWorkspaceBanner
+        badge="M7 • HUMAN CAPITAL SUITE"
         title="Workforce Operations Hub"
         description="Attendance, training, dan wellness diringkas sebagai ruang kerja HC yang table-first: cepat filter, cepat validasi, cepat tindak lanjut."
         items={[
@@ -43,14 +39,6 @@ export default async function HcPage() {
         ]}
       />
 
-      <AdminMetricGrid
-        mode="compact"
-        items={[
-          { label: "Event attendance", value: `${attendance.length}`, meta: "Check-in dan check-out tercatat" },
-          { label: "Record training", value: `${trainings.length}`, meta: "Status sertifikasi aktif" },
-          { label: "Catatan wellness", value: `${wellness.length}`, meta: "MCU, BMI, dan fit-to-work" },
-        ]}
-      />
 
       <Tabs defaultValue="attendance" className="space-y-4">
         <TabsList className="h-auto w-full justify-start overflow-x-auto rounded-2xl bg-slate-100/80 p-1">

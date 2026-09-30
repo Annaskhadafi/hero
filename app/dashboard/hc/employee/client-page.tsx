@@ -829,35 +829,32 @@ export function EmployeeClientPage({
   /* ─── Render ───────────────────────────────────────────────────────── */
 
   return (
-    <AdminPageShell
-      eyebrow="HC - Employee"
-      title="Data Karyawan"
-      description="Kelola data karyawan, kontrak, dan informasi demografi secara terpusat."
-      actions={
-        <div className="flex items-center gap-2">
-          {access.canEdit && (
-            <MinePermitReminderDialog />
-          )}
-          {(access.canEdit || (access as any).canCreate) && (
-            <Button
-              onClick={handleOpenAdd}
-              className={hcPrimaryActionClassName}
-            >
-              <Plus className="size-4" />
-              Tambah Karyawan
-            </Button>
-          )}
-        </div>
-      }
-    >
+    <AdminPageShell>
       <HcWorkspaceBanner
-        title="Employee Control Room"
-        description="Data karyawan dibuat lebih cepat dipindai: kontrak, status akun, lokasi kerja, dan kebutuhan follow-up ada dalam satu ritme table-first."
+        badge="HC • EMPLOYEE"
+        title="Data Karyawan"
+        description="Kelola data karyawan, kontrak, dan informasi demografi secara terpusat."
         items={[
           { label: "Total", value: data.length, tone: "slate" },
           { label: "Aktif", value: activeEmployees.length, tone: "emerald" },
           { label: "Kontrak kritis", value: expiringEmployees.length, tone: "amber" },
         ]}
+        actions={
+          <div className="flex items-center gap-2">
+            {access.canEdit && (
+              <MinePermitReminderDialog />
+            )}
+            {(access.canEdit || (access as any).canCreate) && (
+              <Button
+                onClick={handleOpenAdd}
+                className={hcPrimaryActionClassName}
+              >
+                <Plus className="size-4" />
+                Tambah Karyawan
+              </Button>
+            )}
+          </div>
+        }
       />
 
       <MinimalTableShell

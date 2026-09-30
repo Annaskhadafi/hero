@@ -79,10 +79,11 @@ export function DisciplinaryClientPage({ actions, categories, stats, employees }
   const refreshCategory = (record: CategoryRow, mode: "create" | "update") => setCategoryRows((rows) => mode === "create" ? [normalizeCategoryRow(record), ...rows] : rows.map((row) => row.id === record.id ? normalizeCategoryRow(record) : row));
 
   return (
-    <AdminPageShell eyebrow="HC • Disiplin" title="Tindakan Disiplin" description="Kelola surat peringatan, tindakan pembinaan, dan kategori pelanggaran karyawan.">
+    <AdminPageShell>
       <HcWorkspaceBanner
+        badge="HC • DISIPLIN"
         title="Disciplinary Case Desk"
-        description="Kasus, level SP, kategori, dan masa berlaku tindakan dibaca sebagai antrian kerja HC yang rapi dan rendah noise."
+        description="Kelola surat peringatan, tindakan pembinaan, dan kategori pelanggaran karyawan dalam satu antrian kerja yang rapi."
         items={[
           { label: "Kasus", value: actionRows.length, tone: "slate" },
           { label: "Kategori", value: categoryRows.length, tone: "sky" },

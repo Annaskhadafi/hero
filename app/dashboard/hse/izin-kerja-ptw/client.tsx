@@ -1622,11 +1622,7 @@ export function PtwListingClient({
   }
 
   return (
-    <AdminPageShell
-      eyebrow="HSE • Permit to Work"
-      title="Izin Kerja PTW Approval"
-      description="Pusat approval dan pengelolaan Izin Kerja Aman (Permit to Work) dengan verifikasi tanda tangan digital bertingkat."
-    >
+    <AdminPageShell>
       <HcWorkspaceBanner
         badge="HSE PERMIT TO WORK"
         title="Izin Kerja PTW Approval & Review"

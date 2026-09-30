@@ -1704,11 +1704,7 @@ export function OvertimeListingClient({
   }
 
   return (
-    <AdminPageShell
-      eyebrow="HC • Overtime"
-      title="Overtime Requests Approval"
-      description="Pusat approval dan pengelolaan Surat Perintah Lembur (SPL) karyawan dengan verifikasi tanda tangan digital bertingkat."
-    >
+    <AdminPageShell>
       <HcWorkspaceBanner
         badge="SURAT PERINTAH LEMBUR"
         title="Overtime Approval & Review"

@@ -1628,3 +1628,18 @@ export async function getRfrPublicApprovalByToken(token: string) {
   }
 }
 
+export async function deleteRfrRequest(id: number) {
+  try {
+    // 1. Delete associated approvals
+    await db.delete(hcRfrApprovals).where(eq(hcRfrApprovals.rfrId, id))
+    // 2. Delete the RFR request record
+    await db.delete(hcRfrRequests).where(eq(hcRfrRequests.id, id))
+    
+    revalidatePath('/dashboard/hc/rfr')
+    return { success: true }
+  } catch (err: any) {
+    console.error('Error deleting RFR request:', err)
+    return { success: false, error: err?.message || 'Gagal menghapus dokumen RFR.' }
+  }
+}
+

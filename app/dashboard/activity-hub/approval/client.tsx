@@ -1942,11 +1942,7 @@ async function uploadActivityPhoto(file: File): Promise<string> {
   }
 
   return (
-    <AdminPageShell
-      eyebrow="Human Capital • Workflow Approval"
-      title="Daily Activity Approval"
-      description="Pusat validasi dan evaluasi aktivitas harian karyawan dengan alur verifikasi bertingkat dan audit trail lengkap."
-    >
+    <AdminPageShell>
       <HcWorkspaceBanner
         badge="DAILY ACTIVITY APPROVAL"
         title="Evaluasi Aktivitas Harian Karyawan"

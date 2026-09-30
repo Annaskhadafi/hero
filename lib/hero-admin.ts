@@ -6618,6 +6618,7 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
         email: employees.email,
         employeeSn: employees.employeeSn,
         manpower: employees.manpower,
+        levelName: employees.levelName,
         pointOfHire: employees.pointOfHire,
         workLocation: employees.workLocation,
         role: employees.role,

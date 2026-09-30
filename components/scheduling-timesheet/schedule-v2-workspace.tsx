@@ -63,7 +63,36 @@ import {
 } from '@/lib/timesheet/schedule-v2-import'
 import { isWeekend } from '@/lib/timesheet-scheduling'
 
-function isStaffRole(role?: string | null, jobTitle?: string | null): boolean {
+function isStaffRole(
+  role?: string | null,
+  jobTitle?: string | null,
+  levelName?: string | null
+): boolean {
+  if (levelName) {
+    const lvl = levelName.trim().toLowerCase()
+    if (lvl.includes('non staff') || lvl.includes('non-staff') || lvl.includes('nonstaff')) {
+      return false
+    }
+    if (
+      lvl.includes('staff') ||
+      lvl.includes('supervisor') ||
+      lvl.includes('spv') ||
+      lvl.includes('manager') ||
+      lvl.includes('coordinator') ||
+      lvl.includes('coord') ||
+      lvl.includes('leader') ||
+      lvl.includes('lead') ||
+      lvl.includes('head') ||
+      lvl.includes('engineer') ||
+      lvl.includes('officer') ||
+      lvl.includes('analyst') ||
+      lvl.includes('executive') ||
+      lvl.includes('bod') ||
+      lvl.includes('director')
+    ) {
+      return true
+    }
+  }
   const combined = `${role ?? ''} ${jobTitle ?? ''}`.toLowerCase().trim()
   if (!combined) return false
   if (combined.includes('non staff') || combined.includes('non-staff') || combined.includes('nonstaff')) return false
@@ -93,7 +122,7 @@ function createPrefilledScheduleV2(employees: Employee[], period: string, schedu
 
   return emptyRows.map((row) => {
     const employee = employees.find((e) => e.id === row.employeeId)
-    const isStaff = isStaffRole(employee?.role)
+    const isStaff = isStaffRole(employee?.role, employee?.jobTitle, employee?.levelName)
     if (isOffice || (isHybrid && isStaff)) {
       const schedule = row.schedule.map((code, index) =>
         isWeekend(period, index + 1) ? 'OFF' : code
@@ -110,6 +139,8 @@ type Employee = {
   employeeSn?: string | null
   role: string
   jobTitle?: string | null
+  levelName?: string | null
+  manpower?: string | null
   section?: string | null
   department?: string | null
   siteId: number | null

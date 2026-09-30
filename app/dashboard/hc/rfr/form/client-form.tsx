@@ -288,7 +288,7 @@ export function RfrClientForm({
           </Link>
           <div>
             <h1 className="text-xl font-bold tracking-tight text-foreground">
-              {initialData?.id ? 'Revisi Formulir Permohonan Rekrutmen (RFR)' : 'Formulir Permohonan Rekrutmen (RFR)'}
+              {initialData?.id ? 'Edit / Revisi Formulir Permohonan Rekrutmen (RFR)' : 'Formulir Permohonan Rekrutmen (RFR)'}
             </h1>
             <p className="text-xs text-muted-foreground">Request For Recruitment Form Standard PT Chitra Paratama</p>
           </div>
@@ -300,7 +300,7 @@ export function RfrClientForm({
             </Button>
           </Link>
           <Button type="submit" disabled={isPending} className="gap-2 bg-[#003461] text-white hover:bg-[#002548]">
-            <Save className="w-4 h-4" /> {isPending ? 'Menyimpan...' : initialData?.id ? 'Simpan Perubahan & Resubmit' : 'Submit & Kirim Approval'}
+            <Save className="w-4 h-4" /> {isPending ? 'Menyimpan...' : initialData?.id ? 'Simpan Perubahan' : 'Submit & Kirim Approval'}
           </Button>
         </div>
       </div>
