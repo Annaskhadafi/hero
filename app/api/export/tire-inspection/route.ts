@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
     const yearStr = year || String(new Date().getFullYear());
     const fileName = `TYRE_INSPECTION_REPORT_CP_KPC_${monthStr}_${yearStr}.xlsx`;
 
-    return new NextResponse(buffer, {
+    return new NextResponse(buffer as any, {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

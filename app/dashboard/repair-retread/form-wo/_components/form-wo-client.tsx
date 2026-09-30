@@ -18,6 +18,7 @@ import {
   Download,
   Eye,
   FilePlus,
+  FileCheck,
   FileText,
   FileSpreadsheet,
   Filter,
