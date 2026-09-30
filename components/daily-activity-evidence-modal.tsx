@@ -464,7 +464,7 @@ export function DailyActivityEvidenceModal({
 
                       {/* Photo Thumbnail */}
                       <div
-                        className="relative aspect-4/3 w-full bg-slate-900 cursor-pointer overflow-hidden flex items-center justify-center select-none"
+                        className="relative aspect-4/3 w-full bg-slate-100 dark:bg-slate-800 cursor-pointer overflow-hidden flex items-center justify-center select-none"
                         onClick={() => {
                           if (item.photoUrl) {
                             setSelectedImage({

@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { resolveUploadUrl } from "@/lib/resolve-upload-url";
 import { formatPhotoDisplayUrl } from "@/lib/photo-url";
+import { DailyActivityPhotoThumbnail } from "@/components/daily-activity-photo-thumbnail";
 
 interface LightboxPhoto {
   url: string;
@@ -597,34 +598,20 @@ export function MyDayDetailDialog({
                         <div className="md:w-36 shrink-0 flex flex-col items-center md:items-end gap-1.5 select-none">
                           <div className="flex flex-wrap items-center justify-center md:justify-end gap-1.5">
                             {taskPhotos.map((pUrl, pIdx) => (
-                              <div
+                              <DailyActivityPhotoThumbnail
                                 key={`${task.id}-photo-${pIdx}`}
-                                className="relative w-28 h-20 sm:w-32 sm:h-24 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 hover:border-sky-500 shadow-2xs hover:shadow-md transition-all bg-slate-900 flex items-center justify-center cursor-pointer group"
+                                url={pUrl}
+                                alt={`${task.label} #${pIdx + 1}`}
                                 onClick={() =>
                                   setLightboxPhoto({
-                                    url: formatPhotoDisplayUrl(pUrl),
+                                    url: pUrl,
                                     label: `${task.label}${taskPhotos.length > 1 ? ` (${pIdx + 1}/${taskPhotos.length})` : ""}`,
                                     unitNumber: task.unitNumber,
                                     time: `${task.startedAt} - ${task.endedAt}`,
                                     remarks: task.remarks,
                                   })
                                 }
-                              >
-                                <img
-                                  src={formatPhotoDisplayUrl(pUrl, 400)}
-                                  alt={`${task.label} #${pIdx + 1}`}
-                                  className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
-                                  loading="lazy"
-                                  onError={(e) => {
-                                    (e.target as HTMLElement).style.opacity = "0.3";
-                                  }}
-                                />
-                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                                  <span className="bg-white/95 text-slate-900 rounded-full px-2 py-0.5 text-[10px] font-bold flex items-center gap-1 shadow-sm">
-                                    <ZoomIn className="w-3 h-3 text-blue-600" /> Perbesar
-                                  </span>
-                                </div>
-                              </div>
+                              />
                             ))}
                           </div>
                           <span className="text-[10px] text-sky-700 dark:text-sky-400 font-semibold flex items-center gap-1">

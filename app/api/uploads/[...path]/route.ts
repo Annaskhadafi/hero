@@ -191,7 +191,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
 
 
 
-  // 3. Fallback for demo/mock attachment files: Render clean HTML notice instead of raw JSON
+  // 3. For missing image files, return clean 404 so <img> tags trigger proper error handling instead of receiving HTML
+  const isImageFile = /\.(jpe?g|png|webp|gif|heic|heif|svg|bmp|ico)$/i.test(fileName)
+  if (isImageFile) {
+    return new NextResponse(null, { status: 404 })
+  }
+
+  // 4. Fallback for demo/mock attachment files: Render clean HTML notice instead of raw JSON
   const html = `<!DOCTYPE html>
 <html lang="id">
 <head>

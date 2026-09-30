@@ -69,9 +69,25 @@ export function extractS3ObjectKeyFromUrl(objectUrl: string | null | undefined):
         // Remove bucket name prefix (e.g. "onechitra/upload/uuid.jpg" -> "upload/uuid.jpg")
         const withoutBucket = parts.replace(/^[^/]+\//, "");
         if (withoutBucket) {
+          if (!withoutBucket.includes("/") && /\.(jpe?g|png|webp|gif|heic|heif|pdf)$/i.test(withoutBucket)) {
+            return `activity-photos/${withoutBucket}`;
+          }
           return withoutBucket;
         }
       }
+    }
+
+    // 5. Bare filename fallback (e.g. "3bb38fec-fdc7-4527-a837-71ff30420286.jpg")
+    // When saved without prefix or protocol, default to activity-photos/ so it resolves to /api/uploads/activity-photos/...
+    // instead of being requested relative to current page and failing with net::ERR_BLOCKED_BY_ORB
+    if (!cleanPath.includes("/") && /\.(jpe?g|png|webp|gif|heic|heif|pdf)$/i.test(cleanPath)) {
+      return `activity-photos/${cleanPath}`;
+    }
+
+    // 6. Route-relative stray image URLs (e.g. "dashboard/daily-activity/uuid.jpg")
+    const strayMatch = cleanPath.match(/([a-zA-Z0-9_\-]+\.(?:jpe?g|png|webp|gif|heic|heif))$/i);
+    if (strayMatch && !cleanPath.startsWith("api/")) {
+      return `activity-photos/${strayMatch[1]}`;
     }
 
     return null;

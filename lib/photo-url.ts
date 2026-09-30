@@ -11,6 +11,8 @@ export function formatPhotoDisplayUrl(url?: string | null, width?: number): stri
   const trimmed = url.trim()
   if (!trimmed) return ''
 
+  if (trimmed.startsWith('data:')) return trimmed
+
   // Always resolve the upload URL first (cleans expired tokens, standardizes S3 paths to /api/uploads/...)
   const resolved = resolveUploadUrl(trimmed)
   if (!resolved) return ''
@@ -19,7 +21,9 @@ export function formatPhotoDisplayUrl(url?: string | null, width?: number): stri
   const cleanPath = resolved.split('?')[0].toLowerCase()
   const isHeic = cleanPath.endsWith('.heic') || cleanPath.endsWith('.heif')
 
-  if (isHeic) {
+  // When width is specified (e.g. 400 for thumbnails, 1200 for lightbox/modal) or if it's HEIC,
+  // route through the high-performance Sharp image optimizer & caching API.
+  if ((width && width > 0) || isHeic) {
     const params = new URLSearchParams()
     params.set('url', resolved)
     if (width && width > 0) {

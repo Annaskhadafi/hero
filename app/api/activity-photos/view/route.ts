@@ -47,7 +47,8 @@ export async function GET(request: Request) {
     }
 
     const targetWidth = widthParam && !isNaN(Number(widthParam)) ? Math.min(Number(widthParam), 2560) : null
-    const urlHash = crypto.createHash('md5').update(trimmedUrl).digest('hex')
+    const normalizedUrl = trimmedUrl.replace(/^https?:\/\/[^\/]+/, '').split('#')[0]
+    const urlHash = crypto.createHash('md5').update(normalizedUrl).digest('hex')
     const cacheDir = path.join(process.cwd(), 'public', 'uploads', 'cache', 'heic-converted')
 
     if (!fs.existsSync(cacheDir)) {
@@ -79,7 +80,7 @@ export async function GET(request: Request) {
       }
     }
 
-    // 2. Hit on master converted JPEG (resizing takes only ~15-30ms with sharp native C++)
+    // 2. Hit on master converted JPEG (resizing takes only ~10-20ms with sharp native C++)
     if (fs.existsSync(masterCachePath) && targetWidth) {
       try {
         const masterBuf = fs.readFileSync(masterCachePath)
@@ -108,8 +109,34 @@ export async function GET(request: Request) {
     let inputBuffer: Buffer | null = null
     const lowerUrl = trimmedUrl.toLowerCase().split('?')[0]
 
-    // Step A: If S3 is configured, fetch object via S3 SDK proxy getter (handles private bucket, CloudHost S3 URLs, /api/uploads/ URLs, etc.)
-    if (isS3UploadConfigured()) {
+    // Priority Step A: Check local disk candidate paths first (<0.1ms access time)
+    const cleanRel = trimmedUrl
+      .split('?')[0]
+      .replace(/^https?:\/\/[^\/]+/, '')
+      .replace(/^\/+/, '')
+      .replace(/^api\/uploads\//, '')
+      .replace(/^uploads\//, '')
+    const fileName = path.basename(cleanRel)
+
+    const candidatePaths = [
+      path.join(process.cwd(), 'public', 'uploads', cleanRel),
+      path.join(process.cwd(), 'public', 'uploads', 'activity-photos', fileName),
+      path.join(process.cwd(), 'public', 'uploads', fileName),
+      path.join(process.cwd(), 'public', cleanRel),
+      path.join(process.cwd(), 'public', fileName),
+    ]
+
+    for (const cp of candidatePaths) {
+      if (fs.existsSync(cp)) {
+        try {
+          inputBuffer = fs.readFileSync(cp)
+          break
+        } catch {}
+      }
+    }
+
+    // Priority Step B: If not on local disk and S3 is configured, fetch object via S3 SDK proxy getter
+    if (!inputBuffer && isS3UploadConfigured()) {
       try {
         const s3Obj = await getS3ObjectForProxy(trimmedUrl)
         if (s3Obj?.body) {
@@ -120,39 +147,11 @@ export async function GET(request: Request) {
       }
     }
 
-    // Step B: Check local disk candidate paths
-    if (!inputBuffer) {
-      const cleanRel = trimmedUrl
-        .split('?')[0]
-        .replace(/^https?:\/\/[^\/]+/, '')
-        .replace(/^\/+/, '')
-        .replace(/^api\/uploads\//, '')
-        .replace(/^uploads\//, '')
-      const fileName = path.basename(cleanRel)
-
-      const candidatePaths = [
-        path.join(process.cwd(), 'public', 'uploads', cleanRel),
-        path.join(process.cwd(), 'public', 'uploads', 'activity-photos', fileName),
-        path.join(process.cwd(), 'public', 'uploads', fileName),
-        path.join(process.cwd(), 'public', cleanRel),
-        path.join(process.cwd(), 'public', fileName),
-      ]
-
-      for (const cp of candidatePaths) {
-        if (fs.existsSync(cp)) {
-          try {
-            inputBuffer = fs.readFileSync(cp)
-            break
-          } catch {}
-        }
-      }
-    }
-
-    // Step C: Fallback to remote HTTP/HTTPS fetch if not private S3
+    // Priority Step C: Fallback to remote HTTP/HTTPS fetch if not private S3
     if (!inputBuffer && (trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://'))) {
       try {
         const fetchRes = await fetch(trimmedUrl, {
-          signal: AbortSignal.timeout(25000),
+          signal: AbortSignal.timeout(15000),
         })
         if (fetchRes.ok) {
           inputBuffer = Buffer.from(await fetchRes.arrayBuffer())
@@ -163,7 +162,7 @@ export async function GET(request: Request) {
     }
 
     if (!inputBuffer) {
-      return NextResponse.json({ error: 'Original file not found' }, { status: 404 })
+      return new NextResponse(null, { status: 404 })
     }
 
     // Detect if buffer is HEIC format
@@ -171,20 +170,28 @@ export async function GET(request: Request) {
 
     let masterBuffer: Buffer
 
-    if (isHeic) {
-      // Use heic-decode (WASM) to extract RGBA, then sharp (C++ native) to encode JPEG
-      const { width, height, data } = await heicDecode({ buffer: inputBuffer })
-      masterBuffer = await sharp(Buffer.from(data), {
-        raw: { width, height, channels: 4 },
-      })
-        .resize({ width: 1800, withoutEnlargement: true })
-        .jpeg({ quality: 85, mozjpeg: true })
-        .toBuffer()
-    } else {
+    try {
+      // 1. Primary decoder: Native C++ Sharp/libvips (ultra-fast ~30-50ms execution on background worker thread)
       masterBuffer = await sharp(inputBuffer)
+        .rotate()
         .resize({ width: 1800, withoutEnlargement: true })
         .jpeg({ quality: 85, mozjpeg: true })
         .toBuffer()
+    } catch (sharpDecodeErr) {
+      // 2. Fallback for non-standard HEIC bitstreams: heic-decode (WASM)
+      if (isHeic) {
+        console.warn('Native Sharp HEIF decode failed, falling back to heic-decode WASM:', sharpDecodeErr)
+        const { width, height, data } = await heicDecode({ buffer: inputBuffer })
+        masterBuffer = await sharp(Buffer.from(data), {
+          raw: { width, height, channels: 4 },
+        })
+          .rotate()
+          .resize({ width: 1800, withoutEnlargement: true })
+          .jpeg({ quality: 85, mozjpeg: true })
+          .toBuffer()
+      } else {
+        throw sharpDecodeErr
+      }
     }
 
     // Save master JPEG cache
