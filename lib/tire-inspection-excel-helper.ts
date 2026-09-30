@@ -255,13 +255,13 @@ export async function generateTireInspectionExcelBuffer(
         if (imgRes && imgRes.buffer) {
           try {
             const imgId = workbook.addImage({
-              buffer: imgRes.buffer,
+              buffer: imgRes.buffer as any,
               extension: imgRes.extension,
             });
 
             worksheet.addImage(imgId, {
-              tl: { col: 14 + fIdx + 0.05, row: 4 + index + 0.05 },
-              br: { col: 15 + fIdx - 0.05, row: 5 + index - 0.05 },
+              tl: { col: 14 + fIdx + 0.05, row: 4 + index + 0.05 } as any,
+              br: { col: 15 + fIdx - 0.05, row: 5 + index - 0.05 } as any,
               editAs: 'oneCell',
             });
           } catch (imgErr) {

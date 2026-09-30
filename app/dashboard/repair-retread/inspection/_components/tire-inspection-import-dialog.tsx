@@ -187,7 +187,7 @@ export function TireInspectionImportDialog({
         if (excelJsSheet) {
           const images = excelJsSheet.getImages()
           images.forEach((img) => {
-            const imgData = excelJsWorkbook.getImage(img.imageId)
+            const imgData = excelJsWorkbook.getImage(img.imageId as any)
             if (imgData && imgData.buffer) {
               const rowIdx = Math.floor(img.range.tl.row)
               const colIdx = Math.floor(img.range.tl.col)
