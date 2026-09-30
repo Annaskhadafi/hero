@@ -24,9 +24,18 @@ export default async function MobileDailyReportPage() {
     periods = fetchedPeriods || [];
     dailyItems = fetchedItems || [];
 
-    const firstPeriod = periods[0];
-    if (firstPeriod?.monthYear) {
-      sapRevenue = await fetchSapRevenue(firstPeriod.monthYear).catch((err) => {
+    const now = new Date();
+    const currentFull = now.toLocaleString("en-US", { month: "long", year: "numeric" }).trim().toLowerCase();
+    const currentShort = now.toLocaleString("en-US", { month: "short", year: "numeric" }).trim().toLowerCase();
+    const currentIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+    const activePeriod = periods.find((p) => {
+      const val = (p.monthYear || "").trim().toLowerCase();
+      return val === currentFull || val === currentShort || val === currentIso;
+    }) || periods[0];
+
+    if (activePeriod?.monthYear) {
+      sapRevenue = await fetchSapRevenue(activePeriod.monthYear).catch((err) => {
         console.error("[MobileDailyReportPage] fetchSapRevenue error:", err);
         return { service: { idr: 0, usd: 0 }, repair: { idr: 0, usd: 0 }, retread: { idr: 0, usd: 0 }, rows: [] };
       });
@@ -35,14 +44,22 @@ export default async function MobileDailyReportPage() {
     console.error("[MobileDailyReportPage] Data fetch error:", err);
   }
 
-  const firstPeriod = periods[0];
+  const now = new Date();
+  const currentFull = now.toLocaleString("en-US", { month: "long", year: "numeric" }).trim().toLowerCase();
+  const currentShort = now.toLocaleString("en-US", { month: "short", year: "numeric" }).trim().toLowerCase();
+  const currentIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+  const activePeriod = periods.find((p) => {
+    const val = (p.monthYear || "").trim().toLowerCase();
+    return val === currentFull || val === currentShort || val === currentIso;
+  }) || periods[0];
 
   return (
     <MobileReportClientPage
       periods={periods}
       dailyItems={dailyItems}
       initialSapRevenue={sapRevenue}
-      exchangeRate={firstPeriod?.exchangeRateIdrToUsd || "15000"}
+      exchangeRate={activePeriod?.exchangeRateIdrToUsd || "15000"}
     />
   );
 }

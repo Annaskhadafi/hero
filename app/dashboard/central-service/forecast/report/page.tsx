@@ -12,10 +12,19 @@ export default async function DailyReportPage() {
 
   const [periods, dailyItems] = await Promise.all([getForecastPeriods(), getDailyForecastItems()])
 
-  // Fetch SAP revenue for the first period
-  const firstPeriod = periods[0]
-  const sapRevenue = firstPeriod
-    ? await fetchSapRevenue(firstPeriod.monthYear)
+  const now = new Date()
+  const currentFull = now.toLocaleString('en-US', { month: 'long', year: 'numeric' }).trim().toLowerCase()
+  const currentShort = now.toLocaleString('en-US', { month: 'short', year: 'numeric' }).trim().toLowerCase()
+  const currentIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+
+  const activePeriod = periods.find((p) => {
+    const val = (p.monthYear || '').trim().toLowerCase()
+    return val === currentFull || val === currentShort || val === currentIso
+  }) || periods[0]
+
+  // Fetch SAP revenue for the active period
+  const sapRevenue = activePeriod
+    ? await fetchSapRevenue(activePeriod.monthYear)
     : {
         service: { idr: 0, usd: 0 },
         repair: { idr: 0, usd: 0 },
@@ -28,7 +37,7 @@ export default async function DailyReportPage() {
       periods={periods}
       dailyItems={dailyItems}
       initialSapRevenue={sapRevenue}
-      exchangeRate={firstPeriod?.exchangeRateIdrToUsd || '15000'}
+      exchangeRate={activePeriod?.exchangeRateIdrToUsd || '15000'}
     />
   )
 }

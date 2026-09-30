@@ -78,9 +78,18 @@ export function MobileReportClientPage({
   initialSapRevenue: any
   exchangeRate: string
 }) {
-  const [selectedPeriodId, setSelectedPeriodId] = useState<string>(
-    periods[0]?.id ? String(periods[0].id) : ''
-  )
+  const [selectedPeriodId, setSelectedPeriodId] = useState<string>(() => {
+    if (!periods || periods.length === 0) return ''
+    const now = new Date()
+    const currentFull = now.toLocaleString('en-US', { month: 'long', year: 'numeric' }).trim().toLowerCase()
+    const currentShort = now.toLocaleString('en-US', { month: 'short', year: 'numeric' }).trim().toLowerCase()
+    const currentIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const matched = periods.find((p) => {
+      const val = (p.monthYear || '').trim().toLowerCase()
+      return val === currentFull || val === currentShort || val === currentIso
+    })
+    return matched ? String(matched.id) : String(periods[0]?.id || '')
+  })
   const [currencyMode, setCurrencyMode] = useState<'IDR' | 'USD'>('IDR')
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedCustomers, setExpandedCustomers] = useState<Record<string, boolean>>({})

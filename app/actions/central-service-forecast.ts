@@ -102,6 +102,11 @@ export async function updatePeriodExchangeRate(id: number, rate: string) {
   revalidatePath('/dashboard/central-service/forecast')
   revalidatePath('/dashboard/central-service/forecast/monthly')
   revalidatePath('/dashboard/central-service/forecast/daily')
+  revalidatePath('/dashboard/central-service/forecast/report')
+  revalidatePath('/mobile/central-service/forecast')
+  revalidatePath('/mobile/central-service/forecast/monthly')
+  revalidatePath('/mobile/central-service/forecast/daily')
+  revalidatePath('/mobile/central-service/forecast/report')
 }
 
 export async function getRealtimeExchangeRate() {

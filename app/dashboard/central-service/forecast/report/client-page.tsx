@@ -239,7 +239,10 @@ export function ReportClientPage({
   }
   exchangeRate: string
 }) {
-  const [selectedPeriodId, setSelectedPeriodId] = useState(periods[0]?.id?.toString() || '')
+  const [selectedPeriodId, setSelectedPeriodId] = useState(() => {
+    const currentId = findCurrentMonthPeriodId(periods)
+    return currentId || periods[0]?.id?.toString() || ''
+  })
 
   useEffect(() => {
     const currentId = findCurrentMonthPeriodId(periods)
@@ -255,7 +258,12 @@ export function ReportClientPage({
   const [isLoadingSap, setIsLoadingSap] = useState(false)
   const reportRef = useRef<HTMLDivElement>(null)
 
-  const rate = Number(exchangeRate) || 15000
+  const selectedPeriod = useMemo(
+    () => periods.find((p) => p.id?.toString() === selectedPeriodId) || periods[0],
+    [periods, selectedPeriodId]
+  )
+
+  const rate = Number(selectedPeriod?.exchangeRateIdrToUsd || exchangeRate || 15000)
 
   const filtered = useMemo(() => {
     return dailyItems.filter((w: any) => {
