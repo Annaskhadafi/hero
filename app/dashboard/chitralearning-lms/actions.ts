@@ -166,19 +166,22 @@ export async function updateCourseSettings(courseId: number, formData: FormData)
   const isAdmin = await isLmsAdmin(session);
   if (!isAdmin) throw new Error("Unauthorized");
 
+  const course = await getCourse(courseId);
+  if (!course) throw new Error("Course tidak ditemukan");
+
   const status = textValue(formData, "status", "draft");
   const passingScore = Math.min(100, Math.max(0, numberValue(formData, "passingScore", 80)));
   const dueDays = numberValue(formData, "dueDays", 30);
   const certificateEnabled = textValue(formData, "certificateEnabled") === "yes";
-  const gradingType = textValue(formData, "gradingType", "posttest_only") === "weighted" ? "weighted" : "posttest_only";
+  const gradingType = textValue(formData, "gradingType", course.gradingType) === "weighted" ? "weighted" : "posttest_only";
   // Keep post-test-only courses deterministic even when an older form submits stale weights.
-  const pretestWeight = gradingType === "weighted" ? Math.min(100, Math.max(0, numberValue(formData, "pretestWeight", 0))) : 0;
+  const pretestWeight = gradingType === "weighted" ? Math.min(100, Math.max(0, formData.has("pretestWeight") ? numberValue(formData, "pretestWeight", course.pretestWeight) : course.pretestWeight)) : 0;
   const posttestWeight = gradingType === "weighted" ? 100 - pretestWeight : 100;
   const maxRetakesStr = textValue(formData, "maxRetakes");
   const parsedMaxRetakes = parseInt(maxRetakesStr, 10);
-  const maxRetakes = !Number.isNaN(parsedMaxRetakes) ? parsedMaxRetakes : -1;
-  const enrollmentType = textValue(formData, "enrollmentType", "umum");
-  const targetSection = textValue(formData, "targetSection", "");
+  const maxRetakes = !Number.isNaN(parsedMaxRetakes) ? parsedMaxRetakes : course.maxRetakes;
+  const enrollmentType = textValue(formData, "enrollmentType", course.enrollmentType);
+  const targetSection = textValue(formData, "targetSection", course.targetSection);
 
   await db.update(chitraLearningCourses).set({
     status,
@@ -1257,7 +1260,7 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
         pretestStatus: "completed",
         progress,
         finalScore,
-        isPassed: passed,
+        isPassed: enrollment.posttestScore != null && finalScore >= course.passingScore,
         lastLessonId: lessonId || enrollment.lastLessonId,
         updatedAt: new Date(),
       })

@@ -140,6 +140,7 @@ export function ActivityLibraryRowActions({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const isRowGroup = Boolean(

@@ -22,7 +22,7 @@ import { SioDatabaseTab } from "@/components/sio-database-tab";
 import { computeAggregates } from "@/lib/sio-certification";
 import { db } from "@/db";
 import { chitraLearningCourses, chitraLearningEnrollments, employees } from "@/db/schema/hero";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, inArray } from "drizzle-orm";
 
 const APP_TIME_ZONE = "Asia/Makassar";
 
@@ -91,7 +91,8 @@ export default async function TrainingRecordsPage({
     getTrainingRecordPageData(),
     getOperationalCrudOptions(),
   ]);
-  const lmsRows = await db
+  const scopedEmployeeIds = new Set(data.employeeOptions.map((employee) => employee.id));
+  const lmsRows = scopedEmployeeIds.size === 0 ? [] : await db
     .select({
       id: chitraLearningEnrollments.id,
       employeeName: employees.name,
@@ -106,6 +107,7 @@ export default async function TrainingRecordsPage({
     .from(chitraLearningEnrollments)
     .innerJoin(chitraLearningCourses, eq(chitraLearningEnrollments.courseId, chitraLearningCourses.id))
     .innerJoin(employees, eq(chitraLearningEnrollments.employeeId, employees.id))
+    .where(inArray(chitraLearningEnrollments.employeeId, Array.from(scopedEmployeeIds)))
     .orderBy(desc(chitraLearningEnrollments.updatedAt));
   const lmsPassed = lmsRows.filter((row) => row.status === "passed").length;
   const lmsInProgress = lmsRows.filter((row) => row.progress > 0 && row.progress < 100).length;
@@ -122,7 +124,6 @@ export default async function TrainingRecordsPage({
     })
     .sort((a, b) => b.total - a.total)
     .slice(0, 5);
-  const scopedEmployeeIds = new Set(data.employeeOptions.map((employee) => employee.id));
   const scopedOptions = {
     ...options,
     employees: options.employees.filter((employee) => scopedEmployeeIds.has(employee.id)),
