@@ -8,6 +8,9 @@ import {
   hcContractReviewApprovals,
   hcContractReviewReminders,
   hcContractReviewSettings,
+  hcContractReviewTestAttempts,
+  hcContractReviewTestConfigs,
+  hcContractReviewTestQuestions,
   hcEmployeeContractReviews,
   hrPositions,
   masterDepartments,
@@ -17,6 +20,14 @@ import {
 import { centralServiceEmployees } from '@/db/schema/central-service'
 import { and, asc, desc, eq, isNotNull, ne, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
+
+function safeRevalidatePath(path: string) {
+  try {
+    revalidatePath(path)
+  } catch {
+    // Ignore error outside Next.js request context (e.g. test runner, background tasks)
+  }
+}
 import { randomUUID } from 'crypto'
 import { logEmailDeliveryRecord, sendEmailViaSmtp, type EmailTransportSettings } from '@/lib/email-delivery'
 import { headers } from 'next/headers'
@@ -215,6 +226,28 @@ Terima kasih atas perhatian Anda.
 Hormat kami,
 HR Department - PT Chitra Paratama`,
     },
+    onlineTestInvitation: {
+      subject: '[Contract Review] Ujian Evaluasi Kompetensi Online - {{employeeName}} ({{employeeSn}})',
+      body: `Yth. {{employeeName}},
+
+Sebagai bagian dari proses evaluasi Contract Review, Anda diwajibkan untuk mengerjakan Test Online berikut:
+
+Materi Ujian\t: {{testTitle}}
+Section\t\t: {{employeeSection}}
+Durasi\t\t: {{durationMinutes}} Menit
+Passing Grade\t: {{passingGrade}}
+
+Silakan akses link ujian berikut untuk memulai pengerjaan:
+{{testLink}}
+
+Harap segera diselesaikan sebelum batas waktu yang ditentukan.
+
+Hormat kami,
+Training Center & HR Department - PT Chitra Paratama`,
+    },
+  },
+  onlineTest: {
+    enabled: true,
   },
 }
 
@@ -222,7 +255,7 @@ type ContractReviewSettings = typeof DEFAULT_CONTRACT_REVIEW_SETTINGS
 
 let contractReviewWorkflowTablesPromise: Promise<void> | null = null
 
-async function ensureContractReviewWorkflowTables() {
+export async function ensureContractReviewWorkflowTables() {
   if (contractReviewWorkflowTablesPromise) {
     return contractReviewWorkflowTablesPromise
   }
@@ -241,6 +274,16 @@ async function ensureContractReviewWorkflowTablesOnce() {
     ALTER TABLE hero_hc_employee_contract_reviews ADD COLUMN IF NOT EXISTS superior_title text NOT NULL DEFAULT '';
     ALTER TABLE hero_hc_employee_contract_reviews ADD COLUMN IF NOT EXISTS hr_title text NOT NULL DEFAULT '';
     ALTER TABLE hero_hc_employee_contract_reviews ADD COLUMN IF NOT EXISTS next_superior_title text NOT NULL DEFAULT '';
+    ALTER TABLE hero_hc_employee_contract_reviews ADD COLUMN IF NOT EXISTS attachments jsonb DEFAULT '[]'::jsonb;
+    ALTER TABLE hero_hc_employee_contract_reviews ADD COLUMN IF NOT EXISTS test_required boolean NOT NULL DEFAULT false;
+    ALTER TABLE hero_hc_employee_contract_reviews ADD COLUMN IF NOT EXISTS test_config_id integer;
+    ALTER TABLE hero_hc_employee_contract_reviews ADD COLUMN IF NOT EXISTS test_status text NOT NULL DEFAULT 'none';
+    ALTER TABLE hero_hc_employee_contract_reviews ADD COLUMN IF NOT EXISTS test_final_score integer;
+    ALTER TABLE hero_hc_employee_contract_reviews ADD COLUMN IF NOT EXISTS test_attempt_count integer NOT NULL DEFAULT 0;
+    ALTER TABLE hero_hc_employee_contract_reviews ADD COLUMN IF NOT EXISTS test_completed_at timestamp;
+    ALTER TABLE hero_hc_employee_contract_reviews ADD COLUMN IF NOT EXISTS allow_approver_customization boolean NOT NULL DEFAULT true;
+    ALTER TABLE hero_hc_contract_review_test_configs ADD COLUMN IF NOT EXISTS target_section_ids jsonb DEFAULT '[]'::jsonb;
+    ALTER TABLE hero_hc_contract_review_test_configs ADD COLUMN IF NOT EXISTS target_section_names jsonb DEFAULT '[]'::jsonb;
   `)
   await db.execute(sql`
     create table if not exists hero_hc_contract_review_approvals (
@@ -285,8 +328,65 @@ async function ensureContractReviewWorkflowTablesOnce() {
     )
   `)
   await db.execute(sql`
-    alter table hero_hc_employee_contract_reviews
-    add column if not exists attachments jsonb default '[]'::jsonb;
+    create table if not exists hero_hc_contract_review_test_configs (
+      id serial primary key,
+      section_id integer references hero_master_sections(id) on delete set null,
+      section_name text not null default '',
+      review_type text not null default 'all',
+      title text not null,
+      description text not null default '',
+      duration_minutes integer not null default 30,
+      has_passing_grade boolean not null default true,
+      passing_grade integer not null default 75,
+      max_remedial_attempts integer not null default 1,
+      is_active boolean not null default true,
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    )
+  `)
+  await db.execute(sql`
+    create table if not exists hero_hc_contract_review_test_questions (
+      id serial primary key,
+      config_id integer not null references hero_hc_contract_review_test_configs(id) on delete cascade,
+      question_text text not null,
+      question_image_url text not null default '',
+      option_a text not null,
+      option_a_image_url text not null default '',
+      option_b text not null,
+      option_b_image_url text not null default '',
+      option_c text not null default '',
+      option_c_image_url text not null default '',
+      option_d text not null default '',
+      option_d_image_url text not null default '',
+      correct_option text not null default 'A',
+      explanation text not null default '',
+      points integer not null default 1,
+      sort_order integer not null default 1,
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    )
+  `)
+  await db.execute(sql`
+    create table if not exists hero_hc_contract_review_test_attempts (
+      id serial primary key,
+      config_id integer not null references hero_hc_contract_review_test_configs(id) on delete cascade,
+      employee_id integer not null references hero_employees(id) on delete cascade,
+      review_id integer references hero_hc_employee_contract_reviews(id) on delete set null,
+      attempt_number integer not null default 1,
+      access_token text not null unique,
+      score integer,
+      total_questions integer not null default 0,
+      correct_answers integer not null default 0,
+      has_passing_grade boolean not null default true,
+      passing_grade integer not null default 75,
+      status text not null default 'pending',
+      answers_payload jsonb default '{}'::jsonb,
+      started_at timestamp,
+      completed_at timestamp,
+      expires_at timestamp,
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    )
   `)
 }
 
@@ -424,8 +524,8 @@ async function syncCompletedContractReviewToEmployee(
   const employeeDates = getCompletedEmployeeContractDates(review, completedAt)
   if (Object.keys(employeeDates).length === 0) return
   await db.update(employees).set(employeeDates).where(eq(employees.id, review.employeeId))
-  revalidatePath('/dashboard/hc/employee')
-  revalidatePath(`/dashboard/hc/employee/${review.employeeId}`)
+  safeRevalidatePath('/dashboard/hc/employee')
+  safeRevalidatePath(`/dashboard/hc/employee/${review.employeeId}`)
 }
 
 function formatDisplayDate(value: Date) {
@@ -1551,6 +1651,24 @@ export async function sendDueContractReviewReminders() {
       },
     })
 
+    // Dispatch Online Test invitation to employee if active test config exists
+    if (settings.onlineTest?.enabled) {
+      try {
+        const { findActiveTestConfigForEmployee, dispatchContractReviewTestInvitation } = await import(
+          './contract-review-tests'
+        )
+        const activeConfig = await findActiveTestConfigForEmployee(expEmp.id, 'contract')
+        if (activeConfig) {
+          await dispatchContractReviewTestInvitation({
+            employeeId: expEmp.id,
+            configId: activeConfig.id,
+          })
+        }
+      } catch (err) {
+        console.warn('[contract-review] Failed to dispatch test invitation during reminder:', err)
+      }
+    }
+
     sent += 1
   }
 
@@ -1629,9 +1747,43 @@ export async function getContractReviewActivityTemplates() {
 
 export async function getContractReviewById(id: number) {
   try {
+    await ensureContractReviewWorkflowTables()
     const [record] = await db.select().from(hcEmployeeContractReviews).where(eq(hcEmployeeContractReviews.id, id))
     if (!record) return { success: false, error: 'Review not found' }
-    return { success: true, data: record }
+
+    let testConfig: any = null
+    let testAttempts: any[] = []
+
+    if (record.testConfigId) {
+      const [cfg] = await db
+        .select()
+        .from(hcContractReviewTestConfigs)
+        .where(eq(hcContractReviewTestConfigs.id, record.testConfigId))
+        .limit(1)
+      testConfig = cfg || null
+    }
+
+    if (record.employeeId) {
+      testAttempts = await db
+        .select()
+        .from(hcContractReviewTestAttempts)
+        .where(
+          or(
+            eq(hcContractReviewTestAttempts.reviewId, id),
+            eq(hcContractReviewTestAttempts.employeeId, record.employeeId)
+          )
+        )
+        .orderBy(desc(hcContractReviewTestAttempts.attemptNumber))
+    }
+
+    return {
+      success: true,
+      data: {
+        ...record,
+        testConfig,
+        testAttempts,
+      },
+    }
   } catch (error: any) {
     console.error('Error fetching contract review:', error)
     return { success: false, error: error.message }
@@ -1798,19 +1950,66 @@ export async function saveContractReview(data: Partial<typeof hcEmployeeContract
         .values(data as any)
         .returning()
       saved = inserted
-      const approvalSteps = await buildContractReviewApprovals(inserted)
+
+      // Check if Online Test is required for this employee
+      if (inserted.employeeId) {
+        try {
+          const { findActiveTestConfigForEmployee, dispatchContractReviewTestInvitation } = await import(
+            './contract-review-tests'
+          )
+          const activeCfg = await findActiveTestConfigForEmployee(
+            inserted.employeeId,
+            inserted.reviewType || 'contract'
+          )
+          if (activeCfg) {
+            await db
+              .update(hcEmployeeContractReviews)
+              .set({
+                testRequired: true,
+                testConfigId: activeCfg.id,
+                testStatus: 'pending',
+              })
+              .where(eq(hcEmployeeContractReviews.id, inserted.id))
+            saved.testRequired = true
+            saved.testConfigId = activeCfg.id
+            saved.testStatus = 'pending'
+
+            // Dispatch test invitation to employee
+            await dispatchContractReviewTestInvitation({
+              employeeId: inserted.employeeId,
+              reviewId: inserted.id,
+              configId: activeCfg.id,
+            })
+          }
+        } catch (e) {
+          console.warn('[contract-review] Error setting up test during review create:', e)
+        }
+      }
+
+      // If test is required, PJO cannot auto-approve on creation
+      const canAutoApproveFirstStep = Boolean(data.leaderSignatureDataUrl) && !saved.testRequired
+
+      const approvalSteps = await buildContractReviewApprovals(saved)
       if (approvalSteps.length > 0) {
         const stepsWithSig = [...approvalSteps]
-        // Pass leader signature to first approval step
-        if (data.leaderSignatureDataUrl && stepsWithSig[0]) {
-          stepsWithSig[0] = { ...stepsWithSig[0] as any, status: 'approved', signatureDataUrl: data.leaderSignatureDataUrl as string, signedAt: new Date() }
-          // Mark next step as pending
-          if (stepsWithSig[1]) stepsWithSig[1] = { ...stepsWithSig[1] as any, status: 'pending' }
+        if (canAutoApproveFirstStep && stepsWithSig[0]) {
+          stepsWithSig[0] = {
+            ...(stepsWithSig[0] as any),
+            status: 'approved',
+            signatureDataUrl: data.leaderSignatureDataUrl as string,
+            signedAt: new Date(),
+          }
+          if (stepsWithSig[1]) stepsWithSig[1] = { ...(stepsWithSig[1] as any), status: 'pending' }
         }
         await db.insert(hcContractReviewApprovals).values(stepsWithSig as any)
-        await db.update(hcEmployeeContractReviews).set({ status: 'in_progress' }).where(eq(hcEmployeeContractReviews.id, inserted.id))
-        saved = { ...inserted, status: 'in_progress' }
-        await sendPendingContractReviewApprovalEmail(saved)
+        await db
+          .update(hcEmployeeContractReviews)
+          .set({ status: canAutoApproveFirstStep ? 'in_progress' : 'draft' })
+          .where(eq(hcEmployeeContractReviews.id, inserted.id))
+        saved = { ...saved, status: canAutoApproveFirstStep ? 'in_progress' : 'draft' }
+        if (canAutoApproveFirstStep) {
+          await sendPendingContractReviewApprovalEmail(saved)
+        }
       }
     }
 
@@ -2081,6 +2280,45 @@ export async function approveContractReviewStep(
       return { success: false, error: 'TTD ini sudah digunakan pada step approval lain.' }
     }
 
+    // Check Online Test requirement gate for Step 1 (PJO/Leader)
+    const [reviewRecord] = await db
+      .select()
+      .from(hcEmployeeContractReviews)
+      .where(eq(hcEmployeeContractReviews.id, approval.reviewId))
+      .limit(1)
+
+    if (approval.stepOrder === 1 && reviewRecord?.testRequired) {
+      if (['none', 'pending', 'in_progress'].includes(reviewRecord.testStatus)) {
+        return {
+          success: false,
+          error: 'Persetujuan belum dapat dilakukan karena karyawan belum menyelesaikan Ujian Online yang disyaratkan.',
+        }
+      }
+
+      if (reviewRecord.testStatus === 'failed') {
+        let maxRemedial = 0
+        let passGrade = 75
+        if (reviewRecord.testConfigId) {
+          const [cfg] = await db
+            .select()
+            .from(hcContractReviewTestConfigs)
+            .where(eq(hcContractReviewTestConfigs.id, reviewRecord.testConfigId))
+            .limit(1)
+          if (cfg) {
+            maxRemedial = cfg.maxRemedialAttempts
+            passGrade = cfg.passingGrade
+          }
+        }
+
+        if (maxRemedial > 0 && reviewRecord.testAttemptCount <= maxRemedial) {
+          return {
+            success: false,
+            error: `Karyawan belum mencapai passing grade (${passGrade}%) dan masih memiliki kuota remedial. Harap menunggu hingga sesi remedial selesai.`,
+          }
+        }
+      }
+    }
+
     // If recommendation/letterIssuance are changed, update the master review record
     // Rekomendasi kontrak tidak boleh diubah oleh karyawan yang sedang direview (step 2 / role employee)
     const isEmployeeReviewer = approval.approverRole === 'employee' || approval.stepOrder === 2
@@ -2175,8 +2413,8 @@ export async function approveContractReviewStep(
       }
     }
 
-    revalidatePath('/dashboard/hc/contract-review')
-    revalidatePath('/dashboard/approval')
+    safeRevalidatePath('/dashboard/hc/contract-review')
+    safeRevalidatePath('/dashboard/approval')
     return { success: true }
   } catch (error: any) {
     console.error('Error approving contract review step:', error)
@@ -2628,3 +2866,174 @@ export async function deleteContractReviewAttachment(params: {
     return { success: false, error: error.message || 'Gagal menghapus lampiran.' }
   }
 }
+
+export async function updateContractReviewByApproverToken(
+  token: string,
+  payload: {
+    performanceActivities?: Array<{ activity: string; achievement: string; remark: string }>
+    compDisciplineAch?: string
+    compDisciplineRemark?: string
+    compSkillAch?: string
+    compSkillRemark?: string
+    compResultAch?: string
+    compResultRemark?: string
+    compQualityAch?: string
+    compQualityRemark?: string
+    compCustomerAch?: string
+    compCustomerRemark?: string
+    compTeamworkAch?: string
+    compTeamworkRemark?: string
+    recommendation?: string
+    contractExtendedMonths?: number
+    contractEndDate?: string
+    permanentDate?: string
+    letterIssuance?: string
+  }
+) {
+  try {
+    await ensureContractReviewWorkflowTables()
+    const [approval] = await db
+      .select()
+      .from(hcContractReviewApprovals)
+      .where(eq(hcContractReviewApprovals.approvalToken, token))
+      .limit(1)
+
+    if (!approval) {
+      return { success: false, error: 'Token approval tidak valid.' }
+    }
+
+    if (approval.approverRole === 'employee' || approval.stepOrder === 2) {
+      return {
+        success: false,
+        error: 'Karyawan yang sedang dievaluasi hanya memiliki akses membaca dan menandatangani dokumen.',
+      }
+    }
+
+    const [review] = await db
+      .select()
+      .from(hcEmployeeContractReviews)
+      .where(eq(hcEmployeeContractReviews.id, approval.reviewId))
+      .limit(1)
+
+    if (!review) {
+      return { success: false, error: 'Dokumen Contract Review tidak ditemukan.' }
+    }
+
+    const updateData: Record<string, any> = {
+      updatedAt: new Date(),
+    }
+
+    if (payload.performanceActivities !== undefined) {
+      updateData.performanceActivities = payload.performanceActivities
+    }
+    if (payload.compDisciplineAch !== undefined) updateData.compDisciplineAch = payload.compDisciplineAch
+    if (payload.compDisciplineRemark !== undefined) updateData.compDisciplineRemark = payload.compDisciplineRemark
+    if (payload.compSkillAch !== undefined) updateData.compSkillAch = payload.compSkillAch
+    if (payload.compSkillRemark !== undefined) updateData.compSkillRemark = payload.compSkillRemark
+    if (payload.compResultAch !== undefined) updateData.compResultAch = payload.compResultAch
+    if (payload.compResultRemark !== undefined) updateData.compResultRemark = payload.compResultRemark
+    if (payload.compQualityAch !== undefined) updateData.compQualityAch = payload.compQualityAch
+    if (payload.compQualityRemark !== undefined) updateData.compQualityRemark = payload.compQualityRemark
+    if (payload.compCustomerAch !== undefined) updateData.compCustomerAch = payload.compCustomerAch
+    if (payload.compCustomerRemark !== undefined) updateData.compCustomerRemark = payload.compCustomerRemark
+    if (payload.compTeamworkAch !== undefined) updateData.compTeamworkAch = payload.compTeamworkAch
+    if (payload.compTeamworkRemark !== undefined) updateData.compTeamworkRemark = payload.compTeamworkRemark
+    if (payload.recommendation !== undefined) updateData.recommendation = payload.recommendation
+    if (payload.contractExtendedMonths !== undefined) updateData.contractExtendedMonths = payload.contractExtendedMonths
+    if (payload.contractEndDate !== undefined) updateData.contractEndDate = payload.contractEndDate
+    if (payload.permanentDate !== undefined) updateData.permanentDate = payload.permanentDate
+    if (payload.letterIssuance !== undefined) updateData.letterIssuance = payload.letterIssuance
+
+    await db
+      .update(hcEmployeeContractReviews)
+      .set(updateData)
+      .where(eq(hcEmployeeContractReviews.id, approval.reviewId))
+
+    safeRevalidatePath('/dashboard/hc/contract-review')
+    safeRevalidatePath(`/dashboard/hc/contract-review/${approval.reviewId}`)
+    safeRevalidatePath(`/dashboard/hc/contract-review/form/${approval.reviewId}`)
+    safeRevalidatePath(`/review/${token}`)
+
+    return { success: true }
+  } catch (error: any) {
+    console.error('Error updating review by approver token:', error)
+    return { success: false, error: error.message || 'Gagal menyimpan perubahan review.' }
+  }
+}
+
+export async function addContractReviewApproverRow(
+  token: string,
+  newApprover: {
+    approverName: string
+    approverEmail: string
+    approverRole: string
+  }
+) {
+  try {
+    await ensureContractReviewWorkflowTables()
+    const [currentApproval] = await db
+      .select()
+      .from(hcContractReviewApprovals)
+      .where(eq(hcContractReviewApprovals.approvalToken, token))
+      .limit(1)
+
+    if (!currentApproval) {
+      return { success: false, error: 'Approval step tidak ditemukan.' }
+    }
+
+    if (currentApproval.approverRole === 'employee' || currentApproval.stepOrder === 2) {
+      return {
+        success: false,
+        error: 'Karyawan yang sedang dievaluasi tidak memiliki izin untuk menambah approver.',
+      }
+    }
+
+    if (!newApprover.approverName.trim()) {
+      return { success: false, error: 'Nama penandatangan/approver wajib diisi.' }
+    }
+
+    // Get all steps ordered
+    const allSteps = await db
+      .select()
+      .from(hcContractReviewApprovals)
+      .where(eq(hcContractReviewApprovals.reviewId, currentApproval.reviewId))
+      .orderBy(asc(hcContractReviewApprovals.stepOrder))
+
+    // Insert new approver right after the current approver
+    const insertAfterOrder = currentApproval.stepOrder
+
+    // Shift subsequent step orders by +1
+    for (const step of allSteps) {
+      if (step.stepOrder > insertAfterOrder) {
+        await db
+          .update(hcContractReviewApprovals)
+          .set({ stepOrder: step.stepOrder + 1 })
+          .where(eq(hcContractReviewApprovals.id, step.id))
+      }
+    }
+
+    const newToken = randomUUID().replace(/-/g, '')
+    const [createdStep] = await db
+      .insert(hcContractReviewApprovals)
+      .values({
+        reviewId: currentApproval.reviewId,
+        stepOrder: insertAfterOrder + 1,
+        approvalToken: newToken,
+        approverName: newApprover.approverName.trim(),
+        approverEmail: newApprover.approverEmail.trim(),
+        approverRole: newApprover.approverRole.trim() || 'Co-PJO / Supervisor',
+        status: 'pending',
+      })
+      .returning()
+
+    safeRevalidatePath('/dashboard/hc/contract-review')
+    safeRevalidatePath(`/dashboard/hc/contract-review/${currentApproval.reviewId}`)
+    safeRevalidatePath(`/review/${token}`)
+
+    return { success: true, createdStep }
+  } catch (error: any) {
+    console.error('Error adding contract review approver row:', error)
+    return { success: false, error: error.message || 'Gagal menambahkan baris approver.' }
+  }
+}
+

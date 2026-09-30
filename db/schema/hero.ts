@@ -3650,6 +3650,15 @@ export const hcEmployeeContractReviews = pgTable('hero_hc_employee_contract_revi
     }>>()
     .default([]),
 
+  // Online Test Integration
+  testRequired: boolean('test_required').notNull().default(false),
+  testConfigId: integer('test_config_id'),
+  testStatus: text('test_status').notNull().default('none'), // none, pending, in_progress, passed, failed, completed, exempted
+  testFinalScore: integer('test_final_score'),
+  testAttemptCount: integer('test_attempt_count').notNull().default(0),
+  testCompletedAt: timestamp('test_completed_at'),
+  allowApproverCustomization: boolean('allow_approver_customization').notNull().default(true),
+
   status: text('status').notNull().default('draft'), // draft, finalized
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
@@ -3697,6 +3706,74 @@ export const hcContractReviewSettings = pgTable('hero_hc_contract_review_setting
   id: serial('id').primaryKey(),
   settingKey: text('setting_key').notNull().unique(),
   settingValue: jsonb('setting_value').notNull().default({}),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+// ─── HC Contract Review Online Test Configuration & Execution ─────────
+
+export const hcContractReviewTestConfigs = pgTable('hero_hc_contract_review_test_configs', {
+  id: serial('id').primaryKey(),
+  sectionId: integer('section_id').references(() => masterSections.id, { onDelete: 'set null' }),
+  sectionName: text('section_name').notNull().default(''),
+  targetSectionIds: jsonb('target_section_ids').$type<number[]>().default([]),
+  targetSectionNames: jsonb('target_section_names').$type<string[]>().default([]),
+  reviewType: text('review_type').notNull().default('all'), // probation, contract, all
+  title: text('title').notNull(),
+  description: text('description').notNull().default(''),
+  durationMinutes: integer('duration_minutes').notNull().default(30),
+  hasPassingGrade: boolean('has_passing_grade').notNull().default(true),
+  passingGrade: integer('passing_grade').notNull().default(75),
+  maxRemedialAttempts: integer('max_remedial_attempts').notNull().default(1),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const hcContractReviewTestQuestions = pgTable('hero_hc_contract_review_test_questions', {
+  id: serial('id').primaryKey(),
+  configId: integer('config_id')
+    .notNull()
+    .references(() => hcContractReviewTestConfigs.id, { onDelete: 'cascade' }),
+  questionText: text('question_text').notNull(),
+  questionImageUrl: text('question_image_url').notNull().default(''),
+  optionA: text('option_a').notNull(),
+  optionAImageUrl: text('option_a_image_url').notNull().default(''),
+  optionB: text('option_b').notNull(),
+  optionBImageUrl: text('option_b_image_url').notNull().default(''),
+  optionC: text('option_c').notNull().default(''),
+  optionCImageUrl: text('option_c_image_url').notNull().default(''),
+  optionD: text('option_d').notNull().default(''),
+  optionDImageUrl: text('option_d_image_url').notNull().default(''),
+  correctOption: text('correct_option').notNull().default('A'), // A, B, C, D
+  explanation: text('explanation').notNull().default(''),
+  points: integer('points').notNull().default(1),
+  sortOrder: integer('sort_order').notNull().default(1),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const hcContractReviewTestAttempts = pgTable('hero_hc_contract_review_test_attempts', {
+  id: serial('id').primaryKey(),
+  configId: integer('config_id')
+    .notNull()
+    .references(() => hcContractReviewTestConfigs.id, { onDelete: 'cascade' }),
+  employeeId: integer('employee_id')
+    .notNull()
+    .references(() => employees.id, { onDelete: 'cascade' }),
+  reviewId: integer('review_id').references(() => hcEmployeeContractReviews.id, { onDelete: 'set null' }),
+  attemptNumber: integer('attempt_number').notNull().default(1),
+  accessToken: text('access_token').notNull().unique(),
+  score: integer('score'),
+  totalQuestions: integer('total_questions').notNull().default(0),
+  correctAnswers: integer('correct_answers').notNull().default(0),
+  hasPassingGrade: boolean('has_passing_grade').notNull().default(true),
+  passingGrade: integer('passing_grade').notNull().default(75),
+  status: text('status').notNull().default('pending'), // pending, in_progress, passed, failed, completed
+  answersPayload: jsonb('answers_payload').$type<Record<string, string>>().default({}),
+  startedAt: timestamp('started_at'),
+  completedAt: timestamp('completed_at'),
+  expiresAt: timestamp('expires_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 

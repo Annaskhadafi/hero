@@ -5,17 +5,21 @@ import { useEffect, useRef, useState, useTransition } from 'react'
 import SignatureCanvas from 'react-signature-canvas'
 import {
   addContractReviewAttachment,
+  addContractReviewApproverRow,
   approveContractReviewStep,
   deleteContractReviewAttachment,
   revertContractReviewStep,
+  updateContractReviewByApproverToken,
 } from '@/app/actions/contract-review'
 import { getUserSignatureAction } from '@/app/actions/user-signature'
 import { uploadFile } from '@/app/actions/upload'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Download, RotateCcw, Upload, Paperclip, FileText, Image as ImageIcon, ExternalLink, Loader2, Trash2, Eye, AlertCircle, CheckCircle2, PenTool } from 'lucide-react'
+import { Download, RotateCcw, Upload, Paperclip, FileText, Image as ImageIcon, ExternalLink, Loader2, Trash2, Eye, AlertCircle, CheckCircle2, PenTool, FileCheck, Edit, UserPlus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   Dialog,
@@ -226,6 +230,70 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
   const canEditRecommendation = currentStatus === 'pending' && !done && (isSectionHead || isDeptHead || isHr) && !isEmployee
   const canEditLetterIssuance = currentStatus === 'pending' && !done && isHr && !isEmployee
 
+  // Public Edit Review & Add Approver States
+  const [isEditReviewModalOpen, setIsEditReviewModalOpen] = useState(false)
+  const [isEditPending, startEditTransition] = useTransition()
+  const [editRecommendation, setEditRecommendation] = useState(review.recommendation || '')
+  const [editContractMonths, setEditContractMonths] = useState(review.contractExtendedMonths ? String(review.contractExtendedMonths) : '')
+  const [editLetterIssuance, setEditLetterIssuance] = useState(review.letterIssuance || '')
+
+  const [isAddApproverModalOpen, setIsAddApproverModalOpen] = useState(false)
+  const [isAddApproverPending, startAddApproverTransition] = useTransition()
+  const [newApproverName, setNewApproverName] = useState('')
+  const [newApproverEmail, setNewApproverEmail] = useState('')
+  const [newApproverRole, setNewApproverRole] = useState('Co-PJO / Site Supervisor')
+
+  function handleSaveReviewDetails() {
+    startEditTransition(async () => {
+      try {
+        const res = await updateContractReviewByApproverToken(token, {
+          recommendation: editRecommendation,
+          contractExtendedMonths: editContractMonths ? Number(editContractMonths) : undefined,
+          letterIssuance: editLetterIssuance,
+        })
+        if (res.success) {
+          setRecommendation(editRecommendation)
+          setContractExtendedMonths(editContractMonths ? Number(editContractMonths) : undefined)
+          setLetterIssuance(editLetterIssuance)
+          setIsEditReviewModalOpen(false)
+          alert('Perubahan review berhasil disimpan.')
+          router.refresh()
+        } else {
+          alert('Gagal: ' + res.error)
+        }
+      } catch (err: any) {
+        alert(err?.message || 'Gagal menyimpan perubahan.')
+      }
+    })
+  }
+
+  function handleAddApproverRow() {
+    if (!newApproverName.trim()) {
+      alert('Nama approver wajib diisi.')
+      return
+    }
+    startAddApproverTransition(async () => {
+      try {
+        const res = await addContractReviewApproverRow(token, {
+          approverName: newApproverName,
+          approverEmail: newApproverEmail,
+          approverRole: newApproverRole,
+        })
+        if (res.success) {
+          setIsAddApproverModalOpen(false)
+          setNewApproverName('')
+          setNewApproverEmail('')
+          alert('Baris approver berhasil ditambahkan ke alur persetujuan.')
+          router.refresh()
+        } else {
+          alert('Gagal: ' + res.error)
+        }
+      } catch (err: any) {
+        alert(err?.message || 'Gagal menambahkan approver.')
+      }
+    })
+  }
+
   // Catatan revert dari approver setelah step ini jika dokumen sedang dikembalikan untuk revisi
   const revertNoteFromLaterStep = approvalHistory
     .filter((s: any) => Number(s.stepOrder) > Number(approval.stepOrder) && s.remarks?.trim())
@@ -259,6 +327,22 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
       return
     }
     setError('')
+
+    // Gate approval for step 1 if online test is required and not completed
+    if (approval.stepOrder === 1 && review.testRequired) {
+      if (['none', 'pending', 'in_progress'].includes(review.testStatus)) {
+        setError('Persetujuan belum dapat dilakukan karena karyawan belum menyelesaikan Ujian Online yang disyaratkan.')
+        return
+      }
+      if (review.testStatus === 'failed') {
+        const cfg = review.testConfig
+        if (cfg?.hasPassingGrade && cfg.maxRemedialAttempts > 0 && (review.testAttemptCount || 0) <= cfg.maxRemedialAttempts) {
+          setError(`Karyawan belum mencapai passing grade (${cfg.passingGrade}%) dan masih memiliki kuota remedial. Harap menunggu hingga remedial selesai.`)
+          return
+        }
+      }
+    }
+
     const signatureDataUrl = getSignatureDataUrl()
     if (!signatureDataUrl) {
       setError('TTD digital wajib diisi.')
@@ -441,10 +525,54 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
     return 2.5 + maxLines * 3.3
   }
 
-  const { firstPageActivities, performanceOverflowChunks } = (() => {
+  const competencyRows = [
+    ['Discipline', review.compDisciplineAch, review.compDisciplineRemark],
+    ['Professional Skill and Knowledge', review.compSkillAch, review.compSkillRemark],
+    ['Achieving Result', review.compResultAch, review.compResultRemark],
+    ['Concern for Order, Quality and Accuracy', review.compQualityAch, review.compQualityRemark],
+    ['Customer Orientation ( internal / external )', review.compCustomerAch, review.compCustomerRemark],
+    ['Teamwork', review.compTeamworkAch, review.compTeamworkRemark],
+  ]
+
+  const estimateCompetencyRowHeightMm = (label: string, remark: string) => {
+    const actLines = Math.max(1, Math.ceil(String(label || '').length / 38))
+    const remLines = Math.max(1, Math.ceil(String(remark || '').length / 55))
+    const maxLines = Math.max(actLines, remLines)
+    return 3.2 + maxLines * 3.3
+  }
+
+  const totalCompetencyRowsHeightMm = competencyRows.reduce(
+    (sum, [label, _, remark]) => sum + estimateCompetencyRowHeightMm(label, remark || ''),
+    0
+  )
+  const totalCompetencyHeightMm = totalCompetencyRowsHeightMm + 14
+
+  const { firstPageActivities, performanceOverflowChunks, isCompetencyOnPage1 } = (() => {
     const all = review.performanceActivities ?? []
-    const PAGE_1_ROWS_MAX_MM = 130
-    const CONTINUATION_ROWS_MAX_MM = 190
+    const DETAILS_PROFILE_MM = 58
+    const USABLE_PAGE_1_MM = 205 - DETAILS_PROFILE_MM
+
+    if (all.length === 0) {
+      return {
+        firstPageActivities: [],
+        performanceOverflowChunks: [],
+        isCompetencyOnPage1: true,
+      }
+    }
+
+    const allActRowsMm = all.reduce((sum: number, item: any) => sum + estimateRowHeightMm(item), 0)
+    const allActTotalMm = 14 + allActRowsMm
+
+    if (allActTotalMm + totalCompetencyHeightMm <= USABLE_PAGE_1_MM) {
+      return {
+        firstPageActivities: all,
+        performanceOverflowChunks: [],
+        isCompetencyOnPage1: true,
+      }
+    }
+
+    const PAGE_1_ROWS_MAX_MM = 135
+    const CONTINUATION_ROWS_MAX_MM = 185
 
     const first: any[] = []
     let usedMm = 0
@@ -482,29 +610,14 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
       chunks.push(currentChunk)
     }
 
-    return { firstPageActivities: first, performanceOverflowChunks: chunks }
+    return {
+      firstPageActivities: first,
+      performanceOverflowChunks: chunks,
+      isCompetencyOnPage1: false,
+    }
   })()
-  const competencyRows = [
-    ['Discipline', review.compDisciplineAch, review.compDisciplineRemark],
-    ['Professional Skill and Knowledge', review.compSkillAch, review.compSkillRemark],
-    ['Achieving Result', review.compResultAch, review.compResultRemark],
-    ['Concern for Order, Quality and Accuracy', review.compQualityAch, review.compQualityRemark],
-    ['Customer Orientation ( internal / external )', review.compCustomerAch, review.compCustomerRemark],
-    ['Teamwork', review.compTeamworkAch, review.compTeamworkRemark],
-  ]
 
-  const estimateCompetencyRowHeightMm = (label: string, remark: string) => {
-    const actLines = Math.max(1, Math.ceil(String(label || '').length / 38))
-    const remLines = Math.max(1, Math.ceil(String(remark || '').length / 55))
-    const maxLines = Math.max(actLines, remLines)
-    return 4 + maxLines * 3.8
-  }
-
-  const totalCompetencyHeight = competencyRows.reduce(
-    (sum, [label, _, remark]) => sum + estimateCompetencyRowHeightMm(label, remark || ''),
-    0
-  )
-  const achievementBlockOnPage2 = totalCompetencyHeight + 18 + 72 <= 200
+  const canFitAllOnPage2WhenCompetencyOnPage2 = totalCompetencyHeightMm + (review.testRequired ? 64 : 42) + 75 <= 200
 
   const renderPerformanceTable = (items: any[], keyPrefix: string) => (
     <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5 text-center">
@@ -525,6 +638,27 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
         ))}
         {items.length === 0 && Array(5).fill(0).map((_, i) => (
           <tr key={`${keyPrefix}-empty-${i}`}><td className="align-top">&nbsp;</td><td className="align-top">&nbsp;</td><td className="align-top">&nbsp;</td></tr>
+        ))}
+      </tbody>
+    </table>
+  )
+
+  const renderCompetencyTable = () => (
+    <table className="w-full border-collapse border border-black mb-2.5 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
+      <thead>
+        <tr className="bg-slate-50 text-center">
+          <th className="w-[35%]">Activities</th>
+          <th className="w-[15%]">Achievement</th>
+          <th className="w-[50%]">Remark</th>
+        </tr>
+      </thead>
+      <tbody>
+        {competencyRows.map(([label, achievement, remark]) => (
+          <tr key={label}>
+            <td className="font-bold">{label}</td>
+            <td className="text-center font-medium">{formatAchievementDisplay(achievement)}</td>
+            <td>{remark || '\u00A0'}</td>
+          </tr>
         ))}
       </tbody>
     </table>
@@ -625,17 +759,198 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
               Contract ended
             </label>
           </div>
+
+          {/* Tabel Khusus Score Test Online */}
+          {review.testRequired && (
+            <div className="mt-3 mb-2">
+              <div className="font-bold mb-1 flex items-center justify-between">
+                <span>Hasil Evaluasi Ujian Online (Training Center)</span>
+              </div>
+              <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5 text-center text-[7.5pt]">
+                <thead>
+                  <tr className="bg-slate-50 font-bold">
+                    <th className="w-[6%]">No</th>
+                    <th className="w-[38%] text-left">Materi Ujian</th>
+                    <th className="w-[18%]">Tgl Pengerjaan</th>
+                    <th className="w-[12%]">Percobaan</th>
+                    <th className="w-[12%]">Passing Grade</th>
+                    <th className="w-[12%]">Nilai Akhir</th>
+                    <th className="w-[14%]">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>1</td>
+                    <td className="text-left font-medium">{review.testConfig?.title || 'Ujian Kompetensi Contract Review'}</td>
+                    <td>{review.testCompletedAt ? new Date(review.testCompletedAt).toLocaleDateString('id-ID') : '-'}</td>
+                    <td>Ke-{review.testAttemptCount || 1}</td>
+                    <td>{review.testConfig?.hasPassingGrade ? `${review.testConfig?.passingGrade}%` : '-'}</td>
+                    <td className="font-bold font-mono">{review.testFinalScore !== null && review.testFinalScore !== undefined ? `${review.testFinalScore}%` : '-'}</td>
+                    <td className="font-bold">
+                      {review.testStatus === 'passed' ? (
+                        <span className="text-emerald-700">LULUS</span>
+                      ) : review.testStatus === 'failed' ? (
+                        <span className="text-rose-700">TIDAK LULUS</span>
+                      ) : review.testStatus === 'completed' ? (
+                        <span className="text-blue-700">SELESAI</span>
+                      ) : (
+                        <span className="text-amber-700 uppercase">{review.testStatus || 'PENDING'}</span>
+                      )}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
     </>
   )
 
-  // PDF Page 1: Details, Profile, Full Performance Section A
+  const renderSignatoriesBlock = () => {
+    const seenPublicSigners = new Set<string>()
+    const displayPublicSignatories: Array<{
+      key: string
+      label: string
+      name: string
+      title: string
+      step: any
+    }> = []
+
+    const publicCandidates = [
+      {
+        key: 'leader',
+        label: 'Leader Signature',
+        name: review.leaderName,
+        title: review.leaderTitle || 'Leader',
+        step: leaderSig,
+      },
+      {
+        key: 'employee',
+        label: 'Employee Signature',
+        name: employee?.name || review.employeeNameStr || '',
+        title: employee?.position || 'Employee',
+        step: employeeSig,
+      },
+      {
+        key: 'superior',
+        label: 'Superior Signature',
+        name: review.superiorName,
+        title: review.superiorTitle || 'Superior',
+        step: sectionHeadSig,
+      },
+      {
+        key: 'next_superior',
+        label: 'Next Superior Signature',
+        name: review.nextSuperiorName,
+        title: review.nextSuperiorTitle || 'Manager',
+        step: managerSig,
+      },
+      {
+        key: 'hr',
+        label: 'HR Signature',
+        name: review.hrName,
+        title: review.hrTitle || 'HR',
+        step: hrSig,
+      },
+    ]
+
+    for (const cand of publicCandidates) {
+      const normalized = (cand.name || '').trim().toLowerCase()
+      if (!normalized) continue
+      if (seenPublicSigners.has(normalized)) continue
+      seenPublicSigners.add(normalized)
+      displayPublicSignatories.push(cand)
+    }
+
+    return (
+      <div className="break-inside-avoid">
+        <div className="font-bold mb-2">Signatories</div>
+        <div className="grid grid-cols-2 gap-x-8 gap-y-3 mb-3">
+          {displayPublicSignatories.map((sig) => (
+            <div key={sig.key}>
+              <div className="text-[7.5pt] text-muted-foreground mb-0.5">{sig.label}</div>
+              <div className="h-14 flex items-end">
+                {sig.step?.signatureDataUrl && (
+                  <img src={sig.step.signatureDataUrl} alt={`${sig.label} TTD`} className="h-12 object-contain" style={{ maxWidth: '40mm', maxHeight: '14mm' }} />
+                )}
+              </div>
+              <div className="mb-0.5 border-b" style={{ width: '55%', borderColor: '#9ca3af' }}>{sig.name}</div>
+              <div className="text-[7.5pt]">{sig.title}</div>
+              {renderApprovalMeta(sig.step)}
+            </div>
+          ))}
+          <div>
+            <div className="font-bold mb-1 text-[7.5pt]">Letter Issuance by HR</div>
+            <div className="text-[7pt]" style={{ display: 'grid', gap: '3px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <input
+                  type="checkbox"
+                  checked={letterIssuance === 'permanent_confirmation'}
+                  onChange={() => {
+                    if (canEditLetterIssuance) {
+                      setLetterIssuance(letterIssuance === 'permanent_confirmation' ? '' : 'permanent_confirmation')
+                    }
+                  }}
+                  disabled={!canEditLetterIssuance}
+                />{' '}
+                <span>Permanent Confirmation</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <input
+                  type="checkbox"
+                  checked={letterIssuance === 'contract_extension'}
+                  onChange={() => {
+                    if (canEditLetterIssuance) {
+                      setLetterIssuance(letterIssuance === 'contract_extension' ? '' : 'contract_extension')
+                    }
+                  }}
+                  disabled={!canEditLetterIssuance}
+                />{' '}
+                <span>Contract extension</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <input
+                  type="checkbox"
+                  checked={letterIssuance === 'unsuccessful_probation'}
+                  onChange={() => {
+                    if (canEditLetterIssuance) {
+                      setLetterIssuance(letterIssuance === 'unsuccessful_probation' ? '' : 'unsuccessful_probation')
+                    }
+                  }}
+                  disabled={!canEditLetterIssuance}
+                />{' '}
+                <span>Unsuccessful probation notification</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <input
+                  type="checkbox"
+                  checked={letterIssuance === 'end_of_contract'}
+                  onChange={() => {
+                    if (canEditLetterIssuance) {
+                      setLetterIssuance(letterIssuance === 'end_of_contract' ? '' : 'end_of_contract')
+                    }
+                  }}
+                  disabled={!canEditLetterIssuance}
+                />{' '}
+                <span>End of contract notification</span>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div className="text-right mt-3 text-gray-500 text-[7pt]">
+          F.HR.STD.012.00
+        </div>
+      </div>
+    )
+  }
+
+  // PDF Page 1: Details, Profile, Section A (if any), Section B (if space permits)
   const pdfPage1 = (
     <div className="relative z-10 text-[8pt] font-sans leading-tight text-black" style={{ paddingTop: '42mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
       <h1 className="text-center font-bold text-[11pt] mb-2">EMPLOYEE PROBATION/CONTRACT REVIEW</h1>
 
-      <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
+      <table className="w-full border-collapse border border-black mb-2.5 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
         <tbody>
           <tr><td colSpan={2} className="font-bold bg-slate-50">Details</td></tr>
           <tr>
@@ -667,11 +982,21 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
         </tbody>
       </table>
 
+      {(firstPageActivities.length > 0 || isCompetencyOnPage1) && (
+        <div className="mb-1 font-bold">Progress made towards probation/contract period</div>
+      )}
+
       {firstPageActivities.length > 0 ? (
         <>
-          <div className="mb-1 font-bold">Progress made towards probation/contract period</div>
           <div className="font-bold ml-4 mb-1">A. Performance</div>
           {renderPerformanceTable(firstPageActivities, 'first')}
+        </>
+      ) : null}
+
+      {isCompetencyOnPage1 ? (
+        <>
+          <div className="font-bold ml-4 mb-1">B. Related Competency ( Knowledge & Behavior )</div>
+          {renderCompetencyTable()}
         </>
       ) : null}
     </div>
@@ -685,167 +1010,46 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
     </div>
   ))
 
-  // PDF Page 2: Full Competency Section B, Achievement Definition, Recommendation
-  const pdfPage2 = (
+  // PDF Page 2: Achievement Definition, Recommendation, Online Test Score, Signatories (or Competency if overflowed from page 1)
+  const pdfPage2 = isCompetencyOnPage1 ? (
+    <div className="relative z-10 text-[8pt] font-sans leading-tight text-black" style={{ paddingTop: '42mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
+      {renderAchievementAndRecommendation()}
+      {renderSignatoriesBlock()}
+    </div>
+  ) : (
     <div className="relative z-10 text-[8pt] font-sans leading-tight text-black" style={{ paddingTop: '42mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
       <div className="mb-1 font-bold">Progress made towards probation/contract period</div>
       <div className="font-bold ml-4 mb-1">B. Related Competency ( Knowledge & Behavior )</div>
-      <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
-        <thead><tr className="bg-slate-50 text-center"><th className="w-[35%]">Activities</th><th className="w-[15%]">Achievement</th><th className="w-[50%]">Remark</th></tr></thead>
-        <tbody>{competencyRows.map(([label, achievement, remark]) => <tr key={label}><td className="font-bold">{label}</td><td className="text-center font-medium">{formatAchievementDisplay(achievement)}</td><td>{remark || '\u00A0'}</td></tr>)}</tbody>
-      </table>
-
-      {achievementBlockOnPage2 ? (
-        <>
-          {/* Achievement Definition */}
-          {/* Recommendation */}
-          {renderAchievementAndRecommendation()}
-        </>
-      ) : null}
+      {renderCompetencyTable()}
+      {renderAchievementAndRecommendation()}
+      {canFitAllOnPage2WhenCompetencyOnPage2 ? renderSignatoriesBlock() : null}
     </div>
   )
 
-  // PDF Page 3: Signatories and HR letter issuance
+  // PDF Page 3: Signatories and HR letter issuance (only needed when Section A is large AND cannot fit on Page 2)
   const pdfPage3 = (
     <div className="relative z-10 text-[8pt] font-sans leading-tight text-black" style={{ paddingTop: '42mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
-      {!achievementBlockOnPage2 ? renderAchievementAndRecommendation() : null}
-      <div className="font-bold mb-4">Signatories</div>
-      {(() => {
-        const seenPublicSigners = new Set<string>()
-        const displayPublicSignatories: Array<{
-          key: string
-          label: string
-          name: string
-          title: string
-          step: any
-        }> = []
-
-        const publicCandidates = [
-          {
-            key: 'leader',
-            label: 'Leader Signature',
-            name: review.leaderName,
-            title: review.leaderTitle || 'Leader',
-            step: leaderSig,
-          },
-          {
-            key: 'employee',
-            label: 'Employee Signature',
-            name: employee?.name || review.employeeNameStr || '',
-            title: employee?.position || 'Employee',
-            step: employeeSig,
-          },
-          {
-            key: 'superior',
-            label: 'Superior Signature',
-            name: review.superiorName,
-            title: review.superiorTitle || 'Superior',
-            step: sectionHeadSig,
-          },
-          {
-            key: 'next_superior',
-            label: 'Next Superior Signature',
-            name: review.nextSuperiorName,
-            title: review.nextSuperiorTitle || 'Manager',
-            step: managerSig,
-          },
-          {
-            key: 'hr',
-            label: 'HR Signature',
-            name: review.hrName,
-            title: review.hrTitle || 'HR',
-            step: hrSig,
-          },
-        ]
-
-        for (const cand of publicCandidates) {
-          const normalized = (cand.name || '').trim().toLowerCase()
-          if (!normalized) continue
-          if (seenPublicSigners.has(normalized)) continue
-          seenPublicSigners.add(normalized)
-          displayPublicSignatories.push(cand)
-        }
-
-        return (
-          <div className={`grid grid-cols-2 gap-x-8 ${!achievementBlockOnPage2 ? 'gap-y-4 mb-4' : 'gap-y-8 mb-6'}`}>
-            {displayPublicSignatories.map((sig) => (
-              <div key={sig.key}>
-                <div className="text-xs text-muted-foreground mb-1">{sig.label}</div>
-                <div className="h-20 flex items-end">
-                  {sig.step?.signatureDataUrl && (
-                    <img src={sig.step.signatureDataUrl} alt={`${sig.label} TTD`} className="h-16 object-contain" />
-                  )}
-                </div>
-                <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{sig.name}</div>
-                <div className="text-xs">{sig.title}</div>
-                {renderApprovalMeta(sig.step)}
-              </div>
-            ))}
-        <div>
-          <div className="font-bold mb-2">Letter Issuance by HR</div>
-          <div className="text-[7pt]" style={{ display: 'grid', gap: '4px' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <input
-                type="checkbox"
-                checked={letterIssuance === 'permanent_confirmation'}
-                onChange={() => {
-                  if (canEditLetterIssuance) {
-                    setLetterIssuance(letterIssuance === 'permanent_confirmation' ? '' : 'permanent_confirmation')
-                  }
-                }}
-                disabled={!canEditLetterIssuance}
-              />{' '}
-              <span>Permanent Confirmation</span>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <input
-                type="checkbox"
-                checked={letterIssuance === 'contract_extension'}
-                onChange={() => {
-                  if (canEditLetterIssuance) {
-                    setLetterIssuance(letterIssuance === 'contract_extension' ? '' : 'contract_extension')
-                  }
-                }}
-                disabled={!canEditLetterIssuance}
-              />{' '}
-              <span>Contract extension</span>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <input
-                type="checkbox"
-                checked={letterIssuance === 'unsuccessful_probation'}
-                onChange={() => {
-                  if (canEditLetterIssuance) {
-                    setLetterIssuance(letterIssuance === 'unsuccessful_probation' ? '' : 'unsuccessful_probation')
-                  }
-                }}
-                disabled={!canEditLetterIssuance}
-              />{' '}
-              <span>Unsuccessful probation notification</span>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <input
-                type="checkbox"
-                checked={letterIssuance === 'end_of_contract'}
-                onChange={() => {
-                  if (canEditLetterIssuance) {
-                    setLetterIssuance(letterIssuance === 'end_of_contract' ? '' : 'end_of_contract')
-                  }
-                }}
-                disabled={!canEditLetterIssuance}
-              />{' '}
-              <span>End of contract notification</span>
-            </label>
-          </div>
-        </div>
-      </div>
-    )
-  })()}
-      <div className="text-right mt-6 text-gray-500 text-[7pt]">
-        F.HR.STD.012.00
-      </div>
+      {renderSignatoriesBlock()}
     </div>
   )
+
+  const publicPdfPages = (() => {
+    if (isCompetencyOnPage1) {
+      return [
+        { id: 'pdf-page-1', content: pdfPage1 },
+        { id: 'pdf-page-2', content: pdfPage2 },
+      ]
+    }
+    const pages = [
+      { id: 'pdf-page-1', content: pdfPage1 },
+      ...pdfPerformancePages.map((page, idx) => ({ id: `pdf-page-perf-${idx}`, content: page })),
+      { id: 'pdf-page-2', content: pdfPage2 },
+    ]
+    if (!canFitAllOnPage2WhenCompetencyOnPage2) {
+      pages.push({ id: 'pdf-page-3', content: pdfPage3 })
+    }
+    return pages
+  })()
 
   return (
     <main className={isMobileRoute ? 'min-h-dvh bg-slate-50 px-2 py-3' : 'min-h-screen bg-slate-50 px-3 py-4 sm:px-4 sm:py-6'}>
@@ -1139,6 +1343,86 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
               </div>
             ) : (
               <div className="space-y-3">
+                {/* Status Test Online Karyawan Banner */}
+                {review.testRequired && (
+                  <div className="rounded-xl border border-sky-200 bg-sky-50/50 p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-sky-950 flex items-center gap-1.5">
+                        <FileCheck className="size-4 text-sky-600" />
+                        Hasil Test Online
+                      </span>
+                      <Badge
+                        className={
+                          review.testStatus === 'passed'
+                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px]'
+                            : review.testStatus === 'failed'
+                            ? 'bg-rose-100 text-rose-800 border-rose-300 text-[10px]'
+                            : review.testStatus === 'completed'
+                            ? 'bg-blue-100 text-blue-800 border-blue-300 text-[10px]'
+                            : 'bg-amber-100 text-amber-800 border-amber-300 text-[10px]'
+                        }
+                      >
+                        {review.testStatus === 'passed'
+                          ? 'LULUS UJIAN'
+                          : review.testStatus === 'failed'
+                          ? 'BELUM LULUS'
+                          : review.testStatus === 'completed'
+                          ? 'UJIAN SELESAI'
+                          : 'MENUNGGU PENGERJAAN'}
+                      </Badge>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-1.5 text-center text-[11px] pt-1">
+                      <div className="p-1.5 rounded bg-white border border-sky-100">
+                        <span className="text-slate-500 block text-[10px]">Nilai Akhir</span>
+                        <span className="font-bold text-slate-800 font-mono">
+                          {review.testFinalScore !== null && review.testFinalScore !== undefined ? `${review.testFinalScore}%` : '-'}
+                        </span>
+                      </div>
+                      <div className="p-1.5 rounded bg-white border border-sky-100">
+                        <span className="text-slate-500 block text-[10px]">Passing Grade</span>
+                        <span className="font-medium text-slate-800">
+                          {review.testConfig?.hasPassingGrade ? `${review.testConfig?.passingGrade}%` : '-'}
+                        </span>
+                      </div>
+                      <div className="p-1.5 rounded bg-white border border-sky-100">
+                        <span className="text-slate-500 block text-[10px]">Percobaan</span>
+                        <span className="font-medium text-slate-800">Ke-{review.testAttemptCount || 1}</span>
+                      </div>
+                    </div>
+
+                    {approval.stepOrder === 1 && ['none', 'pending', 'in_progress'].includes(review.testStatus) && (
+                      <p className="text-[11px] text-amber-700 bg-amber-50 p-2 rounded border border-amber-200">
+                        Karyawan belum menyelesaikan ujian online. Tombol persetujuan terkunci hingga ujian selesai.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Approver Action Bar: Public Edit & Dynamic Approver Insertion */}
+                {!isEmployee && (
+                  <div className="flex flex-wrap gap-2 pt-1 pb-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="text-xs h-8 flex-1"
+                      onClick={() => setIsEditReviewModalOpen(true)}
+                    >
+                      <Edit className="size-3 mr-1.5" /> Edit Review & Rekomendasi
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="text-xs h-8 flex-1"
+                      onClick={() => setIsAddApproverModalOpen(true)}
+                    >
+                      <UserPlus className="size-3 mr-1.5" /> + Tambah Approver
+                    </Button>
+                  </div>
+                )}
+
                 {/* Opsi TTD Terdaftar dari Profile / Mobile */}
                 {registeredSig?.signatureDataUrl ? (
                   <div className="space-y-2">
@@ -1431,32 +1715,17 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                     transformOrigin: 'top left',
                   } : { minWidth: 'max-content' }}
                 >
-                <div
-                  id="pdf-page-1"
-                  data-contract-review-page="true"
-                  className="relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
-                >
-                  <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-                  {pdfPage1}
-                </div>
-                {pdfPerformancePages.map((page, index) => (
-                  <div key={`performance-page-${index}`} id={`pdf-page-performance-${index}`} data-contract-review-page="true" className="relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm">
+                {publicPdfPages.map((page) => (
+                  <div
+                    key={page.id}
+                    id={page.id}
+                    data-contract-review-page="true"
+                    className="relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
+                  >
                     <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-                    {page}
+                    {page.content}
                   </div>
                 ))}
-                <div
-                  id="pdf-page-2"
-                  data-contract-review-page="true"
-                  className="relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
-                >
-                  <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-                  {pdfPage2}
-                </div>
-                <div id="pdf-page-3" data-contract-review-page="true" className="relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm">
-                  <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-                  {pdfPage3}
-                </div>
 
                 {/* ── LAMPIRAN DOKUMEN PENDUKUNG PREVIEW ── */}
                 {attachments && attachments.length > 0 && (
@@ -1626,6 +1895,152 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
               />
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Edit Review & Rekomendasi oleh Approver */}
+      <Dialog open={isEditReviewModalOpen} onOpenChange={setIsEditReviewModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Evaluasi & Rekomendasi</DialogTitle>
+            <DialogDescription>
+              Ubah rekomendasi hasil evaluasi atau perpanjangan kontrak karyawan sebelum memberikan tanda tangan.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-3 text-sm">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Rekomendasi Kontrak</Label>
+              <div className="space-y-2 pt-1">
+                {[
+                  { value: 'confirm_permanent', label: 'Confirm to Permanent (Diangkat Tetap)' },
+                  { value: 'contract_extended', label: 'Contract Extended (Perpanjangan Kontrak)' },
+                  { value: 'terminate_probation', label: 'Unsuccessful Probationary (Penghentian Masa Percobaan)' },
+                  { value: 'contract_ended', label: 'Contract Ended (Selesai Kontrak)' },
+                ].map((item) => (
+                  <label key={item.value} className="flex items-center gap-2 cursor-pointer text-xs">
+                    <input
+                      type="radio"
+                      name="editRec"
+                      value={item.value}
+                      checked={editRecommendation === item.value}
+                      onChange={(e) => setEditRecommendation(e.target.value)}
+                    />
+                    <span>{item.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {editRecommendation === 'contract_extended' && (
+              <div className="space-y-1.5 pt-2 border-t">
+                <Label htmlFor="extMonths" className="text-xs font-semibold">
+                  Durasi Perpanjangan (Bulan)
+                </Label>
+                <Input
+                  id="extMonths"
+                  type="number"
+                  min={1}
+                  max={36}
+                  value={editContractMonths}
+                  onChange={(e) => setEditContractMonths(e.target.value)}
+                  placeholder="Contoh: 6 atau 12"
+                />
+              </div>
+            )}
+
+            <div className="space-y-1.5 pt-2 border-t">
+              <Label htmlFor="letterIssuance" className="text-xs font-semibold">
+                Keterangan / Memo Penerbitan Surat
+              </Label>
+              <Input
+                id="letterIssuance"
+                value={editLetterIssuance}
+                onChange={(e) => setEditLetterIssuance(e.target.value)}
+                placeholder="Catatan penerbitan surat..."
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsEditReviewModalOpen(false)}
+              disabled={isEditPending}
+            >
+              Batal
+            </Button>
+            <Button onClick={handleSaveReviewDetails} disabled={isEditPending}>
+              {isEditPending ? 'Menyimpan...' : 'Simpan Perubahan'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Tambah Baris Approver Dinamis */}
+      <Dialog open={isAddApproverModalOpen} onOpenChange={setIsAddApproverModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Tambah Baris Penandatangan (Approver)</DialogTitle>
+            <DialogDescription>
+              Sisipkan atasan, Co-PJO, atau site supervisor tambahan ke alur persetujuan dokumen ini.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-3.5 py-3 text-sm">
+            <div className="space-y-1.5">
+              <Label htmlFor="approverName" className="text-xs font-semibold">
+                Nama Approver <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="approverName"
+                value={newApproverName}
+                onChange={(e) => setNewApproverName(e.target.value)}
+                placeholder="Contoh: Budi Santoso"
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="approverEmail" className="text-xs font-semibold">
+                Email Approver (Untuk Notifikasi Link)
+              </Label>
+              <Input
+                id="approverEmail"
+                type="email"
+                value={newApproverEmail}
+                onChange={(e) => setNewApproverEmail(e.target.value)}
+                placeholder="contoh: budi@chitraparatama.com"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="approverRole" className="text-xs font-semibold">
+                Jabatan / Peran Approval
+              </Label>
+              <Input
+                id="approverRole"
+                value={newApproverRole}
+                onChange={(e) => setNewApproverRole(e.target.value)}
+                placeholder="Contoh: Co-PJO / Site Supervisor"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsAddApproverModalOpen(false)}
+              disabled={isAddApproverPending}
+            >
+              Batal
+            </Button>
+            <Button onClick={handleAddApproverRow} disabled={isAddApproverPending}>
+              {isAddApproverPending ? 'Menambahkan...' : 'Sisipkan Approver'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </main>

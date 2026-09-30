@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useEffect, useMemo, useRef } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { Save, Printer, ArrowLeft, Plus, Trash2, Send, Upload, Paperclip, FileText, Image as ImageIcon, ExternalLink, Loader2, Eye, Download } from "lucide-react"
+import { Save, Printer, ArrowLeft, Plus, Trash2, Send, Upload, Paperclip, FileText, Image as ImageIcon, ExternalLink, Loader2, Eye, Download, FileCheck } from "lucide-react"
 import SignatureCanvas from "react-signature-canvas"
 
 import {
@@ -203,6 +203,12 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     
     letterIssuance: initialData?.letterIssuance || "",
     status: initialData?.status || "draft",
+    testRequired: Boolean(initialData?.testRequired),
+    testConfigId: initialData?.testConfigId,
+    testStatus: initialData?.testStatus || "none",
+    testFinalScore: initialData?.testFinalScore,
+    testAttemptCount: initialData?.testAttemptCount || 0,
+    testCompletedAt: initialData?.testCompletedAt,
     attachments: (initialData?.attachments || []) as Array<{
       id: string
       fileName: string
@@ -610,6 +616,21 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     startTransition(async () => {
       const leaderCanvasSignature = getLeaderSignatureDataUrl()
       const leaderSignatureDataUrl = leaderCanvasSignature || previewLeaderSig || initialData?.leaderSignatureDataUrl || leaderSignatureOverride || (!initialData?.id ? previewLeaderSig : '')
+
+      if (leaderSignatureDataUrl && form.testRequired) {
+        if (['none', 'pending', 'in_progress'].includes(form.testStatus)) {
+          alert('Ujian Online belum diselesaikan oleh karyawan. Dokumen hanya dapat disimpan sebagai draft sebelum ujian selesai.')
+          return
+        }
+        if (form.testStatus === 'failed') {
+          const cfg = initialData?.testConfig
+          if (cfg?.hasPassingGrade && cfg.maxRemedialAttempts > 0 && (form.testAttemptCount || 0) <= cfg.maxRemedialAttempts) {
+            alert(`Karyawan belum mencapai passing grade (${cfg.passingGrade}%) dan masih memiliki kuota remedial. Harap tunggu hingga remedial selesai.`)
+            return
+          }
+        }
+      }
+
       const payload = {
         ...form,
         leaderTitle: form.leaderTitle || resolveEmployeeTitle(form.leaderName, 'Leader'),
@@ -922,10 +943,58 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     return 2.5 + maxLines * 3.3
   }
 
-  const { firstPageActivities, performanceOverflowChunks } = (() => {
+  const competencyRows = [
+    ['Discipline', form.compDisciplineAch, form.compDisciplineRemark],
+    ['Professional Skill and Knowledge', form.compSkillAch, form.compSkillRemark],
+    ['Achieving Result', form.compResultAch, form.compResultRemark],
+    ['Concern for Order, Quality and Accuracy', form.compQualityAch, form.compQualityRemark],
+    ['Customer Orientation ( internal / external )', form.compCustomerAch, form.compCustomerRemark],
+    ['Teamwork', form.compTeamworkAch, form.compTeamworkRemark],
+  ]
+
+  const estimateCompetencyRowHeightMm = (label: string, remark: string) => {
+    const actLines = Math.max(1, Math.ceil(String(label || '').length / 38))
+    const remLines = Math.max(1, Math.ceil(String(remark || '').length / 55))
+    const maxLines = Math.max(actLines, remLines)
+    return 3.2 + maxLines * 3.3
+  }
+
+  const totalCompetencyRowsHeightMm = competencyRows.reduce(
+    (sum, [label, _, remark]) => sum + estimateCompetencyRowHeightMm(label, remark || ''),
+    0
+  )
+  const totalCompetencyHeightMm = totalCompetencyRowsHeightMm + 14 // Header + table header + margin
+
+  const { firstPageActivities, performanceOverflowChunks, isCompetencyOnPage1 } = (() => {
     const all = form.performanceActivities || []
-    const PAGE_1_ROWS_MAX_MM = 130
-    const CONTINUATION_ROWS_MAX_MM = 190
+    const DETAILS_PROFILE_MM = 58
+    const USABLE_PAGE_1_MM = 205 - DETAILS_PROFILE_MM // ~147mm
+
+    // If no performance activities, Section B goes to Page 1 directly!
+    if (all.length === 0) {
+      return {
+        firstPageActivities: [],
+        performanceOverflowChunks: [],
+        isCompetencyOnPage1: true,
+      }
+    }
+
+    // Check if ALL activities + Section B fit on Page 1 together
+    const allActRowsMm = all.reduce((sum: number, item: any) => sum + estimateRowHeightMm(item), 0)
+    const allActTotalMm = 14 + allActRowsMm // headers + rows
+
+    if (allActTotalMm + totalCompetencyHeightMm <= USABLE_PAGE_1_MM) {
+      return {
+        firstPageActivities: all,
+        performanceOverflowChunks: [],
+        isCompetencyOnPage1: true,
+      }
+    }
+
+    // Otherwise, Section A is too large to share Page 1 with Section B
+    // Section A takes as much of Page 1 as possible
+    const PAGE_1_ROWS_MAX_MM = 135
+    const CONTINUATION_ROWS_MAX_MM = 185
 
     const first: any[] = []
     let usedMm = 0
@@ -963,19 +1032,16 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
       chunks.push(currentChunk)
     }
 
-    return { firstPageActivities: first, performanceOverflowChunks: chunks }
+    return {
+      firstPageActivities: first,
+      performanceOverflowChunks: chunks,
+      isCompetencyOnPage1: false,
+    }
   })()
-  const competencyRows = [
-    ['Discipline', form.compDisciplineAch, form.compDisciplineRemark],
-    ['Professional Skill and Knowledge', form.compSkillAch, form.compSkillRemark],
-    ['Achieving Result', form.compResultAch, form.compResultRemark],
-    ['Concern for Order, Quality and Accuracy', form.compQualityAch, form.compQualityRemark],
-    ['Customer Orientation ( internal / external )', form.compCustomerAch, form.compCustomerRemark],
-    ['Teamwork', form.compTeamworkAch, form.compTeamworkRemark],
-  ]
+
   const renderAchievementBlock = () => (
     <>
-      <div className="font-bold mb-2 flex items-center justify-between">
+      <div className="font-bold mb-1.5 flex items-center justify-between">
         <span>Achievement Definition</span>
         {achievementScore > 0 ? (
           <span className="text-[7.5pt] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-300">
@@ -983,22 +1049,66 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
           </span>
         ) : null}
       </div>
-      <table className="w-full border-collapse border border-black mb-4 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
+      <table className="w-full border-collapse border border-black mb-2.5 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
         <tbody>
           <tr><td className="w-1/3"><label className="flex items-center gap-2"><input type="checkbox" readOnly checked={achCategory === "exceed"} />Exceed Requirement (106% - 125%)</label></td><td className="w-2/3">Performance of the employee is exceeding target and He/She consistently <b>demonstrates right attitude and behavior</b> which are aligned with the competency</td></tr>
           <tr><td><label className="flex items-center gap-2"><input type="checkbox" readOnly checked={achCategory === "meet"} />Meet Requirement (95% - 105%)</label></td><td>Performance of the employee is meeting target and in overall He/She <b>demonstrates attitude and behavior</b> which are aligned with the competency</td></tr>
           <tr><td><label className="flex items-center gap-2"><input type="checkbox" readOnly checked={achCategory === "below"} />Below Requirement (&lt; 95%)</label></td><td>Performance of the employee is not meeting target and He/She still <b>demonstrating some attitudes and/ or behaviors which are not aligned</b> with the competency</td></tr>
         </tbody>
       </table>
-      <div className="font-bold mb-2">Recommendation</div>
-      <div className="grid grid-cols-2 gap-4 mb-6">
+      <div className="font-bold mb-1.5">Recommendation</div>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mb-3 text-[7.5pt]">
         <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'confirm_permanent'} readOnly />Confirm to Permanent</label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'terminate_probation'} readOnly />Unsuccessful Probationary (termination)</label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'contract_extended'} readOnly />Contract Extended <span className="border-b border-black w-12 inline-block text-center">{form.contractExtendedMonths || '\u00A0'}</span> months</label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'contract_ended'} readOnly />Contract ended</label>
       </div>
+
+      {/* Tabel Khusus Score Test Online */}
+      {form.testRequired && (
+        <div className="mb-3">
+          <div className="font-bold mb-1 flex items-center justify-between">
+            <span>Hasil Evaluasi Ujian Online (Training Center)</span>
+          </div>
+          <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5 text-center text-[7.5pt]">
+            <thead>
+              <tr className="bg-slate-50 font-bold">
+                <th className="w-[6%]">No</th>
+                <th className="w-[38%] text-left">Materi Ujian</th>
+                <th className="w-[18%]">Tgl Pengerjaan</th>
+                <th className="w-[12%]">Percobaan</th>
+                <th className="w-[12%]">Passing Grade</th>
+                <th className="w-[12%]">Nilai Akhir</th>
+                <th className="w-[14%]">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>1</td>
+                <td className="text-left font-medium">{initialData?.testConfig?.title || 'Ujian Kompetensi Contract Review'}</td>
+                <td>{form.testCompletedAt ? new Date(form.testCompletedAt).toLocaleDateString('id-ID') : '-'}</td>
+                <td>Ke-{form.testAttemptCount || 1}</td>
+                <td>{initialData?.testConfig?.hasPassingGrade ? `${initialData?.testConfig?.passingGrade}%` : '-'}</td>
+                <td className="font-bold font-mono">{form.testFinalScore !== null && form.testFinalScore !== undefined ? `${form.testFinalScore}%` : '-'}</td>
+                <td className="font-bold">
+                  {form.testStatus === 'passed' ? (
+                    <span className="text-emerald-700">LULUS</span>
+                  ) : form.testStatus === 'failed' ? (
+                    <span className="text-rose-700">TIDAK LULUS</span>
+                  ) : form.testStatus === 'completed' ? (
+                    <span className="text-blue-700">SELESAI</span>
+                  ) : (
+                    <span className="text-amber-700 uppercase">{form.testStatus || 'PENDING'}</span>
+                  )}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
     </>
   )
+
   const renderPerformanceTable = (items: any[], keyPrefix: string) => (
     <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5 text-center">
       <thead>
@@ -1023,11 +1133,180 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     </table>
   )
 
+  const renderCompetencyTable = () => (
+    <table className="w-full border-collapse border border-black mb-2.5 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
+      <thead>
+        <tr className="bg-slate-50 text-center">
+          <th className="w-[35%]">Activities</th>
+          <th className="w-[15%]">Achievement</th>
+          <th className="w-[50%]">Remark</th>
+        </tr>
+      </thead>
+      <tbody>
+        {competencyRows.map(([label, achievement, remark]) => (
+          <tr key={label}>
+            <td className="font-bold">{label}</td>
+            <td className="text-center font-medium">{formatAchievementDisplay(achievement)}</td>
+            <td>{remark || '\u00A0'}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+
+  const renderSignatoriesBlock = () => {
+    const seenSignerKeys = new Set<string>()
+    const displaySignatories: Array<{
+      key: string
+      label: string
+      name: string
+      title: string
+      signatureUrl: string | null
+      signedAt?: string | Date | null
+      remarks?: string | null
+    }> = []
+
+    const findSignatureForName = (name?: string | null, fallbackSig?: string | null) => {
+      if (!name) return fallbackSig || ''
+      const trimmed = name.trim().toLowerCase()
+      const matched = approvalHistory?.find(
+        (step: any) =>
+          step.status === 'approved' &&
+          step.signatureDataUrl &&
+          step.approverName?.trim().toLowerCase() === trimmed
+      )
+      return matched?.signatureDataUrl || fallbackSig || ''
+    }
+
+    const findMetaForName = (name?: string | null, fallbackMeta?: any) => {
+      if (!name) return fallbackMeta
+      const trimmed = name.trim().toLowerCase()
+      const matched = approvalHistory?.find(
+        (step: any) =>
+          step.status === 'approved' &&
+          step.approverName?.trim().toLowerCase() === trimmed
+      )
+      return matched || fallbackMeta
+    }
+
+    const employeeDisplayName = selectedEmp?.name || form.employeeNameStr || ''
+    const signatoryCandidates = [
+      {
+        key: 'leader',
+        label: 'Leader Signature',
+        name: form.leaderName,
+        title: form.leaderTitle || resolveEmployeeTitle(form.leaderName, 'Leader'),
+        signatureUrl: leaderPreviewSignature || findSignatureForName(form.leaderName),
+        meta: leaderApprovalMeta || findMetaForName(form.leaderName),
+      },
+      {
+        key: 'employee',
+        label: 'Employee Signature',
+        name: employeeDisplayName,
+        title: selectedEmp?.position || resolveEmployeeTitle(employeeDisplayName, 'Employee'),
+        signatureUrl: visibleEmployeeApprovalSig || findSignatureForName(employeeDisplayName),
+        meta: employeeApprovalMeta || findMetaForName(employeeDisplayName),
+      },
+      {
+        key: 'superior',
+        label: 'Superior Signature',
+        name: form.superiorName,
+        title: form.superiorTitle || resolveEmployeeTitle(form.superiorName, 'Superior'),
+        signatureUrl: visibleSectionHeadApprovalSig || findSignatureForName(form.superiorName),
+        meta: sectionHeadApprovalMeta || findMetaForName(form.superiorName),
+      },
+      {
+        key: 'next_superior',
+        label: 'Next Superior Signature',
+        name: form.nextSuperiorName,
+        title: form.nextSuperiorTitle || resolveEmployeeTitle(form.nextSuperiorName, 'Department Head'),
+        signatureUrl: visibleManagerApprovalSig || findSignatureForName(form.nextSuperiorName),
+        meta: managerApprovalMeta || findMetaForName(form.nextSuperiorName),
+      },
+      {
+        key: 'hr',
+        label: 'HR Signature',
+        name: form.hrName,
+        title: form.hrTitle || resolveEmployeeTitle(form.hrName, 'HR-GA'),
+        signatureUrl: visibleHrApprovalSig || findSignatureForName(form.hrName),
+        meta: hrApprovalMeta || findMetaForName(form.hrName),
+      },
+    ]
+
+    for (const cand of signatoryCandidates) {
+      const normalized = (cand.name || '').trim().toLowerCase()
+      if (!normalized) continue
+      if (seenSignerKeys.has(normalized)) continue
+      seenSignerKeys.add(normalized)
+      displaySignatories.push({
+        key: cand.key,
+        label: cand.label,
+        name: cand.name,
+        title: cand.title,
+        signatureUrl: cand.signatureUrl,
+        signedAt: cand.meta?.signedAt,
+        remarks: cand.meta?.remarks,
+      })
+    }
+
+    return (
+      <div className="break-inside-avoid">
+        <div className="font-bold mb-2 break-before-auto">Signatories</div>
+        <div className="grid grid-cols-2 gap-x-8 gap-y-3 mb-3">
+          {displaySignatories.map((sig) => (
+            <div key={sig.key}>
+              <div className="text-[7.5pt] text-muted-foreground mb-0.5">{sig.label}</div>
+              <div className="h-14 flex items-end">
+                {sig.signatureUrl ? (
+                  <img
+                    src={sig.signatureUrl}
+                    alt={`${sig.label} TTD`}
+                    className="h-12 object-contain"
+                    style={{ maxWidth: '40mm', maxHeight: '14mm' }}
+                  />
+                ) : null}
+              </div>
+              <div className="mb-0.5 border-b" style={{ width: '55%', borderColor: '#9ca3af' }}>{sig.name}</div>
+              <div className="text-[7.5pt]">{sig.title}</div>
+              <div className="mt-0.5 text-[6.5pt] text-gray-500">Waktu TTD: {formatDateTime(sig.signedAt)}</div>
+              {sig.remarks ? <div className="mt-0.5 text-[6.5pt] text-left text-gray-600">Catatan: {sig.remarks}</div> : null}
+            </div>
+          ))}
+          <div>
+            <div className="font-bold mb-1 text-[7.5pt]">Letter Issuance by HR</div>
+            <div className="text-[7pt]" style={{ display: 'grid', gap: '3px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <input type="checkbox" checked={form.letterIssuance === 'permanent_confirmation'} readOnly />
+                <span>Permanent Confirmation</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <input type="checkbox" checked={form.letterIssuance === 'contract_extension'} readOnly />
+                <span>Contract extension</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <input type="checkbox" checked={form.letterIssuance === 'unsuccessful_probation'} readOnly />
+                <span>Unsuccessful probation notification</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <input type="checkbox" checked={form.letterIssuance === 'end_of_contract'} readOnly />
+                <span>End of contract notification</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div className="text-right mt-3 text-gray-500 text-[7pt]">
+          F.HR.STD.012.00
+        </div>
+      </div>
+    )
+  }
+
   const pdfPreviewPage1 = (
     <div className="pdf-wrapper-content relative z-10 outline-none text-[8pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '42mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
       <h1 className="text-center font-bold text-[11pt] mb-2">EMPLOYEE PROBATION/CONTRACT REVIEW</h1>
 
-      <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
+      <table className="w-full border-collapse border border-black mb-2.5 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
         <tbody>
           <tr>
             <td colSpan={2} className="font-bold bg-slate-50">Details</td>
@@ -1069,8 +1348,22 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
         </tbody>
       </table>
 
+      {(firstPageActivities.length > 0 || isCompetencyOnPage1) && (
+        <div className="mb-1 font-bold">Progress made towards probation/contract period</div>
+      )}
+
       {firstPageActivities.length > 0 ? (
-        <><div className="mb-1 font-bold">Progress made towards probation/contract period</div><div className="font-bold ml-4 mb-1">A. Performance</div>{renderPerformanceTable(firstPageActivities, 'first')}</>
+        <>
+          <div className="font-bold ml-4 mb-1">A. Performance</div>
+          {renderPerformanceTable(firstPageActivities, 'first')}
+        </>
+      ) : null}
+
+      {isCompetencyOnPage1 ? (
+        <>
+          <div className="font-bold ml-4 mb-1">B. Related Competency ( Knowledge & Behavior )</div>
+          {renderCompetencyTable()}
+        </>
       ) : null}
     </div>
   )
@@ -1083,209 +1376,46 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     </div>
   ))
 
-  const estimateCompetencyRowHeightMm = (label: string, remark: string) => {
-    const actLines = Math.max(1, Math.ceil(String(label || '').length / 38))
-    const remLines = Math.max(1, Math.ceil(String(remark || '').length / 55))
-    const maxLines = Math.max(actLines, remLines)
-    return 4 + maxLines * 3.8
-  }
+  const canFitAllOnPage2WhenCompetencyOnPage2 = totalCompetencyHeightMm + (form.testRequired ? 64 : 42) + 75 <= 200
 
-  const totalCompetencyHeight = competencyRows.reduce(
-    (sum, [label, _, remark]) => sum + estimateCompetencyRowHeightMm(label, remark || ''),
-    0
-  )
-  const achievementBlockOnPage2 = totalCompetencyHeight + 18 + 72 <= 200
-
-  const pdfAchievementBlock = renderAchievementBlock()
-
-  const pdfPreviewPage2 = (
+  const pdfPreviewPage2 = isCompetencyOnPage1 ? (
+    <div className="pdf-wrapper-content relative z-10 outline-none text-[8pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '42mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
+      {renderAchievementBlock()}
+      {renderSignatoriesBlock()}
+    </div>
+  ) : (
     <div className="pdf-wrapper-content relative z-10 outline-none text-[8pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '42mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
       <div className="mb-1 font-bold">Progress made towards probation/contract period</div>
       <div className="font-bold ml-4 mb-1">B. Related Competency ( Knowledge & Behavior )</div>
-      <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1">
-        <thead>
-          <tr className="bg-slate-50 text-center">
-            <th className="w-[35%]">Activities</th>
-            <th className="w-[15%]">Achievement</th>
-            <th className="w-[50%]">Remark</th>
-          </tr>
-        </thead>
-        <tbody>
-          {competencyRows.map(([label, achievement, remark]) => (
-            <tr key={label}>
-              <td className="font-bold">{label}</td>
-              <td className="text-center font-medium">{formatAchievementDisplay(achievement)}</td>
-              <td>{remark}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {achievementBlockOnPage2 ? pdfAchievementBlock : null}
-    </div>
-  )
-
-  const pdfPreviewCompetencyPage = (
-    <div className="pdf-wrapper-content relative z-10 outline-none text-[8pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '42mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
-      <div className="font-bold ml-4 mb-1">B. Related Competency (lanjutan)</div>
-      {pdfAchievementBlock}
+      {renderCompetencyTable()}
+      {renderAchievementBlock()}
+      {canFitAllOnPage2WhenCompetencyOnPage2 ? renderSignatoriesBlock() : null}
     </div>
   )
 
   const pdfPreviewPage3 = (
     <div className="pdf-wrapper-content relative z-10 outline-none text-[8pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '42mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
-      {!achievementBlockOnPage2 ? (
-        <div className="mb-4">
-          {pdfAchievementBlock}
-        </div>
-      ) : null}
-      <div className="font-bold mb-4 break-before-auto break-inside-avoid">Signatories</div>
-      
-      {(() => {
-        const seenSignerKeys = new Set<string>()
-        const displaySignatories: Array<{
-          key: string
-          label: string
-          name: string
-          title: string
-          signatureUrl: string | null
-          signedAt?: string | Date | null
-          remarks?: string | null
-        }> = []
-
-        const findSignatureForName = (name?: string | null, fallbackSig?: string | null) => {
-          if (!name) return fallbackSig || ''
-          const trimmed = name.trim().toLowerCase()
-          const matched = approvalHistory?.find(
-            (step: any) =>
-              step.status === 'approved' &&
-              step.signatureDataUrl &&
-              step.approverName?.trim().toLowerCase() === trimmed
-          )
-          return matched?.signatureDataUrl || fallbackSig || ''
-        }
-
-        const findMetaForName = (name?: string | null, fallbackMeta?: any) => {
-          if (!name) return fallbackMeta
-          const trimmed = name.trim().toLowerCase()
-          const matched = approvalHistory?.find(
-            (step: any) =>
-              step.status === 'approved' &&
-              step.approverName?.trim().toLowerCase() === trimmed
-          )
-          return matched || fallbackMeta
-        }
-
-        const employeeDisplayName = selectedEmp?.name || form.employeeNameStr || ''
-        const signatoryCandidates = [
-          {
-            key: 'leader',
-            label: 'Leader Signature',
-            name: form.leaderName,
-            title: form.leaderTitle || resolveEmployeeTitle(form.leaderName, 'Leader'),
-            signatureUrl: leaderPreviewSignature || findSignatureForName(form.leaderName),
-            meta: leaderApprovalMeta || findMetaForName(form.leaderName),
-          },
-          {
-            key: 'employee',
-            label: 'Employee Signature',
-            name: employeeDisplayName,
-            title: selectedEmp?.position || resolveEmployeeTitle(employeeDisplayName, 'Employee'),
-            signatureUrl: visibleEmployeeApprovalSig || findSignatureForName(employeeDisplayName),
-            meta: employeeApprovalMeta || findMetaForName(employeeDisplayName),
-          },
-          {
-            key: 'superior',
-            label: 'Superior Signature',
-            name: form.superiorName,
-            title: form.superiorTitle || resolveEmployeeTitle(form.superiorName, 'Superior'),
-            signatureUrl: visibleSectionHeadApprovalSig || findSignatureForName(form.superiorName),
-            meta: sectionHeadApprovalMeta || findMetaForName(form.superiorName),
-          },
-          {
-            key: 'next_superior',
-            label: 'Next Superior Signature',
-            name: form.nextSuperiorName,
-            title: form.nextSuperiorTitle || resolveEmployeeTitle(form.nextSuperiorName, 'Department Head'),
-            signatureUrl: visibleManagerApprovalSig || findSignatureForName(form.nextSuperiorName),
-            meta: managerApprovalMeta || findMetaForName(form.nextSuperiorName),
-          },
-          {
-            key: 'hr',
-            label: 'HR Signature',
-            name: form.hrName,
-            title: form.hrTitle || resolveEmployeeTitle(form.hrName, 'HR-GA'),
-            signatureUrl: visibleHrApprovalSig || findSignatureForName(form.hrName),
-            meta: hrApprovalMeta || findMetaForName(form.hrName),
-          },
-        ]
-
-        for (const cand of signatoryCandidates) {
-          const normalized = (cand.name || '').trim().toLowerCase()
-          if (!normalized) continue
-          if (seenSignerKeys.has(normalized)) continue
-          seenSignerKeys.add(normalized)
-          displaySignatories.push({
-            key: cand.key,
-            label: cand.label,
-            name: cand.name,
-            title: cand.title,
-            signatureUrl: cand.signatureUrl,
-            signedAt: cand.meta?.signedAt,
-            remarks: cand.meta?.remarks,
-          })
-        }
-
-        return (
-          <div className={`grid grid-cols-2 gap-x-8 ${!achievementBlockOnPage2 ? 'gap-y-4 mb-4' : 'gap-y-8 mb-6'} break-inside-avoid`}>
-            {displaySignatories.map((sig) => (
-              <div key={sig.key}>
-                <div className="text-xs text-muted-foreground mb-1">{sig.label}</div>
-                <div className="h-20 flex items-end">
-                  {sig.signatureUrl ? (
-                    <img
-                      src={sig.signatureUrl}
-                      alt={`${sig.label} TTD`}
-                      className="h-16 object-contain"
-                      style={{ maxWidth: '45mm', maxHeight: '16mm' }}
-                    />
-                  ) : null}
-                </div>
-                <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{sig.name}</div>
-                <div className="text-xs">{sig.title}</div>
-                <div className="mt-1 text-[7pt] text-gray-500">Waktu TTD: {formatDateTime(sig.signedAt)}</div>
-                {sig.remarks ? <div className="mt-1 text-[7pt] text-left text-gray-600">Catatan: {sig.remarks}</div> : null}
-              </div>
-            ))}
-            <div>
-              <div className="font-bold mb-2">Letter Issuance by HR</div>
-              <div className="text-[7pt]" style={{ display: 'grid', gap: '4px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <input type="checkbox" checked={form.letterIssuance === 'permanent_confirmation'} readOnly />
-                  <span>Permanent Confirmation</span>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <input type="checkbox" checked={form.letterIssuance === 'contract_extension'} readOnly />
-                  <span>Contract extension</span>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <input type="checkbox" checked={form.letterIssuance === 'unsuccessful_probation'} readOnly />
-                  <span>Unsuccessful probation notification</span>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <input type="checkbox" checked={form.letterIssuance === 'end_of_contract'} readOnly />
-                  <span>End of contract notification</span>
-                </label>
-              </div>
-            </div>
-          </div>
-        )
-      })()}
-
-      <div className="text-right mt-12 text-gray-500">
-        F.HR.STD.012.00
-      </div>
+      {renderSignatoriesBlock()}
     </div>
   )
+
+  const formPdfPages = (() => {
+    if (isCompetencyOnPage1) {
+      return [
+        { id: 'pdf-page-1', content: pdfPreviewPage1 },
+        { id: 'pdf-page-2', content: pdfPreviewPage2 },
+      ]
+    }
+    const pages = [
+      { id: 'pdf-page-1', content: pdfPreviewPage1 },
+      ...pdfPreviewPerformancePages.map((page, idx) => ({ id: `pdf-page-perf-${idx}`, content: page })),
+      { id: 'pdf-page-2', content: pdfPreviewPage2 },
+    ]
+    if (!canFitAllOnPage2WhenCompetencyOnPage2) {
+      pages.push({ id: 'pdf-page-3', content: pdfPreviewPage3 })
+    }
+    return pages
+  })()
 
   const attachmentsPreviewSection = form.attachments && form.attachments.length > 0 ? (
     <div className="mx-auto w-[210mm] shrink-0 rounded-xl bg-white p-6 shadow-sm border border-slate-200 text-slate-800">
@@ -1386,13 +1516,13 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
   if (isEmbeddedPrintPreview) {
     return (
       <div className="fixed inset-0 z-[9999] flex flex-col gap-8 overflow-auto bg-slate-100 p-4">
-        {[pdfPreviewPage1, ...pdfPreviewPerformancePages, pdfPreviewPage2, pdfPreviewPage3].map((page, index) => (
+        {formPdfPages.map((page) => (
           <div
-            key={index}
+            key={page.id}
             className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
           >
             <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-            {page}
+            {page.content}
           </div>
         ))}
         {attachmentsPreviewSection}
@@ -1859,6 +1989,78 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
           </Card>
         )}
 
+        {/* Card Status Test Online Karyawan */}
+        {form.testRequired && (
+          <Card className="border-sky-200 bg-sky-50/20">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base flex items-center gap-2 text-foreground">
+                  <FileCheck className="size-4 text-primary" /> Status Test Online Karyawan
+                </CardTitle>
+                <Badge
+                  className={
+                    form.testStatus === 'passed'
+                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                      : form.testStatus === 'failed'
+                      ? 'bg-rose-100 text-rose-800 border-rose-300'
+                      : form.testStatus === 'completed'
+                      ? 'bg-blue-100 text-blue-800 border-blue-300'
+                      : 'bg-amber-100 text-amber-800 border-amber-300'
+                  }
+                >
+                  {form.testStatus === 'passed'
+                    ? 'LULUS UJIAN'
+                    : form.testStatus === 'failed'
+                    ? 'BELUM LULUS'
+                    : form.testStatus === 'completed'
+                    ? 'UJIAN SELESAI'
+                    : 'MENUNGGU PENGERJAAN'}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <div className="p-2 rounded bg-white border">
+                  <span className="text-muted-foreground block">Materi Ujian</span>
+                  <span className="font-semibold text-foreground line-clamp-1">
+                    {initialData?.testConfig?.title || 'Evaluasi Kompetensi'}
+                  </span>
+                </div>
+                <div className="p-2 rounded bg-white border">
+                  <span className="text-muted-foreground block">Nilai Akhir</span>
+                  <span className="font-bold text-foreground text-sm font-mono">
+                    {form.testFinalScore !== null && form.testFinalScore !== undefined ? `${form.testFinalScore}%` : '-'}
+                  </span>
+                </div>
+                <div className="p-2 rounded bg-white border">
+                  <span className="text-muted-foreground block">Passing Grade</span>
+                  <span className="font-semibold text-foreground">
+                    {initialData?.testConfig?.hasPassingGrade ? `${initialData?.testConfig?.passingGrade}%` : 'Non-Passing'}
+                  </span>
+                </div>
+                <div className="p-2 rounded bg-white border">
+                  <span className="text-muted-foreground block">Percobaan</span>
+                  <span className="font-semibold text-foreground">
+                    Ke-{form.testAttemptCount || 1}
+                  </span>
+                </div>
+              </div>
+
+              {['none', 'pending', 'in_progress'].includes(form.testStatus) && (
+                <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-800 text-xs">
+                  Karyawan belum menyelesaikan ujian online ini. Anda dapat menyimpan draft form ini kapan saja, namun persetujuan akhir (submit) akan terbuka setelah karyawan menyelesaikan ujian.
+                </div>
+              )}
+
+              {form.testStatus === 'failed' && (
+                <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-800 text-xs">
+                  Nilai karyawan di bawah passing grade. Jika kuota remedial masih tersedia, minta karyawan mengulang ujian dari link yang dikirimkan ke email/inboxnya.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
           <CardHeader>
             <CardTitle>TTD Digital - {form.leaderName || 'Leader/Creator'}</CardTitle>
@@ -2022,30 +2224,16 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
       {/* KANAN: PDF Preview */}
       {isPrintMode ? (
         <div className="contract-review-print flex flex-col gap-8 overflow-auto rounded-[1.1rem] bg-slate-100 p-4 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)]">
-          <div
-            id="pdf-page-1"
-            className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
-          >
-            <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-            {pdfPreviewPage1}
-          </div>
-          {pdfPreviewPerformancePages.map((page, index) => (
-            <div key={`performance-page-${index}`} id={`pdf-page-performance-${index}`} className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm">
+          {formPdfPages.map((page) => (
+            <div
+              key={page.id}
+              id={page.id}
+              className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
+            >
               <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-              {page}
+              {page.content}
             </div>
           ))}
-          <div id="pdf-page-2" className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm">
-            <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-            {pdfPreviewPage2}
-          </div>
-          <div
-            id="pdf-page-3"
-            className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
-          >
-            <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-            {pdfPreviewPage3}
-          </div>
           {attachmentsPreviewSection}
         </div>
       ) : (
@@ -2056,30 +2244,16 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
             <TabsTrigger value="productivity">Produktivitas</TabsTrigger>
           </TabsList>
           <TabsContent value="letter" className="m-0 flex flex-col gap-8">
-            <div
-              id="pdf-page-1"
-              className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
-            >
-              <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-              {pdfPreviewPage1}
-            </div>
-            {pdfPreviewPerformancePages.map((page, index) => (
-              <div key={`performance-page-${index}`} id={`pdf-page-performance-${index}`} className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm">
+            {formPdfPages.map((page) => (
+              <div
+                key={page.id}
+                id={page.id}
+                className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
+              >
                 <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-                {page}
+                {page.content}
               </div>
             ))}
-            <div id="pdf-page-2" className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm">
-              <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-              {pdfPreviewPage2}
-            </div>
-            <div
-              id="pdf-page-3"
-              className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
-            >
-              <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-              {pdfPreviewPage3}
-            </div>
             {attachmentsPreviewSection}
           </TabsContent>
           <TabsContent value="productivity" className="m-0">
