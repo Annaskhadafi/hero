@@ -90,6 +90,15 @@ export function SearchableSelect({
                 onValueChange(val)
               }
             }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                if (allowCustom && query.trim()) {
+                  onValueChange(query.trim())
+                  setOpen(false)
+                }
+              }
+            }}
             placeholder={allowCustom ? `Ketik custom ${label.toLowerCase()} atau pilih preset...` : `Cari ${label.toLowerCase()}...`}
             className="border-border/70 bg-muted/30 h-9 rounded-lg pl-9 pr-8 shadow-none text-xs"
             autoFocus
@@ -123,6 +132,20 @@ export function SearchableSelect({
             <span>{placeholder ?? `Semua ${label}`}</span>
             {value ? <X className="text-muted-foreground size-4" /> : null}
           </button>
+
+          {allowCustom && query.trim().length > 0 && !options.some((o) => o.value.toLowerCase() === query.trim().toLowerCase() || o.label.toLowerCase() === query.trim().toLowerCase()) && (
+            <button
+              type="button"
+              className="text-primary hover:bg-blue-100/60 flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs font-semibold bg-blue-50/70 text-blue-700 border border-blue-200 transition-colors"
+              onClick={() => {
+                onValueChange(query.trim())
+                setOpen(false)
+              }}
+            >
+              <Plus className="size-3.5 shrink-0 text-blue-600" />
+              <span className="truncate">Gunakan &quot;{query.trim()}&quot; (Aktivitas Kustom)</span>
+            </button>
+          )}
 
           {filteredOptions.map((option, idx) => {
             const isSelected = option.value === value

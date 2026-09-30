@@ -66,11 +66,9 @@ export function RouteFolderTree({
           }
         }
 
-        for (const item of group.items || []) {
-          if (item.libraryActivityId != null) {
-            set.add(String(item.libraryActivityId))
-          }
-        }
+        // Note: Do NOT add item.libraryActivityId to groupedLibraryIdSet.
+        // Individual child activities (e.g. SVC.SEM-014) are real work activities
+        // and must remain selectable from the library list.
       }
     }
     return set
@@ -336,7 +334,7 @@ export function RouteFolderTree({
           {matchingRouteFolders.length > 0 && (
             <div className="flex items-center gap-1.5 px-1 py-1 text-xs font-bold text-[#486275] uppercase tracking-wider">
               <Sparkles className="size-3.5 text-amber-500" />
-              <span>Aktivitas Mandiri / Kamus Lainnya ({standaloneLibraries.length})</span>
+              <span>Semua Kamus Aktivitas ({standaloneLibraries.length})</span>
             </div>
           )}
 

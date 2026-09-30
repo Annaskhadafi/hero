@@ -1252,11 +1252,8 @@ export function MobileDailyActivityForm({
           }
         }
 
-        for (const item of group.items || []) {
-          if (item.libraryActivityId != null) {
-            groupedLibraryIdSet.add(String(item.libraryActivityId))
-          }
-        }
+        // Note: Do NOT add item.libraryActivityId to groupedLibraryIdSet.
+        // Individual child activities must remain selectable and counted in the library.
       }
     }
 

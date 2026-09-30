@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { Smartphone, TableProperties, Award, TrendingUp, AlertTriangle, Activity, Layers, BookOpen, UserCheck, FileSpreadsheet, ShieldCheck } from "lucide-react";
+import { Smartphone, TableProperties, Award, TrendingUp, AlertTriangle, Activity, Layers, BookOpen, UserCheck, FileSpreadsheet, ShieldCheck, GraduationCap, CheckCircle2, Clock3, XCircle } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +20,9 @@ import { syncLmsToTrainingRecords } from "@/lib/lms-mysql";
 import { getServerSession } from "@/lib/auth-session";
 import { SioDatabaseTab } from "@/components/sio-database-tab";
 import { computeAggregates } from "@/lib/sio-certification";
+import { db } from "@/db";
+import { chitraLearningCourses, chitraLearningEnrollments, employees } from "@/db/schema/hero";
+import { eq, desc } from "drizzle-orm";
 
 const APP_TIME_ZONE = "Asia/Makassar";
 
@@ -88,6 +91,37 @@ export default async function TrainingRecordsPage({
     getTrainingRecordPageData(),
     getOperationalCrudOptions(),
   ]);
+  const lmsRows = await db
+    .select({
+      id: chitraLearningEnrollments.id,
+      employeeName: employees.name,
+      employeeSn: employees.employeeSn,
+      courseTitle: chitraLearningCourses.title,
+      progress: chitraLearningEnrollments.progress,
+      status: chitraLearningEnrollments.status,
+      posttestScore: chitraLearningEnrollments.posttestScore,
+      passingScore: chitraLearningCourses.passingScore,
+      updatedAt: chitraLearningEnrollments.updatedAt,
+    })
+    .from(chitraLearningEnrollments)
+    .innerJoin(chitraLearningCourses, eq(chitraLearningEnrollments.courseId, chitraLearningCourses.id))
+    .innerJoin(employees, eq(chitraLearningEnrollments.employeeId, employees.id))
+    .orderBy(desc(chitraLearningEnrollments.updatedAt));
+  const lmsPassed = lmsRows.filter((row) => row.status === "passed").length;
+  const lmsInProgress = lmsRows.filter((row) => row.progress > 0 && row.progress < 100).length;
+  const lmsNotStarted = lmsRows.filter((row) => !row.progress).length;
+  const lmsFailed = lmsRows.filter((row) => row.status === "failed").length;
+  const lmsAverageProgress = lmsRows.length ? Math.round(lmsRows.reduce((sum, row) => sum + row.progress, 0) / lmsRows.length) : 0;
+  const lmsAverageScore = lmsRows.filter((row) => row.posttestScore != null).length
+    ? Math.round(lmsRows.reduce((sum, row) => sum + (row.posttestScore ?? 0), 0) / lmsRows.filter((row) => row.posttestScore != null).length)
+    : 0;
+  const lmsCourseSummary = Array.from(new Map(lmsRows.map((row) => [row.courseTitle, row])).values())
+    .map((course) => {
+      const rows = lmsRows.filter((row) => row.courseTitle === course.courseTitle);
+      return { title: course.courseTitle, total: rows.length, passed: rows.filter((row) => row.status === "passed").length, progress: Math.round(rows.reduce((sum, row) => sum + row.progress, 0) / rows.length) };
+    })
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 5);
   const scopedEmployeeIds = new Set(data.employeeOptions.map((employee) => employee.id));
   const scopedOptions = {
     ...options,
@@ -100,6 +134,7 @@ export default async function TrainingRecordsPage({
   const selectedDepartment = getSearchParamValue(resolvedSearchParams, "department");
   const selectedSection = getSearchParamValue(resolvedSearchParams, "section");
   const selectedYear = getSearchParamValue(resolvedSearchParams, "year");
+  const selectedTab = getSearchParamValue(resolvedSearchParams, "tab");
   const referenceDate = startOfDayInAppTimeZone(new Date());
 
   const filteredRows = data.rows.filter((row) => {
@@ -205,7 +240,7 @@ export default async function TrainingRecordsPage({
         />
       </div>
 
-      <Tabs defaultValue="workspace" className="space-y-5">
+      <Tabs defaultValue={selectedTab || "workspace"} className="space-y-5">
         <TabsList className="bg-surface-container-low/50">
           <TabsTrigger value="workspace" className="flex items-center gap-1.5">
             <TableProperties className="size-4" />
@@ -214,6 +249,10 @@ export default async function TrainingRecordsPage({
           <TabsTrigger value="dashboard" className="flex items-center gap-1.5">
             <Activity className="size-4 text-primary" />
             Dashboard
+          </TabsTrigger>
+          <TabsTrigger value="chitra-learning" className="flex items-center gap-1.5">
+            <GraduationCap className="size-4 text-violet-600" />
+            Chitra Learning
           </TabsTrigger>
           <TabsTrigger value="sio" className="flex items-center gap-1.5">
             <ShieldCheck className="size-4 text-primary" />
@@ -448,6 +487,61 @@ export default async function TrainingRecordsPage({
               </div>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="chitra-learning" className="space-y-6 outline-none">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            {[
+              { label: "Total Peserta", value: lmsRows.length, icon: UserCheck, color: "text-blue-600", bg: "bg-blue-50" },
+              { label: "Lulus", value: lmsPassed, icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50" },
+              { label: "Sedang Berjalan", value: lmsInProgress, icon: Clock3, color: "text-amber-600", bg: "bg-amber-50" },
+              { label: "Belum Lulus", value: lmsFailed, icon: XCircle, color: "text-rose-600", bg: "bg-rose-50" },
+              { label: "Rata-rata Post-test", value: `${lmsAverageScore}%`, icon: GraduationCap, color: "text-violet-600", bg: "bg-violet-50" },
+            ].map(({ label, value, icon: Icon, color, bg }) => (
+              <Card key={label} className="rounded-[1.2rem] border-0 bg-surface-container-lowest p-5 shadow-[0_18px_42px_rgba(8,32,51,0.08)]">
+                <div className="flex items-center justify-between">
+                  <div className={`rounded-xl p-2.5 ${bg}`}><Icon className={`size-5 ${color}`} /></div>
+                  <span className="text-xs font-medium text-muted-foreground">LMS</span>
+                </div>
+                <p className="mt-4 text-2xl font-bold text-foreground">{value}</p>
+                <p className="mt-1 text-xs font-medium text-muted-foreground">{label}</p>
+              </Card>
+            ))}
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-12">
+            <Card className="lg:col-span-4 rounded-[1.2rem] border-0 bg-surface-container-lowest p-5 shadow-sm">
+              <h4 className="flex items-center gap-2 text-sm font-semibold"><Activity className="size-4 text-blue-600" />Progress Belajar</h4>
+              <p className="mt-1 text-xs text-muted-foreground">Rata-rata kemajuan seluruh enrollment Chitra Learning.</p>
+              <div className="mt-6 flex items-end gap-3"><span className="text-4xl font-bold text-slate-900">{lmsAverageProgress}%</span><span className="mb-1 text-xs text-muted-foreground">selesai</span></div>
+              <Progress value={lmsAverageProgress} className="mt-4 h-3 bg-slate-100" />
+              <div className="mt-5 grid grid-cols-3 gap-2 text-center text-xs">
+                <div className="rounded-lg bg-emerald-50 p-3"><b className="block text-emerald-700">{lmsPassed}</b>Lulus</div>
+                <div className="rounded-lg bg-amber-50 p-3"><b className="block text-amber-700">{lmsInProgress}</b>Berjalan</div>
+                <div className="rounded-lg bg-slate-50 p-3"><b className="block text-slate-700">{lmsNotStarted}</b>Belum mulai</div>
+              </div>
+            </Card>
+            <Card className="lg:col-span-8 rounded-[1.2rem] border-0 bg-surface-container-lowest p-5 shadow-sm">
+              <h4 className="flex items-center gap-2 text-sm font-semibold"><BookOpen className="size-4 text-violet-600" />Course dengan Peserta Terbanyak</h4>
+              <p className="mt-1 text-xs text-muted-foreground">Progress dan rasio kelulusan per course.</p>
+              <div className="mt-5 space-y-4">
+                {lmsCourseSummary.length ? lmsCourseSummary.map((course) => (
+                  <div key={course.title}>
+                    <div className="mb-1 flex items-center justify-between gap-3 text-xs"><span className="truncate font-semibold text-slate-800">{course.title}</span><span className="shrink-0 text-muted-foreground">{course.passed}/{course.total} lulus</span></div>
+                    <Progress value={course.progress} className="h-2 bg-slate-100" />
+                  </div>
+                )) : <p className="py-8 text-center text-sm text-muted-foreground">Belum ada data enrollment Chitra Learning.</p>}
+              </div>
+            </Card>
+          </div>
+
+          <Card className="rounded-[1.2rem] border-0 bg-surface-container-lowest shadow-sm">
+            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-lg"><TableProperties className="size-5 text-violet-600" />Hasil dan Progress Peserta</CardTitle><CardDescription>Data langsung dari enrollment Chitra Learning, termasuk skor post-test dan batas lulus course.</CardDescription></CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto rounded-xl border border-slate-100"><table className="w-full min-w-[760px] text-sm"><thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Peserta</th><th className="px-4 py-3">Course</th><th className="px-4 py-3">Progress</th><th className="px-4 py-3">Post-test</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Update</th></tr></thead><tbody className="divide-y divide-slate-100">{lmsRows.slice(0, 50).map((row) => <tr key={row.id} className="hover:bg-slate-50"><td className="px-4 py-3"><div className="font-medium text-slate-900">{row.employeeName}</div><div className="text-xs text-muted-foreground">{row.employeeSn}</div></td><td className="px-4 py-3 font-medium text-slate-700">{row.courseTitle}</td><td className="px-4 py-3"><div className="flex items-center gap-2"><Progress value={row.progress} className="h-2 w-24 bg-slate-100" /><span className="text-xs">{row.progress}%</span></div></td><td className="px-4 py-3">{row.posttestScore == null ? <span className="text-muted-foreground">-</span> : <span className={row.posttestScore >= row.passingScore ? "font-semibold text-emerald-600" : "font-semibold text-rose-600"}>{row.posttestScore}% <span className="text-xs font-normal text-muted-foreground">/ {row.passingScore}%</span></span>}</td><td className="px-4 py-3"><Badge className={row.status === "passed" ? "border-0 bg-emerald-50 text-emerald-700" : row.status === "failed" ? "border-0 bg-rose-50 text-rose-700" : "border-0 bg-amber-50 text-amber-700"}>{row.status === "passed" ? "Lulus" : row.status === "failed" ? "Belum lulus" : "Berjalan"}</Badge></td><td className="px-4 py-3 text-xs text-muted-foreground">{row.updatedAt ? new Date(row.updatedAt).toLocaleDateString("id-ID") : "-"}</td></tr>)}</tbody></table></div>
+              {lmsRows.length > 50 && <p className="pt-3 text-xs text-muted-foreground">Menampilkan 50 enrollment terbaru dari {lmsRows.length} data.</p>}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="sio" className="space-y-5 outline-none">

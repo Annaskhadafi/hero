@@ -12,6 +12,7 @@ import {
   FileText,
   Loader2,
   Move,
+  PenLine,
   Plus,
   RotateCcw,
   Trash2,
@@ -79,6 +80,7 @@ type LineItemRow = {
   targetUnit?: string;
   estimatedMinutes?: number;
   plannedPoints?: number;
+  isCustom?: boolean;
   code?: string;
   name?: string;
   unitNumber?: string;
@@ -342,12 +344,19 @@ export function MobileOvertimeRequestForm({
 
   const [lineItems, setLineItems] = useState<LineItemRow[]>(() => {
     if (initialSplData?.lineItems && initialSplData.lineItems.length > 0) {
-      return initialSplData.lineItems.map((l: any) => ({
-        lineLabel: l.lineLabel || "",
-        targetUnit: l.targetUnit || "",
-        estimatedMinutes: Number(l.estimatedMinutes) || 60,
-        plannedPoints: Number(l.plannedPoints) || 5,
-      }));
+      return initialSplData.lineItems.map((l: any) => {
+        const rawLabel = (l.lineLabel || "").trim();
+        const isMatched = (activityLibraries || []).some(
+          (lib) => lib.activityName.toLowerCase().trim() === rawLabel.toLowerCase()
+        );
+        return {
+          lineLabel: rawLabel,
+          targetUnit: l.targetUnit || "",
+          estimatedMinutes: Number(l.estimatedMinutes) || 60,
+          plannedPoints: Number(l.plannedPoints) || 5,
+          isCustom: rawLabel ? !isMatched : false,
+        };
+      });
     }
     return [
       {
@@ -355,6 +364,7 @@ export function MobileOvertimeRequestForm({
         targetUnit: "1 Unit",
         estimatedMinutes: 120,
         plannedPoints: 10,
+        isCustom: false,
       },
     ];
   });
@@ -537,11 +547,23 @@ export function MobileOvertimeRequestForm({
           targetUnit: defaultTarget,
           estimatedMinutes: defaultMinutes,
           plannedPoints: defaultPoints,
+          isCustom: false,
         };
         return next;
       });
     } else {
-      updateLineItem(index, 'lineLabel', value);
+      setLineItems((prev) => {
+        const next = [...prev];
+        next[index] = {
+          ...next[index],
+          lineLabel: value,
+          targetUnit: next[index]?.targetUnit || "1 Unit",
+          estimatedMinutes: next[index]?.estimatedMinutes || 60,
+          plannedPoints: next[index]?.plannedPoints || 5,
+          isCustom: Boolean(value.trim()),
+        };
+        return next;
+      });
     }
   }
 
@@ -592,6 +614,20 @@ export function MobileOvertimeRequestForm({
         targetUnit: "",
         estimatedMinutes: 60,
         plannedPoints: 5,
+        isCustom: false,
+      },
+    ]);
+  }
+
+  function addCustomLineItem() {
+    setLineItems((prev) => [
+      ...prev,
+      {
+        lineLabel: "",
+        targetUnit: "1 Unit",
+        estimatedMinutes: 60,
+        plannedPoints: 5,
+        isCustom: true,
       },
     ]);
   }
@@ -604,6 +640,7 @@ export function MobileOvertimeRequestForm({
         targetUnit: preset.unit,
         estimatedMinutes: preset.dur,
         plannedPoints: preset.pts,
+        isCustom: false,
       },
     ]);
     toast.success(`Preset "${preset.name}" ditambahkan.`);
@@ -1103,85 +1140,171 @@ export function MobileOvertimeRequestForm({
 
 
 
-        <div className="space-y-3">
-          {lineItems.map((item, idx) => (
-            <div
-              key={idx}
-              className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2.5"
+        {/* Quick Presets Shortcuts */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none">
+          <span className="text-[10px] font-bold text-slate-400 shrink-0">Preset Cepat:</span>
+          {SPL_PRESETS.map((p, pIdx) => (
+            <button
+              key={pIdx}
+              type="button"
+              onClick={() => addPresetLineItem(p)}
+              className="shrink-0 whitespace-nowrap px-2.5 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-medium border border-slate-200/80 transition-colors flex items-center gap-1"
             >
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-slate-600">Aktivitas #{idx + 1}</span>
-                {lineItems.length > 1 && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => removeLineItem(idx)}
-                    className="size-7 p-0 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                )}
-              </div>
-
-              <div>
-                <span className="text-[10px] font-bold text-slate-500 block mb-1">
-                  Uraian Aktivitas Pekerjaan *
-                </span>
-                <SearchableSelect
-                  label="Aktivitas"
-                  placeholder="PILIH DARI KAMUS AKTIVITAS..."
-                  value={item.lineLabel}
-                  onValueChange={(val) => selectActivityForLineItem(idx, val)}
-                  options={activityLibraryOptions}
-                  allowCustom={true}
-                  widthClassName="w-full"
-                />
-              </div>
-
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <span className="text-[10px] font-bold text-slate-500 block mb-1">Target / Unit</span>
-                  <Input
-                    placeholder="e.g. 1 Unit HD"
-                    value={item.targetUnit}
-                    onChange={(e) => updateLineItem(idx, "targetUnit", e.target.value)}
-                    className="h-8 rounded-lg bg-white border-slate-200 text-[11px]"
-                  />
-                </div>
-                <div>
-                  <span className="text-[10px] font-bold text-slate-500 block mb-1">Durasi (Mnt)</span>
-                  <Input
-                    type="number"
-                    min={15}
-                    value={item.estimatedMinutes}
-                    onChange={(e) => updateLineItem(idx, "estimatedMinutes", Number(e.target.value))}
-                    className="h-8 rounded-lg bg-white border-slate-200 text-[11px] font-semibold text-center"
-                  />
-                </div>
-                <div>
-                  <span className="text-[10px] font-bold text-slate-500 block mb-1">Poin</span>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={item.plannedPoints}
-                    onChange={(e) => updateLineItem(idx, "plannedPoints", Number(e.target.value))}
-                    className="h-8 rounded-lg bg-white border-slate-200 text-[11px] font-bold text-center"
-                  />
-                </div>
-              </div>
-            </div>
+              <Plus className="size-2.5 text-slate-500" />
+              <span>{p.name.length > 28 ? p.name.slice(0, 28) + '...' : p.name}</span>
+            </button>
           ))}
+        </div>
 
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={addLineItem}
-            className="w-full h-9 rounded-xl border-dashed border-slate-300 text-slate-700 hover:border-slate-400 hover:bg-slate-50 text-xs font-semibold gap-1.5"
-          >
-            <Plus className="size-3.5 text-slate-500" /> Tambah Baris Aktivitas
-          </Button>
+        <div className="space-y-3">
+          {lineItems.map((item, idx) => {
+            const isCustom = Boolean(item.isCustom);
+            return (
+              <div
+                key={idx}
+                className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2.5"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-slate-700">Aktivitas #{idx + 1}</span>
+                    <div className="inline-flex items-center bg-slate-200/80 p-0.5 rounded-md text-[10px]">
+                      <button
+                        type="button"
+                        onClick={() => updateLineItem(idx, "isCustom", false)}
+                        className={cn(
+                          "px-2 py-0.5 rounded transition-all font-medium",
+                          !isCustom
+                            ? "bg-white text-slate-800 shadow-2xs font-bold"
+                            : "text-slate-500 hover:text-slate-800"
+                        )}
+                      >
+                        Kamus
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateLineItem(idx, "isCustom", true)}
+                        className={cn(
+                          "px-2 py-0.5 rounded transition-all font-medium",
+                          isCustom
+                            ? "bg-[#003461] text-white shadow-2xs font-bold"
+                            : "text-slate-500 hover:text-slate-800"
+                        )}
+                      >
+                        Kustom
+                      </button>
+                    </div>
+                  </div>
+                  {lineItems.length > 1 && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => removeLineItem(idx)}
+                      className="size-7 p-0 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  )}
+                </div>
+
+                {isCustom ? (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] font-bold text-slate-500">
+                        Uraian Aktivitas Kustom (Bebas) *
+                      </span>
+                      <span className="text-[9px] font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                        Bebas / Di luar Kamus
+                      </span>
+                    </div>
+                    <Input
+                      placeholder="Contoh: Overtime Fabrikasi Bracket & Welding Workshop..."
+                      value={item.lineLabel}
+                      onChange={(e) => updateLineItem(idx, "lineLabel", e.target.value)}
+                      className="h-9 rounded-lg bg-white border-slate-200 text-xs font-medium focus-visible:ring-1 focus-visible:ring-[#003461]"
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] font-bold text-slate-500">
+                        Uraian Aktivitas Pekerjaan (Kamus) *
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => updateLineItem(idx, "isCustom", true)}
+                        className="text-[10px] font-semibold text-blue-600 hover:underline flex items-center gap-0.5"
+                      >
+                        <PenLine className="size-2.5" /> Input Kustom
+                      </button>
+                    </div>
+                    <SearchableSelect
+                      label="Aktivitas"
+                      placeholder="PILIH DARI KAMUS AKTIVITAS..."
+                      value={item.lineLabel}
+                      onValueChange={(val) => selectActivityForLineItem(idx, val)}
+                      options={activityLibraryOptions}
+                      allowCustom={true}
+                      widthClassName="w-full"
+                    />
+                  </div>
+                )}
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-500 block mb-1">Target / Unit</span>
+                    <Input
+                      placeholder="e.g. 1 Unit HD"
+                      value={item.targetUnit}
+                      onChange={(e) => updateLineItem(idx, "targetUnit", e.target.value)}
+                      className="h-8 rounded-lg bg-white border-slate-200 text-[11px]"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-500 block mb-1">Durasi (Mnt)</span>
+                    <Input
+                      type="number"
+                      min={15}
+                      value={item.estimatedMinutes}
+                      onChange={(e) => updateLineItem(idx, "estimatedMinutes", Number(e.target.value))}
+                      className="h-8 rounded-lg bg-white border-slate-200 text-[11px] font-semibold text-center"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-500 block mb-1">Poin</span>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={item.plannedPoints}
+                      onChange={(e) => updateLineItem(idx, "plannedPoints", Number(e.target.value))}
+                      className="h-8 rounded-lg bg-white border-slate-200 text-[11px] font-bold text-center"
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addLineItem}
+              className="h-9 rounded-xl border-dashed border-slate-300 text-slate-700 hover:border-slate-400 hover:bg-slate-50 text-xs font-semibold gap-1.5"
+            >
+              <Plus className="size-3.5 text-slate-500" /> Dari Kamus
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addCustomLineItem}
+              className="h-9 rounded-xl border-dashed border-amber-300 bg-amber-50/40 text-amber-800 hover:bg-amber-100/60 hover:border-amber-400 text-xs font-semibold gap-1.5"
+            >
+              <PenLine className="size-3.5 text-amber-600" /> Aktivitas Kustom
+            </Button>
+          </div>
         </div>
       </section>
 

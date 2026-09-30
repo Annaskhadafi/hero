@@ -306,11 +306,8 @@ export function DailyActivityCreateModal({
           }
         }
 
-        for (const item of group.items || []) {
-          if (item.libraryActivityId != null) {
-            set.add(String(item.libraryActivityId))
-          }
-        }
+        // Note: Do NOT add item.libraryActivityId to groupedLibraryIdSet.
+        // Individual child activities must remain selectable from the library list.
       }
     }
     return set
@@ -1848,7 +1845,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                 <div className="space-y-2 pt-1">
                   <div className="flex items-center gap-1.5 px-1 py-1 text-xs font-bold text-[#486275] uppercase tracking-wider">
                     <Sparkles className="size-3.5 text-amber-500" />
-                    <span>Aktivitas Mandiri / Kamus Lainnya ({standaloneLibraries.length})</span>
+                    <span>Semua Kamus Aktivitas ({standaloneLibraries.length})</span>
                   </div>
 
                   <div className="space-y-1.5">

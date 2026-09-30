@@ -3536,7 +3536,12 @@ export async function getDailyActivityLibraryData(email?: string | null) {
               .filter((name): name is string => Boolean(name))
               .join(', ') || null
           : row.sectionName,
-      children: groupChildrenByCode.get(row.activityCode) ?? [],
+      children:
+        groupChildrenByCode.get(row.activityCode) ??
+        groupChildrenByCode.get(row.activityCode.trim().toLowerCase()) ??
+        groupChildrenByCode.get(row.activityName) ??
+        groupChildrenByCode.get(row.activityName.trim().toLowerCase()) ??
+        [],
     }
   })
 
@@ -3920,6 +3925,7 @@ async function getActivityLibraryGroupChildrenByCode(): Promise<Map<string, Acti
   const childRows = await db
     .select({
       parentCode: activityRouteTemplates.routeCode,
+      parentName: activityRouteTemplates.routeName,
       childId: activityLibraries.id,
       childCode: activityLibraries.activityCode,
       childName: activityLibraries.activityName,
@@ -3933,15 +3939,26 @@ async function getActivityLibraryGroupChildrenByCode(): Promise<Map<string, Acti
 
   const byCode = new Map<string, ActivityLibraryGroupChild[]>()
   for (const rowItem of childRows) {
-    const parentCode = rowItem.parentCode.replace(/^GRP-/, '')
-    const list = byCode.get(parentCode) ?? []
-    if (list.some((child) => child.id === rowItem.childId)) continue
-    list.push({
-      id: rowItem.childId,
-      activityCode: rowItem.childCode,
-      activityName: rowItem.childName,
-    })
-    byCode.set(parentCode, list)
+    const rawCode = rowItem.parentCode.replace(/^GRP-/i, '').trim()
+    const rawName = (rowItem.parentName || '').replace(/^Group:\s*/i, '').trim()
+    const keys = [
+      rawCode,
+      rawCode.toLowerCase(),
+      rawName,
+      rawName.toLowerCase(),
+    ].filter(Boolean)
+
+    for (const key of keys) {
+      const list = byCode.get(key) ?? []
+      if (!list.some((child) => child.id === rowItem.childId)) {
+        list.push({
+          id: rowItem.childId,
+          activityCode: rowItem.childCode,
+          activityName: rowItem.childName,
+        })
+      }
+      byCode.set(key, list)
+    }
   }
   return byCode
 }

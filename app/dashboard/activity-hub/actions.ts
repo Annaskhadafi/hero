@@ -1155,6 +1155,18 @@ export async function manageActivityLibraryAction(formData: FormData) {
 
   let libraryActivityId = payload.id
 
+  const [existingLib] = libraryActivityId
+    ? await db
+        .select({
+          id: activityLibraries.id,
+          activityCode: activityLibraries.activityCode,
+          activityName: activityLibraries.activityName,
+        })
+        .from(activityLibraries)
+        .where(eq(activityLibraries.id, libraryActivityId))
+        .limit(1)
+    : [null]
+
   if (payload.intent === 'create') {
     const inserted = await db.insert(activityLibraries).values({
       ...values,
@@ -1206,16 +1218,27 @@ export async function manageActivityLibraryAction(formData: FormData) {
 
     if (payload.isGroupActivity && payload.childActivityIds.length > 0) {
       const groupName = `Group: ${payload.activityName}`
+      const searchCodes = Array.from(
+        new Set([`GRP-${payload.activityCode}`, existingLib ? `GRP-${existingLib.activityCode}` : null].filter(Boolean))
+      ) as string[]
+      const searchNames = Array.from(
+        new Set([groupName, existingLib ? `Group: ${existingLib.activityName}` : null].filter(Boolean))
+      ) as string[]
+
       const existingTemplates = await db
         .select({ id: activityRouteTemplates.id })
         .from(activityRouteTemplates)
         .where(
           or(
-            eq(activityRouteTemplates.routeCode, `GRP-${payload.activityCode}`),
-            eq(activityRouteTemplates.routeName, groupName)
+            inArray(activityRouteTemplates.routeCode, searchCodes),
+            inArray(activityRouteTemplates.routeName, searchNames)
           )
         )
         .limit(1)
+
+      const templateSiteId = siteIds.length === 1 && !siteIds.includes(-1) ? siteIds[0] : null
+      const templateDeptId = departmentIds.length === 1 ? departmentIds[0] : null
+      const templateSecId = sectionIds.length === 1 ? sectionIds[0] : null
 
       let autoTemplateId = existingTemplates[0]?.id
       if (!autoTemplateId) {
@@ -1225,9 +1248,9 @@ export async function manageActivityLibraryAction(formData: FormData) {
           description: `Auto-generated group for ${payload.activityName}`,
           isActive: true,
           mobileEnabled: true,
-          siteId: siteIds[0] ?? null,
-          departmentId: departmentIds[0] ?? null,
-          sectionId: sectionIds[0] ?? null,
+          siteId: templateSiteId,
+          departmentId: templateDeptId,
+          sectionId: templateSecId,
           createdAt: new Date(),
           updatedAt: new Date(),
         }).returning({ id: activityRouteTemplates.id })
@@ -1238,9 +1261,9 @@ export async function manageActivityLibraryAction(formData: FormData) {
           routeName: groupName,
           isActive: true,
           mobileEnabled: true,
-          siteId: siteIds[0] ?? null,
-          departmentId: departmentIds[0] ?? null,
-          sectionId: sectionIds[0] ?? null,
+          siteId: templateSiteId,
+          departmentId: templateDeptId,
+          sectionId: templateSecId,
           updatedAt: new Date(),
         }).where(eq(activityRouteTemplates.id, autoTemplateId))
       }
@@ -1265,6 +1288,7 @@ export async function manageActivityLibraryAction(formData: FormData) {
           autoGroupId = insertedGroup[0]?.id
         } else {
           await db.update(activityRouteGroups).set({
+            groupKey: `GRP-${payload.activityCode}`,
             groupName: payload.activityName,
             updatedAt: new Date(),
           }).where(eq(activityRouteGroups.id, autoGroupId))
@@ -1279,8 +1303,13 @@ export async function manageActivityLibraryAction(formData: FormData) {
             .where(inArray(activityLibraries.id, payload.childActivityIds))
 
           if (childLibraries.length > 0) {
+            const childLibMap = new Map(childLibraries.map((lib) => [lib.id, lib]))
+            const orderedLibs = payload.childActivityIds
+              .map((id) => childLibMap.get(id))
+              .filter((lib): lib is typeof childLibraries[0] => Boolean(lib))
+
             await db.insert(activityRouteItems).values(
-              childLibraries.map((lib, idx) => ({
+              orderedLibs.map((lib, idx) => ({
                 routeGroupId: autoGroupId,
                 libraryActivityId: lib.id,
                 itemCode: lib.activityCode,
@@ -1296,12 +1325,21 @@ export async function manageActivityLibraryAction(formData: FormData) {
         }
       }
     } else if (!payload.isGroupActivity || (payload.childActivityIds && payload.childActivityIds.length === 0)) {
+      const searchCodes = [
+        `GRP-${payload.activityCode}`,
+        existingLib ? `GRP-${existingLib.activityCode}` : null,
+      ].filter(Boolean) as string[]
+      const searchNames = [
+        `Group: ${payload.activityName}`,
+        existingLib ? `Group: ${existingLib.activityName}` : null,
+      ].filter(Boolean) as string[]
+
       await db
         .delete(activityRouteTemplates)
         .where(
           or(
-            eq(activityRouteTemplates.routeCode, `GRP-${payload.activityCode}`),
-            eq(activityRouteTemplates.routeName, `Group: ${payload.activityName}`)
+            inArray(activityRouteTemplates.routeCode, searchCodes),
+            inArray(activityRouteTemplates.routeName, searchNames)
           )
         )
     }

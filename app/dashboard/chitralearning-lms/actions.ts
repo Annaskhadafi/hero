@@ -167,12 +167,13 @@ export async function updateCourseSettings(courseId: number, formData: FormData)
   if (!isAdmin) throw new Error("Unauthorized");
 
   const status = textValue(formData, "status", "draft");
-  const passingScore = numberValue(formData, "passingScore", 80);
+  const passingScore = Math.min(100, Math.max(0, numberValue(formData, "passingScore", 80)));
   const dueDays = numberValue(formData, "dueDays", 30);
   const certificateEnabled = textValue(formData, "certificateEnabled") === "yes";
-  const gradingType = textValue(formData, "gradingType", "posttest_only");
-  const pretestWeight = numberValue(formData, "pretestWeight", 0);
-  const posttestWeight = numberValue(formData, "posttestWeight", 100);
+  const gradingType = textValue(formData, "gradingType", "posttest_only") === "weighted" ? "weighted" : "posttest_only";
+  // Keep post-test-only courses deterministic even when an older form submits stale weights.
+  const pretestWeight = gradingType === "weighted" ? Math.min(100, Math.max(0, numberValue(formData, "pretestWeight", 0))) : 0;
+  const posttestWeight = gradingType === "weighted" ? 100 - pretestWeight : 100;
   const maxRetakesStr = textValue(formData, "maxRetakes");
   const parsedMaxRetakes = parseInt(maxRetakesStr, 10);
   const maxRetakes = !Number.isNaN(parsedMaxRetakes) ? parsedMaxRetakes : -1;
@@ -818,7 +819,7 @@ export async function updateInternalLmsCourseGovernanceAction(formData: FormData
   }
 
   const nextStatus = textValue(formData, "status", course.status) || course.status;
-  const nextPassingScore = numberValue(formData, "passingScore", course.passingScore);
+  const nextPassingScore = Math.min(100, Math.max(0, numberValue(formData, "passingScore", course.passingScore)));
   const nextDueDays = numberValue(formData, "dueDays", course.dueDays);
   const nextCertificateEnabled = formData.get("certificateEnabled") === "on";
 
