@@ -1,6 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useMemo, useState, useTransition, useRef } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   AlertCircle,
@@ -17,6 +18,8 @@ import {
   Download,
   Eye,
   FilePlus,
+  FileText,
+  FileCheck,
   FileSpreadsheet,
   FileText,
   Filter,
@@ -3608,6 +3611,33 @@ function DaftarPengajuanTab({
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Top Module Quick Navigation Bar */}
+      <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200 w-fit">
+        <Link
+          href="/dashboard/repair-retread/inspection"
+          className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 text-slate-600 hover:text-slate-900 hover:bg-white/60"
+        >
+          <FileCheck className="w-3.5 h-3.5" />
+          <span>Tire Inspection Report</span>
+        </Link>
+
+        <Link
+          href="/dashboard/repair-retread/jobcard"
+          className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 text-slate-600 hover:text-slate-900 hover:bg-white/60"
+        >
+          <FileText className="w-3.5 h-3.5" />
+          <span>Repair Job Card</span>
+        </Link>
+
+        <Link
+          href="/dashboard/repair-retread/form-wo"
+          className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 bg-[#003f78] text-white shadow-xs"
+        >
+          <FilePlus className="w-3.5 h-3.5" />
+          <span>Form WO & WIP</span>
+        </Link>
+      </div>
+
       <Card className="border-border/60 rounded-2xl py-0 shadow-sm">
         <CardContent className="px-4 py-4 md:px-6">
           <div className="flex flex-col gap-4">
@@ -6773,21 +6803,53 @@ export function FormWoClient({
       ? masterCaiList.length
       : INITIAL_KPC_CAI.length + INITIAL_OTHER_CAI.length
 
+  const { kpcWaitingWoList, generalWaitingWoList } = useMemo(() => {
+    const kpc: WipRepairRecord[] = []
+    const general: WipRepairRecord[] = []
+    ;(waitingWoList || []).forEach((item) => {
+      const cust = (item.customer || '').toUpperCase()
+      const isKpc = cust.includes('KALTIM PRIMA COAL') || cust.includes('KPC')
+      const isHero = item.is_hero === true || item.source === 'hero' || item.id_wo?.startsWith('HERO-')
+
+      if (isKpc) {
+        // Hanya masukkan inputan dari HERO untuk Waiting WO KPC (data lama API di-exclude)
+        if (isHero) {
+          kpc.push(item)
+        }
+      } else {
+        general.push(item)
+      }
+    })
+    return { kpcWaitingWoList: kpc, generalWaitingWoList: general }
+  }, [waitingWoList])
+
   return (
     <>
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <TabsList className="bg-muted/50 h-10 rounded-xl">
-            <TabsTrigger value="waiting" className="rounded-lg px-5 text-sm font-medium">
+          <TabsList className="bg-muted/50 h-10 rounded-xl overflow-x-auto">
+            <TabsTrigger value="waiting" className="rounded-lg px-4 text-sm font-medium">
               <ClipboardList className="mr-2 h-4 w-4" />
               Waiting WO
-              {waitingWoList.length > 0 && (
+              {generalWaitingWoList.length > 0 && (
                 <Badge variant="secondary" className="ml-2 rounded-full text-xs">
-                  {waitingWoList.length}
+                  {generalWaitingWoList.length}
                 </Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="pengajuan" className="rounded-lg px-5 text-sm font-medium">
+            <TabsTrigger value="waiting_kpc" className="rounded-lg px-4 text-sm font-medium">
+              <ClipboardList className="mr-2 h-4 w-4 text-amber-600" />
+              Waiting WO KPC
+              {kpcWaitingWoList.length > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="ml-2 rounded-full border-amber-300 bg-amber-100 text-xs font-bold text-amber-900"
+                >
+                  {kpcWaitingWoList.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="pengajuan" className="rounded-lg px-4 text-sm font-medium">
               <FilePlus className="mr-2 h-4 w-4" />
               Daftar Form WO
               {initial.length > 0 && (
@@ -6796,14 +6858,14 @@ export function FormWoClient({
                 </Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="master_cai" className="rounded-lg px-5 text-sm font-medium">
+            <TabsTrigger value="master_cai" className="rounded-lg px-4 text-sm font-medium">
               <Database className="mr-2 h-4 w-4 text-violet-600" />
               Master Data CAI
               <Badge variant="secondary" className="ml-2 rounded-full text-xs">
                 {totalCaiCount}
               </Badge>
             </TabsTrigger>
-            <TabsTrigger value="master_price" className="rounded-lg px-5 text-sm font-medium">
+            <TabsTrigger value="master_price" className="rounded-lg px-4 text-sm font-medium">
               <Tag className="mr-2 h-4 w-4 text-emerald-600" />
               Master Price Repair &amp; Retread
               <Badge variant="secondary" className="ml-2 rounded-full text-xs">
@@ -6845,7 +6907,18 @@ export function FormWoClient({
 
         <TabsContent value="waiting">
           <WaitingWoTab
-            data={waitingWoList}
+            data={generalWaitingWoList}
+            onCreateWo={handleCreateWoFromWip}
+            onCreateBulkWo={handleCreateBulkWoFromWip}
+            caiList={masterCaiList}
+            customerList={customerList}
+            canEdit={canEdit}
+          />
+        </TabsContent>
+
+        <TabsContent value="waiting_kpc">
+          <WaitingWoTab
+            data={kpcWaitingWoList}
             onCreateWo={handleCreateWoFromWip}
             onCreateBulkWo={handleCreateBulkWoFromWip}
             caiList={masterCaiList}

@@ -46,6 +46,7 @@ type NavItem = {
 }
 
 type NavGroup = {
+  category?: string
   title: string
   icon?: Icon
   items: NavItem[]
@@ -235,10 +236,20 @@ export function NavMain({
           {groups.map((group, groupIdx) => {
             const hasActiveItem = group.items.some((item) => isMenuItemActive(pathname, item.url))
             const isOpen = openGroups[group.title] ?? hasActiveItem
+            const prevGroup = groupIdx > 0 ? groups[groupIdx - 1] : null
+            const isNewCategory = Boolean(group.category && (!prevGroup || prevGroup.category !== group.category))
 
             return (
               <React.Fragment key={group.title}>
-                {groupIdx > 0 && <SidebarSeparator className="my-1.5 opacity-40" />}
+                {isNewCategory && (
+                  <div className={cn(
+                    "px-2.5 pt-3 pb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 group-data-[collapsible=icon]:hidden",
+                    groupIdx > 0 && "mt-2 pt-3 border-t border-sidebar-border/50"
+                  )}>
+                    {group.category}
+                  </div>
+                )}
+                {!isNewCategory && groupIdx > 0 && <SidebarSeparator className="my-1.5 opacity-40" />}
                 <Collapsible
                   asChild
                   open={isOpen}

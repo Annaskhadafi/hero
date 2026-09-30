@@ -50,6 +50,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const cookieStore = await cookies()
   const defaultOpen = cookieStore.get('sidebar_state')?.value === 'true'
+  const sidebarModeCookie = cookieStore.get('hero_sidebar_layout_mode')?.value
+  const initialSidebarMode = sidebarModeCookie === 'modern' ? 'modern' : 'classic'
   const [sidebarData, navbarSettings, employeeDisplay, unreadNotifications, groupLabelColor] = await Promise.all([
     getSidebarDataForUser(session.user.email),
     getNavbarSettingsData(),
@@ -90,6 +92,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         navSecondary={sidebarData.navSecondary}
         documents={sidebarData.documents}
         groupLabelColor={groupLabelColor}
+        initialMode={initialSidebarMode}
       />
       <SidebarInset data-admin-dashboard-shell>
         <SiteHeader

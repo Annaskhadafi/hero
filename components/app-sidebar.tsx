@@ -62,6 +62,10 @@ import {
   IconShoppingCart,
 } from "@tabler/icons-react"
 
+import { useSidebarLayoutMode, buildModernSidebarGroups } from "@/lib/sidebar-mode"
+import { IconX } from "@tabler/icons-react"
+import { usePathname, useRouter } from "next/navigation"
+import { cn } from "@/lib/utils"
 import { NavDocuments } from "@/components/nav-documents"
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
@@ -72,6 +76,7 @@ import {
   SidebarHeader,
   SidebarRail,
   SidebarSeparator,
+  SidebarMenuButton,
   useSidebar,
 } from "@/components/ui/sidebar"
 
@@ -216,6 +221,7 @@ export function AppSidebar({
   navSecondary,
   documents,
   groupLabelColor = "#6B7280",
+  initialMode,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
   user: SidebarUser
@@ -223,8 +229,35 @@ export function AppSidebar({
   navSecondary: readonly SidebarMenuItem[]
   documents: readonly SidebarDocumentItem[]
   groupLabelColor?: string
+  initialMode?: "classic" | "modern"
 }) {
+  const pathname = usePathname()
+  const router = useRouter()
   const { state, setOpen } = useSidebar()
+  const [sidebarMode] = useSidebarLayoutMode(initialMode)
+  const [searchQuery, setSearchQuery] = React.useState("")
+  const searchInputRef = React.useRef<HTMLInputElement>(null)
+  const [selectedIndex, setSelectedIndex] = React.useState(0)
+  const itemRefs = React.useRef<(HTMLAnchorElement | null)[]>([])
+
+  React.useEffect(() => {
+    setSelectedIndex(0)
+  }, [searchQuery])
+
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+      } else if (e.key === "Escape" && searchQuery) {
+        setSearchQuery("")
+        searchInputRef.current?.blur()
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [searchQuery])
+
   const wasHoverExpanded = React.useRef(false)
 
   const handleMouseEnter = React.useCallback(() => {
@@ -293,50 +326,117 @@ export function AppSidebar({
     return () => window.removeEventListener("hero_sidebar_order_changed", handleOrderChange)
   }, [])
 
-  const baseOrder = customSectionOrder && customSectionOrder.length > 0 ? customSectionOrder : DESKTOP_MENU_ORDER
-
-  const extraSections = Array.from(
-    new Set(
-      desktopItems
-        .map((item) => item.section)
-        .filter((section) => !baseOrder.includes(section as any))
-    )
-  )
-
-  const orderedSections = [...baseOrder, ...extraSections]
-
-  const desktopGroups = orderedSections
-    .map((section) => {
-      const sectionItems = desktopItems.filter((item) => item.section === section)
-      
-      const itemMap = new Map<number, any>()
-      const rootItems: any[] = []
-      
-      sectionItems.forEach((item) => {
-        if (item.id !== undefined) {
-          itemMap.set(item.id, { ...item, children: [] })
-        }
+  const filteredItems = React.useMemo(() => {
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return []
+    const menuMatches = desktopItems
+      .filter((it) => {
+        const matchTitle = it.title.toLowerCase().includes(q)
+        const matchSection = it.section.toLowerCase().includes(q)
+        const matchGroup = it.groupLabel ? it.groupLabel.toLowerCase().includes(q) : false
+        return matchTitle || matchSection || matchGroup
       })
-      
-      sectionItems.forEach((item) => {
-        if (item.id !== undefined) {
-          const mappedItem = itemMap.get(item.id)
-          if (item.parentId && itemMap.has(item.parentId)) {
-            itemMap.get(item.parentId).children.push(mappedItem)
-          } else {
-            rootItems.push(mappedItem)
-          }
-        }
-      })
+      .map((it) => ({
+        url: it.url,
+        title: it.title,
+        section: it.section,
+        icon: it.icon,
+        openInNewTab: it.openInNewTab,
+      }))
 
-      return {
-        rawTitle: section,
-        title: section,
-        icon: desktopMenuIconMap[section as keyof typeof desktopMenuIconMap] ?? IconHelp,
-        items: rootItems.sort((left, right) => left.sortOrder - right.sortOrder),
+    const docMatches = documentItems
+      .filter((doc) => doc.name.toLowerCase().includes(q) || doc.section.toLowerCase().includes(q))
+      .map((doc) => ({
+        url: doc.url,
+        title: doc.name,
+        section: doc.section,
+        icon: doc.icon,
+        openInNewTab: true,
+      }))
+
+    return [...menuMatches, ...docMatches]
+  }, [searchQuery, desktopItems, documentItems])
+
+  React.useEffect(() => {
+    if (filteredItems.length > 0 && itemRefs.current[selectedIndex]) {
+      itemRefs.current[selectedIndex]?.scrollIntoView({ block: "nearest" })
+    }
+  }, [selectedIndex, filteredItems.length])
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!filteredItems.length) return
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault()
+      setSelectedIndex((prev) => (prev + 1) % filteredItems.length)
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault()
+      setSelectedIndex((prev) => (prev - 1 + filteredItems.length) % filteredItems.length)
+    } else if (e.key === "Enter") {
+      e.preventDefault()
+      const target = filteredItems[selectedIndex] ?? filteredItems[0]
+      if (target) {
+        setSearchQuery("")
+        searchInputRef.current?.blur()
+        if (target.openInNewTab) {
+          window.open(target.url, "_blank", "noopener,noreferrer")
+        } else {
+          router.push(target.url)
+        }
       }
-    })
-    .filter((group) => group.items.length > 0)
+    }
+  }
+
+  const desktopGroups = React.useMemo(() => {
+    if (sidebarMode === "modern") {
+      return buildModernSidebarGroups(desktopItems)
+    }
+
+    const baseOrder = customSectionOrder && customSectionOrder.length > 0 ? customSectionOrder : DESKTOP_MENU_ORDER
+
+    const extraSections = Array.from(
+      new Set(
+        desktopItems
+          .map((item) => item.section)
+          .filter((section) => !baseOrder.includes(section as any))
+      )
+    )
+
+    const orderedSections = [...baseOrder, ...extraSections]
+
+    return orderedSections
+      .map((section) => {
+        const sectionItems = desktopItems.filter((item) => item.section === section)
+        
+        const itemMap = new Map<number, any>()
+        const rootItems: any[] = []
+        
+        sectionItems.forEach((item) => {
+          if (item.id !== undefined) {
+            itemMap.set(item.id, { ...item, children: [] })
+          }
+        })
+        
+        sectionItems.forEach((item) => {
+          if (item.id !== undefined) {
+            const mappedItem = itemMap.get(item.id)
+            if (item.parentId && itemMap.has(item.parentId)) {
+              itemMap.get(item.parentId).children.push(mappedItem)
+            } else {
+              rootItems.push(mappedItem)
+            }
+          }
+        })
+
+        return {
+          rawTitle: section,
+          title: section,
+          icon: desktopMenuIconMap[section as keyof typeof desktopMenuIconMap] ?? IconHelp,
+          items: rootItems.sort((left, right) => left.sortOrder - right.sortOrder),
+        }
+      })
+      .filter((group) => group.items.length > 0)
+  }, [sidebarMode, desktopItems, customSectionOrder])
 
   return (
     <Sidebar
@@ -367,10 +467,102 @@ export function AppSidebar({
             </div>
           </Link>
         </div>
+        <div className="relative mt-2.5 w-full group-data-[collapsible=icon]:hidden">
+          <IconSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
+            placeholder="Cari menu... (Ctrl+K)"
+            className="h-10 w-full rounded-xl border border-sidebar-border/80 bg-slate-100/90 dark:bg-slate-800/80 pl-9 pr-9 text-[13px] text-foreground placeholder:text-muted-foreground/70 shadow-2xs focus:bg-background focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-150"
+          />
+          {searchQuery ? (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground transition-colors"
+              aria-label="Hapus pencarian"
+            >
+              <IconX className="size-3.5" />
+            </button>
+          ) : (
+            <kbd className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 hidden md:inline-flex h-5 select-none items-center gap-0.5 rounded border border-sidebar-border/80 bg-background/80 px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+              Ctrl K
+            </kbd>
+          )}
+        </div>
       </SidebarHeader>
       <SidebarContent className="gap-1 px-2">
-        <NavMain groups={desktopGroups} showQuickCreate groupLabelColor={groupLabelColor} />
-        {documentItems.length > 0 ? (
+        {searchQuery.trim() ? (
+          <div className="flex flex-col gap-1 px-1 py-1">
+            <div className="flex items-center justify-between px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <span>Hasil Pencarian ({filteredItems.length})</span>
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline font-medium"
+              >
+                Tutup
+              </button>
+            </div>
+            {filteredItems.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border/70 p-6 text-center text-xs text-muted-foreground">
+                <IconSearch className="mx-auto mb-2 size-6 text-muted-foreground/50" />
+                <p>Tidak ada menu yang sesuai dengan</p>
+                <p className="font-semibold text-foreground mt-0.5">&ldquo;{searchQuery}&rdquo;</p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-0.5">
+                {filteredItems.map((item, index) => {
+                  const isSelected = index === selectedIndex
+                  const isActive = pathname === item.url
+                  return (
+                    <SidebarMenuButton
+                      key={item.url}
+                      asChild
+                      isActive={isActive || isSelected}
+                      className={cn(
+                        "min-h-10 rounded-xl px-2.5 py-2 text-[13px] font-medium transition-all duration-150",
+                        isSelected
+                          ? "bg-blue-600 text-white shadow-xs font-semibold hover:bg-blue-600 hover:text-white"
+                          : isActive
+                          ? "bg-blue-50 text-blue-700 font-semibold dark:bg-blue-950/60 dark:text-blue-300"
+                          : "hover:bg-sidebar-accent text-foreground"
+                      )}
+                    >
+                      <Link
+                        ref={(el) => {
+                          itemRefs.current[index] = el
+                        }}
+                        href={item.url}
+                        onClick={() => setSearchQuery("")}
+                        onMouseEnter={() => setSelectedIndex(index)}
+                        target={item.openInNewTab ? "_blank" : undefined}
+                        rel={item.openInNewTab ? "noopener noreferrer" : undefined}
+                        className="flex items-center justify-between gap-2 w-full min-w-0"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0 truncate">
+                          <item.icon className={cn("size-4 shrink-0", isSelected ? "text-white" : "text-slate-500")} />
+                          <span className="truncate">{item.title}</span>
+                        </div>
+                        {isSelected && (
+                          <span className="shrink-0 text-[10px] font-mono opacity-80 px-1 py-0.5 rounded bg-white/20">
+                            ↵ Enter
+                          </span>
+                        )}
+                      </Link>
+                    </SidebarMenuButton>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        ) : (
+          <NavMain groups={desktopGroups as any} showQuickCreate groupLabelColor={groupLabelColor} />
+        )}
+        {!searchQuery.trim() && documentItems.length > 0 ? (
           <>
             <SidebarSeparator className="mx-2 mt-2" />
             <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] leading-[1.35] text-muted-foreground whitespace-normal break-words group-data-[collapsible=icon]:hidden">
