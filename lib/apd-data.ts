@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { apdRequests, apdRequestItems, employees, masterDepartments, masterSections, sites, approvals } from "@/db/schema/hero";
+import { apdRequests, apdRequestItems, employees, masterDepartments, masterSections, sites, approvals, masterApd } from "@/db/schema";
 import { eq, desc, and, asc, sql } from "drizzle-orm";
 import { type ApdRequestCategory, APD_ITEMS, type ApproverOption } from "@/lib/apd-status";
 export { APD_ITEMS, type ApproverOption };
@@ -140,13 +140,28 @@ export async function fetchApdRequestById(id: number) {
 
 export async function fetchApdItemOptions(category: ApdRequestCategory) {
   await ensureApdRequestSchema();
-  const rows = await db
-    .select({ itemType: apdRequestItems.itemType })
-    .from(apdRequestItems)
-    .innerJoin(apdRequests, eq(apdRequestItems.requestId, apdRequests.id))
-    .where(eq(apdRequests.requestCategory, category));
+  
+  // Primary source: Master Data APD table (hero_master_apd)
+  const masterRows = await db
+    .select({ name: masterApd.name, category: masterApd.category })
+    .from(masterApd)
+    .where(eq(masterApd.isActive, true));
 
-  return [...new Set(rows.map((row) => row.itemType.trim().toUpperCase()).filter(Boolean))].sort();
+  let items = masterRows
+    .filter((r) => r.category.toUpperCase() === category.toUpperCase())
+    .map((r) => r.name);
+
+  // Fallback to historic request items if master table has no items for this category
+  if (items.length === 0) {
+    const rows = await db
+      .select({ itemType: apdRequestItems.itemType })
+      .from(apdRequestItems)
+      .innerJoin(apdRequests, eq(apdRequestItems.requestId, apdRequests.id))
+      .where(eq(apdRequests.requestCategory, category));
+    items = rows.map((row) => row.itemType);
+  }
+
+  return [...new Set(items.map((row) => row.trim()).filter(Boolean))].sort();
 }
 
 export async function fetchApproverOptions(): Promise<ApproverOption[]> {

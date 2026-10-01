@@ -1,5 +1,21 @@
-import { integer, pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core';
+import { boolean, integer, jsonb, pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core';
 import { employees, sites } from './hero';
+
+export const masterApd = pgTable('hero_master_apd', {
+  id: serial('id').primaryKey(),
+  code: text('code').notNull().unique(),
+  name: text('name').notNull(),
+  category: text('category').notNull().default('APD'), // 'APD', 'Tools', 'Material'
+  unit: text('unit').notNull().default('Pcs'),
+  hasSize: boolean('has_size').notNull().default(false),
+  sizeOptions: jsonb('size_options').$type<string[]>().default([]),
+  minStock: integer('min_stock').notNull().default(0),
+  isQtyOnly: boolean('is_qty_only').notNull().default(true),
+  isActive: boolean('is_active').notNull().default(true),
+  notes: text('notes').notNull().default(''),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
 
 export const apdRequests = pgTable('hero_apd_requests', {
   id: serial('id').primaryKey(),

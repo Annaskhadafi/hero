@@ -34,7 +34,7 @@ interface ApdRequestFormProps {
   employeeSn: string;
   departmentName: string | null;
   sectionName: string | null;
-  itemOptions: Record<Exclude<ApdRequestCategory, "APD">, string[]>;
+  itemOptions: Record<string, string[]>;
   approverOptions?: ApproverOption[];
   defaultMode?: "apd" | "tools" | "material";
   mobileWide?: boolean;
@@ -390,7 +390,9 @@ export function ApdRequestForm({
                       <Select value={item.itemType} onValueChange={(val) => updateItem(item.id, "itemType", val)}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          {APD_ITEMS.map((opt) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+                          {(itemOptions.APD && itemOptions.APD.length > 0 ? itemOptions.APD : APD_ITEMS).map((opt) => (
+                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     ) : (

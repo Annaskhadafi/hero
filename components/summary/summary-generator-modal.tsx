@@ -29,6 +29,7 @@ import {
   getAvailableEmployeesForSummaryAction,
   generateSummaryAction,
 } from '@/app/dashboard/summary/actions';
+import { getMasterApdListAction } from '@/app/actions/master-apd-actions';
 import {
   SAFETY_SHOES_COL,
   QTY_ONLY_COLUMNS,
@@ -81,6 +82,7 @@ const COMMON_APD_ITEMS = [
   'Dalaman Helm',
   'Tali Kacamata',
   'Chin Strap',
+  'Face Shield Helmet',
 ];
 
 export function SummaryGeneratorModal({
@@ -104,18 +106,25 @@ export function SummaryGeneratorModal({
   const [availableEmployees, setAvailableEmployees] = useState<AvailableEmployee[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [empSearch, setEmpSearch] = useState('');
+  const [apdSearch, setApdSearch] = useState('');
   const [selectedManualEmp, setSelectedManualEmp] = useState<AvailableEmployee | null>(null);
   const [manualSelectedItems, setManualSelectedItems] = useState<ManualSummaryItem[]>([
     { itemType: 'Safety Shoes', canonicalName: 'Safety Shoes', quantity: 1, requestType: 'baru' },
   ]);
   const [manualShoeSize, setManualShoeSize] = useState('');
   const [manualRemarks, setManualRemarks] = useState('');
+  const [masterApdItems, setMasterApdItems] = useState<string[]>(COMMON_APD_ITEMS);
 
-  // Fetch pending requests when modal opens
+  // Fetch pending requests and master APD items when modal opens
   useEffect(() => {
     if (!isOpen) return;
 
     let isMounted = true;
+    getMasterApdListAction('APD', true).then((res) => {
+      if (isMounted && res.success && res.data && res.data.length > 0) {
+        setMasterApdItems(res.data.map((i) => i.name));
+      }
+    });
     setLoading(true);
     setIsAddManualOpen(false);
     setSelectedManualEmp(null);
@@ -320,6 +329,14 @@ export function SummaryGeneratorModal({
       )
       .slice(0, 50);
   }, [availableEmployees, empSearch]);
+
+  // Filtered APD items for manual addition
+  const filteredApdItems = useMemo(() => {
+    const itemsList = masterApdItems.length > 0 ? masterApdItems : COMMON_APD_ITEMS;
+    if (!apdSearch.trim()) return itemsList;
+    const lower = apdSearch.toLowerCase();
+    return itemsList.filter((item) => item.toLowerCase().includes(lower));
+  }, [apdSearch, masterApdItems]);
 
   const toggleSelectAll = () => {
     if (selectedIds.size === filteredRequests.length) {
@@ -609,28 +626,58 @@ export function SummaryGeneratorModal({
                 {/* 2. Pilih Item APD & Ukuran Sepatu */}
                 <div className="space-y-2.5">
                   <div>
-                    <label className="font-bold text-slate-700 dark:text-slate-200 block mb-1">
-                      Pilih Item APD
-                    </label>
-                    <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto p-1 border border-slate-200 dark:border-slate-800 rounded-md bg-slate-50/40 dark:bg-slate-950/30">
-                      {COMMON_APD_ITEMS.map((item) => {
-                        const isSelected = manualSelectedItems.some((i) => i.itemType === item);
-                        return (
-                          <button
-                            key={item}
-                            type="button"
-                            onClick={() => handleToggleItem(item)}
-                            className={`px-2 py-1 rounded text-[11px] font-medium border transition-colors ${
-                              isSelected
-                                ? 'bg-emerald-600 text-white border-emerald-600 font-bold'
-                                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-emerald-400'
-                            }`}
-                          >
-                            {isSelected ? '✓ ' : '+ '}
-                            {item}
-                          </button>
-                        );
-                      })}
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="font-bold text-slate-700 dark:text-slate-200 block text-xs">
+                        Pilih Item APD
+                      </label>
+                      <span className="text-[10px] text-slate-400 font-medium">
+                        {manualSelectedItems.length} item dipilih
+                      </span>
+                    </div>
+                    <div className="relative mb-1.5">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                      <Input
+                        value={apdSearch}
+                        onChange={(e) => setApdSearch(e.target.value)}
+                        placeholder="Cari item APD..."
+                        className="pl-8 h-8 text-xs bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto p-1.5 border border-slate-200 dark:border-slate-800 rounded-md bg-slate-50/40 dark:bg-slate-950/30">
+                      {filteredApdItems.length === 0 && !apdSearch.trim() ? (
+                        <div className="p-2 text-center text-slate-400 text-[11px] w-full">Tidak ada item APD</div>
+                      ) : (
+                        filteredApdItems.map((item) => {
+                          const isSelected = manualSelectedItems.some((i) => i.itemType === item);
+                          return (
+                            <button
+                              key={item}
+                              type="button"
+                              onClick={() => handleToggleItem(item)}
+                              className={`px-2 py-1 rounded text-[11px] font-medium border transition-colors ${
+                                isSelected
+                                  ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-2xs'
+                                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-emerald-400'
+                              }`}
+                            >
+                              {isSelected ? '✓ ' : '+ '}
+                              {item}
+                            </button>
+                          );
+                        })
+                      )}
+                      {apdSearch.trim() && !filteredApdItems.some((i) => i.toLowerCase() === apdSearch.trim().toLowerCase()) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleToggleItem(apdSearch.trim());
+                            setApdSearch('');
+                          }}
+                          className="px-2 py-1 rounded text-[11px] font-bold border border-dashed border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60"
+                        >
+                          + Tambah &quot;{apdSearch.trim()}&quot;
+                        </button>
+                      )}
                     </div>
                   </div>
 

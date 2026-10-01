@@ -42,7 +42,8 @@ export default async function NewApdRequestPage(props: {
 
   if (!employeeProfile) return notFound();
 
-  const [toolsOptions, materialOptions, approverOptions] = await Promise.all([
+  const [apdOptions, toolsOptions, materialOptions, approverOptions] = await Promise.all([
+    fetchApdItemOptions("APD"),
     fetchApdItemOptions("TOOLS"),
     fetchApdItemOptions("MATERIAL"),
     fetchApproverOptions(),
@@ -81,7 +82,7 @@ export default async function NewApdRequestPage(props: {
           employeeSn={employeeProfile.employeeSn}
           departmentName={employeeProfile.departmentName}
           sectionName={employeeProfile.sectionName}
-          itemOptions={{ TOOLS: toolsOptions, MATERIAL: materialOptions }}
+          itemOptions={{ APD: apdOptions, TOOLS: toolsOptions, MATERIAL: materialOptions }}
           approverOptions={approverOptions}
           defaultMode={defaultMode}
           requestId={existingRequest?.id}

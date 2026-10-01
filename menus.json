@@ -1,5 +1,10 @@
 [
   {
+    "title": "Master Data APD",
+    "url": "/dashboard/central-service/master-apd",
+    "resource": "central_service_master_apd"
+  },
+  {
     "title": "Tire Site Inspection",
     "url": "/dashboard/hse/tire-inspection",
     "resource": "hse_tire_inspection"
