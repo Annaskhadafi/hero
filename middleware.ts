@@ -59,16 +59,16 @@ export function middleware(request: NextRequest) {
       return NextResponse.redirect(url)
     }
 
-    // If visiting login while already authenticated -> redirect to dashboard
-    if ((pathname === '/login' || pathname === '/maestro/login') && hasSession) {
-      url.pathname = '/dashboard'
+    // If visiting login or dashboard while already authenticated -> redirect to activity
+    if ((pathname === '/login' || pathname === '/maestro/login' || pathname === '/dashboard' || pathname === '/maestro/dashboard') && hasSession) {
+      url.pathname = '/activity'
       return NextResponse.redirect(url)
     }
 
     // Root path handling
     if (pathname === '/') {
       if (hasSession) {
-        url.pathname = '/maestro/dashboard'
+        url.pathname = '/maestro/activity'
         return NextResponse.rewrite(url, { request: { headers: requestHeaders } })
       } else {
         url.pathname = '/maestro/login'

@@ -151,18 +151,12 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 mb-2 flex-wrap text-xs font-bold text-slate-700">
-              <Link
-                href="/dashboard"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-900 transition-colors"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                <span>Dashboard</span>
-              </Link>
-              <span>/</span>
-              <span>PO &amp; Cargo Tracking</span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 border border-amber-400 px-2.5 py-0.5 text-xs font-black text-amber-950">
+              <span className="inline-flex items-center gap-1 rounded-lg bg-amber-100 border border-amber-400 px-2.5 py-1 text-xs font-black text-amber-950">
                 <Truck className="h-3.5 w-3.5 text-amber-700" />
                 Supply Chain &amp; Cargo
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-800 border border-slate-300">
+                DO SAP &amp; eVHS Tracking
               </span>
             </div>
 

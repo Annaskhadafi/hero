@@ -2489,24 +2489,22 @@ export function SchedulingTimesheetWorkspace({
             return '' as ScheduleCode
           }
 
-          // In schedule builder draft mode, only generate template if explicitly on schedule page
-          const scheduleType = siteScheduleTypes[siteId] ?? 'office'
+          // In schedule builder draft mode, generate roster pattern according to site's configured rosterType
+          const scheduleType = siteConfig.scheduleType || siteScheduleTypes[siteId] || 'office'
           const generatedCode = (
-            employeeSavedPlan
-              ? forceDayShift
-                ? 'DS'
-                : buildSchedule(
-                    employeeIndex,
-                    day,
-                    scheduleType,
-                    period,
-                    siteConfig.rosterType,
-                    isStaffRole(employee.role, employee.jobTitle, employee.levelName),
-                    (fieldBreakPlansByEmployee.get(employee.id) ?? []).find(
-                      (plan) => plan.onSiteDate
-                    )?.onSiteDate
-                  )
-              : ''
+            forceDayShift
+              ? 'DS'
+              : buildSchedule(
+                  employeeIndex,
+                  day,
+                  scheduleType,
+                  period,
+                  siteConfig.rosterType,
+                  isStaffRole(employee.role, employee.jobTitle, employee.levelName),
+                  (fieldBreakPlansByEmployee.get(employee.id) ?? []).find(
+                    (plan) => plan.onSiteDate
+                  )?.onSiteDate
+                )
           ) as ScheduleCode
 
           return applyHolidayPolicy(generatedCode, {
@@ -6766,16 +6764,24 @@ export function SchedulingTimesheetWorkspace({
 
   function getAllowanceEligibility(row: (typeof rows)[number], day: number) {
     const scheduleCode = row.schedule[day - 1] as string
-    const attendanceStatus = getAttendanceCell(row.employee.id, day).status
+    const cell = getAttendanceCell(row.employee.id, day, scheduleCode)
+    const attendanceStatus = cell.status
     const isFieldBreakDay =
       scheduleCode === 'FB' ||
       attendanceStatus === 'field_break' ||
       (fieldBreakDaysByEmployee.get(row.employee.id)?.has(day) ?? false)
 
-    // Status '-' (empty / cuti / pulang kampung), Sakit, Izin, Alpha tidak mendapatkan MSA atau Meals
+    // Jika Field Break (cuti luar site), tidak ada MSA & Meals
+    if (isFieldBreakDay) {
+      return {
+        eligibleMsa: false,
+        eligibleMeals: false,
+      }
+    }
+
+    // Status '-' (empty / cuti / pulang kampung), Izin, Alpha tidak mendapatkan MSA atau Meals
     if (
       attendanceStatus === 'empty' ||
-      attendanceStatus === 'sick' ||
       attendanceStatus === 'leave' ||
       attendanceStatus === 'absent'
     ) {
@@ -6785,9 +6791,28 @@ export function SchedulingTimesheetWorkspace({
       }
     }
 
+    const upperScheduleCode = String(scheduleCode ?? '').trim().toUpperCase()
+
+    // Hadir kerja (present), Sakit di site (sick), atau Standby (ST): selalu berhak MSA & Meals
+    if (
+      attendanceStatus === 'present' ||
+      attendanceStatus === 'sick' ||
+      upperScheduleCode === 'SAKIT' ||
+      upperScheduleCode === 'S' ||
+      upperScheduleCode === 'SD' ||
+      upperScheduleCode === 'ST'
+    ) {
+      return {
+        eligibleMsa: true,
+        eligibleMeals: true,
+      }
+    }
+
+    const effectiveCode = upperScheduleCode || (attendanceStatus === 'off' ? 'OFF' : 'IN')
+
     return {
-      eligibleMsa: isMsaEligibleDay(scheduleCode, isFieldBreakDay),
-      eligibleMeals: isMealsEligibleScheduleCode(scheduleCode, isFieldBreakDay),
+      eligibleMsa: isMsaEligibleDay(effectiveCode, isFieldBreakDay),
+      eligibleMeals: isMealsEligibleScheduleCode(effectiveCode, isFieldBreakDay),
     }
   }
 

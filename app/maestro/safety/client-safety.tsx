@@ -150,18 +150,13 @@ export function MaestroClientSafety({ initialData, customerUser, currentSiteId }
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 mb-2 flex-wrap text-xs font-bold text-slate-700">
-              <Link
-                href="/dashboard"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-300 transition-colors"
-              >
-                <ArrowLeft className="h-3.5 w-3.5 text-slate-700" />
-                <span>Dashboard</span>
-              </Link>
-              <span className="text-slate-400 font-black">/</span>
-              <span>Safety &amp; PTW Management</span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 border border-emerald-400 px-2.5 py-0.5 text-xs font-bold text-emerald-950">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-950 border border-emerald-400">
                 <ShieldCheck className="h-3.5 w-3.5 text-emerald-700" />
-                K3 Live
+                HSE &amp; Zero Incident
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-800 border border-slate-300">
+                <MapPin className="h-3.5 w-3.5 text-blue-700" />
+                {selectedSite === 'all' ? 'Semua Site Terpilih' : `Site #${selectedSite}`}
               </span>
             </div>
 

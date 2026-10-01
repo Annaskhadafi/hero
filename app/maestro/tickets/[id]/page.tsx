@@ -40,7 +40,7 @@ export default async function MaestroTicketDetailPage({ params }: PageProps) {
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden text-slate-800">
+    <div className="flex h-[calc(100vh-4.25rem)] flex-col overflow-hidden text-slate-800">
       {/* Top Header */}
       <header className="shrink-0 border-b-2 border-slate-300 bg-white shadow-xs">
         <div className="mx-auto flex h-16 w-full max-w-[1720px] items-center justify-between px-4 sm:px-6 lg:px-8 xl:px-12">

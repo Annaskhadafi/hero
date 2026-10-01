@@ -2,11 +2,12 @@
 
 import React, { useState, useMemo, useEffect, useTransition } from 'react'
 import Link from 'next/link'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
   AlertTriangle,
   ArrowDownRight,
   ArrowLeft,
+  ArrowRight,
   ArrowUpRight,
   Building2,
   Calendar,
@@ -16,17 +17,24 @@ import {
   Download,
   ExternalLink,
   Eye,
+  FileCheck2,
   FileSpreadsheet,
   FileText,
   Filter,
+  Headphones,
   Image as ImageIcon,
   Layers,
   Lock,
   MapPin,
+  PackageCheck,
+  PhoneCall,
+  Plus,
   Printer,
   RefreshCw,
   Search,
   Shield,
+  ShieldCheck,
+  Sparkles,
   Truck,
   Users,
   Wrench,
@@ -93,7 +101,17 @@ export function MaestroClientActivityDashboard({
 }: MaestroClientActivityProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const pathname = usePathname() || ''
   const [isPending, startTransition] = useTransition()
+
+  const isPrefixed = pathname.startsWith('/maestro')
+  const getLink = React.useCallback(
+    (target: string) => {
+      const clean = target.replace(/^\/maestro/, '')
+      return isPrefixed ? `/maestro${clean}` : clean || '/'
+    },
+    [isPrefixed],
+  )
 
   // Filter States
   const [selectedSiteId, setSelectedSiteId] = useState<string>(
@@ -653,24 +671,26 @@ export function MaestroClientActivityDashboard({
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <Link
-                href="/dashboard"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-300 text-xs font-bold transition-colors"
-              >
-                <ArrowLeft className="h-3.5 w-3.5 text-slate-700" />
-                <span>Dashboard</span>
-              </Link>
-              <span className="text-slate-400 font-black">/</span>
-              <span className="text-xs font-bold text-slate-700">Daily Activity Monitoring</span>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-bold bg-blue-100 text-blue-950 border border-blue-400">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-100 text-blue-950 border border-blue-400">
                 <Building2 className="w-3.5 h-3.5 text-blue-700" />
                 {customerInfo.name}
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-800 border border-slate-300">
+                <MapPin className="w-3.5 h-3.5 text-blue-700" />
+                Site ID: {selectedSiteId}
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-100 text-emerald-950 border border-emerald-400 px-2.5 py-1 text-xs font-bold">
+                <span className="h-2 w-2 rounded-full bg-emerald-600 animate-pulse" />
+                Live Shift
               </span>
             </div>
 
             <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-950 font-display">
               Daily Activity &amp; Manpower
             </h1>
+            <p className="text-xs sm:text-sm text-slate-600 font-semibold mt-0.5">
+              Pantau presensi check-in, jadwal roster shift, dan pengerjaan log servis teknisi OTR secara real-time.
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-center">
@@ -1314,6 +1334,185 @@ export function MaestroClientActivityDashboard({
             )}
           </div>
         )}
+      </div>
+
+      {/* ── 3 Operational Quick Access Cards & Support Hotline Banner ── */}
+      <div className="pt-3 pb-8 space-y-5">
+        <div className="flex items-center justify-between border-t-2 border-slate-200/80 pt-6">
+          <div className="flex items-center gap-2.5">
+            <span className="h-5 w-2 rounded-full bg-blue-600" />
+            <div>
+              <h3 className="font-display text-base sm:text-lg font-black text-slate-950">
+                Modul &amp; Layanan Terintegrasi
+              </h3>
+              <p className="text-xs font-semibold text-slate-600">
+                Akses cepat modul kepatuhan HSE, logistik kargo, dan pusat tiket bantuan.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-stretch">
+          {/* Card 1: Safety & PTW */}
+          <Link
+            href={getLink('/safety')}
+            className="group flex flex-col justify-between h-full relative overflow-hidden rounded-2xl border-2 border-slate-300 bg-white p-6 shadow-xs hover:shadow-md hover:border-emerald-500 transition-all duration-200 cursor-pointer"
+          >
+            <div className="flex flex-col gap-3.5 flex-1">
+              <div className="flex items-center justify-between">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 font-bold border border-emerald-300 group-hover:scale-105 transition-transform">
+                  <FileCheck2 className="h-5 w-5" />
+                </div>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 text-emerald-950 border border-emerald-400 px-2.5 py-0.5 text-xs font-bold">
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-700" />
+                  HSE 100%
+                </span>
+              </div>
+
+              <div>
+                <h3 className="text-base sm:text-lg font-black text-slate-950 group-hover:text-emerald-700 transition-colors">
+                  Safety &amp; PTW Management
+                </h3>
+                <p className="text-xs text-slate-600 mt-1 font-semibold leading-relaxed">
+                  Manajemen izin kerja berisiko tinggi (PTW), analisis bahaya kerja JSA, serta catatan zero fatality operasional.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <span className="rounded-lg bg-slate-100 border border-slate-300 text-slate-900 px-2.5 py-1 text-[11px] font-bold">
+                  Safe Man Hours
+                </span>
+                <span className="rounded-lg bg-slate-100 border border-slate-300 text-slate-900 px-2.5 py-1 text-[11px] font-bold">
+                  PTW &amp; JSA K3
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800 group-hover:text-emerald-700 transition-colors">
+                Buka Portal Safety
+              </span>
+              <span className="h-8 w-8 rounded-lg bg-slate-100 text-slate-900 group-hover:bg-emerald-700 group-hover:text-white flex items-center justify-center transition-colors font-bold">
+                <ArrowRight className="h-3.5 w-3.5" />
+              </span>
+            </div>
+          </Link>
+
+          {/* Card 2: Cargo Tracking & PO */}
+          <Link
+            href={getLink('/tracking')}
+            className="group flex flex-col justify-between h-full relative overflow-hidden rounded-2xl border-2 border-slate-300 bg-white p-6 shadow-xs hover:shadow-md hover:border-amber-500 transition-all duration-200 cursor-pointer"
+          >
+            <div className="flex flex-col gap-3.5 flex-1">
+              <div className="flex items-center justify-between">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-100 text-amber-700 font-bold border border-amber-300 group-hover:scale-105 transition-transform">
+                  <PackageCheck className="h-5 w-5" />
+                </div>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 text-amber-950 border border-amber-400 px-2.5 py-0.5 text-xs font-bold">
+                  <Truck className="h-3.5 w-3.5 text-amber-700" />
+                  SUPPLY CHAIN
+                </span>
+              </div>
+
+              <div>
+                <h3 className="text-base sm:text-lg font-black text-slate-950 group-hover:text-amber-700 transition-colors">
+                  PO &amp; Cargo Tracking
+                </h3>
+                <p className="text-xs text-slate-600 mt-1 font-semibold leading-relaxed">
+                  Lacak pergerakan manifest kargo antar site, status DO pengiriman SAP, dan konsinyasi eVHS.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <span className="rounded-lg bg-slate-100 border border-slate-300 text-slate-900 px-2.5 py-1 text-[11px] font-bold">
+                  Manifest Site
+                </span>
+                <span className="rounded-lg bg-slate-100 border border-slate-300 text-slate-900 px-2.5 py-1 text-[11px] font-bold">
+                  DO SAP &amp; eVHS
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800 group-hover:text-amber-700 transition-colors">
+                Buka Pelacakan Kargo
+              </span>
+              <span className="h-8 w-8 rounded-lg bg-slate-100 text-slate-900 group-hover:bg-amber-700 group-hover:text-white flex items-center justify-center transition-colors font-bold">
+                <ArrowRight className="h-3.5 w-3.5" />
+              </span>
+            </div>
+          </Link>
+
+          {/* Card 3: Helpdesk & Tiket */}
+          <Link
+            href={getLink('/tickets')}
+            className="group flex flex-col justify-between h-full relative overflow-hidden rounded-2xl border-2 border-slate-300 bg-white p-6 shadow-xs hover:shadow-md hover:border-indigo-500 transition-all duration-200 cursor-pointer"
+          >
+            <div className="flex flex-col gap-3.5 flex-1">
+              <div className="flex items-center justify-between">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700 font-bold border border-indigo-300 group-hover:scale-105 transition-transform">
+                  <Headphones className="h-5 w-5" />
+                </div>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-100 text-indigo-950 border border-indigo-400 px-2.5 py-0.5 text-xs font-bold">
+                  <Sparkles className="h-3.5 w-3.5 text-indigo-700" />
+                  AI &amp; STAF
+                </span>
+              </div>
+
+              <div>
+                <h3 className="text-base sm:text-lg font-black text-slate-950 group-hover:text-indigo-700 transition-colors">
+                  Layanan Bantuan &amp; Tiket
+                </h3>
+                <p className="text-xs text-slate-600 mt-1 font-semibold leading-relaxed">
+                  Sampaikan keluhan operasional atau kendala teknis. Respon cerdas otomatis AI dan eskalasi langsung ke staf HERO.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <span className="rounded-lg bg-slate-100 border border-slate-300 text-slate-900 px-2.5 py-1 text-[11px] font-bold">
+                  Smart Ticketing AI
+                </span>
+                <span className="rounded-lg bg-slate-100 border border-slate-300 text-slate-900 px-2.5 py-1 text-[11px] font-bold">
+                  Live Stream Chat
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800 group-hover:text-indigo-700 transition-colors">
+                Buat Tiket &amp; Riwayat
+              </span>
+              <span className="h-8 w-8 rounded-lg bg-slate-100 text-slate-900 group-hover:bg-indigo-700 group-hover:text-white flex items-center justify-center transition-colors font-bold">
+                <ArrowRight className="h-3.5 w-3.5" />
+              </span>
+            </div>
+          </Link>
+        </div>
+
+        {/* Support Callout Banner */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 rounded-2xl border-2 border-slate-300 bg-white p-5 sm:p-6 shadow-xs">
+          <div className="flex items-center gap-3.5 text-center sm:text-left">
+            <div className="hidden sm:flex h-11 w-11 items-center justify-center rounded-xl bg-blue-100 text-blue-700 font-bold border border-blue-300 shrink-0">
+              <PhoneCall className="h-5 w-5" />
+            </div>
+            <div>
+              <h4 className="text-sm sm:text-base font-black text-slate-950">
+                Butuh Bantuan Cepat atau Koordinasi Darurat?
+              </h4>
+              <p className="text-xs text-slate-600 font-semibold mt-0.5">
+                Tim technical support dan operasional HERO siap membantu 24 jam.
+              </p>
+            </div>
+          </div>
+
+          <Link
+            href={getLink('/tickets')}
+            className="h-10 inline-flex items-center gap-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white px-5 text-xs font-black shadow-xs transition-colors shrink-0 cursor-pointer"
+          >
+            <Plus className="h-4 w-4 text-blue-100" />
+            <span>Buat Tiket Baru</span>
+          </Link>
+        </div>
       </div>
 
       {/* ── Detail Activity Modal ── */}
