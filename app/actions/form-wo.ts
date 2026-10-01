@@ -20,6 +20,7 @@ import {
 } from '@/lib/form-wo-email'
 import type { FormWoPdfData } from '@/lib/form-wo-pdf'
 import type { WipRepairRecord } from '@/lib/types/wip-repair'
+import { isKpcRecord } from '@/lib/form-wo-customer'
 
 // Form WO Workflow v2 Production Build Trigger
 const FORM_WO_PATH = '/dashboard/repair-retread/form-wo'
@@ -169,129 +170,155 @@ export async function saveWipPo(idWo: string, noPo: string, poDate?: string) {
 let waitingWoCache: { data: WipRepairRecord[]; timestamp: number } | null = null
 const WAITING_WO_CACHE_TTL = 3 * 60 * 1000 // 3 minutes cache for fast saves & revalidation
 
-export async function getWaitingWoFromApi(forceRefresh = false): Promise<WipRepairRecord[]> {
+export async function getWaitingWoFromApi(
+  forceRefresh = false,
+  group: 'all' | 'camos' | 'kpc' | 'hero' = 'all'
+): Promise<WipRepairRecord[]> {
+  let waitingList: WipRepairRecord[] = []
+
   if (!forceRefresh && waitingWoCache && Date.now() - waitingWoCache.timestamp < WAITING_WO_CACHE_TTL) {
-    return waitingWoCache.data
-  }
-
-  try {
-    let apiList: WipRepairRecord[] = []
+    waitingList = waitingWoCache.data
+  } else {
     try {
-      const response = await fetch(WIP_REPAIR_API_URL, {
-        next: { revalidate: 300 },
-      })
+      let apiList: WipRepairRecord[] = []
+      try {
+        const response = await fetch(WIP_REPAIR_API_URL, {
+          next: { revalidate: 300 },
+        })
 
-      if (response.ok) {
-        const contentType = response.headers.get('content-type') || ''
-        if (contentType.includes('application/json')) {
-          const payload = (await response.json()) as { data: WipRepairRecord[] }
-          if (payload && Array.isArray(payload.data)) {
-            apiList = payload.data
-              .filter((item) => isWaitingWorkOrder(item.wo))
-              .map((item) => ({ ...item, is_hero: false, source: 'api' }))
+        if (response.ok) {
+          const contentType = response.headers.get('content-type') || ''
+          if (contentType.includes('application/json')) {
+            const payload = (await response.json()) as { data: WipRepairRecord[] }
+            if (payload && Array.isArray(payload.data)) {
+              apiList = payload.data
+                .filter((item) => isWaitingWorkOrder(item.wo))
+                .map((item) => ({ ...item, is_hero: false, source: 'api' }))
+            }
           }
         }
+      } catch (err) {
+        console.error('Failed to fetch external WIP Repair API:', err)
       }
-    } catch (err) {
-      console.error('Failed to fetch external WIP Repair API:', err)
-    }
 
-    // Fetch local HERO tire repair inspections from database
-    let heroWipList: WipRepairRecord[] = []
-    try {
-      await ensureFormWoTable()
-      const inspections = await db
-        .select()
-        .from(tireRepairInspections)
-        .orderBy(desc(tireRepairInspections.createdAt))
+      // Fetch local HERO tire repair inspections from database
+      let heroWipList: WipRepairRecord[] = []
+      try {
+        await ensureFormWoTable()
+        const inspections = await db
+          .select()
+          .from(tireRepairInspections)
+          .orderBy(desc(tireRepairInspections.createdAt))
 
-      const existingFormWos = await db
-        .select({ tireSn: repairFormWo.tireSn, idWo: repairFormWo.idWo })
-        .from(repairFormWo)
-      const existingSnSet = new Set(
-        existingFormWos
-          .map((f) => (f.tireSn || f.idWo || '').trim().toLowerCase())
-          .filter(Boolean)
-      )
+        const existingFormWos = await db
+          .select({ tireSn: repairFormWo.tireSn, idWo: repairFormWo.idWo })
+          .from(repairFormWo)
+        const existingSnSet = new Set(
+          existingFormWos
+            .map((f) => (f.tireSn || f.idWo || '').trim().toLowerCase())
+            .filter(Boolean)
+        )
 
-      heroWipList = inspections
-        .filter((insp) => !existingSnSet.has(insp.serialNumber.trim().toLowerCase()))
-        .map((insp) => {
-          const formatDateStr = (d: Date | null | undefined) => {
-            if (!d) return ''
-            try {
-              return d.toISOString().split('T')[0]
-            } catch {
-              return String(d)
+        heroWipList = inspections
+          .filter((insp) => !existingSnSet.has(insp.serialNumber.trim().toLowerCase()))
+          .map((insp) => {
+            const formatDateStr = (d: Date | null | undefined) => {
+              if (!d) return ''
+              try {
+                return d.toISOString().split('T')[0]
+              } catch {
+                return String(d)
+              }
+            }
+            return {
+              id_wo: `HERO-${insp.id}`,
+              wo: 'Waiting WO',
+              job_type: insp.status || 'Repair',
+              status: insp.status || 'Repair',
+              size: insp.tireSize,
+              brand: insp.brand || '-',
+              pattern: insp.pattern || '-',
+              type: insp.typeConstruction || 'RADIAL',
+              nocargo: insp.cargoManifestNo || null,
+              tire_sn: insp.serialNumber,
+              injury: insp.repairDuration || 'R1',
+              remark: insp.remarks || '',
+              customer: insp.customer || 'PT Kaltim Prima Coal',
+              site: insp.customerSite || insp.inspectLocation || 'Sangatta KPC',
+              store_loc: insp.inspectLocation || 'Workshop Sangatta',
+              inspect_date: formatDateStr(insp.dateInspect),
+              inspector: insp.reportBy,
+              createby: insp.reportBy,
+              wo_date: null,
+              received_date: formatDateStr(insp.dateReceived),
+              receiver: insp.reportBy,
+              po: null,
+              bast: null,
+              po_date: null,
+              bast_date: null,
+              invoice: null,
+              invoice_date: null,
+              is_hero: true,
+              source: 'hero',
+            }
+          })
+      } catch (e) {
+        console.error('Failed to query local HERO tire repair inspections:', e)
+      }
+
+      waitingList = [...heroWipList, ...apiList]
+
+      // Merge saved PO numbers & PO dates from database repair_wip_po
+      try {
+        const savedPoList = await db.select().from(repairWipPo)
+        const poMap = new Map(savedPoList.map((r) => [r.idWo, { noPo: r.noPo, poDate: r.poDate }]))
+        waitingList = waitingList.map((item) => {
+          const saved = poMap.get(item.id_wo)
+          if (saved) {
+            return {
+              ...item,
+              po: saved.noPo ?? '',
+              po_date: saved.poDate ?? '',
             }
           }
           return {
-            id_wo: `HERO-${insp.id}`,
-            wo: 'Waiting WO',
-            job_type: insp.status || 'Repair',
-            status: insp.status || 'Repair',
-            size: insp.tireSize,
-            brand: insp.brand || '-',
-            pattern: insp.pattern || '-',
-            type: insp.typeConstruction || 'RADIAL',
-            nocargo: insp.cargoManifestNo || null,
-            tire_sn: insp.serialNumber,
-            injury: insp.repairDuration || 'R1',
-            remark: insp.remarks || '',
-            customer: insp.customer || 'PT Kaltim Prima Coal',
-            site: insp.customerSite || insp.inspectLocation || 'Sangatta KPC',
-            store_loc: insp.inspectLocation || 'Workshop Sangatta',
-            inspect_date: formatDateStr(insp.dateInspect),
-            inspector: insp.reportBy,
-            createby: insp.reportBy,
-            wo_date: null,
-            received_date: formatDateStr(insp.dateReceived),
-            receiver: insp.reportBy,
-            po: null,
-            bast: null,
-            po_date: null,
-            bast_date: null,
-            invoice: null,
-            invoice_date: null,
-            is_hero: true,
-            source: 'hero',
+            ...item,
+            po: item.po ?? '',
+            po_date: item.po_date ?? item.inspect_date ?? '',
           }
         })
-    } catch (e) {
-      console.error('Failed to query local HERO tire repair inspections:', e)
+      } catch (e) {
+        console.error('Failed to merge saved WIP PO:', e)
+      }
+
+      waitingWoCache = { data: waitingList, timestamp: Date.now() }
+    } catch (error) {
+      console.error('Failed to fetch Waiting WO data', error)
+      waitingList = waitingWoCache?.data || []
     }
-
-    let waitingList = [...heroWipList, ...apiList]
-
-    // Merge saved PO numbers & PO dates from database repair_wip_po
-    try {
-      const savedPoList = await db.select().from(repairWipPo)
-      const poMap = new Map(savedPoList.map((r) => [r.idWo, { noPo: r.noPo, poDate: r.poDate }]))
-      waitingList = waitingList.map((item) => {
-        const saved = poMap.get(item.id_wo)
-        if (saved) {
-          return {
-            ...item,
-            po: saved.noPo ?? '',
-            po_date: saved.poDate ?? '',
-          }
-        }
-        return {
-          ...item,
-          po: item.po ?? '',
-          po_date: item.po_date ?? item.inspect_date ?? '',
-        }
-      })
-    } catch (e) {
-      console.error('Failed to merge saved WIP PO:', e)
-    }
-
-    waitingWoCache = { data: waitingList, timestamp: Date.now() }
-    return waitingList
-  } catch (error) {
-    console.error('Failed to fetch Waiting WO data', error)
-    return waitingWoCache?.data || []
   }
+
+  if (group === 'camos') {
+    return waitingList.filter(
+      (item) => !item.is_hero && item.source !== 'hero' && !item.id_wo?.startsWith('HERO-')
+    )
+  }
+  if (group === 'kpc') {
+    return waitingList.filter(
+      (item) =>
+        (item.is_hero || item.source === 'hero' || item.id_wo?.startsWith('HERO-')) &&
+        isKpcRecord(item)
+    )
+  }
+  if (group === 'hero') {
+    return waitingList.filter(
+      (item) =>
+        (item.is_hero || item.source === 'hero' || item.id_wo?.startsWith('HERO-')) &&
+        !isKpcRecord(item)
+    )
+  }
+
+  return waitingList
 }
 
 export async function getFormWoList() {

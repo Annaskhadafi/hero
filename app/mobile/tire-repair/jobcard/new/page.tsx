@@ -47,6 +47,7 @@ import {
   DEFAULT_CHITRA_INSPECTORS,
   type TireRepairInspectionRecord,
 } from '@/lib/tire-repair-constants';
+import { parseInjuryRemarks } from '@/lib/jobcard-calc';
 
 const DEFAULT_JOB_CARD_PROCESS_NAMES = [
   'Skiving',
@@ -137,6 +138,12 @@ export default function NewJobcardPage() {
         getTireRepairJobcardByIdAction(targetId).then((res) => {
           if (res.success && res.data) {
             const jc = res.data;
+            const statusLower = (jc.status || '').toLowerCase();
+            if (statusLower.includes('completed') || statusLower.includes('selesai')) {
+              toast.error('Jobcard ini sudah selesai (COMPLETED) dan tidak dapat diedit lagi.');
+              router.push('/mobile/tire-repair/jobcard');
+              return;
+            }
             if (jc.woNo) setWoNo(jc.woNo);
             if (jc.woDate) setWoDate(new Date(jc.woDate).toISOString().split('T')[0]);
             if (jc.plant) setPlant(jc.plant);
@@ -215,6 +222,92 @@ export default function NewJobcardPage() {
       ],
     },
   ]);
+
+  const [remarks, setRemarks] = useState('');
+  const [remarksStatus, setRemarksStatus] = useState<{
+    countMayor: number;
+    countMinor: number;
+    isValidFormat: boolean;
+    hasInput: boolean;
+  }>({ countMayor: 0, countMinor: 0, isValidFormat: true, hasInput: false });
+
+  const hasInjuryFilledData = (inj: InjuryItem): boolean => {
+    const hasDim = !!(inj.dimensiLukaL || inj.dimensiLukaW || inj.dimensiLukaP || inj.dimensiLukaT);
+    const hasProc = inj.processes.some(
+      (p) => !!(p.materialUsed?.trim() || p.qty?.trim() || p.hours?.trim() || p.byWhom?.trim())
+    );
+    return hasDim || hasProc;
+  };
+
+  const createDefaultProcesses = (firstInj?: InjuryItem): ProcessItem[] =>
+    DEFAULT_JOB_CARD_PROCESS_NAMES.map((procName, procIdx) => {
+      const form1Proc = firstInj?.processes[procIdx];
+      const mat = form1Proc?.materialUsed || '';
+      const by = form1Proc?.byWhom || '';
+      const qty = mat.trim() ? (form1Proc?.qty || '1') : '';
+      return {
+        processName: procName,
+        materialUsed: mat,
+        qty: qty,
+        hours: '',
+        byWhom: by,
+        hardness: '',
+      };
+    });
+
+  const handleRemarksChange = (val: string) => {
+    setRemarks(val);
+    const parsed = parseInjuryRemarks(val);
+    setRemarksStatus(parsed);
+
+    if (!parsed.isValidFormat || !parsed.hasInput) return;
+    if (parsed.countMayor === 0 && parsed.countMinor === 0) return;
+
+    // Create target injury list
+    const targetInjuries: { category: 'Major' | 'Minor'; name: string }[] = [];
+    for (let i = 1; i <= parsed.countMayor; i++) {
+      targetInjuries.push({ category: 'Major', name: `Mayor #${i}` });
+    }
+    for (let i = 1; i <= parsed.countMinor; i++) {
+      targetInjuries.push({ category: 'Minor', name: `Minor #${i}` });
+    }
+
+    const newCount = targetInjuries.length;
+    const removedFilledInjuries = injuries.slice(newCount).filter(hasInjuryFilledData);
+
+    if (removedFilledInjuries.length > 0) {
+      const confirmRemove = window.confirm(
+        `Perubahan remarks menjadi "${val}" akan menghapus ${removedFilledInjuries.length} form Injury yang sudah terisi data. Apakah Anda yakin ingin melanjutkan?`
+      );
+      if (!confirmRemove) return;
+    }
+
+    const updated: InjuryItem[] = targetInjuries.map((target, idx) => {
+      const existing = injuries[idx];
+      if (existing) {
+        return {
+          ...existing,
+          injuryCategory: target.category,
+          injuryNumber: idx + 1,
+          injuryName: target.name,
+        };
+      }
+      return {
+        id: `inj_${Date.now()}_${idx + 1}`,
+        injuryCategory: target.category,
+        injuryNumber: idx + 1,
+        injuryName: target.name,
+        injuryDate: new Date().toISOString().split('T')[0],
+        dimensiLukaL: '',
+        dimensiLukaW: '',
+        dimensiLukaP: '',
+        dimensiLukaT: '',
+        processes: createDefaultProcesses(injuries[0]),
+      };
+    });
+
+    setInjuries(updated);
+  };
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -314,17 +407,7 @@ export default function NewJobcardPage() {
       dimensiLukaW: '',
       dimensiLukaP: '',
       dimensiLukaT: '',
-      processes: [
-        { processName: 'Skiving', materialUsed: '', qty: '', hours: '', byWhom: '', hardness: '' },
-        { processName: 'Buffing', materialUsed: '', qty: '', hours: '', byWhom: '', hardness: '' },
-        { processName: 'Cementing', materialUsed: '', qty: '', hours: '', byWhom: '', hardness: '' },
-        { processName: 'Buffing Innerliner', materialUsed: '', qty: '', hours: '', byWhom: '', hardness: '' },
-        { processName: 'Install Patch', materialUsed: '', qty: '', hours: '', byWhom: '', hardness: '' },
-        { processName: 'Built Up', materialUsed: '', qty: '', hours: '', byWhom: '', hardness: '' },
-        { processName: 'Curing', materialUsed: '', qty: '', hours: '', byWhom: '', hardness: '' },
-        { processName: 'Finishing', materialUsed: '', qty: '', hours: '', byWhom: '', hardness: '' },
-        { processName: 'Painting', materialUsed: '', qty: '', hours: '', byWhom: '', hardness: '' },
-      ],
+      processes: createDefaultProcesses(injuries[0]),
     };
     setInjuries((prev) => [...prev, newInj]);
   };
@@ -339,14 +422,57 @@ export default function NewJobcardPage() {
 
   // Process item handlers
   const handleProcessChange = (injuryId: string, procIdx: number, field: keyof ProcessItem, value: string) => {
-    setInjuries((prev) =>
-      prev.map((inj) => {
-        if (inj.id !== injuryId) return inj;
-        const updatedProcs = [...inj.processes];
-        updatedProcs[procIdx] = { ...updatedProcs[procIdx], [field]: value };
-        return { ...inj, processes: updatedProcs };
-      })
-    );
+    setInjuries((prev) => {
+      const isFirstForm = prev.length > 0 && prev[0].id === injuryId;
+      const oldForm1Mat = prev.length > 0 ? (prev[0].processes[procIdx]?.materialUsed || '') : '';
+      const oldForm1Manpower = prev.length > 0 ? (prev[0].processes[procIdx]?.byWhom || '') : '';
+
+      return prev.map((inj, idx) => {
+        if (inj.id === injuryId) {
+          const updatedProcs = [...inj.processes];
+          const curProc = updatedProcs[procIdx];
+          const newProc = { ...curProc, [field]: value };
+
+          // If material is entered/edited and qty is empty, default qty to '1'
+          if (field === 'materialUsed' && value.trim() && !newProc.qty.trim()) {
+            newProc.qty = '1';
+          }
+
+          updatedProcs[procIdx] = newProc;
+          return { ...inj, processes: updatedProcs };
+        }
+
+        // Auto-propagate material / manpower from Form 1 to subsequent forms if editing Form 1
+        if (isFirstForm && idx > 0) {
+          const updatedProcs = [...inj.processes];
+          const targetProc = updatedProcs[procIdx];
+
+          if (field === 'materialUsed') {
+            const currentSubMat = targetProc.materialUsed || '';
+            let nextSubMat = currentSubMat;
+
+            if (!currentSubMat || currentSubMat === oldForm1Mat) {
+              nextSubMat = value;
+            } else if (oldForm1Mat && currentSubMat.startsWith(oldForm1Mat)) {
+              const suffix = currentSubMat.slice(oldForm1Mat.length);
+              nextSubMat = value ? `${value}${suffix}` : suffix.replace(/^,\s*/, '');
+            }
+
+            const nextQty = (nextSubMat.trim() && !targetProc.qty.trim()) ? '1' : (targetProc.qty || (nextSubMat.trim() ? '1' : ''));
+            updatedProcs[procIdx] = { ...targetProc, materialUsed: nextSubMat, qty: nextQty };
+          } else if (field === 'byWhom') {
+            const currentSubBy = targetProc.byWhom || '';
+            if (!currentSubBy || currentSubBy === oldForm1Manpower) {
+              updatedProcs[procIdx] = { ...targetProc, byWhom: value };
+            }
+          }
+
+          return { ...inj, processes: updatedProcs };
+        }
+
+        return inj;
+      });
+    });
   };
 
   const [formErrorMessage, setFormErrorMessage] = useState<string | null>(null);
@@ -673,6 +799,35 @@ export default function NewJobcardPage() {
 
         {/* Section 3: Dynamic Injuries & Processes Builder */}
         <div className="space-y-3 min-w-0">
+          {/* Remarks Auto-Generator Box */}
+          <div className="bg-sky-50/70 p-3.5 rounded-2xl border border-sky-200/90 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-[#003f78] flex items-center gap-1.5">
+                <Layers className="w-4 h-4 text-[#003f78]" />
+                <span>Remarks Injury (Auto-Generate Form)</span>
+              </label>
+              {remarksStatus.isValidFormat && remarksStatus.hasInput && (
+                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                  ✓ {remarksStatus.countMayor} Mayor, {remarksStatus.countMinor} Minor
+                </span>
+              )}
+            </div>
+
+            <Input
+              value={remarks}
+              onChange={(e) => handleRemarksChange(e.target.value)}
+              placeholder='Contoh: "mayor 2 minor 3" atau "2 mayor 3 minor"'
+              className="h-10 rounded-xl bg-white border-sky-300/80 text-xs font-semibold text-[#082033] shadow-xs"
+            />
+
+            {remarksStatus.hasInput && !remarksStatus.isValidFormat && (
+              <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-[11px] font-bold text-rose-700 flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+                <span>Format remarks tidak terbaca. Contoh format yang benar: &quot;mayor 2 minor 3&quot; atau &quot;2 mayor 3 minor&quot;.</span>
+              </div>
+            )}
+          </div>
+
           <div className="flex items-center justify-between px-1 min-w-0">
             <h3 className="text-xs font-black uppercase tracking-wider text-[#082033] flex items-center gap-1.5 min-w-0 truncate pr-2">
               <Wrench className="w-4 h-4 shrink-0 text-[#003f78]" />

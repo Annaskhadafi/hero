@@ -21,11 +21,13 @@ import {
   Download,
   Pencil,
   Trash2,
+  Printer,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { TireInspectionPrintReport } from '@/components/tire-inspection-print-report';
 import {
   Select,
   SelectContent,
@@ -819,6 +821,15 @@ export default function TireRepairInspectionListPage() {
               {/* Action Buttons */}
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
                 <Button
+                  variant="default"
+                  size="sm"
+                  className="h-8 text-xs font-semibold bg-[#003f78] hover:bg-[#002f5a] text-white gap-1.5"
+                  onClick={() => window.print()}
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Print Laporan</span>
+                </Button>
+                <Button
                   variant="outline"
                   size="sm"
                   className="h-8 text-xs font-semibold border-rose-500/30 text-rose-700 dark:text-rose-400 hover:bg-rose-50"
@@ -828,6 +839,9 @@ export default function TireRepairInspectionListPage() {
                   Hapus Inspeksi
                 </Button>
               </div>
+
+              {/* Printable Report Component */}
+              <TireInspectionPrintReport record={selectedItem} />
             </div>
           )}
         </DialogContent>

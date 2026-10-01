@@ -1387,6 +1387,7 @@ async function fetchApprovalRows(options?: { onlyActivities?: boolean; onlyPendi
     .from(approvals)
     .leftJoin(activities, eq(approvals.activityId, activities.id))
     .leftJoin(formSubmissions, eq(approvals.submissionId, formSubmissions.id))
+    .leftJoin(formTemplates, eq(formSubmissions.templateId, formTemplates.id))
     .leftJoin(
       tireRepairJobcards,
       or(eq(approvals.tireJobcardId, tireRepairJobcards.id), eq(approvals.requestNumber, tireRepairJobcards.jobcardNo))

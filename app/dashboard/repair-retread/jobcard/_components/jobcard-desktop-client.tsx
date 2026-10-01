@@ -62,6 +62,14 @@ import { getTireRepairMasterDataAction } from '@/app/actions/tire-repair-actions
 import type { WipRepairRecord } from '@/lib/types/wip-repair';
 import { TireRepairProcessTimer } from '@/components/mobile/tire-repair-process-timer';
 import { TireRepairSearchableSelect } from '@/components/mobile/tire-repair-searchable-select';
+import {
+  computeMaterialSummary,
+  computeTotalJobcardMinutes,
+  computeDeduplicatedManpower,
+  computeGroupedProcessRows,
+  parseDurationToMinutes,
+  type MaterialSummaryItem,
+} from '@/lib/jobcard-calc';
 
 function formatDate(dateVal?: Date | string | null) {
   if (!dateVal) return '-';
@@ -72,72 +80,6 @@ function formatDate(dateVal?: Date | string | null) {
   } catch {
     return String(dateVal);
   }
-}
-
-function parseDurationToMinutes(durationVal?: string | number | null): number {
-  if (durationVal === undefined || durationVal === null) return 0;
-  const str = String(durationVal).trim().toLowerCase();
-  if (!str) return 0;
-
-  const num = parseFloat(str);
-  if (isNaN(num)) return 0;
-
-  if (str.includes('jam') || str.includes('h') || str.includes('hour')) {
-    return Math.round(num * 60);
-  }
-  if (str.includes('m') || str.includes('min')) {
-    return Math.round(num);
-  }
-  if (num < 5 && str.includes('.')) {
-    return Math.round(num * 60);
-  }
-  return Math.round(num);
-}
-
-interface MaterialSummaryItem {
-  name: string;
-  qty: string;
-  uom: string;
-}
-
-function computeMaterialSummary(injuries?: any[]): MaterialSummaryItem[] {
-  if (!injuries || injuries.length === 0) return [];
-  const map = new Map<string, { qty: string; uom: string }>();
-
-  injuries.forEach((inj) => {
-    inj.processes?.forEach((p: any) => {
-      const mat = (p.materialUsed || '').trim();
-      if (!mat || mat === '-' || mat === '0') return;
-
-      const rawQty = (p.qty || '').trim();
-      let uom = 'PC';
-      let numStr = rawQty;
-
-      if (rawQty.toUpperCase().includes('KG')) {
-        uom = 'KG';
-        numStr = rawQty.replace(/KG/i, '').trim();
-      } else if (rawQty.toUpperCase().includes('ML')) {
-        uom = 'mL';
-        numStr = rawQty.replace(/ML/i, '').trim();
-      } else if (rawQty.toUpperCase().includes('GRAM') || rawQty.toUpperCase().includes('G')) {
-        uom = 'G';
-        numStr = rawQty.replace(/GRAM|G/i, '').trim();
-      } else if (rawQty.toUpperCase().includes('PCS') || rawQty.toUpperCase().includes('PC')) {
-        uom = 'PC';
-        numStr = rawQty.replace(/PCS?/i, '').trim();
-      }
-
-      if (!map.has(mat)) {
-        map.set(mat, { qty: numStr || '1', uom: uom });
-      }
-    });
-  });
-
-  return Array.from(map.entries()).map(([name, val]) => ({
-    name,
-    qty: val.qty,
-    uom: val.uom,
-  }));
 }
 
 interface JobcardDesktopClientProps {
@@ -1077,16 +1019,23 @@ export function JobcardDesktopClient({
                   </div>
                   <div className="flex">
                     <span className="text-slate-600 font-medium w-28 shrink-0">Injury</span>
-                    <span className="font-bold flex-1 text-left">: {selectedJobcard.injuries?.[0]?.injuryName || 'Injury #1'}</span>
+                    <span className="font-bold flex-1 text-left">
+                      : {selectedJobcard.injuries?.map((i) => i.injuryName).filter(Boolean).join(', ') || 'Injury #1'}
+                    </span>
                   </div>
                 </div>
               </div>
 
               <div className="border-b border-slate-400 my-2" />
 
-              {/* Process Section (#1) */}
+              {/* Process Section (Combined Document for All Injuries) */}
               <div className="space-y-2 pt-1 font-sans">
-                <h3 className="font-bold text-xs text-slate-900">Process #1</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-bold text-xs text-slate-900">Process Breakdown (Gabungan Semua Injury)</h3>
+                  <span className="text-[11px] font-bold text-[#003f78]">
+                    Manpower: {computeDeduplicatedManpower(selectedJobcard.injuries)}
+                  </span>
+                </div>
 
                 <div className="overflow-x-auto border-t border-b border-slate-400">
                   <table className="w-full text-left text-xs border-collapse">
@@ -1102,47 +1051,38 @@ export function JobcardDesktopClient({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-300 text-[11px] text-slate-900">
-                      {selectedJobcard.injuries?.[0]?.processes?.map((proc, pIdx) => {
-                        const isDimensiRow = (proc?.processName || '').toLowerCase().includes('dimensi') || pIdx === 2;
-                        const inj = selectedJobcard.injuries?.[0];
-                        const injDimStr = inj
-                          ? `L${inj.dimensiLukaL || '0'},W${inj.dimensiLukaW || '0'},P${inj.dimensiLukaP || '0'},T${inj.dimensiLukaT || '0'}`
-                          : '-';
+                      {(() => {
+                        const rows = computeGroupedProcessRows(selectedJobcard.injuries);
+                        if (rows.length === 0) {
+                          return (
+                            <tr>
+                              <td colSpan={7} className="py-4 text-center text-slate-400 font-sans">Tidak ada data proses.</td>
+                            </tr>
+                          );
+                        }
 
-                        const durMins = parseDurationToMinutes(proc.hours);
-
-                        return (
-                          <tr key={proc.id || pIdx} className="border-b border-slate-200 hover:bg-slate-50/50">
+                        return rows.map((r, idx) => (
+                          <tr key={idx} className="border-b border-slate-200 hover:bg-slate-50/50">
                             <td className="py-1.5 px-2 font-bold text-slate-900">
-                              {isDimensiRow ? injDimStr : ''}
+                              {r.injuriesLabel}
                             </td>
                             <td className="py-1.5 px-2 text-slate-700">
                               {formatDate(selectedJobcard.receivedDate || selectedJobcard.createdAt)}
                             </td>
-                            <td className="py-1.5 px-2 font-bold text-slate-900">{proc.processName}</td>
-                            <td className="py-1.5 px-2 text-slate-700 uppercase">{proc.materialUsed || '-'}</td>
-                            <td className="py-1.5 px-2 text-center text-slate-700">{proc.qty || '0'}</td>
-                            <td className="py-1.5 px-2 text-center font-bold">{durMins}</td>
-                            <td className="py-1.5 px-2 text-slate-800">{proc.byWhom || '-'}</td>
+                            <td className="py-1.5 px-2 font-bold text-slate-900">{r.processName}</td>
+                            <td className="py-1.5 px-2 text-slate-700 uppercase">{r.materialUsed || '-'}</td>
+                            <td className="py-1.5 px-2 text-center text-slate-700">{r.qty || '0'}</td>
+                            <td className="py-1.5 px-2 text-center font-bold">{r.durationMin}</td>
+                            <td className="py-1.5 px-2 text-slate-800">{r.manpower || '-'}</td>
                           </tr>
-                        );
-                      }) || (
-                        <tr>
-                          <td colSpan={7} className="py-4 text-center text-slate-400 font-sans">Tidak ada data proses.</td>
-                        </tr>
-                      )}
+                        ));
+                      })()}
                     </tbody>
                     <tfoot>
                       <tr className="border-t border-slate-400 font-bold text-slate-900">
                         <td colSpan={5} className="py-1.5 px-2 text-right">Total Duration :</td>
                         <td className="py-1.5 px-2 text-center font-black text-xs text-[#003f78]">
-                          {(
-                            (selectedJobcard.injuries?.[0]?.processes?.reduce(
-                              (acc, p) => acc + parseDurationToMinutes(p.hours),
-                              0
-                            ) || 0) / 60
-                          ).toFixed(2)}{' '}
-                          Hours
+                          {(computeTotalJobcardMinutes(selectedJobcard.injuries) / 60).toFixed(2)} Hours
                         </td>
                         <td></td>
                       </tr>

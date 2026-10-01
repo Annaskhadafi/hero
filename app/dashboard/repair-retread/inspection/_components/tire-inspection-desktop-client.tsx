@@ -32,10 +32,12 @@ import {
   Wrench,
   Layers,
   MapPin,
+  Printer,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { TireInspectionPrintReport } from "@/components/tire-inspection-print-report"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import {
   Table,
@@ -1198,6 +1200,15 @@ export function TireInspectionDesktopClient({
                     <div className="flex items-center gap-2 self-start sm:self-auto">
                       <Button
                         size="sm"
+                        className="h-9 px-3.5 gap-2 text-xs font-semibold bg-[#003f78] hover:bg-[#002f5a] text-white rounded-xl shadow-2xs cursor-pointer active:scale-95 transition-transform"
+                        onClick={() => window.print()}
+                      >
+                        <Printer className="h-4 w-4" />
+                        <span>Print Laporan</span>
+                      </Button>
+
+                      <Button
+                        size="sm"
                         variant="outline"
                         className="h-9 px-3.5 gap-2 text-xs font-semibold border-emerald-600/30 text-emerald-700 bg-white hover:bg-emerald-50 rounded-xl shadow-2xs cursor-pointer active:scale-95 transition-transform"
                         onClick={() => handleExportExcel([selectedItem])}
@@ -1457,15 +1468,28 @@ export function TireInspectionDesktopClient({
                 <div className="text-xs text-slate-500 font-mono">
                   PT Chitra Paratama HERO · Tire Inspection System
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="rounded-xl px-6 font-semibold bg-white text-slate-700 hover:bg-slate-100"
-                  onClick={() => setIsDetailOpen(false)}
-                >
-                  Tutup
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    className="rounded-xl px-5 font-semibold bg-[#003f78] text-white hover:bg-[#002f5a] gap-1.5"
+                    onClick={() => window.print()}
+                  >
+                    <Printer className="h-4 w-4" />
+                    <span>Print Laporan</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="rounded-xl px-6 font-semibold bg-white text-slate-700 hover:bg-slate-100"
+                    onClick={() => setIsDetailOpen(false)}
+                  >
+                    Tutup
+                  </Button>
+                </div>
               </div>
+
+              {/* Printable Report Component */}
+              <TireInspectionPrintReport record={selectedItem} />
             </div>
           )}
         </DialogContent>
