@@ -1,10 +1,28 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Clock, Calendar, ShieldAlert, Award, FileSpreadsheet, FileText } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import {
+  ArrowLeft,
+  Clock,
+  Calendar,
+  ShieldAlert,
+  Award,
+  FileSpreadsheet,
+  FileText,
+  ExternalLink,
+  Download,
+} from 'lucide-react'
 import { formatMinutesToHours, classifyEwh } from '@/lib/ewh/calculate-ewh'
 import * as XLSX from 'xlsx'
 import { toast } from 'sonner'
@@ -48,18 +66,43 @@ const EWH_CLASS_CONFIG = {
 
 export function EwhEmployeeDetailClient({ employee, rows, period }: Props) {
   const router = useRouter()
+  const [pdfPreviewState, setPdfPreviewState] = useState<{
+    url: string
+    filename: string
+    title: string
+  } | null>(null)
+
+  const handleClosePdfPreview = () => {
+    if (pdfPreviewState?.url) {
+      URL.revokeObjectURL(pdfPreviewState.url)
+    }
+    setPdfPreviewState(null)
+  }
+
+  const handleDownloadPdfFromPreview = () => {
+    if (!pdfPreviewState) return
+    const a = document.createElement('a')
+    a.href = pdfPreviewState.url
+    a.download = pdfPreviewState.filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    toast.success('File PDF berhasil diunduh!')
+  }
 
   const stats = (() => {
     const presentDays = rows.filter((r) => r.clockDurationMinutes > 0).length
     const totalDays = rows.length
-    const avgEwh = totalDays > 0 ? rows.reduce((sum, r) => sum + r.ewhPercent, 0) / totalDays : 0
+    const totalClock = rows.reduce((sum, r) => sum + r.clockDurationMinutes, 0)
     const totalEffective = rows.reduce((sum, r) => sum + r.effectiveMinutes, 0)
     const totalOvertime = rows.reduce((sum, r) => sum + r.overtimeMinutes, 0)
     const totalIdle = rows.reduce((sum, r) => sum + r.idleMinutes, 0)
+    const avgEwh = totalClock > 0 ? (totalEffective / totalClock) * 100 : 0
     return {
       presentDays,
       totalDays,
       avgEwh,
+      totalClock,
       totalEffective,
       totalOvertime,
       totalIdle,
@@ -107,135 +150,73 @@ export function EwhEmployeeDetailClient({ employee, rows, period }: Props) {
     toast.success('File Excel EWH Karyawan berhasil diunduh!')
   }
 
-  const handleExportPdf = () => {
-    const printable = window.open('', '_blank', 'width=1100,height=850')
-    if (!printable) {
-      toast.error('Pop-up terblokir oleh browser. Harap izinkan pop-up untuk mencetak.')
-      return
+  const handleExportPdf = async () => {
+    try {
+      toast.loading('Menyiapkan file PDF EWH...', { id: 'ewh-pdf' })
+      const { generateEwhEmployeeDetailPdf } = await import('@/lib/timesheet/generate-ewh-pdf')
+
+      const dayData = rows.map((r) => {
+        const dateObj = new Date(r.workDate)
+        const day = dateObj.getDate()
+        const dayName = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(dateObj)
+        const dayClass = classifyEwh(r.ewhPercent)
+        const dayLabel = EWH_CLASS_CONFIG[dayClass]?.label || dayClass
+
+        return {
+          day,
+          dayName,
+          dateStr: dateObj.toISOString().slice(0, 10),
+          clockIn: r.clockIn || '',
+          clockOut: r.clockOut || '',
+          durationHours: r.clockDurationMinutes / 60,
+          effectiveHours: r.effectiveMinutes / 60,
+          overtimeHours: r.overtimeMinutes / 60,
+          ewhPercent: r.ewhPercent,
+          isHoliday: false,
+          status: r.clockIn ? 'present' : 'absent',
+          remark: !r.clockIn ? 'Off / Absen' : dayLabel,
+        }
+      })
+
+      const pdfBytes = await generateEwhEmployeeDetailPdf({
+        period,
+        employeeName: employee.name,
+        employeeSn: employee.employeeSn,
+        department: employee.department || 'Operations',
+        section: employee.section || 'General',
+        siteName: 'Site Operational',
+        jobTitle: employee.jobTitle,
+        days: dayData,
+        totals: {
+          presentDays: stats.presentDays,
+          totalDurationHours: stats.totalClock / 60,
+          totalEffectiveHours: stats.totalEffective / 60,
+          totalOvertimeHours: stats.totalOvertime / 60,
+          avgEwhPercent: stats.avgEwh,
+        },
+        signatures: {
+          preparedBy: employee.name,
+          pjoLeader: 'Supervisor / PJO',
+          approvedBy: 'Site Manager',
+          hrName: 'Human Capital',
+        },
+      })
+
+      const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      const cleanName = employee.name.replace(/\s+/g, '_')
+      const downloadFilename = `EWH_Record_${cleanName}_${period}.pdf`
+      setPdfPreviewState({
+        url,
+        filename: downloadFilename,
+        title: `EWH Record - ${employee.name}`,
+      })
+
+      toast.success('Preview PDF EWH Karyawan siap!', { id: 'ewh-pdf' })
+    } catch (err) {
+      console.error('[EWH PDF Error]', err)
+      toast.error('Gagal men-generate PDF EWH', { id: 'ewh-pdf' })
     }
-
-    const todayStr = new Intl.DateTimeFormat('id-ID', { dateStyle: 'long' }).format(new Date())
-
-    printable.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <title>EWH Record - ${employee.name} - ${period}</title>
-          <style>
-            @page { size: portrait; margin: 12mm; }
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #0f172a; margin: 0; padding: 12px; font-size: 11px; }
-            .header-table { width: 100%; border-bottom: 2px solid #003461; padding-bottom: 8px; margin-bottom: 12px; }
-            .company { font-size: 13px; font-weight: 900; color: #003461; }
-            .title { font-size: 16px; font-weight: 800; color: #0f172a; margin-top: 2px; }
-            .subtitle { font-size: 11px; color: #64748b; margin-top: 2px; }
-            .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
-            .kpi-card { border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; background: #f8fafc; }
-            .kpi-card .lbl { font-size: 10px; color: #64748b; font-weight: 600; text-transform: uppercase; }
-            .kpi-card .val { font-size: 16px; font-weight: 800; color: #0f172a; margin-top: 2px; }
-            table.dtable { width: 100%; border-collapse: collapse; margin-top: 8px; }
-            table.dtable th { background: #003461; color: #fff; font-size: 10px; font-weight: 700; padding: 6px 8px; border: 1px solid #00284d; text-align: left; }
-            table.dtable td { font-size: 10px; padding: 5px 8px; border: 1px solid #cbd5e1; }
-            table.dtable tr:nth-child(even) { background: #f8fafc; }
-            .footer-sigs { margin-top: 24px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; page-break-inside: avoid; }
-            .sig-box { border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; text-align: center; }
-            .sig-space { height: 45px; }
-            .sig-name { font-size: 10.5px; font-weight: 700; border-top: 1px dashed #94a3b8; padding-top: 4px; }
-          </style>
-        </head>
-        <body>
-          <table class="header-table">
-            <tr>
-              <td>
-                <div class="company">PT CHITRA PARATAMA</div>
-                <div class="title">LAPORAN EWH INDIVIDU KARYAWAN</div>
-                <div class="subtitle">Nama: <b>${employee.name}</b> (${employee.employeeSn}) | Posisi: ${employee.jobTitle} | Periode: ${period}</div>
-              </td>
-              <td style="text-align: right; vertical-align: bottom; font-size: 10px; color: #64748b;">
-                Tanggal Cetak: ${todayStr}
-              </td>
-            </tr>
-          </table>
-
-          <div class="kpi-grid">
-            <div class="kpi-card">
-              <div class="lbl">Rata-rata EWH</div>
-              <div class="val" style="color: #003461;">${stats.avgEwh.toFixed(1)}%</div>
-            </div>
-            <div class="kpi-card">
-              <div class="lbl">Hari Kehadiran</div>
-              <div class="val">${stats.presentDays} / ${stats.totalDays} <span style="font-size: 10px; font-weight: 500;">Hari</span></div>
-            </div>
-            <div class="kpi-card">
-              <div class="lbl">Total Jam Efektif</div>
-              <div class="val" style="color: #059669;">${formatMinutesToHours(stats.totalEffective)}</div>
-            </div>
-            <div class="kpi-card">
-              <div class="lbl">Total Lembur Disetujui</div>
-              <div class="val" style="color: #ea580c;">${formatMinutesToHours(stats.totalOvertime)}</div>
-            </div>
-          </div>
-
-          <table class="dtable">
-            <thead>
-              <tr>
-                <th style="width: 30px; text-align: center;">No</th>
-                <th>Tanggal</th>
-                <th>Jam Masuk - Pulang</th>
-                <th style="text-align: right;">Durasi Kerja</th>
-                <th style="text-align: right;">Jam Efektif</th>
-                <th style="text-align: right;">Jam Lembur</th>
-                <th style="text-align: right;">Score EWH</th>
-                <th style="text-align: center;">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rows
-                .map((r, idx) => {
-                  const dateObj = new Date(r.workDate)
-                  const dateStr = dateObj.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })
-                  const dayClass = classifyEwh(r.ewhPercent)
-                  const dayLabel = EWH_CLASS_CONFIG[dayClass]?.label || dayClass
-                  return `
-                    <tr>
-                      <td style="text-align: center;">${idx + 1}</td>
-                      <td style="font-weight: 600;">${dateStr}</td>
-                      <td>${r.clockIn ? `${r.clockIn} - ${r.clockOut}` : '<span style="color:#ef4444;">Absen / Off</span>'}</td>
-                      <td style="text-align: right;">${formatMinutesToHours(r.clockDurationMinutes)}</td>
-                      <td style="text-align: right; font-weight: 600;">${formatMinutesToHours(r.effectiveMinutes)}</td>
-                      <td style="text-align: right;">${formatMinutesToHours(r.overtimeMinutes)}</td>
-                      <td style="text-align: right; font-weight: 700; color: #003461;">${r.ewhPercent.toFixed(1)}%</td>
-                      <td style="text-align: center;">${dayLabel}</td>
-                    </tr>
-                  `
-                })
-                .join('')}
-            </tbody>
-          </table>
-
-          <div class="footer-sigs">
-            <div class="sig-box">
-              <div style="font-size: 9.5px; font-weight: 700; color: #64748b; text-transform: uppercase;">Karyawan Bersangkutan</div>
-              <div class="sig-space"></div>
-              <div class="sig-name">${employee.name}</div>
-            </div>
-            <div class="sig-box">
-              <div style="font-size: 9.5px; font-weight: 700; color: #64748b; text-transform: uppercase;">Diperiksa Oleh (Supervisor)</div>
-              <div class="sig-space"></div>
-              <div class="sig-name">Supervisor / Coordinator</div>
-            </div>
-            <div class="sig-box">
-              <div style="font-size: 9.5px; font-weight: 700; color: #64748b; text-transform: uppercase;">Disetujui Oleh (Manager)</div>
-              <div class="sig-space"></div>
-              <div class="sig-name">Site Manager / Project Head</div>
-            </div>
-          </div>
-
-          <script>window.onload = function() { window.print(); };</script>
-        </body>
-      </html>
-    `)
-    printable.document.close()
   }
 
   return (
@@ -417,6 +398,67 @@ export function EwhEmployeeDetailClient({ employee, rows, period }: Props) {
           })}
         </div>
       </div>
+
+      {/* PDF Preview Modal Dialog */}
+      <Dialog open={!!pdfPreviewState} onOpenChange={(open) => !open && handleClosePdfPreview()}>
+        <DialogContent className="max-w-5xl w-[95vw] h-[90vh] max-h-[92vh] flex flex-col p-0 overflow-hidden rounded-2xl bg-white border border-slate-200 shadow-2xl">
+          <DialogHeader className="p-4 bg-slate-900 text-white shrink-0 flex flex-row items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                <FileText className="size-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-bold text-white flex items-center gap-2">
+                  Preview Dokumen PDF EWH Karyawan
+                </DialogTitle>
+                <p className="text-xs text-slate-300 font-mono">
+                  {pdfPreviewState?.filename}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 pr-6">
+              {pdfPreviewState?.url && (
+                <a
+                  href={pdfPreviewState.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-200 bg-slate-800 hover:bg-slate-700 hover:text-white border border-slate-700 transition-colors"
+                >
+                  <ExternalLink className="size-3.5" />
+                  Tab Baru
+                </a>
+              )}
+              <Button
+                size="sm"
+                onClick={handleDownloadPdfFromPreview}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold gap-1.5 rounded-lg shadow-sm h-8 px-3 cursor-pointer"
+              >
+                <Download className="size-3.5" />
+                Download PDF
+              </Button>
+            </div>
+          </DialogHeader>
+
+          <div className="flex-1 w-full bg-slate-100 overflow-hidden relative">
+            {pdfPreviewState?.url && (
+              <iframe
+                src={pdfPreviewState.url}
+                className="w-full h-full border-0"
+                title="Preview Dokumen PDF EWH Karyawan"
+              />
+            )}
+          </div>
+
+          <DialogFooter className="p-3 bg-slate-50 border-t border-slate-200 shrink-0 flex items-center justify-between sm:justify-between">
+            <span className="text-xs text-slate-500">
+              Gunakan tombol <strong>Download PDF</strong> untuk menyimpan file ke komputer Anda.
+            </span>
+            <Button size="sm" variant="outline" onClick={handleClosePdfPreview} className="rounded-xl cursor-pointer">
+              Tutup
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

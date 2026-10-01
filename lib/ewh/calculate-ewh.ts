@@ -134,11 +134,31 @@ export function formatMinutesToHours(minutes: number): string {
  */
 export function parseDateYMD(d: Date | string | null | undefined): { year: number; month: number; day: number } | null {
   if (!d) return null
-  const iso = d instanceof Date ? d.toISOString() : String(d)
-  const datePart = iso.split('T')[0]
-  const [y, m, day] = datePart.split('-').map(Number)
-  if (!y || !m || !day) return null
-  return { year: y, month: m, day }
+  if (d instanceof Date) {
+    if (isNaN(d.getTime())) return null
+    return {
+      year: d.getFullYear(),
+      month: d.getMonth() + 1,
+      day: d.getDate(),
+    }
+  }
+  const str = String(d).trim()
+  if (!str) return null
+  const match = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
+  if (match) {
+    return {
+      year: parseInt(match[1], 10),
+      month: parseInt(match[2], 10),
+      day: parseInt(match[3], 10),
+    }
+  }
+  const dateObj = new Date(str)
+  if (isNaN(dateObj.getTime())) return null
+  return {
+    year: dateObj.getFullYear(),
+    month: dateObj.getMonth() + 1,
+    day: dateObj.getDate(),
+  }
 }
 
 /**

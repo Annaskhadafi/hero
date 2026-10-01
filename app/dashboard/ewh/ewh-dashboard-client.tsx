@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { classifyEwh, formatMinutesToHours, EWH_ACTIVITY_COLUMNS } from '@/lib/ewh/calculate-ewh'
+import { classifyEwh, formatMinutesToHours, EWH_ACTIVITY_COLUMNS, parseDateYMD } from '@/lib/ewh/calculate-ewh'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -56,6 +56,7 @@ import {
   createEwhTeamAction,
   updateEwhTeamAction,
   deleteEwhTeamAction,
+  type EwhMatrixDayRow,
   type EwhSiteMonthlyMatrixResult,
   type EwhWeeklyBreakdownItem,
   type EwhMtdSummary,
@@ -72,10 +73,13 @@ import {
   Clock,
   Download,
   Edit2,
+  ArrowUpRight,
+  ExternalLink,
   Eye,
   EyeOff,
   FileSpreadsheet,
   FileText,
+  Filter,
   Layers,
   LineChart as LineChartIcon,
   MapPin,
@@ -90,6 +94,7 @@ import {
   UserCheck,
   Users,
   Wrench,
+  X,
 } from 'lucide-react'
 
 interface EwhRow {
@@ -114,6 +119,8 @@ interface EwhRow {
   overtimeMinutes: number
   workDate: Date
   period: string
+  activityMap?: Partial<Record<string, number>>
+  activitiesSummary?: Array<{ key: string; label: string; count: number }>
 }
 
 interface TeamMember {
@@ -196,9 +203,12 @@ export function EwhDashboardClient({
   // Safe helper to extract day of month (1..31) from Date or string
   const getRowDay = (workDate: Date | string | null | undefined): number => {
     if (!workDate) return 0
-    if (workDate instanceof Date) return workDate.getDate()
-    const d = new Date(workDate)
-    return isNaN(d.getTime()) ? 0 : d.getDate()
+    if (typeof workDate === 'string') {
+      const match = workDate.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
+      if (match) return parseInt(match[3], 10)
+    }
+    const parsed = parseDateYMD(workDate)
+    return parsed ? parsed.day : 0
   }
 
   // Pre-index rows by day (1..31) for fast O(1) lookup on hover
@@ -219,6 +229,36 @@ export function EwhDashboardClient({
   const [search, setSearch] = useState('')
   const [sectionFilter, setSectionFilter] = useState('all')
 
+  // PDF Preview Modal State
+  const [pdfPreviewState, setPdfPreviewState] = useState<{
+    url: string
+    filename: string
+    title: string
+  } | null>(null)
+
+  const handleClosePdfPreview = () => {
+    if (pdfPreviewState?.url) {
+      URL.revokeObjectURL(pdfPreviewState.url)
+    }
+    setPdfPreviewState(null)
+  }
+
+  const handleDownloadPdfFromPreview = () => {
+    if (!pdfPreviewState) return
+    const a = document.createElement('a')
+    a.href = pdfPreviewState.url
+    a.download = pdfPreviewState.filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    toast.success('File PDF berhasil di-download!')
+  }
+
+  // Selected Day Manpower Detail Dialog state
+  const [selectedDayDetail, setSelectedDayDetail] = useState<number | null>(null)
+  const [daySearchQuery, setDaySearchQuery] = useState('')
+  const [dayStatusFilter, setDayStatusFilter] = useState('all')
+
   // Team Modal state
   const [teamDialogOpen, setTeamDialogOpen] = useState(false)
   const [editingTeam, setEditingTeam] = useState<EwhTeam | null>(null)
@@ -227,6 +267,25 @@ export function EwhDashboardClient({
   const [selectedMembers, setSelectedMembers] = useState<number[]>([])
   const [savingTeam, setSavingTeam] = useState(false)
   const [deleteConfirmTeam, setDeleteConfirmTeam] = useState<EwhTeam | null>(null)
+
+  // Selected Day Manpower filtered for Modal Dialog
+  const selectedDayWorkers = useMemo(() => {
+    if (selectedDayDetail === null) return []
+    const dayRows = rowsByDay.get(selectedDayDetail) || []
+    return dayRows.filter((worker) => {
+      const q = daySearchQuery.toLowerCase().trim()
+      const matchSearch =
+        !q ||
+        worker.employeeName.toLowerCase().includes(q) ||
+        worker.employeeSn.toLowerCase().includes(q) ||
+        (worker.section || '').toLowerCase().includes(q) ||
+        (worker.department || '').toLowerCase().includes(q)
+      
+      const ewhClass = classifyEwh(worker.ewhPercent)
+      const matchStatus = dayStatusFilter === 'all' || ewhClass === dayStatusFilter
+      return matchSearch && matchStatus
+    })
+  }, [selectedDayDetail, rowsByDay, daySearchQuery, dayStatusFilter])
 
   // Calculate live matrix with customized powerman if changed
   const liveMatrix = useMemo(() => {
@@ -247,6 +306,295 @@ export function EwhDashboardClient({
     if (currentPowerman <= 0) return 0
     return Math.round((totalHours / 22 / currentPowerman) * 10) / 10
   }, [liveMatrix, currentPowerman])
+
+  // Matrix Hover Column Info Type
+  type MatrixHoverColumnInfo =
+    | { type: 'activity'; key: string; label: string; value: number }
+    | { type: 'durasi'; label: string; value: string }
+    | { type: 'date'; label: string; value?: string }
+
+  // Helper function to render Contextual Minimalist HoverCard on matrix table cells
+  const renderDayHoverCard = (
+    row: EwhMatrixDayRow,
+    dayWorkers: EwhRow[],
+    columnInfo: MatrixHoverColumnInfo | null,
+    children: React.ReactNode,
+    className?: string
+  ) => {
+    // 1. ACTIVITY COLUMN CONTEXT
+    if (columnInfo && columnInfo.type === 'activity') {
+      const actKey = columnInfo.key
+      const performers = dayWorkers.filter((w) => {
+        const cnt = (w.activityMap && w.activityMap[actKey]) || 0
+        return cnt > 0
+      })
+      const totalVolume = typeof columnInfo.value === 'number' ? columnInfo.value : 0
+
+      return (
+        <HoverCard openDelay={40} closeDelay={100}>
+          <HoverCardTrigger asChild>
+            <div
+              onClick={(e) => {
+                e.stopPropagation()
+                setSelectedDayDetail(row.day)
+              }}
+              className={`w-full h-full cursor-pointer hover:bg-slate-100 hover:text-slate-900 transition-colors ${className || ''}`}
+            >
+              {children}
+            </div>
+          </HoverCardTrigger>
+          <HoverCardContent
+            side="right"
+            align="start"
+            sideOffset={8}
+            className="w-72 sm:w-[320px] p-0 rounded-xl border border-slate-200/90 shadow-lg bg-white overflow-hidden z-50 text-left"
+          >
+            {/* Header */}
+            <div className="p-2.5 bg-slate-50/90 border-b border-slate-200 flex items-center justify-between">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-[10.5px] font-mono font-bold bg-slate-200/80 text-slate-800 px-1.5 py-0.5 rounded">
+                  Tgl {row.day}
+                </span>
+                <span className="text-xs font-bold text-slate-900 truncate">
+                  {columnInfo.label}
+                </span>
+              </div>
+              <span className="text-[10px] font-mono font-bold text-slate-700 bg-white border border-slate-200 px-1.5 py-0.5 rounded shrink-0">
+                {totalVolume} Item
+              </span>
+            </div>
+
+            {/* Performers Context Body */}
+            {performers.length === 0 ? (
+              <div className="p-3 text-center space-y-0.5 text-xs text-slate-500">
+                <p className="font-medium text-slate-700">Tidak ada log aktivitas pada tanggal ini</p>
+                <p className="text-[10px] text-slate-400">
+                  {dayWorkers.filter((w) => w.clockDurationMinutes > 0).length} manpower hadir • Total: {row.durasiKerjaHours.toFixed(1)}h
+                </p>
+              </div>
+            ) : (
+              <div className="p-2.5 max-h-[240px] overflow-y-auto space-y-1.5 divide-y divide-slate-100">
+                {performers.map((w) => {
+                  const hoursWork = (w.clockDurationMinutes / 60).toFixed(1)
+                  const hoursEff = (w.effectiveMinutes / 60).toFixed(1)
+                  const actCount = (w.activityMap && w.activityMap[actKey]) || 0
+
+                  return (
+                    <div key={w.employeeId} className="pt-1.5 first:pt-0 space-y-0.5">
+                      <div className="flex items-center justify-between gap-1.5">
+                        <span className="font-bold text-xs text-slate-900 truncate">
+                          {w.employeeName}
+                        </span>
+                        <span className="text-[10px] font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded shrink-0">
+                          {actCount} item
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-[10px] text-slate-500 font-mono">
+                        <span>
+                          Hadir: {hoursWork}h • Efektif: <strong className="text-emerald-700 font-bold">{hoursEff}h</strong> ({w.ewhPercentStr || `${w.ewhPercent.toFixed(0)}%`})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            router.push(`/dashboard/ewh/${w.employeeId}?period=${period}`)
+                          }}
+                          className="text-blue-600 hover:text-blue-800 font-medium hover:underline cursor-pointer"
+                        >
+                          Timeline →
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </HoverCardContent>
+        </HoverCard>
+      )
+    }
+
+    // 2. DURASI KERJA COLUMN CONTEXT
+    if (columnInfo && columnInfo.type === 'durasi') {
+      const activeWorkers = dayWorkers
+        .filter((w) => w.clockDurationMinutes > 0)
+        .sort((a, b) => b.effectiveMinutes - a.effectiveMinutes)
+
+      return (
+        <HoverCard openDelay={40} closeDelay={100}>
+          <HoverCardTrigger asChild>
+            <div
+              onClick={(e) => {
+                e.stopPropagation()
+                setSelectedDayDetail(row.day)
+              }}
+              className={`w-full h-full cursor-pointer hover:bg-slate-100 hover:text-slate-900 transition-colors ${className || ''}`}
+            >
+              {children}
+            </div>
+          </HoverCardTrigger>
+          <HoverCardContent
+            side="right"
+            align="start"
+            sideOffset={8}
+            className="w-72 sm:w-[320px] p-0 rounded-xl border border-slate-200/90 shadow-lg bg-white overflow-hidden z-50 text-left"
+          >
+            {/* Header */}
+            <div className="p-2.5 bg-slate-50/90 border-b border-slate-200 flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10.5px] font-mono font-bold bg-slate-200/80 text-slate-800 px-1.5 py-0.5 rounded">
+                  Tgl {row.day}
+                </span>
+                <span className="text-xs font-bold text-slate-900">
+                  Durasi Jam Kerja
+                </span>
+              </div>
+              <span className="text-[10px] font-mono font-bold text-slate-800 bg-white border border-slate-200 px-1.5 py-0.5 rounded">
+                {row.durasiKerjaHours.toFixed(2)}h
+              </span>
+            </div>
+
+            {/* Sub-bar */}
+            <div className="px-2.5 py-1.5 bg-slate-100/60 border-b border-slate-100 flex items-center justify-between text-[10px] font-mono text-slate-600">
+              <span>Rata-rata: <strong className="text-emerald-700">{row.ewhHoursPerPerson.toFixed(1)}h/org</strong> ({row.ewhRatioPercent}%)</span>
+              <span>{activeWorkers.length} Manpower</span>
+            </div>
+
+            {/* Active Workers List */}
+            <div className="p-2.5 max-h-[220px] overflow-y-auto space-y-1.5 divide-y divide-slate-100">
+              {activeWorkers.length === 0 ? (
+                <div className="text-center py-3 text-slate-400 text-xs">
+                  Tidak ada kehadiran pada tanggal ini.
+                </div>
+              ) : (
+                activeWorkers.map((w) => {
+                  const hoursWork = (w.clockDurationMinutes / 60).toFixed(1)
+                  const hoursEff = (w.effectiveMinutes / 60).toFixed(1)
+
+                  return (
+                    <div key={w.employeeId} className="pt-1.5 first:pt-0 flex items-center justify-between text-[10.5px]">
+                      <div className="min-w-0">
+                        <span className="font-semibold text-slate-900 block truncate">{w.employeeName}</span>
+                        <span className="text-[9.5px] text-slate-500 font-mono">Hadir: {hoursWork}h • Efektif: {hoursEff}h</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          router.push(`/dashboard/ewh/${w.employeeId}?period=${period}`)
+                        }}
+                        className="text-[10px] text-blue-600 hover:text-blue-800 font-medium hover:underline cursor-pointer shrink-0 ml-2"
+                      >
+                        Timeline →
+                      </button>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </HoverCardContent>
+        </HoverCard>
+      )
+    }
+
+    // 3. DATE / GENERAL COLUMN CONTEXT
+    const activeWorkers = dayWorkers.filter((w) => w.clockDurationMinutes > 0 || w.activitySessionCount > 0)
+    const activeActivities = EWH_ACTIVITY_COLUMNS.filter((col) => {
+      const v = (row as any)[col.key]
+      return typeof v === 'number' && v > 0
+    })
+
+    return (
+      <HoverCard openDelay={40} closeDelay={100}>
+        <HoverCardTrigger asChild>
+          <div
+            onClick={(e) => {
+              e.stopPropagation()
+              setSelectedDayDetail(row.day)
+            }}
+            className={`w-full h-full cursor-pointer hover:bg-slate-100 hover:text-slate-900 transition-colors ${className || ''}`}
+          >
+            {children}
+          </div>
+        </HoverCardTrigger>
+        <HoverCardContent
+          side="right"
+          align="start"
+          sideOffset={8}
+          className="w-72 sm:w-[320px] p-0 rounded-xl border border-slate-200/90 shadow-lg bg-white overflow-hidden z-50 text-left"
+        >
+          {/* Header */}
+          <div className="p-2.5 bg-slate-50/90 border-b border-slate-200 flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10.5px] font-mono font-bold bg-slate-200/80 text-slate-800 px-1.5 py-0.5 rounded">
+                Tgl {row.day}
+              </span>
+              <span className="text-xs font-bold text-slate-900">
+                Ringkasan Hari
+              </span>
+            </div>
+            <span className="text-[10px] font-mono font-bold text-slate-700 bg-white border border-slate-200 px-1.5 py-0.5 rounded">
+              {activeWorkers.length} Hadir
+            </span>
+          </div>
+
+          {/* Metrics */}
+          <div className="grid grid-cols-3 divide-x divide-slate-100 bg-white px-2 py-1.5 border-b border-slate-100 text-center text-xs">
+            <div>
+              <span className="block text-[9px] text-slate-400">Total Jam</span>
+              <span className="font-bold text-slate-800 font-mono text-[11px]">{row.durasiKerjaHours.toFixed(1)}h</span>
+            </div>
+            <div>
+              <span className="block text-[9px] text-slate-400">Rata EWH</span>
+              <span className="font-bold text-emerald-700 font-mono text-[11px]">{row.ewhHoursPerPerson.toFixed(1)}h</span>
+            </div>
+            <div>
+              <span className="block text-[9px] text-slate-400">Efisiensi</span>
+              <span className="font-bold text-blue-700 font-mono text-[11px]">{row.ewhRatioPercent}%</span>
+            </div>
+          </div>
+
+          {/* Activities Badges */}
+          {activeActivities.length > 0 && (
+            <div className="p-2 bg-slate-50/60 border-b border-slate-100 flex flex-wrap gap-1">
+              {activeActivities.map((col) => {
+                const val = (row as any)[col.key]
+                return (
+                  <span key={col.key} className="text-[9.5px] font-mono font-semibold bg-white border border-slate-200 px-1.5 py-0.2 rounded text-slate-700">
+                    {col.short}: <strong>{val}</strong>
+                  </span>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Active Workers */}
+          <div className="p-2.5 max-h-[160px] overflow-y-auto space-y-1 divide-y divide-slate-100">
+            {activeWorkers.length === 0 ? (
+              <div className="text-center py-3 text-slate-400 text-xs">
+                Tidak ada aktivitas atau absensi pada tanggal ini.
+              </div>
+            ) : (
+              activeWorkers.slice(0, 6).map((w) => {
+                const hoursEff = (w.effectiveMinutes / 60).toFixed(1)
+                return (
+                  <div key={w.employeeId} className="pt-1 first:pt-0 flex items-center justify-between text-[10.5px]">
+                    <span className="font-medium text-slate-800 truncate">{w.employeeName}</span>
+                    <span className="font-mono text-[10px] text-slate-500 shrink-0">{hoursEff}h</span>
+                  </div>
+                )
+              })
+            )}
+            {activeWorkers.length > 6 && (
+              <p className="text-[9.5px] text-slate-400 text-center pt-1">
+                +{activeWorkers.length - 6} orang lainnya
+              </p>
+            )}
+          </div>
+        </HoverCardContent>
+      </HoverCard>
+    )
+  }
 
   // Daily Trend Data for Line / Area / Composed Chart
   const dailyTrendData = useMemo(() => {
@@ -766,517 +1114,120 @@ export function EwhDashboardClient({
     toast.success('File Excel EWH berhasil diunduh!')
   }
 
-  // PDF Export Handler (Mendukung Matriks, Rekap Individu, dan Rekap Team dengan Layout Cetak Standar PT Chitra Paratama)
-  const exportEwhToPdf = () => {
-    const printable = window.open('', '_blank', 'width=1280,height=900')
-    if (!printable) {
-      toast.error('Pop-up terblokir oleh browser. Harap izinkan pop-up untuk mencetak PDF.')
-      return
-    }
+  // PDF Export Handler (Mengikuti Standar Format PDF Attendance: Kop Header, Tabel Border, Shading Libur/Weekend/Total, dan Footer Tanda Tangan)
+  const exportEwhToPdf = async () => {
+    try {
+      toast.loading('Menyiapkan file PDF EWH...', { id: 'ewh-pdf' })
+      const cleanSiteName = monthlyMatrixData.siteName.replace(/\s+/g, '_')
+      const currentDepartmentName =
+        allDepartments.find((d) => d.id === departmentId)?.name || 'Semua Departemen'
 
-    const todayStr = new Intl.DateTimeFormat('id-ID', { dateStyle: 'long' }).format(new Date())
+      let pdfBytes: Uint8Array
+      let downloadFilename = ''
 
-    const currentDepartmentName =
-      allDepartments.find((d) => d.id === departmentId)?.name || 'Semua Departemen'
-
-    let reportTitle = ''
-    let reportSubtitle = ''
-    let tableHeaderHtml = ''
-    let tableRowsHtml = ''
-    let summaryCardsHtml = ''
-
-    if (activeTab === 'individual') {
-      reportTitle = 'LAPORAN REKAPITULASI EWH INDIVIDU KARYAWAN'
-      reportSubtitle = `Site: ${monthlyMatrixData.siteName} | Departemen: ${currentDepartmentName} | Periode: ${period} | Powerman: ${currentPowerman} Orang`
-
-      const totalEmp = filteredEmployees.length
-      const avgSiteEwh =
-        totalEmp > 0
-          ? (filteredEmployees.reduce((acc, curr) => acc + curr.avgEwh, 0) / totalEmp).toFixed(1)
-          : '0.0'
-      const optimalCount = filteredEmployees.filter(
-        (e) => e.ewhClass === 'excellent' || e.ewhClass === 'good'
-      ).length
-      const underCount = filteredEmployees.filter(
-        (e) => e.ewhClass === 'low' || e.ewhClass === 'absent'
-      ).length
-
-      summaryCardsHtml = `
-        <div class="summary-grid">
-          <div class="summary-card">
-            <div class="label">Total Karyawan</div>
-            <div class="val">${totalEmp} <span class="unit">Orang</span></div>
-          </div>
-          <div class="summary-card">
-            <div class="label">Rata-rata EWH Individu</div>
-            <div class="val">${avgSiteEwh}%</div>
-          </div>
-          <div class="summary-card">
-            <div class="label">Status Baik/Optimal (≥70%)</div>
-            <div class="val text-emerald">${optimalCount} <span class="unit">Orang</span></div>
-          </div>
-          <div class="summary-card">
-            <div class="label">Perlu Perbaikan (&lt;50%)</div>
-            <div class="val text-rose">${underCount} <span class="unit">Orang</span></div>
-          </div>
-        </div>
-      `
-
-      tableHeaderHtml = `
-        <tr>
-          <th style="width: 40px; text-align: center;">No</th>
-          <th>Nama Karyawan</th>
-          <th>SN</th>
-          <th>Section</th>
-          <th>Departemen</th>
-          <th style="text-align: center;">Hari Kerja</th>
-          <th style="text-align: right;">Jam Reguler</th>
-          <th style="text-align: right;">Jam Lembur</th>
-          <th style="text-align: right;">Total EWH (Jam)</th>
-          <th style="text-align: right;">Score EWH (%)</th>
-          <th style="text-align: center;">Status EWH</th>
-        </tr>
-      `
-
-      tableRowsHtml = filteredEmployees
-        .map((e, idx) => {
-          const classCfg = EWH_CLASS_CONFIG[e.ewhClass] || { label: e.ewhClass, color: '' }
-          const badgeClass =
-            e.ewhClass === 'excellent'
-              ? 'badge-optimal'
-              : e.ewhClass === 'good'
-                ? 'badge-normal'
-                : e.ewhClass === 'fair'
-                  ? 'badge-over'
-                  : 'badge-under'
-
-          return `
-            <tr>
-              <td style="text-align: center;">${idx + 1}</td>
-              <td style="font-weight: 600;">${e.employeeName}</td>
-              <td>${e.employeeSn}</td>
-              <td>${e.section || '-'}</td>
-              <td>${e.department || '-'}</td>
-              <td style="text-align: center;">${e.workDays}</td>
-              <td style="text-align: right;">${(e.totalClockMinutes / 60).toFixed(2)}</td>
-              <td style="text-align: right;">${(e.totalOvertimeMinutes / 60).toFixed(2)}</td>
-              <td style="text-align: right; font-weight: 600;">${(e.totalEffectiveMinutes / 60).toFixed(2)}</td>
-              <td style="text-align: right; font-weight: 700; color: #003461;">${e.avgEwh.toFixed(1)}%</td>
-              <td style="text-align: center;"><span class="badge ${badgeClass}">${classCfg.label}</span></td>
-            </tr>
-          `
+      if (activeTab === 'individual') {
+        const { generateEwhIndividualSummaryPdf } = await import('@/lib/timesheet/generate-ewh-pdf')
+        pdfBytes = await generateEwhIndividualSummaryPdf({
+          period,
+          siteName: monthlyMatrixData.siteName,
+          departmentName: currentDepartmentName,
+          powerman: currentPowerman,
+          employees: filteredEmployees.map((e, idx) => ({
+            no: idx + 1,
+            employeeName: e.employeeName,
+            employeeSn: e.employeeSn,
+            section: e.section || '-',
+            department: e.department || '-',
+            workDays: e.workDays,
+            regularHours: e.totalClockMinutes / 60,
+            overtimeHours: e.totalOvertimeMinutes / 60,
+            effectiveHours: e.totalEffectiveMinutes / 60,
+            avgEwh: e.avgEwh,
+            ewhClassLabel: (EWH_CLASS_CONFIG[e.ewhClass] || { label: e.ewhClass }).label,
+          })),
+          signatures: {
+            preparedBy: 'Supervisor / Lead Hand',
+            pjoLeader: 'PJO / Coordinator',
+            approvedBy: 'Site Manager',
+            hrName: 'Human Capital',
+          },
         })
-        .join('')
-    } else if (activeTab === 'team') {
-      reportTitle = 'LAPORAN REKAPITULASI EWH PER TEAM'
-      reportSubtitle = `Site: ${monthlyMatrixData.siteName} | Departemen: ${currentDepartmentName} | Periode: ${period} | Total Team: ${filteredTeamAggregates.length}`
-
-      tableHeaderHtml = `
-        <tr>
-          <th style="width: 40px; text-align: center;">No</th>
-          <th>Nama Team</th>
-          <th>Section</th>
-          <th style="text-align: center;">Jumlah Anggota</th>
-          <th style="text-align: center;">Rata-rata Hari Kerja</th>
-          <th style="text-align: right;">Total Jam Kerja</th>
-          <th style="text-align: right;">Total Jam EWH</th>
-          <th style="text-align: right;">Rata-rata EWH (%)</th>
-          <th style="text-align: center;">Status Efektivitas</th>
-        </tr>
-      `
-
-      tableRowsHtml = filteredTeamAggregates
-        .map((t, idx) => {
-          const classCfg = EWH_CLASS_CONFIG[t.ewhClass] || { label: t.ewhClass }
-          const badgeClass =
-            t.ewhClass === 'excellent'
-              ? 'badge-optimal'
-              : t.ewhClass === 'good'
-                ? 'badge-normal'
-                : t.ewhClass === 'fair'
-                  ? 'badge-over'
-                  : 'badge-under'
-
-          return `
-            <tr>
-              <td style="text-align: center;">${idx + 1}</td>
-              <td style="font-weight: 600;">${t.name}</td>
-              <td>${t.section || 'General'}</td>
-              <td style="text-align: center;">${t.members.length} Orang</td>
-              <td style="text-align: center;">${t.avgWorkDays}</td>
-              <td style="text-align: right;">${(t.totalClockMinutes / 60).toFixed(2)}</td>
-              <td style="text-align: right; font-weight: 600;">${(t.totalEffectiveMinutes / 60).toFixed(2)}</td>
-              <td style="text-align: right; font-weight: 700; color: #003461;">${t.avgEwh.toFixed(1)}%</td>
-              <td style="text-align: center;"><span class="badge ${badgeClass}">${classCfg.label}</span></td>
-            </tr>
-          `
+        downloadFilename = `EWH_Rekap_Individu_${cleanSiteName}_${period}.pdf`
+      } else if (activeTab === 'team') {
+        const { generateEwhTeamSummaryPdf } = await import('@/lib/timesheet/generate-ewh-pdf')
+        pdfBytes = await generateEwhTeamSummaryPdf({
+          period,
+          siteName: monthlyMatrixData.siteName,
+          departmentName: currentDepartmentName,
+          teams: filteredTeamAggregates.map((t, idx) => ({
+            no: idx + 1,
+            name: t.name,
+            section: t.section || 'General',
+            memberCount: t.members.length,
+            avgWorkDays: t.avgWorkDays,
+            totalClockHours: t.totalClockMinutes / 60,
+            totalEffectiveHours: t.totalEffectiveMinutes / 60,
+            avgEwh: t.avgEwh,
+            ewhClassLabel: (EWH_CLASS_CONFIG[t.ewhClass] || { label: t.ewhClass }).label,
+          })),
+          signatures: {
+            preparedBy: 'Supervisor / Lead Hand',
+            pjoLeader: 'PJO / Coordinator',
+            approvedBy: 'Site Manager',
+            hrName: 'Human Capital',
+          },
         })
-        .join('')
-    } else {
-      // Active tab Matrix
-      reportTitle = `LAPORAN EFFECTIVE WORKING HOURS (${viewMode.toUpperCase()})`
-      reportSubtitle = `Site: ${monthlyMatrixData.siteName} | Periode: ${period} | Powerman: ${currentPowerman} Orang`
-
-      if (viewMode === 'daily') {
-        tableHeaderHtml = `
-          <tr>
-            <th style="width: 35px; text-align: center;">Tgl</th>
-            <th>P5M</th>
-            <th>Check Press</th>
-            <th>Adj Press</th>
-            <th>Reseal</th>
-            <th>Assembly</th>
-            <th>Disass</th>
-            <th>Mounting</th>
-            <th>Dismount</th>
-            <th>PM Check</th>
-            <th>Clean Up</th>
-            <th>Maint Rim</th>
-            <th>Retorque</th>
-            <th style="text-align: right;">Durasi Kerja</th>
-            <th style="text-align: right;">EWH/Orang</th>
-            <th style="text-align: center;">Efisiensi</th>
-          </tr>
-        `
-        tableRowsHtml = liveMatrix
-          .map(
-            (r) => `
-            <tr>
-              <td style="text-align: center; font-weight: 600;">${r.day}</td>
-              <td>${r.p5m || '-'}</td>
-              <td>${r.checkPressure || '-'}</td>
-              <td>${r.adjustPressure || '-'}</td>
-              <td>${r.reseal || '-'}</td>
-              <td>${r.assembly || '-'}</td>
-              <td>${r.disassembly || '-'}</td>
-              <td>${r.mounting || '-'}</td>
-              <td>${r.dismounting || '-'}</td>
-              <td>${r.pmCheck || '-'}</td>
-              <td>${r.cleanUp || '-'}</td>
-              <td>${r.maintenanceRim || '-'}</td>
-              <td>${r.retorque || '-'}</td>
-              <td style="text-align: right;">${r.durasiKerjaHours ? r.durasiKerjaHours.toFixed(2) : '-'}</td>
-              <td style="text-align: right; font-weight: 700; color: #003461;">${r.ewhHoursPerPerson ? r.ewhHoursPerPerson.toFixed(2) : '-'}</td>
-              <td style="text-align: center;">${r.ewhRatioPercent ? `${r.ewhRatioPercent.toFixed(1)}%` : '-'}</td>
-            </tr>
-          `
-          )
-          .join('')
-
-        const sum = monthlyMatrixData.sumRow
-        tableRowsHtml += `
-          <tr style="background: #f1f5f9; font-weight: bold; border-top: 2px solid #003461;">
-            <td style="text-align: center;">SUM</td>
-            <td>${sum.p5m}</td>
-            <td>${sum.checkPressure}</td>
-            <td>${sum.adjustPressure}</td>
-            <td>${sum.reseal}</td>
-            <td>${sum.assembly}</td>
-            <td>${sum.disassembly}</td>
-            <td>${sum.mounting}</td>
-            <td>${sum.dismounting}</td>
-            <td>${sum.pmCheck}</td>
-            <td>${sum.cleanUp}</td>
-            <td>${sum.maintenanceRim}</td>
-            <td>${sum.retorque}</td>
-            <td style="text-align: right;">${sum.totalDurasiKerjaHours.toFixed(2)}</td>
-            <td style="text-align: right; color: #003461;">${liveEwhAverage.toFixed(1)}</td>
-            <td style="text-align: center;">${sum.monthlyEfficiencyPercent}%</td>
-          </tr>
-        `
+        downloadFilename = `EWH_Rekap_Team_${cleanSiteName}_${period}.pdf`
       } else if (viewMode === 'weekly') {
-        tableHeaderHtml = `
-          <tr>
-            <th>Minggu</th>
-            <th>Rentang Tanggal</th>
-            <th style="text-align: center;">P5M</th>
-            <th style="text-align: center;">Check Press</th>
-            <th style="text-align: center;">Adjust Press</th>
-            <th style="text-align: center;">Assembly</th>
-            <th style="text-align: center;">Mounting</th>
-            <th style="text-align: center;">Dismounting</th>
-            <th style="text-align: center;">PM Check</th>
-            <th style="text-align: right;">Total Jam Kerja</th>
-            <th style="text-align: right;">EWH/Orang</th>
-            <th style="text-align: center;">Efisiensi</th>
-          </tr>
-        `
-        tableRowsHtml = liveWeeklyBreakdown
-          .map(
-            (w) => `
-            <tr>
-              <td style="font-weight: 600;">${w.label}</td>
-              <td>${w.rangeStr}</td>
-              <td style="text-align: center;">${w.p5m}</td>
-              <td style="text-align: center;">${w.checkPressure}</td>
-              <td style="text-align: center;">${w.adjustPressure}</td>
-              <td style="text-align: center;">${w.assembly}</td>
-              <td style="text-align: center;">${w.mounting}</td>
-              <td style="text-align: center;">${w.dismounting}</td>
-              <td style="text-align: center;">${w.pmCheck}</td>
-              <td style="text-align: right;">${w.totalHours.toFixed(2)}</td>
-              <td style="text-align: right; font-weight: 700; color: #003461;">${w.ewhHoursPerPerson.toFixed(2)}</td>
-              <td style="text-align: center;">${w.ewhRatioPercent.toFixed(1)}%</td>
-            </tr>
-          `
-          )
-          .join('')
-      } else if (viewMode === 'mtd') {
-        tableHeaderHtml = `
-          <tr>
-            <th>Metrik / Item Aktivitas</th>
-            <th style="text-align: right;">Total Volume / Nilai MTD</th>
-          </tr>
-        `
-        tableRowsHtml = `
-          <tr style="font-weight: 600; background: #f8fafc;">
-            <td>Total Jam Kerja MTD</td>
-            <td style="text-align: right;">${monthlyMatrixData.mtdSummary.totalHours.toFixed(1)} Jam</td>
-          </tr>
-          <tr style="font-weight: 700; background: #eff6ff; color: #003461;">
-            <td>Rata-rata EWH MTD</td>
-            <td style="text-align: right;">${monthlyMatrixData.mtdSummary.mtdEwhAverage.toFixed(1)} Jam/Orang</td>
-          </tr>
-          <tr style="font-weight: 600;">
-            <td>Efisiensi Shift MTD</td>
-            <td style="text-align: right;">${monthlyMatrixData.mtdSummary.mtdEfficiencyPercent}%</td>
-          </tr>
-          <tr style="font-weight: 600;">
-            <td>Hari Kerja Aktif MTD</td>
-            <td style="text-align: right;">${monthlyMatrixData.mtdSummary.activeDaysCount} Hari</td>
-          </tr>
-        ` +
-          EWH_ACTIVITY_COLUMNS.map(
-            (col) => `
-            <tr>
-              <td>${col.label}</td>
-              <td style="text-align: right; font-weight: 600;">${monthlyMatrixData.mtdSummary.activities[col.key] || 0}</td>
-            </tr>
-          `
-          ).join('')
-      } else if (viewMode === 'ytd') {
-        tableHeaderHtml = `
-          <tr>
-            <th>Bulan</th>
-            <th>Periode</th>
-            <th style="text-align: right;">Total Jam Kerja</th>
-            <th style="text-align: center;">Powerman</th>
-            <th style="text-align: right;">Rata-rata EWH</th>
-            <th style="text-align: center;">Efisiensi</th>
-            <th style="text-align: right;">Total Aktivitas</th>
-          </tr>
-        `
-        tableRowsHtml = liveYtdMonths
-          .map(
-            (m) => `
-            <tr>
-              <td style="font-weight: 600;">${m.monthName}</td>
-              <td>${m.period}</td>
-              <td style="text-align: right;">${m.totalHours.toFixed(2)}</td>
-              <td style="text-align: center;">${m.powerman}</td>
-              <td style="text-align: right; font-weight: 700; color: #003461;">${m.ewhAverage.toFixed(1)} Jam</td>
-              <td style="text-align: center;">${m.efficiencyPercent}%</td>
-              <td style="text-align: right; font-weight: 600;">${m.totalActivities}</td>
-            </tr>
-          `
-          )
-          .join('')
+        const { generateEwhWeeklyPdf } = await import('@/lib/timesheet/generate-ewh-pdf')
+        pdfBytes = await generateEwhWeeklyPdf({
+          period,
+          siteName: monthlyMatrixData.siteName,
+          departmentName: currentDepartmentName,
+          powerman: currentPowerman,
+          weeklyData: liveWeeklyBreakdown,
+          signatures: {
+            preparedBy: 'Admin / Lead Hand',
+            pjoLeader: 'Supervisor / PJO',
+            approvedBy: 'Site Manager',
+            hrName: 'Human Capital',
+          },
+        })
+        downloadFilename = `EWH_Mingguan_${cleanSiteName}_${period}.pdf`
+      } else {
+        // Daily Matrix (Harian / MTD / YTD default)
+        const { generateEwhDailyMatrixPdf } = await import('@/lib/timesheet/generate-ewh-pdf')
+        pdfBytes = await generateEwhDailyMatrixPdf({
+          period,
+          siteName: monthlyMatrixData.siteName,
+          departmentName: currentDepartmentName,
+          powerman: currentPowerman,
+          matrix: liveMatrix,
+          sumRow: monthlyMatrixData.sumRow,
+          liveEwhAverage,
+          signatures: {
+            preparedBy: 'Admin / Lead Hand',
+            pjoLeader: 'Supervisor / PJO',
+            approvedBy: 'Site Manager',
+            hrName: 'Human Capital',
+          },
+        })
+        downloadFilename = `EWH_Harian_${cleanSiteName}_${period}.pdf`
       }
+
+      const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      setPdfPreviewState({
+        url,
+        filename: downloadFilename,
+        title: downloadFilename.replace('.pdf', '').replace(/_/g, ' '),
+      })
+
+      toast.success('Preview PDF EWH siap!', { id: 'ewh-pdf' })
+    } catch (err) {
+      console.error('[EWH PDF Error]', err)
+      toast.error('Gagal men-generate PDF EWH', { id: 'ewh-pdf' })
     }
-
-    printable.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <title>${reportTitle} - ${monthlyMatrixData.siteName} - ${period}</title>
-          <style>
-            @page {
-              size: landscape;
-              margin: 10mm;
-            }
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-              color: #0f172a;
-              margin: 0;
-              padding: 16px;
-              background: #fff;
-              font-size: 11px;
-            }
-            .header-table {
-              width: 100%;
-              border-bottom: 2px solid #003461;
-              padding-bottom: 8px;
-              margin-bottom: 12px;
-            }
-            .company-name {
-              font-size: 14px;
-              font-weight: 900;
-              color: #003461;
-              letter-spacing: 0.5px;
-            }
-            .doc-title {
-              font-size: 16px;
-              font-weight: 800;
-              color: #0f172a;
-              margin-top: 2px;
-            }
-            .doc-sub {
-              font-size: 11px;
-              color: #64748b;
-              margin-top: 2px;
-            }
-            .summary-grid {
-              display: grid;
-              grid-template-columns: repeat(4, 1fr);
-              gap: 8px;
-              margin-bottom: 14px;
-            }
-            .summary-card {
-              border: 1px solid #e2e8f0;
-              border-radius: 6px;
-              padding: 8px 10px;
-              background: #f8fafc;
-            }
-            .summary-card .label {
-              font-size: 10px;
-              color: #64748b;
-              font-weight: 600;
-              text-transform: uppercase;
-            }
-            .summary-card .val {
-              font-size: 16px;
-              font-weight: 800;
-              color: #0f172a;
-              margin-top: 2px;
-            }
-            .summary-card .unit {
-              font-size: 10px;
-              font-weight: 500;
-              color: #64748b;
-            }
-            .text-emerald { color: #059669 !important; }
-            .text-rose { color: #e11d48 !important; }
-            table.data-table {
-              width: 100%;
-              border-collapse: collapse;
-              margin-top: 8px;
-            }
-            table.data-table th {
-              background: #003461;
-              color: #ffffff;
-              font-size: 10px;
-              font-weight: 700;
-              padding: 6px 8px;
-              border: 1px solid #00284d;
-              text-align: left;
-            }
-            table.data-table td {
-              font-size: 10.5px;
-              padding: 5px 8px;
-              border: 1px solid #cbd5e1;
-            }
-            table.data-table tr:nth-child(even) {
-              background: #f8fafc;
-            }
-            .badge {
-              display: inline-block;
-              padding: 2px 6px;
-              border-radius: 4px;
-              font-size: 9.5px;
-              font-weight: 700;
-            }
-            .badge-optimal { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
-            .badge-normal { background: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc; }
-            .badge-over { background: #fef9c3; color: #a16207; border: 1px solid #fde047; }
-            .badge-under { background: #ffe4e6; color: #be123c; border: 1px solid #fca5a5; }
-            .footer-sigs {
-              margin-top: 24px;
-              display: grid;
-              grid-template-columns: repeat(3, 1fr);
-              gap: 20px;
-              page-break-inside: avoid;
-            }
-            .sig-box {
-              border: 1px solid #cbd5e1;
-              border-radius: 6px;
-              padding: 10px;
-              text-align: center;
-              background: #fff;
-            }
-            .sig-title {
-              font-size: 10px;
-              font-weight: 700;
-              color: #64748b;
-              text-transform: uppercase;
-            }
-            .sig-space {
-              height: 50px;
-            }
-            .sig-name {
-              font-size: 11px;
-              font-weight: 700;
-              border-top: 1px dashed #94a3b8;
-              padding-top: 4px;
-            }
-            .print-note {
-              margin-top: 16px;
-              font-size: 9px;
-              color: #94a3b8;
-              text-align: right;
-            }
-          </style>
-        </head>
-        <body>
-          <table class="header-table">
-            <tr>
-              <td>
-                <div class="company-name">PT CHITRA PARATAMA</div>
-                <div class="doc-title">${reportTitle}</div>
-                <div class="doc-sub">${reportSubtitle}</div>
-              </td>
-              <td style="text-align: right; vertical-align: bottom;">
-                <div style="font-size: 10px; color: #64748b;">Tanggal Cetak: ${todayStr}</div>
-              </td>
-            </tr>
-          </table>
-
-          ${summaryCardsHtml}
-
-          <table class="data-table">
-            <thead>${tableHeaderHtml}</thead>
-            <tbody>${tableRowsHtml}</tbody>
-          </table>
-
-          <div class="footer-sigs">
-            <div class="sig-box">
-              <div class="sig-title">Dibuat Oleh (Prepared By)</div>
-              <div class="sig-space"></div>
-              <div class="sig-name">Supervisor / Officer EWH</div>
-            </div>
-            <div class="sig-box">
-              <div class="sig-title">Diperiksa Oleh (Checked By)</div>
-              <div class="sig-space"></div>
-              <div class="sig-name">Section Head / HC Admin</div>
-            </div>
-            <div class="sig-box">
-              <div class="sig-title">Disetujui Oleh (Approved By)</div>
-              <div class="sig-space"></div>
-              <div class="sig-name">Site Manager / Project Manager</div>
-            </div>
-          </div>
-
-          <div class="print-note">Dokumen ini di-generate secara otomatis oleh Sistem HERO Enterprise Operational Portal.</div>
-
-          <script>
-            window.onload = function() {
-              window.print();
-            };
-          </script>
-        </body>
-      </html>
-    `)
-    printable.document.close()
   }
 
   // Navigation handlers
@@ -1706,292 +1657,64 @@ export function EwhDashboardClient({
                             return (
                               <tr
                                 key={row.day}
-                                className={`hover:bg-blue-50/50 transition-colors ${
+                                className={`hover:bg-blue-50/60 transition-colors ${
                                   row.day % 2 === 0 ? 'bg-slate-50/40' : 'bg-white'
                                 } ${!hasData ? 'text-slate-300' : 'text-slate-800'}`}
                               >
-                                {/* TGL with HoverCard for all active manpower */}
-                                <td className="py-1 px-1 font-bold font-mono border-r border-slate-200 bg-slate-50/70 p-0">
-                                  <HoverCard openDelay={100} closeDelay={150}>
-                                    <HoverCardTrigger asChild>
-                                      <button
-                                        type="button"
-                                        className="w-full h-full py-1.5 px-2 font-bold font-mono text-center cursor-pointer hover:bg-blue-100/80 hover:text-blue-700 transition-colors flex items-center justify-center gap-1 group"
-                                        title="Hover untuk melihat daftar manpower"
-                                      >
-                                        <span>{row.day}</span>
-                                        {dayWorkers.length > 0 && (
-                                          <span className="inline-flex items-center justify-center size-4 text-[9px] font-black rounded-full bg-blue-100 text-blue-800 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                                            {dayWorkers.length}
-                                          </span>
-                                        )}
-                                      </button>
-                                    </HoverCardTrigger>
-                                    <HoverCardContent
-                                      side="right"
-                                      align="start"
-                                      sideOffset={8}
-                                      className="w-80 sm:w-96 md:w-[450px] p-0 rounded-2xl border border-slate-200/90 shadow-2xl bg-white/98 backdrop-blur-md overflow-hidden z-50 text-left"
-                                    >
-                                      {/* Header */}
-                                      <div className="bg-gradient-to-r from-slate-900 via-[#003461] to-slate-900 text-white p-3.5 flex items-center justify-between">
-                                        <div className="space-y-0.5">
-                                          <div className="flex items-center gap-2">
-                                            <span className="text-xs font-black uppercase tracking-wider text-amber-300">
-                                              TGL {row.day}
-                                            </span>
-                                            <span className="text-[11px] font-medium text-slate-300">
-                                              {row.dateStr || period}
-                                            </span>
-                                          </div>
-                                          <p className="text-[11px] text-slate-300">
-                                            Daftar Manpower &amp; Jam Efektif Terhitung
-                                          </p>
-                                        </div>
-                                        <Badge className="bg-white/20 hover:bg-white/30 text-white border-0 text-[10px] font-bold px-2 py-0.5">
-                                          {dayWorkers.length} Karyawan
-                                        </Badge>
-                                      </div>
-
-                                      {/* Daily Summary Stats */}
-                                      <div className="grid grid-cols-3 divide-x divide-slate-100 bg-slate-50 px-3 py-2 border-b border-slate-200/70 text-center text-xs">
-                                        <div>
-                                          <span className="block text-[10px] text-slate-500 font-medium">Total Jam Kerja</span>
-                                          <span className="font-black text-slate-900 font-mono">{row.durasiKerjaHours.toFixed(2)}h</span>
-                                        </div>
-                                        <div>
-                                          <span className="block text-[10px] text-slate-500 font-medium">Rata-rata EWH</span>
-                                          <span className="font-black text-emerald-700 font-mono">{row.ewhHoursPerPerson.toFixed(1)}h/org</span>
-                                        </div>
-                                        <div>
-                                          <span className="block text-[10px] text-slate-500 font-medium">Efisiensi</span>
-                                          <span className="font-black text-blue-700 font-mono">{row.ewhRatioPercent}%</span>
-                                        </div>
-                                      </div>
-
-                                      {/* List of Workers */}
-                                      <div className="p-3 max-h-[320px] overflow-y-auto space-y-2 divide-y divide-slate-100">
-                                        {dayWorkers.length === 0 ? (
-                                          <div className="text-center py-6 text-slate-400 text-xs">
-                                            Tidak ada aktivitas kerja atau absensi yang tercatat pada tanggal ini.
-                                          </div>
-                                        ) : (
-                                          dayWorkers.map((worker) => {
-                                            const ewhClass = classifyEwh(worker.ewhPercent) as keyof typeof EWH_CLASS_CONFIG
-                                            const cfg = EWH_CLASS_CONFIG[ewhClass] || EWH_CLASS_CONFIG.fair
-                                            const hoursWork = (worker.clockDurationMinutes / 60).toFixed(1)
-                                            const hoursEff = (worker.effectiveMinutes / 60).toFixed(1)
-
-                                            return (
-                                              <div
-                                                key={worker.employeeId}
-                                                className="pt-2 first:pt-0 flex items-start justify-between gap-2.5 group hover:bg-blue-50/40 p-2 rounded-xl transition-colors"
-                                              >
-                                                <div className="min-w-0 flex-1">
-                                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                                    <span className="font-bold text-xs text-slate-900 group-hover:text-blue-700 transition-colors">
-                                                      {worker.employeeName}
-                                                    </span>
-                                                    <Badge variant="outline" className="text-[9px] font-mono px-1.5 py-0 h-4 border-slate-200 text-slate-600 bg-slate-50">
-                                                      {worker.employeeSn}
-                                                    </Badge>
-                                                  </div>
-
-                                                  <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-500 flex-wrap">
-                                                    <span className="font-medium text-slate-600">{worker.section || 'General'}</span>
-                                                    <span>•</span>
-                                                    <span className="font-mono text-slate-600">
-                                                      {worker.shiftCode || 'DS'}: {worker.clockIn || '—'} s/d {worker.clockOut || '—'}
-                                                    </span>
-                                                  </div>
-
-                                                  {worker.activitySessionCount > 0 && (
-                                                   <div className="text-[10px] text-slate-500 mt-1 flex items-center gap-1.5 flex-wrap">
-                                                      <span className="text-blue-600 font-bold bg-blue-50 border border-blue-200/60 rounded px-1 py-0.2">
-                                                        {worker.activitySessionCount} sesi
-                                                      </span>
-                                                      <span>({worker.checkedItemCount} item selesai)</span>
-                                                      {worker.overtimeMinutes > 0 && (
-                                                        <span className="text-amber-700 font-bold bg-amber-50 border border-amber-200/60 rounded px-1 py-0.2">
-                                                          OT: {(worker.overtimeMinutes / 60).toFixed(1)}h
-                                                        </span>
-                                                      )}
-                                                    </div>
-                                                  )}
-                                                </div>
-
-                                                <div className="text-right shrink-0 flex flex-col items-end gap-1">
-                                                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${cfg.badge}`}>
-                                                    {worker.ewhPercentStr || `${worker.ewhPercent.toFixed(1)}%`} ({hoursEff}h EWH)
-                                                  </span>
-                                                  <span className="text-[10px] text-slate-500 font-mono">
-                                                    Jam Kerja: <strong className="text-slate-800">{hoursWork}h</strong>
-                                                  </span>
-                                                  <button
-                                                    type="button"
-                                                    onClick={(e) => {
-                                                      e.stopPropagation()
-                                                      router.push(`/dashboard/ewh/${worker.employeeId}?period=${period}`)
-                                                    }}
-                                                    className="text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer inline-flex items-center gap-0.5 mt-0.5"
-                                                  >
-                                                    Detail 24 Jam →
-                                                  </button>
-                                                </div>
-                                              </div>
-                                            )
-                                          })
-                                        )}
-                                      </div>
-                                    </HoverCardContent>
-                                  </HoverCard>
+                                {/* TGL */}
+                                <td className="py-0 px-0 font-bold font-mono border-r border-slate-200 bg-slate-50/70 text-center">
+                                  {renderDayHoverCard(
+                                    row,
+                                    dayWorkers,
+                                    { type: 'date', label: `Tanggal ${row.day}`, value: row.dateStr },
+                                    <div className="w-full py-1.5 px-2 flex items-center justify-center gap-1 font-mono font-bold">
+                                      <span>{row.day}</span>
+                                      {dayWorkers.length > 0 && (
+                                        <span className="inline-flex items-center justify-center size-4 text-[9px] font-black rounded-full bg-blue-100 text-blue-800 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                                          {dayWorkers.length}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
                                 </td>
-                                <td className="py-1.5 px-2 border-r border-slate-200">{row.p5m || (hasData ? '0' : '')}</td>
-                                <td className="py-1.5 px-2 border-r border-slate-200">{row.checkPressure || (hasData ? '0' : '')}</td>
-                                <td className="py-1.5 px-2 border-r border-slate-200 font-semibold">{row.adjustPressure || (hasData ? '0' : '')}</td>
-                                <td className="py-1.5 px-2 border-r border-slate-200">{row.reseal || (hasData ? '0' : '')}</td>
-                                <td className="py-1.5 px-2 border-r border-slate-200">{row.assembly || (hasData ? '0' : '')}</td>
-                                <td className="py-1.5 px-2 border-r border-slate-200">{row.disassembly || (hasData ? '0' : '')}</td>
-                                <td className="py-1.5 px-2 border-r border-slate-200 font-semibold">{row.mounting || (hasData ? '0' : '')}</td>
-                                <td className="py-1.5 px-2 border-r border-slate-200 font-semibold">{row.dismounting || (hasData ? '0' : '')}</td>
-                                <td className="py-1.5 px-2 border-r border-slate-200">{row.pmCheck || (hasData ? '0' : '')}</td>
-                                <td className="py-1.5 px-2 border-r border-slate-200">{row.cleanUp || (hasData ? '0' : '')}</td>
-                                <td className="py-1.5 px-2 border-r border-slate-200">{row.maintenanceRim || (hasData ? '0' : '')}</td>
-                                <td className="py-1.5 px-2 border-r border-slate-200">{row.retorque || (hasData ? '0' : '')}</td>
+
+                                {/* 12 Activity Columns with HoverCard */}
+                                {EWH_ACTIVITY_COLUMNS.map((col) => {
+                                  const val = (row as any)[col.key] || (hasData ? 0 : '')
+                                  const isImportant = ['adjustPressure', 'mounting', 'dismounting'].includes(col.key)
+                                  const numVal = typeof val === 'number' ? val : 0
+                                  return (
+                                    <td
+                                      key={col.key}
+                                      className={`py-0 px-0 border-r border-slate-200 text-center ${
+                                        isImportant ? 'font-semibold' : ''
+                                      }`}
+                                    >
+                                      {renderDayHoverCard(
+                                        row,
+                                        dayWorkers,
+                                        { type: 'activity', key: col.key, label: col.label, value: numVal },
+                                        <div className="w-full py-1.5 px-1 font-mono">
+                                          {val !== '' ? val : <span className="text-slate-300">—</span>}
+                                        </div>
+                                      )}
+                                    </td>
+                                  )
+                                })}
 
                                 {/* Durasi Kerja with HoverCard */}
-                                <td className="py-1 px-1 font-mono font-bold text-slate-900 bg-slate-50/60 text-right p-0">
-                                  <HoverCard openDelay={100} closeDelay={150}>
-                                    <HoverCardTrigger asChild>
-                                      <button
-                                        type="button"
-                                        className="w-full h-full py-1.5 px-3 font-mono font-bold text-right cursor-pointer hover:bg-blue-100/80 hover:text-blue-700 transition-colors inline-flex items-center justify-end gap-1.5 group"
-                                        title="Hover untuk melihat daftar manpower"
-                                      >
-                                        <span>{hasData ? row.durasiKerjaHours.toFixed(2) : '—'}</span>
-                                        {dayWorkers.length > 0 && (
-                                          <Users className="size-3 text-slate-400 group-hover:text-blue-600 inline" />
-                                        )}
-                                      </button>
-                                    </HoverCardTrigger>
-                                    <HoverCardContent
-                                      side="left"
-                                      align="start"
-                                      sideOffset={8}
-                                      className="w-80 sm:w-96 md:w-[450px] p-0 rounded-2xl border border-slate-200/90 shadow-2xl bg-white/98 backdrop-blur-md overflow-hidden z-50 text-left"
-                                    >
-                                      {/* Header */}
-                                      <div className="bg-gradient-to-r from-slate-900 via-[#003461] to-slate-900 text-white p-3.5 flex items-center justify-between">
-                                        <div className="space-y-0.5">
-                                          <div className="flex items-center gap-2">
-                                            <span className="text-xs font-black uppercase tracking-wider text-amber-300">
-                                              TGL {row.day}
-                                            </span>
-                                            <span className="text-[11px] font-medium text-slate-300">
-                                              {row.dateStr || period}
-                                            </span>
-                                          </div>
-                                          <p className="text-[11px] text-slate-300">
-                                            Daftar Manpower &amp; Jam Efektif Terhitung
-                                          </p>
-                                        </div>
-                                        <Badge className="bg-white/20 hover:bg-white/30 text-white border-0 text-[10px] font-bold px-2 py-0.5">
-                                          {dayWorkers.length} Karyawan
-                                        </Badge>
-                                      </div>
-
-                                      {/* Daily Summary Stats */}
-                                      <div className="grid grid-cols-3 divide-x divide-slate-100 bg-slate-50 px-3 py-2 border-b border-slate-200/70 text-center text-xs">
-                                        <div>
-                                          <span className="block text-[10px] text-slate-500 font-medium">Total Jam Kerja</span>
-                                          <span className="font-black text-slate-900 font-mono">{row.durasiKerjaHours.toFixed(2)}h</span>
-                                        </div>
-                                        <div>
-                                          <span className="block text-[10px] text-slate-500 font-medium">Rata-rata EWH</span>
-                                          <span className="font-black text-emerald-700 font-mono">{row.ewhHoursPerPerson.toFixed(1)}h/org</span>
-                                        </div>
-                                        <div>
-                                          <span className="block text-[10px] text-slate-500 font-medium">Efisiensi</span>
-                                          <span className="font-black text-blue-700 font-mono">{row.ewhRatioPercent}%</span>
-                                        </div>
-                                      </div>
-
-                                      {/* List of Workers */}
-                                      <div className="p-3 max-h-[320px] overflow-y-auto space-y-2 divide-y divide-slate-100">
-                                        {dayWorkers.length === 0 ? (
-                                          <div className="text-center py-6 text-slate-400 text-xs">
-                                            Tidak ada aktivitas kerja atau absensi yang tercatat pada tanggal ini.
-                                          </div>
-                                        ) : (
-                                          dayWorkers.map((worker) => {
-                                            const ewhClass = classifyEwh(worker.ewhPercent) as keyof typeof EWH_CLASS_CONFIG
-                                            const cfg = EWH_CLASS_CONFIG[ewhClass] || EWH_CLASS_CONFIG.fair
-                                            const hoursWork = (worker.clockDurationMinutes / 60).toFixed(1)
-                                            const hoursEff = (worker.effectiveMinutes / 60).toFixed(1)
-
-                                            return (
-                                              <div
-                                                key={worker.employeeId}
-                                                className="pt-2 first:pt-0 flex items-start justify-between gap-2.5 group hover:bg-blue-50/40 p-2 rounded-xl transition-colors"
-                                              >
-                                                <div className="min-w-0 flex-1">
-                                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                                    <span className="font-bold text-xs text-slate-900 group-hover:text-blue-700 transition-colors">
-                                                      {worker.employeeName}
-                                                    </span>
-                                                    <Badge variant="outline" className="text-[9px] font-mono px-1.5 py-0 h-4 border-slate-200 text-slate-600 bg-slate-50">
-                                                      {worker.employeeSn}
-                                                    </Badge>
-                                                  </div>
-
-                                                  <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-500 flex-wrap">
-                                                    <span className="font-medium text-slate-600">{worker.section || 'General'}</span>
-                                                    <span>•</span>
-                                                    <span className="font-mono text-slate-600">
-                                                      {worker.shiftCode || 'DS'}: {worker.clockIn || '—'} s/d {worker.clockOut || '—'}
-                                                    </span>
-                                                  </div>
-
-                                                  {worker.activitySessionCount > 0 && (
-                                                    <div className="text-[10px] text-slate-500 mt-1 flex items-center gap-1.5 flex-wrap">
-                                                      <span className="text-blue-600 font-bold bg-blue-50 border border-blue-200/60 rounded px-1 py-0.2">
-                                                        {worker.activitySessionCount} sesi
-                                                      </span>
-                                                      <span>({worker.checkedItemCount} item selesai)</span>
-                                                      {worker.overtimeMinutes > 0 && (
-                                                        <span className="text-amber-700 font-bold bg-amber-50 border border-amber-200/60 rounded px-1 py-0.2">
-                                                          OT: {(worker.overtimeMinutes / 60).toFixed(1)}h
-                                                        </span>
-                                                      )}
-                                                    </div>
-                                                  )}
-                                                </div>
-
-                                                <div className="text-right shrink-0 flex flex-col items-end gap-1">
-                                                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${cfg.badge}`}>
-                                                    {worker.ewhPercentStr || `${worker.ewhPercent.toFixed(1)}%`} ({hoursEff}h EWH)
-                                                  </span>
-                                                  <span className="text-[10px] text-slate-500 font-mono">
-                                                    Jam Kerja: <strong className="text-slate-800">{hoursWork}h</strong>
-                                                  </span>
-                                                  <button
-                                                    type="button"
-                                                    onClick={(e) => {
-                                                      e.stopPropagation()
-                                                      router.push(`/dashboard/ewh/${worker.employeeId}?period=${period}`)
-                                                    }}
-                                                    className="text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer inline-flex items-center gap-0.5 mt-0.5"
-                                                  >
-                                                    Detail 24 Jam →
-                                                  </button>
-                                                </div>
-                                              </div>
-                                            )
-                                          })
-                                        )}
-                                      </div>
-                                    </HoverCardContent>
-                                  </HoverCard>
+                                <td className="py-0 px-0 font-mono font-bold text-slate-900 bg-slate-50/60 text-right">
+                                  {renderDayHoverCard(
+                                    row,
+                                    dayWorkers,
+                                    { type: 'durasi', label: 'Durasi Jam Kerja', value: `${row.durasiKerjaHours.toFixed(2)}h` },
+                                    <div className="w-full py-1.5 px-3 font-mono font-bold text-right flex items-center justify-end gap-1.5">
+                                      <span>{hasData ? row.durasiKerjaHours.toFixed(2) : '—'}</span>
+                                      {dayWorkers.length > 0 && (
+                                        <Users className="size-3 text-slate-400 group-hover:text-blue-600 inline shrink-0" />
+                                      )}
+                                    </div>
+                                  )}
                                 </td>
                               </tr>
                             )
@@ -2074,16 +1797,15 @@ export function EwhDashboardClient({
                             return (
                               <tr key={w.weekNumber} className="hover:bg-blue-50/40 transition-colors">
                                 <td className="py-1 px-1 text-left font-bold text-slate-900 border-r border-slate-200 bg-slate-50/50 p-0">
-                                  <HoverCard openDelay={100} closeDelay={150}>
+                                  <HoverCard openDelay={40} closeDelay={100}>
                                     <HoverCardTrigger asChild>
                                       <button
                                         type="button"
-                                        className="w-full h-full py-2.5 px-3 text-left font-bold text-slate-900 cursor-pointer hover:bg-blue-100/80 hover:text-blue-700 transition-colors flex items-center justify-between gap-1.5 group"
-                                        title="Hover untuk melihat manpower aktif di minggu ini"
+                                        className="w-full h-full py-2.5 px-3 text-left font-bold text-slate-900 cursor-pointer hover:bg-slate-100 hover:text-slate-900 transition-colors flex items-center justify-between gap-1.5 group"
                                       >
                                         <span>{w.label}</span>
                                         {weeklyWorkers.length > 0 && (
-                                          <span className="inline-flex items-center justify-center size-4 text-[9px] font-black rounded-full bg-blue-100 text-blue-800 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                                          <span className="inline-flex items-center justify-center size-4 text-[9px] font-black rounded-full bg-slate-200 text-slate-800 transition-colors">
                                             {weeklyWorkers.length}
                                           </span>
                                         )}
@@ -2093,96 +1815,73 @@ export function EwhDashboardClient({
                                       side="right"
                                       align="start"
                                       sideOffset={8}
-                                      className="w-80 sm:w-96 md:w-[450px] p-0 rounded-2xl border border-slate-200/90 shadow-2xl bg-white/98 backdrop-blur-md overflow-hidden z-50 text-left"
+                                      className="w-72 sm:w-[320px] p-0 rounded-xl border border-slate-200/90 shadow-lg bg-white overflow-hidden z-50 text-left"
                                     >
-                                      <div className="bg-gradient-to-r from-slate-900 via-[#003461] to-slate-900 text-white p-3.5 flex items-center justify-between">
-                                        <div className="space-y-0.5">
-                                          <div className="flex items-center gap-2">
-                                            <span className="text-xs font-black uppercase tracking-wider text-amber-300">
-                                              {w.label}
-                                            </span>
-                                            <span className="text-[11px] font-medium text-slate-300">
-                                              Tgl {w.startDay} - {w.endDay}
-                                            </span>
-                                          </div>
-                                          <p className="text-[11px] text-slate-300">
-                                            Manpower &amp; Jam Efektif Mingguan
-                                          </p>
+                                      {/* Header */}
+                                      <div className="p-2.5 bg-slate-50/90 border-b border-slate-200 flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-[10.5px] font-mono font-bold bg-slate-200/80 text-slate-800 px-1.5 py-0.5 rounded">
+                                            {w.label}
+                                          </span>
+                                          <span className="text-xs font-bold text-slate-900">
+                                            Tgl {w.startDay}–{w.endDay}
+                                          </span>
                                         </div>
-                                        <Badge className="bg-white/20 hover:bg-white/30 text-white border-0 text-[10px] font-bold px-2 py-0.5">
+                                        <span className="text-[10px] font-mono font-bold text-slate-700 bg-white border border-slate-200 px-1.5 py-0.5 rounded">
                                           {weeklyWorkers.length} Karyawan
-                                        </Badge>
+                                        </span>
                                       </div>
 
-                                      <div className="grid grid-cols-3 divide-x divide-slate-100 bg-slate-50 px-3 py-2 border-b border-slate-200/70 text-center text-xs">
+                                      {/* Metrics */}
+                                      <div className="grid grid-cols-3 divide-x divide-slate-100 bg-white px-2 py-1.5 border-b border-slate-100 text-center text-xs">
                                         <div>
-                                          <span className="block text-[10px] text-slate-500 font-medium">Total Jam</span>
-                                          <span className="font-black text-slate-900 font-mono">{w.totalHours.toFixed(2)}h</span>
+                                          <span className="block text-[9px] text-slate-400">Total Jam</span>
+                                          <span className="font-bold text-slate-800 font-mono text-[11px]">{w.totalHours.toFixed(1)}h</span>
                                         </div>
                                         <div>
-                                          <span className="block text-[10px] text-slate-500 font-medium">Rata-rata EWH</span>
-                                          <span className="font-black text-emerald-700 font-mono">{w.ewhHoursPerPerson.toFixed(1)}h</span>
+                                          <span className="block text-[9px] text-slate-400">Rata EWH</span>
+                                          <span className="font-bold text-emerald-700 font-mono text-[11px]">{w.ewhHoursPerPerson.toFixed(1)}h</span>
                                         </div>
                                         <div>
-                                          <span className="block text-[10px] text-slate-500 font-medium">Efisiensi</span>
-                                          <span className="font-black text-blue-700 font-mono">{w.ewhRatioPercent}%</span>
+                                          <span className="block text-[9px] text-slate-400">Efisiensi</span>
+                                          <span className="font-bold text-blue-700 font-mono text-[11px]">{w.ewhRatioPercent}%</span>
                                         </div>
                                       </div>
 
-                                      <div className="p-3 max-h-[320px] overflow-y-auto space-y-2 divide-y divide-slate-100">
+                                      {/* Workers List */}
+                                      <div className="p-2.5 max-h-[220px] overflow-y-auto space-y-1.5 divide-y divide-slate-100">
                                         {weeklyWorkers.length === 0 ? (
-                                          <div className="text-center py-6 text-slate-400 text-xs">
+                                          <div className="text-center py-3 text-slate-400 text-xs">
                                             Tidak ada karyawan aktif pada minggu ini.
                                           </div>
                                         ) : (
                                           weeklyWorkers.map((emp) => {
-                                            const ewhClass = classifyEwh(emp.avgEwh) as keyof typeof EWH_CLASS_CONFIG
-                                            const cfg = EWH_CLASS_CONFIG[ewhClass] || EWH_CLASS_CONFIG.fair
+                                            const totalClockHours = (emp.totalClockMinutes / 60).toFixed(1)
+                                            const totalEffHours = (emp.totalEffectiveMinutes / 60).toFixed(1)
                                             return (
                                               <div
                                                 key={emp.employeeId}
-                                                className="pt-2 first:pt-0 flex items-start justify-between gap-2.5 group hover:bg-blue-50/40 p-2 rounded-xl transition-colors"
+                                                className="pt-1.5 first:pt-0 flex items-center justify-between text-[10.5px]"
                                               >
-                                                <div className="min-w-0 flex-1">
-                                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                                    <span className="font-bold text-xs text-slate-900 group-hover:text-blue-700 transition-colors">
-                                                      {emp.employeeName}
-                                                    </span>
-                                                    <Badge variant="outline" className="text-[9px] font-mono px-1.5 py-0 h-4 border-slate-200 text-slate-600 bg-slate-50">
-                                                      {emp.employeeSn}
-                                                    </Badge>
-                                                  </div>
-                                                  <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-500">
-                                                    <span>{emp.section || 'General'}</span>
-                                                    <span>•</span>
-                                                    <span className="font-bold text-slate-700">{emp.workDays} Hari Hadir</span>
-                                                    {emp.activitySessionCount > 0 && (
-                                                      <>
-                                                        <span>•</span>
-                                                        <span className="text-blue-600 font-semibold">{emp.activitySessionCount} sesi</span>
-                                                      </>
-                                                    )}
-                                                  </div>
+                                                <div className="min-w-0">
+                                                  <span className="font-semibold text-slate-900 block truncate">
+                                                    {emp.employeeName}
+                                                  </span>
+                                                  <span className="text-[9.5px] text-slate-400 font-mono">
+                                                    {emp.workDays}h hadir • {totalEffHours}h efkt ({emp.avgEwh.toFixed(1)}%)
+                                                  </span>
                                                 </div>
 
-                                                <div className="text-right shrink-0 flex flex-col items-end gap-1">
-                                                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${cfg.badge}`}>
-                                                    {emp.avgEwh.toFixed(1)}% ({((emp.totalEffectiveMinutes) / 60).toFixed(1)}h EWH)
-                                                  </span>
-                                                  <span className="text-[10px] text-slate-500 font-mono">
-                                                    Jam Kerja: <strong className="text-slate-800">{((emp.totalClockMinutes) / 60).toFixed(1)}h</strong>
-                                                  </span>
-                                                  <button
-                                                    type="button"
-                                                    onClick={(e) => {
-                                                      e.stopPropagation()
-                                                      router.push(`/dashboard/ewh/${emp.employeeId}?period=${period}`)
-                                                    }}
-                                                    className="text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer inline-flex items-center gap-0.5 mt-0.5"
-                                                  >
-                                                    Detail 24 Jam →
-                                                  </button>
-                                                </div>
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    router.push(`/dashboard/ewh/${emp.employeeId}?period=${period}`)
+                                                  }}
+                                                  className="text-[10px] text-blue-600 hover:text-blue-800 font-medium hover:underline cursor-pointer shrink-0 ml-2"
+                                                >
+                                                  Timeline →
+                                                </button>
                                               </div>
                                             )
                                           })
@@ -3478,6 +3177,255 @@ export function EwhDashboardClient({
             </Button>
             <Button size="sm" variant="destructive" onClick={handleDeleteTeam}>
               Ya, Hapus
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ───────────────────────────────────────────────────────────── */}
+      {/* DIALOG DETAIL MANPOWER PER TANGGAL (INTERACTIVE MODAL) */}
+      {/* ───────────────────────────────────────────────────────────── */}
+      <Dialog
+        open={selectedDayDetail !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedDayDetail(null)
+            setDaySearchQuery('')
+            setDayStatusFilter('all')
+          }
+        }}
+      >
+        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 rounded-2xl overflow-hidden border border-slate-200 shadow-2xl bg-white">
+          <DialogHeader className="p-4 sm:p-5 bg-gradient-to-r from-slate-900 via-[#003461] to-slate-900 text-white shrink-0">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Badge className="bg-amber-400 text-slate-950 font-black text-xs px-2.5 py-0.5">
+                    TGL {selectedDayDetail}
+                  </Badge>
+                  <DialogTitle className="text-base sm:text-lg font-black text-white">
+                    Rincian Manpower &amp; Jam Efektif (EWH)
+                  </DialogTitle>
+                </div>
+                <p className="text-xs text-slate-300 mt-1">
+                  Site: <strong className="text-white">{monthlyMatrixData.siteName}</strong> • Departemen: <strong className="text-white">{monthlyMatrixData.departmentName}</strong> • Periode: <strong className="text-white">{period}</strong>
+                </p>
+              </div>
+              <Badge className="bg-white/20 text-white border-0 text-xs font-bold px-3 py-1 shrink-0">
+                {selectedDayWorkers.length} Dari {(rowsByDay.get(selectedDayDetail || 0) || []).length} Karyawan
+              </Badge>
+            </div>
+          </DialogHeader>
+
+          {/* Filter & Search Toolbar */}
+          <div className="p-3.5 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 shrink-0">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+              <Input
+                placeholder="Cari nama karyawan, SN, section..."
+                value={daySearchQuery}
+                onChange={(e) => setDaySearchQuery(e.target.value)}
+                className="pl-9 h-9 text-xs bg-white rounded-xl"
+              />
+              {daySearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setDaySearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X className="size-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1.5 overflow-x-auto">
+              {[
+                { id: 'all', label: 'Semua Status' },
+                { id: 'excellent', label: 'Sangat Baik' },
+                { id: 'good', label: 'Baik' },
+                { id: 'fair', label: 'Cukup' },
+                { id: 'low', label: 'Rendah' },
+                { id: 'absent', label: 'Tidak Hadir' },
+              ].map((st) => (
+                <button
+                  key={st.id}
+                  type="button"
+                  onClick={() => setDayStatusFilter(st.id)}
+                  className={`px-2.5 py-1.5 text-xs font-bold rounded-lg transition-all whitespace-nowrap cursor-pointer ${
+                    dayStatusFilter === st.id
+                      ? 'bg-[#003461] text-white shadow-xs'
+                      : 'bg-white text-slate-600 hover:bg-slate-200/70 border border-slate-200'
+                  }`}
+                >
+                  {st.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Manpower Data Table */}
+          <div className="flex-1 overflow-y-auto p-0">
+            {selectedDayWorkers.length === 0 ? (
+              <div className="text-center py-12 px-4 text-slate-400 space-y-2">
+                <Users className="size-8 mx-auto text-slate-300" />
+                <p className="text-xs font-medium">Tidak ada data manpower yang sesuai kriteria pencarian / filter.</p>
+              </div>
+            ) : (
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 sticky top-0 z-10 text-[11px]">
+                  <tr>
+                    <th className="py-2 px-3 w-10 text-center">No</th>
+                    <th className="py-2 px-3">Nama Karyawan</th>
+                    <th className="py-2 px-3">SN</th>
+                    <th className="py-2 px-3">Section</th>
+                    <th className="py-2 px-3">Shift &amp; Absensi</th>
+                    <th className="py-2 px-3 text-center">Aktivitas</th>
+                    <th className="py-2 px-3 text-right">Lembur</th>
+                    <th className="py-2 px-3 text-right">Jam Hadir</th>
+                    <th className="py-2 px-3 text-right">Jam Efektif</th>
+                    <th className="py-2 px-3 text-center">EWH Score</th>
+                    <th className="py-2 px-3 text-center">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-[11.5px]">
+                  {selectedDayWorkers.map((w, idx) => {
+                    const ewhClass = classifyEwh(w.ewhPercent) as keyof typeof EWH_CLASS_CONFIG
+                    const cfg = EWH_CLASS_CONFIG[ewhClass] || EWH_CLASS_CONFIG.fair
+                    const hoursWork = (w.clockDurationMinutes / 60).toFixed(1)
+                    const hoursEff = (w.effectiveMinutes / 60).toFixed(1)
+                    const hoursOt = (w.overtimeMinutes / 60).toFixed(1)
+
+                    return (
+                      <tr key={w.employeeId} className="hover:bg-blue-50/50 transition-colors">
+                        <td className="py-2.5 px-3 text-slate-400 text-center">{idx + 1}</td>
+                        <td className="py-2.5 px-3">
+                          <span className="font-bold text-slate-900 block">{w.employeeName}</span>
+                          <span className="text-[10px] text-slate-500">{w.department || 'Operations'}</span>
+                        </td>
+                        <td className="py-2.5 px-3 font-mono font-medium text-slate-600">{w.employeeSn}</td>
+                        <td className="py-2.5 px-3">{w.section || 'General'}</td>
+                        <td className="py-2.5 px-3 font-mono text-[11px]">
+                          <div className="flex items-center gap-1">
+                            <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 border-slate-300">
+                              {w.shiftCode || 'DS'}
+                            </Badge>
+                            <span>{w.clockIn || '—'} - {w.clockOut || '—'}</span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          {w.activitySessionCount > 0 ? (
+                            <span className="font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded text-[10px]">
+                              {w.activitySessionCount} sesi ({w.checkedItemCount} item)
+                            </span>
+                          ) : (
+                            <span className="text-slate-300">—</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono">
+                          {w.overtimeMinutes > 0 ? (
+                            <span className="font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded text-[10px]">
+                              {hoursOt}h
+                            </span>
+                          ) : (
+                            <span className="text-slate-300">0h</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-800">{hoursWork}h</td>
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-700">{hoursEff}h</td>
+                        <td className="py-2.5 px-3 text-center">
+                          <Badge className={`${cfg.badge} border-0 text-[10px] font-black`}>
+                            {w.ewhPercentStr || `${w.ewhPercent.toFixed(1)}%`}
+                          </Badge>
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedDayDetail(null)
+                              router.push(`/dashboard/ewh/${w.employeeId}?period=${period}`)
+                            }}
+                            className="h-7 text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:bg-blue-50 border-blue-200 gap-1 rounded-lg"
+                          >
+                            Timeline 24h
+                            <ArrowUpRight className="size-3" />
+                          </Button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <DialogFooter className="p-3 bg-slate-50 border-t border-slate-200 shrink-0 flex items-center justify-between">
+            <span className="text-[11px] text-slate-500">
+              Total <strong>{selectedDayWorkers.length}</strong> orang tercatat pada tanggal {selectedDayDetail}
+            </span>
+            <Button size="sm" variant="outline" onClick={() => setSelectedDayDetail(null)} className="rounded-xl">
+              Tutup
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* PDF Preview Modal Dialog */}
+      <Dialog open={!!pdfPreviewState} onOpenChange={(open) => !open && handleClosePdfPreview()}>
+        <DialogContent className="max-w-5xl w-[95vw] h-[90vh] max-h-[92vh] flex flex-col p-0 overflow-hidden rounded-2xl bg-white border border-slate-200 shadow-2xl">
+          <DialogHeader className="p-4 bg-slate-900 text-white shrink-0 flex flex-row items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                <FileText className="size-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-bold text-white flex items-center gap-2">
+                  Preview Dokumen PDF EWH
+                </DialogTitle>
+                <p className="text-xs text-slate-300 font-mono">
+                  {pdfPreviewState?.filename}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 pr-6">
+              {pdfPreviewState?.url && (
+                <a
+                  href={pdfPreviewState.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-200 bg-slate-800 hover:bg-slate-700 hover:text-white border border-slate-700 transition-colors"
+                >
+                  <ExternalLink className="size-3.5" />
+                  Tab Baru
+                </a>
+              )}
+              <Button
+                size="sm"
+                onClick={handleDownloadPdfFromPreview}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold gap-1.5 rounded-lg shadow-sm h-8 px-3 cursor-pointer"
+              >
+                <Download className="size-3.5" />
+                Download PDF
+              </Button>
+            </div>
+          </DialogHeader>
+
+          <div className="flex-1 w-full bg-slate-100 overflow-hidden relative">
+            {pdfPreviewState?.url && (
+              <iframe
+                src={pdfPreviewState.url}
+                className="w-full h-full border-0"
+                title="Preview Dokumen PDF EWH"
+              />
+            )}
+          </div>
+
+          <DialogFooter className="p-3 bg-slate-50 border-t border-slate-200 shrink-0 flex items-center justify-between sm:justify-between">
+            <span className="text-xs text-slate-500">
+              Gunakan tombol <strong>Download PDF</strong> untuk menyimpan file ke komputer Anda.
+            </span>
+            <Button size="sm" variant="outline" onClick={handleClosePdfPreview} className="rounded-xl cursor-pointer">
+              Tutup
             </Button>
           </DialogFooter>
         </DialogContent>

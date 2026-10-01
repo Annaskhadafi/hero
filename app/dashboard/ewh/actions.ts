@@ -51,6 +51,8 @@ export interface EwhSummaryRow {
   overtimeMinutes: number
   workDate: Date
   period: string
+  activityMap?: Partial<Record<EwhActivityKey, number>>
+  activitiesSummary?: Array<{ key: EwhActivityKey; label: string; count: number }>
 }
 
 export interface UnitUtilitySummaryRow {
@@ -550,6 +552,8 @@ export async function getEwhSummaryAction(
       .select({
         id: activities.id,
         employeeId: activities.employeeId,
+        title: activities.title,
+        customActivityName: activities.customActivityName,
         startTime: activities.startTime,
         endTime: activities.endTime,
         submissionTime: activities.submissionTime,
@@ -591,24 +595,26 @@ export async function getEwhSummaryAction(
       ),
   ])
 
-  // Fetch session items count
-  let sessionItems: Array<{ sessionId: number; isChecked: boolean }> = []
+  // Fetch session items count & labels
+  let sessionItems: Array<{ sessionId: number; label: string; isChecked: boolean }> = []
   if (sessions.length > 0) {
     const sIds = sessions.map((s) => s.id)
     sessionItems = await db
       .select({
         sessionId: dailyActivitySessionItems.sessionId,
+        label: dailyActivitySessionItems.snapshotLabel,
         isChecked: dailyActivitySessionItems.isChecked,
       })
       .from(dailyActivitySessionItems)
       .where(inArray(dailyActivitySessionItems.sessionId, sIds))
   }
 
-  const sessionItemsMap = new Map<number, { total: number; checked: number }>()
+  const sessionItemsMap = new Map<number, { total: number; checked: number; items: typeof sessionItems }>()
   sessionItems.forEach((it) => {
-    const curr = sessionItemsMap.get(it.sessionId) || { total: 0, checked: 0 }
+    const curr = sessionItemsMap.get(it.sessionId) || { total: 0, checked: 0, items: [] }
     curr.total += 1
     if (it.isChecked) curr.checked += 1
+    curr.items.push(it)
     sessionItemsMap.set(it.sessionId, curr)
   })
 
@@ -620,8 +626,8 @@ export async function getEwhSummaryAction(
 
   for (const emp of targetEmployees) {
     for (let day = 1; day <= daysInMonth; day++) {
-      const workDate = new Date(year, month - 1, day, 0, 0, 0, 0)
-      const dayEnd = new Date(year, month - 1, day, 23, 59, 59, 999)
+      const workDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0))
+      const dayEnd = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999))
 
       // A. Attendance override
       const attOverride = attOverrides.find((a) => a.employeeId === emp.id && a.day === day)
@@ -655,11 +661,17 @@ export async function getEwhSummaryAction(
 
       let checkedItemCount = 0
       let totalItemCount = 0
+      const activityMap: Partial<Record<EwhActivityKey, number>> = {}
+
       for (const s of daySessions) {
         const counts = sessionItemsMap.get(s.id)
         if (counts) {
           checkedItemCount += counts.checked
           totalItemCount += counts.total
+          for (const it of counts.items) {
+            const actKey = categorizeSessionActivity(it.label)
+            activityMap[actKey] = (activityMap[actKey] || 0) + 1
+          }
         }
       }
 
@@ -668,6 +680,19 @@ export async function getEwhSummaryAction(
         if (a.employeeId !== emp.id) return false
         const p = parseDateYMD(a.startTime || a.submissionTime)
         return p ? p.day === day && p.month === month && p.year === year : false
+      })
+      for (const d of dayDirect) {
+        const actKey = categorizeSessionActivity(d.title || d.customActivityName || '')
+        activityMap[actKey] = (activityMap[actKey] || 0) + 1
+      }
+
+      const activitiesSummary = Object.entries(activityMap).map(([k, count]) => {
+        const col = EWH_ACTIVITY_COLUMNS.find((c) => c.key === k)
+        return {
+          key: k as EwhActivityKey,
+          label: col?.label || k,
+          count: count || 0,
+        }
       })
 
       // E. Overtime (SPL)
@@ -722,6 +747,8 @@ export async function getEwhSummaryAction(
         overtimeMinutes,
         workDate,
         period,
+        activityMap,
+        activitiesSummary,
       }
 
       resultRows.push(row)
