@@ -2386,8 +2386,8 @@ export function SchedulingTimesheetWorkspace({
       if (scheduledEmployeeIds.has(employee.id)) return true
       // 3. Has attendance records or overrides in this site for the selected period
       if (siteAttendanceEmployeeIds.has(employee.id)) return true
-      // 4. Fallback matching site location name
-      if (employee.locationName && employee.locationName === selectedSiteExtracted) return true
+      // 4. Fallback matching site location name ONLY for unassigned employees without siteId
+      if (!employee.siteId && employee.locationName && employee.locationName === selectedSiteExtracted) return true
       return false
     })
 
@@ -3138,7 +3138,8 @@ export function SchedulingTimesheetWorkspace({
         const siteKey = extractSiteNameLocal(siteItem.location || siteItem.name)
         const siteEmployees = employees.filter(
           (employee) =>
-            String(employee.siteId) === String(siteItem.id) || employee.locationName === siteKey
+            String(employee.siteId) === String(siteItem.id) ||
+            (!employee.siteId && employee.locationName === siteKey)
         )
         const siteRosterPlan = savedPlans.find(
           (plan) =>
