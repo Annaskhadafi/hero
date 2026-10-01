@@ -1886,9 +1886,9 @@ const SIDEBAR_MENU_SEEDS = RAW_SIDEBAR_MENU_SEEDS.filter((item, index, menuItems
   const firstResourceIndex = menuItems.findIndex(
     (candidate) => candidate.resource === item.resource
   )
-  const firstUrlIndex = menuItems.findIndex((candidate) => candidate.url === item.url)
+  const firstMatchIndex = menuItems.findIndex((candidate) => candidate.url === item.url && candidate.section === item.section)
 
-  return firstResourceIndex === index && firstUrlIndex === index
+  return firstResourceIndex === index && firstMatchIndex === index
 }).map((item) => ({ ...item, menuArea: item.menuArea ?? 'main', section: item.section ?? 'Menu' }))
 
 const DEPRECATED_MENU_RESOURCES = [
@@ -4434,12 +4434,13 @@ const NOTIFICATION_RULE_SEEDS = [
 function dedupeMenuItemsByPage<
   T extends {
     url: string
+    section?: string
   },
 >(items: T[]) {
   const seenPages = new Set<string>()
 
   return items.filter((item) => {
-    const pageKey = item.url
+    const pageKey = `${item.section || 'default'}:${item.url}`
 
     if (seenPages.has(pageKey)) {
       return false
