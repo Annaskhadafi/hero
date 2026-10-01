@@ -7,6 +7,7 @@ import {
   Activity,
   Building2,
   ChevronRight,
+  Disc,
   Headphones,
   LogOut,
   PackageCheck,
@@ -81,6 +82,7 @@ export function MaestroSidebar({ session, ...props }: MaestroSidebarProps) {
       const cleanTarget = target.replace(/^\/maestro/, '') || '/'
       const cleanCurrent = pathname.replace(/^\/maestro/, '') || '/'
       if (cleanTarget === '/') return cleanCurrent === '/'
+      if (cleanTarget === '/scrap' && (cleanCurrent === '/scrap' || cleanCurrent === '/dummy')) return true
       return cleanCurrent === cleanTarget || cleanCurrent.startsWith(`${cleanTarget}/`)
     },
     [pathname],
@@ -103,6 +105,13 @@ export function MaestroSidebar({ session, ...props }: MaestroSidebarProps) {
           icon: ShieldCheck,
           badge: 'HSE 100%',
           description: 'Izin Kerja & Kepatuhan K3',
+        },
+        {
+          title: 'Tire Scrap',
+          url: '/scrap',
+          icon: Disc,
+          badge: 'Performance',
+          description: 'Life Achievement & Scrap Reasons',
         },
       ],
     },

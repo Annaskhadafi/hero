@@ -665,42 +665,44 @@ export function MaestroClientActivityDashboard({
   }
 
   return (
-    <div className="w-full space-y-5 text-slate-950">
+    <div className="w-full space-y-3.5 text-slate-950">
       {/* ── Top Header & Context Bar ── */}
-      <div className="relative overflow-hidden rounded-2xl border-2 border-slate-300 bg-white p-5 sm:p-6 shadow-xs">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-100 text-blue-950 border border-blue-400">
-                <Building2 className="w-3.5 h-3.5 text-blue-700" />
+      <div className="relative overflow-hidden rounded-xl border border-slate-200/90 bg-white px-4 py-3 shadow-2xs">
+        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-blue-50 text-blue-900 border border-blue-200">
+                <Building2 className="w-3 h-3 text-blue-700" />
                 {customerInfo.name}
               </span>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-800 border border-slate-300">
-                <MapPin className="w-3.5 h-3.5 text-blue-700" />
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                <MapPin className="w-3 h-3 text-blue-700" />
                 Site ID: {selectedSiteId}
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-100 text-emerald-950 border border-emerald-400 px-2.5 py-1 text-xs font-bold">
-                <span className="h-2 w-2 rounded-full bg-emerald-600 animate-pulse" />
+              <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 text-emerald-900 border border-emerald-200 px-2 py-0.5 text-[11px] font-bold">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-600 animate-pulse" />
                 Live Shift
               </span>
             </div>
 
-            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-950 font-display">
-              Daily Activity &amp; Manpower
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-600 font-semibold mt-0.5">
-              Pantau presensi check-in, jadwal roster shift, dan pengerjaan log servis teknisi OTR secara real-time.
-            </p>
+            <div className="flex items-baseline gap-2">
+              <h1 className="text-base sm:text-lg font-black tracking-tight text-slate-950 font-display">
+                Daily Activity &amp; Manpower
+              </h1>
+              <p className="text-xs text-slate-500 font-medium hidden md:inline">
+                — Pantau presensi check-in, jadwal roster shift, dan log servis teknisi OTR secara real-time
+              </p>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-center">
+          <div className="flex items-center gap-2 shrink-0">
             <Button
               variant="outline"
               size="sm"
               onClick={handleExportCsv}
-              className="h-10 gap-1.5 rounded-xl border-2 border-slate-300 bg-white px-4 text-xs font-bold text-slate-900 hover:bg-slate-100 shadow-2xs transition-colors cursor-pointer"
+              className="h-8 gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
             >
-              <Download className="w-3.5 h-3.5 text-slate-700" />
+              <Download className="w-3.5 h-3.5 text-slate-600" />
               <span>Export CSV</span>
             </Button>
 
@@ -709,9 +711,9 @@ export function MaestroClientActivityDashboard({
               size="sm"
               onClick={() => router.refresh()}
               disabled={isPending}
-              className="h-10 gap-1.5 rounded-xl border-2 border-slate-300 bg-white px-4 text-xs font-bold text-slate-900 hover:bg-slate-100 shadow-2xs transition-colors cursor-pointer"
+              className="h-8 gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
             >
-              <RefreshCw className={cn("w-3.5 h-3.5 text-slate-700", isPending && "animate-spin")} />
+              <RefreshCw className={cn("w-3.5 h-3.5 text-slate-600", isPending && "animate-spin")} />
               <span>Refresh</span>
             </Button>
           </div>
@@ -719,36 +721,36 @@ export function MaestroClientActivityDashboard({
       </div>
 
       {/* ── 5 KPI Executive Summary Cards ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 sm:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3">
         {/* Karyawan Terjadwal */}
-        <div className="rounded-2xl bg-white p-4 sm:p-5 border-2 border-slate-300 shadow-xs hover:border-blue-500 transition-all flex flex-col justify-between">
+        <div className="rounded-xl bg-white p-3 border border-slate-200 shadow-2xs hover:border-blue-400 transition-all flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-black text-slate-700 uppercase tracking-wider">Karyawan Jadwal</span>
-            <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold border border-blue-300 shrink-0">
-              <Users className="w-5 h-5" />
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Karyawan Jadwal</span>
+            <div className="size-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center font-bold border border-blue-200 shrink-0">
+              <Users className="size-4" />
             </div>
           </div>
-          <div className="mt-3 flex items-baseline gap-1.5">
-            <span className="text-2xl sm:text-3xl font-black text-slate-950 font-display">
+          <div className="mt-1.5 flex items-baseline gap-1.5">
+            <span className="text-xl sm:text-2xl font-black text-slate-950 font-display">
               {kpis.karyawanAktif.value}
             </span>
-            <span className="text-xs font-bold text-slate-700">/ {kpis.karyawanAktif.total} Total</span>
+            <span className="text-[11px] font-semibold text-slate-500">/ {kpis.karyawanAktif.total} Total</span>
           </div>
         </div>
 
         {/* Hadir Check-In */}
-        <div className="rounded-2xl bg-white p-4 sm:p-5 border-2 border-slate-300 shadow-xs hover:border-emerald-500 transition-all flex flex-col justify-between">
+        <div className="rounded-xl bg-white p-3 border border-slate-200 shadow-2xs hover:border-emerald-400 transition-all flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-black text-slate-700 uppercase tracking-wider">Hadir Check-In</span>
-            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold border border-emerald-300 shrink-0">
-              <CheckCircle2 className="w-5 h-5" />
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Hadir Check-In</span>
+            <div className="size-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold border border-emerald-200 shrink-0">
+              <CheckCircle2 className="size-4" />
             </div>
           </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-black text-slate-950 font-display">
+          <div className="mt-1.5 flex items-baseline gap-2">
+            <span className="text-xl sm:text-2xl font-black text-slate-950 font-display">
               {kpis.hadirCheckIn.value}
             </span>
-            <span className="text-xs font-black text-emerald-950 bg-emerald-100 border border-emerald-400 px-2.5 py-0.5 rounded-full">
+            <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md">
               {kpis.karyawanAktif.value > 0
                 ? `${Math.round((kpis.hadirCheckIn.value / kpis.karyawanAktif.value) * 100)}%`
                 : '100%'}
@@ -757,60 +759,60 @@ export function MaestroClientActivityDashboard({
         </div>
 
         {/* Aktivitas Selesai */}
-        <div className="rounded-2xl bg-white p-4 sm:p-5 border-2 border-slate-300 shadow-xs hover:border-indigo-500 transition-all flex flex-col justify-between">
+        <div className="rounded-xl bg-white p-3 border border-slate-200 shadow-2xs hover:border-indigo-400 transition-all flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-black text-slate-700 uppercase tracking-wider">Tugas Selesai</span>
-            <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold border border-indigo-300 shrink-0">
-              <Layers className="w-5 h-5" />
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Tugas Selesai</span>
+            <div className="size-8 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold border border-indigo-200 shrink-0">
+              <Layers className="size-4" />
             </div>
           </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-black text-slate-950 font-display">
+          <div className="mt-1.5 flex items-baseline gap-2">
+            <span className="text-xl sm:text-2xl font-black text-slate-950 font-display">
               {kpis.aktivitasSelesai.value}
             </span>
-            <span className="text-xs font-black text-indigo-950 bg-indigo-100 border border-indigo-400 px-2.5 py-0.5 rounded-full">Selesai</span>
+            <span className="text-[10px] font-bold text-indigo-800 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-md">Selesai</span>
           </div>
         </div>
 
         {/* Sedang Berjalan */}
-        <div className="rounded-2xl bg-white p-4 sm:p-5 border-2 border-slate-300 shadow-xs hover:border-amber-500 transition-all flex flex-col justify-between">
+        <div className="rounded-xl bg-white p-3 border border-slate-200 shadow-2xs hover:border-amber-400 transition-all flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-black text-slate-700 uppercase tracking-wider">Sedang Berjalan</span>
-            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold border border-amber-300 shrink-0">
-              <Clock className="w-5 h-5" />
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Sedang Berjalan</span>
+            <div className="size-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center font-bold border border-amber-200 shrink-0">
+              <Clock className="size-4" />
             </div>
           </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-black text-slate-950 font-display">
+          <div className="mt-1.5 flex items-baseline gap-2">
+            <span className="text-xl sm:text-2xl font-black text-slate-950 font-display">
               {kpis.sedangBerjalan.value}
             </span>
-            <span className="text-xs font-black text-amber-950 bg-amber-100 border border-amber-400 px-2.5 py-0.5 rounded-full">Proses</span>
+            <span className="text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md">Proses</span>
           </div>
         </div>
 
         {/* Pending / Belum Update */}
-        <div className="rounded-2xl bg-white p-4 sm:p-5 border-2 border-slate-300 shadow-xs hover:border-rose-500 transition-all flex flex-col justify-between col-span-2 sm:col-span-1">
+        <div className="rounded-xl bg-white p-3 border border-slate-200 shadow-2xs hover:border-rose-400 transition-all flex flex-col justify-between col-span-2 sm:col-span-1">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-black text-slate-700 uppercase tracking-wider">Pending Update</span>
-            <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center font-bold border border-rose-300 shrink-0">
-              <AlertTriangle className="w-5 h-5" />
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Pending Update</span>
+            <div className="size-8 rounded-lg bg-rose-50 text-rose-700 flex items-center justify-center font-bold border border-rose-200 shrink-0">
+              <AlertTriangle className="size-4" />
             </div>
           </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-black text-slate-950 font-display">
+          <div className="mt-1.5 flex items-baseline gap-2">
+            <span className="text-xl sm:text-2xl font-black text-slate-950 font-display">
               {kpis.terlambatBelumUpdate.value}
             </span>
-            <span className="text-xs font-black text-rose-950 bg-rose-100 border border-rose-400 px-2.5 py-0.5 rounded-full">Perlu Update</span>
+            <span className="text-[10px] font-bold text-rose-800 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded-md">Perlu Update</span>
           </div>
         </div>
       </div>
 
       {/* ── Advanced Filter Bar ── */}
-      <div className="rounded-2xl border-2 border-slate-300 bg-white p-5 shadow-xs space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-3.5 items-end">
+      <div className="rounded-xl border border-slate-200/90 bg-white p-3 sm:p-3.5 shadow-2xs space-y-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-2.5 items-end">
           {/* Site Selector */}
           <div>
-            <label className="text-xs font-black text-slate-800 uppercase tracking-wider mb-1.5 block">
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">
               Site Operasional
             </label>
             <select
@@ -821,7 +823,7 @@ export function MaestroClientActivityDashboard({
                 setSelectedSiteId(val)
                 applyFilters({ siteId: val })
               }}
-              className="w-full h-11 text-xs sm:text-sm font-bold bg-white border-2 border-slate-300 rounded-xl px-3 py-2 text-slate-950 focus:outline-none focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 cursor-pointer transition shadow-2xs"
+              className="w-full h-8.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer transition shadow-2xs"
             >
               {authorizedSites.map((s) => (
                 <option key={s.id} value={String(s.id)}>
@@ -833,7 +835,7 @@ export function MaestroClientActivityDashboard({
 
           {/* Dari Tanggal */}
           <div>
-            <label className="text-xs font-black text-slate-800 uppercase tracking-wider mb-1.5 block">
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">
               Dari Tanggal
             </label>
             <input
@@ -845,13 +847,13 @@ export function MaestroClientActivityDashboard({
                 setStartDate(val)
                 applyFilters({ startDate: val })
               }}
-              className="w-full h-11 text-xs sm:text-sm font-bold bg-white border-2 border-slate-300 rounded-xl px-3 py-2 text-slate-950 focus:outline-none focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 transition shadow-2xs"
+              className="w-full h-8.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 transition shadow-2xs"
             />
           </div>
 
           {/* Sampai Tanggal */}
           <div>
-            <label className="text-xs font-black text-slate-800 uppercase tracking-wider mb-1.5 block">
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">
               Sampai Tanggal
             </label>
             <input
@@ -863,13 +865,13 @@ export function MaestroClientActivityDashboard({
                 setEndDate(val)
                 applyFilters({ endDate: val })
               }}
-              className="w-full h-11 text-xs sm:text-sm font-bold bg-white border-2 border-slate-300 rounded-xl px-3 py-2 text-slate-950 focus:outline-none focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 transition shadow-2xs"
+              className="w-full h-8.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 transition shadow-2xs"
             />
           </div>
 
           {/* Department */}
           <div>
-            <label className="text-xs font-black text-slate-800 uppercase tracking-wider mb-1.5 block">
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">
               Departemen
             </label>
             <select
@@ -880,7 +882,7 @@ export function MaestroClientActivityDashboard({
                 setSelectedDept(val)
                 applyFilters({ dept: val })
               }}
-              className="w-full h-11 text-xs sm:text-sm font-bold bg-white border-2 border-slate-300 rounded-xl px-3 py-2 text-slate-950 focus:outline-none focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 cursor-pointer transition shadow-2xs"
+              className="w-full h-8.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer transition shadow-2xs"
             >
               <option value="Semua Dept">Semua Dept</option>
               {(initialData.departmentsList || []).map((d) => (
@@ -893,7 +895,7 @@ export function MaestroClientActivityDashboard({
 
           {/* Shift */}
           <div>
-            <label className="text-xs font-black text-slate-800 uppercase tracking-wider mb-1.5 block">
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">
               Shift
             </label>
             <select
@@ -904,7 +906,7 @@ export function MaestroClientActivityDashboard({
                 setSelectedShift(val)
                 applyFilters({ shift: val })
               }}
-              className="w-full h-11 text-xs sm:text-sm font-bold bg-white border-2 border-slate-300 rounded-xl px-3 py-2 text-slate-950 focus:outline-none focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 cursor-pointer transition shadow-2xs"
+              className="w-full h-8.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer transition shadow-2xs"
             >
               <option value="Semua Shift">Semua Shift</option>
               <option value="Pagi">Day Shift (Pagi)</option>
@@ -915,7 +917,7 @@ export function MaestroClientActivityDashboard({
 
           {/* Section */}
           <div>
-            <label className="text-xs font-black text-slate-800 uppercase tracking-wider mb-1.5 block">
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">
               Section
             </label>
             <select
@@ -926,7 +928,7 @@ export function MaestroClientActivityDashboard({
                 setSelectedSection(val)
                 applyFilters({ section: val })
               }}
-              className="w-full h-11 text-xs sm:text-sm font-bold bg-white border-2 border-slate-300 rounded-xl px-3 py-2 text-slate-950 focus:outline-none focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 cursor-pointer transition shadow-2xs"
+              className="w-full h-8.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer transition shadow-2xs"
             >
               <option value="Semua Section">Semua Section</option>
               {(initialData.sectionsList || []).map((sec) => (
@@ -939,7 +941,7 @@ export function MaestroClientActivityDashboard({
 
           {/* Status */}
           <div>
-            <label className="text-xs font-black text-slate-800 uppercase tracking-wider mb-1.5 block">
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">
               Status
             </label>
             <select
@@ -950,7 +952,7 @@ export function MaestroClientActivityDashboard({
                 setSelectedEmployeeStatus(val)
                 applyFilters({ status: val })
               }}
-              className="w-full h-11 text-xs sm:text-sm font-bold bg-white border-2 border-slate-300 rounded-xl px-3 py-2 text-slate-950 focus:outline-none focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 cursor-pointer transition shadow-2xs"
+              className="w-full h-8.5 text-xs font-semibold bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer transition shadow-2xs"
             >
               <option value="Semua Status">Semua Status</option>
               <option value="Selesai">Selesai</option>
@@ -962,11 +964,11 @@ export function MaestroClientActivityDashboard({
 
           {/* Search Input */}
           <div>
-            <label className="text-xs font-black text-slate-800 uppercase tracking-wider mb-1.5 block">
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">
               Cari Nama / Unit
             </label>
             <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold" />
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <Input
                 type="text"
                 placeholder="Nama / Unit..."
@@ -978,21 +980,21 @@ export function MaestroClientActivityDashboard({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') applyFilters({ employeeName: employeeNameFilter })
                 }}
-                className="h-11 pl-9 text-xs sm:text-sm bg-white border-2 border-slate-300 rounded-xl placeholder:text-slate-500 font-bold text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/30 focus-visible:border-blue-600 shadow-2xs"
+                className="h-8.5 pl-8 text-xs bg-white border border-slate-200 rounded-lg placeholder:text-slate-400 font-semibold text-slate-900 focus:outline-none focus-visible:ring-1 focus-visible:ring-blue-500 shadow-2xs"
               />
             </div>
           </div>
         </div>
 
         {/* Filter Action Buttons */}
-        <div className="pt-3 border-t-2 border-slate-200 flex items-center justify-end gap-2.5">
+        <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
           <Button
             variant="outline"
             size="sm"
             onClick={handleResetFilters}
-            className="h-10 px-4 border-2 border-slate-300 text-slate-800 hover:text-slate-950 rounded-xl text-xs font-bold bg-white hover:bg-slate-100 shadow-2xs transition-colors cursor-pointer"
+            className="h-8 px-3 border border-slate-200 text-slate-700 hover:text-slate-950 rounded-lg text-xs font-semibold bg-white hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
           >
-            <X className="w-3.5 h-3.5 mr-1.5 text-slate-600" />
+            <X className="w-3.5 h-3.5 mr-1 text-slate-500" />
             Reset Filter
           </Button>
 
@@ -1000,33 +1002,33 @@ export function MaestroClientActivityDashboard({
             variant="default"
             size="sm"
             onClick={() => applyFilters()}
-            className="h-10 px-6 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-black shadow-xs transition-colors cursor-pointer"
+            className="h-8 px-4 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-bold shadow-2xs transition-colors cursor-pointer"
           >
-            <Filter className="w-3.5 h-3.5 mr-1.5 text-blue-100" />
+            <Filter className="w-3.5 h-3.5 mr-1 text-blue-100" />
             Terapkan Filter
           </Button>
         </div>
       </div>
 
       {/* ── Main Content Tabs & Tables ── */}
-      <div className="rounded-2xl border-2 border-slate-300 bg-white shadow-xs overflow-hidden">
+      <div className="rounded-xl border border-slate-200/90 bg-white shadow-2xs overflow-hidden">
         {/* Navigation Tabs */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b-2 border-slate-300 p-4 sm:p-5 gap-3 bg-slate-50">
-          <div className="inline-flex items-center gap-1.5 p-1 rounded-xl bg-slate-200 border border-slate-300">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 px-3.5 py-2 sm:px-4 sm:py-2.5 gap-2.5 bg-slate-50/70">
+          <div className="inline-flex items-center gap-1 p-0.5 rounded-lg bg-slate-200/70 border border-slate-200">
             <button
               onClick={() => setActiveTab('submitted')}
               className={cn(
-                "flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-black rounded-lg transition-colors cursor-pointer",
+                "flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md transition-colors cursor-pointer",
                 activeTab === 'submitted'
-                  ? "bg-blue-700 text-white shadow-sm"
-                  : "text-slate-800 hover:text-slate-950 hover:bg-slate-300"
+                  ? "bg-blue-700 text-white shadow-xs"
+                  : "text-slate-700 hover:text-slate-950 hover:bg-slate-200"
               )}
             >
-              <CheckCircle2 className={cn("w-4 h-4", activeTab === 'submitted' ? "text-emerald-300" : "text-slate-600")} />
+              <CheckCircle2 className={cn("w-3.5 h-3.5", activeTab === 'submitted' ? "text-emerald-300" : "text-slate-500")} />
               <span>Sudah Mengisi Log</span>
               <span className={cn(
-                "px-2 py-0.5 rounded-full text-xs font-black",
-                activeTab === 'submitted' ? "bg-white text-blue-900" : "bg-slate-300 text-slate-900"
+                "px-1.5 py-0.2 rounded-full text-[10px] font-black",
+                activeTab === 'submitted' ? "bg-white text-blue-900" : "bg-slate-300/80 text-slate-800"
               )}>
                 {filteredEmployees.length}
               </span>
@@ -1035,36 +1037,36 @@ export function MaestroClientActivityDashboard({
             <button
               onClick={() => setActiveTab('unsubmitted')}
               className={cn(
-                "flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-black rounded-lg transition-colors cursor-pointer",
+                "flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md transition-colors cursor-pointer",
                 activeTab === 'unsubmitted'
-                  ? "bg-blue-700 text-white shadow-sm"
-                  : "text-slate-800 hover:text-slate-950 hover:bg-slate-300"
+                  ? "bg-blue-700 text-white shadow-xs"
+                  : "text-slate-700 hover:text-slate-950 hover:bg-slate-200"
               )}
             >
-              <AlertTriangle className={cn("w-4 h-4", activeTab === 'unsubmitted' ? "text-amber-300" : "text-slate-600")} />
+              <AlertTriangle className={cn("w-3.5 h-3.5", activeTab === 'unsubmitted' ? "text-amber-300" : "text-slate-500")} />
               <span>Belum Mengisi Log</span>
               <span className={cn(
-                "px-2 py-0.5 rounded-full text-xs font-black",
-                activeTab === 'unsubmitted' ? "bg-white text-blue-900" : "bg-slate-300 text-slate-900"
+                "px-1.5 py-0.2 rounded-full text-[10px] font-black",
+                activeTab === 'unsubmitted' ? "bg-white text-blue-900" : "bg-slate-300/80 text-slate-800"
               )}>
                 {filteredUnsubmittedEmployees.length}
               </span>
             </button>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 self-start sm:self-center">
+          <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
               onClick={handleExportExcel}
-              className="h-10 px-4 gap-1.5 rounded-xl border-2 border-emerald-400 bg-emerald-100 text-xs font-black text-emerald-950 shadow-2xs hover:bg-emerald-200 transition-colors cursor-pointer"
+              className="h-8 gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-950 hover:bg-emerald-100 px-3 text-xs font-bold shadow-2xs transition-colors cursor-pointer"
             >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
-              <span>Export Excel (.xlsx)</span>
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
+              <span>EXPORT EXCEL (.XLSX)</span>
             </Button>
-            <div className="text-xs text-slate-700 font-bold hidden md:block">
-              Site: <strong className="text-slate-950 font-black">{currentSiteName}</strong>
-            </div>
+            <span className="text-[11px] font-semibold text-slate-500 hidden md:inline">
+              Site: <b className="text-slate-800">{currentSiteName}</b>
+            </span>
           </div>
         </div>
 
@@ -1072,26 +1074,26 @@ export function MaestroClientActivityDashboard({
         {activeTab === 'submitted' && (
           <div>
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs sm:text-sm">
+              <table className="w-full text-left text-xs">
                 <thead>
-                  <tr className="bg-slate-200/90 border-b-2 border-slate-300 text-xs font-black text-slate-950 uppercase tracking-wider">
-                    <th className="py-3.5 px-5">Karyawan &amp; Role</th>
-                    <th className="py-3.5 px-5">Section / Tim</th>
-                    <th className="py-3.5 px-5">Shift &amp; Jam Kerja</th>
-                    <th className="py-3.5 px-5">Unit &amp; Aktivitas Utama</th>
-                    <th className="py-3.5 px-5">Progress Kerja</th>
-                    <th className="py-3.5 px-5">Status</th>
-                    <th className="py-3.5 px-5 text-center">Aksi</th>
+                  <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                    <th className="py-2.5 px-4">Karyawan &amp; Role</th>
+                    <th className="py-2.5 px-4">Section / Tim</th>
+                    <th className="py-2.5 px-4">Shift &amp; Jam Kerja</th>
+                    <th className="py-2.5 px-4">Unit &amp; Aktivitas Utama</th>
+                    <th className="py-2.5 px-4">Progress Kerja</th>
+                    <th className="py-2.5 px-4">Status</th>
+                    <th className="py-2.5 px-4 text-center">Aksi</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200 font-semibold text-slate-900">
+                <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
                   {paginatedEmployees.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-16 text-center text-slate-700">
-                        <div className="flex flex-col items-center justify-center gap-2.5">
-                          <Layers className="w-10 h-10 text-slate-400 stroke-[1.5]" />
-                          <p className="font-black text-slate-950 text-base">Tidak Ada Data Aktivitas</p>
-                          <p className="text-xs text-slate-700 font-semibold max-w-md">
+                      <td colSpan={7} className="py-10 text-center text-slate-600">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <Layers className="w-8 h-8 text-slate-400 stroke-[1.5]" />
+                          <p className="font-bold text-slate-900 text-sm">Tidak Ada Data Aktivitas</p>
+                          <p className="text-xs text-slate-500 font-medium max-w-md">
                             Tidak ditemukan data aktivitas karyawan untuk kriteria filter dan periode tanggal yang dipilih.
                           </p>
                         </div>
@@ -1099,63 +1101,63 @@ export function MaestroClientActivityDashboard({
                     </tr>
                   ) : (
                     paginatedEmployees.map((row) => (
-                      <tr key={`${row.employeeDbId}-${row.sessionId}`} className="hover:bg-blue-50/60 transition-colors">
+                      <tr key={`${row.employeeDbId}-${row.sessionId}`} className="hover:bg-slate-50/80 transition-colors">
                         {/* Karyawan */}
-                        <td className="py-3.5 px-5">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-slate-100 border-2 border-slate-300 flex items-center justify-center font-black text-slate-900 text-xs shrink-0">
+                        <td className="py-2.5 px-4">
+                          <div className="flex items-center gap-2.5">
+                            <div className="size-8 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-slate-800 text-[11px] shrink-0">
                               {row.name ? row.name.slice(0, 2).toUpperCase() : 'EM'}
                             </div>
                             <div>
-                              <div className="font-black text-slate-950 text-xs sm:text-sm">{row.name}</div>
-                              <div className="text-[11px] text-slate-700 font-semibold mt-0.5">{row.jobTitle || 'Teknisi'} • ID: {row.employeeId}</div>
+                              <div className="font-bold text-slate-900 text-xs">{row.name}</div>
+                              <div className="text-[10px] text-slate-500 font-medium mt-0.5">{row.jobTitle || 'Teknisi'} • ID: {row.employeeId}</div>
                             </div>
                           </div>
                         </td>
 
                         {/* Section / Tim */}
-                        <td className="py-3.5 px-5">
-                          <div className="font-bold text-slate-950 text-xs sm:text-sm">{row.section || row.department || '-'}</div>
-                          <div className="text-[11px] text-slate-700 font-semibold mt-0.5">{row.department}</div>
+                        <td className="py-2.5 px-4">
+                          <div className="font-semibold text-slate-900 text-xs">{row.section || row.department || '-'}</div>
+                          <div className="text-[10px] text-slate-500 font-medium mt-0.5">{row.department}</div>
                         </td>
 
                         {/* Shift & Jam Kerja */}
-                        <td className="py-3.5 px-5">
+                        <td className="py-2.5 px-4">
                           <div className="flex items-center gap-1.5">
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-slate-200 text-slate-950 border border-slate-300">
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-200">
                               {row.shift}
                             </span>
-                            <span className="text-slate-950 font-black text-xs sm:text-sm">
+                            <span className="text-slate-900 font-bold text-xs">
                               {row.checkInTime || '-'} {row.checkOutTime ? `→ ${row.checkOutTime}` : ''}
                             </span>
                           </div>
                           {row.workDate && (
-                            <div className="text-[11px] text-slate-700 font-semibold mt-1">{row.workDate}</div>
+                            <div className="text-[10px] text-slate-500 font-medium mt-0.5">{row.workDate}</div>
                           )}
                         </td>
 
                         {/* Unit & Aktivitas Utama */}
-                        <td className="py-3.5 px-5 max-w-xs">
-                          <div className="font-bold text-slate-950 text-xs sm:text-sm line-clamp-1" title={row.primaryActivity}>
+                        <td className="py-2.5 px-4 max-w-xs">
+                          <div className="font-semibold text-slate-900 text-xs line-clamp-1" title={row.primaryActivity}>
                             {row.primaryActivity || 'Pemeriksaan Rutin'}
                           </div>
-                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                             {row.unitTireId && row.unitTireId !== '-' ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-black bg-blue-100 text-blue-950 border border-blue-400">
-                                <Truck className="w-3.5 h-3.5 text-blue-700" />
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-900 border border-blue-200">
+                                <Truck className="w-3 h-3 text-blue-700" />
                                 {row.unitTireId}
                               </span>
                             ) : null}
-                            <span className="text-[11px] text-slate-700 font-semibold">
+                            <span className="text-[10px] text-slate-500 font-medium">
                               {row.tasksCount || row.tasks?.length || 0} Tugas
                             </span>
                           </div>
                         </td>
 
                         {/* Progress */}
-                        <td className="py-3.5 px-5">
+                        <td className="py-2.5 px-4">
                           {renderProgressBar(row.progress, row.status)}
-                          <div className="text-[11px] text-slate-700 font-semibold mt-1">
+                          <div className="text-[10px] text-slate-500 font-medium mt-0.5">
                             Update: {row.lastUpdate || '-'}
                           </div>
                         </td>
@@ -1222,25 +1224,25 @@ export function MaestroClientActivityDashboard({
         {activeTab === 'unsubmitted' && (
           <div>
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs sm:text-sm">
+              <table className="w-full text-left text-xs">
                 <thead>
-                  <tr className="bg-slate-200/90 border-b-2 border-slate-300 text-xs font-black text-slate-950 uppercase tracking-wider">
-                    <th className="py-3.5 px-5">Karyawan</th>
-                    <th className="py-3.5 px-5">Section / Tim</th>
-                    <th className="py-3.5 px-5">Shift Terjadwal</th>
-                    <th className="py-3.5 px-5">Jadwal Roster</th>
-                    <th className="py-3.5 px-5">Status Kehadiran</th>
-                    <th className="py-3.5 px-5">Status Aktivitas</th>
+                  <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                    <th className="py-2.5 px-4">Karyawan</th>
+                    <th className="py-2.5 px-4">Section / Tim</th>
+                    <th className="py-2.5 px-4">Shift Terjadwal</th>
+                    <th className="py-2.5 px-4">Jadwal Roster</th>
+                    <th className="py-2.5 px-4">Status Kehadiran</th>
+                    <th className="py-2.5 px-4">Status Aktivitas</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200 font-semibold text-slate-900">
+                <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
                   {paginatedUnsubmittedEmployees.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-16 text-center text-slate-700">
-                        <div className="flex flex-col items-center justify-center gap-2.5">
-                          <CheckCircle2 className="w-10 h-10 text-emerald-700 stroke-[1.5]" />
-                          <p className="font-black text-slate-950 text-base">Semua Karyawan Sudah Mengisi</p>
-                          <p className="text-xs text-slate-700 font-semibold max-w-md">
+                      <td colSpan={6} className="py-10 text-center text-slate-600">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <CheckCircle2 className="w-8 h-8 text-emerald-600 stroke-[1.5]" />
+                          <p className="font-bold text-slate-900 text-sm">Semua Karyawan Sudah Mengisi</p>
+                          <p className="text-xs text-slate-500 font-medium max-w-md">
                             Seluruh karyawan yang terjadwal dan hadir di site telah mengisi log aktivitas harian mereka.
                           </p>
                         </div>
@@ -1248,39 +1250,39 @@ export function MaestroClientActivityDashboard({
                     </tr>
                   ) : (
                     paginatedUnsubmittedEmployees.map((emp) => (
-                      <tr key={emp.employeeDbId} className="hover:bg-blue-50/60 transition-colors">
-                        <td className="py-3.5 px-5">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-slate-100 border-2 border-slate-300 flex items-center justify-center font-black text-slate-900 text-xs shrink-0">
+                      <tr key={emp.employeeDbId} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-2.5 px-4">
+                          <div className="flex items-center gap-2.5">
+                            <div className="size-8 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-slate-800 text-[11px] shrink-0">
                               {emp.name ? emp.name.slice(0, 2).toUpperCase() : 'EM'}
                             </div>
                             <div>
-                              <div className="font-black text-slate-950 text-xs sm:text-sm">{emp.name}</div>
-                              <div className="text-[11px] text-slate-700 font-semibold mt-0.5">{emp.jobTitle} • ID: {emp.employeeId}</div>
+                              <div className="font-bold text-slate-900 text-xs">{emp.name}</div>
+                              <div className="text-[10px] text-slate-500 font-medium mt-0.5">{emp.jobTitle} • ID: {emp.employeeId}</div>
                             </div>
                           </div>
                         </td>
-                        <td className="py-3.5 px-5">
-                          <div className="font-bold text-slate-950 text-xs sm:text-sm">{emp.section || emp.department || '-'}</div>
-                          <div className="text-[11px] text-slate-700 font-semibold mt-0.5">{emp.department}</div>
+                        <td className="py-2.5 px-4">
+                          <div className="font-semibold text-slate-900 text-xs">{emp.section || emp.department || '-'}</div>
+                          <div className="text-[10px] text-slate-500 font-medium mt-0.5">{emp.department}</div>
                         </td>
-                        <td className="py-3.5 px-5">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-bold bg-slate-200 text-slate-950 border border-slate-300">
+                        <td className="py-2.5 px-4">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-200">
                             {emp.expectedShift}
                           </span>
                         </td>
-                        <td className="py-3.5 px-5">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-bold bg-slate-200 text-slate-950 border border-slate-300">
+                        <td className="py-2.5 px-4">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-200">
                             {emp.rosterCode || 'Reguler'}
                           </span>
                         </td>
-                        <td className="py-3.5 px-5">
+                        <td className="py-2.5 px-4">
                           {emp.attendanceStatus === 'Hadir' ? (
                             <div>
-                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-950 border border-emerald-400">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
                                 Hadir
                               </span>
-                              <div className="text-[11px] text-slate-700 font-semibold mt-1">Check-in: {emp.checkInTime}</div>
+                              <div className="text-[10px] text-slate-500 font-medium mt-0.5">Check-in: {emp.checkInTime}</div>
                             </div>
                           ) : (
                             <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-slate-200 text-slate-950 border border-slate-300">

@@ -52,6 +52,16 @@ const ROUTE_INFO: Record<string, { title: string; subtitle: string; eyebrow: str
     title: 'Daily Activity & Manpower',
     subtitle: 'Portal monitoring real-time operasional PT Chitra Paratama',
   },
+  '/scrap': {
+    eyebrow: 'TIRE ASSET & PERFORMANCE',
+    title: 'Tire Scrap Performance',
+    subtitle: 'Monitor tire scrap performance, life achievement, and scrap reasons across mining sites',
+  },
+  '/dummy': {
+    eyebrow: 'TIRE ASSET & PERFORMANCE',
+    title: 'Tire Scrap Performance',
+    subtitle: 'Monitor tire scrap performance, life achievement, and scrap reasons across mining sites',
+  },
 }
 
 export function MaestroSiteHeader({ session }: MaestroSiteHeaderProps) {

@@ -90,7 +90,7 @@ export default async function MaestroDailyActivityPage({ searchParams }: PagePro
   })
 
   return (
-    <div className="min-h-screen py-8 px-4 sm:px-6 lg:px-8 xl:px-12">
+    <div className="min-h-screen py-3 sm:py-4 px-3 sm:px-5 lg:px-6">
       <div className="mx-auto w-full max-w-[1720px]">
         <MaestroClientActivityDashboard
           initialData={data}

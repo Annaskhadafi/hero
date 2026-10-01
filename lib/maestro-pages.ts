@@ -87,6 +87,14 @@ export const MAESTRO_PAGE_REGISTRY: readonly MaestroPageDefinition[] = [
     permissionCode: 'maestro.documents.view',
     sortOrder: 80,
   },
+  {
+    code: 'maestro.scrap',
+    path: '/maestro/scrap',
+    label: 'Tire Scrap',
+    module: 'Operations',
+    permissionCode: 'maestro.scrap.view',
+    sortOrder: 45,
+  },
 ]
 
 const EXTRA_PERMISSIONS = [
@@ -98,10 +106,10 @@ const EXTRA_PERMISSIONS = [
 ] as const
 
 const ROLE_SEEDS = [
-  ['customer_viewer', 'Customer Viewer', 'Read-only portal access', ['maestro.dashboard.view', 'maestro.activity.view', 'maestro.attendance.view', 'maestro.safety.view', 'maestro.orders.view', 'maestro.deliveries.view', 'maestro.invoice.view', 'maestro.documents.view']],
-  ['customer_supervisor', 'Customer Supervisor', 'Operational portal access with export', ['maestro.dashboard.view', 'maestro.activity.view', 'maestro.attendance.view', 'maestro.safety.view', 'maestro.orders.view', 'maestro.deliveries.view', 'maestro.invoice.view', 'maestro.documents.view', 'maestro.export']],
+  ['customer_viewer', 'Customer Viewer', 'Read-only portal access', ['maestro.dashboard.view', 'maestro.activity.view', 'maestro.attendance.view', 'maestro.safety.view', 'maestro.scrap.view', 'maestro.orders.view', 'maestro.deliveries.view', 'maestro.invoice.view', 'maestro.documents.view']],
+  ['customer_supervisor', 'Customer Supervisor', 'Operational portal access with export', ['maestro.dashboard.view', 'maestro.activity.view', 'maestro.attendance.view', 'maestro.safety.view', 'maestro.scrap.view', 'maestro.orders.view', 'maestro.deliveries.view', 'maestro.invoice.view', 'maestro.documents.view', 'maestro.export']],
   ['customer_finance', 'Customer Finance', 'Commercial and invoice visibility', ['maestro.dashboard.view', 'maestro.orders.view', 'maestro.deliveries.view', 'maestro.invoice.view', 'maestro.documents.view', 'maestro.export']],
-  ['customer_admin', 'Customer Admin', 'Customer portal administration', ['maestro.dashboard.view', 'maestro.activity.view', 'maestro.attendance.view', 'maestro.safety.view', 'maestro.orders.view', 'maestro.deliveries.view', 'maestro.invoice.view', 'maestro.documents.view', 'maestro.export', 'maestro.customer-users.manage', 'maestro.site-access.manage', 'maestro.visibility.manage', 'maestro.audit.view']],
+  ['customer_admin', 'Customer Admin', 'Customer portal administration', ['maestro.dashboard.view', 'maestro.activity.view', 'maestro.attendance.view', 'maestro.safety.view', 'maestro.scrap.view', 'maestro.orders.view', 'maestro.deliveries.view', 'maestro.invoice.view', 'maestro.documents.view', 'maestro.export', 'maestro.customer-users.manage', 'maestro.site-access.manage', 'maestro.visibility.manage', 'maestro.audit.view']],
 ] as const
 
 function permissionSeed(definition: MaestroPageDefinition) {

@@ -25,9 +25,9 @@ export function MaestroLoginForm() {
   const searchParams = useSearchParams()
   const callbackUrl = searchParams.get('callbackUrl') || '/dashboard'
 
-  const [email, setEmail] = useState('customer@berau.com')
-  const [password, setPassword] = useState('Password123!')
-  const [rememberMe, setRememberMe] = useState(true)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [rememberMe, setRememberMe] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
@@ -86,12 +86,12 @@ export function MaestroLoginForm() {
             <Input
               id="maestro-email"
               type="email"
-              placeholder="customer@berau.com"
+              placeholder="nama@perusahaan.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
               disabled={isLoading}
-              className="h-11 rounded-xl border-2 border-slate-300 bg-white pl-10 pr-3 text-xs sm:text-sm font-bold text-slate-950 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 shadow-sm transition-all"
+              className="h-11 rounded-xl border-2 border-slate-300 bg-white pl-10 pr-3 text-xs sm:text-sm font-bold text-slate-950 placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 shadow-sm transition-all"
             />
           </div>
         </div>
@@ -111,12 +111,12 @@ export function MaestroLoginForm() {
             <Input
               id="maestro-password"
               type={showPassword ? 'text' : 'password'}
-              placeholder="••••••••••"
+              placeholder="Masukkan kata sandi"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
               disabled={isLoading}
-              className="h-11 rounded-xl border-2 border-slate-300 bg-white pl-10 pr-10 text-xs sm:text-sm font-bold text-slate-950 placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 shadow-sm transition-all"
+              className="h-11 rounded-xl border-2 border-slate-300 bg-white pl-10 pr-10 text-xs sm:text-sm font-bold text-slate-950 placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 shadow-sm transition-all"
             />
             <button
               type="button"
