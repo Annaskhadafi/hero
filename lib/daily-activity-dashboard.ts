@@ -26,6 +26,7 @@ import { calcClockDuration } from '@/lib/ewh/calculate-ewh'
 
 export interface DailyActivityFilterParams {
   siteId?: string
+  authorizedSiteIds?: number[]
   date?: string
   startDate?: string
   endDate?: string
@@ -479,7 +480,15 @@ function computeRosterNetHours(clockIn: string, clockOut: string): number {
 export async function getDailyActivityDashboardData(
   params: DailyActivityFilterParams = {}
 ): Promise<DailyActivityDashboardData> {
+  const isCustomerScoped = Array.isArray(params.authorizedSiteIds) && params.authorizedSiteIds.length > 0
+  const scopedSiteIds = isCustomerScoped ? params.authorizedSiteIds! : []
+
   // 1. Fetch available sites, departments, and sections with PJO / Site Head details
+  const siteWhere = [eq(sites.isActive, true)]
+  if (isCustomerScoped) {
+    siteWhere.push(inArray(sites.id, scopedSiteIds))
+  }
+
   const [allSites, allDepartments, allSections] = await Promise.all([
     db
       .select({
@@ -491,7 +500,7 @@ export async function getDailyActivityDashboardData(
       })
       .from(sites)
       .leftJoin(employees, eq(sites.headEmployeeId, employees.id))
-      .where(eq(sites.isActive, true))
+      .where(and(...siteWhere))
       .orderBy(sites.name),
     db
       .select({
@@ -513,18 +522,31 @@ export async function getDailyActivityDashboardData(
   ])
 
   // Select active site
-  const sitesList: DailyActivitySiteItem[] = [
-    {
-      id: 0,
-      name: 'Semua Site',
-      customerName: 'Semua Customer',
-      pjoName: 'Seluruh PJO & Head Site',
-      pjoJobTitle: 'Operations Supervisory',
-    },
-    ...allSites,
-  ]
-  let currentSite = sitesList[0]
+  let sitesList: DailyActivitySiteItem[]
+  if (isCustomerScoped && allSites.length <= 1) {
+    sitesList = allSites.length > 0 ? allSites : [
+      {
+        id: scopedSiteIds[0] || 0,
+        name: 'Site Operasional',
+        customerName: 'Customer',
+        pjoName: 'PJO Site',
+        pjoJobTitle: 'Operations Supervisory',
+      }
+    ]
+  } else {
+    sitesList = [
+      {
+        id: 0,
+        name: 'Semua Site',
+        customerName: allSites[0]?.customerName || 'Semua Customer',
+        pjoName: 'Seluruh PJO & Head Site',
+        pjoJobTitle: 'Operations Supervisory',
+      },
+      ...allSites,
+    ]
+  }
 
+  let currentSite = sitesList[0]
   if (params.siteId && params.siteId !== 'all' && params.siteId !== '0') {
     const found = allSites.find((s) => String(s.id) === params.siteId)
     if (found) currentSite = found
@@ -544,6 +566,8 @@ export async function getDailyActivityDashboardData(
   const sessionConditions = []
   if (currentSite.id !== 0) {
     sessionConditions.push(eq(dailyActivitySessions.siteId, currentSite.id))
+  } else if (isCustomerScoped) {
+    sessionConditions.push(inArray(dailyActivitySessions.siteId, scopedSiteIds))
   }
 
   if (effectiveStartDate && effectiveEndDate) {
@@ -648,6 +672,10 @@ export async function getDailyActivityDashboardData(
   // Never bleed sessions from other sites into a specific site view.
   let effectiveSessions = rawSessions
   if (effectiveSessions.length === 0 && currentSite.id === 0 && !params.date && !effectiveStartDate && !effectiveEndDate && !searchKeyword) {
+    const fallbackWhere = [isNull(dailyActivitySessions.deletedAt)]
+    if (isCustomerScoped) {
+      fallbackWhere.push(inArray(dailyActivitySessions.siteId, scopedSiteIds))
+    }
     effectiveSessions = await db
       .select({
         id: dailyActivitySessions.id,
@@ -677,7 +705,7 @@ export async function getDailyActivityDashboardData(
       .leftJoin(sites, eq(dailyActivitySessions.siteId, sites.id))
       .leftJoin(masterDepartments, eq(dailyActivitySessions.departmentId, masterDepartments.id))
       .leftJoin(masterSections, eq(dailyActivitySessions.sectionId, masterSections.id))
-      .where(isNull(dailyActivitySessions.deletedAt))
+      .where(and(...fallbackWhere))
       .orderBy(desc(dailyActivitySessions.workDate), desc(dailyActivitySessions.id))
       .limit(50)
   }
@@ -760,18 +788,26 @@ export async function getDailyActivityDashboardData(
     }
   }
 
+  // 4. Real Employee Counts (Customer-Scoped if applicable)
+  const totalEmployeesWhere = [eq(employees.isActive, true)]
+  if (isCustomerScoped) {
+    totalEmployeesWhere.push(inArray(employees.siteId, scopedSiteIds))
+  }
 
-  // 4. Real Employee Counts
+  const activeEmployeesWhere = [eq(employees.isActive, true)]
+  if (currentSite.id !== 0) {
+    activeEmployeesWhere.push(eq(employees.siteId, currentSite.id))
+  } else if (isCustomerScoped) {
+    activeEmployeesWhere.push(inArray(employees.siteId, scopedSiteIds))
+  }
+
   const [totalEmployeesRes, activeEmployeesRes] = await Promise.all([
-    db.select({ count: sql<number>`count(*)` }).from(employees),
-    db
-      .select({ count: sql<number>`count(*)` })
-      .from(employees)
-      .where(currentSite.id !== 0 ? eq(employees.siteId, currentSite.id) : undefined),
+    db.select({ count: sql<number>`count(*)` }).from(employees).where(and(...totalEmployeesWhere)),
+    db.select({ count: sql<number>`count(*)` }).from(employees).where(and(...activeEmployeesWhere)),
   ])
 
   const totalEmployeesCount = Number(totalEmployeesRes[0]?.count || 0)
-  const siteEmployeesCount = currentSite.id === 0
+  const siteEmployeesCount = currentSite.id === 0 && !isCustomerScoped
     ? totalEmployeesCount
     : Number(activeEmployeesRes[0]?.count || 0)
 
@@ -795,6 +831,8 @@ export async function getDailyActivityDashboardData(
 
   if (currentSite.id !== 0) {
     attendanceConditions.push(eq(attendanceRecords.siteId, currentSite.id))
+  } else if (isCustomerScoped) {
+    attendanceConditions.push(inArray(attendanceRecords.siteId, scopedSiteIds))
   }
 
   const [attendanceCountRes, attendanceEventsRes] = await Promise.all([
@@ -919,17 +957,27 @@ export async function getDailyActivityDashboardData(
   const v2Conditions = [inArray(timesheetSchedulingPlansV2.period, evalPeriods)]
   if (currentSite.id !== 0) {
     v2Conditions.push(eq(timesheetSchedulingPlansV2.siteId, currentSite.id))
+  } else if (isCustomerScoped) {
+    v2Conditions.push(inArray(timesheetSchedulingPlansV2.siteId, scopedSiteIds))
   }
 
   const v1Conditions = [inArray(timesheetSchedulingPlans.period, evalPeriods)]
   if (currentSite.id !== 0) {
     v1Conditions.push(eq(timesheetSchedulingPlans.siteId, currentSite.id))
+  } else if (isCustomerScoped) {
+    v1Conditions.push(inArray(timesheetSchedulingPlans.siteId, scopedSiteIds))
   }
 
   const fbConditions = []
   if (currentSite.id !== 0) {
     fbConditions.push(eq(timesheetFieldBreakPlans.siteId, currentSite.id))
+  } else if (isCustomerScoped) {
+    fbConditions.push(inArray(timesheetFieldBreakPlans.siteId, scopedSiteIds))
   }
+
+  const schedConfigWhere = currentSite.id !== 0
+    ? eq(timesheetSchedulingConfigs.siteId, currentSite.id)
+    : (isCustomerScoped ? inArray(timesheetSchedulingConfigs.siteId, scopedSiteIds) : undefined)
 
   const [rawSchedulingConfigs, v2Plans, v1Plans, fbPlans] = await Promise.all([
     db
@@ -940,7 +988,7 @@ export async function getDailyActivityDashboardData(
         fieldBreakConfig: timesheetSchedulingConfigs.fieldBreakConfig,
       })
       .from(timesheetSchedulingConfigs)
-      .where(currentSite.id !== 0 ? eq(timesheetSchedulingConfigs.siteId, currentSite.id) : undefined)
+      .where(schedConfigWhere)
       .catch((err) => {
         console.error('[daily-activity:timesheetSchedulingConfigs] Query failed:', err)
         return []
@@ -1600,7 +1648,7 @@ export async function getDailyActivityDashboardData(
       })
       .from(overtimeCommandLetters)
       .innerJoin(employees, eq(overtimeCommandLetters.requestedByEmployeeId, employees.id))
-      .where(currentSite.id !== 0 ? eq(employees.siteId, currentSite.id) : undefined)
+      .where(currentSite.id !== 0 ? eq(employees.siteId, currentSite.id) : (isCustomerScoped ? inArray(employees.siteId, scopedSiteIds) : undefined))
       .limit(3)
       .catch((err) => {
         console.error('[daily-activity:overtimeCommandLetters] Query failed:', err)
@@ -1635,6 +1683,8 @@ export async function getDailyActivityDashboardData(
   ]
   if (currentSite.id !== 0) {
     employeeWhere.push(eq(employees.siteId, currentSite.id))
+  } else if (isCustomerScoped) {
+    employeeWhere.push(inArray(employees.siteId, scopedSiteIds))
   }
 
   const allActiveEmployees = await db

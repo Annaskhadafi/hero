@@ -2866,11 +2866,11 @@ const siteOvertimeConfigSchema = z
   })
 
 const employeeBenefitRuleSchema = z.object({
-  msa: z.boolean(),
-  meals: z.boolean(),
-  specialAllowance: z.boolean(),
-  specialAllowancePeriod: z.enum(['daily', 'monthly']),
-  specialAllowanceAmount: z.number().int().min(0).max(1_000_000_000),
+  msa: z.boolean().default(false),
+  meals: z.boolean().default(false),
+  specialAllowance: z.boolean().default(false),
+  specialAllowancePeriod: z.enum(['daily', 'monthly']).default('daily'),
+  specialAllowanceAmount: z.coerce.number().min(0).max(1_000_000_000).default(0),
 })
 const schedulingClockTimeSchema = z
   .string()
@@ -2887,10 +2887,10 @@ const schedulingFieldBreakConfigSchema = z
       .optional(),
     quotationBillingConfig: z
       .object({
-        countEmpty: z.boolean(),
-        countSick: z.boolean(),
-        countLeave: z.boolean(),
-        countAbsent: z.boolean(),
+        countEmpty: z.boolean().optional(),
+        countSick: z.boolean().optional(),
+        countLeave: z.boolean().optional(),
+        countAbsent: z.boolean().optional(),
       })
       .optional(),
   })
@@ -2966,17 +2966,14 @@ export async function saveSchedulingConfigAction(
     scopedSections.map((row) => `${row.departmentId}:${row.sectionId}`)
   )
   const sectionNames = new Map(scopedSections.map((row) => [row.sectionId, row.sectionName]))
-  if (
-    payload.approvalSections.some(
-      (row) => !validSectionKeys.has(`${row.departmentId}:${row.sectionId}`)
-    )
-  ) {
-    throw new Error('Section approval tidak memiliki anggota aktif pada site ini.')
-  }
+
+  const validApprovalSections = payload.approvalSections.filter((row) =>
+    validSectionKeys.has(`${row.departmentId}:${row.sectionId}`)
+  )
 
   const approverIds = [
     ...new Set(
-      payload.approvalSections.flatMap((row) =>
+      validApprovalSections.flatMap((row) =>
         [row.pjoLeaderId, row.sectionHeadId, row.departmentHeadId].filter(
           (id): id is number => id != null
         )
@@ -2989,9 +2986,14 @@ export async function saveSchedulingConfigAction(
         .from(employees)
         .where(and(eq(employees.isActive, true), inArray(employees.id, approverIds)))
     : []
-  if (validApprovers.length !== approverIds.length) {
-    throw new Error('Approver harus berasal dari karyawan aktif di User Management.')
-  }
+  const validApproverSet = new Set(validApprovers.map((row) => row.id))
+
+  const sanitizedApprovalSections = validApprovalSections.map((row) => ({
+    ...row,
+    pjoLeaderId: row.pjoLeaderId != null && validApproverSet.has(row.pjoLeaderId) ? row.pjoLeaderId : null,
+    sectionHeadId: row.sectionHeadId != null && validApproverSet.has(row.sectionHeadId) ? row.sectionHeadId : null,
+    departmentHeadId: row.departmentHeadId != null && validApproverSet.has(row.departmentHeadId) ? row.departmentHeadId : null,
+  }))
 
   await db.transaction(async (tx) => {
     await tx
@@ -3063,7 +3065,7 @@ export async function saveSchedulingConfigAction(
       return structureId
     }
 
-    for (const row of payload.approvalSections) {
+    for (const row of sanitizedApprovalSections) {
       const sectionName = sectionNames.get(row.sectionId) ?? `Section ${row.sectionId}`
       const matrixConfigs = [
         {

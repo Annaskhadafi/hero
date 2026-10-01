@@ -7442,6 +7442,7 @@ function serializeSchedulingConfig(config: typeof timesheetSchedulingConfigs.$in
     allowanceVariables: config.allowanceVariables,
     overtimeVariables: config.overtimeVariables,
     overtimeConfig: config.overtimeConfig,
+    pdfConfig: config.pdfConfig,
     updatedAt: config.updatedAt.toISOString(),
   }
 }

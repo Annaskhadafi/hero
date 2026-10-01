@@ -69,21 +69,24 @@ export default async function MaestroDailyActivityPage({ searchParams }: PagePro
 
   // 2. Resolve effective site ID (strictly scoped to authorized sites)
   let effectiveSiteId = authorizedSites[0]?.id || authorizedSiteIds[0]
-  if (resolvedParams.siteId) {
-    const candidateSiteId = Number(resolvedParams.siteId)
+  const requestedSiteId = resolvedParams.siteId
+  if (requestedSiteId && requestedSiteId !== 'all' && requestedSiteId !== '0') {
+    const candidateSiteId = Number(requestedSiteId)
     if (authorizedSiteIds.includes(candidateSiteId)) {
       effectiveSiteId = candidateSiteId
     }
   }
 
-  // 3. Fetch daily activity data scoped strictly to effectiveSiteId
+  // 3. Fetch daily activity data scoped strictly to customer authorizedSiteIds
   const searchKeyword = resolvedParams.employeeName || resolvedParams.q || resolvedParams.search
   const data = await getDailyActivityDashboardData({
-    siteId: String(effectiveSiteId),
+    siteId: requestedSiteId === 'all' || requestedSiteId === '0' ? 'all' : String(effectiveSiteId),
+    authorizedSiteIds,
     date: resolvedParams.date,
     startDate: resolvedParams.startDate,
     endDate: resolvedParams.endDate,
     shift: resolvedParams.shift,
+    departmentId: resolvedParams.dept,
     status: resolvedParams.status,
     search: searchKeyword,
     employeeName: resolvedParams.employeeName,

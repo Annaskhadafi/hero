@@ -6,14 +6,11 @@ import { usePathname } from 'next/navigation'
 import {
   Building2,
   Headphones,
-  LogOut,
   Sparkles,
 } from 'lucide-react'
 
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { Separator } from '@/components/ui/separator'
-import { Button } from '@/components/ui/button'
-import { logoutMaestroAction } from '@/app/maestro/login/actions'
 import { type MaestroSessionData } from '@/lib/maestro-session'
 import { cn } from '@/lib/utils'
 
@@ -135,20 +132,6 @@ export function MaestroSiteHeader({ session }: MaestroSiteHeaderProps) {
             <Headphones className="size-3.5 text-blue-700" />
             <span className="hidden sm:inline">Bantuan</span>
           </Link>
-
-          {/* Logout Quick Button */}
-          <form action={logoutMaestroAction}>
-            <Button
-              variant="outline"
-              size="sm"
-              type="submit"
-              className="h-9 gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 shadow-2xs transition-colors cursor-pointer"
-              title="Keluar dari Portal"
-            >
-              <LogOut className="size-3.5" />
-              <span className="hidden xl:inline">Keluar</span>
-            </Button>
-          </form>
         </div>
       </div>
     </header>
