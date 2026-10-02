@@ -5850,19 +5850,32 @@ export function SchedulingTimesheetWorkspace({
         day.status === 'absent' ||
         day.status === 'field_break' ||
         day.status === 'standby' ||
+        day.status === 'off' ||
         day.scheduleCode === 'OFF' ||
         day.scheduleCode === 'FB' ||
         day.scheduleCode === 'Libur'
 
       const hasManualClockIn = Boolean(day.clockIn && day.clockIn.trim() !== '')
       const hasManualClockOut = Boolean(day.clockOut && day.clockOut.trim() !== '')
+      const hasRealAttendance = hasManualClockIn || hasManualClockOut || day.status === 'present'
+      const isOffDay =
+        day.status === 'off' ||
+        day.scheduleCode === 'OFF' ||
+        day.scheduleCode === 'FB' ||
+        day.scheduleCode === 'Libur'
 
       return {
         ...day,
-        workingTimeFrom: day.isHoliday || isOffsiteOrAbsent ? '' : defaultWorkFrom,
-        workingTimeTo: day.isHoliday || isOffsiteOrAbsent ? '' : defaultWorkTo,
+        workingTimeFrom:
+          day.isHoliday || (isOffsiteOrAbsent && !hasRealAttendance)
+            ? ''
+            : (day.clockIn || defaultWorkFrom),
+        workingTimeTo:
+          day.isHoliday || (isOffsiteOrAbsent && !hasRealAttendance)
+            ? ''
+            : (day.clockOut || defaultWorkTo),
         configuredOvertimeIntervals:
-          isOffsiteOrAbsent && !hasManualClockIn && !hasManualClockOut
+          (isOffsiteOrAbsent && !hasRealAttendance) || (isOffDay && !hasRealAttendance)
             ? []
             : (configuredIntervals as OvertimeInterval[]),
       }
@@ -6806,9 +6819,23 @@ export function SchedulingTimesheetWorkspace({
       return legacyOvertimeResult(0)
     }
     const shiftCode = schedule[day - 1] ?? 'IN'
-    const isOff = shiftCode === 'OFF' || shiftCode === 'FB' || shiftCode === 'Libur'
+    const cell = getAttendanceCell(employeeId, day, shiftCode)
+    const cellStatus = cell.status
+    const isOff =
+      shiftCode === 'OFF' ||
+      shiftCode === 'FB' ||
+      shiftCode === 'Libur' ||
+      cellStatus === 'off'
+    const isNonWork =
+      isOff ||
+      cellStatus === 'sick' ||
+      cellStatus === 'leave' ||
+      cellStatus === 'absent' ||
+      cellStatus === 'field_break' ||
+      cellStatus === 'standby' ||
+      cellStatus === 'empty'
     const isHol = isHoliday(period, day, holidays)
-    if (!clockIn && !clockOut && isOff) {
+    if (!clockIn && !clockOut && isNonWork) {
       return legacyOvertimeResult(0)
     }
     const defaultIn =

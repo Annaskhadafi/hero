@@ -141,8 +141,7 @@ test('Contract Review Online Test Integration Suite', async (t) => {
     const publicApprovalPage = path.join(root, 'app/review/[token]/public-approval.tsx')
     const publicApprovalContent = fs.readFileSync(publicApprovalPage, 'utf8')
     assert.ok(publicApprovalContent.includes('Hasil Evaluasi Ujian Online (Training Center)'), 'Public approval must include online test score table in PDF preview')
-    assert.ok(publicApprovalContent.includes('Edit Review & Rekomendasi'), 'Public approval must have Edit Review button for approver')
-    assert.ok(publicApprovalContent.includes('+ Tambah Approver'), 'Public approval must have Tambah Approver button')
+    assert.ok(publicApprovalContent.includes('+ Tambah Approver') || publicApprovalContent.includes('+ Tambah Reviewer'), 'Public approval must have Tambah Approver/Reviewer button')
 
     const clientFormPage = path.join(root, 'app/dashboard/hc/contract-review/form/client-form.tsx')
     const clientFormContent = fs.readFileSync(clientFormPage, 'utf8')

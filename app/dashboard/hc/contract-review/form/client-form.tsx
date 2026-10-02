@@ -229,7 +229,10 @@ export function ContractReviewClientForm({
     hrTitle: initialData?.hrTitle || resolveEmployeeTitle(initialData?.hrName || "Kesuma Bagaskara", "HR-GA"),
     nextSuperiorName: initialData?.nextSuperiorName || "",
     nextSuperiorTitle: initialData?.nextSuperiorTitle || (initialData?.nextSuperiorName ? resolveEmployeeTitle(initialData.nextSuperiorName, "Department Head") : ""),
-    
+    recommendation: initialData?.recommendation || "contract_extended",
+    contractExtendedMonths: initialData?.contractExtendedMonths || "",
+    contractEndDate: initialData?.contractEndDate || "",
+    permanentDate: initialData?.permanentDate || "",
     letterIssuance: initialData?.letterIssuance || "",
     status: initialData?.status || "draft",
     testRequired: Boolean(initialData?.testRequired),

@@ -393,7 +393,10 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     if (y < 90) break
 
     const isOff =
-      day.scheduleCode === 'OFF' || day.scheduleCode === 'FB' || day.scheduleCode === 'Libur'
+      day.scheduleCode === 'OFF' ||
+      day.scheduleCode === 'FB' ||
+      day.scheduleCode === 'Libur' ||
+      day.status === 'off'
     const isStatusWithoutTime = day.status === 'standby' || day.status === 'field_break'
     const isSunday = day.dayName === 'Sunday' || day.dayName === 'Saturday'
     const isAbsent =
@@ -401,11 +404,18 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       day.status === 'leave' ||
       day.status === 'absent' ||
       day.status === 'empty'
-    const hasAttendance = !isAbsent && Boolean(
-      day.clockIn || (day.workingTimeFrom && day.status !== 'empty' && !isOff)
+    const hasManualAttendance = Boolean(
+      (day.clockIn && day.clockIn.trim() !== '') ||
+      (day.clockOut && day.clockOut.trim() !== '') ||
+      day.status === 'present'
     )
+    const hasAttendance =
+      !isAbsent &&
+      (hasManualAttendance || (Boolean(day.workingTimeFrom) && day.status !== 'empty' && !isOff))
     const configuredOvertimeIntervals =
-      day.configuredOvertimeIntervals ?? day.overtime?.intervals ?? []
+      (isOff && !hasManualAttendance)
+        ? []
+        : (day.configuredOvertimeIntervals ?? day.overtime?.intervals ?? [])
     const hasOvertimeIntervals = configuredOvertimeIntervals.length > 0
 
     const formatOvertimeInterval = (interval: OvertimeInterval | undefined) =>
@@ -415,9 +425,9 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
 
     // Compute effective overtime hours
     let ot = day.overtime?.totalHours ?? 0
-    if (isAbsent || isStatusWithoutTime || (isOff && !hasAttendance)) {
+    if (isAbsent || isStatusWithoutTime || (isOff && !hasManualAttendance)) {
       ot = 0
-    } else if (ot <= 0 && hasOvertimeIntervals) {
+    } else if (ot <= 0 && hasOvertimeIntervals && !isOff && (hasAttendance || day.isHoliday)) {
       ot = configuredOvertimeIntervals.reduce((sum, inv) => {
         if (!inv || !inv.start || !inv.end) return sum
         const [sh, sm] = String(inv.start).split(/[:.]/).map(Number)
@@ -430,7 +440,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       }, 0)
     }
 
-    if (ot > 0 && !isAbsent && !isStatusWithoutTime && (!isOff || hasAttendance)) {
+    if (ot > 0 && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualAttendance)) {
       totalOT += ot
     }
 
@@ -463,7 +473,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       drawCell(page, colX[3], y, cols[3], rowH, { bgColor })
       drawCell(page, colX[4], y, cols[4], rowH, { bgColor })
       drawCell(page, colX[5], y, cols[5], rowH, { bgColor })
-    } else if (isOff && !hasAttendance && !day.isHoliday && !hasOvertimeIntervals) {
+    } else if (isOff && !hasManualAttendance && !day.isHoliday) {
       drawCell(page, colX[2], y, cols[2], rowH, {
         text: 'OFF',
         font: fontBold,
@@ -474,7 +484,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       drawCell(page, colX[3], y, cols[3], rowH, { bgColor })
       drawCell(page, colX[4], y, cols[4], rowH, { bgColor })
       drawCell(page, colX[5], y, cols[5], rowH, { bgColor })
-    } else if (hasAttendance || hasOvertimeIntervals || day.isHoliday) {
+    } else if (hasAttendance || (hasOvertimeIntervals && !isOff) || day.isHoliday) {
       const shouldRenderWorkTimes =
         !isAbsent &&
         !day.isHoliday &&
@@ -487,11 +497,11 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
         ? String(day.workingTimeTo !== undefined ? day.workingTimeTo : day.clockOut ?? '').replace(':', '.')
         : ''
       const shouldRenderOtTimes =
-        hasOvertimeIntervals && !isAbsent && !isStatusWithoutTime && (!isOff || hasAttendance)
+        hasOvertimeIntervals && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualAttendance)
 
       drawCell(page, colX[2], y, cols[2], rowH, {
-        text: isOff && !hasAttendance ? 'OFF' : workFrom,
-        font: isOff && !hasAttendance ? fontBold : font,
+        text: isOff && !hasManualAttendance ? 'OFF' : workFrom,
+        font: isOff && !hasManualAttendance ? fontBold : font,
         fontSize: 8,
         align: 'center',
         bgColor,
@@ -792,7 +802,11 @@ export async function generateSiteAllowancePdf(input: SiteAllowanceInput): Promi
     const isFieldBreakDay = fieldBreakDays.has(day.day)
 
     const isOff =
-      day.scheduleCode === 'OFF' || day.scheduleCode === 'Libur' || day.scheduleCode === 'Sakit'
+      day.scheduleCode === 'OFF' ||
+      day.scheduleCode === 'Libur' ||
+      day.scheduleCode === 'Sakit' ||
+      day.status === 'off' ||
+      day.status === 'sick'
     const isSunday = day.dayName === 'Sunday' || day.dayName === 'Saturday'
     const bgColor = day.isHoliday
       ? rgb(1, 1, 0.8)
@@ -1065,7 +1079,10 @@ export async function generateEmployeeAllowanceRecordPdf(input: {
 
     const isFb = day.scheduleCode === 'FB' || day.status === 'field_break'
     const isOff =
-      day.scheduleCode === 'OFF' || day.scheduleCode === 'FB' || day.scheduleCode === 'Libur'
+      day.scheduleCode === 'OFF' ||
+      day.scheduleCode === 'FB' ||
+      day.scheduleCode === 'Libur' ||
+      day.status === 'off'
     const isSunday = day.dayName === 'Sunday' || day.dayName === 'Saturday'
     const bgColor = isFb
       ? rgb(0.95, 0.9, 1)

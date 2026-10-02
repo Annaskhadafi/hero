@@ -45,6 +45,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
+import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
 
 interface ExpiringEmployee {
@@ -933,6 +934,27 @@ export function ContractReviewClientPage({
           <div className="grid gap-6 lg:grid-cols-2">
             {/* ── Approval Matrix ── */}
             <div className="space-y-5">
+              <div className="flex items-center justify-between rounded-xl border border-sky-200 bg-sky-50/40 p-3.5">
+                <div className="space-y-0.5 pr-2">
+                  <Label className="text-sm font-semibold text-slate-900">Integrasi Ujian Online Karyawan</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Jika dinonaktifkan, seluruh form contract review tidak akan mewajibkan test online kompetensi bagi karyawan.
+                  </p>
+                </div>
+                <Switch
+                  checked={settingsForm.onlineTest?.enabled ?? true}
+                  onCheckedChange={(checked) =>
+                    setSettingsForm({
+                      ...settingsForm,
+                      onlineTest: {
+                        ...settingsForm.onlineTest,
+                        enabled: checked,
+                      },
+                    })
+                  }
+                />
+              </div>
+
               <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Approval Matrix</h3>
               <div className="space-y-3">
                 <div><Label>HO Sites (pisahkan koma)</Label><Input value={settingsForm.approvalMatrix.hoSites.join(', ')} onChange={(e) => setSettingsForm({ ...settingsForm, approvalMatrix: { ...settingsForm.approvalMatrix, hoSites: e.target.value.split(',').map((v: string) => v.trim()).filter(Boolean) } })} /></div>

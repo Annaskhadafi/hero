@@ -182,6 +182,24 @@ export async function upsertContractReviewTestConfig(data: {
       })
       .where(eq(hcContractReviewTestConfigs.id, data.id))
       .returning()
+
+    if (data.isActive === false) {
+      await db
+        .update(hcEmployeeContractReviews)
+        .set({
+          testRequired: false,
+          testStatus: 'none',
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(hcEmployeeContractReviews.testConfigId, data.id),
+            inArray(hcEmployeeContractReviews.testStatus, ['none', 'pending', 'in_progress'])
+          )
+        )
+      safeRevalidatePath('/dashboard/hc/contract-review')
+    }
+
     safeRevalidatePath('/dashboard/chitralearning-lms/contract-tests')
     return updated
   }
@@ -212,8 +230,24 @@ export async function deleteContractReviewTestConfig(id: number) {
   const session = await getServerSession()
   if (!session?.user) throw new Error('Unauthorized')
 
+  await db
+    .update(hcEmployeeContractReviews)
+    .set({
+      testRequired: false,
+      testConfigId: null,
+      testStatus: 'none',
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(hcEmployeeContractReviews.testConfigId, id),
+        inArray(hcEmployeeContractReviews.testStatus, ['none', 'pending', 'in_progress'])
+      )
+    )
+
   await db.delete(hcContractReviewTestConfigs).where(eq(hcContractReviewTestConfigs.id, id))
   safeRevalidatePath('/dashboard/chitralearning-lms/contract-tests')
+  safeRevalidatePath('/dashboard/hc/contract-review')
   return { success: true }
 }
 
@@ -303,6 +337,11 @@ export async function deleteContractReviewTestQuestion(questionId: number, confi
 // ─── Find Active Config for Employee ───────────────────────────────────
 
 export async function findActiveTestConfigForEmployee(employeeId: number, reviewType: string = 'contract') {
+  const settings = await getContractReviewSettings()
+  if (settings.onlineTest?.enabled === false) {
+    return null
+  }
+
   const [emp] = await db
     .select({
       id: employees.id,

@@ -18,7 +18,7 @@ import {
   sites,
 } from '@/db/schema/hero'
 import { centralServiceEmployees } from '@/db/schema/central-service'
-import { and, asc, desc, eq, isNotNull, ne, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNotNull, ne, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 function safeRevalidatePath(path: string) {
@@ -419,6 +419,10 @@ export async function getContractReviewSettings() {
       Array.isArray(stored.reminderDaysBefore) && stored.reminderDaysBefore.length > 0
         ? stored.reminderDaysBefore.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value >= 0)
         : DEFAULT_CONTRACT_REVIEW_SETTINGS.reminderDaysBefore,
+    onlineTest: {
+      ...DEFAULT_CONTRACT_REVIEW_SETTINGS.onlineTest,
+      ...stored.onlineTest,
+    },
   } satisfies ContractReviewSettings
 }
 
@@ -455,6 +459,24 @@ export async function saveContractReviewSettings(settings: ContractReviewSetting
   } else {
     await db.insert(hcContractReviewSettings).values({ settingKey: 'contract_review_workflow', settingValue: settings })
   }
+
+  // If online test is disabled globally, deactivate test requirement from all pending draft/in_progress reviews
+  if (settings.onlineTest?.enabled === false) {
+    await db
+      .update(hcEmployeeContractReviews)
+      .set({
+        testRequired: false,
+        testStatus: 'none',
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(hcEmployeeContractReviews.testRequired, true),
+          inArray(hcEmployeeContractReviews.testStatus, ['none', 'pending', 'in_progress'])
+        )
+      )
+  }
+
   revalidatePath('/dashboard/hc/contract-review')
   return { success: true }
 }
@@ -1763,6 +1785,25 @@ export async function getContractReviewById(id: number) {
       testConfig = cfg || null
     }
 
+    // Reconcile online test requirement if config is inactive, deleted, or globally disabled
+    const settings = await getContractReviewSettings()
+    const isTestConfigUnavailable = !testConfig || !testConfig.isActive || settings.onlineTest?.enabled === false
+    const isTestUnfinished = ['none', 'pending', 'in_progress'].includes(record.testStatus)
+
+    if (record.testRequired && isTestUnfinished && isTestConfigUnavailable) {
+      await db
+        .update(hcEmployeeContractReviews)
+        .set({
+          testRequired: false,
+          testStatus: 'none',
+          updatedAt: new Date(),
+        })
+        .where(eq(hcEmployeeContractReviews.id, id))
+
+      record.testRequired = false
+      record.testStatus = 'none'
+    }
+
     if (record.employeeId) {
       testAttempts = await db
         .select()
@@ -1893,8 +1934,30 @@ export async function saveContractReview(data: Partial<typeof hcEmployeeContract
     }
 
     await ensureContractReviewWorkflowTables()
+    const settings = await getContractReviewSettings()
     let saved: any
     if (data.id) {
+      const reviewData = { ...data }
+      if (reviewData.testRequired && ['none', 'pending', 'in_progress'].includes(reviewData.testStatus || 'none')) {
+        if (settings.onlineTest?.enabled === false) {
+          reviewData.testRequired = false
+          reviewData.testStatus = 'none'
+        } else if (reviewData.testConfigId) {
+          const [cfg] = await db
+            .select({ id: hcContractReviewTestConfigs.id, isActive: hcContractReviewTestConfigs.isActive })
+            .from(hcContractReviewTestConfigs)
+            .where(eq(hcContractReviewTestConfigs.id, reviewData.testConfigId))
+            .limit(1)
+          if (!cfg || !cfg.isActive) {
+            reviewData.testRequired = false
+            reviewData.testStatus = 'none'
+          }
+        } else {
+          reviewData.testRequired = false
+          reviewData.testStatus = 'none'
+        }
+      }
+
       const [existingReview] = await db
         .select({ leaderSignatureDataUrl: hcEmployeeContractReviews.leaderSignatureDataUrl })
         .from(hcEmployeeContractReviews)
@@ -1903,7 +1966,7 @@ export async function saveContractReview(data: Partial<typeof hcEmployeeContract
 
       const [updated] = await db
         .update(hcEmployeeContractReviews)
-        .set({ ...data, updatedAt: new Date() })
+        .set({ ...reviewData, updatedAt: new Date() })
         .where(eq(hcEmployeeContractReviews.id, data.id))
         .returning()
       saved = updated
@@ -1952,7 +2015,7 @@ export async function saveContractReview(data: Partial<typeof hcEmployeeContract
       saved = inserted
 
       // Check if Online Test is required for this employee
-      if (inserted.employeeId) {
+      if (inserted.employeeId && settings.onlineTest?.enabled !== false) {
         try {
           const { findActiveTestConfigForEmployee, dispatchContractReviewTestInvitation } = await import(
             './contract-review-tests'
