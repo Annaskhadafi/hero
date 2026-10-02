@@ -7,7 +7,9 @@ import {
   AlertTriangle,
   Bell,
   Bug,
+  Check,
   CheckCircle2,
+  ChevronDown,
   Clock,
   Eye,
   FilePlus2,
@@ -28,6 +30,7 @@ import {
   sendDueContractReviewReminders,
   sendSingleContractReminder,
   sendBatchContractReminders,
+  updateContractReviewStatus,
 } from "@/app/actions/contract-review"
 import { AdminPageShell } from "@/components/admin-page-shell"
 import { HcWorkspaceBanner, hcPrimaryActionClassName } from "@/components/hc/hc-workspace-banner"
@@ -36,6 +39,14 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { EnterpriseActionButtons } from "@/components/ui/enterprise-table-kit"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -112,6 +123,34 @@ export function ContractReviewClientPage({
   const [monitoringSearch, setMonitoringSearch] = useState("")
   const [urgencyFilter, setUrgencyFilter] = useState<string>("all")
   const [reviewStatusFilter, setReviewStatusFilter] = useState<string>("all")
+  const [updatingStatusId, setUpdatingStatusId] = useState<number | null>(null)
+
+  useEffect(() => {
+    setRows(reviews)
+  }, [reviews])
+
+  const handleStatusChange = async (
+    reviewId: number,
+    newStatus: 'draft' | 'in_progress' | 'completed' | 'cancelled'
+  ) => {
+    setUpdatingStatusId(reviewId)
+    try {
+      const res = await updateContractReviewStatus(reviewId, newStatus)
+      if (res.success) {
+        toast.success(res.message || `Status review berhasil diubah menjadi ${newStatus}.`)
+        setRows((prev) =>
+          prev.map((r) => (r.id === reviewId ? { ...r, status: newStatus } : r))
+        )
+        router.refresh()
+      } else {
+        toast.error(res.error || 'Gagal mengubah status review.')
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Terjadi kesalahan saat mengubah status.')
+    } finally {
+      setUpdatingStatusId(null)
+    }
+  }
 
   const access = { canView: true, canEdit: true, canDelete: true }
   const toolbarButtonClassName = "h-9 rounded-lg px-3 text-[13px] font-medium normal-case tracking-normal shadow-[0_6px_14px_rgba(15,23,42,0.06)] transition-[transform,background-color,box-shadow,color]"
@@ -508,7 +547,83 @@ export function ContractReviewClientPage({
                       <TableCell className="capitalize">{row.reviewType}</TableCell>
                       <TableCell className="capitalize"><div className="max-w-[170px] truncate">{row.recommendation.replace('_', ' ')}</div></TableCell>
                       <TableCell>
-                        <AdminStatusBadge value={status || 'draft'} />
+                        {isSuperAdmin ? (
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild disabled={updatingStatusId === row.id}>
+                                <button
+                                  type="button"
+                                  className="group inline-flex items-center gap-1.5 rounded-full p-0.5 transition hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+                                  title="Klik untuk mengubah status review"
+                                >
+                                  {updatingStatusId === row.id ? (
+                                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-100 text-xs text-slate-600">
+                                      <Loader2 className="size-3 animate-spin" />
+                                      <span>Updating...</span>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <AdminStatusBadge value={status || 'draft'} />
+                                      <ChevronDown className="size-3 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                                    </>
+                                  )}
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="start" className="w-48">
+                                <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                  Ubah Status Review
+                                </DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  disabled={status === 'draft'}
+                                  onClick={() => handleStatusChange(row.id, 'draft')}
+                                  className="flex items-center justify-between cursor-pointer"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span className="size-2 rounded-full bg-sky-500" />
+                                    <span>Draft</span>
+                                  </div>
+                                  {status === 'draft' && <Check className="size-4 text-sky-600" />}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  disabled={status === 'in_progress'}
+                                  onClick={() => handleStatusChange(row.id, 'in_progress')}
+                                  className="flex items-center justify-between cursor-pointer"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span className="size-2 rounded-full bg-cyan-500" />
+                                    <span>In Progress</span>
+                                  </div>
+                                  {status === 'in_progress' && <Check className="size-4 text-cyan-600" />}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  disabled={status === 'completed'}
+                                  onClick={() => handleStatusChange(row.id, 'completed')}
+                                  className="flex items-center justify-between cursor-pointer"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span className="size-2 rounded-full bg-emerald-500" />
+                                    <span>Completed</span>
+                                  </div>
+                                  {status === 'completed' && <Check className="size-4 text-emerald-600" />}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  disabled={status === 'cancelled'}
+                                  onClick={() => handleStatusChange(row.id, 'cancelled')}
+                                  className="flex items-center justify-between cursor-pointer"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span className="size-2 rounded-full bg-slate-500" />
+                                    <span>Cancelled</span>
+                                  </div>
+                                  {status === 'cancelled' && <Check className="size-4 text-slate-600" />}
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        ) : (
+                          <AdminStatusBadge value={status || 'draft'} />
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center justify-end gap-1">

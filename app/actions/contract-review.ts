@@ -475,6 +475,22 @@ export async function saveContractReviewSettings(settings: ContractReviewSetting
           inArray(hcEmployeeContractReviews.testStatus, ['none', 'pending', 'in_progress'])
         )
       )
+
+    // Auto-advance all draft reviews that already have leader signature
+    const draftReviews = await db
+      .select({ id: hcEmployeeContractReviews.id })
+      .from(hcEmployeeContractReviews)
+      .where(
+        and(
+          eq(hcEmployeeContractReviews.status, 'draft'),
+          isNotNull(hcEmployeeContractReviews.leaderSignatureDataUrl),
+          ne(hcEmployeeContractReviews.leaderSignatureDataUrl, '')
+        )
+      )
+
+    for (const dr of draftReviews) {
+      await autoAdvanceDraftReviewIfReady(dr.id)
+    }
   }
 
   revalidatePath('/dashboard/hc/contract-review')
@@ -1767,6 +1783,94 @@ export async function getContractReviewActivityTemplates() {
   }
 }
 
+export async function autoAdvanceDraftReviewIfReady(reviewId: number) {
+  try {
+    const [review] = await db
+      .select()
+      .from(hcEmployeeContractReviews)
+      .where(eq(hcEmployeeContractReviews.id, reviewId))
+      .limit(1)
+
+    if (!review) return { autoSent: false, reason: 'Review not found' }
+    if (review.status !== 'draft') return { autoSent: false, reason: 'Review not in draft' }
+    if (review.testRequired) return { autoSent: false, reason: 'Test still required' }
+    if (!review.leaderSignatureDataUrl) return { autoSent: false, reason: 'No leader signature' }
+
+    // Check step 1 approval
+    const [firstPending] = await db
+      .select()
+      .from(hcContractReviewApprovals)
+      .where(
+        and(
+          eq(hcContractReviewApprovals.reviewId, reviewId),
+          eq(hcContractReviewApprovals.stepOrder, 1),
+          eq(hcContractReviewApprovals.status, 'pending')
+        )
+      )
+      .limit(1)
+
+    if (!firstPending) return { autoSent: false, reason: 'Step 1 not pending' }
+
+    // 1. Approve step 1 with leader signature
+    await db
+      .update(hcContractReviewApprovals)
+      .set({
+        status: 'approved',
+        signatureDataUrl: review.leaderSignatureDataUrl,
+        signedAt: new Date(),
+      })
+      .where(eq(hcContractReviewApprovals.id, firstPending.id))
+
+    // 2. Mark step 2 as pending
+    const [nextStep] = await db
+      .select()
+      .from(hcContractReviewApprovals)
+      .where(
+        and(
+          eq(hcContractReviewApprovals.reviewId, reviewId),
+          eq(hcContractReviewApprovals.stepOrder, 2),
+          eq(hcContractReviewApprovals.status, 'waiting')
+        )
+      )
+      .limit(1)
+
+    if (nextStep) {
+      await db
+        .update(hcContractReviewApprovals)
+        .set({ status: 'pending' })
+        .where(eq(hcContractReviewApprovals.id, nextStep.id))
+
+      // 3. Mark review status as in_progress
+      const [updatedReview] = await db
+        .update(hcEmployeeContractReviews)
+        .set({ status: 'in_progress', updatedAt: new Date() })
+        .where(eq(hcEmployeeContractReviews.id, reviewId))
+        .returning()
+
+      // 4. Auto send approval email to next approver
+      if (updatedReview) {
+        await sendPendingContractReviewApprovalEmail(updatedReview)
+      }
+
+      safeRevalidatePath('/dashboard/hc/contract-review')
+      safeRevalidatePath(`/dashboard/hc/contract-review/form/${reviewId}`)
+      return { autoSent: true, newStatus: 'in_progress' }
+    } else {
+      await db
+        .update(hcEmployeeContractReviews)
+        .set({ status: 'completed', updatedAt: new Date() })
+        .where(eq(hcEmployeeContractReviews.id, reviewId))
+
+      safeRevalidatePath('/dashboard/hc/contract-review')
+      safeRevalidatePath(`/dashboard/hc/contract-review/form/${reviewId}`)
+      return { autoSent: true, newStatus: 'completed' }
+    }
+  } catch (error) {
+    console.error('Error auto-advancing draft review:', error)
+    return { autoSent: false, error }
+  }
+}
+
 export async function getContractReviewById(id: number) {
   try {
     await ensureContractReviewWorkflowTables()
@@ -1802,6 +1906,14 @@ export async function getContractReviewById(id: number) {
 
       record.testRequired = false
       record.testStatus = 'none'
+    }
+
+    // Auto-advance if draft review has leader signature and test is no longer required
+    if (record.status === 'draft' && !record.testRequired && record.leaderSignatureDataUrl) {
+      const advanceResult = await autoAdvanceDraftReviewIfReady(id)
+      if (advanceResult.autoSent) {
+        record.status = advanceResult.newStatus || 'in_progress'
+      }
     }
 
     if (record.employeeId) {
@@ -2007,6 +2119,14 @@ export async function saveContractReview(data: Partial<typeof hcEmployeeContract
           }
         }
       }
+
+      // If draft review has leader signature and no test is required, auto-send to in_progress
+      if (saved.status === 'draft' && !saved.testRequired && saved.leaderSignatureDataUrl) {
+        const advanceRes = await autoAdvanceDraftReviewIfReady(saved.id)
+        if (advanceRes.autoSent) {
+          saved.status = advanceRes.newStatus || 'in_progress'
+        }
+      }
     } else {
       const [inserted] = await db
         .insert(hcEmployeeContractReviews)
@@ -2179,6 +2299,71 @@ export async function completeAdminContractReview(reviewId: number) {
   } catch (error: any) {
     console.error('Error completing admin Contract Review:', error)
     return { success: false, error: error.message || 'Gagal menyelesaikan review.' }
+  }
+}
+
+export async function updateContractReviewStatus(
+  reviewId: number,
+  newStatus: 'draft' | 'in_progress' | 'completed' | 'cancelled'
+) {
+  try {
+    const session = await getServerSession()
+    if (!session?.user) return { success: false, error: 'Unauthorized: Sesi login diperlukan.' }
+    const role = await getCurrentEmployeeAccessRole()
+    if (!isSuperAdminRole(role)) {
+      return { success: false, error: 'Forbidden: Hanya Super Admin / HC Manager yang dapat mengubah status review.' }
+    }
+
+    await ensureContractReviewWorkflowTables()
+    const [review] = await db
+      .select()
+      .from(hcEmployeeContractReviews)
+      .where(eq(hcEmployeeContractReviews.id, reviewId))
+      .limit(1)
+
+    if (!review) return { success: false, error: 'Review Contract Review tidak ditemukan.' }
+
+    if (newStatus === 'in_progress') {
+      if (review.status === 'draft') {
+        if (!review.testRequired && review.leaderSignatureDataUrl) {
+          const advanceRes = await autoAdvanceDraftReviewIfReady(reviewId)
+          if (advanceRes.autoSent) {
+            safeRevalidatePath('/dashboard/hc/contract-review')
+            safeRevalidatePath(`/dashboard/hc/contract-review/form/${reviewId}`)
+            return { success: true, message: 'Status diubah ke In Progress dan email approval dikirim ke reviewer berikutnya.' }
+          }
+        }
+      }
+
+      await db
+        .update(hcEmployeeContractReviews)
+        .set({ status: 'in_progress', updatedAt: new Date() })
+        .where(eq(hcEmployeeContractReviews.id, reviewId))
+
+      const [updatedReview] = await db.select().from(hcEmployeeContractReviews).where(eq(hcEmployeeContractReviews.id, reviewId)).limit(1)
+      if (updatedReview) {
+        await sendPendingContractReviewApprovalEmail(updatedReview)
+      }
+    } else if (newStatus === 'completed') {
+      const completedAt = new Date()
+      await db
+        .update(hcEmployeeContractReviews)
+        .set({ status: 'completed', updatedAt: completedAt })
+        .where(eq(hcEmployeeContractReviews.id, reviewId))
+      await syncCompletedContractReviewToEmployee(review, completedAt)
+    } else {
+      await db
+        .update(hcEmployeeContractReviews)
+        .set({ status: newStatus, updatedAt: new Date() })
+        .where(eq(hcEmployeeContractReviews.id, reviewId))
+    }
+
+    safeRevalidatePath('/dashboard/hc/contract-review')
+    safeRevalidatePath(`/dashboard/hc/contract-review/form/${reviewId}`)
+    return { success: true, message: `Status review berhasil diubah menjadi ${newStatus}.` }
+  } catch (error: any) {
+    console.error('Error updating contract review status:', error)
+    return { success: false, error: error.message || 'Gagal mengubah status review.' }
   }
 }
 

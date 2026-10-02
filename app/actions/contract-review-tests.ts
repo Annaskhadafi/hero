@@ -23,8 +23,7 @@ import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center
 import { sendPushNotification } from '@/lib/push-notifications'
 import { logEmailDeliveryRecord, sendEmailViaSmtp, type EmailTransportSettings } from '@/lib/email-delivery'
 import { resolveWorkflowTemplateContent } from '@/lib/workflow-email'
-import { getHumanCapitalPolicyCcRecipients } from '@/lib/human-capital-email'
-import { getContractReviewSettings } from './contract-review'
+import { getContractReviewSettings, autoAdvanceDraftReviewIfReady } from './contract-review'
 
 async function getBaseUrl(): Promise<string> {
   let baseUrl = process.env.NEXT_PUBLIC_APP_URL
@@ -197,6 +196,22 @@ export async function upsertContractReviewTestConfig(data: {
             inArray(hcEmployeeContractReviews.testStatus, ['none', 'pending', 'in_progress'])
           )
         )
+
+      const draftReviews = await db
+        .select({ id: hcEmployeeContractReviews.id })
+        .from(hcEmployeeContractReviews)
+        .where(
+          and(
+            eq(hcEmployeeContractReviews.status, 'draft'),
+            isNotNull(hcEmployeeContractReviews.leaderSignatureDataUrl),
+            ne(hcEmployeeContractReviews.leaderSignatureDataUrl, '')
+          )
+        )
+
+      for (const dr of draftReviews) {
+        await autoAdvanceDraftReviewIfReady(dr.id)
+      }
+
       safeRevalidatePath('/dashboard/hc/contract-review')
     }
 
@@ -244,6 +259,21 @@ export async function deleteContractReviewTestConfig(id: number) {
         inArray(hcEmployeeContractReviews.testStatus, ['none', 'pending', 'in_progress'])
       )
     )
+
+  const draftReviews = await db
+    .select({ id: hcEmployeeContractReviews.id })
+    .from(hcEmployeeContractReviews)
+    .where(
+      and(
+        eq(hcEmployeeContractReviews.status, 'draft'),
+        isNotNull(hcEmployeeContractReviews.leaderSignatureDataUrl),
+        ne(hcEmployeeContractReviews.leaderSignatureDataUrl, '')
+      )
+    )
+
+  for (const dr of draftReviews) {
+    await autoAdvanceDraftReviewIfReady(dr.id)
+  }
 
   await db.delete(hcContractReviewTestConfigs).where(eq(hcContractReviewTestConfigs.id, id))
   safeRevalidatePath('/dashboard/chitralearning-lms/contract-tests')
