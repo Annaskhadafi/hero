@@ -628,11 +628,23 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     menuArea: 'main',
     section: 'Aktivitas Harian',
     groupLabel: 'Monitoring & Site Operation',
+    title: 'Tire Scrap',
+    url: '/dashboard/tire-scrap',
+    iconName: 'disc',
+    resource: 'tire_scrap',
+    sortOrder: 1,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Aktivitas Harian',
+    groupLabel: 'Monitoring & Site Operation',
     title: 'Dashboard Utilities',
     url: '/dashboard/utilities',
     iconName: 'chart',
     resource: 'utilities',
-    sortOrder: 1,
+    sortOrder: 2,
     isVisible: true,
     openInNewTab: false,
   },
@@ -4520,7 +4532,7 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
   }
 
   // Daily Activity & Utilities monitoring: khusus untuk PJO, Head Section, Head Department, keatas
-  if (resource === 'daily_activity' || resource === 'utilities') {
+  if (resource === 'daily_activity' || resource === 'utilities' || resource === 'tire_scrap') {
     const isLeadership = [
       'Super Admin',
       'Manager',

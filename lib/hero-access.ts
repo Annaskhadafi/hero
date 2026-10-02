@@ -184,7 +184,7 @@ export async function getMenuPermissionForRole(
   roleName: string | null,
   resource: string
 ): Promise<HeroMenuPermission> {
-  if (resource === 'daily_activity' || resource === 'utilities') {
+  if (resource === 'daily_activity' || resource === 'utilities' || resource === 'tire_scrap') {
     // Khusus untuk PJO, Head Section, Head Department, keatas
     const isLeadership = isLeadershipOrManagerialRole(roleName)
     const isSuperAdmin = isSuperAdminRole(roleName)
@@ -310,7 +310,7 @@ export async function getCurrentMenuPermission(resource: string): Promise<HeroMe
   const session = await getServerSession()
   const roleName = await getCurrentEmployeeAccessRole()
 
-  if (resource === 'daily_activity' || resource === 'utilities') {
+  if (resource === 'daily_activity' || resource === 'utilities' || resource === 'tire_scrap') {
     const canAccess = await canAccessDailyActivityMonitoring(
       session?.user?.email,
       session?.user?.id,
