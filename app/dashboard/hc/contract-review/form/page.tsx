@@ -3,6 +3,7 @@ import { db } from "@/db"
 import { employees, hrPositions, hrOrgNodes, masterDepartments, masterSections } from "@/db/schema/hero"
 import { centralServiceEmployees } from "@/db/schema/central-service"
 import { getContractReviewActivityTemplates, getContractReviewSettings } from "@/app/actions/contract-review"
+import { getServerSession } from "@/lib/auth-session"
 import { eq, inArray } from "drizzle-orm"
 
 export const metadata = {
@@ -115,7 +116,6 @@ export default async function ContractReviewFormPage() {
   }
 
   // Fetch current logged in user to default creator/leader signature
-  const { getServerSession } = await import("@/lib/auth-session")
   const { getUserSignatureAction } = await import("@/app/actions/user-signature")
   const session = await getServerSession()
   let currentUser: { name: string; jobTitle: string; signatureDataUrl?: string } | null = null
@@ -139,7 +139,7 @@ export default async function ContractReviewFormPage() {
         jobTitle = emp.position || emp.jobTitle || ""
       }
       try {
-        const sig = await getUserSignatureAction(session.user.id || String(emp?.id || ""))
+        const sig = await getUserSignatureAction()
         if (sig?.success && sig.signatureDataUrl) {
           signatureDataUrl = sig.signatureDataUrl
         }

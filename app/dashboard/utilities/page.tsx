@@ -4,7 +4,12 @@ import { db } from '@/db'
 import { employees, sites } from '@/db/schema/hero'
 import { eq, or, sql } from 'drizzle-orm'
 import { getServerSession } from '@/lib/auth-session'
-import { canAccessDailyActivityMonitoring } from '@/lib/hero-access'
+import {
+  canAccessDailyActivityMonitoring,
+  getCurrentEmployeeAccessRole,
+  isSuperAdminRole,
+  isLeadershipOrManagerialRole,
+} from '@/lib/hero-access'
 import { getUtilitiesDashboardData } from '@/lib/utilities-dashboard'
 import { UtilitiesClientDashboard } from './client'
 
@@ -31,16 +36,20 @@ export default async function UtilitiesPage({ searchParams }: PageProps) {
   }
 
   // Khusus untuk PJO, Head Section, Head Department, Manajemen Site, Super Admin
-  const sessionRole = (session.user as { role?: string }).role || null
-  const canAccess = await canAccessDailyActivityMonitoring(
-    session.user.email,
-    session.user.id,
-    sessionRole
-  )
+  const roleName = await getCurrentEmployeeAccessRole()
+  const sessionRole = (session.user as { role?: string }).role || roleName || null
 
-  if (!canAccess) {
-    redirect('/dashboard')
-  }
+  const isSuperAdmin = isSuperAdminRole(roleName) || isSuperAdminRole(sessionRole)
+  const isLeadership = isLeadershipOrManagerialRole(roleName) || isLeadershipOrManagerialRole(sessionRole)
+
+  const canAccess =
+    isSuperAdmin ||
+    isLeadership ||
+    (await canAccessDailyActivityMonitoring(
+      session.user.email,
+      session.user.id,
+      sessionRole
+    ))
 
   const resolvedParams = searchParams ? await searchParams : {}
 
@@ -69,9 +78,29 @@ export default async function UtilitiesPage({ searchParams }: PageProps) {
 
   const emp = empRows[0]
 
-  // Default siteId: jika tidak ada di searchParams, gunakan siteId user (atau '0' jika Super Admin/Central)
+  // Jika user bukan superadmin/leadership dan tidak terdaftar di employee, redirect
+  if (!canAccess && !emp) {
+    redirect('/dashboard')
+  }
+
+  // Default siteId:
+  // 1. Jika eksplisit di searchParams (misal '0' atau '3'), gunakan nilai tersebut
+  // 2. Jika tidak ada di searchParams:
+  //    - Jika canAccess (Super Admin / Management), utamakan site user atau '0' (Konsolidasi)
+  //    - Jika user biasa, kunci ke siteId mereka
   let effectiveSiteId = resolvedParams.siteId
-  if (!effectiveSiteId && emp?.siteId) {
+  if (effectiveSiteId === undefined || effectiveSiteId === null || effectiveSiteId === '') {
+    if (!canAccess && emp?.siteId) {
+      effectiveSiteId = String(emp.siteId)
+    } else if (emp?.siteId) {
+      effectiveSiteId = String(emp.siteId)
+    } else {
+      effectiveSiteId = '0'
+    }
+  }
+
+  // Jika user biasa tidak berhak ubah site, paksa ke siteId miliknya
+  if (!canAccess && emp?.siteId) {
     effectiveSiteId = String(emp.siteId)
   }
 
@@ -84,5 +113,10 @@ export default async function UtilitiesPage({ searchParams }: PageProps) {
     employeeName: resolvedParams.employeeName,
   })
 
-  return <UtilitiesClientDashboard initialData={dashboardData} />
+  return (
+    <UtilitiesClientDashboard
+      initialData={dashboardData}
+      canSwitchSite={canAccess}
+    />
+  )
 }

@@ -4023,8 +4023,12 @@ export async function initDailyActivityApprovalsAction(sessionId: number) {
     }
   }
 
-  // Fallback to Site Head / PJO if still empty
-  if (!sectionHeadName && session.siteId) {
+  // 1. Resolve PJO / Head Location dari Master Data Location (sites.headEmployeeId)
+  let pjoEmployeeId: number | null = null
+  let pjoName = ''
+  let pjoEmail = ''
+
+  if (session.siteId) {
     const [siteRow] = await db
       .select({ headEmployeeId: sites.headEmployeeId })
       .from(sites)
@@ -4035,20 +4039,25 @@ export async function initDailyActivityApprovalsAction(sessionId: number) {
       const [siteEmp] = await db
         .select({ id: employees.id, name: employees.name, email: employees.email })
         .from(employees)
-        .where(eq(employees.id, siteRow.headEmployeeId))
+        .where(and(eq(employees.id, siteRow.headEmployeeId), eq(employees.isActive, true)))
         .limit(1)
       if (siteEmp) {
-        sectionHeadEmployeeId = siteEmp.id
-        sectionHeadName = siteEmp.name
-        sectionHeadEmail = siteEmp.email || ''
+        pjoEmployeeId = siteEmp.id
+        pjoName = siteEmp.name
+        pjoEmail = siteEmp.email || ''
+        if (!sectionHeadName) {
+          sectionHeadEmployeeId = siteEmp.id
+          sectionHeadName = siteEmp.name
+          sectionHeadEmail = siteEmp.email || ''
+        }
       }
     }
   }
 
-  // Resolve leader approver
-  let leaderEmployeeId = directManager?.id ?? null
-  let leaderName = directManager?.name ?? settings.approvalMatrix?.fieldPicName ?? ''
-  let leaderEmail = directManager?.email || settings.approvalMatrix?.fieldPicEmail || ''
+  // Resolve leader approver (Leader / PJO): Utamakan Head Location / PJO dari Master Data Location
+  let leaderEmployeeId = pjoEmployeeId || directManager?.id || null
+  let leaderName = pjoName || directManager?.name || settings.approvalMatrix?.fieldPicName || 'Leader / PJO'
+  let leaderEmail = pjoEmail || directManager?.email || settings.approvalMatrix?.fieldPicEmail || ''
 
   if (!leaderEmployeeId && sectionHeadEmployeeId) {
     leaderEmployeeId = sectionHeadEmployeeId
@@ -5639,6 +5648,12 @@ export async function saveDailyActivityApprovalForm(payload: {
   signatures?: Record<number, string>
   stepRemarks?: Record<number, string>
   teamMemberEmployeeIds?: number[]
+  additionalApprovers?: Array<{
+    employeeId: number
+    name?: string
+    role?: string
+    stepLabel?: string
+  }>
 }) {
   try {
     const [existingSession] = await db
@@ -6105,6 +6120,48 @@ export async function saveDailyActivityApprovalForm(payload: {
               eq(dailyActivityApprovals.approverRole, 'manager')
             )
           )
+      }
+    }
+
+    if (payload.additionalApprovers !== undefined && Array.isArray(payload.additionalApprovers)) {
+      const extraEmpIds = Array.from(new Set(payload.additionalApprovers.map((a) => Number(a.employeeId)).filter(Boolean)))
+      const extraEmps = extraEmpIds.length > 0
+        ? await db
+            .select({ id: employees.id, name: employees.name, email: employees.email })
+            .from(employees)
+            .where(inArray(employees.id, extraEmpIds))
+        : []
+      const extraMap = new Map(extraEmps.map((e) => [e.id, e]))
+
+      // Remove non-approved steps with stepOrder > 2 to re-align cleanly
+      await db
+        .delete(dailyActivityApprovals)
+        .where(
+          and(
+            eq(dailyActivityApprovals.sessionId, payload.sessionId),
+            sql`${dailyActivityApprovals.stepOrder} > 2`,
+            ne(dailyActivityApprovals.status, 'approved')
+          )
+        )
+
+      let startOrder = 3
+      for (const extra of payload.additionalApprovers) {
+        const extraEmpId = Number(extra.employeeId)
+        if (!extraEmpId) continue
+        const found = extraMap.get(extraEmpId)
+        await db.insert(dailyActivityApprovals).values({
+          sessionId: payload.sessionId,
+          stepOrder: startOrder,
+          stepLabel: extra.stepLabel || `Approver Tambahan (Tahap ${startOrder})`,
+          approverRole: extra.role || 'additional_approver',
+          approverEmployeeId: extraEmpId,
+          approverName: found?.name || extra.name || 'Approver Tambahan',
+          approverEmail: found?.email || '',
+          status: 'waiting',
+          approvalToken: randomUUID(),
+          createdAt: new Date(),
+        })
+        startOrder++
       }
     }
 
@@ -6599,6 +6656,49 @@ export async function deleteBatchDailyActivitySessionsAction(
   }
 }
 
+export async function getDailyActivityApproverCandidatesAction() {
+  try {
+    const rows = await db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        email: employees.email,
+        employeeSn: employees.employeeSn,
+        position: employees.jobTitle,
+        role: employees.role,
+        department: masterDepartments.name,
+        section: masterSections.name,
+        siteName: sites.name,
+        siteId: employees.siteId,
+      })
+      .from(employees)
+      .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+      .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+      .leftJoin(sites, eq(employees.siteId, sites.id))
+      .where(eq(employees.isActive, true))
+      .orderBy(asc(employees.name))
+
+    return {
+      success: true as const,
+      data: rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        email: r.email,
+        employeeSn: r.employeeSn,
+        position: r.position || r.role || 'Staff',
+        department: r.department || '',
+        section: r.section || '',
+        siteName: r.siteName || '',
+        siteId: r.siteId,
+        label: `${r.name.toUpperCase()} — ${(r.position || r.role || 'STAFF').toUpperCase()}${r.siteName ? ` [${r.siteName.toUpperCase()}]` : ''}`,
+      })),
+    }
+  } catch (err: any) {
+    console.error('getDailyActivityApproverCandidatesAction error:', err)
+    return { success: false as const, error: err?.message || 'Gagal memuat kandidat approver.' }
+  }
+}
+
 export async function createDailyActivitySessionAction(input: {
   employeeId: number
   workDate: string
@@ -6614,6 +6714,12 @@ export async function createDailyActivitySessionAction(input: {
   managerEmployeeId?: number | null
   managerName?: string | null
   teamMemberEmployeeIds?: number[]
+  additionalApprovers?: Array<{
+    employeeId: number
+    name?: string
+    role?: string
+    stepLabel?: string
+  }>
   items?: Array<{
     label: string
     group?: string
@@ -6910,6 +7016,22 @@ export async function createDailyActivitySessionAction(input: {
       }
     }
 
+    // Resolusi PJO / Head Location dari Master Data Location (sites.headEmployeeId)
+    const effectiveSiteId = siteId || emp.siteId
+    if (!leaderEmpId && effectiveSiteId) {
+      const [siteHead] = await db
+        .select({ id: employees.id, name: employees.name, email: employees.email })
+        .from(sites)
+        .innerJoin(employees, and(eq(employees.id, sites.headEmployeeId), eq(employees.isActive, true)))
+        .where(eq(sites.id, effectiveSiteId))
+        .limit(1)
+      if (siteHead) {
+        leaderEmpId = siteHead.id
+        leaderName = siteHead.name
+        leaderEmail = siteHead.email || ''
+      }
+    }
+
     if (!leaderEmpId && emp.directManagerId) {
       const [found] = await db
         .select({ id: employees.id, name: employees.name, email: employees.email })
@@ -6972,22 +7094,8 @@ export async function createDailyActivitySessionAction(input: {
       }
     }
 
-    if (!leaderEmpId && emp.siteId) {
-      const [siteHead] = await db
-        .select({ id: employees.id, name: employees.name, email: employees.email })
-        .from(sites)
-        .innerJoin(employees, and(eq(employees.id, sites.headEmployeeId), eq(employees.isActive, true)))
-        .where(eq(sites.id, emp.siteId))
-        .limit(1)
-      if (siteHead) {
-        leaderEmpId = siteHead.id
-        leaderName = siteHead.name
-        leaderEmail = siteHead.email || ''
-      }
-    }
-
     if (!leaderName) {
-      leaderName = 'Leader Lapangan'
+      leaderName = 'Leader / PJO Site'
     }
 
     // 2. Resolve Section Head (Superior)
@@ -7067,7 +7175,7 @@ export async function createDailyActivitySessionAction(input: {
     // Step 2: Leader / PJO (waiting for Step 1 approval)
     const now = new Date()
 
-    await db.insert(dailyActivityApprovals).values([
+    const approvalStepsToInsert: any[] = [
       {
         sessionId: created.id,
         stepOrder: 1,
@@ -7095,7 +7203,56 @@ export async function createDailyActivitySessionAction(input: {
         approvalToken: step2Token,
         createdAt: now,
       },
-    ])
+    ]
+
+    let nextStepOrder = 3
+    if (input.additionalApprovers && input.additionalApprovers.length > 0) {
+      const extraEmpIds = Array.from(new Set(input.additionalApprovers.map((a) => Number(a.employeeId)).filter(Boolean)))
+      const extraEmps = extraEmpIds.length > 0
+        ? await db
+            .select({ id: employees.id, name: employees.name, email: employees.email })
+            .from(employees)
+            .where(inArray(employees.id, extraEmpIds))
+        : []
+      const extraMap = new Map(extraEmps.map((e) => [e.id, e]))
+
+      for (const extra of input.additionalApprovers) {
+        const extraEmpId = Number(extra.employeeId)
+        if (!extraEmpId) continue
+        const foundExtra = extraMap.get(extraEmpId)
+        const extraName = foundExtra?.name || extra.name || `Approver ${nextStepOrder}`
+        const extraEmail = foundExtra?.email || ''
+        approvalStepsToInsert.push({
+          sessionId: created.id,
+          stepOrder: nextStepOrder,
+          stepLabel: extra.stepLabel || `Approver Tambahan (Tahap ${nextStepOrder})`,
+          approverRole: extra.role || 'additional_approver',
+          approverEmployeeId: extraEmpId,
+          approverName: extraName,
+          approverEmail: extraEmail,
+          status: 'waiting',
+          approvalToken: randomUUID(),
+          createdAt: now,
+        })
+        nextStepOrder++
+      }
+    } else if (superiorEmpId) {
+      // Auto-fallback: Section Head if resolved and no manual additional approvers
+      approvalStepsToInsert.push({
+        sessionId: created.id,
+        stepOrder: 3,
+        stepLabel: 'Section Head',
+        approverRole: 'section_head',
+        approverEmployeeId: superiorEmpId,
+        approverName: superiorName,
+        approverEmail: superiorEmail,
+        status: 'waiting',
+        approvalToken: step3Token,
+        createdAt: now,
+      })
+    }
+
+    await db.insert(dailyActivityApprovals).values(approvalStepsToInsert)
 
     // Send Step 2 email to Leader / PJO
     if (leaderEmail) {

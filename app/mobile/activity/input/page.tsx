@@ -77,14 +77,18 @@ export default async function MobileActivityInputPage({
             email: employees.email,
             employeeId: employees.employeeSn,
             position: employees.jobTitle,
-            department: employees.department,
-            section: employees.section,
+            department: masterDepartments.name,
+            section: masterSections.name,
             directManagerId: employees.directManagerId,
             sectionId: employees.sectionId,
             departmentId: employees.departmentId,
             siteId: employees.siteId,
+            siteName: sites.name,
           })
           .from(employees)
+          .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+          .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+          .leftJoin(sites, eq(employees.siteId, sites.id))
           .where(eq(employees.isActive, true))
           .orderBy(asc(employees.name)),
       [],

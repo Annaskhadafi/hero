@@ -329,6 +329,7 @@ export default async function DailyActivityApprovalListPage() {
               id: sites.id,
               name: sites.name,
               location: sites.location,
+              headEmployeeId: sites.headEmployeeId,
             })
             .from(sites)
             .where(eq(sites.isActive, true)),

@@ -8,6 +8,7 @@ import { asc, eq, inArray } from "drizzle-orm"
 import { notFound } from "next/navigation"
 import { redirect } from "next/navigation"
 import { getCurrentEmployeeAccessRole, isSuperAdminRole } from "@/lib/hero-access"
+import { getServerSession } from "@/lib/auth-session"
 
 export const metadata = {
   title: "Form Contract Review - HC",
@@ -159,7 +160,7 @@ export default async function ContractReviewEditPage({ params, searchParams }: {
         jobTitle = emp.position || emp.jobTitle || ""
       }
       try {
-        const sig = await getUserSignatureAction(session.user.id || String(emp?.id || ""))
+        const sig = await getUserSignatureAction()
         if (sig?.success && sig.signatureDataUrl) {
           signatureDataUrl = sig.signatureDataUrl
         }

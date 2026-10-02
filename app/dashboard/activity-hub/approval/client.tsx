@@ -224,7 +224,7 @@ export function ApprovalListingClient({
     sectionId?: number | null
     departmentId?: number | null
   }>
-  sites?: Array<{ id: number; name: string; code?: string | null; location?: string | null }>
+  sites?: Array<{ id: number; name: string; code?: string | null; location?: string | null; headEmployeeId?: number | null }>
   activityPresets?: Array<{
     id: number
     code: string
@@ -496,7 +496,9 @@ async function uploadActivityPhoto(file: File): Promise<string> {
   const handleOpenCreateModal = () => {
     setCreateError(null)
     const firstEmp = employees && employees.length > 0 ? employees[0] : null
-    const matchedSite = firstEmp?.siteId ? sites.find((s) => s.id === firstEmp.siteId) : null
+    const matchedSite = firstEmp?.siteId ? sites.find((s) => s.id === firstEmp.siteId) : (sites[0] || null)
+    const pjoLeader = matchedSite?.headEmployeeId ? employees.find((e) => e.id === matchedSite.headEmployeeId) : null
+    const defLeader = pjoLeader || (firstEmp?.directManagerId ? employees.find((e) => e.id === firstEmp.directManagerId) : null)
     setCreateForm({
       employeeId: String(firstEmp?.id || ''),
       employeeName: firstEmp?.name || '',
@@ -504,13 +506,13 @@ async function uploadActivityPhoto(file: File): Promise<string> {
       jobTitle: firstEmp?.jobTitle || 'Staff',
       department: firstEmp?.department || '',
       section: firstEmp?.section || '',
-      siteId: String(firstEmp?.siteId || ''),
+      siteId: String(matchedSite?.id || firstEmp?.siteId || ''),
       siteName: matchedSite?.name || '',
       customerName: '',
       workDate: new Date().toISOString().split('T')[0],
       shiftCode: 'ALL',
-      leaderEmployeeId: '',
-      leaderName: '',
+      leaderEmployeeId: defLeader ? String(defLeader.id) : '',
+      leaderName: defLeader?.name || '',
       superiorEmployeeId: '',
       superiorName: '',
       managerEmployeeId: '',
@@ -946,10 +948,23 @@ async function uploadActivityPhoto(file: File): Promise<string> {
     }
   }
 
-  const employeeOptions = (employees || []).map((emp) => ({
-    value: String(emp?.id || ''),
-    label: `${emp?.name || 'Employee'} — ${emp?.jobTitle || emp?.department || 'Staff'} (${emp?.employeeId || emp?.id || '-'})`,
-  }))
+  const employeeOptions = useMemo(() => {
+    const pjoSiteMap = new Map<number, string>()
+    ;(sites || []).forEach((s) => {
+      if (s.headEmployeeId) {
+        pjoSiteMap.set(s.headEmployeeId, s.name)
+      }
+    })
+
+    return (employees || []).map((emp) => {
+      const pjoSite = emp?.id ? pjoSiteMap.get(emp.id) : null
+      const pjoTag = pjoSite ? ` [PJO / HEAD ${pjoSite.toUpperCase()}]` : ''
+      return {
+        value: String(emp?.id || ''),
+        label: `${emp?.name || 'Employee'}${pjoTag} — ${emp?.jobTitle || emp?.department || 'Staff'} (${emp?.employeeId || emp?.id || '-'})`,
+      }
+    })
+  }, [employees, sites])
 
   const addItemRow = () => {
     setCreateForm((p) => ({
@@ -983,8 +998,9 @@ async function uploadActivityPhoto(file: File): Promise<string> {
     if (createOpen && !createForm.employeeId && employees && employees.length > 0) {
       const firstEmp = employees[0]
       if (firstEmp) {
-        const site = sites.find((s) => s.id === firstEmp.siteId)
-        const defLeader = firstEmp.directManagerId ? employees.find((e) => e.id === firstEmp.directManagerId) : null
+        const site = sites.find((s) => s.id === firstEmp.siteId) || sites[0] || null
+        const pjoLeader = site?.headEmployeeId ? employees.find((e) => e.id === site.headEmployeeId) : null
+        const defLeader = pjoLeader || (firstEmp.directManagerId ? employees.find((e) => e.id === firstEmp.directManagerId) : null)
         const defSectionHeadId = firstEmp.sectionId ? sectionHeadMap[String(firstEmp.sectionId)] : null
         const defSectionHead = defSectionHeadId ? employees.find((e) => e.id === defSectionHeadId) : null
         const defManagerId = firstEmp.departmentId ? deptHeadMap[String(firstEmp.departmentId)] : null
@@ -998,8 +1014,8 @@ async function uploadActivityPhoto(file: File): Promise<string> {
           jobTitle: firstEmp.jobTitle || '',
           department: firstEmp.department || '',
           section: firstEmp.section || '',
-          siteId: firstEmp.siteId ? String(firstEmp.siteId) : (sites[0]?.id ? String(sites[0].id) : p.siteId),
-          siteName: site?.name || sites[0]?.name || p.siteName,
+          siteId: site?.id ? String(site.id) : (firstEmp.siteId ? String(firstEmp.siteId) : p.siteId),
+          siteName: site?.name || p.siteName,
           leaderEmployeeId: defLeader ? String(defLeader.id) : p.leaderEmployeeId,
           leaderName: defLeader?.name || p.leaderName,
           superiorEmployeeId: defSectionHead ? String(defSectionHead.id) : p.superiorEmployeeId,
@@ -3370,7 +3386,8 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                       const emp = employees.find((e) => String(e.id) === val)
                       if (emp) {
                         const site = sites.find((s) => s.id === emp.siteId)
-                        const defLeader = emp.directManagerId ? employees.find((e) => e.id === emp.directManagerId) : null
+                        const pjoLeader = site?.headEmployeeId ? employees.find((e) => e.id === site.headEmployeeId) : null
+                        const defLeader = pjoLeader || (emp.directManagerId ? employees.find((e) => e.id === emp.directManagerId) : null)
                         const defSectionHeadId = emp.sectionId ? sectionHeadMap[String(emp.sectionId)] : null
                         const defSectionHead = defSectionHeadId ? employees.find((e) => e.id === defSectionHeadId) : null
                         const defManagerId = emp.departmentId ? deptHeadMap[String(emp.departmentId)] : null
@@ -3432,7 +3449,14 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                     value={createForm.siteId}
                     onChange={(e) => {
                       const st = sites.find((s) => String(s.id) === e.target.value)
-                      setCreateForm((p) => ({ ...p, siteId: e.target.value, siteName: st?.name || p.siteName }))
+                      const pjoLeader = st?.headEmployeeId ? employees.find((emp) => emp.id === st.headEmployeeId) : null
+                      setCreateForm((p) => ({
+                        ...p,
+                        siteId: e.target.value,
+                        siteName: st?.name || p.siteName,
+                        leaderEmployeeId: pjoLeader ? String(pjoLeader.id) : p.leaderEmployeeId,
+                        leaderName: pjoLeader?.name || p.leaderName,
+                      }))
                     }}
                   >
                     <option value="">Pilih Site / Lokasi...</option>
@@ -4394,11 +4418,15 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                   <span className="size-2 rounded-full bg-slate-700"></span>
                   B. Penandatangan Approval (Signatories)
                 </span>
-                <span className="text-[11px] font-mono text-slate-500 font-semibold">Approval Leader / PJO</span>
+                <span className="text-[11px] font-mono text-slate-500 font-semibold">
+                  {createForm.siteName ? `Approval Leader / PJO (${createForm.siteName})` : 'Approval Leader / PJO'}
+                </span>
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-700">Leader / Supervisor / PJO</Label>
+                <Label className="text-xs font-semibold text-slate-700">
+                  Leader / Supervisor / PJO {createForm.siteName ? `(Head Location: ${createForm.siteName})` : ''}
+                </Label>
                 <SearchableSelect
                   label="Leader"
                   placeholder="PILIH LEADER / PJO..."

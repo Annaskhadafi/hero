@@ -31,6 +31,7 @@ import { toast } from 'sonner'
 
 import {
   createDailyActivitySessionAction,
+  getDailyActivityApproverCandidatesAction,
   resubmitDailyActivityApprovalFormAction,
 } from '@/app/dashboard/activity-hub/actions'
 import { downloadElementAsPdf } from '@/lib/pdf-download'
@@ -701,14 +702,69 @@ export function MobileDailyActivityForm({
     rawSession?.approvals?.find((a: any) => a.approverRole === 'section_head' || a.stepOrder === 3) ||
     rawSession?.approvals?.find((a: any) => a.stepOrder === 2)
 
+  // Resolusi Head Location dari Master Data Location (sites.headEmployeeId)
+  const siteHeadEmployeeId = site?.headEmployeeId || hierarchy?.superior?.id || null
+
   const [leaderEmployeeId, setLeaderEmployeeId] = useState<string>(() => {
     if (existingLeaderApproval?.approverEmployeeId) return String(existingLeaderApproval.approverEmployeeId)
+    // Sesuai Master Data Location: PJO Activities disesuaikan dengan Head Location di Master Data Location
+    if (siteHeadEmployeeId && siteHeadEmployeeId !== employeeId) {
+      return String(siteHeadEmployeeId)
+    }
     return hierarchy?.leader?.id ? String(hierarchy.leader.id) : ''
   })
   const [superiorEmployeeId, setSuperiorEmployeeId] = useState<string>(() => {
     if (existingSuperiorApproval?.approverEmployeeId) return String(existingSuperiorApproval.approverEmployeeId)
     return hierarchy?.superior?.id ? String(hierarchy.superior.id) : ''
   })
+
+  // Additional Approvers state (multi-step signatories)
+  interface AdditionalApproverItem {
+    id: string
+    employeeId: string
+    role: string
+    stepLabel: string
+  }
+
+  const [additionalApprovers, setAdditionalApprovers] = useState<AdditionalApproverItem[]>(() => {
+    if (rawSession?.approvals && Array.isArray(rawSession.approvals)) {
+      const extraSteps = rawSession.approvals
+        .filter((a: any) => a.stepOrder > 2 && a.approverRole !== 'employee')
+        .sort((a: any, b: any) => a.stepOrder - b.stepOrder)
+      if (extraSteps.length > 0) {
+        return extraSteps.map((a: any, idx: number) => ({
+          id: `step-${a.id || idx}`,
+          employeeId: a.approverEmployeeId ? String(a.approverEmployeeId) : '',
+          role: a.approverRole || 'additional_approver',
+          stepLabel: a.stepLabel || `Approver Tambahan (Tahap ${a.stepOrder || idx + 3})`,
+        }))
+      }
+    }
+    return []
+  })
+
+  // Fallback candidate employees if not passed via allEmployees prop
+  const [candidateEmployees, setCandidateEmployees] = useState<any[]>([])
+
+  useEffect(() => {
+    // If allEmployees is already provided via props, no need to fetch
+    if (allEmployees && allEmployees.length > 0) {
+      return
+    }
+
+    let isMounted = true
+    getDailyActivityApproverCandidatesAction()
+      .then((res) => {
+        if (isMounted && res.success && res.data && res.data.length > 0) {
+          setCandidateEmployees(res.data)
+        }
+      })
+      .catch((e) => console.error('Error fetching approver candidates:', e))
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   const initializedSessionIdRef = useRef<number | string | null>(null)
   const currentSessionKey = rawSession?.sessionId || rawSession?.id || revisionSessionId || null
@@ -1291,47 +1347,79 @@ export function MobileDailyActivityForm({
     [assignmentId, assignments]
   )
 
-  const leaderOptions = useMemo(() => {
-    const list = (allEmployees.length > 0 ? allEmployees : teamMembers) || []
-    const opts: { value: string; label: string }[] = []
+  const employeeOptions = useMemo(() => {
+    const list = (allEmployees && allEmployees.length > 0)
+      ? allEmployees
+      : (candidateEmployees.length > 0 ? candidateEmployees : teamMembers) || []
 
-    if (hierarchy?.leader && !list.some((o: any) => String(o.id) === String(hierarchy.leader.id))) {
-      opts.push({
+    const map = new Map<string, { value: string; label: string }>()
+
+    // PJO / Head Location dari Master Data Location (sites.headEmployeeId)
+    const pjoId = site?.headEmployeeId || hierarchy?.superior?.id
+    if (pjoId) {
+      const pjoEmp = list.find((m: any) => m.id === pjoId) || hierarchy?.superior
+      if (pjoEmp) {
+        map.set(String(pjoEmp.id), {
+          value: String(pjoEmp.id),
+          label: `${pjoEmp.name.toUpperCase()} — PJO / HEAD LOCATION [${(site?.name || 'SITE').toUpperCase()}]`,
+        })
+      }
+    }
+
+    if (hierarchy?.leader && !map.has(String(hierarchy.leader.id))) {
+      map.set(String(hierarchy.leader.id), {
         value: String(hierarchy.leader.id),
         label: `${hierarchy.leader.name.toUpperCase()} — (ATASAN LANGSUNG)`,
       })
     }
 
-    list.forEach((m: any) => {
-      opts.push({
-        value: String(m.id),
-        label: `${m.name.toUpperCase()} — ${(m.position || m.role || 'STAFF').toUpperCase()}`,
-      })
-    })
-
-    return opts
-  }, [allEmployees, teamMembers, hierarchy])
-
-  const superiorOptions = useMemo(() => {
-    const list = (allEmployees.length > 0 ? allEmployees : teamMembers) || []
-    const opts: { value: string; label: string }[] = []
-
-    if (hierarchy?.superior && !list.some((o: any) => String(o.id) === String(hierarchy.superior.id))) {
-      opts.push({
+    if (hierarchy?.superior && !map.has(String(hierarchy.superior.id))) {
+      map.set(String(hierarchy.superior.id), {
         value: String(hierarchy.superior.id),
-        label: `${hierarchy.superior.name.toUpperCase()} — (SECTION HEAD / MANAGER)`,
+        label: `${hierarchy.superior.name.toUpperCase()} — (SECTION HEAD / PJO)`,
       })
     }
 
     list.forEach((m: any) => {
-      opts.push({
-        value: String(m.id),
-        label: `${m.name.toUpperCase()} — ${(m.position || m.role || 'STAFF').toUpperCase()}`,
-      })
+      const idStr = String(m.id)
+      if (!map.has(idStr)) {
+        const pos = m.position || m.jobTitle || m.role || 'STAFF'
+        const loc = m.siteName ? `[${m.siteName.toUpperCase()}]` : m.department ? `[${m.department.toUpperCase()}]` : ''
+        map.set(idStr, {
+          value: idStr,
+          label: `${m.name.toUpperCase()} — ${pos.toUpperCase()}${loc ? ` ${loc}` : ''}`,
+        })
+      }
     })
 
-    return opts
-  }, [allEmployees, teamMembers, hierarchy])
+    return Array.from(map.values())
+  }, [candidateEmployees, allEmployees, teamMembers, hierarchy])
+
+  const leaderOptions = employeeOptions
+  const superiorOptions = employeeOptions
+
+  const handleAddApprover = () => {
+    const nextStep = additionalApprovers.length + 2
+    setAdditionalApprovers((prev) => [
+      ...prev,
+      {
+        id: `extra-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        employeeId: '',
+        role: 'additional_approver',
+        stepLabel: `Tahap ${nextStep} - Approver Tambahan`,
+      },
+    ])
+  }
+
+  const handleUpdateApprover = (id: string, updates: Partial<AdditionalApproverItem>) => {
+    setAdditionalApprovers((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, ...updates } : item))
+    )
+  }
+
+  const handleRemoveApprover = (id: string) => {
+    setAdditionalApprovers((prev) => prev.filter((item) => item.id !== id))
+  }
   const checklistContext = useMemo(() => {
     if (routeChecklist) {
       return {
@@ -2389,6 +2477,18 @@ export function MobileDailyActivityForm({
       const selectedLeader = leaderOptions.find((l) => l.value === leaderEmployeeId)
       const selectedSuperior = superiorOptions.find((s) => s.value === superiorEmployeeId)
 
+      const formattedAdditionalApprovers = additionalApprovers
+        .filter((a) => a.employeeId && a.employeeId.trim())
+        .map((a, idx) => {
+          const empMatch = employeeOptions.find((e) => e.value === a.employeeId)
+          return {
+            employeeId: Number(a.employeeId),
+            name: empMatch?.label?.split('—')[0]?.trim() || undefined,
+            stepLabel: a.stepLabel?.trim() || `Approver Tambahan (Tahap ${idx + 3})`,
+            role: a.role || 'additional_approver',
+          }
+        })
+
       if (revisionSessionId) {
         const res = await resubmitDailyActivityApprovalFormAction({
           sessionId: revisionSessionId,
@@ -2404,6 +2504,7 @@ export function MobileDailyActivityForm({
           leaderName: selectedLeader?.label?.split('—')[0]?.trim() || undefined,
           superiorEmployeeId: superiorEmployeeId ? Number(superiorEmployeeId) : undefined,
           superiorName: selectedSuperior?.label?.split('—')[0]?.trim() || undefined,
+          additionalApprovers: formattedAdditionalApprovers,
         })
 
         if (!res.success) {
@@ -2427,6 +2528,7 @@ export function MobileDailyActivityForm({
           leaderName: selectedLeader?.label?.split('—')[0]?.trim() || undefined,
           superiorEmployeeId: superiorEmployeeId ? Number(superiorEmployeeId) : undefined,
           superiorName: selectedSuperior?.label?.split('—')[0]?.trim() || undefined,
+          additionalApprovers: formattedAdditionalApprovers,
           teamMemberEmployeeIds: isTeamLog ? selectedMemberIds : [],
           items: itemsToSubmit,
         })
@@ -3473,33 +3575,120 @@ export function MobileDailyActivityForm({
               </h2>
             </div>
             <span className="rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-amber-800">
-              LEADER / PJO APPROVAL
+              ALUR BERJENJANG
             </span>
           </div>
 
           <div className="space-y-3 pt-1">
-            {/* Leader / Supervisor (Tahap 1) */}
-            <div className="space-y-1">
+            {/* Tahap 1: Leader / PJO (Head Location) */}
+            <div className="rounded-xl border border-slate-200/90 bg-slate-50/50 p-3 space-y-2">
               <div className="flex items-center justify-between">
-                <label className="block text-xs font-semibold text-slate-700">
-                  Leader / Supervisor / PJO
-                </label>
+                <div className="flex items-center gap-2">
+                  <span className="flex size-5 items-center justify-center rounded-full bg-amber-600 text-[10px] font-black text-white">
+                    1
+                  </span>
+                  <label className="block text-xs font-bold text-slate-800">
+                    Leader / PJO {site?.name ? `(Head Location: ${site.name})` : '(Approver Utama)'}
+                  </label>
+                </div>
                 {existingLeaderApproval?.status === 'approved' ? (
                   <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
                     SUDAH DISETUJUI (TERKUNCI)
                   </span>
-                ) : null}
+                ) : (
+                  <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                    Wajib
+                  </span>
+                )}
               </div>
+
               <SearchableSelect
-                label="Leader / Supervisor"
+                label="Pilih Leader / PJO"
                 value={leaderEmployeeId}
                 onValueChange={(val) => setLeaderEmployeeId(val)}
-                options={leaderOptions}
-                placeholder="-- PILIH LEADER / PJO --"
+                options={employeeOptions}
+                placeholder="-- PILIH LEADER / PJO (DEFAULT: HEAD LOCATION) --"
                 widthClassName="w-full"
                 disabled={existingLeaderApproval?.status === 'approved'}
               />
+              <p className="text-[10px] text-slate-500 italic">
+                Secara otomatis disesuaikan dengan Head Location / PJO di Master Data Lokasi, atau Anda dapat memilih pengawas lain.
+              </p>
             </div>
+
+            {/* Approver Tambahan (Tahap 2+) */}
+            {additionalApprovers.map((item, idx) => {
+              const stepNumber = idx + 2
+              return (
+                <div
+                  key={item.id}
+                  className="rounded-xl border border-sky-200/90 bg-sky-50/30 p-3 space-y-2 relative animate-in fade-in duration-200"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="flex size-5 items-center justify-center rounded-full bg-sky-600 text-[10px] font-black text-white">
+                        {stepNumber}
+                      </span>
+                      <span className="text-xs font-bold text-slate-800">
+                        Approver Tambahan (Tahap {stepNumber})
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveApprover(item.id)}
+                      className="size-7 flex items-center justify-center rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 border border-transparent hover:border-rose-200 cursor-pointer transition-colors"
+                      title="Hapus Approver Tambahan"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-600 mb-1">
+                        Peran / Label Tahap
+                      </label>
+                      <input
+                        type="text"
+                        value={item.stepLabel}
+                        onChange={(e) => handleUpdateApprover(item.id, { stepLabel: e.target.value })}
+                        placeholder="Contoh: Section Head / HSE / PJO"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-600 mb-1">
+                        Pilih Karyawan
+                      </label>
+                      <SearchableSelect
+                        label={`Pilih Approver Tahap ${stepNumber}`}
+                        value={item.employeeId}
+                        onValueChange={(val) => handleUpdateApprover(item.id, { employeeId: val })}
+                        options={employeeOptions}
+                        placeholder="-- PILIH KARYAWAN --"
+                        widthClassName="w-full"
+                      />
+                    </div>
+                  </div>
+
+                  <p className="text-[10px] text-sky-700/80">
+                    Approver ini akan menerima hak persetujuan setelah tahap sebelumnya selesai disetujui.
+                  </p>
+                </div>
+              )
+            })}
+
+            {/* Button Tambah Approver Tambahan */}
+            <button
+              type="button"
+              onClick={handleAddApprover}
+              className="w-full flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl border border-dashed border-sky-300 bg-sky-50/50 hover:bg-sky-50 text-sky-700 text-xs font-bold transition-colors cursor-pointer shadow-2xs"
+            >
+              <Plus className="size-3.5" />
+              + Tambah Approval Tambahan (Pilih Orang)
+            </button>
           </div>
         </section>
 

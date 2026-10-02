@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Activity,
@@ -49,9 +49,13 @@ import { exportUtilitiesToCsv, exportUtilitiesToExcel } from './export-excel'
 
 interface UtilitiesClientDashboardProps {
   initialData: UtilitiesDashboardData
+  canSwitchSite?: boolean
 }
 
-export function UtilitiesClientDashboard({ initialData }: UtilitiesClientDashboardProps) {
+export function UtilitiesClientDashboard({
+  initialData,
+  canSwitchSite = true,
+}: UtilitiesClientDashboardProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
@@ -63,6 +67,15 @@ export function UtilitiesClientDashboard({ initialData }: UtilitiesClientDashboa
   const [tableSearch, setTableSearch] = useState<string>('')
   const [activeTab, setActiveTab] = useState<'date' | 'tech' | 'unit'>('date')
   const [isCustomDateOpen, setIsCustomDateOpen] = useState<boolean>(initialData.currentPeriod === 'custom')
+
+  // Sinkronisasi state saat data server berubah karena filter / navigasi
+  useEffect(() => {
+    setSelectedSiteId(String(initialData.currentSite.id))
+    setSelectedPeriod(initialData.currentPeriod)
+    setStartDate(initialData.startDate)
+    setEndDate(initialData.endDate)
+    setIsCustomDateOpen(initialData.currentPeriod === 'custom')
+  }, [initialData])
 
   const applyFilters = (overrides?: {
     siteId?: string
@@ -76,8 +89,12 @@ export function UtilitiesClientDashboard({ initialData }: UtilitiesClientDashboa
     const eDate = overrides?.endDate !== undefined ? overrides.endDate : endDate
 
     const params = new URLSearchParams()
-    if (sId && sId !== '0') params.set('siteId', sId)
-    if (prd && prd !== 'weekly') params.set('period', prd)
+    if (sId !== undefined && sId !== null && sId !== '') {
+      params.set('siteId', sId)
+    }
+    if (prd) {
+      params.set('period', prd)
+    }
     if (prd === 'custom') {
       if (sDate) params.set('startDate', sDate)
       if (eDate) params.set('endDate', eDate)
@@ -189,35 +206,41 @@ export function UtilitiesClientDashboard({ initialData }: UtilitiesClientDashboa
             <Truck className="w-3.5 h-3.5 text-slate-400" /> Site:
           </span>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9 px-3 rounded-xl font-bold text-xs text-slate-800 border-slate-200 gap-2 hover:bg-slate-50 cursor-pointer"
-              >
-                <span className="max-w-[200px] truncate">{initialData.currentSite.name}</span>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-64 max-h-72 overflow-y-auto rounded-xl">
-              {initialData.sitesList.map((s) => (
-                <DropdownMenuItem
-                  key={s.id}
-                  onClick={() => handleSiteChange(s.id)}
-                  className={cn(
-                    'cursor-pointer text-xs font-medium py-2',
-                    s.id === initialData.currentSite.id && 'font-bold bg-sky-50 text-sky-700'
-                  )}
+          {canSwitchSite ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 px-3 rounded-xl font-bold text-xs text-slate-800 border-slate-200 gap-2 hover:bg-slate-50 cursor-pointer"
                 >
-                  <div className="flex flex-col">
-                    <span>{s.name}</span>
-                    <span className="text-[10px] text-slate-400">{s.customerName}</span>
-                  </div>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                  <span className="max-w-[200px] truncate">{initialData.currentSite.name}</span>
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-64 max-h-72 overflow-y-auto rounded-xl">
+                {initialData.sitesList.map((s) => (
+                  <DropdownMenuItem
+                    key={s.id}
+                    onClick={() => handleSiteChange(s.id)}
+                    className={cn(
+                      'cursor-pointer text-xs font-medium py-2',
+                      s.id === initialData.currentSite.id && 'font-bold bg-sky-50 text-sky-700'
+                    )}
+                  >
+                    <div className="flex flex-col">
+                      <span>{s.name}</span>
+                      <span className="text-[10px] text-slate-400">{s.customerName}</span>
+                    </div>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <div className="px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-800">
+              {initialData.currentSite.name}
+            </div>
+          )}
         </div>
 
         {/* Right: Period Presets */}
@@ -405,8 +428,30 @@ export function UtilitiesClientDashboard({ initialData }: UtilitiesClientDashboa
         </div>
 
         {initialData.activityBars.length === 0 ? (
-          <div className="py-16 text-center text-slate-400 text-xs">
-            Tidak ada aktivitas yang tercatat pada rentang waktu dan site ini.
+          <div className="py-16 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-3">
+            <p>Tidak ada aktivitas yang tercatat pada rentang waktu dan site ini.</p>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {canSwitchSite && initialData.currentSite.id !== 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleSiteChange(0)}
+                  className="h-8 text-xs font-bold text-sky-700 border-sky-200 bg-sky-50 hover:bg-sky-100 cursor-pointer"
+                >
+                  Lihat Semua Site (Konsolidasi)
+                </Button>
+              )}
+              {selectedPeriod !== 'monthly' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePeriodChange('monthly')}
+                  className="h-8 text-xs font-bold text-slate-700 border-slate-200 bg-slate-50 hover:bg-slate-100 cursor-pointer"
+                >
+                  Ubah Periode ke Bulan Ini
+                </Button>
+              )}
+            </div>
           </div>
         ) : (
           <div className="w-full h-80 sm:h-96 pt-4">
