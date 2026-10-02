@@ -413,6 +413,13 @@ export function OvertimeListingClient({
   })
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false)
 
+  // Determines if the current user can manually override the planned points for activities
+  const canEditPoints = isAdmin || (() => {
+    const currentEmp = employees.find((e) => e.id === currentEmployeeId)
+    const jobTitle = (currentEmp?.position || currentEmp?.rank || '').toLowerCase()
+    return ['leader', 'supervisor', 'section head', 'pjo', 'manager', 'foreman', 'kepala'].some(role => jobTitle.includes(role))
+  })()
+
   const employeeOptions = useMemo(() => {
     return employees.map((emp) => ({
       value: String(emp.id),
@@ -1572,14 +1579,9 @@ export function OvertimeListingClient({
       return
     }
 
-    // Validasi ketat: Foto Evidence WAJIB diunggah untuk setiap aktivitas lembur
+    // Validasi field wajib per aktivitas (equipment, tire count, material jika diperlukan)
     for (let i = 0; i < validLineItems.length; i++) {
       const item = validLineItems[i]
-      const hasPhoto = Boolean(item.photoUrl?.trim() || (Array.isArray(item.photos) && item.photos.length > 0 && item.photos[0]?.trim()))
-      if (!hasPhoto) {
-        toast.error(`Foto evidence wajib diunggah untuk aktivitas #${i + 1} (${item.name || item.lineLabel})`)
-        return
-      }
       if (item.requiresEquipmentNo && !item.unitNumber?.trim()) {
         toast.error(`No. Equipment / Unit wajib diisi untuk aktivitas #${i + 1}`)
         return
@@ -1616,7 +1618,8 @@ export function OvertimeListingClient({
           category: w.category,
         })),
         workerEmployeeIds: validWorkers.map((w) => Number(w.employeeId)),
-        lineItems: validLineItems.map((item) => ({
+        // ponytail: upgrade-path → extract OvertimeCreateLineItemInput shared type
+        lineItems: (validLineItems.map((item) => ({
           lineLabel: item.lineLabel,
           code: item.code,
           name: item.name || item.lineLabel,
@@ -1634,7 +1637,7 @@ export function OvertimeListingClient({
           remark: item.remark,
           photoUrl: item.photoUrl,
           photos: item.photos || (item.photoUrl ? [item.photoUrl] : []),
-        })),
+        })) as any[]),
         leaderEmployeeId: createForm.leaderEmployeeId ? Number(createForm.leaderEmployeeId) : undefined,
         leaderName: createForm.leaderName || undefined,
         superiorEmployeeId: createForm.superiorEmployeeId ? Number(createForm.superiorEmployeeId) : undefined,
@@ -3111,13 +3114,18 @@ export function OvertimeListingClient({
                           />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs font-semibold text-slate-700">Poin</Label>
+                          <Label className="text-xs font-semibold text-slate-700">
+                            Poin
+                            {!canEditPoints && <span className="ml-1 text-slate-400 text-[9px] font-normal">(otomatis)</span>}
+                          </Label>
                           <Input
                             type="number"
                             min={0}
                             value={item.plannedPoints || 10}
                             onChange={(e) => updateLineItemRow(idx, 'plannedPoints', Number(e.target.value))}
-                            className="h-8 text-xs bg-slate-50/50 border-slate-200 font-bold text-center"
+                            className={cn("h-8 text-xs font-bold text-center", !canEditPoints ? "bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed" : "bg-slate-50/50 border-slate-200")}
+                            readOnly={!canEditPoints}
+                            title={!canEditPoints ? 'Poin hanya dapat diubah oleh Leader/Supervisor/PJO/Admin.' : undefined}
                           />
                         </div>
                       </div>
@@ -3327,13 +3335,18 @@ export function OvertimeListingClient({
                           />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs font-semibold text-slate-700">Poin</Label>
+                          <Label className="text-xs font-semibold text-slate-700">
+                            Poin
+                            {!canEditPoints && <span className="ml-1 text-slate-400 text-[9px] font-normal">(otomatis)</span>}
+                          </Label>
                           <Input
                             type="number"
                             min={0}
                             value={item.plannedPoints || 10}
                             onChange={(e) => updateLineItemRow(idx, 'plannedPoints', Number(e.target.value))}
-                            className="h-8 text-xs bg-slate-50/50 border-slate-200 font-bold text-center"
+                            className={cn("h-8 text-xs font-bold text-center", !canEditPoints ? "bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed" : "bg-slate-50/50 border-slate-200")}
+                            readOnly={!canEditPoints}
+                            title={!canEditPoints ? 'Poin hanya dapat diubah oleh Leader/Supervisor/PJO/Admin.' : undefined}
                           />
                         </div>
                       </div>
@@ -3583,7 +3596,7 @@ export function OvertimeListingClient({
                               </div>
                             ) : null}
 
-                            <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div className="grid grid-cols-3 gap-2 text-xs">
                               <div className="space-y-1">
                                 <Label className="text-xs font-semibold text-slate-700">Mulai <span className="text-red-500 font-bold">*</span></Label>
                                 <Input
@@ -3600,6 +3613,21 @@ export function OvertimeListingClient({
                                   value={item.endTime || createForm.plannedEndTime || '21:00'}
                                   onChange={(e) => updateLineItemRow(idx, 'endTime', e.target.value)}
                                   className="h-8 text-xs bg-white border-slate-200 text-center font-mono"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs font-semibold text-slate-700">
+                                  Poin
+                                  {!canEditPoints && <span className="ml-1 text-slate-400 text-[9px] font-normal">(otomatis)</span>}
+                                </Label>
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  value={item.plannedPoints || 10}
+                                  onChange={(e) => updateLineItemRow(idx, 'plannedPoints', Number(e.target.value))}
+                                  className={cn("h-8 text-xs bg-white border-slate-200 font-bold text-center", !canEditPoints && "bg-slate-50 text-slate-500")}
+                                  readOnly={!canEditPoints}
+                                  title={!canEditPoints ? 'Poin mengikuti kamus aktivitas. Hanya Leader/PJO/Admin yang dapat mengubah.' : 'Nilai poin untuk aktivitas ini'}
                                 />
                               </div>
                             </div>

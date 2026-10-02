@@ -1,5 +1,14 @@
 'use server'
 
+export interface CtsSiteItem {
+  id_site: string
+  site: string
+  id_company: string
+  last_update?: string
+  spm?: string
+  cts?: string
+}
+
 export interface TireScrapSummaryItem {
   value: number
   unit: string
@@ -100,6 +109,7 @@ export interface TireScrapDetailRecord {
 
 export interface AvailableFilters {
   sites: string[]
+  siteDetails?: CtsSiteItem[]
   brands: string[]
   sizes: string[]
   patterns: string[]
@@ -119,6 +129,8 @@ export interface TireScrapResponse {
   message?: string
   filters?: {
     site: string
+    id_site?: string
+    id_company?: string
     brand: string
     size: string
     pattern: string
@@ -138,6 +150,8 @@ export interface TireScrapResponse {
 
 export interface TireScrapFilterParams {
   site?: string
+  idsite?: string
+  id_company?: string
   brand?: string
   size?: string
   pattern?: string
@@ -183,11 +197,41 @@ export interface RawTireScrapItem {
 }
 
 const CTS_SCRAP_API_URL = 'https://cts-chitraparatama.co.id/ChitraTireMngr/product/api_get.php?function=get_tire_scrap_performance'
+const CTS_SITE_API_URL = 'https://cts-chitraparatama.co.id/ChitraTireMngr/product/api_get.php?function=get_site'
+
+// Fetch all available sites from CTS
+export async function fetchCtsSites(): Promise<{ success: boolean; data: CtsSiteItem[]; error?: string }> {
+  try {
+    const res = await fetch(CTS_SITE_API_URL, {
+      method: 'GET',
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        Accept: 'application/json',
+      },
+      next: { revalidate: 300 },
+    })
+
+    if (!res.ok) {
+      return { success: false, data: [], error: `CTS Site API error: ${res.statusText}` }
+    }
+
+    const json = await res.json()
+    if (json.status === 1 && Array.isArray(json.data)) {
+      return { success: true, data: json.data }
+    }
+    return { success: false, data: [], error: json.message || 'Gagal memuat sites' }
+  } catch (err: any) {
+    console.error('Failed to fetch CTS sites:', err)
+    return { success: false, data: [], error: err.message || 'Koneksi ke CTS Site API gagal' }
+  }
+}
 
 // Helper to transform raw records array into full dashboard metrics & charts
 function transformRawRecordsToScrapResponse(
   rawList: RawTireScrapItem[],
-  params: TireScrapFilterParams = {}
+  params: TireScrapFilterParams = {},
+  availableSites: CtsSiteItem[] = []
 ): TireScrapResponse {
   const unit = params.unit || 'HM'
   const unitText = unit === 'KM' ? 'km' : 'hrs'
@@ -358,9 +402,14 @@ function transformRawRecordsToScrapResponse(
     date: d.scrap_date,
   }))
 
-  // Available filters from unique values
+  // Available filters from unique values + CTS Site API
+  const siteList = availableSites.length > 0
+    ? availableSites.map((s) => s.site).sort()
+    : Array.from(new Set(details.map((d) => d.site).filter((s) => s && s !== '-'))).sort()
+
   const available_filters: AvailableFilters = {
-    sites: Array.from(new Set(details.map((d) => d.site).filter((s) => s && s !== '-'))).sort(),
+    sites: siteList,
+    siteDetails: availableSites,
     brands: Array.from(new Set(details.map((d) => d.brand).filter((b) => b && b !== 'Unknown'))).sort(),
     sizes: Array.from(new Set(details.map((d) => d.tire_size).filter((s) => s && s !== '-'))).sort(),
     patterns: Array.from(new Set(details.map((d) => d.pattern).filter((p) => p && p !== '-'))).sort(),
@@ -381,7 +430,9 @@ function transformRawRecordsToScrapResponse(
     status: 1,
     message: 'Success',
     filters: {
-      site: params.site || 'All Sites',
+      site: params.site || 'CK-KIM',
+      id_site: params.idsite || '33',
+      id_company: params.id_company || '2',
       brand: params.brand || 'All Brands',
       size: params.size || 'All Sizes',
       pattern: params.pattern || 'All Patterns',
@@ -438,10 +489,10 @@ function transformRawRecordsToScrapResponse(
     available_filters,
     pagination: {
       total_records: totalScrap,
-      limit: params.limit || 50,
+      limit: params.limit || 500,
       offset: params.offset || 0,
       page: 1,
-      total_pages: 1,
+      total_pages: Math.ceil(totalScrap / (params.limit || 500)),
     },
   }
 }
@@ -450,11 +501,39 @@ export async function fetchTireScrapPerformance(
   params: TireScrapFilterParams = {}
 ): Promise<{ success: boolean; data?: TireScrapResponse; error?: string }> {
   try {
-    const url = new URL(CTS_SCRAP_API_URL)
+    // 1. Fetch available sites first to map site name to idsite & id_company
+    const sitesRes = await fetchCtsSites()
+    const sites = sitesRes.success ? sitesRes.data : []
 
-    if (params.site && params.site !== 'All Sites' && params.site !== 'all') {
-      url.searchParams.set('site', params.site)
+    // 2. Resolve idsite & id_company
+    let resolvedIdSite = params.idsite
+    let resolvedIdCompany = params.id_company
+
+    // If site name is provided (e.g. 'CK-KIM'), find matching idsite & id_company
+    if (params.site && params.site !== 'All Sites') {
+      const match = sites.find((s) => s.site.toLowerCase() === params.site!.toLowerCase())
+      if (match) {
+        resolvedIdSite = match.id_site
+        resolvedIdCompany = match.id_company
+      }
     }
+
+    // Default to CK-KIM (idsite: '33', id_company: '2') if not specified
+    if (!resolvedIdSite || !resolvedIdCompany) {
+      const kimSite = sites.find((s) => s.site === 'CK-KIM') || sites[0]
+      if (kimSite) {
+        resolvedIdSite = kimSite.id_site
+        resolvedIdCompany = kimSite.id_company
+      } else {
+        resolvedIdSite = '33'
+        resolvedIdCompany = '2'
+      }
+    }
+
+    const url = new URL(CTS_SCRAP_API_URL)
+    url.searchParams.set('idsite', resolvedIdSite)
+    url.searchParams.set('id_company', resolvedIdCompany)
+
     if (params.brand && params.brand !== 'All Brands' && params.brand !== 'all') {
       url.searchParams.set('brand', params.brand)
     }
@@ -479,9 +558,11 @@ export async function fetchTireScrapPerformance(
     if (params.year && params.year !== 'all') {
       url.searchParams.set('year', String(params.year))
     }
-    if (params.limit !== undefined) {
-      url.searchParams.set('limit', String(params.limit))
-    }
+
+    // Request up to 1000 records so dashboard gets rich real data
+    const requestLimit = params.limit ? Math.max(params.limit, 500) : 500
+    url.searchParams.set('limit', String(requestLimit))
+
     if (params.offset !== undefined) {
       url.searchParams.set('offset', String(params.offset))
     }
@@ -514,14 +595,14 @@ export async function fetchTireScrapPerformance(
 
     // AUTO-DETECTION: If the API returns raw records array (e.g. data: [...] or array root),
     // automatically transform and compute all dashboard KPI & charts!
-    if (Array.isArray(rawJson.data) && rawJson.data.length > 0 && !rawJson.summary) {
-      const transformed = transformRawRecordsToScrapResponse(rawJson.data, params)
+    if (Array.isArray(rawJson.data) && rawJson.data.length > 0) {
+      const transformed = transformRawRecordsToScrapResponse(rawJson.data, params, sites)
       return {
         success: true,
         data: transformed,
       }
     } else if (Array.isArray(rawJson) && rawJson.length > 0) {
-      const transformed = transformRawRecordsToScrapResponse(rawJson, params)
+      const transformed = transformRawRecordsToScrapResponse(rawJson, params, sites)
       return {
         success: true,
         data: transformed,

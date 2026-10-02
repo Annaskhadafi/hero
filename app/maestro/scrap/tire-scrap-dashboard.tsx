@@ -81,14 +81,18 @@ function formatNumber(num: number | string | undefined | null): string {
 
 // Format Currency
 function formatCurrencyIDR(val: number): string {
-  if (!val || val === 0) return 'Rp 0'
-  if (val >= 1_000_000_000) {
-    return `Rp ${(val / 1_000_000_000).toFixed(1)} Billion`
+  if (!val || val === 0) return '$ 0'
+  const absVal = Math.abs(val)
+  if (absVal >= 1_000_000_000) {
+    return `$ ${(absVal / 1_000_000_000).toFixed(1)}B`
   }
-  if (val >= 1_000_000) {
-    return `Rp ${(val / 1_000_000).toFixed(1)} Million`
+  if (absVal >= 1_000_000) {
+    return `$ ${(absVal / 1_000_000).toFixed(1)}M`
   }
-  return `Rp ${formatNumber(val)}`
+  if (absVal >= 1_000) {
+    return `$ ${(absVal / 1_000).toFixed(1)}K`
+  }
+  return `$ ${absVal.toFixed(2)}`
 }
 
 // Color palette for charts
@@ -473,12 +477,12 @@ export function TireScrapDashboard({
   })
 
   // Filter States
-  const [selectedSite, setSelectedSite] = React.useState('All Sites')
+  const [selectedSite, setSelectedSite] = React.useState<string>(initialData?.filters?.site || 'CK-KIM')
   const [selectedBrand, setSelectedBrand] = React.useState('All Brands')
   const [selectedSize, setSelectedSize] = React.useState('All Sizes')
   const [selectedPattern, setSelectedPattern] = React.useState('All Patterns')
   const [selectedReason, setSelectedReason] = React.useState('All Reasons')
-  const [selectedPeriod, setSelectedPeriod] = React.useState('2026')
+  const [selectedPeriod, setSelectedPeriod] = React.useState('all')
   const [selectedUnit, setSelectedUnit] = React.useState<'HM' | 'KM'>('HM')
   const [searchQuery, setSearchQuery] = React.useState('')
 
@@ -499,15 +503,17 @@ export function TireScrapDashboard({
 
   // Dynamic filter lists from CTS API (fallback to sample filters if empty)
   const filterOptions = React.useMemo(() => {
-    const raw = apiData?.available_filters || SAMPLE_MOCK_DATA.available_filters
+    const raw = apiData?.available_filters || initialData?.available_filters || SAMPLE_MOCK_DATA.available_filters
+    const rawSites = raw.sites || []
+    const cleanSites = rawSites.includes('CK-KIM') ? rawSites : ['CK-KIM', ...rawSites]
     return {
-      sites: ['All Sites', ...(raw.sites || [])],
+      sites: cleanSites.length > 0 ? cleanSites : ['CK-KIM', 'All Sites'],
       brands: ['All Brands', ...(raw.brands || [])],
       sizes: ['All Sizes', ...(raw.sizes || [])],
       patterns: ['All Patterns', ...(raw.patterns || [])],
       reasons: ['All Reasons', ...(raw.reasons || [])],
     }
-  }, [apiData])
+  }, [apiData, initialData])
 
   // Refetch function to query real CTS API with active filters
   const handleApplyFilter = React.useCallback(
@@ -516,15 +522,16 @@ export function TireScrapDashboard({
       setApiError(null)
 
       try {
+        const nextSite = overrideParams.site !== undefined ? overrideParams.site : selectedSite
         const params: TireScrapFilterParams = {
-          site: selectedSite,
+          site: nextSite,
           brand: selectedBrand,
           size: selectedSize,
           pattern: selectedPattern,
           reason: selectedReason,
           unit: selectedUnit,
           year: selectedPeriod === 'all' ? undefined : selectedPeriod,
-          limit: 100,
+          limit: 500,
           ...overrideParams,
         }
 
@@ -536,7 +543,7 @@ export function TireScrapDashboard({
           if (res.data.summary?.total_scrap_tires?.value > 0 || res.data.details?.length > 0) {
             setUseSampleData(false)
           }
-          toast.success('Data Tire Scrap berhasil disinkronkan dari CTS API')
+          toast.success(`Data Tire Scrap berhasil dimuat (${res.data.details?.length || 0} unit)`)
         } else {
           setApiError(res.error || 'Gagal memuat data dari CTS')
           toast.error(res.error || 'Gagal memuat data dari CTS')

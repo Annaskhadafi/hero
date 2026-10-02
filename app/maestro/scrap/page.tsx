@@ -14,11 +14,13 @@ export default async function MaestroScrapPage() {
   const session = await getMaestroServerSession()
   if (!session) redirect('/login')
 
-  // Fetch initial scrap performance data from CTS API
+  // Fetch initial scrap performance data from CTS API with site CK-KIM (idsite: 33, id_company: 2)
   const result = await fetchTireScrapPerformance({
+    site: 'CK-KIM',
+    idsite: '33',
+    id_company: '2',
     unit: 'HM',
-    year: '2026',
-    limit: 100,
+    limit: 500,
   })
 
   return (

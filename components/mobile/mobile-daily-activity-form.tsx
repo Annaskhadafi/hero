@@ -275,6 +275,7 @@ type MobileDailyActivityFormProps = {
     geoLatitude?: string | null
     geoLongitude?: string | null
     geoRadiusMeters?: number | null
+    headEmployeeId?: number | null
   } | null
   teamMembers?: Array<{
     id: number
@@ -343,6 +344,7 @@ const emptyRouteItemState: RouteItemState = {
   startedAt: '',
   endedAt: '',
   actualPoints: '0',
+  tireCount: 0,
 }
 
 const initialGeo: GeoState = {
@@ -500,7 +502,7 @@ function buildDefaultSelfInputEntry(
     startTime: shiftDateTimeLocalValue(defaultStartTime, offsetMinutes),
     endTime: shiftDateTimeLocalValue(defaultEndTime, offsetMinutes),
     materialUsed: '',
-    tireCount: 1,
+    tireCount: 0,
     notes: '',
   }
 }
@@ -657,7 +659,7 @@ export function MobileDailyActivityForm({
             startTime: startVal,
             endTime: endVal,
             materialUsed: item.materialUsed || '',
-            tireCount: item.tireCount || 1,
+            tireCount: item.tireCount ?? 0,
             notes: item.remark || item.notes || '',
             photoFiles: [],
             photoName: existingUrls.length > 0 ? `${existingUrls.length} foto terlampir` : '',
@@ -858,7 +860,7 @@ export function MobileDailyActivityForm({
             startTime: startVal,
             endTime: endVal,
             materialUsed: item.materialUsed || '',
-            tireCount: item.tireCount || 1,
+            tireCount: item.tireCount ?? 0,
             notes: item.remark || item.notes || '',
             photoFiles: [],
             photoName: existingUrls.length > 0 ? `${existingUrls.length} foto terlampir` : '',
@@ -1686,6 +1688,7 @@ export function MobileDailyActivityForm({
                 item.endTime ||
                 buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime).endTime,
               materialUsed: item.materialUsed ?? '',
+              tireCount: item.tireCount ?? 0,
               notes: item.notes ?? '',
             },
           ])
@@ -1697,6 +1700,7 @@ export function MobileDailyActivityForm({
               startTime: draft.startTime || defaultStartTime,
               endTime: draft.endTime || defaultEndTime,
               materialUsed: draft.materialUsed ?? '',
+              tireCount: draft.tireCount ?? 0,
               notes: draft.notes ?? '',
             },
           }
@@ -1757,7 +1761,7 @@ export function MobileDailyActivityForm({
                     ? alignDateTimeToReference(item.endedAt, defaultEndTime)
                     : item.endedAt,
                   actualPoints: `${item.actualPoints}`,
-                  tireCount: item.tireCount ?? 1,
+                  tireCount: item.tireCount ?? 0,
                   materialUsed: item.materialUsed || '',
                 },
               ],
@@ -1820,7 +1824,7 @@ export function MobileDailyActivityForm({
                   item.libraryPoints ??
                   0
                 }`,
-                tireCount: matched?.tireCount ?? 1,
+                tireCount: matched?.tireCount ?? 0,
                 materialUsed: matched?.materialUsed ?? '',
                 photoName: matchedPhotos.length > 0 ? `${matchedPhotos.length} foto terlampir` : '',
                 previewUrls: matchedPhotos,
@@ -2009,7 +2013,7 @@ export function MobileDailyActivityForm({
           actualPoints: stateForItem?.isChecked
             ? Number(stateForItem.actualPoints || basePoints || 0)
             : 0,
-          tireCount: stateForItem?.isChecked && item.requiresTireCount ? stateForItem.tireCount ?? 1 : 0,
+          tireCount: stateForItem?.isChecked && item.requiresTireCount ? stateForItem.tireCount ?? 0 : 0,
           sortOrder: item.sortOrder,
         }
       })
@@ -2038,7 +2042,7 @@ export function MobileDailyActivityForm({
         startTime: entry.startTime,
         endTime: entry.endTime,
         materialUsed: entry.materialUsed,
-        tireCount: entry.tireCount ?? 1,
+        tireCount: entry.tireCount ?? 0,
         notes: entry.notes,
       }
     }),
@@ -2315,7 +2319,7 @@ export function MobileDailyActivityForm({
             startTime: entry.startTime,
             endTime: entry.endTime,
             materialUsed: entry.materialUsed,
-            tireCount: entry.tireCount ?? 1,
+            tireCount: entry.tireCount ?? 0,
             notes: entry.notes,
             routeTemplateId: '',
             overtimeCommandLetterId: '',
@@ -2389,7 +2393,7 @@ export function MobileDailyActivityForm({
               points: library.basePoints || 5,
               remark: entry.notes || '',
               materialUsed: entry.materialUsed || '',
-              tireCount: library.requiresTireCount ? (entry.tireCount ?? 1) : (entry.tireCount ?? null),
+              tireCount: library.requiresTireCount ? (entry.tireCount ?? 0) : (entry.tireCount ?? null),
               photoUrl: entryEvidence.urls[0] || null,
               photos: entryEvidence.urls,
             }
@@ -3199,11 +3203,11 @@ export function MobileDailyActivityForm({
                             </span>
                             <Input
                               type="number"
-                              min={1}
-                              value={entry.tireCount ?? 1}
+                              min={0}
+                              value={entry.tireCount ?? 0}
                               onChange={(event) =>
                                 updateSelfInputEntry(libraryId, {
-                                  tireCount: Math.max(1, parseInt(event.target.value, 10) || 1),
+                                  tireCount: Math.max(0, parseInt(event.target.value, 10) || 0),
                                 })
                               }
                               placeholder="Jumlah tire yang dikerjakan"
@@ -3385,11 +3389,11 @@ export function MobileDailyActivityForm({
                                   </span>
                                   <Input
                                     type="number"
-                                    min={1}
-                                    value={itemState.tireCount ?? 1}
+                                    min={0}
+                                    value={itemState.tireCount ?? 0}
                                     onChange={(event) =>
                                       updateRouteItem(item.id, {
-                                        tireCount: Math.max(1, parseInt(event.target.value, 10) || 1),
+                                        tireCount: Math.max(0, parseInt(event.target.value, 10) || 0),
                                       })
                                     }
                                     placeholder="Jumlah tire yang dikerjakan"
@@ -3888,7 +3892,7 @@ export function MobileDailyActivityForm({
                         label: `${lib.activityCode} - ${lib.activityName}`,
                         unitNumber: lib.requiresEquipmentNo ? (entry?.equipmentNo || '-') : '—',
                         duration: lib.requiresDuration ? durationStr : '—',
-                        tireCount: lib.requiresTireCount ? (entry?.tireCount ?? 1) : 0,
+                        tireCount: lib.requiresTireCount ? (entry?.tireCount ?? 0) : 0,
                         materialUsed: lib.requiresMaterialUsed ? (entry?.materialUsed || '-') : '—',
                         requiresEquipmentNo: lib.requiresEquipmentNo,
                         requiresDuration: lib.requiresDuration,

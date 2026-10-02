@@ -330,7 +330,7 @@ export async function getUtilitiesDashboardData(
     }
   }
 
-  const sessionRows = await db
+  let sessionRows = await db
     .select({
       sessionId: dailyActivitySessions.id,
       sessionCode: dailyActivitySessions.sessionCode,
@@ -348,7 +348,61 @@ export async function getUtilitiesDashboardData(
     .orderBy(desc(dailyActivitySessions.workDate))
     .limit(1000)
 
-  const sessionIds = sessionRows.map((s) => s.sessionId)
+  let sessionIds = sessionRows.map((s) => s.sessionId)
+
+  // Auto-fallback: jika site spesifik dipilih dan tidak ada data dalam rentang default,
+  // cari data historis terakhir dari site tersebut agar dashboard tidak kosong
+  if (sessionIds.length === 0 && currentSite.id !== 0 && !params.startDate && !params.endDate && (!params.period || params.period === 'today' || params.period === 'weekly' || params.period === 'monthly')) {
+    const [latestSession] = await db
+      .select({ workDate: dailyActivitySessions.workDate })
+      .from(dailyActivitySessions)
+      .where(
+        and(
+          isNull(dailyActivitySessions.deletedAt),
+          eq(dailyActivitySessions.siteId, currentSite.id)
+        )
+      )
+      .orderBy(desc(dailyActivitySessions.workDate))
+      .limit(1)
+
+    if (latestSession?.workDate) {
+      const latestDate = new Date(latestSession.workDate)
+      const latestStr = latestDate.toISOString().split('T')[0]
+      // Ambil rentang 7 hari yang memuat tanggal aktivitas terbaru
+      const startW = new Date(latestDate)
+      startW.setUTCDate(startW.getUTCDate() - 6)
+      effectiveStartDate = startW.toISOString().split('T')[0]
+      effectiveEndDate = latestStr
+      periodLabel = 'custom'
+
+      const fallbackConds = [
+        isNull(dailyActivitySessions.deletedAt),
+        sql`date(${dailyActivitySessions.workDate}) >= ${effectiveStartDate}`,
+        sql`date(${dailyActivitySessions.workDate}) <= ${effectiveEndDate}`,
+        eq(dailyActivitySessions.siteId, currentSite.id),
+      ]
+
+      sessionRows = await db
+        .select({
+          sessionId: dailyActivitySessions.id,
+          sessionCode: dailyActivitySessions.sessionCode,
+          workDate: dailyActivitySessions.workDate,
+          shiftCode: dailyActivitySessions.shiftCode,
+          employeeId: employees.id,
+          employeeName: employees.name,
+          employeeSn: employees.employeeSn,
+          jobTitle: employees.jobTitle,
+          siteId: dailyActivitySessions.siteId,
+        })
+        .from(dailyActivitySessions)
+        .innerJoin(employees, eq(dailyActivitySessions.employeeId, employees.id))
+        .where(and(...fallbackConds))
+        .orderBy(desc(dailyActivitySessions.workDate))
+        .limit(1000)
+
+      sessionIds = sessionRows.map((s) => s.sessionId)
+    }
+  }
 
   // 4. Query Items belonging to these sessions
   let itemRows: Array<{

@@ -565,6 +565,7 @@ export async function saveOvertimeApprovalForm(params: {
     estimatedMinutes?: number
     plannedPoints?: number
     lineDescription?: string
+    photoUrl?: string
   }>
   itemRemarks?: Record<number, string>
   leaderName?: string
@@ -1645,6 +1646,20 @@ export async function createOvertimeCommandLetterAction(payload: {
     targetUnit?: string
     estimatedMinutes?: number
     plannedPoints?: number
+    photoUrl?: string
+    // Extended fields from desktop/self-input mode
+    code?: string
+    name?: string
+    unitNumber?: string
+    tireCount?: number
+    materialUsed?: string
+    startTime?: string
+    endTime?: string
+    duration?: string
+    lineDescription?: string
+    remark?: string
+    points?: number
+    photos?: string[]
   }>
   leaderEmployeeId?: number | null
   leaderName?: string | null
@@ -1664,12 +1679,7 @@ export async function createOvertimeCommandLetterAction(payload: {
       return { success: false as const, error: 'Pilih Pemohon (Requester) terlebih dahulu.' }
     }
 
-    // MANDATORY PHOTO VALIDATION FOR SPL
-    const hasPhoto = Boolean(payload.photoUrl && payload.photoUrl.trim()) || Boolean(payload.requestNotes && payload.requestNotes.includes('[Foto Bukti SPL]'))
-    if (!hasPhoto) {
-      return { success: false as const, error: 'Foto bukti pekerjaan lembur wajib dilampirkan.' }
-    }
-
+    // Photo is optional - store photoUrl in requestNotes for backward compat if provided
     let finalRequestNotes = payload.requestNotes || ''
     if (payload.photoUrl && !finalRequestNotes.includes(payload.photoUrl)) {
       finalRequestNotes = `[Foto Bukti SPL]: ${payload.photoUrl.trim()}\n${finalRequestNotes}`.trim()

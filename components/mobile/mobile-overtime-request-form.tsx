@@ -211,6 +211,11 @@ export function MobileOvertimeRequestForm({
     (doc?.status || '').toLowerCase() === 'approved' ||
     (doc?.status || '').toLowerCase() === 'closed';
 
+  const canEditPoints = (() => {
+    const jobTitle = (currentEmployee?.position || currentEmployee?.rank || '').toLowerCase();
+    return ['admin', 'superadmin', 'leader', 'supervisor', 'section head', 'pjo', 'manager', 'foreman', 'kepala', 'coordinator', 'superintendent'].some(role => jobTitle.includes(role));
+  })();
+
   const existingEmployeeApproval = doc?.approvals?.find((a: any) => a.stepOrder === 1 || a.approverRole === 'employee' || a.approverRole === 'requester' || (a.stepLabel && a.stepLabel.toLowerCase().includes('karyawan')));
   const existingLeaderApproval = doc?.approvals?.find((a: any) => (doc?.approvals?.length === 2 ? a.stepOrder === 1 : a.stepOrder === 2) || a.approverRole === 'leader' || a.approverRole === 'pjo_or_te_initial' || (a.stepLabel && (a.stepLabel.toLowerCase().includes('leader') || a.stepLabel.toLowerCase().includes('supervisor'))));
   const existingSuperiorApproval = doc?.approvals?.find((a: any) => (doc?.approvals?.length === 2 ? a.stepOrder === 2 : a.stepOrder === 3) || a.approverRole === 'section_head' || a.approverRole === 'section_head_confirmation' || a.approverRole === 'superior' || (a.stepLabel && (a.stepLabel.toLowerCase().includes('section') || a.stepLabel.toLowerCase().includes('head'))));
@@ -657,6 +662,36 @@ export function MobileOvertimeRequestForm({
   function removeLineItem(index: number) {
     if (lineItems.length <= 1) return;
     setLineItems((prev) => prev.filter((_, idx) => idx !== index));
+    setIsUploadingLinePhoto((prev) => prev.filter((_, idx) => idx !== index));
+  }
+
+  const [isUploadingLinePhoto, setIsUploadingLinePhoto] = useState<boolean[]>([]);
+
+  async function handleLinePhotoUpload(idx: number, file: File) {
+    setIsUploadingLinePhoto((prev) => {
+      const next = [...prev];
+      next[idx] = true;
+      return next;
+    });
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const result = await uploadFile(fd);
+      if (result.success && result.url) {
+        updateLineItem(idx, 'photoUrl', result.url);
+        toast.success('Foto evidence berhasil diunggah');
+      } else {
+        toast.error('Gagal mengunggah foto evidence');
+      }
+    } catch {
+      toast.error('Gagal mengunggah foto evidence');
+    } finally {
+      setIsUploadingLinePhoto((prev) => {
+        const next = [...prev];
+        next[idx] = false;
+        return next;
+      });
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -706,6 +741,7 @@ export function MobileOvertimeRequestForm({
             targetUnit: (item.targetUnit || "").trim(),
             estimatedMinutes: Number(item.estimatedMinutes) || 60,
             plannedPoints: Number(item.plannedPoints) || 0,
+            photoUrl: item.photoUrl || undefined,
           })),
           leaderName: leaderName || undefined,
           superiorName: superiorName || undefined,
@@ -753,6 +789,7 @@ export function MobileOvertimeRequestForm({
             targetUnit: (item.targetUnit || "").trim(),
             estimatedMinutes: Number(item.estimatedMinutes) || 60,
             plannedPoints: Number(item.plannedPoints) || 0,
+            photoUrl: item.photoUrl || undefined,
           })),
           leaderEmployeeId: leaderEmployeeId ? Number(leaderEmployeeId) : null,
           leaderName: leaderName || null,
@@ -1271,15 +1308,96 @@ export function MobileOvertimeRequestForm({
                     />
                   </div>
                   <div>
-                    <span className="text-[10px] font-bold text-slate-500 block mb-1">Poin</span>
+                    <span className="text-[10px] font-bold text-slate-500 block mb-1">
+                      Poin {!canEditPoints && <span className="font-normal text-slate-400 text-[9px]">(otomatis)</span>}
+                    </span>
                     <Input
                       type="number"
                       min={0}
                       value={item.plannedPoints}
                       onChange={(e) => updateLineItem(idx, "plannedPoints", Number(e.target.value))}
-                      className="h-8 rounded-lg bg-white border-slate-200 text-[11px] font-bold text-center"
+                      className={cn(
+                        "h-8 rounded-lg border-slate-200 text-[11px] font-bold text-center",
+                        !canEditPoints ? "bg-slate-100 text-slate-500 cursor-not-allowed" : "bg-white text-slate-800"
+                      )}
+                      readOnly={!canEditPoints}
+                      title={!canEditPoints ? 'Poin mengikuti nilai kamus aktivitas. Hanya Leader/Supervisor/Admin yang dapat mengubah.' : undefined}
                     />
                   </div>
+                </div>
+
+                {/* Foto Bukti Evidence (Opsional) */}
+                <div>
+                  <span className="text-[10px] font-bold text-slate-500 block mb-1.5">
+                    Foto Bukti <span className="font-normal text-slate-400">(Opsional)</span>
+                  </span>
+                  {item.photoUrl ? (
+                    <div className="flex items-start gap-2">
+                      <a
+                        href={resolveUploadUrl(item.photoUrl)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block"
+                      >
+                        <img
+                          src={resolveUploadUrl(item.photoUrl)}
+                          alt="Foto bukti aktivitas"
+                          className="size-16 object-cover rounded-xl border border-slate-200 shadow-sm"
+                        />
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => updateLineItem(idx, "photoUrl", null)}
+                        className="mt-1 flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-[10px] font-semibold text-rose-600"
+                      >
+                        <X className="size-3" /> Hapus
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <label
+                        className={cn(
+                          "cursor-pointer inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-[10px] font-semibold text-slate-700",
+                          isUploadingLinePhoto[idx] && "opacity-50 pointer-events-none"
+                        )}
+                      >
+                        <Camera className="size-3.5 text-slate-500" />
+                        {isUploadingLinePhoto[idx] ? "Uploading..." : "Kamera"}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="hidden"
+                          disabled={isUploadingLinePhoto[idx]}
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) handleLinePhotoUpload(idx, f);
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+                      <label
+                        className={cn(
+                          "cursor-pointer inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-[10px] font-semibold text-slate-700",
+                          isUploadingLinePhoto[idx] && "opacity-50 pointer-events-none"
+                        )}
+                      >
+                        <FileText className="size-3.5 text-slate-500" />
+                        {isUploadingLinePhoto[idx] ? "Uploading..." : "Galeri"}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          disabled={isUploadingLinePhoto[idx]}
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) handleLinePhotoUpload(idx, f);
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+                    </div>
+                  )}
                 </div>
               </div>
             );
