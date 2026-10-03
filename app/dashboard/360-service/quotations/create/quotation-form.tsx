@@ -207,6 +207,8 @@ const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [customers, setCustomers] = useState(initialCustomers)
   const [signatureDisplayUrl, setSignatureDisplayUrl] = useState(initialSignatureReadableUrl || initialData?.fromSignatureUrl || "")
+  const [savedDraft, setSavedDraft] = useState<any | null>(null)
+  const [showDraftBanner, setShowDraftBanner] = useState(false)
   const parsedPoPeriod = parsePoPeriod(initialData?.poPeriod)
   const initialProjectSiteId =
     siteList?.find((site) => site.name === initialData?.projectName)?.id?.toString() ||
@@ -353,6 +355,65 @@ const router = useRouter()
     }, 500);
     return () => clearTimeout(timer);
   }, [fromName, isEdit, initialData, setValue]);
+
+  // Draft persistence: detect existing local draft on mount
+  useEffect(() => {
+    if (!isEdit && typeof window !== "undefined") {
+      try {
+        const raw = localStorage.getItem("service360_quotation_create_draft")
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          if ((parsed?.items && parsed.items.length > 0) || parsed?.customerId || parsed?.notes) {
+            setSavedDraft(parsed)
+            setShowDraftBanner(true)
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to read quotation draft", e)
+      }
+    }
+  }, [isEdit])
+
+  // Draft persistence: auto-save on change (debounced 1.5s)
+  const currentValues = watch()
+  useEffect(() => {
+    if (isEdit || typeof window === "undefined") return
+    const timer = setTimeout(() => {
+      try {
+        if ((currentValues?.items && currentValues.items.length > 0) || currentValues?.customerId || currentValues?.notes) {
+          localStorage.setItem("service360_quotation_create_draft", JSON.stringify(currentValues))
+        }
+      } catch (e) {}
+    }, 1500)
+    return () => clearTimeout(timer)
+  }, [isEdit, currentValues])
+
+  const restoreDraft = () => {
+    if (!savedDraft) return
+    try {
+      Object.entries(savedDraft).forEach(([key, val]) => {
+        if (key !== "quotationNumber") {
+          setValue(key as any, val)
+        }
+      })
+      if (savedDraft.fromSignatureUrl) {
+        setSignatureDisplayUrl(toProxyUrl(savedDraft.fromSignatureUrl))
+      }
+      setShowDraftBanner(false)
+      toast.success("Draft quotation berhasil dipulihkan!")
+    } catch (e) {
+      toast.error("Gagal memulihkan draft quotation")
+    }
+  }
+
+  const discardDraft = () => {
+    try {
+      localStorage.removeItem("service360_quotation_create_draft")
+      setSavedDraft(null)
+      setShowDraftBanner(false)
+      toast.info("Draft quotation telah dihapus")
+    } catch (e) {}
+  }
 
   const handleDeleteHistory = async (field: string, value: string) => {
     if (selectedCustomerId && selectedCustomerId !== "manual") {
@@ -675,6 +736,11 @@ const router = useRouter()
         
       if (res && res.id) {
         toast.success(isEdit ? "Quotation updated" : "Quotation created");
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.removeItem("service360_quotation_create_draft");
+          } catch {}
+        }
         setIsSubmitting(false);
         setLoading(false);
         router.push(`/dashboard/360-service/quotations/${res.id}`);
@@ -733,6 +799,25 @@ const router = useRouter()
           Cancel
         </Button>
       </div>
+
+      {showDraftBanner && !isEdit && (
+        <div className="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-900 shadow-sm dark:border-amber-700/50 dark:bg-amber-950/40 dark:text-amber-200">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold">Ditemukan draft Quotation dari sesi sebelumnya</p>
+            <p className="text-xs text-amber-800 dark:text-amber-300">
+              Ada {savedDraft?.items?.length || 0} item tersimpan. Anda bisa memulihkan isian ini agar tidak perlu mengulang dari awal.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button size="sm" type="button" onClick={restoreDraft} className="bg-amber-600 hover:bg-amber-700 text-white font-semibold">
+              Pulihkan Draft
+            </Button>
+            <Button size="sm" type="button" variant="outline" onClick={discardDraft} className="border-amber-300 text-amber-800 hover:bg-amber-100">
+              Abaikan
+            </Button>
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-6">
         <Card>
@@ -1320,11 +1405,36 @@ As you are aware, Tire Maintenance is performing services at CK BMB..."
             <Button variant="outline" type="button" onClick={() => router.push("/dashboard/360-service/quotations")}>
               Cancel
             </Button>
-            <Button variant="secondary" type="button" disabled={loading || formItems.length === 0} onClick={handleSubmit((data) => submitHandler(data, true), onInvalid)}>
-              {loading ? "Saving..." : "Save"}
+            <Button
+              variant="secondary"
+              type="button"
+              disabled={loading || formItems.length === 0}
+              onClick={async () => {
+                // Immediately save snapshot to browser storage so user never loses work
+                try {
+                  const values = watch();
+                  localStorage.setItem("service360_quotation_create_draft", JSON.stringify(values));
+                  toast.success("Draft berhasil diamankan di browser!");
+                } catch {}
+
+                handleSubmit(
+                  (data) => submitHandler(data, true),
+                  (errs) => {
+                    onInvalid(errs);
+                    toast.info("Draft telah tersimpan di browser. Lengkapi kolom yang dibutuhkan untuk menyimpan ke server.");
+                  }
+                )();
+              }}
+            >
+              <Save className="size-4 mr-2" />
+              {loading ? "Menyimpan..." : "Save Draft"}
             </Button>
-            <Button type="button" disabled={loading || formItems.length === 0} onClick={handleSubmit((data) => submitHandler(data, false), onInvalid)}>
-              {loading ? "Saving..." : (isEdit ? "Update Quotation" : "Create Quotation")}
+            <Button
+              type="button"
+              disabled={loading || formItems.length === 0}
+              onClick={handleSubmit((data) => submitHandler(data, false), onInvalid)}
+            >
+              {loading ? "Menyimpan..." : (isEdit ? "Update Quotation" : "Create Quotation")}
             </Button>
           </CardFooter>
         </Card>

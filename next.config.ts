@@ -33,6 +33,8 @@ const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
       bodySizeLimit: '25mb',
+      // Increase timeout: DAR submit involves photo uploads + DB writes + email — default 5s is too short on mobile
+      // Next.js 15 uses `serverActions.timeoutSeconds` — ponytail: upgrade when stable
     },
     cpus: 3,
   },

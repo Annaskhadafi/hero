@@ -1,6 +1,6 @@
 'use server'
 
-import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
 import { z } from 'zod'
@@ -2615,25 +2615,23 @@ export async function submitDailyActivityAction(formData: FormData) {
     throw new Error('Waktu selesai harus setelah waktu mulai.')
   }
 
-  for (const emp of allTargetEmployees) {
-    const [existingOverlap] = await db
-      .select({
-        id: activities.id,
-        title: activities.title,
-      })
-      .from(activities)
-      .where(
-        and(
-          eq(activities.employeeId, emp.id),
-          sql`${activities.startTime} < ${endTime} and ${activities.endTime} > ${startTime}`
-        )
+  // Batch overlap check — single query for all target employees instead of N sequential queries
+  const overlapRows = await db
+    .select({ id: activities.id, title: activities.title, employeeId: activities.employeeId })
+    .from(activities)
+    .where(
+      and(
+        inArray(activities.employeeId, allTargetEmployees.map((e) => e.id)),
+        sql`${activities.startTime} < ${endTime} and ${activities.endTime} > ${startTime}`,
+        isNull(activities.deletedAt)
       )
-      .orderBy(desc(activities.startTime))
-      .limit(1)
+    )
+    .limit(allTargetEmployees.length)
 
-    if (existingOverlap) {
-      throw new Error(`Waktu bertabrakan dengan aktivitas ${existingOverlap.title} untuk ${emp.name}.`)
-    }
+  if (overlapRows.length > 0) {
+    const firstOverlap = overlapRows[0]
+    const conflictEmp = allTargetEmployees.find((e) => e.id === firstOverlap.employeeId)
+    throw new Error(`Waktu bertabrakan dengan aktivitas ${firstOverlap.title}${conflictEmp ? ` untuk ${conflictEmp.name}` : ''}.`)
   }
 
   if (payload.assignmentId) {
@@ -3183,136 +3181,134 @@ export async function submitDailyActivityAction(formData: FormData) {
     return
   }
 
-  for (const info of memberActivityInfos) {
-    const empId = info.memberEmployee.id
-    await updateStreakForEmployee(empId, endTime)
+  // Run all post-submit side effects in parallel across members — do NOT block the response
+  await Promise.allSettled(
+    memberActivityInfos.map(async (info) => {
+      const empId = info.memberEmployee.id
 
-    try {
-      const { recalculateEwhForEmployee, recalculateUnitUtility } = await import('@/app/dashboard/ewh/actions')
-      await recalculateEwhForEmployee(empId, info.memberEmployee.siteId, startTime)
+      // Streak + EWH recalc — non-blocking, errors are swallowed
+      await Promise.allSettled([
+        updateStreakForEmployee(empId, endTime),
+        (async () => {
+          try {
+            const { recalculateEwhForEmployee, recalculateUnitUtility } = await import('@/app/dashboard/ewh/actions')
+            await recalculateEwhForEmployee(empId, info.memberEmployee.siteId, startTime)
+            const uniqueUnits = Array.from(new Set(
+              routeSessionItems
+                .map((item) => item.unitNumber?.trim())
+                .filter((unit): unit is string => typeof unit === 'string' && unit.length > 0)
+            ))
+            await Promise.allSettled(
+              uniqueUnits.map((unit) => recalculateUnitUtility(unit, info.memberEmployee.siteId, startTime))
+            )
+          } catch (err) {
+            console.error(`[EWH/Utility] Recalculate failed for ${info.memberEmployee.name}:`, err)
+          }
+        })(),
+        logAuditEvent({
+          actorEmail: employee.email,
+          action: 'daily_activity.submitted',
+          entityType: 'daily_activity',
+          entityLabel: `${info.createdActivityId}`,
+          description: `${info.activityTitle} disubmit untuk ${info.memberEmployee.name} dengan status ${info.activityStatus}.`,
+        }),
+      ])
 
-      const uniqueUnits = Array.from(new Set(
-        routeSessionItems
-          .map((item) => item.unitNumber?.trim())
-          .filter((unit): unit is string => typeof unit === 'string' && unit.length > 0)
-      ))
+      if (info.needsApproval) {
+        // Batch-fetch all approver emails in one query instead of N sequential lookups
+        const approverEmpIds = info.firstApprovers
+          .map((a: any) => a.approverEmployeeId)
+          .filter((id: any): id is number => typeof id === 'number' && id > 0)
 
-      await Promise.allSettled(
-        uniqueUnits.map((unit) => recalculateUnitUtility(unit, info.memberEmployee.siteId, startTime))
-      )
-    } catch (err) {
-      console.error(`[EWH/Utility] Recalculate failed for ${info.memberEmployee.name}:`, err)
-    }
+        const [approverEmailRows, superAdmins] = await Promise.all([
+          approverEmpIds.length > 0
+            ? db.select({ email: employees.email }).from(employees).where(inArray(employees.id, approverEmpIds))
+            : Promise.resolve([] as Array<{ email: string | null }>),
+          db.select({ email: employees.email }).from(employees).where(eq(employees.accessRole, 'superadmin')),
+        ])
 
-    await logAuditEvent({
-      actorEmail: employee.email,
-      action: 'daily_activity.submitted',
-      entityType: 'daily_activity',
-      entityLabel: `${info.createdActivityId}`,
-      description: `${info.activityTitle} disubmit untuk ${info.memberEmployee.name} dengan status ${info.activityStatus}.`,
-    })
-
-    if (info.needsApproval) {
-      try {
         const candidateApproverEmails: string[] = []
-
         for (const approver of info.firstApprovers) {
-          if (approver.approverEmail) {
-            candidateApproverEmails.push(approver.approverEmail)
-          }
-          if (approver.approverEmployeeId) {
-            const [emp] = await db
-              .select({ email: employees.email })
-              .from(employees)
-              .where(eq(employees.id, approver.approverEmployeeId))
-              .limit(1)
-            if (emp?.email) {
-              candidateApproverEmails.push(emp.email)
-            }
-          }
-          if (approver.approverName && approver.approverName.includes('@')) {
-            candidateApproverEmails.push(approver.approverName)
-          }
+          if (approver.approverEmail) candidateApproverEmails.push(approver.approverEmail)
+          if (approver.approverName?.includes('@')) candidateApproverEmails.push(approver.approverName)
         }
-
-        // Also query super admins so super admin accounts receive real-time bell notifications
-        const superAdmins = await db
-          .select({ email: employees.email })
-          .from(employees)
-          .where(eq(employees.accessRole, 'superadmin'))
-
+        for (const row of approverEmailRows) {
+          if (row.email) candidateApproverEmails.push(row.email)
+        }
         for (const sa of superAdmins) {
           if (sa.email) candidateApproverEmails.push(sa.email)
         }
 
-        await notifyWorkflowBellRecipients({
-          recipientEmails: candidateApproverEmails,
-          eventType: 'daily_activity_pending_approval',
-          category: 'approval_requests',
-          title: 'Daily Activity Menunggu Approval',
-          body: `${info.memberEmployee.name} - ${info.activityTitle}`,
-          url: '/dashboard/approval',
-          tagPrefix: 'daily-activity-pending',
-          metadata: { activityId: info.createdActivityId },
-        })
-      } catch (notificationError) {
-        console.error('Failed to dispatch Daily Activity approval notification', notificationError)
+        await Promise.allSettled([
+          // Bell notification
+          (async () => {
+            try {
+              await notifyWorkflowBellRecipients({
+                recipientEmails: candidateApproverEmails,
+                eventType: 'daily_activity_pending_approval',
+                category: 'approval_requests',
+                title: 'Daily Activity Menunggu Approval',
+                body: `${info.memberEmployee.name} - ${info.activityTitle}`,
+                url: '/dashboard/approval',
+                tagPrefix: 'daily-activity-pending',
+                metadata: { activityId: info.createdActivityId },
+              })
+            } catch (notificationError) {
+              console.error('Failed to dispatch Daily Activity approval notification', notificationError)
+            }
+          })(),
+          // Email to first approver
+          (async () => {
+            const firstApprover = info.firstApprovers[0]
+            if (!firstApprover) return
+            try {
+              const [approverContact] = approverEmailRows.filter(
+                (r) => r.email != null
+              )
+              const approverContactEmail = approverEmailRows.find((r) => r.email)?.email ??
+                (firstApprover.approverEmail || null)
+
+              if (approverContactEmail) {
+                const emailContent = buildWorkflowEmailContent({
+                  title: 'Daily Activity menunggu approval',
+                  greeting: `Halo ${firstApprover.approverName || 'Approver'},`,
+                  intro: `${employee.name} mengirim daily activity baru untuk ${info.memberEmployee.name} dan membutuhkan review Anda.`,
+                  details: [
+                    `Karyawan: ${info.memberEmployee.name}`,
+                    `Aktivitas: ${info.activityTitle}`,
+                    `Kategori: ${activityType}`,
+                    `Waktu: ${submissionTime.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}`,
+                    payload.notes ? `Catatan: ${payload.notes}` : null,
+                  ],
+                  ctaLabel: 'Buka Approval',
+                  ctaUrl: getAppUrl('/dashboard/approval'),
+                })
+
+                await sendWorkflowEmail({
+                  to: approverContactEmail,
+                  actorEmail: employee.email,
+                  templateCode: 'daily_activity_pending_approval',
+                  templateName: 'Daily Activity Pending Approval',
+                  variables: {
+                    employeeName: info.memberEmployee.name,
+                    activityTitle: info.activityTitle,
+                    activityType,
+                    submissionTime: submissionTime.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }),
+                    notes: payload.notes ? `Catatan: ${payload.notes}` : '',
+                  },
+                  fallbackSubject: `Daily Activity menunggu approval - ${info.memberEmployee.name}`,
+                  fallbackHtml: emailContent.html,
+                  fallbackText: emailContent.text,
+                })
+              }
+            } catch (emailError) {
+              console.error('Failed to send daily activity approval email', emailError)
+            }
+          })(),
+        ])
       }
-
-      const firstApprover = info.firstApprovers[0]
-      if (firstApprover) {
-        try {
-          const [approverContact] = await db
-            .select({ email: employees.email })
-            .from(employees)
-            .where(eq(employees.id, firstApprover.approverEmployeeId!))
-            .limit(1)
-
-          if (approverContact?.email) {
-            const emailContent = buildWorkflowEmailContent({
-              title: 'Daily Activity menunggu approval',
-              greeting: `Halo ${firstApprover.approverName || 'Approver'},`,
-              intro: `${employee.name} mengirim daily activity baru untuk ${info.memberEmployee.name} dan membutuhkan review Anda.`,
-              details: [
-                `Karyawan: ${info.memberEmployee.name}`,
-                `Aktivitas: ${info.activityTitle}`,
-                `Kategori: ${activityType}`,
-                `Waktu: ${submissionTime.toLocaleString('id-ID', {
-                  dateStyle: 'medium',
-                  timeStyle: 'short',
-                })}`,
-                payload.notes ? `Catatan: ${payload.notes}` : null,
-              ],
-              ctaLabel: 'Buka Approval',
-              ctaUrl: getAppUrl('/dashboard/approval'),
-            })
-
-            await sendWorkflowEmail({
-              to: approverContact.email,
-              actorEmail: employee.email,
-              templateCode: 'daily_activity_pending_approval',
-              templateName: 'Daily Activity Pending Approval',
-              variables: {
-                employeeName: info.memberEmployee.name,
-                activityTitle: info.activityTitle,
-                activityType,
-                submissionTime: submissionTime.toLocaleString('id-ID', {
-                  dateStyle: 'medium',
-                  timeStyle: 'short',
-                }),
-                notes: payload.notes ? `Catatan: ${payload.notes}` : '',
-              },
-              fallbackSubject: `Daily Activity menunggu approval - ${info.memberEmployee.name}`,
-              fallbackHtml: emailContent.html,
-              fallbackText: emailContent.text,
-            })
-          }
-        } catch (emailError) {
-          console.error('Failed to send daily activity approval email', emailError)
-        }
-      }
-    }
-  }
+    })
+  )
 
   revalidateDailyActivitySurfaces()
 
@@ -4150,27 +4146,25 @@ export async function submitDailyActivityApprovalStepAction(
     const payload = approvalStepActionSchema.parse(Object.fromEntries(formData))
     const currentEmployee = await getAuthenticatedEmployeeContext()
 
-    const [approvalRow] = await db
-      .select()
-      .from(dailyActivityApprovals)
-      .where(eq(dailyActivityApprovals.id, payload.approvalId))
-      .limit(1)
+    // Parallelize the two independent lookups — saves one DB round-trip per approval click
+    const [[approvalRow], [session]] = await Promise.all([
+      db.select().from(dailyActivityApprovals).where(eq(dailyActivityApprovals.id, payload.approvalId)).limit(1),
+      db
+        .select({
+          id: dailyActivitySessions.id,
+          sessionCode: dailyActivitySessions.sessionCode,
+          workDate: dailyActivitySessions.workDate,
+          employeeId: dailyActivitySessions.employeeId,
+          siteId: dailyActivitySessions.siteId,
+        })
+        .from(dailyActivitySessions)
+        .where(eq(dailyActivitySessions.id, payload.sessionId))
+        .limit(1),
+    ])
 
     if (!approvalRow) {
       throw new Error('Step approval tidak ditemukan.')
     }
-
-    const [session] = await db
-      .select({
-        id: dailyActivitySessions.id,
-        sessionCode: dailyActivitySessions.sessionCode,
-        workDate: dailyActivitySessions.workDate,
-        employeeId: dailyActivitySessions.employeeId,
-        siteId: dailyActivitySessions.siteId,
-      })
-      .from(dailyActivitySessions)
-      .where(eq(dailyActivitySessions.id, payload.sessionId))
-      .limit(1)
 
     if (!session) {
       throw new Error('Session tidak ditemukan.')
@@ -6886,35 +6880,21 @@ export async function createDailyActivitySessionAction(input: {
       ? new Date(`${input.workDate}T00:00:00.000Z`)
       : new Date()
 
-    let validDeptId: number | null = null
-    if (emp.departmentId) {
-      const [dept] = await db
-        .select({ id: masterDepartments.id })
-        .from(masterDepartments)
-        .where(eq(masterDepartments.id, emp.departmentId))
-        .limit(1)
-      if (dept) validDeptId = dept.id
-    }
-
-    let validSecId: number | null = null
-    if (emp.sectionId) {
-      const [sec] = await db
-        .select({ id: masterSections.id })
-        .from(masterSections)
-        .where(eq(masterSections.id, emp.sectionId))
-        .limit(1)
-      if (sec) validSecId = sec.id
-    }
-
-    let validPosId: number | null = null
-    if (emp.positionId) {
-      const [pos] = await db
-        .select({ id: masterPositions.id })
-        .from(masterPositions)
-        .where(eq(masterPositions.id, emp.positionId))
-        .limit(1)
-      if (pos) validPosId = pos.id
-    }
+    // Parallelize dept/section/position validation — was 3 serial round-trips, now 1 batch
+    const [deptRows, secRows, posRows] = await Promise.all([
+      emp.departmentId
+        ? db.select({ id: masterDepartments.id }).from(masterDepartments).where(eq(masterDepartments.id, emp.departmentId)).limit(1)
+        : Promise.resolve([] as Array<{ id: number }>),
+      emp.sectionId
+        ? db.select({ id: masterSections.id }).from(masterSections).where(eq(masterSections.id, emp.sectionId)).limit(1)
+        : Promise.resolve([] as Array<{ id: number }>),
+      emp.positionId
+        ? db.select({ id: masterPositions.id }).from(masterPositions).where(eq(masterPositions.id, emp.positionId)).limit(1)
+        : Promise.resolve([] as Array<{ id: number }>),
+    ])
+    const validDeptId: number | null = deptRows[0]?.id ?? null
+    const validSecId: number | null = secRows[0]?.id ?? null
+    const validPosId: number | null = posRows[0]?.id ?? null
 
     const otherTeamNames = allEmps
       .filter((e) => e.id !== emp.id)
@@ -7277,40 +7257,45 @@ export async function createDailyActivitySessionAction(input: {
       }
     }
 
-    // Send in-app notification to Leader & submitter & team members
+    // Send in-app notification to Leader & submitter & team members — fire all in parallel
     try {
+      const notificationJobs: Promise<any>[] = []
+
       if (leaderEmail) {
-        await publishInAppApprovalNotification({
+        notificationJobs.push(publishInAppApprovalNotification({
           recipientEmail: leaderEmail,
           title: `Daily Activity Menunggu Approval: ${created.sessionCode}`,
           body: `Laporan aktivitas harian dari ${emp.name} telah diajukan dan menunggu persetujuan Anda.`,
           url: `/dashboard/approval`,
           eventType: 'daily_activity_submitted',
-        })
+        }))
       }
 
       if (emp.email) {
-        await publishInAppApprovalNotification({
+        notificationJobs.push(publishInAppApprovalNotification({
           recipientEmail: emp.email,
           title: `Daily Activity Diajukan: ${created.sessionCode}`,
           body: `Laporan aktivitas harian Anda berhasil diajukan dan diteruskan ke ${leaderName} untuk persetujuan.`,
           url: `/dashboard/approval`,
           eventType: 'daily_activity_submitted',
-        })
+        }))
       }
 
       // Notify other team members if any
       for (const targetEmp of allEmps) {
         if (targetEmp.email && targetEmp.id !== emp.id) {
-          await publishInAppApprovalNotification({
+          notificationJobs.push(publishInAppApprovalNotification({
             recipientEmail: targetEmp.email,
             title: `Daily Activity Tim: ${created.sessionCode}`,
             body: `Laporan aktivitas tim Anda telah diajukan oleh ${emp.name} dan sedang di-review oleh ${leaderName}.`,
             url: `/mobile/activity`,
             eventType: 'daily_activity_submitted',
-          })
+          }))
         }
       }
+
+      // Fire all notifications simultaneously — don't block the response
+      await Promise.allSettled(notificationJobs)
     } catch (notifyErr) {
       console.warn('Non-blocking notification warning:', notifyErr)
     }
@@ -7330,6 +7315,227 @@ export async function createDailyActivitySessionAction(input: {
   } catch (err: any) {
     console.error('Error creating daily activity session:', err)
     return { success: false as const, error: err.message || 'Gagal membuat aktivitas harian.' }
+  }
+}
+
+/**
+ * SERVER-SIDE DRAFT SAVE
+ * Persists the DAR form payload to the database as a 'draft' session.
+ * This prevents data loss when mobile browser is killed, session expires, or
+ * network interruption occurs mid-form. The draft is recoverable on next visit.
+ *
+ * Returns the sessionId so the client can track/restore it.
+ */
+export async function saveActivityDraftToServerAction(input: {
+  employeeId: number
+  workDate: string
+  shiftCode: string
+  siteId?: number | null
+  notes?: string | null
+  summaryRemark?: string | null
+  items?: Array<{
+    label: string
+    group?: string
+    libraryActivityId?: number | null
+    unitNumber?: string
+    startedAt?: string | Date
+    endedAt?: string | Date
+    points?: number
+    remark?: string
+    materialUsed?: string
+    tireCount?: number
+    photoUrl?: string | null
+    photos?: string[]
+  }>
+  existingDraftSessionId?: number | null
+}): Promise<{ success: true; sessionId: number } | { success: false; error: string }> {
+  try {
+    const context = await getAuthenticatedEmployeeContext()
+    const targetEmpId = Number(input.employeeId)
+    if (!targetEmpId || context.id !== targetEmpId) {
+      return { success: false, error: 'Akun tidak valid untuk menyimpan draft.' }
+    }
+
+    const parsedWorkDate = input.workDate
+      ? new Date(`${input.workDate}T00:00:00.000Z`)
+      : new Date()
+
+    const itemsPayload = JSON.stringify(input.items ?? [])
+    const summaryNote = (input.summaryRemark || input.notes || '').trim()
+
+    // Try to update existing draft first
+    if (input.existingDraftSessionId) {
+      const [existing] = await db
+        .select({ id: dailyActivitySessions.id, status: dailyActivitySessions.status })
+        .from(dailyActivitySessions)
+        .where(
+          and(
+            eq(dailyActivitySessions.id, input.existingDraftSessionId),
+            eq(dailyActivitySessions.employeeId, targetEmpId)
+          )
+        )
+        .limit(1)
+
+      if (existing && existing.status === 'draft') {
+        await db
+          .update(dailyActivitySessions)
+          .set({
+            shiftCode: input.shiftCode || 'ALL',
+            workDate: parsedWorkDate,
+            summaryRemark: summaryNote,
+            updatedAt: new Date(),
+          })
+          .where(eq(dailyActivitySessions.id, existing.id))
+
+        // Replace session items
+        await db.delete(dailyActivitySessionItems).where(eq(dailyActivitySessionItems.sessionId, existing.id))
+
+        const itemsToInsert = (input.items ?? [])
+          .filter((it) => it.label?.trim())
+          .map((it, idx) => ({
+            sessionId: existing.id,
+            snapshotLabel: it.label.trim(),
+            snapshotGroupName: it.group || 'Technical',
+            libraryActivityId: it.libraryActivityId ? Number(it.libraryActivityId) : null,
+            unitNumber: it.unitNumber?.trim() || '',
+            remark: it.remark?.trim() || '',
+            actualPoints: Number(it.points) || 0,
+            tireCount: Number(it.tireCount) || 0,
+            isChecked: false,
+            sortOrder: idx + 1,
+            snapshotPayload: JSON.stringify({
+              materialUsed: it.materialUsed || '',
+              photoUrl: it.photoUrl || null,
+              photos: it.photos || [],
+            }),
+            startedAt: it.startedAt ? new Date(it.startedAt) : null,
+            endedAt: it.endedAt ? new Date(it.endedAt) : null,
+          }))
+
+        if (itemsToInsert.length > 0) {
+          await db.insert(dailyActivitySessionItems).values(itemsToInsert)
+        }
+
+        return { success: true, sessionId: existing.id }
+      }
+    }
+
+    // Create new draft session
+    const dateFormatted = input.workDate
+      ? input.workDate.replace(/-/g, '')
+      : new Date().toISOString().slice(0, 10).replace(/-/g, '')
+    const sessionCode = `DFT-${dateFormatted}-${context.id}-${Math.floor(100 + Math.random() * 900)}`
+
+    const [created] = await db
+      .insert(dailyActivitySessions)
+      .values({
+        employeeId: targetEmpId,
+        sessionCode,
+        workDate: parsedWorkDate,
+        shiftCode: input.shiftCode || 'ALL',
+        siteId: input.siteId || context.siteId,
+        departmentId: context.departmentId ?? null,
+        sectionId: context.sectionId ?? null,
+        positionId: context.positionId ?? null,
+        status: 'draft',
+        summaryRemark: summaryNote,
+        submittedAt: null,
+      })
+      .returning()
+
+    const itemsToInsert = (input.items ?? [])
+      .filter((it) => it.label?.trim())
+      .map((it, idx) => ({
+        sessionId: created.id,
+        snapshotLabel: it.label.trim(),
+        snapshotGroupName: it.group || 'Technical',
+        libraryActivityId: it.libraryActivityId ? Number(it.libraryActivityId) : null,
+        unitNumber: it.unitNumber?.trim() || '',
+        remark: it.remark?.trim() || '',
+        actualPoints: Number(it.points) || 0,
+        tireCount: Number(it.tireCount) || 0,
+        isChecked: false,
+        sortOrder: idx + 1,
+        snapshotPayload: JSON.stringify({
+          materialUsed: it.materialUsed || '',
+          photoUrl: it.photoUrl || null,
+          photos: it.photos || [],
+        }),
+        startedAt: it.startedAt ? new Date(it.startedAt) : null,
+        endedAt: it.endedAt ? new Date(it.endedAt) : null,
+      }))
+
+    if (itemsToInsert.length > 0) {
+      await db.insert(dailyActivitySessionItems).values(itemsToInsert)
+    }
+
+    return { success: true, sessionId: created.id }
+  } catch (err: any) {
+    console.error('[saveActivityDraftToServerAction] error:', err)
+    return { success: false, error: err.message || 'Gagal menyimpan draft.' }
+  }
+}
+
+/**
+ * Load a saved server-side draft so user can restore form state after page refresh/crash
+ */
+export async function loadActivityServerDraftAction(
+  sessionId: number
+): Promise<{ success: true; draft: { workDate: string; shiftCode: string; notes: string; items: any[] } } | { success: false; error: string }> {
+  try {
+    const context = await getAuthenticatedEmployeeContext()
+
+    const [session] = await db
+      .select()
+      .from(dailyActivitySessions)
+      .where(
+        and(
+          eq(dailyActivitySessions.id, sessionId),
+          eq(dailyActivitySessions.employeeId, context.id),
+          eq(dailyActivitySessions.status, 'draft')
+        )
+      )
+      .limit(1)
+
+    if (!session) {
+      return { success: false, error: 'Draft tidak ditemukan atau sudah kadaluarsa.' }
+    }
+
+    const items = await db
+      .select()
+      .from(dailyActivitySessionItems)
+      .where(eq(dailyActivitySessionItems.sessionId, session.id))
+      .orderBy(asc(dailyActivitySessionItems.sortOrder))
+
+    return {
+      success: true,
+      draft: {
+        workDate: session.workDate.toISOString().slice(0, 10),
+        shiftCode: session.shiftCode || 'ALL',
+        notes: session.summaryRemark || '',
+        items: items.map((item) => {
+          let payload: any = {}
+          try { payload = JSON.parse(item.snapshotPayload || '{}') } catch {}
+          return {
+            id: item.id,
+            label: item.snapshotLabel,
+            group: item.snapshotGroupName,
+            libraryActivityId: item.libraryActivityId,
+            unitNumber: item.unitNumber,
+            remark: item.remark,
+            points: item.actualPoints,
+            tireCount: item.tireCount,
+            startedAt: item.startedAt?.toISOString() ?? null,
+            endedAt: item.endedAt?.toISOString() ?? null,
+            photoUrl: payload.photoUrl ?? null,
+            photos: payload.photos ?? [],
+            materialUsed: payload.materialUsed ?? '',
+          }
+        }),
+      },
+    }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Gagal memuat draft.' }
   }
 }
 

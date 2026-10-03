@@ -33,6 +33,7 @@ import {
   createDailyActivitySessionAction,
   getDailyActivityApproverCandidatesAction,
   resubmitDailyActivityApprovalFormAction,
+  saveActivityDraftToServerAction,
 } from '@/app/dashboard/activity-hub/actions'
 import { downloadElementAsPdf } from '@/lib/pdf-download'
 import { MobileSignatureSection } from '@/components/mobile/mobile-signature-section'
@@ -1019,6 +1020,9 @@ export function MobileDailyActivityForm({
     message: string
   }>({ kind: 'idle', message: '' })
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // Tracks the server-side draft session ID so autosave updates the same record
+  const [serverDraftSessionId, setServerDraftSessionId] = useState<number | null>(null)
+  const serverAutosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [routeItemState, setRouteItemState] = useState<Record<number, RouteItemState>>({})
 
   const pdfPreviewRef = useRef<HTMLDivElement>(null)
@@ -2090,6 +2094,7 @@ export function MobileDailyActivityForm({
   }
 
   useEffect(() => {
+    // 1. Immediate localStorage save (instant, no network needed)
     const result = writeDraft(activeDraftKey, draftPayload)
     if (!result.ok) {
       console.warn('[MobileDailyActivityForm] Draft autosave failed:', result.error)
@@ -2100,6 +2105,55 @@ export function MobileDailyActivityForm({
         console.warn('[MobileDailyActivityForm] Draft index update failed:', error)
       }
     }
+
+    // 2. Debounced server-side save every 90s — protects against browser kill / session expire
+    if (serverAutosaveTimerRef.current) {
+      clearTimeout(serverAutosaveTimerRef.current)
+    }
+    serverAutosaveTimerRef.current = setTimeout(async () => {
+      if (!employeeId || !workDate || isSubmitting) return
+      try {
+        const itemsSnapshot = selectedLibraries.length > 0
+          ? selectedLibraries.map((lib) => {
+              const entry = selfInputEntries[`${lib.id}`]
+              return {
+                label: `${lib.activityCode} - ${lib.activityName}`,
+                group: lib.activityCode || 'Technical',
+                libraryActivityId: lib.id,
+                unitNumber: entry?.equipmentNo || '',
+                startedAt: entry?.startTime || defaultStartTime,
+                endedAt: entry?.endTime || defaultEndTime,
+                points: lib.basePoints || 5,
+                remark: entry?.notes || '',
+                materialUsed: entry?.materialUsed || '',
+              }
+            })
+          : []
+
+        const res = await saveActivityDraftToServerAction({
+          employeeId,
+          workDate,
+          shiftCode,
+          siteId: site?.id,
+          notes: notes.trim(),
+          summaryRemark: notes.trim(),
+          items: itemsSnapshot,
+          existingDraftSessionId: serverDraftSessionId,
+        })
+        if (res.success) {
+          setServerDraftSessionId(res.sessionId)
+        }
+      } catch {
+        // Silent — server draft is best-effort, localStorage is primary
+      }
+    }, 90_000) // 90 seconds debounce
+
+    return () => {
+      if (serverAutosaveTimerRef.current) {
+        clearTimeout(serverAutosaveTimerRef.current)
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeDraftKey, draftPayload])
 
   function validatePayload() {
@@ -3742,30 +3796,78 @@ export function MobileDailyActivityForm({
             type="button"
             variant="outline"
             className="h-14 rounded-2xl border-0 bg-[#eaf4fb] text-[#003f78]"
-            onClick={() => {
+            disabled={isSubmitting}
+            onClick={async () => {
+              // 1. Local save first (instant)
               const draftKey =
                 activeDraftKey === ACTIVITY_DRAFT_STORAGE_KEY
                   ? createActivityDraftKey()
                   : activeDraftKey
-              const result = writeDraft(draftKey, draftPayload)
-              if (!result.ok) {
-                setSubmitState({ kind: 'error', message: result.error })
-                toast.error(result.error, { duration: 5000 })
-                return
-              }
-
-              if (draftKey !== ACTIVITY_DRAFT_STORAGE_KEY) {
-                saveActivityDraftIndexEntry(draftKey, draftPayload)
-                if (activeDraftKey === ACTIVITY_DRAFT_STORAGE_KEY) {
-                  removeActivityDraft(ACTIVITY_DRAFT_STORAGE_KEY)
+              const localResult = writeDraft(draftKey, draftPayload)
+              if (!localResult.ok) {
+                setSubmitState({ kind: 'error', message: localResult.error })
+                toast.error(localResult.error, { duration: 5000 })
+              } else {
+                if (draftKey !== ACTIVITY_DRAFT_STORAGE_KEY) {
+                  saveActivityDraftIndexEntry(draftKey, draftPayload)
+                  if (activeDraftKey === ACTIVITY_DRAFT_STORAGE_KEY) {
+                    removeActivityDraft(ACTIVITY_DRAFT_STORAGE_KEY)
+                  }
+                  setActiveDraftKey(draftKey)
                 }
-                setActiveDraftKey(draftKey)
               }
 
-              setSubmitState({
-                kind: 'success',
-                message: 'Draft activity disimpan ke perangkat ini.',
-              })
+              // 2. Server save (persists even if browser is killed)
+              try {
+                const itemsSnapshot = selectedLibraries.length > 0
+                  ? selectedLibraries.map((lib) => {
+                      const entry = selfInputEntries[`${lib.id}`]
+                      return {
+                        label: `${lib.activityCode} - ${lib.activityName}`,
+                        group: lib.activityCode || 'Technical',
+                        libraryActivityId: lib.id,
+                        unitNumber: entry?.equipmentNo || '',
+                        startedAt: entry?.startTime || defaultStartTime,
+                        endedAt: entry?.endTime || defaultEndTime,
+                        points: lib.basePoints || 5,
+                        remark: entry?.notes || '',
+                        materialUsed: entry?.materialUsed || '',
+                      }
+                    })
+                  : []
+
+                const res = await saveActivityDraftToServerAction({
+                  employeeId,
+                  workDate,
+                  shiftCode,
+                  siteId: site?.id,
+                  notes: notes.trim(),
+                  summaryRemark: notes.trim(),
+                  items: itemsSnapshot,
+                  existingDraftSessionId: serverDraftSessionId,
+                })
+
+                if (res.success) {
+                  setServerDraftSessionId(res.sessionId)
+                  setSubmitState({
+                    kind: 'success',
+                    message: 'Draft tersimpan aman di server. Anda bisa lanjutkan kapan saja.',
+                  })
+                  toast.success('Draft tersimpan aman di server ✓', { duration: 3000 })
+                } else {
+                  // Server failed but local OK
+                  setSubmitState({
+                    kind: 'success',
+                    message: 'Draft disimpan di perangkat ini (server tidak tersedia).',
+                  })
+                  toast.warning('Draft tersimpan di perangkat. Pastikan koneksi stabil saat submit.', { duration: 4000 })
+                }
+              } catch {
+                setSubmitState({
+                  kind: 'success',
+                  message: 'Draft disimpan di perangkat ini.',
+                })
+              }
             }}
           >
             <Save className="size-4" />
