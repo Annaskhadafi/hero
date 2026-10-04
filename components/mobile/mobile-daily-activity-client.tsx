@@ -43,8 +43,10 @@ import { MissingSignatureDialog } from '@/components/missing-signature-dialog'
 import { MobileDailyActivityForm } from '@/components/mobile/mobile-daily-activity-form'
 import { MobileActivityLog } from '@/components/mobile/mobile-activity-log'
 import { MobileDailyActivityHistory } from '@/components/mobile/mobile-daily-activity-history'
+import { MobileDailyActivityDrafts } from '@/components/mobile/mobile-daily-activity-drafts'
 import { MobileApprovalCenter } from '@/components/mobile/mobile-approval-center'
 import { MobileSignaturePadDialog } from '@/components/mobile/mobile-signature-pad-dialog'
+import { getActivityDraftIndex, ACTIVITY_DRAFTS_CHANGED_EVENT } from '@/lib/offline-sync'
 import {
   getDailyActivityApprovalData,
   singleApproveDailyActivityAction,
@@ -103,6 +105,7 @@ export function MobileDailyActivityClient({
   submitted,
   submittedSpl,
   tabQuery,
+  draftQuery,
   editSessionData,
   approvals,
 }: {
@@ -119,6 +122,7 @@ export function MobileDailyActivityClient({
   submitted?: boolean
   submittedSpl?: boolean
   tabQuery?: string
+  draftQuery?: string
   editSessionData?: any
   approvals?: any
 }) {
@@ -313,15 +317,40 @@ export function MobileDailyActivityClient({
     }
   }
 
+  const [isMounted, setIsMounted] = useState(false)
+  const [draftsCount, setDraftsCount] = useState<number>(0)
+  const [selectedDraftKey, setSelectedDraftKey] = useState<string | null>(() => draftQuery || null)
+
+  useEffect(() => {
+    setIsMounted(true)
+    setDraftsCount(getActivityDraftIndex().length)
+  }, [])
+
+  useEffect(() => {
+    if (draftQuery) {
+      setSelectedDraftKey(draftQuery)
+    }
+  }, [draftQuery])
+
+  useEffect(() => {
+    const updateCount = () => {
+      setDraftsCount(getActivityDraftIndex().length)
+    }
+    updateCount()
+    window.addEventListener(ACTIVITY_DRAFTS_CHANGED_EVENT, updateCount)
+    return () => window.removeEventListener(ACTIVITY_DRAFTS_CHANGED_EVENT, updateCount)
+  }, [])
+
   const [activeTab, setActiveTab] = useState<string>(() => {
     if (tabQuery === 'approval') return 'approval'
+    if (tabQuery === 'draft') return 'draft'
     if (tabQuery === 'active') return 'active'
     if (tabQuery === 'history') return 'history'
     return 'apply'
   })
 
   useEffect(() => {
-    if (tabQuery && ['apply', 'approval', 'active', 'history'].includes(tabQuery)) {
+    if (tabQuery && ['apply', 'draft', 'approval', 'active', 'history'].includes(tabQuery)) {
       setActiveTab(tabQuery)
     }
   }, [tabQuery])
@@ -352,9 +381,6 @@ export function MobileDailyActivityClient({
             {data.activities.length} DAR
           </Badge>
         </div>
-        <p className="text-sm leading-6 font-semibold text-[#486275]">
-          Ajukan, approve, pantau aktivitas harian aktif, dan kelola riwayat DAR tanpa membuka desktop.
-        </p>
       </section>
 
       {/* Sub-Navbar Tabs Bar persis SPL Mobile */}
@@ -363,13 +389,28 @@ export function MobileDailyActivityClient({
         onValueChange={handleTabChange}
         className="w-full space-y-4"
       >
-        <TabsList className="grid h-auto w-full grid-cols-4 gap-1 rounded-2xl bg-white p-1 shadow-[0_12px_30px_rgba(8,32,51,0.08)]">
+        <TabsList className="grid h-auto w-full grid-cols-5 gap-1 rounded-2xl bg-white p-1 shadow-[0_12px_30px_rgba(8,32,51,0.08)]">
           <TabsTrigger
             value="apply"
             className="min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-bold text-slate-600 transition-all data-[state=active]:bg-[#003461] data-[state=active]:text-white data-[state=active]:shadow-xs cursor-pointer select-none touch-manipulation"
           >
             <PlusCircle className="size-4 shrink-0 pointer-events-none" />
             <span className="pointer-events-none">Ajukan</span>
+          </TabsTrigger>
+
+          <TabsTrigger
+            value="draft"
+            className="min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-bold text-slate-600 transition-all data-[state=active]:bg-[#003461] data-[state=active]:text-white data-[state=active]:shadow-xs relative cursor-pointer select-none touch-manipulation"
+          >
+            <div className="relative flex items-center pointer-events-none">
+              <FileText className="size-4 shrink-0 pointer-events-none" />
+              {isMounted && draftsCount > 0 && (
+                <span className="absolute -top-1.5 -right-2.5 flex size-4 items-center justify-center rounded-full bg-sky-600 text-[9px] font-black text-white ring-2 ring-white pointer-events-none">
+                  {draftsCount}
+                </span>
+              )}
+            </div>
+            <span className="pointer-events-none">Draft</span>
           </TabsTrigger>
 
           <TabsTrigger
@@ -413,7 +454,8 @@ export function MobileDailyActivityClient({
 
         <TabsContent value="apply">
           <MobileDailyActivityForm
-            key={editSessionData?.sessionId || editSessionData?.id || (editSessionData?.session ? (editSessionData.session.sessionId || editSessionData.session.id) : 'new-form')}
+            key={`${editSessionData?.sessionId || editSessionData?.id || (editSessionData?.session ? (editSessionData.session.sessionId || editSessionData.session.id) : '')}-${selectedDraftKey || draftQuery || 'form'}`}
+            initialDraftKey={selectedDraftKey || draftQuery || undefined}
             employeeId={data.employee.id}
             employee={data.employee}
             hierarchy={hierarchy}
@@ -428,6 +470,25 @@ export function MobileDailyActivityClient({
             teamMembers={teamMembers}
             revisionSessionId={editSessionData?.sessionId || editSessionData?.id || editSessionData?.data?.sessionId || editSessionData?.data?.id || editSessionData?.session?.sessionId || editSessionData?.session?.id || undefined}
             initialSessionData={editSessionData?.data || editSessionData?.session || editSessionData}
+            onOpenDraftTab={() => handleTabChange('draft')}
+          />
+        </TabsContent>
+
+        <TabsContent value="draft" className="mt-4 space-y-4">
+          <MobileDailyActivityDrafts
+            onSelectLocalDraft={(draftKey) => {
+              setSelectedDraftKey(draftKey)
+              setActiveTab('apply')
+              router.push(`/mobile/activity?tab=apply&draft=${encodeURIComponent(draftKey)}`)
+              toast.success('Memuat draft formulir...')
+            }}
+            onSelectServerDraft={(sessionId) => {
+              setSelectedDraftKey(null)
+              setActiveTab('apply')
+              router.push(`/mobile/activity?tab=apply&edit=${sessionId}`)
+              toast.success('Memuat draft dari server...')
+            }}
+            onDraftCountChange={(count) => setDraftsCount(count)}
           />
         </TabsContent>
 

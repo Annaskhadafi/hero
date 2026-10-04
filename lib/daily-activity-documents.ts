@@ -4,6 +4,7 @@ import {
   dailyActivityApprovals,
   dailyActivitySessionItems,
   dailyActivitySessionSignoffs,
+  dailyActivitySessionTeamMembers,
   dailyActivitySessions,
   employees,
   overtimeCommandLetters,
@@ -161,20 +162,35 @@ export async function getDailyActivitySessionDocumentData(
       ['Super Admin', 'Site Admin', 'HC Manager'].includes(currentEmployee.accessRole)) ||
     currentEmployee.accessRole === 'Super Admin'
 
-  if (header.employeeId !== currentEmployee.id && !canReviewHr && !isApprover && !isAdminOrManager) {
+  const teamMemberRows = await db
+    .select({
+      employeeId: employees.id,
+      name: employees.name,
+      jobTitle: employees.jobTitle,
+      employeeSn: employees.employeeSn,
+    })
+    .from(dailyActivitySessionTeamMembers)
+    .innerJoin(employees, eq(dailyActivitySessionTeamMembers.employeeId, employees.id))
+    .where(eq(dailyActivitySessionTeamMembers.sessionId, sessionId))
+
+  const isTeamMember = teamMemberRows.some((t) => t.employeeId === currentEmployee.id)
+
+  if (header.employeeId !== currentEmployee.id && !isTeamMember && !canReviewHr && !isApprover && !isAdminOrManager) {
     return null
   }
 
-  let teamMembersSummary = ''
-  const teamMatch = (header.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)
-  if (teamMatch && teamMatch[1]) {
-    const rawMembers = teamMatch[1].trim()
-    const requesterName = (header.employeeName || '').trim().toLowerCase()
-    const otherMembers = rawMembers
-      .split(',')
-      .map((n) => n.trim())
-      .filter((n) => n && n.toLowerCase() !== requesterName)
-    teamMembersSummary = otherMembers.join(', ')
+  let teamMembersSummary = teamMemberRows.map((t) => t.name).join(', ')
+  if (!teamMembersSummary) {
+    const teamMatch = (header.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)
+    if (teamMatch && teamMatch[1]) {
+      const rawMembers = teamMatch[1].trim()
+      const requesterName = (header.employeeName || '').trim().toLowerCase()
+      const otherMembers = rawMembers
+        .split(',')
+        .map((n) => n.trim())
+        .filter((n) => n && n.toLowerCase() !== requesterName)
+      teamMembersSummary = otherMembers.join(', ')
+    }
   }
 
   const checkedItems = itemRows
@@ -309,6 +325,10 @@ export async function getDailyActivitySessionDocumentData(
       canSignEmployee: header.employeeId === currentEmployee.id,
       canReviewHr,
     },
+    teamMembers: teamMemberRows,
+    isTeamMember,
+    isTeamActivity: teamMemberRows.length > 0 || Boolean(teamMembersSummary),
+    representedByName: isTeamMember ? header.employeeName : null,
   }
 }
 

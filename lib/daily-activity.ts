@@ -15,6 +15,7 @@ import {
   dailyActivityApprovals,
   dailyActivityConfigs,
   dailyActivitySessionItems,
+  dailyActivitySessionTeamMembers,
   dailyActivitySessions,
   employees,
   jobAssignments,
@@ -2320,6 +2321,19 @@ export async function getDailyActivityEmployeeData(
     viewSectionId != null ? eq(employees.sectionId, viewSectionId) : undefined,
   ].filter(Boolean)
   const activityScopePredicate = activityEmployeeScope.length > 0 ? and(...activityEmployeeScope) : sql`true`
+  const sessionScopePredicate =
+    viewScope === 'own'
+      ? or(
+          eq(dailyActivitySessions.employeeId, employee.id),
+          inArray(
+            dailyActivitySessions.id,
+            db
+              .select({ sessionId: dailyActivitySessionTeamMembers.sessionId })
+              .from(dailyActivitySessionTeamMembers)
+              .where(eq(dailyActivitySessionTeamMembers.employeeId, employee.id))
+          )
+        )
+      : activityScopePredicate
   const maxRowsLimit = options.limit && options.limit > 0 ? options.limit : 100
 
   const [
@@ -2414,7 +2428,7 @@ export async function getDailyActivityEmployeeData(
         })
         .from(dailyActivitySessions)
         .leftJoin(employees, eq(dailyActivitySessions.employeeId, employees.id))
-        .where(and(activityScopePredicate, isNull(dailyActivitySessions.deletedAt)))
+        .where(and(sessionScopePredicate, isNull(dailyActivitySessions.deletedAt)))
         .orderBy(desc(dailyActivitySessions.createdAt), desc(dailyActivitySessions.id))
         .limit(maxRowsLimit),
       db
@@ -2508,7 +2522,7 @@ export async function getDailyActivityEmployeeData(
       : null
 
   const sessionIds = sessionRows.map((s) => s.id)
-  const [sessionItemRows, sessionApprovalRows] = await Promise.all([
+  const [sessionItemRows, sessionApprovalRows, sessionTeamRows] = await Promise.all([
     sessionIds.length > 0
       ? db
           .select({
@@ -2542,6 +2556,18 @@ export async function getDailyActivityEmployeeData(
           .where(inArray(dailyActivityApprovals.sessionId, sessionIds))
           .orderBy(asc(dailyActivityApprovals.stepOrder))
       : Promise.resolve([]),
+    sessionIds.length > 0
+      ? db
+          .select({
+            sessionId: dailyActivitySessionTeamMembers.sessionId,
+            employeeId: dailyActivitySessionTeamMembers.employeeId,
+            employeeName: employees.name,
+            jobTitle: employees.jobTitle,
+          })
+          .from(dailyActivitySessionTeamMembers)
+          .innerJoin(employees, eq(dailyActivitySessionTeamMembers.employeeId, employees.id))
+          .where(inArray(dailyActivitySessionTeamMembers.sessionId, sessionIds))
+      : Promise.resolve([]),
   ])
 
   const itemsBySessionId = new Map<number, typeof sessionItemRows>()
@@ -2558,6 +2584,13 @@ export async function getDailyActivityEmployeeData(
     approvalsBySessionId.set(app.sessionId, list)
   }
 
+  const teamMembersBySessionId = new Map<number, typeof sessionTeamRows>()
+  for (const tm of sessionTeamRows) {
+    const list = teamMembersBySessionId.get(tm.sessionId) ?? []
+    list.push(tm)
+    teamMembersBySessionId.set(tm.sessionId, list)
+  }
+
   const mappedSessionActivities = sessionRows.map((s) => {
     const items = itemsBySessionId.get(s.id) ?? []
     const approvals = approvalsBySessionId.get(s.id) ?? []
@@ -2571,6 +2604,18 @@ export async function getDailyActivityEmployeeData(
     const totalPoints = items.reduce((acc, it) => acc + (it.actualPoints || 5), 0)
     const startTime = firstItem?.startedAt ?? s.workDate
     const endTime = items[items.length - 1]?.endedAt ?? s.workDate
+
+    const teamList = teamMembersBySessionId.get(s.id) ?? []
+    const isTeam = teamList.length > 0 || Boolean(s.summaryRemark && s.summaryRemark.includes('[Team:'))
+    const isMember =
+      s.employeeId !== employee.id &&
+      (teamList.some((t) => t.employeeId === employee.id) ||
+        Boolean(
+          s.summaryRemark &&
+            employee.name &&
+            s.summaryRemark.toLowerCase().includes(employee.name.toLowerCase().trim())
+        ))
+    const teamNames = teamList.map((t) => t.employeeName).filter(Boolean).join(', ')
 
     return {
       id: s.id,
@@ -2598,8 +2643,14 @@ export async function getDailyActivityEmployeeData(
       photoCount: 0,
       remarks: s.summaryRemark || '',
       assignmentId: null,
-      isTeamActivity: false,
-      teamNameList: '',
+      isTeamActivity: isTeam,
+      teamNameList: teamNames,
+      teamMemberCount: teamList.length,
+      teamMembers: teamList.map((t) => ({
+        employeeId: t.employeeId,
+        name: t.employeeName,
+        jobTitle: t.jobTitle,
+      })),
       libraryName: label,
       photos: [] as Array<{ id: number; url: string; caption: string }>,
       durationMinutes: minutesBetween(startTime, endTime),
@@ -2612,9 +2663,10 @@ export async function getDailyActivityEmployeeData(
       pendingApproverName: pendingApp?.approverName ?? (s.status === 'submitted' ? 'Approver L1' : null),
       authorEmployeeId: s.employeeId,
       employeeName: s.employeeName || 'Karyawan',
+      representedByName: isMember ? (s.employeeName || 'Rekan Tim') : null,
       isAuthor: s.employeeId === employee.id,
       isApprover: false,
-      isTeamMember: Boolean(s.summaryRemark && employee.name && s.summaryRemark.toLowerCase().includes(employee.name.toLowerCase().trim())),
+      isTeamMember: isMember,
     }
   })
 

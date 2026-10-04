@@ -7,6 +7,7 @@ import {
   AlertCircle,
   Camera,
   Check,
+  CheckCircle2,
   ChevronDown,
   Download,
   Eye,
@@ -15,6 +16,7 @@ import {
   ImagePlus,
   Layers,
   ListFilter,
+  Loader2,
   Navigation,
   Plus,
   RotateCcw,
@@ -35,6 +37,7 @@ import {
   resubmitDailyActivityApprovalFormAction,
   saveActivityDraftToServerAction,
 } from '@/app/dashboard/activity-hub/actions'
+import { uploadFile } from '@/app/actions/upload'
 import { downloadElementAsPdf } from '@/lib/pdf-download'
 import { MobileSignatureSection } from '@/components/mobile/mobile-signature-section'
 import { DailyActivityEvidenceModal } from '@/components/daily-activity-evidence-modal'
@@ -61,9 +64,12 @@ import { GpsLocationPreviewCard } from '@/components/ui/gps-location-preview-car
 import { validateSiteBoundary } from '@/lib/location'
 import {
   ACTIVITY_DRAFT_STORAGE_KEY,
+  ACTIVITY_DRAFTS_CHANGED_EVENT,
   createActivityDraftKey,
+  readDraft,
   removeActivityDraft,
   saveActivityDraftIndexEntry,
+  writeDraft,
   type ActivitySyncPayload,
   type RouteSessionSyncItem,
   type QueuedFilePayload,
@@ -296,6 +302,8 @@ type MobileDailyActivityFormProps = {
   }>
   revisionSessionId?: number
   initialSessionData?: any
+  onOpenDraftTab?: () => void
+  initialDraftKey?: string
 }
 
 type GeoState = {
@@ -358,83 +366,75 @@ const initialGeo: GeoState = {
   message: 'GPS standby',
 }
 
-async function uploadActivityPhoto(file: File) {
+function compressImageFile(file: File, maxDimension = 1280, quality = 0.75): Promise<File> {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined') return resolve(file)
+    if (!file.type.startsWith('image/') || file.type === 'image/svg+xml' || file.type === 'image/gif') {
+      return resolve(file)
+    }
+
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      let { width, height } = img
+
+      if (width <= maxDimension && height <= maxDimension && file.size <= 400 * 1024) {
+        return resolve(file)
+      }
+
+      if (width > maxDimension || height > maxDimension) {
+        if (width > height) {
+          height = Math.round((height * maxDimension) / width)
+          width = maxDimension
+        } else {
+          width = Math.round((width * maxDimension) / height)
+          height = maxDimension
+        }
+      }
+
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return resolve(file)
+
+      ctx.drawImage(img, 0, 0, width, height)
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) return resolve(file)
+          const compressed = new File([blob], file.name.replace(/\.[^/.]+$/, '.jpg'), {
+            type: 'image/jpeg',
+            lastModified: Date.now(),
+          })
+          resolve(compressed)
+        },
+        'image/jpeg',
+        quality
+      )
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      resolve(file)
+    }
+    img.src = url
+  })
+}
+
+async function uploadActivityPhoto(file: File): Promise<string> {
   if (!file.type.startsWith('image/')) throw new Error('Evidence harus berupa gambar.')
 
+  const compressed = await compressImageFile(file, 1280, 0.75)
   const formData = new FormData()
-  formData.append('file', file)
-  const uploadResponse = await fetch('/api/uploads/activity-presign', {
-    method: 'POST',
-    body: formData,
-  })
-  const result = (await uploadResponse.json()) as {
-    url?: string
-    error?: string
-  }
-  if (!uploadResponse.ok || !result.url) {
+  formData.append('file', compressed)
+  formData.append('uploadTarget', 'activity-photos')
+
+  const result = await uploadFile(formData)
+  if (!result.success || !result.url) {
     throw new Error(result.error || `Gagal upload evidence ${file.name}.`)
   }
 
-  return result.url
-}
-
-async function prepareEvidence(
-  files: File[] | undefined,
-  fallbackFile?: File | null,
-  restored?: QueuedFilePayload | null,
-  existingPreviewUrls?: string[]
-) {
-  const selectedFiles = files?.length ? files : fallbackFile ? [fallbackFile] : []
-  if (selectedFiles.length > 0) {
-    // ponytail: failed submissions may leave orphaned evidence; add cleanup when storage growth warrants it.
-    return { payloads: [], urls: await Promise.all(selectedFiles.map(uploadActivityPhoto)) }
-  }
-  if (restored) {
-    return { payloads: [], urls: [await uploadActivityPhoto(queuedPhotoToFile(restored))] }
-  }
-  if (existingPreviewUrls && existingPreviewUrls.length > 0) {
-    const validExistingUrls = existingPreviewUrls.filter(
-      (url) => typeof url === 'string' && (url.startsWith('http') || url.startsWith('/'))
-    )
-    if (validExistingUrls.length > 0) {
-      return { payloads: [], urls: validExistingUrls }
-    }
-  }
-  return { payloads: restored ? [restored] : [], urls: [] }
-}
-
-async function compressImageFile(file: File): Promise<File> {
-  if (!file.type.startsWith('image/') || file.size <= 400 * 1024) return file
-  if (typeof createImageBitmap === 'undefined' || typeof document === 'undefined') return file
-
-  try {
-    const bitmap = await createImageBitmap(file)
-    const maxDimension = 1600
-    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height))
-    const canvas = document.createElement('canvas')
-    canvas.width = Math.max(1, Math.round(bitmap.width * scale))
-    canvas.height = Math.max(1, Math.round(bitmap.height * scale))
-    const context = canvas.getContext('2d')
-    if (!context) {
-      bitmap.close()
-      return file
-    }
-    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
-    bitmap.close()
-
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, 'image/jpeg', 0.78)
-    )
-    if (!blob || blob.size >= file.size) return file
-
-    const baseName = file.name.replace(/\.[^.]+$/, '') || 'evidence'
-    return new File([blob], `${baseName}.jpg`, {
-      type: 'image/jpeg',
-      lastModified: Date.now(),
-    })
-  } catch {
-    return file
-  }
+  return result.readableUrl || result.url
 }
 
 async function fileToQueuedPhoto(file: File): Promise<QueuedFilePayload> {
@@ -457,37 +457,99 @@ function queuedPhotoToFile(payload: QueuedFilePayload): File {
   return new File([bytes], payload.name, { type: payload.type || match[1] })
 }
 
-function readDraft<T>(key: string) {
-  if (typeof window === 'undefined') return null as T | null
-
-  try {
-    const raw = window.localStorage.getItem(key)
-    if (!raw) return null
-    return JSON.parse(raw) as T
-  } catch {
-    return null
+async function prepareEvidence(
+  files: File[] | undefined,
+  fallbackFile?: File | null,
+  restored?: QueuedFilePayload | null,
+  existingPreviewUrls?: string[]
+) {
+  const selectedFiles = files?.length ? files : fallbackFile ? [fallbackFile] : []
+  if (selectedFiles.length > 0) {
+    return { payloads: [], urls: await Promise.all(selectedFiles.map(uploadActivityPhoto)) }
   }
+  if (restored) {
+    return { payloads: [], urls: [await uploadActivityPhoto(queuedPhotoToFile(restored))] }
+  }
+  if (existingPreviewUrls && existingPreviewUrls.length > 0) {
+    const validExistingUrls = existingPreviewUrls.filter(
+      (url) => typeof url === 'string' && (url.startsWith('http') || url.startsWith('/'))
+    )
+    if (validExistingUrls.length > 0) {
+      return { payloads: [], urls: validExistingUrls }
+    }
+  }
+  return { payloads: restored ? [restored] : [], urls: [] }
 }
 
-function writeDraft<T>(key: string, value: T): { ok: true } | { ok: false; error: string } {
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value))
-    return { ok: true }
-  } catch (error) {
-    // Retry once after removing the legacy single-draft slot, which may duplicate a named draft.
-    try {
-      window.localStorage.removeItem(ACTIVITY_DRAFT_STORAGE_KEY)
-      window.localStorage.setItem(key, JSON.stringify(value))
-      return { ok: true }
-    } catch {
-      const detail = error instanceof Error && error.message.trim() ? ` (${error.message.trim()})` : ''
-      return {
-        ok: false,
-        error: `Draft tidak dapat disimpan di perangkat ini. Penyimpanan browser mungkin diblokir atau penuh${detail}.`,
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+async function processPhotosForDraft(
+  files: File[] | undefined,
+  fallbackFile: File | null | undefined,
+  existingPreviewUrls: string[] | undefined,
+  restored: QueuedFilePayload | null | undefined
+): Promise<{ urls: string[]; payloads: QueuedFilePayload[]; photoName: string }> {
+  const resultUrls: string[] = []
+  const resultPayloads: QueuedFilePayload[] = []
+
+  // 1. Keep existing valid URLs (server uploads or permanent links, resolve to persistent proxy path)
+  if (existingPreviewUrls && existingPreviewUrls.length > 0) {
+    for (const url of existingPreviewUrls) {
+      if (
+        typeof url === 'string' &&
+        !url.startsWith('blob:') &&
+        (url.startsWith('/api/') || url.startsWith('http') || url.startsWith('data:image/'))
+      ) {
+        resultUrls.push(url)
       }
     }
   }
+
+  // 2. Upload new files if possible, or convert to compressed base64 dataUrl as offline fallback
+  const selectedFiles = files?.length ? files : fallbackFile ? [fallbackFile] : []
+  for (const file of selectedFiles) {
+    try {
+      const uploadedUrl = await uploadActivityPhoto(file)
+      if (uploadedUrl) {
+        resultUrls.push(uploadedUrl)
+      }
+    } catch (uploadErr) {
+      console.warn('[processPhotosForDraft] Photo upload to server failed, falling back to local compressed base64:', uploadErr)
+      try {
+        const compressedOffline = await compressImageFile(file, 640, 0.6)
+        const dataUrl = await fileToDataUrl(compressedOffline)
+        resultPayloads.push({
+          name: file.name,
+          type: 'image/jpeg',
+          size: compressedOffline.size,
+          dataUrl,
+        })
+        resultUrls.push(dataUrl)
+      } catch (err) {
+        console.error('[processPhotosForDraft] Base64 conversion failed:', err)
+      }
+    }
+  }
+
+  // 3. Fallback restored payload if no other photos
+  if (resultUrls.length === 0 && resultPayloads.length === 0 && restored?.dataUrl) {
+    resultPayloads.push(restored)
+    resultUrls.push(restored.dataUrl)
+  }
+
+  const photoCount = resultUrls.length || resultPayloads.length
+  const photoName = photoCount > 0 ? `${photoCount} foto terlampir` : ''
+
+  return { urls: resultUrls, payloads: resultPayloads, photoName }
 }
+
 
 function toDateTimeLocalValue(value?: string | Date | null) {
   if (!value) return ''
@@ -637,22 +699,40 @@ export function MobileDailyActivityForm({
   allEmployees = [],
   revisionSessionId,
   initialSessionData,
+  onOpenDraftTab,
+  initialDraftKey,
 }: MobileDailyActivityFormProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const queuedDraftKey = searchParams.get('draft')?.trim() || ''
+  const queuedDraftKey = initialDraftKey?.trim() || searchParams.get('draft')?.trim() || ''
   const [activeDraftKey, setActiveDraftKey] = useState(
     () => queuedDraftKey || ACTIVITY_DRAFT_STORAGE_KEY
   )
+  const [isDraftSavedModalOpen, setIsDraftSavedModalOpen] = useState(false)
+  const [isSavingDraft, setIsSavingDraft] = useState(false)
 
   useEffect(() => {
-    setActiveDraftKey(queuedDraftKey || ACTIVITY_DRAFT_STORAGE_KEY)
-  }, [queuedDraftKey])
+    const key = initialDraftKey?.trim() || queuedDraftKey || ACTIVITY_DRAFT_STORAGE_KEY
+    setActiveDraftKey(key)
+  }, [initialDraftKey, queuedDraftKey])
 
   const rawSession = initialSessionData?.data || initialSessionData?.session || initialSessionData
-  const rawItems = (rawSession?.sessionItems || rawSession?.items || []) as any[]
+  const rawItems = useMemo(
+    () => (rawSession?.sessionItems || rawSession?.items || []) as any[],
+    [rawSession?.sessionItems, rawSession?.items]
+  )
+
+  const initialDraft = useMemo(() => {
+    if (typeof window === 'undefined') return null
+    if (!initialDraftKey && !queuedDraftKey && (rawSession || revisionSessionId)) {
+      return null
+    }
+    const key = initialDraftKey?.trim() || queuedDraftKey || activeDraftKey || ACTIVITY_DRAFT_STORAGE_KEY
+    return readDraft<ActivitySyncPayload>(key)
+  }, [initialDraftKey, queuedDraftKey, activeDraftKey, rawSession, revisionSessionId])
 
   const [workDate, setWorkDate] = useState<string>(() => {
+    if (initialDraft?.workDate) return initialDraft.workDate
     if (rawSession?.workDate) {
       const d = new Date(rawSession.workDate)
       if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10)
@@ -673,9 +753,21 @@ export function MobileDailyActivityForm({
   }, [rawSession?.sessionId, rawSession?.id, revisionSessionId])
 
   const [shiftCode, setShiftCode] = useState<string>(
-    rawSession?.shiftCode || routeChecklist?.shiftCode || 'ALL'
+    initialDraft?.routeShiftCode || rawSession?.shiftCode || routeChecklist?.shiftCode || 'ALL'
   )
   const [sourceMode, setSourceMode] = useState<'assigned' | 'self_input' | 'custom'>(() => {
+    if (initialDraft?.sourceMode) {
+      return initialDraft.sourceMode
+    }
+    if (initialDraft?.customActivityName) {
+      return 'custom'
+    }
+    if (
+      (initialDraft?.selectedLibraryActivityIds && initialDraft.selectedLibraryActivityIds.length > 0) ||
+      (initialDraft?.selfInputActivities && initialDraft.selfInputActivities.length > 0)
+    ) {
+      return 'self_input'
+    }
     if (rawSession?.submissionSource === 'custom' || rawSession?.submissionSource === 'assigned' || rawSession?.submissionSource === 'self_input') {
       return rawSession.submissionSource
     }
@@ -684,12 +776,21 @@ export function MobileDailyActivityForm({
     }
     return 'self_input'
   })
-  const [assignmentId, setAssignmentId] = useState('')
+  const [assignmentId, setAssignmentId] = useState(() => initialDraft?.assignmentId || '')
   const [selectedLibraryIds, setSelectedLibraryIds] = useState<string[]>(() => {
+    if (initialDraft?.selectedLibraryActivityIds && initialDraft.selectedLibraryActivityIds.length > 0) {
+      return initialDraft.selectedLibraryActivityIds.map(String)
+    }
+    if (initialDraft?.selfInputActivities && initialDraft.selfInputActivities.length > 0) {
+      return initialDraft.selfInputActivities.map((s) => String(s.libraryActivityId)).filter(Boolean)
+    }
+    if (initialDraft?.libraryActivityId) {
+      return [String(initialDraft.libraryActivityId)]
+    }
     if (rawItems && rawItems.length > 0) {
       const ids: string[] = []
       for (const item of rawItems) {
-        const idStr = String(item.libraryActivityId || item.id || '')
+        const idStr = String(item.libraryActivityId || '')
         if (idStr) {
           ids.push(idStr)
         }
@@ -703,10 +804,63 @@ export function MobileDailyActivityForm({
   const [librarySearch, setLibrarySearch] = useState('')
 
   const [selfInputEntries, setSelfInputEntries] = useState<Record<string, SelfInputEntryState>>(() => {
+    if (initialDraft?.selfInputActivities && initialDraft.selfInputActivities.length > 0) {
+      return Object.fromEntries(
+        initialDraft.selfInputActivities.map((item, index) => {
+          const previewUrls =
+            item.previewUrls && item.previewUrls.length > 0
+              ? item.previewUrls
+              : item.photoUrl
+                ? [item.photoUrl]
+                : item.photo?.dataUrl
+                  ? [item.photo.dataUrl]
+                  : []
+          const photoName =
+            item.photoName ||
+            (previewUrls.length > 0 ? `${previewUrls.length} foto terlampir` : '')
+
+          return [
+            String(item.libraryActivityId),
+            {
+              equipmentNo: item.equipmentNo ?? '',
+              startTime:
+                item.startTime ||
+                buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime).startTime,
+              endTime:
+                item.endTime ||
+                buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime).endTime,
+              materialUsed: item.materialUsed ?? '',
+              tireCount: item.tireCount ?? 0,
+              notes: item.notes ?? '',
+              photoFiles: [],
+              photoName,
+              previewUrls,
+              restoredPhotoPayload: item.photo ?? null,
+            },
+          ]
+        })
+      )
+    }
+    if (initialDraft?.libraryActivityId) {
+      return {
+        [String(initialDraft.libraryActivityId)]: {
+          equipmentNo: initialDraft.equipmentNo ?? '',
+          startTime: initialDraft.startTime || defaultStartTime,
+          endTime: initialDraft.endTime || defaultEndTime,
+          materialUsed: initialDraft.materialUsed ?? '',
+          tireCount: initialDraft.tireCount ?? 0,
+          notes: initialDraft.notes ?? '',
+          photoFiles: [],
+          photoName: initialDraft.photo?.name || '',
+          previewUrls: initialDraft.photoUrls || (initialDraft.photo?.dataUrl ? [initialDraft.photo.dataUrl] : []),
+          restoredPhotoPayload: initialDraft.photo ?? null,
+        },
+      }
+    }
     if (rawItems && rawItems.length > 0) {
       const entries: Record<string, SelfInputEntryState> = {}
       for (const item of rawItems) {
-        const idStr = String(item.libraryActivityId || item.id || '')
+        const idStr = String(item.libraryActivityId || '')
         if (idStr) {
           const startVal = item.startedAt
             ? typeof item.startedAt === 'string' && item.startedAt.includes(':') && !item.startedAt.includes('T')
@@ -748,15 +902,36 @@ export function MobileDailyActivityForm({
   })
 
   const initialCustomItem = rawItems?.find((i: any) => !i.libraryActivityId)
-  const initialCustomUrls: string[] = initialCustomItem ? extractItemPhotos(initialCustomItem) : []
+  const initialRawCustomUrls: string[] = initialCustomItem ? extractItemPhotos(initialCustomItem) : []
+  const draftCustomUrls =
+    initialDraft?.photoUrls && initialDraft.photoUrls.length > 0
+      ? initialDraft.photoUrls
+      : initialDraft?.photo?.dataUrl
+        ? [initialDraft.photo.dataUrl]
+        : []
+  const effectiveInitialCustomUrls = draftCustomUrls.length > 0 ? draftCustomUrls : initialRawCustomUrls
 
-  const [customActivityName, setCustomActivityName] = useState(initialCustomItem?.label || initialCustomItem?.snapshotLabel || '')
-  const [customActivityDescription, setCustomActivityDescription] = useState(initialCustomItem?.remark || '')
-  const [equipmentNo, setEquipmentNo] = useState(initialCustomItem?.unitNumber || '')
-  const [startTime, setStartTime] = useState(initialCustomItem?.startedAt ? toDateTimeLocalValue(initialCustomItem.startedAt) : defaultStartTime)
-  const [endTime, setEndTime] = useState(initialCustomItem?.endedAt ? toDateTimeLocalValue(initialCustomItem.endedAt) : defaultEndTime)
-  const [materialUsed, setMaterialUsed] = useState(initialCustomItem?.materialUsed || '')
-  const [notes, setNotes] = useState(rawSession?.summaryRemark || rawSession?.notes || '')
+  const [customActivityName, setCustomActivityName] = useState(
+    () => initialDraft?.customActivityName || initialCustomItem?.label || initialCustomItem?.snapshotLabel || ''
+  )
+  const [customActivityDescription, setCustomActivityDescription] = useState(
+    () => initialDraft?.customActivityDescription || initialCustomItem?.remark || ''
+  )
+  const [equipmentNo, setEquipmentNo] = useState(
+    () => initialDraft?.equipmentNo || initialCustomItem?.unitNumber || ''
+  )
+  const [startTime, setStartTime] = useState(
+    () => initialDraft?.startTime || (initialCustomItem?.startedAt ? toDateTimeLocalValue(initialCustomItem.startedAt) : defaultStartTime)
+  )
+  const [endTime, setEndTime] = useState(
+    () => initialDraft?.endTime || (initialCustomItem?.endedAt ? toDateTimeLocalValue(initialCustomItem.endedAt) : defaultEndTime)
+  )
+  const [materialUsed, setMaterialUsed] = useState(
+    () => initialDraft?.materialUsed || initialCustomItem?.materialUsed || ''
+  )
+  const [notes, setNotes] = useState(
+    () => initialDraft?.notes || rawSession?.summaryRemark || rawSession?.notes || ''
+  )
   const [manualLocation, setManualLocation] = useState('')
   const initialCustomerName =
     rawSession?.customerName ||
@@ -966,10 +1141,17 @@ export function MobileDailyActivityForm({
   }, [rawSession, currentSessionKey, site?.customerName, defaultStartTime, defaultEndTime, rawItems, teamMembers])
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [photoFiles, setPhotoFiles] = useState<File[]>([])
-  const [photoName, setPhotoName] = useState(initialCustomUrls.length > 0 ? `${initialCustomUrls.length} foto terlampir` : '')
-  const [photoPreviewUrls, setPhotoPreviewUrls] = useState<string[]>(initialCustomUrls)
-  const [restoredPhotoPayload, setRestoredPhotoPayload] = useState<QueuedFilePayload | null>(null)
-  const [queuedPhotoPayloads, setQueuedPhotoPayloads] = useState<QueuedFilePayload[]>([])
+  const [photoName, setPhotoName] = useState(
+    initialDraft?.photoName ||
+    (effectiveInitialCustomUrls.length > 0 ? `${effectiveInitialCustomUrls.length} foto terlampir` : initialDraft?.photo?.name || '')
+  )
+  const [photoPreviewUrls, setPhotoPreviewUrls] = useState<string[]>(effectiveInitialCustomUrls)
+  const [restoredPhotoPayload, setRestoredPhotoPayload] = useState<QueuedFilePayload | null>(
+    () => initialDraft?.photo ?? null
+  )
+  const [queuedPhotoPayloads, setQueuedPhotoPayloads] = useState<QueuedFilePayload[]>(
+    () => initialDraft?.photos || (initialDraft?.photo ? [initialDraft.photo] : [])
+  )
   const [photoCaptureMode, setPhotoCaptureMode] = useState<'camera' | 'gallery'>('gallery')
   const [activePhotoTarget, setActivePhotoTarget] = useState<string | null>(null)
   const activePhotoTargetRef = useRef<string | null>(null)
@@ -1003,7 +1185,7 @@ export function MobileDailyActivityForm({
     const targetId = activePhotoTargetRef.current || activePhotoTarget
     if (!targetId) return
 
-    const compressedFiles = await Promise.all(files.map(compressImageFile))
+    const compressedFiles = await Promise.all(files.map((f) => compressImageFile(f)))
     const file = compressedFiles[0] ?? null
     const names = compressedFiles.map((item) => item.name).join(', ')
     const previewUrls = compressedFiles.map((f) => URL.createObjectURL(f))
@@ -1326,14 +1508,43 @@ export function MobileDailyActivityForm({
               })
               existingIds.add(idStr)
               existingIds.add(String(numId))
-            }
           }
+        }
+      }
+    }
+  }
+
+  if (initialDraft?.selfInputActivities && initialDraft.selfInputActivities.length > 0) {
+      for (const item of initialDraft.selfInputActivities) {
+        const idStr = String(item.libraryActivityId || '')
+        if (idStr && !existingIds.has(idStr)) {
+          list.push({
+            id: Number(idStr) || (idStr as any),
+            activityCode: 'ACT',
+            activityName: item.notes || `Aktivitas #${idStr}`,
+            basePoints: 5,
+            requiresPhoto: Boolean(item.previewUrls?.length || item.photoUrl),
+            requiresEquipmentNo: Boolean(item.equipmentNo),
+            requiresDuration: true,
+            requiresMaterialUsed: Boolean(item.materialUsed),
+            requiresLocationGps: false,
+            requiresTireCount: Boolean(item.tireCount),
+            maxDailyCount: 99,
+            maxPointsPerDay: 999,
+            departmentId: null,
+            sectionId: null,
+            isSelfInput: true,
+            isAssignable: true,
+            approvalRequired: true,
+            autoApproveIfGpsValid: false,
+          })
+          existingIds.add(idStr)
         }
       }
     }
 
     return list
-  }, [availableLibrary, rawItems, availableRouteFolders])
+  }, [availableLibrary, rawItems, availableRouteFolders, initialDraft])
 
   const availableLibraryMap = useMemo(
     () => new Map(safeAvailableLibrary.map((item) => [`${item.id}`, item])),
@@ -1679,24 +1890,27 @@ export function MobileDailyActivityForm({
         {effectivePreviewUrls && effectivePreviewUrls.length > 0 ? (
           <div className="mt-2 space-y-2">
             <div className="flex flex-wrap gap-2">
-              {effectivePreviewUrls.map((url, idx) => (
-                <a
-                  key={idx}
-                  href={url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="relative group block overflow-hidden rounded-lg border border-slate-200 bg-black/5 shadow-2xs cursor-pointer hover:opacity-90 transition-opacity"
-                  title="Klik untuk melihat foto penuh"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={url}
-                    alt={`Evidence preview ${idx + 1}`}
-                    className="h-16 w-16 object-cover rounded-lg border border-slate-200"
-                    loading="lazy"
-                  />
-                </a>
-              ))}
+              {effectivePreviewUrls.map((url, idx) => {
+                const resolvedUrl = url.startsWith('blob:') || url.startsWith('data:') ? url : resolveUploadUrl(url)
+                return (
+                  <a
+                    key={idx}
+                    href={resolvedUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="relative group block overflow-hidden rounded-lg border border-slate-200 bg-black/5 shadow-2xs cursor-pointer hover:opacity-90 transition-opacity"
+                    title="Klik untuk melihat foto penuh"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={resolvedUrl}
+                      alt={`Evidence preview ${idx + 1}`}
+                      className="h-16 w-16 object-cover rounded-lg border border-slate-200"
+                      loading="lazy"
+                    />
+                  </a>
+                )
+              })}
             </div>
             <div className="flex items-center justify-between text-[11px] font-semibold text-[#003f78]">
               <span className="truncate max-w-[200px]">{effectivePhotoName}</span>
@@ -1736,17 +1950,25 @@ export function MobileDailyActivityForm({
   ) ?? false
   const needsGps = selfInputNeedsGps || assignmentNeedsGps || checkedChecklistNeedsGps
 
+  const hasRestoredDraftKeyRef = useRef<string | null>(null)
+
   useEffect(() => {
     // If we are editing/revising an existing document and no explicit draft key was specified, do not clobber with old draft
-    if (!queuedDraftKey && (rawSession || revisionSessionId)) {
+    if (!initialDraftKey && !queuedDraftKey && (rawSession || revisionSessionId)) {
       return
     }
 
-    const draft = readDraft<ActivitySyncPayload>(activeDraftKey)
+    const keyToRead = initialDraftKey?.trim() || activeDraftKey || queuedDraftKey || ACTIVITY_DRAFT_STORAGE_KEY
+    if (hasRestoredDraftKeyRef.current === keyToRead) {
+      return
+    }
+    const draft = readDraft<ActivitySyncPayload>(keyToRead)
 
     if (!draft) {
       return
     }
+
+    hasRestoredDraftKeyRef.current = keyToRead
 
     const restoredSourceMode =
       draft.sourceMode === 'assigned' ||
@@ -1756,33 +1978,53 @@ export function MobileDailyActivityForm({
         : 'self_input'
     const restoredSelectedLibraryIds =
       Array.isArray(draft.selectedLibraryActivityIds) && draft.selectedLibraryActivityIds.length > 0
-        ? draft.selectedLibraryActivityIds
-        : draft.libraryActivityId
-          ? [draft.libraryActivityId]
-          : []
+        ? draft.selectedLibraryActivityIds.map(String)
+        : Array.isArray(draft.selfInputActivities) && draft.selfInputActivities.length > 0
+          ? draft.selfInputActivities.map((s) => String(s.libraryActivityId)).filter(Boolean)
+          : draft.libraryActivityId
+            ? [String(draft.libraryActivityId)]
+            : []
     const restoredSelfInputEntries = Array.isArray(draft.selfInputActivities)
       ? Object.fromEntries(
-          draft.selfInputActivities.map((item, index) => [
-            item.libraryActivityId,
-            {
-              equipmentNo: item.equipmentNo ?? '',
-              startTime:
-                item.startTime ||
-                buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime).startTime,
-              endTime:
-                item.endTime ||
-                buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime).endTime,
-              materialUsed: item.materialUsed ?? '',
-              tireCount: item.tireCount ?? 0,
-              notes: item.notes ?? '',
-              photo: item.photo ?? null,
-              photos: item.photos ?? (item.photo ? [item.photo] : []),
-              previewUrls: item.photoUrls ?? [],
-              photoName: (item.photoUrls?.length || item.photo || item.photos?.length) ? String(item.photoUrls?.length || item.photos?.length || 1) + ' foto terlampir' : '',
-              restoredPhotoPayload: item.photo ?? item.photos?.[0] ?? null,
-              queuedPhotoPayloads: item.photos ?? (item.photo ? [item.photo] : []),
-            },
-          ])
+          draft.selfInputActivities.map((item, index) => {
+            const previewUrls =
+              item.previewUrls && item.previewUrls.length > 0
+                ? item.previewUrls
+                : item.photoUrls && item.photoUrls.length > 0
+                  ? item.photoUrls
+                  : item.photoUrl
+                    ? [item.photoUrl]
+                    : item.photo?.dataUrl
+                      ? [item.photo.dataUrl]
+                      : []
+            const photoCount = previewUrls.length || (item.photos?.length ?? (item.photo ? 1 : 0))
+            const photoName =
+              item.photoName ||
+              (photoCount > 0 ? `${photoCount} foto terlampir` : item.photo?.name || '')
+
+            return [
+              String(item.libraryActivityId),
+              {
+                equipmentNo: item.equipmentNo ?? '',
+                startTime:
+                  item.startTime ||
+                  buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime).startTime,
+                endTime:
+                  item.endTime ||
+                  buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime).endTime,
+                materialUsed: item.materialUsed ?? '',
+                tireCount: item.tireCount ?? 0,
+                notes: item.notes ?? '',
+                photoFiles: [],
+                photoName,
+                previewUrls,
+                photo: item.photo ?? null,
+                photos: item.photos ?? (item.photo ? [item.photo] : []),
+                restoredPhotoPayload: item.photo ?? item.photos?.[0] ?? null,
+                queuedPhotoPayloads: item.photos ?? (item.photo ? [item.photo] : []),
+              },
+            ]
+          })
         )
       : draft.libraryActivityId
         ? {
@@ -1793,6 +2035,10 @@ export function MobileDailyActivityForm({
               materialUsed: draft.materialUsed ?? '',
               tireCount: draft.tireCount ?? 0,
               notes: draft.notes ?? '',
+              photoFiles: [],
+              photoName: draft.photo?.name || '',
+              previewUrls: draft.photoUrls || (draft.photo?.dataUrl ? [draft.photo.dataUrl] : []),
+              restoredPhotoPayload: draft.photo ?? null,
             },
           }
         : {}
@@ -1827,8 +2073,19 @@ export function MobileDailyActivityForm({
     setMaterialUsed(draft.materialUsed ?? '')
     setNotes(draft.notes ?? '')
     setManualLocation(draft.manualLocation ?? '')
-    setPhotoName(draft.photoUrls?.length || draft.photo || draft.photos?.length ? String(draft.photoUrls?.length || draft.photos?.length || 1) + ' foto terlampir' : '')
-    setPhotoPreviewUrls(draft.photoUrls ?? [])
+    // Restore custom activity photos
+    const customUrls =
+      draft.photoUrls && draft.photoUrls.length > 0
+        ? draft.photoUrls
+        : draft.photo?.dataUrl
+          ? [draft.photo.dataUrl]
+          : []
+    setPhotoPreviewUrls(customUrls)
+    const customPhotoCount = customUrls.length || (draft.photos?.length ?? (draft.photo ? 1 : 0))
+    setPhotoName(
+      draft.photoName ||
+      (customPhotoCount > 0 ? `${customPhotoCount} foto terlampir` : draft.photo?.name || '')
+    )
     setRestoredPhotoPayload(draft.photo ?? draft.photos?.[0] ?? null)
     setQueuedPhotoPayloads(draft.photos ?? (draft.photo ? [draft.photo] : []))
     if (restoredRouteSessionItems.length > 0) {
@@ -1839,6 +2096,15 @@ export function MobileDailyActivityForm({
             if (itemKey == null) {
               return []
             }
+
+            const itemUrls =
+              item.previewUrls && item.previewUrls.length > 0
+                ? item.previewUrls
+                : item.photoUrl
+                  ? [item.photoUrl]
+                  : item.photo?.dataUrl
+                    ? [item.photo.dataUrl]
+                    : []
 
             return [
               [
@@ -1856,8 +2122,9 @@ export function MobileDailyActivityForm({
                   actualPoints: `${item.actualPoints}`,
                   tireCount: item.tireCount ?? 0,
                   materialUsed: item.materialUsed || '',
-                  photoName: item.photoUrls?.length || item.photo || item.photos?.length ? String(item.photoUrls?.length || item.photos?.length || 1) + ' foto terlampir' : '',
-                  previewUrls: item.photoUrls || [],
+                  photoFiles: [],
+                  photoName: itemUrls.length > 0 ? `${itemUrls.length} foto terlampir` : (item.photoUrls?.length || item.photo || item.photos?.length ? String(item.photoUrls?.length || item.photos?.length || 1) + ' foto terlampir' : ''),
+                  previewUrls: itemUrls.length > 0 ? itemUrls : (item.photoUrls || []),
                   restoredPhotoPayload: item.photo || item.photos?.[0] || null,
                   queuedPhotoPayloads: item.photos || (item.photo ? [item.photo] : []),
                 },
@@ -1871,11 +2138,15 @@ export function MobileDailyActivityForm({
       setSelectedMemberIds(draft.teamMemberEmployeeIds)
       setIsTeamLog(true)
     }
-  }, [activeDraftKey, checklistContext, defaultEndTime, defaultStartTime, rawSession, revisionSessionId])
+
+    if (initialDraftKey || queuedDraftKey) {
+      toast.success('Draft berhasil dimuat ke formulir ✓')
+    }
+  }, [initialDraftKey, activeDraftKey, checklistContext, defaultEndTime, defaultStartTime, rawSession, revisionSessionId, queuedDraftKey])
 
   useEffect(() => {
     if (!checklistContext) {
-      setRouteItemState({})
+      setRouteItemState((current) => (Object.keys(current || {}).length === 0 ? current : {}))
       return
     }
 
@@ -2136,6 +2407,7 @@ export function MobileDailyActivityForm({
       const entry =
         selfInputEntries[libraryId] ??
         buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
+      const photos = entry.previewUrls || []
       return {
         libraryActivityId: libraryId,
         equipmentNo: entry.equipmentNo,
@@ -2144,9 +2416,12 @@ export function MobileDailyActivityForm({
         materialUsed: entry.materialUsed,
         tireCount: entry.tireCount ?? 0,
         notes: entry.notes,
-        photo: entry.queuedPhotoPayloads?.[0] ?? null,
-        photos: entry.queuedPhotoPayloads ?? [],
+        photo: entry.queuedPhotoPayloads?.[0] ?? entry.restoredPhotoPayload ?? null,
+        photos: entry.queuedPhotoPayloads ?? (entry.restoredPhotoPayload ? [entry.restoredPhotoPayload] : []),
         photoUrls: entry.previewUrls ?? [],
+        photoName: entry.photoName || (photos.length > 0 ? `${photos.length} foto terlampir` : ''),
+        photoUrl: photos[0] || null,
+        previewUrls: photos,
       }
     }),
     routeTemplateId:
@@ -2187,13 +2462,32 @@ export function MobileDailyActivityForm({
     gpsValid: boundary.gpsValid,
     boundaryStatus: boundary.status,
     boundaryMessage: boundary.message,
-    photo: queuedPhotoPayloads[0] ?? null,
-    photos: queuedPhotoPayloads,
-    photoUrls: photoPreviewUrls.filter((url) => url.startsWith('http') || url.startsWith('/')),
+    photo: queuedPhotoPayloads[0] ?? restoredPhotoPayload ?? null,
+    photos: queuedPhotoPayloads.length > 0 ? queuedPhotoPayloads : (restoredPhotoPayload ? [restoredPhotoPayload] : []),
+    photoUrls: photoPreviewUrls.filter((url) => typeof url === 'string' && (url.startsWith('http') || url.startsWith('/') || url.startsWith('data:'))),
+    photoName,
     teamMemberEmployeeIds: selectedMemberIds,
   }
 
+  const isFirstMountRef = useRef(true)
+
   useEffect(() => {
+    // Prevent wiping active draft on initial mount!
+    if (isFirstMountRef.current) {
+      isFirstMountRef.current = false
+      return
+    }
+
+    // Do NOT autosave if the form is empty, to prevent wiping specific draft keys
+    const hasAnyContent =
+      selectedLibraryIds.length > 0 ||
+      Boolean(customActivityName.trim()) ||
+      Boolean(notes.trim()) ||
+      Boolean(assignmentId) ||
+      photoPreviewUrls.length > 0
+
+    if (!hasAnyContent) return
+
     // 1. Immediate localStorage save (instant, no network needed)
     const result = writeDraft(activeDraftKey, draftPayload)
     if (!result.ok) {
@@ -2216,6 +2510,7 @@ export function MobileDailyActivityForm({
         const itemsSnapshot = selectedLibraries.length > 0
           ? selectedLibraries.map((lib) => {
               const entry = selfInputEntries[`${lib.id}`]
+              const pUrls = entry?.previewUrls || []
               return {
                 label: `${lib.activityCode} - ${lib.activityName}`,
                 group: lib.activityCode || 'Technical',
@@ -2226,17 +2521,37 @@ export function MobileDailyActivityForm({
                 points: lib.basePoints || 5,
                 remark: entry?.notes || '',
                 materialUsed: entry?.materialUsed || '',
+                photoUrl: pUrls[0] || null,
+                photos: pUrls,
               }
             })
-          : []
+          : sourceMode === 'custom' && customActivityName.trim()
+            ? [
+                {
+                  label: customActivityName.trim(),
+                  group: 'Custom',
+                  libraryActivityId: null,
+                  unitNumber: equipmentNo.trim(),
+                  startedAt: startTime || defaultStartTime,
+                  endedAt: endTime || defaultEndTime,
+                  points: 5,
+                  remark: notes.trim() || customActivityDescription.trim(),
+                  materialUsed: materialUsed.trim(),
+                  photoUrl: photoPreviewUrls[0] || null,
+                  photos: photoPreviewUrls,
+                },
+              ]
+            : []
 
         const res = await saveActivityDraftToServerAction({
           employeeId,
           workDate,
           shiftCode,
+          submissionSource: sourceMode,
           siteId: site?.id,
           notes: notes.trim(),
           summaryRemark: notes.trim(),
+          teamMemberEmployeeIds: isTeamLog ? selectedMemberIds : [],
           items: itemsSnapshot,
           existingDraftSessionId: serverDraftSessionId,
         })
@@ -3895,33 +4210,126 @@ export function MobileDailyActivityForm({
           <Button
             type="button"
             variant="outline"
-            className="h-14 rounded-2xl border-0 bg-[#eaf4fb] text-[#003f78]"
-            disabled={isSubmitting}
+            className="h-14 rounded-2xl border-0 bg-[#eaf4fb] text-[#003f78] font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+            disabled={isSubmitting || isSavingDraft}
             onClick={async () => {
-              // 1. Local save first (instant)
-              const draftKey =
-                activeDraftKey === ACTIVITY_DRAFT_STORAGE_KEY
-                  ? createActivityDraftKey()
-                  : activeDraftKey
-              const localResult = writeDraft(draftKey, draftPayload)
-              if (!localResult.ok) {
-                setSubmitState({ kind: 'error', message: localResult.error })
-                toast.error(localResult.error, { duration: 5000 })
-              } else {
-                if (draftKey !== ACTIVITY_DRAFT_STORAGE_KEY) {
-                  saveActivityDraftIndexEntry(draftKey, draftPayload)
-                  if (activeDraftKey === ACTIVITY_DRAFT_STORAGE_KEY) {
-                    removeActivityDraft(ACTIVITY_DRAFT_STORAGE_KEY)
-                  }
-                  setActiveDraftKey(draftKey)
-                }
-              }
+              setIsSavingDraft(true)
+              toast.info('Menyimpan draft dan memproses foto evidence...', { duration: 2500 })
 
-              // 2. Server save (persists even if browser is killed)
               try {
+                // 1. Process custom photos
+                const customEvidence = await processPhotosForDraft(
+                  photoFiles,
+                  photoFile,
+                  photoPreviewUrls,
+                  restoredPhotoPayload
+                )
+                if (customEvidence.urls.length > 0) {
+                  setPhotoPreviewUrls(customEvidence.urls)
+                  setPhotoName(customEvidence.photoName)
+                }
+
+                // 2. Process self-input library entries photos
+                const updatedSelfInputEntries = { ...selfInputEntries }
+                for (const lib of selectedLibraries) {
+                  const libId = `${lib.id}`
+                  const entry = selfInputEntries[libId]
+                  if (entry) {
+                    const entryEvidence = await processPhotosForDraft(
+                      entry.photoFiles,
+                      entry.photoFile,
+                      entry.previewUrls,
+                      entry.restoredPhotoPayload
+                    )
+                    updatedSelfInputEntries[libId] = {
+                      ...entry,
+                      photoFiles: [],
+                      previewUrls: entryEvidence.urls,
+                      photoName: entryEvidence.photoName,
+                      restoredPhotoPayload: entryEvidence.payloads[0] ?? null,
+                    }
+                  }
+                }
+                setSelfInputEntries(updatedSelfInputEntries)
+
+                // 3. Process route items photos
+                const updatedRouteItemState = { ...routeItemState }
+                for (const [keyStr, state] of Object.entries(routeItemState)) {
+                  if (state?.photoFiles?.length || state?.photoFile || state?.previewUrls?.length) {
+                    const evidence = await processPhotosForDraft(
+                      state.photoFiles,
+                      state.photoFile,
+                      state.previewUrls,
+                      state.restoredPhotoPayload
+                    )
+                    updatedRouteItemState[Number(keyStr)] = {
+                      ...state,
+                      photoFiles: [],
+                      previewUrls: evidence.urls,
+                      photoName: evidence.photoName,
+                      restoredPhotoPayload: evidence.payloads[0] ?? null,
+                    }
+                  }
+                }
+                setRouteItemState(updatedRouteItemState)
+
+                // 4. Construct complete draft payload with photos
+                const completeDraftPayload: ActivitySyncPayload = {
+                  ...draftPayload,
+                  photo: customEvidence.payloads[0] ?? null,
+                  photos: customEvidence.payloads,
+                  photoUrls: customEvidence.urls,
+                  selfInputActivities: selectedLibraries.map((lib, index) => {
+                    const entry =
+                      updatedSelfInputEntries[`${lib.id}`] ??
+                      buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
+                    return {
+                      libraryActivityId: `${lib.id}`,
+                      equipmentNo: entry.equipmentNo,
+                      startTime: entry.startTime,
+                      endTime: entry.endTime,
+                      materialUsed: entry.materialUsed,
+                      tireCount: entry.tireCount ?? 0,
+                      notes: entry.notes,
+                      photoName: entry.photoName,
+                      photoUrl: entry.previewUrls?.[0] || null,
+                      previewUrls: entry.previewUrls || [],
+                      photo: entry.restoredPhotoPayload || null,
+                    }
+                  }),
+                  routeSessionItems: routeSessionItems.map((item) => {
+                    const s = updatedRouteItemState[item.routeItemId ?? item.overtimeCommandLetterItemId ?? -1]
+                    return {
+                      ...item,
+                      photoUrl: s?.previewUrls?.[0] || null,
+                      previewUrls: s?.previewUrls || [],
+                    }
+                  }),
+                }
+
+                // 5. Save locally (instant)
+                const draftKey =
+                  activeDraftKey === ACTIVITY_DRAFT_STORAGE_KEY
+                    ? createActivityDraftKey()
+                    : activeDraftKey
+                const localResult = writeDraft(draftKey, completeDraftPayload)
+                if (!localResult.ok) {
+                  setSubmitState({ kind: 'error', message: localResult.error })
+                  toast.error(localResult.error, { duration: 5000 })
+                } else {
+                  if (draftKey !== ACTIVITY_DRAFT_STORAGE_KEY) {
+                    saveActivityDraftIndexEntry(draftKey, completeDraftPayload)
+                    if (activeDraftKey === ACTIVITY_DRAFT_STORAGE_KEY) {
+                      removeActivityDraft(ACTIVITY_DRAFT_STORAGE_KEY)
+                    }
+                    setActiveDraftKey(draftKey)
+                  }
+                }
+
+                // 6. Save to server (cloud persistence)
                 const itemsSnapshot = selectedLibraries.length > 0
                   ? selectedLibraries.map((lib) => {
-                      const entry = selfInputEntries[`${lib.id}`]
+                      const entry = updatedSelfInputEntries[`${lib.id}`]
                       return {
                         label: `${lib.activityCode} - ${lib.activityName}`,
                         group: lib.activityCode || 'Technical',
@@ -3932,57 +4340,81 @@ export function MobileDailyActivityForm({
                         points: lib.basePoints || 5,
                         remark: entry?.notes || '',
                         materialUsed: entry?.materialUsed || '',
+                        photoUrl: entry?.previewUrls?.[0] || null,
+                        photos: entry?.previewUrls || [],
                       }
                     })
-                  : []
+                  : sourceMode === 'custom' && customActivityName
+                    ? [
+                        {
+                          label: customActivityName.trim(),
+                          group: 'Custom',
+                          libraryActivityId: null,
+                          unitNumber: equipmentNo.trim(),
+                          startedAt: startTime || defaultStartTime,
+                          endedAt: endTime || defaultEndTime,
+                          points: 5,
+                          remark: notes.trim() || customActivityDescription.trim(),
+                          materialUsed: materialUsed.trim(),
+                          photoUrl: customEvidence.urls[0] || null,
+                          photos: customEvidence.urls,
+                        },
+                      ]
+                    : []
 
-                const res = await saveActivityDraftToServerAction({
-                  employeeId,
-                  workDate,
-                  shiftCode,
-                  siteId: site?.id,
-                  notes: notes.trim(),
-                  summaryRemark: notes.trim(),
-                  items: itemsSnapshot,
-                  existingDraftSessionId: serverDraftSessionId,
-                })
-
-                if (res.success) {
-                  setServerDraftSessionId(res.sessionId)
-                  setSubmitState({
-                    kind: 'success',
-                    message: 'Draft tersimpan aman di server. Anda bisa lanjutkan kapan saja.',
+                try {
+                  const res = await saveActivityDraftToServerAction({
+                    employeeId,
+                    workDate,
+                    shiftCode,
+                    submissionSource: sourceMode,
+                    siteId: site?.id,
+                    notes: notes.trim(),
+                    summaryRemark: notes.trim(),
+                    teamMemberEmployeeIds: isTeamLog ? selectedMemberIds : [],
+                    items: itemsSnapshot,
+                    existingDraftSessionId: serverDraftSessionId,
                   })
-                  toast.success('Draft tersimpan aman di server ✓', { duration: 3000 })
-                } else {
-                  // Server failed but local OK
-                  setSubmitState({
-                    kind: 'success',
-                    message: 'Draft disimpan di perangkat ini (server tidak tersedia).',
-                  })
-                  toast.warning('Draft tersimpan di perangkat. Pastikan koneksi stabil saat submit.', { duration: 4000 })
+                  if (res.success) {
+                    setServerDraftSessionId(res.sessionId)
+                    const updatedWithServer = {
+                      ...completeDraftPayload,
+                      serverDraftSessionId: res.sessionId,
+                    }
+                    writeDraft(draftKey, updatedWithServer)
+                    saveActivityDraftIndexEntry(draftKey, updatedWithServer, res.sessionId)
+                  }
+                } catch (srvErr) {
+                  console.warn('[MobileDailyActivityForm] Server draft save failed:', srvErr)
                 }
-              } catch (error) {
-                if (localResult.ok) {
-                  setSubmitState({
-                    kind: 'success',
-                    message: 'Draft disimpan di perangkat ini.',
-                  })
-                } else {
-                  const message = error instanceof Error ? error.message : 'Server draft tidak tersedia.'
-                  setSubmitState({ kind: 'error', message: `Draft gagal disimpan: ${message}` })
-                  toast.error(`Draft gagal disimpan: ${message}`, { duration: 5000 })
-                }
+                // 7. Open Success Modal and dispatch events
+                window.dispatchEvent(new CustomEvent(ACTIVITY_DRAFTS_CHANGED_EVENT))
+                setIsDraftSavedModalOpen(true)
+                toast.success('Draft berhasil disimpan! Draft tersimpan aman di server.')
+              } catch (saveErr: any) {
+                console.error('[SaveDraft] Error saving draft:', saveErr)
+                toast.error(saveErr?.message || 'Gagal menyimpan draft.')
+              } finally {
+                setIsSavingDraft(false)
               }
             }}
           >
-            <Save className="size-4" />
-            Save Draft
+            {isSavingDraft ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                Menyimpan...
+              </>
+            ) : (
+              <>
+                <Save className="size-4" />
+                Save Draft
+              </>
+            )}
           </Button>
           <Button
             type="submit"
             className="h-14 rounded-2xl bg-[#003f78] text-white shadow-[0_14px_30px_rgba(0,63,120,0.22)] font-bold text-xs"
-            disabled={isSubmitting}
+            disabled={isSubmitting || isSavingDraft}
           >
             <SendHorizontal className="size-4" />
             {isSubmitting
@@ -4010,6 +4442,70 @@ export function MobileDailyActivityForm({
           className="hidden"
           onChange={handlePhotoChange}
         />
+
+        {/* ── Popup Modal Sukses: Draft Berhasil di Simpan ── */}
+        <Dialog open={isDraftSavedModalOpen} onOpenChange={setIsDraftSavedModalOpen}>
+          <DialogContent
+            showCloseButton={true}
+            className="max-w-[min(400px,92vw)] p-6 rounded-3xl bg-white border border-slate-200 text-slate-900 shadow-2xl z-50 text-center flex flex-col items-center animate-in fade-in zoom-in-95 duration-200"
+          >
+            <div className="flex size-16 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 mb-2 ring-8 ring-emerald-50/50 shadow-xs">
+              <CheckCircle2 className="size-9 stroke-[2.5]" />
+            </div>
+
+            <DialogHeader className="space-y-1.5 text-center sm:text-center mt-2">
+              <DialogTitle className="text-lg font-black tracking-tight text-[#003461]">
+                Draft Berhasil di Simpan
+              </DialogTitle>
+              <DialogDescription className="text-xs font-semibold text-slate-600">
+                Data aktivitas harian dan foto evidence Anda telah tersimpan dengan aman.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="my-4 w-full rounded-2xl bg-slate-50/80 border border-slate-100 p-3.5 text-left space-y-2 text-xs">
+              <div className="flex justify-between items-center text-slate-600">
+                <span className="font-semibold text-slate-500">Tanggal Kerja:</span>
+                <span className="font-bold text-slate-900">{workDate || 'Hari ini'}</span>
+              </div>
+              <div className="flex justify-between items-center text-slate-600">
+                <span className="font-semibold text-slate-500">Total Aktivitas:</span>
+                <span className="font-bold text-slate-900">
+                  {selectedLibraries.length || (sourceMode === 'custom' ? 1 : 0) || routeSessionItems.filter((i) => i.isChecked).length || 1} item
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-slate-600">
+                <span className="font-semibold text-slate-500">Foto Evidence:</span>
+                <span className="font-bold text-emerald-700 flex items-center gap-1">
+                  ✓ Tersimpan di Draft
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 w-full mt-1">
+              <Button
+                type="button"
+                className="h-12 w-full rounded-2xl bg-[#003461] hover:bg-[#00284d] text-white font-bold text-xs shadow-md shadow-blue-900/10 cursor-pointer active:scale-95 transition-all"
+                onClick={() => {
+                  setIsDraftSavedModalOpen(false)
+                  if (onOpenDraftTab) {
+                    onOpenDraftTab()
+                  }
+                }}
+              >
+                <FileText className="size-4 mr-1.5" />
+                Buka Tab Draft
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-12 w-full rounded-2xl border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs cursor-pointer active:scale-95 transition-all"
+                onClick={() => setIsDraftSavedModalOpen(false)}
+              >
+                Lanjut Mengedit
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* ── Zoomable Formal PDF Preview Modal Dialog (SPL & DAR Standard) ── */}
         <Dialog open={isPdfOpen} onOpenChange={setIsPdfOpen}>
@@ -4133,10 +4629,14 @@ export function MobileDailyActivityForm({
                   'Section Head'
 
                 const totalPts = previewItemsList.reduce((s: number, i: any) => s + (i.points || 0), 0)
+                const initialTeamNames = Array.isArray(initialSessionData?.teamMembers)
+                  ? initialSessionData.teamMembers.map((m: any) => m.name || m.employeeName).filter(Boolean).join(', ')
+                  : (initialSessionData?.teamMembersSummary || initialSessionData?.teamNameList || '')
+
                 const fallbackTeamMatch = (initialSessionData?.summaryRemark || initialSessionData?.notes || '').match(/\[Team:\s*([^\]]+)\]/i)
                 const teamSummary = (isTeamLog && selectedMemberIds.length > 0)
-                  ? teamMembers?.filter((m) => selectedMemberIds.includes(m.id)).map((m) => m.name).join(', ') || (fallbackTeamMatch ? fallbackTeamMatch[1].trim() : '')
-                  : (fallbackTeamMatch ? fallbackTeamMatch[1].trim() : '')
+                  ? teamMembers?.filter((m) => selectedMemberIds.includes(m.id)).map((m) => m.name).join(', ') || initialTeamNames || (fallbackTeamMatch ? fallbackTeamMatch[1].trim() : '')
+                  : (initialTeamNames || (fallbackTeamMatch ? fallbackTeamMatch[1].trim() : ''))
 
                 const isSplDoc = Boolean(initialSessionData?.splId || initialSessionData?.splNumber)
                 const isSubmittedDoc = Boolean(
@@ -4331,6 +4831,12 @@ export function MobileDailyActivityForm({
                           <div className="text-[6.5pt] text-slate-400 mt-0.5">
                             {initialSessionData?.submittedAt ? `Waktu Pengajuan: ${fmtDt(initialSessionData.submittedAt)}` : 'Waktu Pengajuan: —'}
                           </div>
+                          {teamSummary ? (
+                            <div className="mt-1 px-1.5 py-0.5 rounded bg-purple-50 border border-purple-200 text-[6.5pt] text-purple-900 max-w-[90%] leading-tight text-center">
+                              <span className="font-bold">Mewakili Tim:</span>
+                              <div className="truncate text-purple-800">{teamSummary}</div>
+                            </div>
+                          ) : null}
                         </div>
 
                         {/* 2. Leader / Supervisor / PJO */}

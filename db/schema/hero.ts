@@ -448,6 +448,25 @@ export const dailyActivitySessions = pgTable('hero_daily_activity_sessions', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
+export const dailyActivitySessionTeamMembers = pgTable(
+  'hero_daily_activity_session_team_members',
+  {
+    id: serial('id').primaryKey(),
+    sessionId: integer('session_id')
+      .notNull()
+      .references(() => dailyActivitySessions.id, { onDelete: 'cascade' }),
+    employeeId: integer('employee_id')
+      .notNull()
+      .references(() => employees.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    sessionEmployeeUnique: uniqueIndex(
+      'hero_daily_activity_session_team_members_session_emp_uq'
+    ).on(table.sessionId, table.employeeId),
+  })
+)
+
 export const dailyActivitySessionItems = pgTable('hero_daily_activity_session_items', {
   id: serial('id').primaryKey(),
   sessionId: integer('session_id')

@@ -12,6 +12,7 @@ import {
   Search,
   Trash2,
   User,
+  Users,
   Wrench,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -44,6 +45,10 @@ export type MobileDarHistoryItem = {
   isAuthor?: boolean
   isApprover?: boolean
   isTeamMember?: boolean
+  isTeamActivity?: boolean
+  teamMemberCount?: number
+  teamNameList?: string | null
+  representedByName?: string | null
   items?: Array<{
     id: number
     snapshotLabel: string | null
@@ -287,7 +292,11 @@ export function MobileDailyActivityHistory({
                     </Badge>
                   ) : activity.isTeamMember ? (
                     <Badge className="border-0 bg-purple-100 text-purple-900 text-[9px] font-bold px-1.5 py-0.5">
-                      Anggota Tim
+                      Tim • Diwakilkan {activity.representedByName || activity.employeeName}
+                    </Badge>
+                  ) : activity.isTeamActivity ? (
+                    <Badge className="border-0 bg-indigo-100 text-indigo-900 text-[9px] font-bold px-1.5 py-0.5">
+                      Tim ({activity.teamMemberCount || 'Banyak'} Anggota)
                     </Badge>
                   ) : null}
                 </div>
@@ -301,6 +310,11 @@ export function MobileDailyActivityHistory({
                   <div className="flex items-center gap-1 font-semibold text-slate-700">
                     <User className="size-3.5 text-slate-400 shrink-0" />
                     <span>{activity.employeeName || 'Staff'}</span>
+                    {activity.isTeamMember && (
+                      <span className="text-[10px] text-purple-700 font-semibold bg-purple-50 px-1.5 py-0.5 rounded border border-purple-100">
+                        Mewakili Anda
+                      </span>
+                    )}
                   </div>
                   <span>•</span>
                   <span>{activity.itemCount ?? activity.items?.length ?? 1} Item Pekerjaan</span>
@@ -318,6 +332,31 @@ export function MobileDailyActivityHistory({
                 <li className="flex items-center gap-2">
                   <Clock3 className="size-4 text-slate-400 shrink-0" /> Status: {statusLabel(activity.status)}
                 </li>
+                {activity.isTeamActivity && (
+                  <li className="flex items-start gap-2 text-indigo-900 font-semibold bg-indigo-50/80 p-2.5 rounded-xl border border-indigo-100">
+                    <Users className="size-4 shrink-0 mt-0.5 text-indigo-600" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-[11px]">
+                          Aktivitas Tim ({activity.teamMemberCount ? `${activity.teamMemberCount} Anggota` : 'Bersama'})
+                        </span>
+                        {activity.isTeamMember && (
+                          <Badge className="border-0 bg-purple-200 text-purple-900 text-[8px] font-bold px-1 py-0">
+                            Diwakilkan
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-700 mt-0.5 font-normal leading-tight">
+                        {activity.teamNameList || activity.employeeName}
+                      </p>
+                      {activity.isTeamMember && (
+                        <p className="text-[10px] text-purple-700 font-medium mt-1">
+                          ✓ Laporan ini disubmit oleh {activity.representedByName || activity.employeeName} atas nama tim. Poin (+{activity.pointsNet ?? 0}) dan riwayat otomatis tercatat di profil Anda.
+                        </p>
+                      )}
+                    </div>
+                  </li>
+                )}
                 {['submitted', 'pending', 'pending approval'].includes(st) ? (
                   <li className="flex items-center gap-2 text-amber-700 font-bold">
                     <FileCheck2 className="size-4 shrink-0" /> Menunggu Approval:{' '}

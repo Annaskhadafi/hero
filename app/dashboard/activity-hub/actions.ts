@@ -75,6 +75,7 @@ import {
   dailyActivityApprovals,
   dailyActivityConfigs,
   dailyActivitySessionItems,
+  dailyActivitySessionTeamMembers,
   dailyActivitySessionSignoffs,
   dailyActivitySessions,
   employees,
@@ -122,6 +123,7 @@ import { assertNoSplOverlap, buildSplParticipantSnapshots, getSiteSplPolicy } fr
 import { validateSplRequestWindow } from '@/lib/spl-policy'
 import { getHeadLocationManagedEmployeeIds } from '@/lib/overtime-request-data'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
+import { evaluatePointThresholdBadges } from '@/lib/hero-admin'
 
 const MAX_ACTIVITY_PHOTO_SIZE = 5 * 1024 * 1024
 const MAX_SIGNATURE_FILE_SIZE = 2 * 1024 * 1024
@@ -1063,6 +1065,128 @@ async function updateStreakForEmployee(employeeId: number, activityDate: Date) {
       updatedAt: new Date(),
     })
     .where(eq(streakRecords.id, existing.id))
+}
+
+export async function awardSessionPointsToTeam(sessionId: number, tx: any = db) {
+  try {
+    const [session] = await tx
+      .select({
+        id: dailyActivitySessions.id,
+        sessionCode: dailyActivitySessions.sessionCode,
+        employeeId: dailyActivitySessions.employeeId,
+        activityId: dailyActivitySessions.activityId,
+        workDate: dailyActivitySessions.workDate,
+      })
+      .from(dailyActivitySessions)
+      .where(eq(dailyActivitySessions.id, sessionId))
+      .limit(1)
+
+    if (!session) return
+
+    // 1. Calculate points
+    let pointsToAward = 0
+    if (session.activityId) {
+      const [act] = await tx
+        .select({ pointsAwarded: activities.pointsAwarded })
+        .from(activities)
+        .where(eq(activities.id, session.activityId))
+        .limit(1)
+      if (act && act.pointsAwarded > 0) {
+        pointsToAward = act.pointsAwarded
+      }
+    }
+
+    if (pointsToAward <= 0) {
+      const items = await tx
+        .select({
+          actualPoints: dailyActivitySessionItems.actualPoints,
+          isChecked: dailyActivitySessionItems.isChecked,
+        })
+        .from(dailyActivitySessionItems)
+        .where(eq(dailyActivitySessionItems.sessionId, sessionId))
+
+      const checkedItems = items.filter((i: any) => i.isChecked)
+      const sumPoints = checkedItems.reduce((acc: number, curr: any) => acc + (curr.actualPoints || 0), 0)
+      pointsToAward = sumPoints > 0 ? sumPoints : 10
+    }
+
+    // 2. Fetch team members
+    const teamRows = await tx
+      .select({ employeeId: dailyActivitySessionTeamMembers.employeeId })
+      .from(dailyActivitySessionTeamMembers)
+      .where(eq(dailyActivitySessionTeamMembers.sessionId, sessionId))
+
+    const allRecipientIds = Array.from(new Set([session.employeeId, ...teamRows.map((r: any) => r.employeeId)]))
+    const now = new Date()
+
+    for (const recipientId of allRecipientIds) {
+      // Check idempotency - has this session already awarded points to this employee?
+      const [existingEvent] = await tx
+        .select({ id: pointEvents.id })
+        .from(pointEvents)
+        .where(
+          and(
+            eq(pointEvents.employeeId, recipientId),
+            eq(pointEvents.sourceType, 'daily_activity_session'),
+            eq(pointEvents.sourceId, session.id)
+          )
+        )
+        .limit(1)
+
+      if (existingEvent) {
+        continue
+      }
+
+      const [empState] = await tx
+        .select({ id: employees.id, totalPoints: employees.totalPoints })
+        .from(employees)
+        .where(eq(employees.id, recipientId))
+        .limit(1)
+
+      if (!empState) continue
+
+      const updatedBalance = Math.max(0, (empState.totalPoints || 0) + pointsToAward)
+
+      await tx.insert(pointEvents).values({
+        employeeId: recipientId,
+        transactionType: 'reward',
+        sourceType: 'daily_activity_session',
+        sourceId: session.id,
+        category: 'Daily Activity',
+        label: `${session.sessionCode || 'DAR'} • Approved${allRecipientIds.length > 1 ? ' (Tim)' : ''}`,
+        points: pointsToAward,
+        balanceAfter: updatedBalance,
+        metadata: JSON.stringify({
+          sessionId: session.id,
+          sessionCode: session.sessionCode,
+          isTeam: allRecipientIds.length > 1,
+          primaryEmployeeId: session.employeeId,
+        }),
+        createdAt: now,
+      })
+
+      await tx
+        .update(employees)
+        .set({ totalPoints: updatedBalance })
+        .where(eq(employees.id, recipientId))
+
+      // Update streak
+      try {
+        await updateStreakForEmployee(recipientId, session.workDate || now)
+      } catch (streakErr) {
+        console.error(`Error updating streak for employee ${recipientId}:`, streakErr)
+      }
+
+      // Check badge thresholds
+      try {
+        await evaluatePointThresholdBadges(tx, recipientId, updatedBalance)
+      } catch (badgeErr) {
+        console.error(`Error evaluating badge for employee ${recipientId}:`, badgeErr)
+      }
+    }
+  } catch (err) {
+    console.error('Error awarding session points to team:', err)
+  }
 }
 
 export async function manageActivityLibraryAction(formData: FormData) {
@@ -4453,11 +4577,29 @@ export async function submitDailyActivityApprovalStepAction(
           .set({ status: 'approved', approvedAt: now, updatedAt: now })
           .where(eq(dailyActivitySessions.id, payload.sessionId))
 
+        // Award points & update streak for submitter and all team members
+        await awardSessionPointsToTeam(payload.sessionId, db)
+
         const [empRow] = await db
           .select({ name: employees.name, email: employees.email })
           .from(employees)
           .where(eq(employees.id, session.employeeId))
           .limit(1)
+
+        // Query team member emails as well
+        const teamMemberRows = await db
+          .select({ email: employees.email })
+          .from(dailyActivitySessionTeamMembers)
+          .innerJoin(employees, eq(dailyActivitySessionTeamMembers.employeeId, employees.id))
+          .where(eq(dailyActivitySessionTeamMembers.sessionId, payload.sessionId))
+
+        const allBellEmails = Array.from(
+          new Set(
+            [empRow?.email, ...teamMemberRows.map((t) => t.email)].filter(
+              (e): e is string => Boolean(e)
+            )
+          )
+        )
 
         if (empRow?.email) {
           try {
@@ -4471,13 +4613,15 @@ export async function submitDailyActivityApprovalStepAction(
           } catch (emailErr) {
             console.error('Error sending completed approval email:', emailErr)
           }
+        }
 
+        if (allBellEmails.length > 0) {
           await notifyWorkflowBellRecipients({
-            recipientEmails: [empRow.email],
+            recipientEmails: allBellEmails,
             eventType: 'daily_activity_approved',
             category: 'approval_requests',
             title: `Daily Activity Disetujui: ${session.sessionCode || ''}`,
-            body: `Daily Activity untuk sesi ${session.sessionCode || ''} telah disetujui sepenuhnya.`,
+            body: `Daily Activity untuk sesi ${session.sessionCode || ''} telah disetujui sepenuhnya. Poin telah ditambahkan ke profil Anda.`,
             url: `/dashboard/activity-hub/document/${payload.sessionId}`,
             tagPrefix: 'daily-activity-approved',
             metadata: { sessionId: payload.sessionId },
@@ -4641,10 +4785,12 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
       .where(
         and(
           eq(dailyActivitySessionItems.sessionId, header.sessionId),
-          or(
-            eq(dailyActivitySessionItems.isChecked, true),
-            isNull(dailyActivitySessionItems.isChecked)
-          )
+          header.status === 'draft'
+            ? undefined
+            : or(
+                eq(dailyActivitySessionItems.isChecked, true),
+                isNull(dailyActivitySessionItems.isChecked)
+              )
         )
       )
       .orderBy(asc(dailyActivitySessionItems.sortOrder), asc(dailyActivitySessionItems.id))
@@ -4761,9 +4907,23 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
 
   const sigMap = new Map(employeeSigs.map((e) => [e.id, e.signatureDataUrl]))
 
+  const teamMemberRows = await db
+    .select({
+      employeeId: employees.id,
+      name: employees.name,
+      jobTitle: employees.jobTitle,
+      employeeSn: employees.employeeSn,
+    })
+    .from(dailyActivitySessionTeamMembers)
+    .innerJoin(employees, eq(dailyActivitySessionTeamMembers.employeeId, employees.id))
+    .where(eq(dailyActivitySessionTeamMembers.sessionId, header.sessionId))
+
+  const isTeamMember = teamMemberRows.some((t) => t.employeeId === currentEmployee.id)
+
   const rawRemark = header.summaryRemark || ''
   const teamMatch = rawRemark.match(/\[Team:\s*([^\]]+)\]/i)
-  const teamMembersSummary = teamMatch ? teamMatch[1].trim() : null
+  const dbTeamSummary = teamMemberRows.map((t) => t.name).join(', ')
+  const teamMembersSummary = dbTeamSummary || (teamMatch ? teamMatch[1].trim() : null)
 
   const remarkWithoutTeam = rawRemark
     .replace(/\s*\|\s*\[Team:\s*[^\]]+\]/gi, '')
@@ -4791,6 +4951,10 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
     overtimeCommandLetterId: header.overtimeCommandLetterId,
     summaryRemark: header.summaryRemark,
     teamMembersSummary,
+    teamMembers: teamMemberRows,
+    isTeamMember,
+    isTeamActivity: teamMemberRows.length > 0 || Boolean(teamMembersSummary),
+    representedByName: isTeamMember ? header.employeeName : null,
     submittedAt: header.submittedAt,
     approvedAt: header.approvedAt,
     employee: {
@@ -5344,6 +5508,9 @@ export async function approveDailyActivityStepByToken(
         .set({ status: 'approved', approvedAt: now })
         .where(eq(dailyActivitySessions.id, approval.sessionId))
 
+      // Award points & update streak for submitter and all team members
+      await awardSessionPointsToTeam(approval.sessionId, db)
+
       try {
         const [sessionRow] = await db
           .select({
@@ -5357,21 +5524,41 @@ export async function approveDailyActivityStepByToken(
           .where(eq(dailyActivitySessions.id, approval.sessionId))
           .limit(1)
 
-        if (sessionRow?.employeeEmail) {
-          await sendDailyActivityCompletedEmail({
-            sessionId: approval.sessionId,
-            sessionCode: sessionRow.sessionCode || `ACT-${approval.sessionId}`,
-            employeeName: sessionRow.employeeName || 'Karyawan',
-            employeeEmail: sessionRow.employeeEmail,
-            workDate: sessionRow.workDate,
-          })
+        const teamMemberRows = await db
+          .select({ email: employees.email })
+          .from(dailyActivitySessionTeamMembers)
+          .innerJoin(employees, eq(dailyActivitySessionTeamMembers.employeeId, employees.id))
+          .where(eq(dailyActivitySessionTeamMembers.sessionId, approval.sessionId))
 
+        const allBellEmails = Array.from(
+          new Set(
+            [sessionRow?.employeeEmail, ...teamMemberRows.map((t) => t.email)].filter(
+              (e): e is string => Boolean(e)
+            )
+          )
+        )
+
+        if (sessionRow?.employeeEmail) {
+          try {
+            await sendDailyActivityCompletedEmail({
+              sessionId: approval.sessionId,
+              sessionCode: sessionRow.sessionCode || `ACT-${approval.sessionId}`,
+              employeeName: sessionRow.employeeName || 'Karyawan',
+              employeeEmail: sessionRow.employeeEmail,
+              workDate: sessionRow.workDate,
+            })
+          } catch (emailErr) {
+            console.error('Error sending completed approval email:', emailErr)
+          }
+        }
+
+        if (allBellEmails.length > 0) {
           await notifyWorkflowBellRecipients({
-            recipientEmails: [sessionRow.employeeEmail],
+            recipientEmails: allBellEmails,
             eventType: 'daily_activity_approved',
             category: 'approval_requests',
-            title: `Daily Activity Disetujui: ${sessionRow.sessionCode || ''}`,
-            body: `Laporan aktivitas harian Anda telah disetujui secara lengkap oleh seluruh approver.`,
+            title: `Daily Activity Disetujui: ${sessionRow?.sessionCode || ''}`,
+            body: `Laporan aktivitas harian Anda telah disetujui secara lengkap oleh seluruh approver. Poin telah ditambahkan ke profil Anda.`,
             url: `/dashboard/activity-hub/document/${approval.sessionId}`,
             tagPrefix: 'daily-activity-approved',
             metadata: { sessionId: approval.sessionId },
@@ -6928,6 +7115,15 @@ export async function createDailyActivitySessionAction(input: {
 
     primaryCreatedSessionId = created.id
 
+    // Insert team members if provided
+    if (teamMemberIds.length > 0) {
+      const teamRows = teamMemberIds.map((mId) => ({
+        sessionId: created.id,
+        employeeId: mId,
+      }))
+      await db.insert(dailyActivitySessionTeamMembers).values(teamRows).onConflictDoNothing()
+    }
+
     // Insert activity items if provided
     if (input.items && input.items.length > 0) {
       const itemsToInsert = input.items
@@ -7330,9 +7526,11 @@ export async function saveActivityDraftToServerAction(input: {
   employeeId: number
   workDate: string
   shiftCode: string
+  submissionSource?: 'assigned' | 'self_input' | 'custom' | null
   siteId?: number | null
   notes?: string | null
   summaryRemark?: string | null
+  teamMemberEmployeeIds?: number[]
   items?: Array<{
     label: string
     group?: string
@@ -7360,8 +7558,10 @@ export async function saveActivityDraftToServerAction(input: {
       ? new Date(`${input.workDate}T00:00:00.000Z`)
       : new Date()
 
-    const itemsPayload = JSON.stringify(input.items ?? [])
     const summaryNote = (input.summaryRemark || input.notes || '').trim()
+    const resolvedSubmissionSource =
+      input.submissionSource ||
+      (input.items && input.items.some((it) => it.libraryActivityId) ? 'self_input' : 'custom')
 
     // Try to update existing draft first
     if (input.existingDraftSessionId) {
@@ -7383,6 +7583,7 @@ export async function saveActivityDraftToServerAction(input: {
             shiftCode: input.shiftCode || 'ALL',
             workDate: parsedWorkDate,
             summaryRemark: summaryNote,
+            submissionSource: resolvedSubmissionSource,
             updatedAt: new Date(),
           })
           .where(eq(dailyActivitySessions.id, existing.id))
@@ -7401,7 +7602,7 @@ export async function saveActivityDraftToServerAction(input: {
             remark: it.remark?.trim() || '',
             actualPoints: Number(it.points) || 0,
             tireCount: Number(it.tireCount) || 0,
-            isChecked: false,
+            isChecked: true,
             sortOrder: idx + 1,
             snapshotPayload: JSON.stringify({
               materialUsed: it.materialUsed || '',
@@ -7414,6 +7615,15 @@ export async function saveActivityDraftToServerAction(input: {
 
         if (itemsToInsert.length > 0) {
           await db.insert(dailyActivitySessionItems).values(itemsToInsert)
+        }
+
+        if (input.teamMemberEmployeeIds !== undefined) {
+          await db.delete(dailyActivitySessionTeamMembers).where(eq(dailyActivitySessionTeamMembers.sessionId, existing.id))
+          if (input.teamMemberEmployeeIds.length > 0) {
+            await db.insert(dailyActivitySessionTeamMembers).values(
+              input.teamMemberEmployeeIds.map((mId) => ({ sessionId: existing.id, employeeId: mId }))
+            ).onConflictDoNothing()
+          }
         }
 
         return { success: true, sessionId: existing.id }
@@ -7438,10 +7648,17 @@ export async function saveActivityDraftToServerAction(input: {
         sectionId: context.sectionId ?? null,
         positionId: context.positionId ?? null,
         status: 'draft',
+        submissionSource: resolvedSubmissionSource,
         summaryRemark: summaryNote,
         submittedAt: null,
       })
       .returning()
+
+    if (input.teamMemberEmployeeIds && input.teamMemberEmployeeIds.length > 0) {
+      await db.insert(dailyActivitySessionTeamMembers).values(
+        input.teamMemberEmployeeIds.map((mId) => ({ sessionId: created.id, employeeId: mId }))
+      ).onConflictDoNothing()
+    }
 
     const itemsToInsert = (input.items ?? [])
       .filter((it) => it.label?.trim())
@@ -7454,7 +7671,7 @@ export async function saveActivityDraftToServerAction(input: {
         remark: it.remark?.trim() || '',
         actualPoints: Number(it.points) || 0,
         tireCount: Number(it.tireCount) || 0,
-        isChecked: false,
+        isChecked: true,
         sortOrder: idx + 1,
         snapshotPayload: JSON.stringify({
           materialUsed: it.materialUsed || '',
@@ -7481,7 +7698,19 @@ export async function saveActivityDraftToServerAction(input: {
  */
 export async function loadActivityServerDraftAction(
   sessionId: number
-): Promise<{ success: true; draft: { workDate: string; shiftCode: string; notes: string; items: any[] } } | { success: false; error: string }> {
+): Promise<{
+  success: true
+  draft: {
+    sessionId: number
+    sessionCode: string
+    workDate: string
+    shiftCode: string
+    submissionSource: 'assigned' | 'self_input' | 'custom'
+    notes: string
+    teamMemberEmployeeIds?: number[]
+    items: any[]
+  }
+} | { success: false; error: string }> {
   try {
     const context = await getAuthenticatedEmployeeContext()
 
@@ -7501,18 +7730,38 @@ export async function loadActivityServerDraftAction(
       return { success: false, error: 'Draft tidak ditemukan atau sudah kadaluarsa.' }
     }
 
-    const items = await db
-      .select()
-      .from(dailyActivitySessionItems)
-      .where(eq(dailyActivitySessionItems.sessionId, session.id))
-      .orderBy(asc(dailyActivitySessionItems.sortOrder))
+    const [items, teamRows] = await Promise.all([
+      db
+        .select()
+        .from(dailyActivitySessionItems)
+        .where(eq(dailyActivitySessionItems.sessionId, session.id))
+        .orderBy(asc(dailyActivitySessionItems.sortOrder)),
+      db
+        .select({ employeeId: dailyActivitySessionTeamMembers.employeeId })
+        .from(dailyActivitySessionTeamMembers)
+        .where(eq(dailyActivitySessionTeamMembers.sessionId, session.id)),
+    ])
+
+    const isCustom =
+      session.submissionSource === 'custom' ||
+      (!session.submissionSource && !items.some((it) => it.libraryActivityId) && items.length > 0)
+    const resolvedSubmissionSource: 'assigned' | 'self_input' | 'custom' =
+      session.submissionSource === 'assigned'
+        ? 'assigned'
+        : isCustom
+          ? 'custom'
+          : 'self_input'
 
     return {
       success: true,
       draft: {
+        sessionId: session.id,
+        sessionCode: session.sessionCode,
         workDate: session.workDate.toISOString().slice(0, 10),
         shiftCode: session.shiftCode || 'ALL',
+        submissionSource: resolvedSubmissionSource,
         notes: session.summaryRemark || '',
+        teamMemberEmployeeIds: teamRows.map((t) => t.employeeId),
         items: items.map((item) => {
           let payload: any = {}
           try { payload = JSON.parse(item.snapshotPayload || '{}') } catch {}
@@ -7536,6 +7785,129 @@ export async function loadActivityServerDraftAction(
     }
   } catch (err: any) {
     return { success: false, error: err.message || 'Gagal memuat draft.' }
+  }
+}
+
+export async function getEmployeeServerDraftsAction(): Promise<{
+  success: boolean
+  drafts: Array<{
+    id: number
+    sessionCode: string
+    workDate: string
+    shiftCode: string
+    summaryRemark: string
+    itemCount: number
+    title: string
+    createdAt: string
+    updatedAt: string
+    photoUrls?: string[]
+  }>
+  error?: string
+}> {
+  try {
+    const context = await getAuthenticatedEmployeeContext()
+    const rows = await db
+      .select({
+        id: dailyActivitySessions.id,
+        sessionCode: dailyActivitySessions.sessionCode,
+        workDate: dailyActivitySessions.workDate,
+        shiftCode: dailyActivitySessions.shiftCode,
+        summaryRemark: dailyActivitySessions.summaryRemark,
+        createdAt: dailyActivitySessions.createdAt,
+        updatedAt: dailyActivitySessions.updatedAt,
+      })
+      .from(dailyActivitySessions)
+      .where(
+        and(
+          eq(dailyActivitySessions.employeeId, context.id),
+          eq(dailyActivitySessions.status, 'draft'),
+          isNull(dailyActivitySessions.deletedAt)
+        )
+      )
+      .orderBy(desc(dailyActivitySessions.updatedAt), desc(dailyActivitySessions.id))
+
+    const sessionIds = rows.map((r) => r.id)
+    const itemsMap = new Map<number, { count: number; firstTitle: string; photos: string[] }>()
+
+    if (sessionIds.length > 0) {
+      const items = await db
+        .select({
+          sessionId: dailyActivitySessionItems.sessionId,
+          snapshotLabel: dailyActivitySessionItems.snapshotLabel,
+          snapshotPayload: dailyActivitySessionItems.snapshotPayload,
+        })
+        .from(dailyActivitySessionItems)
+        .where(inArray(dailyActivitySessionItems.sessionId, sessionIds))
+
+      items.forEach((it) => {
+        if (!it.sessionId) return
+        const existing = itemsMap.get(it.sessionId) || { count: 0, firstTitle: '', photos: [] }
+        let itemPhotos: string[] = []
+        try {
+          const payload = JSON.parse(it.snapshotPayload || '{}')
+          if (Array.isArray(payload.photos)) {
+            itemPhotos = payload.photos.filter((p: any) => typeof p === 'string' && Boolean(p.trim()))
+          } else if (payload.photoUrl && typeof payload.photoUrl === 'string') {
+            itemPhotos = [payload.photoUrl]
+          }
+        } catch {}
+        itemsMap.set(it.sessionId, {
+          count: existing.count + 1,
+          firstTitle: existing.firstTitle || it.snapshotLabel || '',
+          photos: Array.from(new Set([...existing.photos, ...itemPhotos])),
+        })
+      })
+    }
+
+    const drafts = rows.map((r) => {
+      const itemInfo = itemsMap.get(r.id) || { count: 0, firstTitle: '', photos: [] }
+      return {
+        id: r.id,
+        sessionCode: r.sessionCode || `DFT-${r.id}`,
+        workDate: r.workDate ? r.workDate.toISOString().slice(0, 10) : '',
+        shiftCode: r.shiftCode || 'ALL',
+        summaryRemark: r.summaryRemark || '',
+        itemCount: itemInfo.count,
+        title: itemInfo.firstTitle || r.summaryRemark || `Draft Activity #${r.id}`,
+        createdAt: (r.createdAt || new Date()).toISOString(),
+        updatedAt: (r.updatedAt || r.createdAt || new Date()).toISOString(),
+        photoUrls: itemInfo.photos,
+      }
+    })
+
+    return { success: true, drafts }
+  } catch (err: any) {
+    console.error('[getEmployeeServerDraftsAction] error:', err)
+    return { success: false, drafts: [], error: err.message || 'Gagal memuat daftar draft.' }
+  }
+}
+
+export async function deleteServerActivityDraftAction(sessionId: number): Promise<{ success: boolean; error?: string }> {
+  try {
+    const context = await getAuthenticatedEmployeeContext()
+    const [session] = await db
+      .select({ id: dailyActivitySessions.id })
+      .from(dailyActivitySessions)
+      .where(
+        and(
+          eq(dailyActivitySessions.id, sessionId),
+          eq(dailyActivitySessions.employeeId, context.id),
+          eq(dailyActivitySessions.status, 'draft')
+        )
+      )
+      .limit(1)
+
+    if (!session) {
+      return { success: false, error: 'Draft tidak ditemukan atau bukan milik akun Anda.' }
+    }
+
+    await db.delete(dailyActivitySessionItems).where(eq(dailyActivitySessionItems.sessionId, sessionId))
+    await db.delete(dailyActivitySessions).where(eq(dailyActivitySessions.id, sessionId))
+
+    return { success: true }
+  } catch (err: any) {
+    console.error('[deleteServerActivityDraftAction] error:', err)
+    return { success: false, error: err.message || 'Gagal menghapus draft.' }
   }
 }
 
@@ -7739,6 +8111,9 @@ export async function batchApproveDailyActivitySessionsAction(
             approvedAt: now,
           })
           .where(eq(dailyActivitySessions.id, sessionId))
+
+        // Award points & update streak for submitter and all team members
+        await awardSessionPointsToTeam(sessionId, db)
 
         if (sessionDoc) {
           const [requester] = await db

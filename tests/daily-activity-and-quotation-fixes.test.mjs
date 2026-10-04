@@ -54,7 +54,7 @@ test('Daily Activity (DAR) - Non-blocking Post-submission and Notification Batch
   // In-app notifications in createDailyActivitySessionAction fired in parallel
   assert.match(
     actionsSource,
-    /await\s*Promise\.allSettled\(notificationJobs\)/,
+    /(?:await|void)\s*Promise\.allSettled\(notificationJobs\)/,
     'In-app notification jobs must be dispatched concurrently via Promise.allSettled'
   )
 })

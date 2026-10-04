@@ -36,6 +36,8 @@ export type QueuedFilePayload = {
   type: string
   size: number
   dataUrl: string
+  previewUrl?: string
+  url?: string
 }
 
 export type RouteSessionSyncItem = {
@@ -57,6 +59,8 @@ export type RouteSessionSyncItem = {
   photo?: QueuedFilePayload | null
   photos?: QueuedFilePayload[]
   photoUrls?: string[]
+  photoUrl?: string | null
+  previewUrls?: string[]
 }
 
 export type ActivitySyncPayload = {
@@ -75,9 +79,12 @@ export type ActivitySyncPayload = {
     materialUsed: string
     tireCount?: number
     notes: string
+    photoName?: string
+    photoUrl?: string | null
+    photoUrls?: string[]
+    previewUrls?: string[]
     photo?: QueuedFilePayload | null
     photos?: QueuedFilePayload[]
-    photoUrls?: string[]
   }>
   routeTemplateId: string
   overtimeCommandLetterId: string
@@ -102,7 +109,9 @@ export type ActivitySyncPayload = {
   photo: QueuedFilePayload | null
   photos?: QueuedFilePayload[]
   photoUrls?: string[]
+  photoName?: string
   teamMemberEmployeeIds?: number[]
+  serverDraftSessionId?: number
 }
 
 export type ActivityDraftIndexEntry = {
@@ -111,12 +120,89 @@ export type ActivityDraftIndexEntry = {
   workDate: string
   updatedAt: string
   itemCount: number
+  serverDraftSessionId?: number
+  photoUrls?: string[]
+}
+
+export function extractDraftPhotos(payload: Partial<ActivitySyncPayload>): string[] {
+  const urls: string[] = []
+
+  if (Array.isArray(payload.photoUrls)) {
+    for (const u of payload.photoUrls) {
+      if (typeof u === 'string' && u.trim() && !urls.includes(u.trim())) {
+        urls.push(u.trim())
+      }
+    }
+  }
+
+  if (Array.isArray(payload.photos)) {
+    for (const p of payload.photos) {
+      const u = p?.previewUrl || p?.dataUrl
+      if (typeof u === 'string' && u.trim() && !urls.includes(u.trim())) {
+        urls.push(u.trim())
+      }
+    }
+  }
+
+  if (payload.photo) {
+    const u = payload.photo.previewUrl || payload.photo.dataUrl
+    if (typeof u === 'string' && u.trim() && !urls.includes(u.trim())) {
+      urls.push(u.trim())
+    }
+  }
+
+  if (Array.isArray(payload.selfInputActivities)) {
+    for (const act of payload.selfInputActivities) {
+      if (Array.isArray(act.previewUrls)) {
+        for (const u of act.previewUrls) {
+          if (typeof u === 'string' && u.trim() && !urls.includes(u.trim())) urls.push(u.trim())
+        }
+      }
+      if (typeof act.photoUrl === 'string' && act.photoUrl.trim() && !urls.includes(act.photoUrl.trim())) {
+        urls.push(act.photoUrl.trim())
+      }
+      if (act.photo) {
+        const u = act.photo.previewUrl || act.photo.dataUrl
+        if (typeof u === 'string' && u.trim() && !urls.includes(u.trim())) urls.push(u.trim())
+      }
+      if (Array.isArray(act.photos)) {
+        for (const p of act.photos) {
+          const u = p?.previewUrl || p?.dataUrl
+          if (typeof u === 'string' && u.trim() && !urls.includes(u.trim())) urls.push(u.trim())
+        }
+      }
+    }
+  }
+
+  if (Array.isArray(payload.routeSessionItems)) {
+    for (const item of payload.routeSessionItems) {
+      if (Array.isArray(item.previewUrls)) {
+        for (const u of item.previewUrls) {
+          if (typeof u === 'string' && u.trim() && !urls.includes(u.trim())) urls.push(u.trim())
+        }
+      }
+      if (typeof item.photoUrl === 'string' && item.photoUrl.trim() && !urls.includes(item.photoUrl.trim())) {
+        urls.push(item.photoUrl.trim())
+      }
+      if (Array.isArray(item.photos)) {
+        for (const p of item.photos) {
+          const u = p?.previewUrl || p?.dataUrl
+          if (typeof u === 'string' && u.trim() && !urls.includes(u.trim())) urls.push(u.trim())
+        }
+      }
+    }
+  }
+
+  return urls
 }
 
 function activityDraftTitle(payload: Partial<ActivitySyncPayload>) {
   return (
     payload.draftTitle?.trim() ||
     payload.customActivityName?.trim() ||
+    (payload.selfInputActivities && payload.selfInputActivities.length > 0
+      ? `${payload.selfInputActivities.length} Aktivitas Mandiri`
+      : '') ||
     payload.routeSessionItems?.find((item) => item.isChecked)?.snapshotLabel?.trim() ||
     payload.libraryActivityId?.trim() ||
     'Daily Activity'
@@ -125,7 +211,13 @@ function activityDraftTitle(payload: Partial<ActivitySyncPayload>) {
 
 function activityDraftItemCount(payload: Partial<ActivitySyncPayload>) {
   const checkedCount = payload.routeSessionItems?.filter((item) => item.isChecked).length ?? 0
-  return checkedCount || payload.selectedLibraryActivityIds?.length || (payload.libraryActivityId ? 1 : 0)
+  return (
+    checkedCount ||
+    payload.selectedLibraryActivityIds?.length ||
+    payload.selfInputActivities?.length ||
+    (payload.customActivityName ? 1 : 0) ||
+    (payload.libraryActivityId ? 1 : 0)
+  )
 }
 
 export function getActivityDraftIndex(): ActivityDraftIndexEntry[] {
@@ -154,6 +246,7 @@ export function getActivityDraftIndex(): ActivityDraftIndexEntry[] {
     const legacyRaw = window.localStorage.getItem(ACTIVITY_DRAFT_STORAGE_KEY)
     if (!legacyRaw) return entries
     const legacy = JSON.parse(legacyRaw) as Partial<ActivitySyncPayload>
+    const legacyPhotos = extractDraftPhotos(legacy)
     return [
       {
         key: ACTIVITY_DRAFT_STORAGE_KEY,
@@ -161,6 +254,8 @@ export function getActivityDraftIndex(): ActivityDraftIndexEntry[] {
         workDate: legacy.workDate || '',
         updatedAt: new Date().toISOString(),
         itemCount: activityDraftItemCount(legacy),
+        serverDraftSessionId: legacy.serverDraftSessionId,
+        photoUrls: legacyPhotos.length > 0 ? legacyPhotos : undefined,
       },
       ...entries,
     ]
@@ -179,15 +274,19 @@ export function createActivityDraftKey() {
 
 export function saveActivityDraftIndexEntry(
   key: string,
-  payload: Partial<ActivitySyncPayload>
+  payload: Partial<ActivitySyncPayload>,
+  serverDraftSessionId?: number
 ) {
   if (typeof window === 'undefined') return
+  const extractedPhotos = extractDraftPhotos(payload)
   const nextEntry: ActivityDraftIndexEntry = {
     key,
     title: activityDraftTitle(payload),
     workDate: payload.workDate || '',
     updatedAt: new Date().toISOString(),
     itemCount: activityDraftItemCount(payload),
+    serverDraftSessionId: serverDraftSessionId ?? payload.serverDraftSessionId,
+    photoUrls: extractedPhotos.length > 0 ? extractedPhotos : undefined,
   }
   const next = [nextEntry, ...getActivityDraftIndex().filter((entry) => entry.key !== key)]
   try {
@@ -206,6 +305,31 @@ export function removeActivityDraft(key: string) {
     window.localStorage.setItem(ACTIVITY_DRAFT_INDEX_STORAGE_KEY, JSON.stringify(next))
     window.dispatchEvent(new CustomEvent(ACTIVITY_DRAFTS_CHANGED_EVENT))
   } catch {}
+}
+
+export function readDraft<T>(key: string): T | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return null
+    return JSON.parse(raw) as T
+  } catch {
+    return null
+  }
+}
+
+export function writeDraft<T>(key: string, value: T): { ok: true; error?: never } | { ok: false; error: string } {
+  if (typeof window === 'undefined') return { ok: true }
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value))
+    return { ok: true }
+  } catch (error) {
+    const detail = error instanceof Error && error.message.trim() ? ` (${error.message.trim()})` : ''
+    return {
+      ok: false,
+      error: `Draft tidak dapat disimpan di perangkat ini. Penyimpanan browser mungkin diblokir atau penuh${detail}.`,
+    }
+  }
 }
 
 export type AttendanceSyncPayload = {
@@ -313,6 +437,9 @@ export const activitySyncPayloadSchema = z.object({
         materialUsed: trimmedOptionalText(500),
         tireCount: z.number().int().min(0).max(100).optional().default(0),
         notes: trimmedOptionalText(1200),
+        photoName: trimmedOptionalText(200).optional(),
+        photoUrl: z.string().optional().nullable(),
+        previewUrls: z.array(z.string()).optional().default([]),
       })
     )
     .optional(),
@@ -340,6 +467,8 @@ export const activitySyncPayloadSchema = z.object({
       photos: z.array(queuedImageFileSchema).optional().default([]),
       photoUrls: z.array(z.string().url().max(2000)).optional().default([]),
       sortOrder: z.number().int().min(0).max(9999),
+      photoUrl: z.string().optional().nullable(),
+      previewUrls: z.array(z.string()).optional().default([]),
     })
   ),
   customActivityName: trimmedOptionalText(160),

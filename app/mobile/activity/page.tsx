@@ -53,15 +53,16 @@ async function safeQuery<T>(fn: () => Promise<T>, fallback: T, label: string): P
 export default async function MobileActivityPage({
   searchParams,
 }: {
-  searchParams: Promise<{ submitted?: string; spl?: string; tab?: string; edit?: string }>;
+  searchParams: Promise<{ submitted?: string; spl?: string; tab?: string; edit?: string; draft?: string }>;
 }) {
   const session = await getServerSession();
   if (!session?.user?.email) redirect("/sign-in");
   const query = await searchParams;
   const submitted = query.submitted === "1";
   const submittedSpl = submitted && query.spl === "1";
-  const tabQuery = query.tab || (query.edit ? 'apply' : undefined);
+  const tabQuery = query.tab || (query.edit || query.draft ? 'apply' : undefined);
   const editSessionId = query.edit;
+  const draftQuery = query.draft;
 
   // Step 1: Core parallel fetch for employee DAR data, DAR approval center, and master references
   const [data, rawSections, rawDepartments, rawSites, approvals] = await Promise.all([
@@ -238,6 +239,7 @@ export default async function MobileActivityPage({
       submitted={submitted}
       submittedSpl={submittedSpl}
       tabQuery={tabQuery}
+      draftQuery={draftQuery}
       editSessionData={editSessionData}
       approvals={approvals}
     />

@@ -867,6 +867,17 @@ async function drawSignatureArea(
         color: rgb(0.45, 0.45, 0.45),
       });
     }
+
+    if (index === 0 && data.teamMembersSummary) {
+      const teamNote = `Mewakili Tim (${data.teamMembersSummary.slice(0, 30)}${data.teamMembersSummary.length > 30 ? '...' : ''})`;
+      page.drawText(teamNote, {
+        x,
+        y: block.signedAt ? startY - 9 : startY - 1,
+        size: 6,
+        font: boldFont,
+        color: rgb(0.35, 0.15, 0.55),
+      });
+    }
   }
 
   // Evidence QR Code in bottom right - only render if evidence/photos exist
