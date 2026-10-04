@@ -7240,21 +7240,19 @@ export async function createDailyActivitySessionAction(input: {
         ? await db.select({ name: sites.name }).from(sites).where(eq(sites.id, siteId)).limit(1)
         : []
 
-      try {
-        await sendDailyActivityStepApprovalEmail({
-          sessionId: created.id,
-          sessionCode: created.sessionCode || `ACT-${created.id}`,
-          employeeName: emp.name || 'Karyawan',
-          workDate: parsedWorkDate,
-          siteName: siteRow?.name || '-',
-          approverName: leaderName,
-          approverEmail: leaderEmail,
-          approvalStep: 'Leader / PJO',
-          approvalToken: step2Token,
-        })
-      } catch (emailErr) {
+      void sendDailyActivityStepApprovalEmail({
+        sessionId: created.id,
+        sessionCode: created.sessionCode || `ACT-${created.id}`,
+        employeeName: emp.name || 'Karyawan',
+        workDate: parsedWorkDate,
+        siteName: siteRow?.name || '-',
+        approverName: leaderName,
+        approverEmail: leaderEmail,
+        approvalStep: 'Leader / PJO',
+        approvalToken: step2Token,
+      }).catch((emailErr) => {
         console.error('Error sending step 2 approval email to leader:', emailErr)
-      }
+      })
     }
 
     // Send in-app notification to Leader & submitter & team members — fire all in parallel
@@ -7294,8 +7292,10 @@ export async function createDailyActivitySessionAction(input: {
         }
       }
 
-      // Fire all notifications simultaneously — don't block the response
-      await Promise.allSettled(notificationJobs)
+      // Notifications run after the database commit without delaying the submit response.
+      void Promise.allSettled(notificationJobs).catch((notifyErr) => {
+        console.warn('Non-blocking notification warning:', notifyErr)
+      })
     } catch (notifyErr) {
       console.warn('Non-blocking notification warning:', notifyErr)
     }
