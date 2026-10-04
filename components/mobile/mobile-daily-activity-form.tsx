@@ -321,6 +321,7 @@ type RouteItemState = {
   photoName?: string
   previewUrls?: string[]
   restoredPhotoPayload?: QueuedFilePayload | null
+  queuedPhotoPayloads?: QueuedFilePayload[]
 }
 
 type SelfInputEntryState = {
@@ -336,6 +337,7 @@ type SelfInputEntryState = {
   photoName?: string
   previewUrls?: string[]
   restoredPhotoPayload?: QueuedFilePayload | null
+  queuedPhotoPayloads?: QueuedFilePayload[]
 }
 
 const emptyRouteItemState: RouteItemState = {
@@ -387,6 +389,9 @@ async function prepareEvidence(
     // ponytail: failed submissions may leave orphaned evidence; add cleanup when storage growth warrants it.
     return { payloads: [], urls: await Promise.all(selectedFiles.map(uploadActivityPhoto)) }
   }
+  if (restored) {
+    return { payloads: [], urls: [await uploadActivityPhoto(queuedPhotoToFile(restored))] }
+  }
   if (existingPreviewUrls && existingPreviewUrls.length > 0) {
     const validExistingUrls = existingPreviewUrls.filter(
       (url) => typeof url === 'string' && (url.startsWith('http') || url.startsWith('/'))
@@ -396,6 +401,26 @@ async function prepareEvidence(
     }
   }
   return { payloads: restored ? [restored] : [], urls: [] }
+}
+
+async function fileToQueuedPhoto(file: File): Promise<QueuedFilePayload> {
+  if (!file.type.startsWith('image/')) throw new Error('Evidence harus berupa gambar.')
+  if (file.size > 5 * 1024 * 1024) throw new Error('Ukuran foto maksimal 5MB.')
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(new Error('Gagal membaca foto untuk draft.'))
+    reader.readAsDataURL(file)
+  })
+  return { name: file.name, type: file.type, size: file.size, dataUrl }
+}
+
+function queuedPhotoToFile(payload: QueuedFilePayload): File {
+  const match = payload.dataUrl.match(/^data:(.+);base64,(.+)$/)
+  if (!match) throw new Error('Payload foto draft tidak valid.')
+  const binary = atob(match[2])
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0))
+  return new File([bytes], payload.name, { type: payload.type || match[1] })
 }
 
 function readDraft<T>(key: string) {
@@ -415,10 +440,17 @@ function writeDraft<T>(key: string, value: T): { ok: true } | { ok: false; error
     window.localStorage.setItem(key, JSON.stringify(value))
     return { ok: true }
   } catch (error) {
-    const detail = error instanceof Error && error.message.trim() ? ` (${error.message.trim()})` : ''
-    return {
-      ok: false,
-      error: `Draft tidak dapat disimpan di perangkat ini. Penyimpanan browser mungkin diblokir atau penuh${detail}.`,
+    // Retry once after removing the legacy single-draft slot, which may duplicate a named draft.
+    try {
+      window.localStorage.removeItem(ACTIVITY_DRAFT_STORAGE_KEY)
+      window.localStorage.setItem(key, JSON.stringify(value))
+      return { ok: true }
+    } catch {
+      const detail = error instanceof Error && error.message.trim() ? ` (${error.message.trim()})` : ''
+      return {
+        ok: false,
+        error: `Draft tidak dapat disimpan di perangkat ini. Penyimpanan browser mungkin diblokir atau penuh${detail}.`,
+      }
     }
   }
 }
@@ -903,6 +935,7 @@ export function MobileDailyActivityForm({
   const [photoName, setPhotoName] = useState(initialCustomUrls.length > 0 ? `${initialCustomUrls.length} foto terlampir` : '')
   const [photoPreviewUrls, setPhotoPreviewUrls] = useState<string[]>(initialCustomUrls)
   const [restoredPhotoPayload, setRestoredPhotoPayload] = useState<QueuedFilePayload | null>(null)
+  const [queuedPhotoPayloads, setQueuedPhotoPayloads] = useState<QueuedFilePayload[]>([])
   const [photoCaptureMode, setPhotoCaptureMode] = useState<'camera' | 'gallery'>('gallery')
   const [activePhotoTarget, setActivePhotoTarget] = useState<string | null>(null)
   const activePhotoTargetRef = useRef<string | null>(null)
@@ -929,7 +962,7 @@ export function MobileDailyActivityForm({
     }
   }
 
-  const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? [])
     if (files.length === 0) return
 
@@ -939,6 +972,13 @@ export function MobileDailyActivityForm({
     const file = files[0] ?? null
     const names = files.map((item) => item.name).join(', ')
     const previewUrls = files.map((f) => URL.createObjectURL(f))
+    let queuedPayloads: QueuedFilePayload[] = []
+    try {
+      queuedPayloads = await Promise.all(files.map(fileToQueuedPhoto))
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Gagal menyimpan foto ke draft.')
+      return
+    }
 
     if (targetId === 'single') {
       setPhotoFile(file)
@@ -946,6 +986,7 @@ export function MobileDailyActivityForm({
       setPhotoName(names)
       setPhotoPreviewUrls(previewUrls)
       setRestoredPhotoPayload(null)
+      setQueuedPhotoPayloads(queuedPayloads)
     } else if (targetId.startsWith('route:')) {
       const id = parseInt(targetId.split(':')[1], 10)
       setRouteItemState((prev) => ({
@@ -957,6 +998,7 @@ export function MobileDailyActivityForm({
           photoName: names,
           previewUrls: previewUrls,
           restoredPhotoPayload: null,
+          queuedPhotoPayloads: queuedPayloads,
         },
       }))
     } else if (targetId.startsWith('library:')) {
@@ -970,6 +1012,7 @@ export function MobileDailyActivityForm({
           photoName: names,
           previewUrls: previewUrls,
           restoredPhotoPayload: null,
+          queuedPhotoPayloads: queuedPayloads,
         },
       }))
     }
@@ -985,6 +1028,7 @@ export function MobileDailyActivityForm({
       setPhotoName('')
       setPhotoPreviewUrls([])
       setRestoredPhotoPayload(null)
+      setQueuedPhotoPayloads([])
     } else if (targetId.startsWith('route:')) {
       const id = parseInt(targetId.split(':')[1], 10)
       setRouteItemState((prev) => ({
@@ -996,6 +1040,7 @@ export function MobileDailyActivityForm({
           photoName: '',
           previewUrls: [],
           restoredPhotoPayload: null,
+          queuedPhotoPayloads: [],
         },
       }))
     } else if (targetId.startsWith('library:')) {
@@ -1009,6 +1054,7 @@ export function MobileDailyActivityForm({
           photoName: '',
           previewUrls: [],
           restoredPhotoPayload: null,
+          queuedPhotoPayloads: [],
         },
       }))
     }
@@ -1694,6 +1740,12 @@ export function MobileDailyActivityForm({
               materialUsed: item.materialUsed ?? '',
               tireCount: item.tireCount ?? 0,
               notes: item.notes ?? '',
+              photo: item.photo ?? null,
+              photos: item.photos ?? (item.photo ? [item.photo] : []),
+              previewUrls: item.photoUrls ?? [],
+              photoName: (item.photoUrls?.length || item.photo || item.photos?.length) ? String(item.photoUrls?.length || item.photos?.length || 1) + ' foto terlampir' : '',
+              restoredPhotoPayload: item.photo ?? item.photos?.[0] ?? null,
+              queuedPhotoPayloads: item.photos ?? (item.photo ? [item.photo] : []),
             },
           ])
         )
@@ -1740,8 +1792,10 @@ export function MobileDailyActivityForm({
     setMaterialUsed(draft.materialUsed ?? '')
     setNotes(draft.notes ?? '')
     setManualLocation(draft.manualLocation ?? '')
-    setPhotoName(draft.photo?.name ?? '')
-    setRestoredPhotoPayload(draft.photo ?? null)
+    setPhotoName(draft.photoUrls?.length || draft.photo || draft.photos?.length ? String(draft.photoUrls?.length || draft.photos?.length || 1) + ' foto terlampir' : '')
+    setPhotoPreviewUrls(draft.photoUrls ?? [])
+    setRestoredPhotoPayload(draft.photo ?? draft.photos?.[0] ?? null)
+    setQueuedPhotoPayloads(draft.photos ?? (draft.photo ? [draft.photo] : []))
     if (restoredRouteSessionItems.length > 0) {
       setRouteItemState(
         Object.fromEntries(
@@ -1767,6 +1821,10 @@ export function MobileDailyActivityForm({
                   actualPoints: `${item.actualPoints}`,
                   tireCount: item.tireCount ?? 0,
                   materialUsed: item.materialUsed || '',
+                  photoName: item.photoUrls?.length || item.photo || item.photos?.length ? String(item.photoUrls?.length || item.photos?.length || 1) + ' foto terlampir' : '',
+                  previewUrls: item.photoUrls || [],
+                  restoredPhotoPayload: item.photo || item.photos?.[0] || null,
+                  queuedPhotoPayloads: item.photos || (item.photo ? [item.photo] : []),
                 },
               ],
             ]
@@ -2018,6 +2076,9 @@ export function MobileDailyActivityForm({
             ? Number(stateForItem.actualPoints || basePoints || 0)
             : 0,
           tireCount: stateForItem?.isChecked && item.requiresTireCount ? stateForItem.tireCount ?? 0 : 0,
+          photo: stateForItem?.queuedPhotoPayloads?.[0] ?? null,
+          photos: stateForItem?.queuedPhotoPayloads ?? [],
+          photoUrls: stateForItem?.previewUrls ?? [],
           sortOrder: item.sortOrder,
         }
       })
@@ -2048,6 +2109,9 @@ export function MobileDailyActivityForm({
         materialUsed: entry.materialUsed,
         tireCount: entry.tireCount ?? 0,
         notes: entry.notes,
+        photo: entry.queuedPhotoPayloads?.[0] ?? null,
+        photos: entry.queuedPhotoPayloads ?? [],
+        photoUrls: entry.previewUrls ?? [],
       }
     }),
     routeTemplateId:
@@ -2088,8 +2152,9 @@ export function MobileDailyActivityForm({
     gpsValid: boundary.gpsValid,
     boundaryStatus: boundary.status,
     boundaryMessage: boundary.message,
-    photo: null,
-    photos: [],
+    photo: queuedPhotoPayloads[0] ?? null,
+    photos: queuedPhotoPayloads,
+    photoUrls: photoPreviewUrls.filter((url) => url.startsWith('http') || url.startsWith('/')),
     teamMemberEmployeeIds: selectedMemberIds,
   }
 
@@ -3862,11 +3927,17 @@ export function MobileDailyActivityForm({
                   })
                   toast.warning('Draft tersimpan di perangkat. Pastikan koneksi stabil saat submit.', { duration: 4000 })
                 }
-              } catch {
-                setSubmitState({
-                  kind: 'success',
-                  message: 'Draft disimpan di perangkat ini.',
-                })
+              } catch (error) {
+                if (localResult.ok) {
+                  setSubmitState({
+                    kind: 'success',
+                    message: 'Draft disimpan di perangkat ini.',
+                  })
+                } else {
+                  const message = error instanceof Error ? error.message : 'Server draft tidak tersedia.'
+                  setSubmitState({ kind: 'error', message: `Draft gagal disimpan: ${message}` })
+                  toast.error(`Draft gagal disimpan: ${message}`, { duration: 5000 })
+                }
               }
             }}
           >
