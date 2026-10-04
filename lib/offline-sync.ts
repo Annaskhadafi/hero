@@ -55,6 +55,8 @@ export type RouteSessionSyncItem = {
   materialUsed?: string
   sortOrder: number
   photo?: QueuedFilePayload | null
+  photos?: QueuedFilePayload[]
+  photoUrls?: string[]
 }
 
 export type ActivitySyncPayload = {
@@ -73,6 +75,9 @@ export type ActivitySyncPayload = {
     materialUsed: string
     tireCount?: number
     notes: string
+    photo?: QueuedFilePayload | null
+    photos?: QueuedFilePayload[]
+    photoUrls?: string[]
   }>
   routeTemplateId: string
   overtimeCommandLetterId: string
@@ -331,6 +336,9 @@ export const activitySyncPayloadSchema = z.object({
       actualPoints: z.number().int().min(0).max(5000),
       tireCount: z.number().int().min(0).max(100).optional().default(0),
       materialUsed: trimmedOptionalText(500),
+      photo: queuedImageFileSchema.nullable().optional().default(null),
+      photos: z.array(queuedImageFileSchema).optional().default([]),
+      photoUrls: z.array(z.string().url().max(2000)).optional().default([]),
       sortOrder: z.number().int().min(0).max(9999),
     })
   ),
