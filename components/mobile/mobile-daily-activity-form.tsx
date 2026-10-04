@@ -403,6 +403,40 @@ async function prepareEvidence(
   return { payloads: restored ? [restored] : [], urls: [] }
 }
 
+async function compressImageFile(file: File): Promise<File> {
+  if (!file.type.startsWith('image/') || file.size <= 400 * 1024) return file
+  if (typeof createImageBitmap === 'undefined' || typeof document === 'undefined') return file
+
+  try {
+    const bitmap = await createImageBitmap(file)
+    const maxDimension = 1600
+    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale))
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale))
+    const context = canvas.getContext('2d')
+    if (!context) {
+      bitmap.close()
+      return file
+    }
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    bitmap.close()
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, 'image/jpeg', 0.78)
+    )
+    if (!blob || blob.size >= file.size) return file
+
+    const baseName = file.name.replace(/\.[^.]+$/, '') || 'evidence'
+    return new File([blob], `${baseName}.jpg`, {
+      type: 'image/jpeg',
+      lastModified: Date.now(),
+    })
+  } catch {
+    return file
+  }
+}
+
 async function fileToQueuedPhoto(file: File): Promise<QueuedFilePayload> {
   if (!file.type.startsWith('image/')) throw new Error('Evidence harus berupa gambar.')
   if (file.size > 5 * 1024 * 1024) throw new Error('Ukuran foto maksimal 5MB.')
@@ -969,12 +1003,13 @@ export function MobileDailyActivityForm({
     const targetId = activePhotoTargetRef.current || activePhotoTarget
     if (!targetId) return
 
-    const file = files[0] ?? null
-    const names = files.map((item) => item.name).join(', ')
-    const previewUrls = files.map((f) => URL.createObjectURL(f))
+    const compressedFiles = await Promise.all(files.map(compressImageFile))
+    const file = compressedFiles[0] ?? null
+    const names = compressedFiles.map((item) => item.name).join(', ')
+    const previewUrls = compressedFiles.map((f) => URL.createObjectURL(f))
     let queuedPayloads: QueuedFilePayload[] = []
     try {
-      queuedPayloads = await Promise.all(files.map(fileToQueuedPhoto))
+      queuedPayloads = await Promise.all(compressedFiles.map(fileToQueuedPhoto))
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Gagal menyimpan foto ke draft.')
       return
@@ -982,7 +1017,7 @@ export function MobileDailyActivityForm({
 
     if (targetId === 'single') {
       setPhotoFile(file)
-      setPhotoFiles(files)
+      setPhotoFiles(compressedFiles)
       setPhotoName(names)
       setPhotoPreviewUrls(previewUrls)
       setRestoredPhotoPayload(null)
@@ -994,7 +1029,7 @@ export function MobileDailyActivityForm({
         [id]: {
           ...prev[id],
           photoFile: file,
-          photoFiles: files,
+          photoFiles: compressedFiles,
           photoName: names,
           previewUrls: previewUrls,
           restoredPhotoPayload: null,
