@@ -1058,6 +1058,156 @@ async function sendContractReviewApprovalEmailForStep(
   }
 }
 
+export async function reconcileContractReviewWorkflow(reviewId: number) {
+  try {
+    const [review] = await db
+      .select()
+      .from(hcEmployeeContractReviews)
+      .where(eq(hcEmployeeContractReviews.id, reviewId))
+      .limit(1)
+
+    if (!review) return null
+
+    let approvals = await db
+      .select()
+      .from(hcContractReviewApprovals)
+      .where(eq(hcContractReviewApprovals.reviewId, reviewId))
+      .orderBy(asc(hcContractReviewApprovals.stepOrder))
+
+    if (approvals.length === 0) {
+      approvals = await ensureContractReviewApprovals(reviewId)
+    }
+    if (approvals.length === 0) return null
+
+    // 1. Sync leader signature between review and Step 1
+    if (review.leaderSignatureDataUrl && approvals[0] && !approvals[0].signatureDataUrl) {
+      await db
+        .update(hcContractReviewApprovals)
+        .set({
+          signatureDataUrl: review.leaderSignatureDataUrl,
+          signedAt: review.updatedAt || new Date(),
+          status: 'approved',
+        })
+        .where(eq(hcContractReviewApprovals.id, approvals[0].id))
+      approvals[0].signatureDataUrl = review.leaderSignatureDataUrl
+      approvals[0].status = 'approved'
+    } else if (approvals[0]?.signatureDataUrl && !review.leaderSignatureDataUrl) {
+      await db
+        .update(hcEmployeeContractReviews)
+        .set({ leaderSignatureDataUrl: approvals[0].signatureDataUrl, updatedAt: new Date() })
+        .where(eq(hcEmployeeContractReviews.id, reviewId))
+      review.leaderSignatureDataUrl = approvals[0].signatureDataUrl
+    }
+
+    // 2. Any step that has signatureDataUrl MUST be status = 'approved'
+    for (const step of approvals) {
+      const hasSig = Boolean(step.signatureDataUrl && step.signatureDataUrl.trim().length > 0)
+      if (hasSig && step.status !== 'approved') {
+        const signedAt = step.signedAt || new Date()
+        await db
+          .update(hcContractReviewApprovals)
+          .set({ status: 'approved', signedAt })
+          .where(eq(hcContractReviewApprovals.id, step.id))
+        step.status = 'approved'
+        step.signedAt = signedAt
+      }
+    }
+
+    // 3. Skip progression if review is cancelled
+    if (review.status === 'cancelled') {
+      return { review, approvals }
+    }
+
+    const allSigned = approvals.every((s) => s.status === 'approved' || Boolean(s.signatureDataUrl))
+
+    if (allSigned) {
+      // All steps are signed -> review MUST be completed
+      for (const step of approvals) {
+        if (step.status !== 'approved') {
+          await db
+            .update(hcContractReviewApprovals)
+            .set({ status: 'approved' })
+            .where(eq(hcContractReviewApprovals.id, step.id))
+          step.status = 'approved'
+        }
+      }
+
+      if (review.status !== 'completed') {
+        const completedAt = new Date()
+        await db
+          .update(hcEmployeeContractReviews)
+          .set({ status: 'completed', updatedAt: completedAt })
+          .where(eq(hcEmployeeContractReviews.id, reviewId))
+        await syncCompletedContractReviewToEmployee(review, completedAt)
+        review.status = 'completed'
+      }
+    } else {
+      // Not all steps are signed
+      let foundFirstUnsigned = false
+      let stepToEmail: typeof approvals[0] | null = null
+
+      for (const step of approvals) {
+        const isSigned = step.status === 'approved' || Boolean(step.signatureDataUrl)
+        if (isSigned) {
+          if (step.status !== 'approved') {
+            await db
+              .update(hcContractReviewApprovals)
+              .set({ status: 'approved', signedAt: step.signedAt || new Date() })
+              .where(eq(hcContractReviewApprovals.id, step.id))
+            step.status = 'approved'
+          }
+        } else {
+          if (!foundFirstUnsigned) {
+            foundFirstUnsigned = true
+            const shouldBePending = review.status === 'in_progress' || (review.status === 'draft' && step.stepOrder === 1)
+            const targetStatus = shouldBePending ? 'pending' : 'waiting'
+            if (step.status !== targetStatus) {
+              await db
+                .update(hcContractReviewApprovals)
+                .set({ status: targetStatus })
+                .where(eq(hcContractReviewApprovals.id, step.id))
+              if (targetStatus === 'pending' && step.status !== 'pending') {
+                stepToEmail = step
+              }
+              step.status = targetStatus
+            }
+          } else {
+            if (step.status !== 'waiting') {
+              await db
+                .update(hcContractReviewApprovals)
+                .set({ status: 'waiting' })
+                .where(eq(hcContractReviewApprovals.id, step.id))
+              step.status = 'waiting'
+            }
+          }
+        }
+      }
+
+      // If review was marked completed prematurely without all signatures
+      if (review.status === 'completed') {
+        await db
+          .update(hcEmployeeContractReviews)
+          .set({ status: 'in_progress', updatedAt: new Date() })
+          .where(eq(hcEmployeeContractReviews.id, reviewId))
+        review.status = 'in_progress'
+      }
+
+      if (stepToEmail && review.status === 'in_progress') {
+        try {
+          await sendContractReviewApprovalEmailForStep(review, stepToEmail)
+        } catch (e) {
+          console.warn('[reconcile] Could not dispatch auto approval email:', e)
+        }
+      }
+    }
+
+    return { review, approvals }
+  } catch (err) {
+    console.error('[reconcileContractReviewWorkflow] Error:', err)
+    return null
+  }
+}
+
 async function resolveApproverForEmployee(emp: {
   id: number
   sectionId?: number | null
@@ -1803,14 +1953,24 @@ export async function getContractReviews() {
       success: true,
       data: records.map((record) => {
         const reviewApprovals = approvalsByReview.get(record.id) ?? []
-        const currentApproval = reviewApprovals.find((approval) => approval.status === 'pending')
+        const completedSteps = reviewApprovals.filter(
+          (approval) => approval.status === 'approved' || Boolean(approval.signatureDataUrl)
+        ).length
+
+        let currentApproval = reviewApprovals.find((approval) => approval.status === 'pending')
+        if (!currentApproval && record.status === 'in_progress') {
+          currentApproval = reviewApprovals.find(
+            (approval) => approval.status !== 'approved' && !approval.signatureDataUrl
+          )
+        }
+
         return {
           ...record,
-          approvalStep: currentApproval?.stepOrder ?? null,
+          approvalStep: currentApproval?.stepOrder ?? (record.status === 'completed' ? reviewApprovals.length : null),
           approvalTotalSteps: reviewApprovals.length,
           approvalApproverName: currentApproval?.approverName ?? null,
           approvalApproverRole: currentApproval?.approverRole ?? null,
-          approvalCompletedSteps: reviewApprovals.filter((approval) => approval.status === 'approved').length,
+          approvalCompletedSteps: completedSteps,
         }
       }),
     }
@@ -1946,6 +2106,7 @@ export async function getContractReviewById(id: number) {
   try {
     await ensureContractReviewWorkflowTables()
     await ensureContractReviewApprovals(id)
+    await reconcileContractReviewWorkflow(id)
     const [record] = await db.select().from(hcEmployeeContractReviews).where(eq(hcEmployeeContractReviews.id, id))
     if (!record) return { success: false, error: 'Review not found' }
 
@@ -2273,6 +2434,10 @@ export async function saveContractReview(data: Partial<typeof hcEmployeeContract
       }
     }
 
+    if (saved?.id) {
+      await reconcileContractReviewWorkflow(saved.id)
+    }
+
     revalidatePath('/dashboard/hc/contract-review')
     return { success: true, data: saved }
   } catch (error: any) {
@@ -2305,6 +2470,7 @@ export async function saveAdminContractReview(data: Partial<typeof hcEmployeeCon
       .where(eq(hcEmployeeContractReviews.id, data.id))
       .returning()
     await ensureContractReviewApprovals(data.id)
+    await reconcileContractReviewWorkflow(data.id)
     revalidatePath('/dashboard/hc/contract-review')
     revalidatePath(`/dashboard/hc/contract-review/form/${data.id}`)
     return { success: true, data: saved }
@@ -2351,6 +2517,8 @@ export async function updateAdminContractReviewApprovalSignature(reviewId: numbe
         .where(eq(hcEmployeeContractReviews.id, reviewId))
     }
 
+    await reconcileContractReviewWorkflow(reviewId)
+
     revalidatePath(`/dashboard/hc/contract-review/form/${reviewId}`)
     revalidatePath(`/dashboard/hc/contract-review/${reviewId}`)
     revalidatePath('/dashboard/hc/contract-review')
@@ -2394,6 +2562,7 @@ export async function updateContractReviewStatus(
 
     await ensureContractReviewWorkflowTables()
     await ensureContractReviewApprovals(reviewId)
+    await reconcileContractReviewWorkflow(reviewId)
     const [review] = await db
       .select()
       .from(hcEmployeeContractReviews)
@@ -2437,6 +2606,7 @@ export async function updateContractReviewStatus(
         .where(eq(hcEmployeeContractReviews.id, reviewId))
     }
 
+    await reconcileContractReviewWorkflow(reviewId)
     safeRevalidatePath('/dashboard/hc/contract-review')
     safeRevalidatePath(`/dashboard/hc/contract-review/form/${reviewId}`)
     return { success: true, message: `Status review berhasil diubah menjadi ${newStatus}.` }
@@ -2765,6 +2935,8 @@ export async function approveContractReviewStep(
         }
       }
     }
+
+    await reconcileContractReviewWorkflow(approval.reviewId)
 
     safeRevalidatePath('/dashboard/hc/contract-review')
     safeRevalidatePath('/dashboard/approval')

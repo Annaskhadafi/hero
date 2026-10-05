@@ -2,7 +2,8 @@
 
 import { useState, useTransition, useEffect, useMemo, useRef } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { Save, Printer, ArrowLeft, Plus, Trash2, Send, Upload, Paperclip, FileText, Image as ImageIcon, ExternalLink, Loader2, Eye, Download, FileCheck, PenTool } from "lucide-react"
+import { toast } from "sonner"
+import { Save, Printer, ArrowLeft, Plus, Trash2, Send, Upload, Paperclip, FileText, Image as ImageIcon, ExternalLink, Loader2, Eye, Download, FileCheck, PenTool, Check } from "lucide-react"
 import SignatureCanvas from "react-signature-canvas"
 
 import {
@@ -1867,40 +1868,84 @@ export function ContractReviewClientForm({
       description="Lengkapi evaluasi karyawan."
       compact={isMobileRoute}
     >
+      {/* ACTION TOOLBAR: Full-width, sticky, ultra-responsive under any zoom level, clean & minimal */}
+      <div className={cn(
+        "sticky top-2 z-30 mb-4 flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-slate-200/90 bg-white/95 px-3 py-2 shadow-sm backdrop-blur print:hidden",
+        isMobileRoute && "bottom-2 top-auto z-20 rounded-2xl shadow-lg p-2"
+      )}>
+        {/* Navigasi & Cetak */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => router.back()}
+            className="h-8 sm:h-9 px-2.5 sm:px-3 text-xs text-slate-700 hover:bg-slate-100"
+          >
+            <ArrowLeft className="mr-1.5 size-3.5" /> Kembali
+          </Button>
+          <div className="hidden sm:block h-4 w-px bg-slate-200 mx-0.5" />
+          <Button
+            type="button"
+            onClick={handlePrint}
+            variant="outline"
+            size="sm"
+            className="h-8 sm:h-9 px-2.5 sm:px-3 text-xs text-slate-700 hover:bg-slate-100"
+          >
+            <Printer className="mr-1.5 size-3.5" /> Print
+          </Button>
+          <Button
+            type="button"
+            onClick={handleDownloadPdf}
+            disabled={isDownloadingPdf}
+            variant="outline"
+            size="sm"
+            className="h-8 sm:h-9 px-2.5 sm:px-3 text-xs text-slate-700 hover:bg-slate-100"
+          >
+            <Download className="mr-1.5 size-3.5" /> {isDownloadingPdf ? "Menyiapkan..." : "Download PDF"}
+          </Button>
+        </div>
+
+        {/* Workflow & Simpan */}
+        <div className="flex flex-wrap items-center gap-2 ml-auto">
+          {initialData?.id && (
+            <Button
+              type="button"
+              onClick={handleResendApprovalEmail}
+              disabled={isResending}
+              variant="outline"
+              size="sm"
+              className="h-8 sm:h-9 px-2.5 sm:px-3 text-xs border-sky-300 text-sky-700 hover:bg-sky-50"
+            >
+              <Send className="mr-1.5 size-3.5" /> {isResending ? "Mengirim..." : "Kirim Email Approval"}
+            </Button>
+          )}
+          {adminMode && initialData?.id && initialData.status !== 'completed' && (
+            <Button
+              type="button"
+              onClick={handleAdminComplete}
+              disabled={isPending}
+              size="sm"
+              className="h-8 sm:h-9 px-3 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm"
+            >
+              <Check className="mr-1.5 size-3.5" /> Selesai
+            </Button>
+          )}
+          <Button
+            type="button"
+            onClick={handleSave}
+            disabled={isPending}
+            size="sm"
+            className="h-8 sm:h-9 px-3.5 text-xs bg-slate-900 hover:bg-slate-800 text-white font-medium shadow-sm transition-transform active:scale-[0.98]"
+          >
+            <Save className="mr-1.5 size-3.5" /> {isPending ? "Menyimpan..." : "Simpan Form"}
+          </Button>
+        </div>
+      </div>
+
       <div className={cn("grid gap-6", isPrintMode ? "xl:grid-cols-1" : "xl:grid-cols-2")}>
         {/* KIRI: Form Input */}
         <div className={cn("flex flex-col gap-6 print:hidden", isPrintMode && "hidden")}>
-          <div className={cn("flex gap-4", isMobileRoute && "sticky bottom-2 z-20 flex-wrap gap-2 rounded-2xl bg-white/95 p-1.5 shadow-lg backdrop-blur") }>
-            <Button variant="outline" className={cn("min-h-10", isMobileRoute && "min-h-9 px-3 text-xs")} onClick={() => router.back()}>
-              <ArrowLeft className="mr-2 size-4" /> Kembali
-            </Button>
-            <Button onClick={handlePrint} variant="secondary" className={cn("min-h-10", isMobileRoute && "min-h-9 px-3 text-xs")}>
-              <Printer className="mr-2 size-4" /> Print / Save PDF
-            </Button>
-            <Button
-              type="button"
-              onClick={handleDownloadPdf}
-              disabled={isDownloadingPdf}
-              variant="outline"
-              className={cn("min-h-10 gap-1.5", isMobileRoute && "min-h-9 px-3 text-xs")}
-            >
-              <Download className="mr-2 size-4" /> {isDownloadingPdf ? "Menyiapkan PDF..." : "Download PDF"}
-            </Button>
-            {initialData?.id && (
-              <Button onClick={handleResendApprovalEmail} disabled={isResending} variant="outline" className={cn("min-h-10", isMobileRoute && "min-h-9 px-3 text-xs")}>
-                <Send className="mr-2 size-4" /> {isResending ? "Mengirim..." : "Kirim Email Approval"}
-              </Button>
-            )}
-            {adminMode && initialData?.id && initialData.status !== 'completed' && (
-              <Button onClick={handleAdminComplete} disabled={isPending} variant="default" className="min-h-10 bg-emerald-600 hover:bg-emerald-700">
-                Selesai
-              </Button>
-            )}
-            <Button onClick={handleSave} disabled={isPending} className={cn("ml-auto min-h-10", isMobileRoute && "min-h-9 px-3 text-xs max-sm:flex-1")}>
-              <Save className="mr-2 size-4" /> {isPending ? "Menyimpan..." : "Simpan Form"}
-            </Button>
-          </div>
-
         <Card>
           <CardHeader>
             <CardTitle>Details & Employee Profile</CardTitle>

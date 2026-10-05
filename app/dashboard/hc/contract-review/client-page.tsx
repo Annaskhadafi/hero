@@ -675,10 +675,12 @@ export function ContractReviewClientPage({
                             </div>
                             <div className="h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${progress}%` }} /></div>
                           </div>
-                        ) : row.approvalStep ? (
+                        ) : row.approvalStep || totalSteps > 0 ? (
                           <div className="space-y-1.5">
                             <div className="flex items-center justify-between gap-3 text-xs">
-                              <span className="font-semibold text-slate-900">Step {row.approvalStep}/{row.approvalTotalSteps}</span>
+                              <span className="font-semibold text-slate-900">
+                                {row.approvalStep ? `Step ${row.approvalStep}/${row.approvalTotalSteps || totalSteps}` : `Menunggu Approval`}
+                              </span>
                               <span className="font-mono text-[11px] text-slate-500">{completedSteps}/{totalSteps} TTD</span>
                             </div>
                             <div className="h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-sky-500 to-indigo-500" style={{ width: `${progress}%` }} /></div>
