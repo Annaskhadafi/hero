@@ -21,7 +21,8 @@ import { getServerSession } from "@/lib/auth-session";
 import { SioDatabaseTab } from "@/components/sio-database-tab";
 import { computeAggregates } from "@/lib/sio-certification";
 import { db } from "@/db";
-import { chitraLearningCourses, chitraLearningEnrollments, employees } from "@/db/schema/hero";
+import { chitraLearningCourses, chitraLearningEnrollments, employees, chitraLearningCertificates, sites } from "@/db/schema/hero";
+import { ChitraLearningProgressTable } from "@/components/chitra-learning-progress-table";
 import { eq, desc, inArray } from "drizzle-orm";
 
 const APP_TIME_ZONE = "Asia/Makassar";
@@ -95,35 +96,38 @@ export default async function TrainingRecordsPage({
   const lmsRows = scopedEmployeeIds.size === 0 ? [] : await db
     .select({
       id: chitraLearningEnrollments.id,
+      employeeId: chitraLearningEnrollments.employeeId,
       employeeName: employees.name,
       employeeSn: employees.employeeSn,
+      siteId: employees.siteId,
+      siteName: sites.name,
+      department: employees.department,
+      section: employees.section,
       courseTitle: chitraLearningCourses.title,
+      courseSlug: chitraLearningCourses.slug,
       progress: chitraLearningEnrollments.progress,
       status: chitraLearningEnrollments.status,
+      pretestScore: chitraLearningEnrollments.pretestScore,
+      pretestStatus: chitraLearningEnrollments.pretestStatus,
       posttestScore: chitraLearningEnrollments.posttestScore,
+      posttestStatus: chitraLearningEnrollments.posttestStatus,
+      finalScore: chitraLearningEnrollments.finalScore,
+      isPassed: chitraLearningEnrollments.isPassed,
       passingScore: chitraLearningCourses.passingScore,
+      startedAt: chitraLearningEnrollments.startedAt,
+      completedAt: chitraLearningEnrollments.completedAt,
       updatedAt: chitraLearningEnrollments.updatedAt,
+      certificateNumber: chitraLearningCertificates.certificateNumber,
+      certificateIssuedAt: chitraLearningCertificates.issuedAt,
     })
     .from(chitraLearningEnrollments)
     .innerJoin(chitraLearningCourses, eq(chitraLearningEnrollments.courseId, chitraLearningCourses.id))
     .innerJoin(employees, eq(chitraLearningEnrollments.employeeId, employees.id))
+    .leftJoin(sites, eq(employees.siteId, sites.id))
+    .leftJoin(chitraLearningCertificates, eq(chitraLearningEnrollments.id, chitraLearningCertificates.enrollmentId))
     .where(inArray(chitraLearningEnrollments.employeeId, Array.from(scopedEmployeeIds)))
     .orderBy(desc(chitraLearningEnrollments.updatedAt));
-  const lmsPassed = lmsRows.filter((row) => row.status === "passed").length;
-  const lmsInProgress = lmsRows.filter((row) => row.progress > 0 && row.progress < 100).length;
-  const lmsNotStarted = lmsRows.filter((row) => !row.progress).length;
-  const lmsFailed = lmsRows.filter((row) => row.status === "failed").length;
-  const lmsAverageProgress = lmsRows.length ? Math.round(lmsRows.reduce((sum, row) => sum + row.progress, 0) / lmsRows.length) : 0;
-  const lmsAverageScore = lmsRows.filter((row) => row.posttestScore != null).length
-    ? Math.round(lmsRows.reduce((sum, row) => sum + (row.posttestScore ?? 0), 0) / lmsRows.filter((row) => row.posttestScore != null).length)
-    : 0;
-  const lmsCourseSummary = Array.from(new Map(lmsRows.map((row) => [row.courseTitle, row])).values())
-    .map((course) => {
-      const rows = lmsRows.filter((row) => row.courseTitle === course.courseTitle);
-      return { title: course.courseTitle, total: rows.length, passed: rows.filter((row) => row.status === "passed").length, progress: Math.round(rows.reduce((sum, row) => sum + row.progress, 0) / rows.length) };
-    })
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 5);
+
   const scopedOptions = {
     ...options,
     employees: options.employees.filter((employee) => scopedEmployeeIds.has(employee.id)),
@@ -131,6 +135,7 @@ export default async function TrainingRecordsPage({
       data.employeeOptions.some((employee) => employee.siteId === site.id)
     ),
   };
+  const selectedSiteId = getSearchParamValue(resolvedSearchParams, "siteId");
   const selectedEmployeeId = getSearchParamValue(resolvedSearchParams, "employeeId");
   const selectedDepartment = getSearchParamValue(resolvedSearchParams, "department");
   const selectedSection = getSearchParamValue(resolvedSearchParams, "section");
@@ -139,13 +144,39 @@ export default async function TrainingRecordsPage({
   const referenceDate = startOfDayInAppTimeZone(new Date());
 
   const filteredRows = data.rows.filter((row) => {
+    const matchesSite = !selectedSiteId || `${row.siteId}` === selectedSiteId;
     const matchesEmployee = !selectedEmployeeId || `${row.employeeId}` === selectedEmployeeId;
     const matchesDepartment = !selectedDepartment || row.department === selectedDepartment;
     const matchesSection = !selectedSection || row.section === selectedSection;
     const matchesYear = !selectedYear || `${row.completedYear}` === selectedYear;
 
-    return matchesEmployee && matchesDepartment && matchesSection && matchesYear;
+    return matchesSite && matchesEmployee && matchesDepartment && matchesSection && matchesYear;
   });
+
+  const filteredLmsRows = lmsRows.filter((row) => {
+    const matchesSite = !selectedSiteId || `${row.siteId}` === selectedSiteId;
+    const matchesEmployee = !selectedEmployeeId || `${row.employeeId}` === selectedEmployeeId;
+    const matchesDepartment = !selectedDepartment || row.department === selectedDepartment;
+    const matchesSection = !selectedSection || row.section === selectedSection;
+
+    return matchesSite && matchesEmployee && matchesDepartment && matchesSection;
+  });
+
+  const lmsPassed = filteredLmsRows.filter((row) => row.status === "passed").length;
+  const lmsInProgress = filteredLmsRows.filter((row) => row.progress > 0 && row.progress < 100).length;
+  const lmsNotStarted = filteredLmsRows.filter((row) => !row.progress).length;
+  const lmsFailed = filteredLmsRows.filter((row) => row.status === "failed").length;
+  const lmsAverageProgress = filteredLmsRows.length ? Math.round(filteredLmsRows.reduce((sum, row) => sum + row.progress, 0) / filteredLmsRows.length) : 0;
+  const lmsAverageScore = filteredLmsRows.filter((row) => row.posttestScore != null).length
+    ? Math.round(filteredLmsRows.reduce((sum, row) => sum + (row.posttestScore ?? 0), 0) / filteredLmsRows.filter((row) => row.posttestScore != null).length)
+    : 0;
+  const lmsCourseSummary = Array.from(new Map(filteredLmsRows.map((row) => [row.courseTitle, row])).values())
+    .map((course) => {
+      const rows = filteredLmsRows.filter((row) => row.courseTitle === course.courseTitle);
+      return { title: course.courseTitle, total: rows.length, passed: rows.filter((row) => row.status === "passed").length, progress: Math.round(rows.reduce((sum, row) => sum + row.progress, 0) / rows.length) };
+    })
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 5);
 
   const employeeCoverage = new Set(filteredRows.map((row) => row.employeeId)).size;
   const expiringSoon = filteredRows.filter((row) => {
@@ -234,6 +265,7 @@ export default async function TrainingRecordsPage({
       {/* Global Filter Bar */}
       <div className="mb-5 rounded-[1.2rem] border-0 bg-surface-container-lowest p-5 shadow-[0_18px_42px_rgba(8,32,51,0.08)]">
         <TrainingRecordFilters
+          sites={data.siteOptions.length > 0 ? data.siteOptions : options.sites}
           employees={data.employeeOptions}
           departments={data.departmentOptions}
           sections={data.sectionOptions}
@@ -537,10 +569,17 @@ export default async function TrainingRecordsPage({
           </div>
 
           <Card className="rounded-[1.2rem] border-0 bg-surface-container-lowest shadow-sm">
-            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-lg"><TableProperties className="size-5 text-violet-600" />Hasil dan Progress Peserta</CardTitle><CardDescription>Data langsung dari enrollment Chitra Learning, termasuk skor post-test dan batas lulus course.</CardDescription></CardHeader>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <TableProperties className="size-5 text-violet-600" />
+                Hasil dan Progress Peserta
+              </CardTitle>
+              <CardDescription>
+                Data langsung dari enrollment Chitra Learning, termasuk site penempatan, skor evaluasi, batas kelulusan, dan detail progres.
+              </CardDescription>
+            </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto rounded-xl border border-slate-100"><table className="w-full min-w-[760px] text-sm"><thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Peserta</th><th className="px-4 py-3">Course</th><th className="px-4 py-3">Progress</th><th className="px-4 py-3">Post-test</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Update</th></tr></thead><tbody className="divide-y divide-slate-100">{lmsRows.slice(0, 50).map((row) => <tr key={row.id} className="hover:bg-slate-50"><td className="px-4 py-3"><div className="font-medium text-slate-900">{row.employeeName}</div><div className="text-xs text-muted-foreground">{row.employeeSn}</div></td><td className="px-4 py-3 font-medium text-slate-700">{row.courseTitle}</td><td className="px-4 py-3"><div className="flex items-center gap-2"><Progress value={row.progress} className="h-2 w-24 bg-slate-100" /><span className="text-xs">{row.progress}%</span></div></td><td className="px-4 py-3">{row.posttestScore == null ? <span className="text-muted-foreground">-</span> : <span className={row.posttestScore >= row.passingScore ? "font-semibold text-emerald-600" : "font-semibold text-rose-600"}>{row.posttestScore}% <span className="text-xs font-normal text-muted-foreground">/ {row.passingScore}%</span></span>}</td><td className="px-4 py-3"><Badge className={row.status === "passed" ? "border-0 bg-emerald-50 text-emerald-700" : row.status === "failed" ? "border-0 bg-rose-50 text-rose-700" : "border-0 bg-amber-50 text-amber-700"}>{row.status === "passed" ? "Lulus" : row.status === "failed" ? "Belum lulus" : "Berjalan"}</Badge></td><td className="px-4 py-3 text-xs text-muted-foreground">{row.updatedAt ? new Date(row.updatedAt).toLocaleDateString("id-ID") : "-"}</td></tr>)}</tbody></table></div>
-              {lmsRows.length > 50 && <p className="pt-3 text-xs text-muted-foreground">Menampilkan 50 enrollment terbaru dari {lmsRows.length} data.</p>}
+              <ChitraLearningProgressTable rows={filteredLmsRows} />
             </CardContent>
           </Card>
         </TabsContent>

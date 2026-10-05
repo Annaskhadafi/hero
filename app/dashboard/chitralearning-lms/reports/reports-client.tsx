@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Search, Eye, Download, BadgeCheck, XCircle, Clock } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 
@@ -12,6 +13,8 @@ export type ReportRow = {
   courseTitle: string
   employeeName: string
   employeeSn: string
+  siteId?: number | null
+  siteName?: string | null
   status: string
   progress: number
   pretestScore: number | null
@@ -23,29 +26,80 @@ export type ReportRow = {
   certificateIssuedAt: Date | null
 }
 
-export function ReportsClient({ data }: { data: ReportRow[] }) {
+export function ReportsClient({
+  data,
+  sites = [],
+}: {
+  data: ReportRow[]
+  sites?: { id: number; name: string }[]
+}) {
   const [searchTerm, setSearchTerm] = useState('')
+  const [selectedSiteId, setSelectedSiteId] = useState<string>('all')
   const [selectedRow, setSelectedRow] = useState<ReportRow | null>(null)
 
-  const filteredData = data.filter(row => 
-    row.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    row.employeeSn.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    row.courseTitle.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const filteredData = data.filter(row => {
+    const matchesSearch =
+      row.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      row.employeeSn.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      row.courseTitle.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesSite = selectedSiteId === 'all' || !selectedSiteId || String(row.siteId) === selectedSiteId
+    return matchesSearch && matchesSite
+  })
+
+  const handleExportCsv = () => {
+    const headers = ['Nama Karyawan', 'NIK', 'Site', 'Kursus', 'Progress', 'Pre-test', 'Post-test', 'Nilai Akhir', 'Status', 'No Sertifikat']
+    const rows = filteredData.map(r => [
+      `"${r.employeeName}"`,
+      `"${r.employeeSn}"`,
+      `"${r.siteName || '-'}"`,
+      `"${r.courseTitle.replace(/"/g, '""')}"`,
+      `${r.progress}%`,
+      r.pretestScore ?? '-',
+      r.posttestScore ?? '-',
+      r.finalScore ?? '-',
+      r.status,
+      `"${r.certificateNumber || '-'}"`
+    ])
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n')
+    const encodedUri = encodeURI(csvContent)
+    const link = document.createElement('a')
+    link.setAttribute('href', encodedUri)
+    link.setAttribute('download', `laporan-lms-${new Date().toISOString().slice(0, 10)}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row gap-4 justify-between items-center bg-white p-4 rounded-xl border border-slate-200">
-        <div className="relative w-full sm:w-96">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <Input 
-            placeholder="Cari nama, NIK, atau kursus..." 
-            className="pl-9 bg-slate-50 border-slate-200"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+        <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto flex-1">
+          <div className="relative w-full sm:w-80">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Input 
+              placeholder="Cari nama, NIK, atau kursus..." 
+              className="pl-9 bg-slate-50 border-slate-200"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          {sites.length > 0 && (
+            <Select value={selectedSiteId} onValueChange={setSelectedSiteId}>
+              <SelectTrigger className="w-full sm:w-48 bg-slate-50 border-slate-200">
+                <SelectValue placeholder="Semua Site" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Site</SelectItem>
+                {sites.map(site => (
+                  <SelectItem key={site.id} value={String(site.id)}>
+                    {site.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
-        <Button variant="outline" className="w-full sm:w-auto gap-2">
+        <Button variant="outline" onClick={handleExportCsv} className="w-full sm:w-auto gap-2">
           <Download className="h-4 w-4" /> Export CSV
         </Button>
       </div>
@@ -68,7 +122,10 @@ export function ReportsClient({ data }: { data: ReportRow[] }) {
                 <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
                   <td className="px-6 py-4">
                     <div className="font-medium text-slate-900">{row.employeeName}</div>
-                    <div className="text-xs text-slate-500">{row.employeeSn}</div>
+                    <div className="text-xs text-slate-500">
+                      {row.employeeSn}
+                      {row.siteName ? ` • ${row.siteName}` : ''}
+                    </div>
                   </td>
                   <td className="px-6 py-4 text-slate-700 max-w-[250px] truncate" title={row.courseTitle}>
                     {row.courseTitle}

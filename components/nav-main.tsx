@@ -74,7 +74,7 @@ function SubmenuItem({ item, pathname }: { item: NavItem; pathname: string }) {
 
   if (!hasChildren) {
     return (
-      <SidebarMenuSubItem key={item.url}>
+      <SidebarMenuSubItem key={item.id ? `sub-${item.id}` : `${item.url}-${item.title}`}>
         <SidebarMenuSubButton
           asChild
           isActive={isActive}
@@ -115,10 +115,10 @@ function SubmenuItem({ item, pathname }: { item: NavItem; pathname: string }) {
             </SidebarMenuSubButton>
           </CollapsibleTrigger>
           <CollapsibleContent className="pl-2 border-l border-sidebar-border/60 ml-2 mt-1 flex flex-col gap-1">
-            {item.children?.map((child) => {
+            {item.children?.map((child, childIdx) => {
               const isChildActive = isMenuItemActive(pathname, child.url)
               return (
-                <SidebarMenuSubItem key={child.url}>
+                <SidebarMenuSubItem key={child.id ? `child-${child.id}` : `${child.url}-${child.title}-${childIdx}`}>
                   <SidebarMenuSubButton
                     asChild
                     isActive={isChildActive}
@@ -191,8 +191,8 @@ export function NavMain({
     const hasGroups = grouped.size > 1 || !grouped.has(null)
 
     if (!hasGroups) {
-      return items.map((item) => (
-        <SubmenuItem key={item.url} item={item} pathname={pathname} />
+      return items.map((item, idx) => (
+        <SubmenuItem key={item.id ? `menu-${item.id}` : `${item.url}-${item.title}-${idx}`} item={item} pathname={pathname} />
       ))
     }
 
@@ -206,8 +206,8 @@ export function NavMain({
             {groupLabel}
           </li>
         )}
-        {groupItems.map((item) => (
-          <SubmenuItem key={item.url} item={item} pathname={pathname} />
+        {groupItems.map((item, idx) => (
+          <SubmenuItem key={item.id ? `menu-${item.id}` : `${item.url}-${item.title}-${idx}`} item={item} pathname={pathname} />
         ))}
       </React.Fragment>
     ))

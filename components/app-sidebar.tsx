@@ -357,7 +357,13 @@ export function AppSidebar({
         openInNewTab: true,
       }))
 
-    return [...menuMatches, ...docMatches]
+    const seen = new Set<string>()
+    return [...menuMatches, ...docMatches].filter((it) => {
+      const key = `${it.section}|${it.title}|${it.url}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
   }, [searchQuery, desktopItems, documentItems])
 
   React.useEffect(() => {
@@ -523,7 +529,7 @@ export function AppSidebar({
                   const isActive = pathname === item.url
                   return (
                     <SidebarMenuButton
-                      key={item.url}
+                      key={`${item.section}-${item.title}-${item.url}-${index}`}
                       asChild
                       isActive={isActive || isSelected}
                       className={cn(
@@ -549,6 +555,11 @@ export function AppSidebar({
                         <div className="flex items-center gap-2.5 min-w-0 truncate">
                           <item.icon className={cn("size-4 shrink-0", isSelected ? "text-white" : "text-slate-500")} />
                           <span className="truncate">{item.title}</span>
+                          {item.section && (
+                            <span className={cn("text-[10px] truncate shrink-0", isSelected ? "text-white/70" : "text-muted-foreground")}>
+                              • {item.section}
+                            </span>
+                          )}
                         </div>
                         {isSelected && (
                           <span className="shrink-0 text-[10px] font-mono opacity-80 px-1 py-0.5 rounded bg-white/20">

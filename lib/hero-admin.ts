@@ -6464,6 +6464,7 @@ export async function getTrainingRecordPageData() {
       employeeOptions: [],
       departmentOptions: [],
       sectionOptions: [],
+      siteOptions: [],
       yearOptions: [],
       permission,
     }
@@ -6476,7 +6477,7 @@ export async function getTrainingRecordPageData() {
         ? eq(employees.siteId, context.siteId)
         : eq(employees.id, context.employeeId)
 
-  const [rows, employeeOptions] = await Promise.all([
+  const [rows, employeeOptions, siteRows] = await Promise.all([
     db
       .select({
         id: trainingRecords.id,
@@ -6486,6 +6487,8 @@ export async function getTrainingRecordPageData() {
         role: employees.jobTitle,
         department: employees.department,
         section: employees.section,
+        siteId: employees.siteId,
+        siteName: sites.name,
         trainingName: trainingRecords.trainingName,
         provider: trainingRecords.provider,
         completedDate: trainingRecords.completedDate,
@@ -6496,6 +6499,7 @@ export async function getTrainingRecordPageData() {
       })
       .from(trainingRecords)
       .innerJoin(employees, eq(trainingRecords.employeeId, employees.id))
+      .leftJoin(sites, eq(employees.siteId, sites.id))
       .where(scopeCondition)
       .orderBy(
         desc(trainingRecords.completedYear),
@@ -6514,6 +6518,14 @@ export async function getTrainingRecordPageData() {
       .from(employees)
       .where(and(eq(employees.isActive, true), scopeCondition))
       .orderBy(asc(employees.name)),
+    db
+      .select({
+        id: sites.id,
+        name: sites.name,
+      })
+      .from(sites)
+      .where(eq(sites.isActive, true))
+      .orderBy(asc(sites.name)),
   ])
 
   const yearOptions = Array.from(new Set(rows.map((row) => row.completedYear))).sort(
@@ -6525,12 +6537,17 @@ export async function getTrainingRecordPageData() {
   const sectionOptions = Array.from(
     new Set(employeeOptions.map((employee) => employee.section).filter(Boolean))
   ).sort((left, right) => left.localeCompare(right, 'id-ID'))
+  const scopedSiteIds = new Set(employeeOptions.map((e) => e.siteId).filter(Boolean))
+  const siteOptions = siteRows.filter(
+    (site) => permission.dataScope === 'global' || scopedSiteIds.has(site.id)
+  )
 
   return {
     rows,
     employeeOptions,
     departmentOptions,
     sectionOptions,
+    siteOptions,
     yearOptions,
     permission,
   }
