@@ -458,16 +458,54 @@ export async function getOvertimeApprovalData(documentId: number | string): Prom
   }
 }
 
-// ── Save Overtime Approval Form ────────────────────────────────────────────
+export function parseSplInputDateTime(dateVal?: Date | string | null, timeVal?: Date | string | null): Date {
+  if (timeVal instanceof Date && !isNaN(timeVal.getTime())) return timeVal
+  if (typeof timeVal === 'string' && timeVal.trim()) {
+    const trimmedTime = timeVal.trim()
+    // Explicit timezone offset (e.g. ends with Z or +07:00 / +08:00 or -05:00)
+    if (trimmedTime.endsWith('Z') || /[+-]\d{2}(:\d{2})?$/.test(trimmedTime)) {
+      const directDate = new Date(trimmedTime)
+      if (!isNaN(directDate.getTime())) return directDate
+    }
+    // Full ISO-like datetime string without offset (e.g. "2026-10-05T12:00" or "2026-10-05 12:00:00")
+    if (trimmedTime.includes('-') && (trimmedTime.includes('T') || trimmedTime.includes(' '))) {
+      const normalized = trimmedTime.replace(' ', 'T')
+      const formatted = normalized.length === 16 ? `${normalized}:00` : normalized
+      const withTz = `${formatted}+07:00`
+      const parsedWithTz = new Date(withTz)
+      if (!isNaN(parsedWithTz.getTime())) return parsedWithTz
+    }
+    // Time-only string (e.g. "12:00" or "12:00:00")
+    if (trimmedTime.includes(':')) {
+      const baseDateStr = dateVal
+        ? (dateVal instanceof Date ? dateVal.toISOString().split('T')[0] : String(dateVal).split('T')[0])
+        : new Date().toISOString().split('T')[0]
+      const cleanTime = trimmedTime.length === 5 ? `${trimmedTime}:00` : trimmedTime
+      const withTz = `${baseDateStr}T${cleanTime}+07:00`
+      const parsed = new Date(withTz)
+      if (!isNaN(parsed.getTime())) return parsed
+    }
+    const directDate = new Date(trimmedTime)
+    if (!isNaN(directDate.getTime())) return directDate
+  }
 
-const saveOvertimeApprovalFormSchema = z.object({
-  documentId: z.coerce.number().int().positive(),
-  itemRemarks: z.record(z.string(), z.string()).optional().default({}),
-  leaderName: z.string().optional().default(''),
-  leaderTitle: z.string().optional().default(''),
-  superiorName: z.string().optional().default(''),
-  superiorTitle: z.string().optional().default(''),
-})
+  if (dateVal instanceof Date && !isNaN(dateVal.getTime())) return dateVal
+  if (typeof dateVal === 'string' && dateVal.trim()) {
+    const trimmedDate = dateVal.trim()
+    if (trimmedDate.endsWith('Z') || /[+-]\d{2}(:\d{2})?$/.test(trimmedDate)) {
+      const d = new Date(trimmedDate)
+      if (!isNaN(d.getTime())) return d
+    }
+    if (trimmedDate.includes('-')) {
+      const dOnly = trimmedDate.split('T')[0].split(' ')[0]
+      const d = new Date(`${dOnly}T00:00:00+07:00`)
+      if (!isNaN(d.getTime())) return d
+    }
+    const d = new Date(trimmedDate)
+    if (!isNaN(d.getTime())) return d
+  }
+  return new Date()
+}
 
 export async function saveOvertimeApprovalForm(params: {
   documentId: number
@@ -518,9 +556,9 @@ export async function saveOvertimeApprovalForm(params: {
     const updateData: Record<string, any> = { updatedAt: new Date() }
     if (params.requestedByEmployeeId) updateData.requestedByEmployeeId = params.requestedByEmployeeId
     if (params.title !== undefined) updateData.title = params.title
-    if (params.workDate && !isNaN(new Date(params.workDate).getTime())) updateData.workDate = new Date(params.workDate)
-    if (params.plannedStartAt && !isNaN(new Date(params.plannedStartAt).getTime())) updateData.plannedStartAt = new Date(params.plannedStartAt)
-    if (params.plannedEndAt && !isNaN(new Date(params.plannedEndAt).getTime())) updateData.plannedEndAt = new Date(params.plannedEndAt)
+    if (params.workDate) updateData.workDate = parseSplInputDateTime(params.workDate)
+    if (params.plannedStartAt) updateData.plannedStartAt = parseSplInputDateTime(params.workDate, params.plannedStartAt)
+    if (params.plannedEndAt) updateData.plannedEndAt = parseSplInputDateTime(params.workDate, params.plannedEndAt)
     if (params.requestNotes !== undefined || params.photoUrl) {
       let notes = params.requestNotes ?? ''
       if (params.photoUrl) {
@@ -1644,30 +1682,10 @@ export async function createOvertimeCommandLetterAction(payload: {
 
     const nextNumber = `${prefix}${String((last?.id || 0) + 1).padStart(4, '0')}`
 
-    const parseDateTime = (dateVal?: Date | string | null, timeVal?: Date | string | null): Date => {
-      if (timeVal instanceof Date && !isNaN(timeVal.getTime())) return timeVal
-      if (typeof timeVal === 'string' && timeVal.trim()) {
-        const directDate = new Date(timeVal)
-        if (!isNaN(directDate.getTime()) && timeVal.includes('-')) return directDate
-        const baseDateStr = dateVal
-          ? (dateVal instanceof Date ? dateVal.toISOString().split('T')[0] : String(dateVal).split('T')[0])
-          : new Date().toISOString().split('T')[0]
-        const cleanTime = timeVal.trim().length === 5 ? `${timeVal.trim()}:00` : timeVal.trim()
-        const combined = new Date(`${baseDateStr}T${cleanTime}`)
-        if (!isNaN(combined.getTime())) return combined
-      }
-      if (dateVal instanceof Date && !isNaN(dateVal.getTime())) return dateVal
-      if (typeof dateVal === 'string' && dateVal.trim()) {
-        const d = new Date(dateVal)
-        if (!isNaN(d.getTime())) return d
-      }
-      return new Date()
-    }
-
-    const safeWorkDate = payload.workDate ? parseDateTime(payload.workDate) : new Date()
-    const safePlannedStart = parseDateTime(payload.workDate, payload.plannedStartAt)
+    const safeWorkDate = payload.workDate ? parseSplInputDateTime(payload.workDate) : new Date()
+    const safePlannedStart = parseSplInputDateTime(payload.workDate, payload.plannedStartAt)
     const safePlannedEnd = payload.plannedEndAt
-      ? parseDateTime(payload.workDate, payload.plannedEndAt)
+      ? parseSplInputDateTime(payload.workDate, payload.plannedEndAt)
       : new Date(safePlannedStart.getTime() + 4 * 3600 * 1000)
 
     let validDeptId: number | null = null

@@ -718,8 +718,10 @@ export function MobileOvertimeRequestForm({
 
     setIsSubmitting(true);
     try {
-      const startDateTime = `${plannedStartDate}T${plannedStartTime}`;
-      const endDateTime = `${plannedEndDate}T${plannedEndTime}`;
+      const cleanStartTime = plannedStartTime?.trim().length === 5 ? `${plannedStartTime.trim()}:00` : (plannedStartTime?.trim() || '17:00:00');
+      const cleanEndTime = plannedEndTime?.trim().length === 5 ? `${plannedEndTime.trim()}:00` : (plannedEndTime?.trim() || '20:00:00');
+      const startDateTime = plannedStartDate ? new Date(`${plannedStartDate}T${cleanStartTime}`) : undefined;
+      const endDateTime = plannedEndDate ? new Date(`${plannedEndDate}T${cleanEndTime}`) : undefined;
 
       if (editSplId) {
         const res = await resubmitOvertimeCommandLetterAction({
