@@ -125,7 +125,7 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
     .where(eq(overtimeApprovals.overtimeCommandLetterId, documentId))
     .orderBy(asc(overtimeApprovals.stepOrder))
 
-  if (existingSteps.length >= 3) {
+  if (existingSteps.length >= 2) {
     return
   }
 
@@ -177,50 +177,7 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
         .limit(1)
     : []
 
-  // Resolve section name from masterSections or requester.section
-  let sectionName = requester?.section || ''
-  if (!sectionName && requester?.sectionId) {
-    const [secRow] = await db
-      .select({ name: masterSections.name })
-      .from(masterSections)
-      .where(eq(masterSections.id, requester.sectionId))
-      .limit(1)
-    if (secRow?.name) sectionName = secRow.name
-  }
-
-  // Check if settings.approvalMatrix has a matching section head
-  let sectionHeadName = ''
-  let sectionHeadEmail = ''
-  let sectionHeadEmployeeId: number | null = null
-
-  if (sectionName && settings.approvalMatrix?.sectionHeads) {
-    const secList = Array.isArray(settings.approvalMatrix.sectionHeads)
-      ? settings.approvalMatrix.sectionHeads
-      : Object.values(settings.approvalMatrix.sectionHeads)
-
-    const matched: any = secList.find((sh: any) =>
-      sh.section && (
-        sectionName.toLowerCase().includes(sh.section.toLowerCase()) ||
-        sh.section.toLowerCase().includes(sectionName.toLowerCase())
-      )
-    )
-
-    if (matched && matched.email) {
-      sectionHeadName = matched.name
-      sectionHeadEmail = matched.email
-      const [empMatch] = await db
-        .select({ id: employees.id, name: employees.name, email: employees.email })
-        .from(employees)
-        .where(sql`LOWER(TRIM(${employees.email})) = ${String(matched.email).trim().toLowerCase()}`)
-        .limit(1)
-      if (empMatch) {
-        sectionHeadEmployeeId = empMatch.id
-        sectionHeadName = empMatch.name || sectionHeadName
-      }
-    }
-  }
-
-  // Resolve PJO / Site Lead (Tahap 2 / Final Approval - sama seperti Daily Activity)
+  // Resolve PJO / Site Lead (Tahap 2 / Final Approval)
   let pjoName = ''
   let pjoEmail = ''
   let pjoEmployeeId: number | null = null
@@ -248,8 +205,8 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
 
   // Fallback to settings approval matrix if available
   const matrix = (settings?.approvalMatrix || {}) as Record<string, any>
-  if (!pjoName && (matrix.pjoName || matrix.leaderName)) {
-    const pjoTarget = matrix.pjoName || matrix.leaderName
+  if (!pjoName && (matrix.pjoName || matrix.leaderName || matrix.fieldPicName)) {
+    const pjoTarget = matrix.pjoName || matrix.leaderName || matrix.fieldPicName
     const [empMatch] = await db
       .select({ id: employees.id, name: employees.name, email: employees.email })
       .from(employees)
@@ -262,40 +219,12 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
     }
   }
 
-  // Fallback to department head if PJO still not found
-  if (!pjoName && (requester?.departmentId || requester?.department)) {
-    const [deptRow] = requester.departmentId
-      ? await db
-          .select({ headEmployeeId: masterDepartments.headEmployeeId })
-          .from(masterDepartments)
-          .where(eq(masterDepartments.id, requester.departmentId))
-          .limit(1)
-      : await db
-          .select({ headEmployeeId: masterDepartments.headEmployeeId })
-          .from(masterDepartments)
-          .where(sql`LOWER(TRIM(${masterDepartments.name})) = ${(requester.department || '').trim().toLowerCase()}`)
-          .limit(1)
-
-    if (deptRow?.headEmployeeId) {
-      const [deptEmp] = await db
-        .select({ id: employees.id, name: employees.name, email: employees.email })
-        .from(employees)
-        .where(eq(employees.id, deptRow.headEmployeeId))
-        .limit(1)
-      if (deptEmp) {
-        pjoEmployeeId = deptEmp.id
-        pjoName = deptEmp.name
-        pjoEmail = deptEmp.email || ''
-      }
-    }
-  }
-
   if (!pjoName) {
-    pjoName = matrix.pjoName || matrix.managerName || 'PJO / Site Lead'
-    pjoEmail = matrix.pjoEmail || matrix.managerEmail || ''
+    pjoName = matrix.pjoName || matrix.fieldPicName || 'PJO / Site Lead'
+    pjoEmail = matrix.pjoEmail || matrix.fieldPicEmail || ''
   }
 
-  // Resolve leader approver
+  // Resolve leader approver (Direct Manager or Site PJO)
   let leaderEmployeeId = directManager?.id ?? null
   let leaderName = directManager?.name ?? settings.approvalMatrix?.fieldPicName ?? ''
   let leaderEmail = directManager?.email || settings.approvalMatrix?.fieldPicEmail || ''
@@ -307,7 +236,7 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
   }
 
   if (!leaderName) {
-    leaderName = 'Leader Lapangan'
+    leaderName = pjoName || 'Leader / PJO'
   }
 
   const step1Token = randomUUID()

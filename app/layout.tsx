@@ -4,6 +4,7 @@ import { HeroInstallPrompt } from "@/components/hero-install-prompt";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Suspense } from "react";
 import { NavigationProgressBar } from "@/components/navigation-progress-bar";
+import { GlobalInputAutoSelect } from "@/components/global-input-auto-select";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -56,6 +57,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           </Suspense>
           <PwaRegistration />
           <HeroInstallPrompt />
+          <GlobalInputAutoSelect />
           {children}
         </ThemeProvider>
       </body>

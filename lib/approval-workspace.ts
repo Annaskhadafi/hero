@@ -2210,19 +2210,28 @@ async function getDailyActivityInboxItems(
       currentEmployee?.accessRole ||
       ''
     ).toLowerCase()
-    const isSupervisory =
+    const isSiteOrSectionApprover =
       userRoleLower.includes('leader') ||
       userRoleLower.includes('supervisor') ||
-      userRoleLower.includes('head') ||
-      userRoleLower.includes('manager') ||
+      userRoleLower.includes('section head') ||
       userRoleLower.includes('pjo') ||
-      userRoleLower.includes('admin') ||
-      userRoleLower.includes('officer')
+      userRoleLower.includes('site lead')
+
+    // Central Services Manager should never match generic site daily activities
+    const isCentralManager = userRoleLower.includes('central')
 
     const genericApproverMatches =
-      (!row.approverEmployeeId || !row.approverEmail || row.approverEmail === '') && isSupervisory
+      (!row.approverEmployeeId || !row.approverEmail || row.approverEmail === '') &&
+      isSiteOrSectionApprover &&
+      !isCentralManager &&
+      (row.siteName ? normalizeMatchValue(row.siteName) === normalizeMatchValue((currentEmployee as any)?.siteName) : true)
 
     const isDirectMatch = emailMatches || employeeMatches || nameMatches || genericApproverMatches
+
+    // Ignore any legacy step > 2
+    if (row.stepOrder > 2) {
+      return false
+    }
 
     if (userApprovedPrevious && !isDirectMatch) {
       return false
@@ -2503,25 +2512,30 @@ async function getOvertimeInboxItems(
       )
 
     // Generic Approver matching when approver has no explicit employee ID/email
+    // SPL Approval is STRICTLY for Leader / PJO / Site Lead. It must NEVER leak to Section Head or Department Head.
     const userRoleLower = (
       (currentEmployee as any)?.role ||
       currentEmployee?.jobTitle ||
       currentEmployee?.accessRole ||
       ''
     ).toLowerCase()
-    const isSupervisory =
+    const isLeaderOrPjo =
       userRoleLower.includes('leader') ||
       userRoleLower.includes('supervisor') ||
-      userRoleLower.includes('head') ||
-      userRoleLower.includes('manager') ||
       userRoleLower.includes('pjo') ||
-      userRoleLower.includes('admin') ||
-      userRoleLower.includes('officer')
+      userRoleLower.includes('site lead')
 
     const genericApproverMatches =
-      (!row.approverEmployeeId || !row.approverEmail || row.approverEmail === '') && isSupervisory
+      (!row.approverEmployeeId || !row.approverEmail || row.approverEmail === '') &&
+      isLeaderOrPjo &&
+      row.stepOrder === 2
 
     const isDirectMatch = emailMatches || employeeMatches || nameMatches || genericApproverMatches
+
+    // Never show stepOrder > 2 (legacy section head steps) to anyone
+    if (row.stepOrder > 2) {
+      return false
+    }
 
     if (userApprovedPrevious && !isDirectMatch) {
       return false
