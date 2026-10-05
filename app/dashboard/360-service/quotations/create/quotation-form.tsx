@@ -933,7 +933,7 @@ const router = useRouter()
               <label className="text-sm font-medium mb-1.5 block">Tax</label>
               <div className="flex gap-4 items-center">
                 <div className="flex items-center gap-2 w-24">
-                  <Input type="number" {...register("taxRate", { valueAsNumber: true })} />
+                  <Input type="number" onFocus={(e) => e.target.select()} {...register("taxRate", { valueAsNumber: true })} />
                   <span className="text-sm">%</span>
                 </div>
                 
@@ -949,7 +949,7 @@ const router = useRouter()
                     }} />
                     <label className="text-xs leading-tight">Discount</label>
                     {discountType && <select className="h-8 rounded border px-1 text-xs" value={discountType} onChange={(e) => setValue("discountType", e.target.value as "percent" | "fixed")}><option value="percent">%</option><option value="fixed">Fixed</option></select>}
-                    {discountType && <Input className="h-8 w-24" type="number" min="0" {...register("discountValue", { valueAsNumber: true })} />}
+                    {discountType && <Input className="h-8 w-24" type="number" min="0" onFocus={(e) => e.target.select()} {...register("discountValue", { valueAsNumber: true })} />}
                   </div>
                   <div className="flex items-center gap-2">
                     <Switch checked={showQty} onCheckedChange={(v) => setValue("showQty", v)} />
@@ -1292,8 +1292,13 @@ As you are aware, Tire Maintenance is performing services at CK BMB..."
                             type="number" 
                             min="0.01" 
                             step="0.01" 
-                            value={selItem.quantity} 
-                            onChange={(e) => updateItem(selItem.id, 'quantity', Number(e.target.value))} 
+                            placeholder="1"
+                            value={selItem.quantity === 0 ? '' : selItem.quantity} 
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              updateItem(selItem.id, 'quantity', val === '' ? 0 : Number(val));
+                            }} 
                           />
                         </TableCell>
                         <TableCell className="align-top">
@@ -1301,8 +1306,13 @@ As you are aware, Tire Maintenance is performing services at CK BMB..."
                             <Input 
                               type="number" 
                               min="0" 
-                              value={selItem.price} 
-                              onChange={(e) => updateItem(selItem.id, 'price', Number(e.target.value))} 
+                              placeholder="0"
+                              value={selItem.price === 0 ? '' : selItem.price} 
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                updateItem(selItem.id, 'price', val === '' ? 0 : Number(val));
+                              }} 
                             />
                             {selItem.isBackup && (
                               <div className="mt-4 pt-4 border-t border-slate-200 relative">
@@ -1310,8 +1320,13 @@ As you are aware, Tire Maintenance is performing services at CK BMB..."
                                 <Input 
                                   type="number" 
                                   min="0" 
-                                  value={selItem.backupPrice || 0} 
-                                  onChange={(e) => updateItem(selItem.id, 'backupPrice', Number(e.target.value))} 
+                                  placeholder="0"
+                                  value={!selItem.backupPrice ? '' : selItem.backupPrice} 
+                                  onFocus={(e) => e.target.select()}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    updateItem(selItem.id, 'backupPrice', val === '' ? 0 : Number(val));
+                                  }} 
                                 />
                               </div>
                             )}
