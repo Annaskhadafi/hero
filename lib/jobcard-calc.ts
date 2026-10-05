@@ -205,6 +205,7 @@ export function computeGroupedProcessRows(injuries?: any[]): GroupedProcessRow[]
   const DEFAULT_PROCESS_NAMES = [
     'Skiving',
     'Buffing',
+    'Dimensi Luka',
     'Cementing',
     'Buffing Innerliner',
     'Install Patch',
@@ -245,8 +246,16 @@ export function computeGroupedProcessRows(injuries?: any[]): GroupedProcessRow[]
     const dimT = inj.dimensiLukaT ?? inj.dimensi_luka_t ?? inj.dimLukaT ?? '';
     const hasDim = !!(dimL || dimW || dimP || dimT);
     const injDimStr = hasDim
-      ? `L${dimL || '0'},W${dimW || '0'},P${dimP || '0'},T${dimT || '0'}`
+      ? `${injName} (L${dimL || '0'}×W${dimW || '0'}×P${dimP || '0'}×T${dimT || '0'}mm)`
       : '';
+
+    if (hasDim && map.has('dimensi luka')) {
+      const dimItem = map.get('dimensi luka')!;
+      dimItem.injuriesSet.add(injName);
+      if (injDimStr && !dimItem.dimensionsList.includes(injDimStr)) {
+        dimItem.dimensionsList.push(injDimStr);
+      }
+    }
 
     (inj.processes || []).forEach((p: any) => {
       const pName = (p.processName || '').trim();
@@ -321,9 +330,7 @@ export function computeGroupedProcessRows(injuries?: any[]): GroupedProcessRow[]
   const result: GroupedProcessRow[] = [];
 
   map.forEach((item) => {
-    const injuriesLabel = item.dimensionsList.length > 0
-      ? item.dimensionsList.join(' / ')
-      : (Array.from(item.injuriesSet).join(', ') || '-');
+    const injuriesLabel = Array.from(item.injuriesSet).join(', ') || '-';
 
     const matParts: string[] = [];
     const qtyParts: string[] = [];
@@ -346,7 +353,11 @@ export function computeGroupedProcessRows(injuries?: any[]): GroupedProcessRow[]
       }
     });
 
-    const materialUsed = matParts.join(', ') || '-';
+    let materialUsed = matParts.join(', ') || '-';
+    if (item.displayProcessName.toLowerCase() === 'dimensi luka' && materialUsed === '-' && item.dimensionsList.length > 0) {
+      materialUsed = item.dimensionsList.join('; ');
+    }
+
     const qty = qtyParts.join(', ') || '0';
     const manpower = Array.from(item.manpowerMap.values()).join(', ') || '-';
 

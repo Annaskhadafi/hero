@@ -1090,6 +1090,22 @@ export function JobcardDesktopClient({
                       : {selectedJobcard.injuries?.map((i) => i.injuryName).filter(Boolean).join(', ') || 'Injury #1'}
                     </span>
                   </div>
+                  <div className="flex items-start">
+                    <span className="text-slate-600 font-medium w-28 shrink-0">Dimensi Luka</span>
+                    <span className="font-bold flex-1 text-left text-slate-900">
+                      : {selectedJobcard.injuries && selectedJobcard.injuries.some((i) => i.dimensiLukaL || i.dimensiLukaW || i.dimensiLukaP || i.dimensiLukaT)
+                          ? selectedJobcard.injuries.map((i) => {
+                              const parts = [
+                                i.dimensiLukaL ? `L: ${i.dimensiLukaL}mm` : null,
+                                i.dimensiLukaW ? `W: ${i.dimensiLukaW}mm` : null,
+                                i.dimensiLukaP ? `P: ${i.dimensiLukaP}mm` : null,
+                                i.dimensiLukaT ? `T: ${i.dimensiLukaT}mm` : null,
+                              ].filter(Boolean).join(' × ');
+                              return `${i.injuryName || 'Injury'}${parts ? ` (${parts})` : ''}`;
+                            }).join('; ')
+                          : '-'}
+                    </span>
+                  </div>
                 </div>
               </div>
 
