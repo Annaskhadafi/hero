@@ -282,6 +282,13 @@ export function RecruitmentClientPage({
     setActiveView(viewParam === "pipeline" ? "pipeline" : "vacancies");
   }, [viewParam]);
 
+  useEffect(() => {
+    if (paginatedCandidates?.data) {
+      setCandidates(paginatedCandidates.data as Candidate[]);
+      setCandidatePage(paginatedCandidates);
+    }
+  }, [paginatedCandidates]);
+
   const setRecruitmentView = (view: "vacancies" | "pipeline") => {
     setActiveView(view);
     if (view === "vacancies") setPipelineJobIdFilter(null);
@@ -1622,6 +1629,12 @@ export function RecruitmentClientPage({
                    candidates={visibleCandidates}
                    jobFilter={pipelineJobIdFilter}
                    onCandidateUpdate={(id, stage) => setCandidates(prev => prev.map(c => c.id === id ? { ...c, currentStage: stage } : c))}
+                    onCandidateAiUpdate={(id, score, summary, details) => {
+                      setCandidates(prev => prev.map(c => c.id === id ? { ...c, aiScore: score, aiSummary: summary || "", aiDetails: details } : c));
+                      if (profileDrawerCandidate?.id === id) {
+                        setProfileDrawerCandidate(prev => prev ? { ...prev, aiScore: score, aiSummary: summary || "", aiDetails: details } : null);
+                      }
+                    }}
                    emailStatuses={emailStatuses}
                  />
                )}

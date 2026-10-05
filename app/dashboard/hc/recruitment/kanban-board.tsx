@@ -25,6 +25,7 @@ import {
   IconFileText,
   IconMail,
   IconLoader2,
+  IconRefresh,
 } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -84,11 +85,13 @@ export function KanbanBoard({
   candidates,
   jobFilter,
   onCandidateUpdate,
+  onCandidateAiUpdate,
   emailStatuses,
 }: {
   candidates: Candidate[];
   jobFilter: number | null;
   onCandidateUpdate: (id: number, stage: string) => void;
+  onCandidateAiUpdate?: (id: number, score: number, summary?: string, details?: any) => void;
   emailStatuses: Record<number, EmailStatus>;
 }) {
   const router = useRouter();
@@ -154,6 +157,10 @@ export function KanbanBoard({
       if (result.success) {
         setAiProgress((prev) => ({ ...prev, [candidate.id]: 100 }));
         toast.success(`Smart assessment completed: ${result.score}%`, { id: toastId });
+        candidate.aiScore = result.score;
+        if (result.summary) candidate.aiSummary = result.summary;
+        if (result.details) candidate.aiDetails = result.details;
+        onCandidateAiUpdate?.(candidate.id, result.score, result.summary, result.details);
         router.refresh();
       } else {
         toast.error(result.error || "Smart assessment failed.", { id: toastId });
@@ -365,6 +372,20 @@ function KanbanCard({
               <IconBrain className="w-3.5 h-3.5" />
               Smart sudah diproses
             </span>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-6 w-6 text-accent hover:bg-accent/15"
+              title="Re-run Smart Assessment"
+              disabled={isAiLoading}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                onRunAiAssessment?.(candidate);
+              }}
+            >
+              <IconRefresh className={cn("w-3.5 h-3.5", isAiLoading && "animate-spin")} />
+            </Button>
           </div>
           <div className="mb-2 flex items-end justify-between gap-2">
             <div>
@@ -386,6 +407,15 @@ function KanbanCard({
               {candidate.aiSummary}
             </p>
           ) : null}
+          {isAiLoading && (
+            <div className="mt-2 space-y-1">
+              <Progress value={aiProgress} className="h-1.5 bg-accent/10 [&>div]:bg-accent" />
+              <div className="flex justify-between text-[10px] text-muted-foreground">
+                <span>Re-evaluating candidate</span>
+                <span>{aiProgress}%</span>
+              </div>
+            </div>
+          )}
             </div>
           </TooltipTrigger>
           <TooltipContent side="top" align="start" className="max-w-sm bg-slate-950 p-3 text-left text-xs leading-relaxed text-white shadow-xl">
