@@ -107,50 +107,6 @@ export function ContractReviewClientForm({
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [adminSignaturePending, setAdminSignaturePending] = useState<number | null>(null)
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
-
-  const handleDownloadPdf = async () => {
-    setIsDownloadingPdf(true)
-    try {
-      const pageNodes = Array.from(
-        document.querySelectorAll<HTMLElement>(
-          ".contract-review-print .pdf-wrapper, #contract-review-preview .pdf-wrapper, .print-embedded-container .pdf-wrapper"
-        )
-      )
-      if (!pageNodes.length) {
-        toast.error("Halaman dokumen belum siap untuk didownload.")
-        return
-      }
-      const { downloadMultiPageElementAsPdf } = await import("@/lib/pdf-download")
-      const empName = (selectedEmp?.name || form.employeeNameStr || "Document").replace(/\s+/g, "_")
-      await downloadMultiPageElementAsPdf(pageNodes, `Contract_Review_${empName}.pdf`)
-      toast.success("File PDF berhasil didownload.")
-    } catch (e: any) {
-      console.error("Error downloading PDF:", e)
-      toast.error("Gagal men-download PDF: " + (e.message || "Terjadi kesalahan"))
-    } finally {
-      setIsDownloadingPdf(false)
-    }
-  }
-
-  useEffect(() => {
-    if (!isEmbeddedPrintPreview) return
-    const handler = async (e: MessageEvent) => {
-      if (e.data?.type === "DOWNLOAD_PDF") {
-        const { downloadMultiPageElementAsPdf } = await import("@/lib/pdf-download")
-        const pageNodes = Array.from(
-          document.querySelectorAll<HTMLElement>(".print-embedded-container .pdf-wrapper, .contract-review-print .pdf-wrapper, .pdf-wrapper")
-        )
-        if (pageNodes.length > 0) {
-          const empName = (selectedEmp?.name || form.employeeNameStr || "Document").replace(/\s+/g, "_")
-          await downloadMultiPageElementAsPdf(pageNodes, `Contract_Review_${empName}.pdf`)
-        }
-      } else if (e.data?.type === "PRINT") {
-        window.print()
-      }
-    }
-    window.addEventListener("message", handler)
-    return () => window.removeEventListener("message", handler)
-  }, [isEmbeddedPrintPreview, selectedEmp?.name, form.employeeNameStr])
   const [adminResendPending, setAdminResendPending] = useState<number | null>(null)
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false)
   const [previewModalAttachment, setPreviewModalAttachment] = useState<any | null>(null)
@@ -1802,6 +1758,50 @@ export function ContractReviewClientForm({
       </div>
     </div>
   ) : null
+
+  const handleDownloadPdf = async () => {
+    setIsDownloadingPdf(true)
+    try {
+      const pageNodes = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          ".contract-review-print .pdf-wrapper, #contract-review-preview .pdf-wrapper, .print-embedded-container .pdf-wrapper"
+        )
+      )
+      if (!pageNodes.length) {
+        toast.error("Halaman dokumen belum siap untuk didownload.")
+        return
+      }
+      const { downloadMultiPageElementAsPdf } = await import("@/lib/pdf-download")
+      const empName = (selectedEmp?.name || form.employeeNameStr || "Document").replace(/\s+/g, "_")
+      await downloadMultiPageElementAsPdf(pageNodes, `Contract_Review_${empName}.pdf`)
+      toast.success("File PDF berhasil didownload.")
+    } catch (e: any) {
+      console.error("Error downloading PDF:", e)
+      toast.error("Gagal men-download PDF: " + (e.message || "Terjadi kesalahan"))
+    } finally {
+      setIsDownloadingPdf(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!isEmbeddedPrintPreview) return
+    const handler = async (e: MessageEvent) => {
+      if (e.data?.type === "DOWNLOAD_PDF") {
+        const { downloadMultiPageElementAsPdf } = await import("@/lib/pdf-download")
+        const pageNodes = Array.from(
+          document.querySelectorAll<HTMLElement>(".print-embedded-container .pdf-wrapper, .contract-review-print .pdf-wrapper, .pdf-wrapper")
+        )
+        if (pageNodes.length > 0) {
+          const empName = (selectedEmp?.name || form.employeeNameStr || "Document").replace(/\s+/g, "_")
+          await downloadMultiPageElementAsPdf(pageNodes, `Contract_Review_${empName}.pdf`)
+        }
+      } else if (e.data?.type === "PRINT") {
+        window.print()
+      }
+    }
+    window.addEventListener("message", handler)
+    return () => window.removeEventListener("message", handler)
+  }, [isEmbeddedPrintPreview, selectedEmp?.name, form.employeeNameStr])
 
   if (isEmbeddedPrintPreview) {
     return (
