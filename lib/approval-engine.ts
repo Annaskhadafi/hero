@@ -1192,11 +1192,11 @@ async function resolveApdApprovalRoute(context: ApprovalContext): Promise<Approv
     // - PJO site -> PJO Leader (1 tahap)
     // ==========================================
     if (adminCpSiteIds.includes(siteId)) {
-      let approverEmpId = 1099 // Default: Muhammad As'ar Fauzan (Serviceman)
+      let approverEmpId = 1099 // Default: Muhammad As'ar Fauzan (Serviceman / Admin CP Service)
       if (context.sectionId === 29) {
-        approverEmpId = 1039 // Arjun Zahiri Mursith (Repairman)
+        approverEmpId = 1039 // Arjun Zahiri Mursith (Repairman / Admin CP Repair)
       } else if (context.sectionId === 37) {
-        approverEmpId = 1094 // Muhammad Abian Husain (Technical Engineer)
+        approverEmpId = 1094 // Muhammad Abian Husain (Technical Engineer / Admin CP Technical)
       }
 
       const [approver] = await db
@@ -1208,7 +1208,7 @@ async function resolveApdApprovalRoute(context: ApprovalContext): Promise<Approv
       if (approver) {
         steps.push({
           stepOrder: stepOrder++,
-          label: approver.jobTitle || 'Serviceman',
+          label: approver.jobTitle || 'Admin CP Approver',
           approverName: approver.name,
           approverEmployeeId: approver.id,
           approverNodeId: null,
@@ -1577,6 +1577,10 @@ export async function resolveApprovalRouteForActivity(
 ): Promise<ApprovalRouteResolution> {
   const context = await getApprovalContext(input)
 
+  if (context.transactionType.startsWith('apd-request')) {
+    return resolveApdApprovalRoute(context)
+  }
+
   const matrixCandidates = await db
     .select({
       id: approvalMatrices.id,
@@ -1866,11 +1870,17 @@ export async function resolveApprovalRouteForActivity(
     const siteId = context.siteId ?? 0
 
     if (adminCpSiteIds.includes(siteId)) {
-      let approverEmpId = 1099 // Default: Muhammad As'ar Fauzan
+      let approverEmpId = 955 // Default fallback: Apriyanto (Service Operation MVC)
       if (context.sectionId === 29) {
-        approverEmpId = 1039 // Arjun Zahiri Mursith (Repairman)
+        approverEmpId = 996 // Ary Maulana (Repair / Retread)
       } else if (context.sectionId === 37) {
         approverEmpId = 1094 // Muhammad Abian Husain (Technical Engineer)
+      } else if (context.sectionId === 33) {
+        approverEmpId = 955 // Apriyanto (Service Operation MVC)
+      } else if (context.sectionId === 34) {
+        approverEmpId = 15 // Junaidi (Service Operation Others)
+      } else if (context.departmentId === 2) {
+        approverEmpId = 972 // Romy Hidayat (Central Services Manager)
       }
 
       const [adminApprover] = await db
@@ -1882,7 +1892,7 @@ export async function resolveApprovalRouteForActivity(
       if (adminApprover) {
         steps[0].approverEmployeeId = adminApprover.id
         steps[0].approverName = adminApprover.name
-        steps[0].label = adminApprover.jobTitle || 'Admin CP Approver'
+        steps[0].label = adminApprover.jobTitle || 'Section Head'
         steps[0].nodeLabel = adminApprover.jobTitle
       }
     }
