@@ -44,6 +44,7 @@ import { MobileSignatureSection } from '@/components/mobile/mobile-signature-sec
 import { DailyActivityEvidenceModal } from '@/components/daily-activity-evidence-modal'
 import { cn } from '@/lib/utils'
 import { resolveUploadUrl } from '@/lib/resolve-upload-url'
+import { compressImageFile, compressImageFiles } from '@/lib/client-image-compression'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -425,7 +426,7 @@ function compressImageFile(file: File, maxDimension = 1280, quality = 0.75): Pro
 async function uploadActivityPhoto(file: File): Promise<string> {
   if (!file.type.startsWith('image/')) throw new Error('Evidence harus berupa gambar.')
 
-  const compressed = await compressImageFile(file, 1280, 0.75)
+  const compressed = await compressImageFile(file, { maxWidthOrHeight: 1280, quality: 0.75 })
   const formData = new FormData()
   formData.append('file', compressed)
   formData.append('uploadTarget', 'activity-photos')
@@ -1180,13 +1181,13 @@ export function MobileDailyActivityForm({
   }
 
   const handlePhotoChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files ?? [])
-    if (files.length === 0) return
+    const rawFiles = Array.from(event.target.files ?? [])
+    if (rawFiles.length === 0) return
 
     const targetId = activePhotoTargetRef.current || activePhotoTarget
     if (!targetId) return
 
-    const compressedFiles = await Promise.all(files.map((f) => compressImageFile(f)))
+    const compressedFiles = await compressImageFiles(rawFiles, { maxWidthOrHeight: 1280, quality: 0.75 })
     const file = compressedFiles[0] ?? null
     const names = compressedFiles.map((item) => item.name).join(', ')
     const previewUrls = compressedFiles.map((f) => URL.createObjectURL(f))

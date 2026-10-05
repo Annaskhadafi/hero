@@ -41,6 +41,7 @@ import { toast } from 'sonner'
 import { downloadElementAsPdf, downloadHtmlAsPdf, generateElementAsPdfBlob, generateHtmlAsPdfBlob, downloadFilesAsZip } from '@/lib/pdf-download'
 import { uploadFile } from '@/app/actions/upload'
 import { resolveUploadUrl } from '@/lib/resolve-upload-url'
+import { compressImageFile } from '@/lib/client-image-compression'
 import type { RouteFolder } from '@/lib/daily-activity'
 import { SplEvidenceQrBox } from '@/components/overtime-document-qr'
 import QRCode from 'qrcode'
@@ -680,15 +681,13 @@ export function OvertimeListingClient({
       toast.error('File harus berupa gambar (JPG, PNG, WebP)')
       return
     }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Ukuran foto maksimal 5MB')
-      return
-    }
 
     setIsUploadingLinePhoto((prev) => ({ ...prev, [targetIdx]: true }))
     try {
+      // Compress image client-side to keep upload speed lightning fast even on low-end phones
+      const compressedFile = await compressImageFile(file, { maxWidthOrHeight: 1280, quality: 0.75 })
       const formData = new FormData()
-      formData.append('file', file)
+      formData.append('file', compressedFile)
       formData.append('uploadTarget', 'activity-photos')
       const res = await uploadFile(formData)
       if (res.success && (res.readableUrl || res.url)) {
@@ -704,17 +703,22 @@ export function OvertimeListingClient({
           updateLineItemRow(targetIdx, 'photos', [base64Url])
           toast.success('Foto evidence tersimpan')
         }
-        reader.readAsDataURL(file)
+        reader.readAsDataURL(compressedFile)
       }
     } catch {
-      const reader = new FileReader()
-      reader.onload = () => {
-        const base64Url = reader.result as string
-        updateLineItemRow(targetIdx, 'photoUrl', base64Url)
-        updateLineItemRow(targetIdx, 'photos', [base64Url])
-        toast.success('Foto evidence tersimpan')
+      try {
+        const fallbackCompressed = await compressImageFile(file, { maxWidthOrHeight: 1280, quality: 0.75 })
+        const reader = new FileReader()
+        reader.onload = () => {
+          const base64Url = reader.result as string
+          updateLineItemRow(targetIdx, 'photoUrl', base64Url)
+          updateLineItemRow(targetIdx, 'photos', [base64Url])
+          toast.success('Foto evidence tersimpan')
+        }
+        reader.readAsDataURL(fallbackCompressed)
+      } catch {
+        toast.error('Gagal mengunggah foto evidence')
       }
-      reader.readAsDataURL(file)
     } finally {
       setIsUploadingLinePhoto((prev) => ({ ...prev, [targetIdx]: false }))
     }

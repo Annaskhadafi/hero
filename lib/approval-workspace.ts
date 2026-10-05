@@ -2118,13 +2118,22 @@ async function getDailyActivityInboxItems(
         canonicalRows.push({ ...row, stepStatus: 'reverted' })
       }
     } else {
-      const activeStep = steps.find(s => s.status !== 'approved')
+      const isDailyActivityFinished =
+        sessionStatusLower === 'approved' ||
+        steps.some((s) => s.stepOrder === 2 && ['approved', 'signed', 'completed'].includes((s.status || '').toLowerCase()))
+
+      if (isDailyActivityFinished) {
+        processedSessionIds.add(row.sessionId)
+        continue
+      }
+
+      const activeStep = steps.find((s) => s.status !== 'approved' && (s.stepOrder ?? 0) <= 2)
       if (activeStep && (activeStep.status === 'pending' || activeStep.status === 'waiting')) {
         const prevSteps = steps.filter((s) => s.stepOrder < activeStep.stepOrder)
         const allPrevApproved = prevSteps.length === 0 || prevSteps.every((s) => ['approved', 'signed', 'completed'].includes((s.status || '').toLowerCase()))
         if (allPrevApproved) {
           processedSessionIds.add(row.sessionId)
-          const activeRow = rawRows.find(r => r.approvalId === activeStep.id) || row
+          const activeRow = rawRows.find((r) => r.approvalId === activeStep.id) || row
           canonicalRows.push(activeRow)
         }
       }

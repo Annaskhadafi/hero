@@ -43,6 +43,7 @@ import {
 } from '@/app/dashboard/activity-hub/actions'
 import { getUserSignatureAction } from '@/app/actions/user-signature'
 import { uploadFile } from '@/app/actions/upload'
+import { compressImageFile } from '@/lib/client-image-compression'
 import { SignatureFloatingWidget } from '@/components/signature-floating-widget'
 import { MissingSignatureDialog } from '@/components/missing-signature-dialog'
 import { DailyActivityEvidenceModal } from '@/components/daily-activity-evidence-modal'
@@ -656,15 +657,13 @@ export function DailyActivityApprovalForm({
 
   const handleItemPhotoUpload = async (index: number, file: File | null) => {
     if (!file) return
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('Ukuran foto maksimal 10MB')
-      return
-    }
 
     setUploadingItemIdx(index)
     try {
+      // Compress image client-side to prevent network and payload bottlenecks
+      const compressedFile = await compressImageFile(file, { maxWidthOrHeight: 1280, quality: 0.75 })
       const formData = new FormData()
-      formData.append('file', file)
+      formData.append('file', compressedFile)
       formData.append('uploadTarget', 'daily_activity')
       const res = await uploadFile(formData)
       if (res.success && (res.readableUrl || res.url)) {
@@ -672,24 +671,29 @@ export function DailyActivityApprovalForm({
         handleUpdateItem(index, 'photoUrl', finalUrl)
         toast.success('Foto bukti pekerjaan berhasil diunggah!')
       } else {
-        // Fallback to local base64 reader
+        // Fallback to local base64 reader with compressed file
         const reader = new FileReader()
         reader.onload = () => {
           const base64Url = reader.result as string
           handleUpdateItem(index, 'photoUrl', base64Url)
           toast.success('Foto bukti pekerjaan berhasil disimpan!')
         }
-        reader.readAsDataURL(file)
+        reader.readAsDataURL(compressedFile)
       }
     } catch (err) {
       console.error('Error uploading photo:', err)
-      const reader = new FileReader()
-      reader.onload = () => {
-        const base64Url = reader.result as string
-        handleUpdateItem(index, 'photoUrl', base64Url)
-        toast.success('Foto bukti pekerjaan berhasil disimpan!')
+      try {
+        const fallbackCompressed = await compressImageFile(file, { maxWidthOrHeight: 1280, quality: 0.75 })
+        const reader = new FileReader()
+        reader.onload = () => {
+          const base64Url = reader.result as string
+          handleUpdateItem(index, 'photoUrl', base64Url)
+          toast.success('Foto bukti pekerjaan berhasil disimpan!')
+        }
+        reader.readAsDataURL(fallbackCompressed)
+      } catch {
+        toast.error('Gagal mengunggah atau memproses foto')
       }
-      reader.readAsDataURL(file)
     } finally {
       setUploadingItemIdx(null)
     }

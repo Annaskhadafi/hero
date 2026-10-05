@@ -23,6 +23,7 @@ import {
 } from '@/lib/ewh/calculate-ewh'
 import { calculateUnitUtility, type SessionItemEntry } from '@/lib/ewh/calculate-unit-utility'
 import { getCurrentEmployee } from '@/lib/get-current-employee'
+import { isServicemanEmployee } from '@/lib/employee-role-utils'
 import { revalidatePath } from 'next/cache'
 
 // ============================================================
@@ -446,11 +447,13 @@ export async function getEwhSummaryAction(
     )
   }
 
-  const targetEmployees = await db
+  const rawTargetEmployees = await db
     .select({
       id: employees.id,
       name: employees.name,
       employeeSn: employees.employeeSn,
+      jobTitle: employees.jobTitle,
+      role: employees.role,
       section: employees.section,
       department: employees.department,
       departmentId: employees.departmentId,
@@ -459,6 +462,11 @@ export async function getEwhSummaryAction(
     .from(employees)
     .where(and(...empWhere))
     .orderBy(employees.name)
+
+  // Focus EWH calculations specifically on Servicemen (excluding Technical/PJO and Repairmen who don't fill daily activity)
+  const targetEmployees = parsedDeptId
+    ? rawTargetEmployees
+    : rawTargetEmployees.filter((e) => isServicemanEmployee(e))
 
   if (targetEmployees.length === 0) {
     return { success: true as const, rows: [] }
@@ -1172,18 +1180,23 @@ export async function getEwhEmployeesAction(
     )
   }
 
-  const list = await db
+  const rawList = await db
     .select({
       id: employees.id,
       name: employees.name,
       employeeSn: employees.employeeSn,
       jobTitle: employees.jobTitle,
+      role: employees.role,
       department: employees.department,
       section: employees.section,
     })
     .from(employees)
     .where(and(...whereConditions))
     .orderBy(employees.name)
+
+  const list = parsedDeptId
+    ? rawList
+    : rawList.filter((e) => isServicemanEmployee(e))
   return { success: true as const, employees: list }
 }
 
@@ -1392,17 +1405,24 @@ export async function getEwhSiteMonthlyMatrixAction(
     )
   }
 
-  const targetEmployees = await db
+  const rawTargetEmployees = await db
     .select({
       id: employees.id,
       siteId: employees.siteId,
       departmentId: employees.departmentId,
       department: employees.department,
       section: employees.section,
+      jobTitle: employees.jobTitle,
+      role: employees.role,
       name: employees.name,
     })
     .from(employees)
     .where(and(...empWhere))
+
+  // EWH dashboard is specifically dedicated to Servicemen so that utilities & EWH division is not diluted by Technical (PJO) & Repair who don't fill daily activity
+  const targetEmployees = parsedDeptId && selectedDept
+    ? rawTargetEmployees
+    : rawTargetEmployees.filter((e) => isServicemanEmployee(e))
 
   const targetEmployeeIdSet = new Set(targetEmployees.map((e) => e.id))
 

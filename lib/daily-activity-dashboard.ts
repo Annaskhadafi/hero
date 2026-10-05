@@ -23,6 +23,7 @@ import {
 import { and, desc, eq, inArray, isNull, like, or, sql, ilike } from 'drizzle-orm'
 import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 import { calcClockDuration } from '@/lib/ewh/calculate-ewh'
+import { isServicemanEmployee } from '@/lib/employee-role-utils'
 
 export interface DailyActivityFilterParams {
   siteId?: string
@@ -1716,6 +1717,11 @@ export async function getDailyActivityDashboardData(
 
   for (const emp of allActiveEmployees) {
     if (submittedEmpIds.has(emp.id)) continue
+
+    // Only Servicemen are required to submit Daily Activities (exclude Technical, PJO, Repairmen, Admin)
+    if (!isServicemanEmployee({ jobTitle: emp.jobTitle, section: emp.sectionName || emp.section, department: emp.deptName || emp.department })) {
+      continue
+    }
 
     let hasWorkingShift = false
     let lastRosterCode = 'DS'

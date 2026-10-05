@@ -44,6 +44,7 @@ import * as XLSX from 'xlsx'
 import QRCode from 'qrcode'
 import { toast } from 'sonner'
 import { downloadElementAsPdf, downloadHtmlAsPdf, generateElementAsPdfBlob, generateHtmlAsPdfBlob, downloadFilesAsZip } from '@/lib/pdf-download'
+import { compressImageFile } from '@/lib/client-image-compression'
 
 import { AdminPageShell } from '@/components/admin-page-shell'
 import { DailyActivityEvidenceModal } from '@/components/daily-activity-evidence-modal'
@@ -267,8 +268,9 @@ export function ApprovalListingClient({
 async function uploadActivityPhoto(file: File): Promise<string> {
   if (!file.type.startsWith('image/')) throw new Error('Evidence harus berupa gambar.')
 
+  const compressedFile = await compressImageFile(file, { maxWidthOrHeight: 1280, quality: 0.75 })
   const formData = new FormData()
-  formData.append('file', file)
+  formData.append('file', compressedFile)
   const uploadResponse = await fetch('/api/uploads/activity-presign', {
     method: 'POST',
     body: formData,

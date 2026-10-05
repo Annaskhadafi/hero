@@ -4514,7 +4514,18 @@ export async function submitDailyActivityApprovalStepAction(
         .orderBy(asc(dailyActivityApprovals.stepOrder))
         .limit(1)
 
-      if (nextStep) {
+      const isSameApproverAsNext =
+        nextStep &&
+        ((nextStep.approverEmployeeId && nextStep.approverEmployeeId === currentEmployee.id) ||
+          (nextStep.approverEmail &&
+            currentEmployee.email &&
+            nextStep.approverEmail.toLowerCase().trim() === currentEmployee.email.toLowerCase().trim()))
+
+      // For Daily Activity, approval is strictly 1x to Leader/PJO (Step 2).
+      // If nextStep is redundant, has same approver, or stepOrder >= 2: finalize immediately!
+      const shouldFinalize = !nextStep || isSameApproverAsNext || approvalRow.stepOrder >= 2
+
+      if (!shouldFinalize && nextStep) {
         if (nextStep.status !== 'approved') {
           await db
             .update(dailyActivityApprovals)
@@ -4571,7 +4582,23 @@ export async function submitDailyActivityApprovalStepAction(
           }
         }
       } else {
-        // Final approval (Step 4 completed)
+        // Auto-approve any remaining steps so none remains stuck in 'waiting'
+        await db
+          .update(dailyActivityApprovals)
+          .set({
+            status: 'approved',
+            signatureDataUrl: signatureUrl,
+            approverEmployeeId: currentEmployee.id,
+            signedAt: now,
+          })
+          .where(
+            and(
+              eq(dailyActivityApprovals.sessionId, payload.sessionId),
+              sql`${dailyActivityApprovals.stepOrder} > ${approvalRow.stepOrder}`
+            )
+          )
+
+        // Final approval (Step 2 completed)
         await db
           .update(dailyActivitySessions)
           .set({ status: 'approved', approvedAt: now, updatedAt: now })
@@ -6414,7 +6441,9 @@ export async function saveDailyActivityApprovalForm(payload: {
               .orderBy(asc(dailyActivityApprovals.stepOrder))
               .limit(1)
 
-            if (nextStep) {
+            const shouldFinalize = !nextStep || currentStep.stepOrder >= 2
+
+            if (!shouldFinalize && nextStep) {
               if (nextStep.status !== 'approved') {
                 await db
                   .update(dailyActivityApprovals)
@@ -6436,7 +6465,22 @@ export async function saveDailyActivityApprovalForm(payload: {
                 }
               }
             } else {
-              // Final Step 4 approved
+              // Auto-approve any remaining steps with signature & timestamp
+              await db
+                .update(dailyActivityApprovals)
+                .set({
+                  status: 'approved',
+                  signatureDataUrl: sigUrl,
+                  signedAt: new Date(),
+                })
+                .where(
+                  and(
+                    eq(dailyActivityApprovals.sessionId, payload.sessionId),
+                    sql`${dailyActivityApprovals.stepOrder} > ${currentStep.stepOrder}`
+                  )
+                )
+
+              // Final Step (Step 2 Leader / PJO) approved
               await db
                 .update(dailyActivitySessions)
                 .set({ status: 'approved', approvedAt: new Date(), updatedAt: new Date() })
