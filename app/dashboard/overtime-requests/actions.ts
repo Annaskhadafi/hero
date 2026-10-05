@@ -458,7 +458,7 @@ export async function getOvertimeApprovalData(documentId: number | string): Prom
   }
 }
 
-export function parseSplInputDateTime(dateVal?: Date | string | null, timeVal?: Date | string | null): Date {
+function parseSplInputDateTime(dateVal?: Date | string | null, timeVal?: Date | string | null): Date {
   if (timeVal instanceof Date && !isNaN(timeVal.getTime())) return timeVal
   if (typeof timeVal === 'string' && timeVal.trim()) {
     const trimmedTime = timeVal.trim()
