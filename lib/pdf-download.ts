@@ -107,6 +107,86 @@ export async function generateElementAsPdfBlob(
 
   return pdf.output('blob')
 }
+export async function generateMultiPageElementAsPdfBlob(
+  elements: HTMLElement[],
+  options?: { orientation?: 'portrait' | 'landscape' }
+): Promise<Blob> {
+  if (typeof window === 'undefined') {
+    throw new Error('PDF generation is only supported in the browser.')
+  }
+
+  const [{ jsPDF }, { default: html2canvas }] = await Promise.all([
+    import('jspdf'),
+    import('html2canvas-pro'),
+  ])
+
+  if (document.fonts?.ready) {
+    await Promise.race([
+      document.fonts.ready,
+      new Promise((resolve) => setTimeout(resolve, 2000)),
+    ])
+  }
+
+  const isLandscape = options?.orientation === 'landscape'
+  const pdfWidth = isLandscape ? 297 : 210
+  const pdfHeight = isLandscape ? 210 : 297
+
+  const pdf = new jsPDF({
+    orientation: isLandscape ? 'landscape' : 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  })
+
+  for (let i = 0; i < elements.length; i++) {
+    const el = elements[i]
+    const images = Array.from(el.querySelectorAll('img'))
+    await Promise.all(
+      images.map(
+        (img) =>
+          new Promise<void>((resolve) => {
+            if (img.complete) resolve()
+            else {
+              img.onload = () => resolve()
+              img.onerror = () => resolve()
+            }
+          })
+      )
+    )
+
+    const canvas = await html2canvas(el, {
+      scale: 2,
+      logging: false,
+      useCORS: true,
+      allowTaint: true,
+      imageTimeout: 15000,
+      backgroundColor: '#ffffff',
+    })
+
+    const imgData = canvas.toDataURL('image/jpeg', 0.98)
+    if (i > 0) {
+      pdf.addPage('a4', isLandscape ? 'landscape' : 'portrait')
+    }
+    pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight)
+  }
+
+  return pdf.output('blob')
+}
+
+export async function downloadMultiPageElementAsPdf(
+  elements: HTMLElement[],
+  fileName: string = 'document.pdf',
+  options?: { orientation?: 'portrait' | 'landscape' }
+): Promise<void> {
+  const blob = await generateMultiPageElementAsPdfBlob(elements, options)
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
 
 export async function downloadElementAsPdf(
   element: HTMLElement,

@@ -251,6 +251,7 @@ export function AppSidebar({
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault()
+        setOpen(true)
         searchInputRef.current?.focus()
       } else if (e.key === "Escape" && searchQuery) {
         setSearchQuery("")
@@ -343,6 +344,7 @@ export function AppSidebar({
         url: it.url,
         title: it.title,
         section: it.section,
+        groupLabel: it.groupLabel,
         icon: it.icon,
         openInNewTab: it.openInNewTab,
       }))
@@ -353,6 +355,7 @@ export function AppSidebar({
         url: doc.url,
         title: doc.name,
         section: doc.section,
+        groupLabel: null,
         icon: doc.icon,
         openInNewTab: true,
       }))
@@ -365,6 +368,35 @@ export function AppSidebar({
       return true
     })
   }, [searchQuery, desktopItems, documentItems])
+
+  const groupedFilteredItems = React.useMemo(() => {
+    const groups: {
+      section: string
+      items: {
+        url: string
+        title: string
+        section: string
+        groupLabel?: string | null
+        icon: any
+        openInNewTab?: boolean
+        globalIndex: number
+      }[]
+    }[] = []
+    const groupMap = new Map<string, (typeof groups)[number]>()
+
+    filteredItems.forEach((item, globalIndex) => {
+      const sectionName = item.section || "Menu"
+      let group = groupMap.get(sectionName)
+      if (!group) {
+        group = { section: sectionName, items: [] }
+        groupMap.set(sectionName, group)
+        groups.push(group)
+      }
+      group.items.push({ ...item, globalIndex })
+    })
+
+    return groups
+  }, [filteredItems])
 
   React.useEffect(() => {
     if (filteredItems.length > 0 && itemRefs.current[selectedIndex]) {
@@ -523,53 +555,59 @@ export function AppSidebar({
                 <p className="font-semibold text-foreground mt-0.5">&ldquo;{searchQuery}&rdquo;</p>
               </div>
             ) : (
-              <div className="flex flex-col gap-0.5">
-                {filteredItems.map((item, index) => {
-                  const isSelected = index === selectedIndex
-                  const isActive = pathname === item.url
-                  return (
-                    <SidebarMenuButton
-                      key={`${item.section}-${item.title}-${item.url}-${index}`}
-                      asChild
-                      isActive={isActive || isSelected}
-                      className={cn(
-                        "min-h-10 rounded-xl px-2.5 py-2 text-[13px] font-medium transition-all duration-150",
-                        isSelected
-                          ? "bg-blue-600 text-white shadow-xs font-semibold hover:bg-blue-600 hover:text-white"
-                          : isActive
-                          ? "bg-blue-50 text-blue-700 font-semibold dark:bg-blue-950/60 dark:text-blue-300"
-                          : "hover:bg-sidebar-accent text-foreground"
-                      )}
-                    >
-                      <Link
-                        ref={(el) => {
-                          itemRefs.current[index] = el
-                        }}
-                        href={item.url}
-                        onClick={() => setSearchQuery("")}
-                        onMouseEnter={() => setSelectedIndex(index)}
-                        target={item.openInNewTab ? "_blank" : undefined}
-                        rel={item.openInNewTab ? "noopener noreferrer" : undefined}
-                        className="flex items-center justify-between gap-2 w-full min-w-0"
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0 truncate">
-                          <item.icon className={cn("size-4 shrink-0", isSelected ? "text-white" : "text-slate-500")} />
-                          <span className="truncate">{item.title}</span>
-                          {item.section && (
-                            <span className={cn("text-[10px] truncate shrink-0", isSelected ? "text-white/70" : "text-muted-foreground")}>
-                              • {item.section}
-                            </span>
-                          )}
-                        </div>
-                        {isSelected && (
-                          <span className="shrink-0 text-[10px] font-mono opacity-80 px-1 py-0.5 rounded bg-white/20">
-                            ↵ Enter
-                          </span>
-                        )}
-                      </Link>
-                    </SidebarMenuButton>
-                  )
-                })}
+              <div className="flex flex-col gap-2.5">
+                {groupedFilteredItems.map((group) => (
+                  <div key={group.section} className="flex flex-col gap-0.5">
+                    <div className="flex items-center justify-between px-2 pt-1.5 pb-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+                      <span>{group.section}</span>
+                      <span className="text-[9px] font-medium text-slate-400/80">({group.items.length})</span>
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      {group.items.map(({ url, title, section, groupLabel, icon: IconComponent, openInNewTab, globalIndex }) => {
+                        const isSelected = globalIndex === selectedIndex
+                        const isActive = pathname === url
+                        return (
+                          <SidebarMenuButton
+                            key={`${section}-${title}-${url}-${globalIndex}`}
+                            asChild
+                            isActive={isActive || isSelected}
+                            className={cn(
+                              "min-h-9 rounded-xl px-2.5 py-1.5 text-[13px] font-medium transition-all duration-150",
+                              isSelected
+                                ? "bg-blue-600 text-white shadow-xs font-semibold hover:bg-blue-600 hover:text-white"
+                                : isActive
+                                ? "bg-blue-50 text-blue-700 font-semibold dark:bg-blue-950/60 dark:text-blue-300"
+                                : "hover:bg-sidebar-accent text-foreground"
+                            )}
+                          >
+                            <Link
+                              ref={(el) => {
+                                itemRefs.current[globalIndex] = el
+                              }}
+                              href={url}
+                              title={groupLabel ? `${title} (${groupLabel} • ${section})` : `${title} (${section})`}
+                              onClick={() => setSearchQuery("")}
+                              onMouseEnter={() => setSelectedIndex(globalIndex)}
+                              target={openInNewTab ? "_blank" : undefined}
+                              rel={openInNewTab ? "noopener noreferrer" : undefined}
+                              className="flex items-center justify-between gap-2 w-full min-w-0"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                <IconComponent className={cn("size-4 shrink-0", isSelected ? "text-white" : "text-slate-500 dark:text-slate-400")} />
+                                <span className="truncate text-[13px]">{title}</span>
+                              </div>
+                              {isSelected && (
+                                <span className="shrink-0 text-[10px] font-mono opacity-90 px-1.5 py-0.5 rounded bg-white/20 font-medium">
+                                  ↵ Enter
+                                </span>
+                              )}
+                            </Link>
+                          </SidebarMenuButton>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

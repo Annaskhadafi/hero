@@ -495,6 +495,47 @@ body:has([data-admin-dashboard-shell]) {
     max-height: none !important;
     overflow: visible !important;
   }
+  .print-embedded-container {
+    position: static !important;
+    padding: 0 !important;
+    background: transparent !important;
+    gap: 0 !important;
+  }
+  .contract-review-print .pdf-wrapper,
+  .print-embedded-container .pdf-wrapper,
+  .contract-review-page {
+    position: relative !important;
+    width: 210mm !important;
+    height: 297mm !important;
+    max-height: 297mm !important;
+    margin: 0 auto !important;
+    overflow: hidden !important;
+    background-image: url("/ChitraParatama_Stationery_Letterhead_jkt.jpg") !important;
+    background-size: 210mm 297mm !important;
+    background-repeat: no-repeat !important;
+    background-position: top center !important;
+    box-sizing: border-box !important;
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+  .contract-review-print .pdf-wrapper:last-child,
+  .print-embedded-container .pdf-wrapper:last-child,
+  .contract-review-page:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+  .contract-review-print .pdf-wrapper > img.absolute,
+  .print-embedded-container .pdf-wrapper > img.absolute,
+  .contract-review-page > img.letterhead-bg {
+    display: none !important;
+  }
+  .contract-review-print .pdf-wrapper-content,
+  .print-embedded-container .pdf-wrapper-content,
+  .contract-review-page .pdf-wrapper-content {
+    position: relative !important;
+    width: 210mm !important;
+    box-sizing: border-box !important;
+  }
 }
 
 .approval-document-letterhead,

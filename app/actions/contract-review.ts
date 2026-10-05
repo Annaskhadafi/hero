@@ -2240,11 +2240,14 @@ export async function updateAdminContractReviewApprovalSignature(reviewId: numbe
   try {
     const access = await requireSuperAdminContractReviewAccess()
     if (!access.ok) return { success: false, error: access.error }
-    if (signatureDataUrl !== null && !signatureDataUrl.startsWith('data:image/')) return { success: false, error: 'Format TTD tidak valid.' }
+    if (signatureDataUrl !== null && signatureDataUrl !== '' && !signatureDataUrl.startsWith('data:image/')) {
+      return { success: false, error: 'Format TTD tidak valid.' }
+    }
     const [approval] = await db
       .select({
         id: hcContractReviewApprovals.id,
         stepOrder: hcContractReviewApprovals.stepOrder,
+        approverRole: hcContractReviewApprovals.approverRole,
         status: hcEmployeeContractReviews.status,
       })
       .from(hcContractReviewApprovals)
@@ -2252,30 +2255,27 @@ export async function updateAdminContractReviewApprovalSignature(reviewId: numbe
       .where(and(eq(hcContractReviewApprovals.id, approvalId), eq(hcContractReviewApprovals.reviewId, reviewId)))
       .limit(1)
     if (!approval) return { success: false, error: 'Step approval tidak ditemukan.' }
-    if (approval.status === 'draft') return { success: false, error: 'Review draft belum dapat diubah melalui override admin.' }
-    const duplicateSignature = signatureDataUrl === null ? [] : await db
-      .select({ id: hcContractReviewApprovals.id })
-      .from(hcContractReviewApprovals)
-      .where(
-        and(
-          eq(hcContractReviewApprovals.reviewId, reviewId),
-          ne(hcContractReviewApprovals.id, approvalId),
-          eq(hcContractReviewApprovals.signatureDataUrl, signatureDataUrl),
-        ),
-      )
-      .limit(1)
-    if (duplicateSignature.length > 0) return { success: false, error: 'TTD ini sudah dipakai reviewer lain pada review ini.' }
+
+    const isClearing = signatureDataUrl === null || signatureDataUrl === ''
     await db
       .update(hcContractReviewApprovals)
-      .set({ signatureDataUrl, signedAt: signatureDataUrl ? new Date() : null })
+      .set({
+        signatureDataUrl: isClearing ? null : signatureDataUrl,
+        signedAt: isClearing ? null : new Date(),
+        status: isClearing ? 'pending' : 'approved',
+      })
       .where(eq(hcContractReviewApprovals.id, approvalId))
+
     if (approval.stepOrder === 1) {
       await db
         .update(hcEmployeeContractReviews)
-        .set({ leaderSignatureDataUrl: signatureDataUrl, updatedAt: new Date() })
+        .set({ leaderSignatureDataUrl: isClearing ? null : signatureDataUrl, updatedAt: new Date() })
         .where(eq(hcEmployeeContractReviews.id, reviewId))
     }
+
     revalidatePath(`/dashboard/hc/contract-review/form/${reviewId}`)
+    revalidatePath(`/dashboard/hc/contract-review/${reviewId}`)
+    revalidatePath('/dashboard/hc/contract-review')
     return { success: true }
   } catch (error: any) {
     console.error('Error updating admin Contract Review signature:', error)

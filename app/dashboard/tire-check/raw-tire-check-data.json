@@ -1,0 +1,2983 @@
+{
+  "data": [
+    {
+      "date": "20260101",
+      "date2": "2026-01-01",
+      "trgt": "516",
+      "trgt2": null,
+      "checked_tires": "512",
+      "low_press_tires": "0",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260101",
+      "date2": "2026-01-01",
+      "trgt": "537",
+      "trgt2": null,
+      "checked_tires": "683",
+      "low_press_tires": "6",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260101",
+      "date2": "2026-01-01",
+      "trgt": "780",
+      "trgt2": null,
+      "checked_tires": "787",
+      "low_press_tires": "14",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260101",
+      "date2": "2026-01-01",
+      "trgt": "408",
+      "trgt2": "0",
+      "checked_tires": "404",
+      "low_press_tires": "5",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260101",
+      "date2": "2026-01-01",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "1",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260102",
+      "date2": "2026-01-02",
+      "trgt": "516",
+      "trgt2": null,
+      "checked_tires": "686",
+      "low_press_tires": "0",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260102",
+      "date2": "2026-01-02",
+      "trgt": "498",
+      "trgt2": null,
+      "checked_tires": "641",
+      "low_press_tires": "6",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260102",
+      "date2": "2026-01-02",
+      "trgt": "780",
+      "trgt2": null,
+      "checked_tires": "758",
+      "low_press_tires": "1",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260102",
+      "date2": "2026-01-02",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "356",
+      "low_press_tires": "4",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260102",
+      "date2": "2026-01-02",
+      "trgt": "408",
+      "trgt2": "0",
+      "checked_tires": "404",
+      "low_press_tires": "7",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260102",
+      "date2": "2026-01-02",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "1",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260103",
+      "date2": "2026-01-03",
+      "trgt": "516",
+      "trgt2": null,
+      "checked_tires": "588",
+      "low_press_tires": "0",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260103",
+      "date2": "2026-01-03",
+      "trgt": "498",
+      "trgt2": null,
+      "checked_tires": "707",
+      "low_press_tires": "3",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260103",
+      "date2": "2026-01-03",
+      "trgt": "780",
+      "trgt2": null,
+      "checked_tires": "751",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260103",
+      "date2": "2026-01-03",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "356",
+      "low_press_tires": "7",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260103",
+      "date2": "2026-01-03",
+      "trgt": "408",
+      "trgt2": "0",
+      "checked_tires": "404",
+      "low_press_tires": "4",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260103",
+      "date2": "2026-01-03",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "1",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260104",
+      "date2": "2026-01-04",
+      "trgt": "522",
+      "trgt2": null,
+      "checked_tires": "474",
+      "low_press_tires": "0",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260104",
+      "date2": "2026-01-04",
+      "trgt": "498",
+      "trgt2": null,
+      "checked_tires": "550",
+      "low_press_tires": "0",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260104",
+      "date2": "2026-01-04",
+      "trgt": "786",
+      "trgt2": null,
+      "checked_tires": "740",
+      "low_press_tires": "74",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260104",
+      "date2": "2026-01-04",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "356",
+      "low_press_tires": "6",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260104",
+      "date2": "2026-01-04",
+      "trgt": "408",
+      "trgt2": "0",
+      "checked_tires": "404",
+      "low_press_tires": "1",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260104",
+      "date2": "2026-01-04",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260105",
+      "date2": "2026-01-05",
+      "trgt": "522",
+      "trgt2": null,
+      "checked_tires": "512",
+      "low_press_tires": "3",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260105",
+      "date2": "2026-01-05",
+      "trgt": "498",
+      "trgt2": null,
+      "checked_tires": "891",
+      "low_press_tires": "2",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260105",
+      "date2": "2026-01-05",
+      "trgt": "786",
+      "trgt2": null,
+      "checked_tires": "897",
+      "low_press_tires": "55",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260105",
+      "date2": "2026-01-05",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "356",
+      "low_press_tires": "6",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260105",
+      "date2": "2026-01-05",
+      "trgt": "408",
+      "trgt2": "0",
+      "checked_tires": "404",
+      "low_press_tires": "1",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260105",
+      "date2": "2026-01-05",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260106",
+      "date2": "2026-01-06",
+      "trgt": "522",
+      "trgt2": null,
+      "checked_tires": "846",
+      "low_press_tires": "3",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260106",
+      "date2": "2026-01-06",
+      "trgt": "498",
+      "trgt2": null,
+      "checked_tires": "554",
+      "low_press_tires": "2",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260106",
+      "date2": "2026-01-06",
+      "trgt": "786",
+      "trgt2": null,
+      "checked_tires": "758",
+      "low_press_tires": "28",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260106",
+      "date2": "2026-01-06",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "332",
+      "low_press_tires": "4",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260106",
+      "date2": "2026-01-06",
+      "trgt": "408",
+      "trgt2": "0",
+      "checked_tires": "404",
+      "low_press_tires": "2",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260106",
+      "date2": "2026-01-06",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "1",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260107",
+      "date2": "2026-01-07",
+      "trgt": "522",
+      "trgt2": null,
+      "checked_tires": "812",
+      "low_press_tires": "1",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260107",
+      "date2": "2026-01-07",
+      "trgt": "498",
+      "trgt2": null,
+      "checked_tires": "871",
+      "low_press_tires": "3",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260107",
+      "date2": "2026-01-07",
+      "trgt": "786",
+      "trgt2": null,
+      "checked_tires": "597",
+      "low_press_tires": "16",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260107",
+      "date2": "2026-01-07",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "332",
+      "low_press_tires": "4",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260107",
+      "date2": "2026-01-07",
+      "trgt": "408",
+      "trgt2": "0",
+      "checked_tires": "404",
+      "low_press_tires": "2",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260107",
+      "date2": "2026-01-07",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260108",
+      "date2": "2026-01-08",
+      "trgt": "522",
+      "trgt2": null,
+      "checked_tires": "642",
+      "low_press_tires": "2",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260108",
+      "date2": "2026-01-08",
+      "trgt": "498",
+      "trgt2": null,
+      "checked_tires": "802",
+      "low_press_tires": "3",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260108",
+      "date2": "2026-01-08",
+      "trgt": "786",
+      "trgt2": "0",
+      "checked_tires": "787",
+      "low_press_tires": "20",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260108",
+      "date2": "2026-01-08",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "332",
+      "low_press_tires": "7",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260108",
+      "date2": "2026-01-08",
+      "trgt": "408",
+      "trgt2": "0",
+      "checked_tires": "404",
+      "low_press_tires": "2",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260108",
+      "date2": "2026-01-08",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260109",
+      "date2": "2026-01-09",
+      "trgt": "522",
+      "trgt2": null,
+      "checked_tires": "668",
+      "low_press_tires": "0",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260109",
+      "date2": "2026-01-09",
+      "trgt": "498",
+      "trgt2": null,
+      "checked_tires": "889",
+      "low_press_tires": "3",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260109",
+      "date2": "2026-01-09",
+      "trgt": "786",
+      "trgt2": null,
+      "checked_tires": "790",
+      "low_press_tires": "24",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260109",
+      "date2": "2026-01-09",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "332",
+      "low_press_tires": "5",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260109",
+      "date2": "2026-01-09",
+      "trgt": "408",
+      "trgt2": "0",
+      "checked_tires": "404",
+      "low_press_tires": "2",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260109",
+      "date2": "2026-01-09",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260110",
+      "date2": "2026-01-10",
+      "trgt": "522",
+      "trgt2": null,
+      "checked_tires": "638",
+      "low_press_tires": "5",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260110",
+      "date2": "2026-01-10",
+      "trgt": "498",
+      "trgt2": null,
+      "checked_tires": "533",
+      "low_press_tires": "2",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260110",
+      "date2": "2026-01-10",
+      "trgt": "786",
+      "trgt2": null,
+      "checked_tires": "802",
+      "low_press_tires": "15",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260110",
+      "date2": "2026-01-10",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "332",
+      "low_press_tires": "6",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260110",
+      "date2": "2026-01-10",
+      "trgt": "408",
+      "trgt2": "0",
+      "checked_tires": "404",
+      "low_press_tires": "14",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260110",
+      "date2": "2026-01-10",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260111",
+      "date2": "2026-01-11",
+      "trgt": "522",
+      "trgt2": null,
+      "checked_tires": "646",
+      "low_press_tires": "2",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260111",
+      "date2": "2026-01-11",
+      "trgt": "498",
+      "trgt2": null,
+      "checked_tires": "817",
+      "low_press_tires": "2",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260111",
+      "date2": "2026-01-11",
+      "trgt": "810",
+      "trgt2": null,
+      "checked_tires": "702",
+      "low_press_tires": "38",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260111",
+      "date2": "2026-01-11",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "332",
+      "low_press_tires": "6",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260111",
+      "date2": "2026-01-11",
+      "trgt": "408",
+      "trgt2": "0",
+      "checked_tires": "404",
+      "low_press_tires": "0",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260111",
+      "date2": "2026-01-11",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260112",
+      "date2": "2026-01-12",
+      "trgt": "522",
+      "trgt2": null,
+      "checked_tires": "492",
+      "low_press_tires": "2",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260112",
+      "date2": "2026-01-12",
+      "trgt": "513",
+      "trgt2": null,
+      "checked_tires": "471",
+      "low_press_tires": "0",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260112",
+      "date2": "2026-01-12",
+      "trgt": "810",
+      "trgt2": null,
+      "checked_tires": "811",
+      "low_press_tires": "3",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260112",
+      "date2": "2026-01-12",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "332",
+      "low_press_tires": "5",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260112",
+      "date2": "2026-01-12",
+      "trgt": "408",
+      "trgt2": "0",
+      "checked_tires": "404",
+      "low_press_tires": "5",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260112",
+      "date2": "2026-01-12",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260113",
+      "date2": "2026-01-13",
+      "trgt": "522",
+      "trgt2": null,
+      "checked_tires": "743",
+      "low_press_tires": "1",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260113",
+      "date2": "2026-01-13",
+      "trgt": "513",
+      "trgt2": null,
+      "checked_tires": "867",
+      "low_press_tires": "1",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260113",
+      "date2": "2026-01-13",
+      "trgt": "810",
+      "trgt2": null,
+      "checked_tires": "824",
+      "low_press_tires": "5",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260113",
+      "date2": "2026-01-13",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "332",
+      "low_press_tires": "12",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260113",
+      "date2": "2026-01-13",
+      "trgt": "408",
+      "trgt2": "0",
+      "checked_tires": "404",
+      "low_press_tires": "3",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260113",
+      "date2": "2026-01-13",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260114",
+      "date2": "2026-01-14",
+      "trgt": "522",
+      "trgt2": null,
+      "checked_tires": "629",
+      "low_press_tires": "3",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260114",
+      "date2": "2026-01-14",
+      "trgt": "513",
+      "trgt2": null,
+      "checked_tires": "516",
+      "low_press_tires": "2",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260114",
+      "date2": "2026-01-14",
+      "trgt": "810",
+      "trgt2": null,
+      "checked_tires": "830",
+      "low_press_tires": "13",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260114",
+      "date2": "2026-01-14",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "332",
+      "low_press_tires": "5",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260114",
+      "date2": "2026-01-14",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "361",
+      "low_press_tires": "4",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260114",
+      "date2": "2026-01-14",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260115",
+      "date2": "2026-01-15",
+      "trgt": "522",
+      "trgt2": null,
+      "checked_tires": "568",
+      "low_press_tires": "4",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260115",
+      "date2": "2026-01-15",
+      "trgt": "516",
+      "trgt2": null,
+      "checked_tires": "947",
+      "low_press_tires": "2",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260115",
+      "date2": "2026-01-15",
+      "trgt": "780",
+      "trgt2": null,
+      "checked_tires": "839",
+      "low_press_tires": "1",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260115",
+      "date2": "2026-01-15",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "332",
+      "low_press_tires": "11",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260115",
+      "date2": "2026-01-15",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "396",
+      "low_press_tires": "1",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260115",
+      "date2": "2026-01-15",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260116",
+      "date2": "2026-01-16",
+      "trgt": "522",
+      "trgt2": null,
+      "checked_tires": "785",
+      "low_press_tires": "3",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260116",
+      "date2": "2026-01-16",
+      "trgt": "516",
+      "trgt2": null,
+      "checked_tires": "867",
+      "low_press_tires": "1",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260116",
+      "date2": "2026-01-16",
+      "trgt": "780",
+      "trgt2": null,
+      "checked_tires": "812",
+      "low_press_tires": "1",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260116",
+      "date2": "2026-01-16",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "332",
+      "low_press_tires": "10",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260116",
+      "date2": "2026-01-16",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "396",
+      "low_press_tires": "2",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260116",
+      "date2": "2026-01-16",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260117",
+      "date2": "2026-01-17",
+      "trgt": "510",
+      "trgt2": null,
+      "checked_tires": "442",
+      "low_press_tires": "6",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260117",
+      "date2": "2026-01-17",
+      "trgt": "516",
+      "trgt2": null,
+      "checked_tires": "383",
+      "low_press_tires": "1",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260117",
+      "date2": "2026-01-17",
+      "trgt": "780",
+      "trgt2": null,
+      "checked_tires": "800",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260117",
+      "date2": "2026-01-17",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "332",
+      "low_press_tires": "7",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260117",
+      "date2": "2026-01-17",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "396",
+      "low_press_tires": "4",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260117",
+      "date2": "2026-01-17",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260118",
+      "date2": "2026-01-18",
+      "trgt": "516",
+      "trgt2": null,
+      "checked_tires": "788",
+      "low_press_tires": "4",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260118",
+      "date2": "2026-01-18",
+      "trgt": "780",
+      "trgt2": null,
+      "checked_tires": "820",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260118",
+      "date2": "2026-01-18",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "332",
+      "low_press_tires": "6",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260118",
+      "date2": "2026-01-18",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "396",
+      "low_press_tires": "5",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260118",
+      "date2": "2026-01-18",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260119",
+      "date2": "2026-01-19",
+      "trgt": "516",
+      "trgt2": null,
+      "checked_tires": "787",
+      "low_press_tires": "6",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260119",
+      "date2": "2026-01-19",
+      "trgt": "780",
+      "trgt2": null,
+      "checked_tires": "796",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260119",
+      "date2": "2026-01-19",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "332",
+      "low_press_tires": "5",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260119",
+      "date2": "2026-01-19",
+      "trgt": "396",
+      "trgt2": "0",
+      "checked_tires": "396",
+      "low_press_tires": "0",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260119",
+      "date2": "2026-01-19",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "317",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260120",
+      "date2": "2026-01-20",
+      "trgt": "780",
+      "trgt2": null,
+      "checked_tires": "796",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260120",
+      "date2": "2026-01-20",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "332",
+      "low_press_tires": "5",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260120",
+      "date2": "2026-01-20",
+      "trgt": "396",
+      "trgt2": "0",
+      "checked_tires": "398",
+      "low_press_tires": "2",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260120",
+      "date2": "2026-01-20",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "317",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260121",
+      "date2": "2026-01-21",
+      "trgt": "522",
+      "trgt2": null,
+      "checked_tires": "638",
+      "low_press_tires": "53",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260121",
+      "date2": "2026-01-21",
+      "trgt": "804",
+      "trgt2": null,
+      "checked_tires": "769",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260121",
+      "date2": "2026-01-21",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "332",
+      "low_press_tires": "5",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260121",
+      "date2": "2026-01-21",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "398",
+      "low_press_tires": "2",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260121",
+      "date2": "2026-01-21",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "317",
+      "low_press_tires": "4",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260122",
+      "date2": "2026-01-22",
+      "trgt": "522",
+      "trgt2": null,
+      "checked_tires": "835",
+      "low_press_tires": "132",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260122",
+      "date2": "2026-01-22",
+      "trgt": "516",
+      "trgt2": null,
+      "checked_tires": "792",
+      "low_press_tires": "17",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260122",
+      "date2": "2026-01-22",
+      "trgt": "786",
+      "trgt2": "0",
+      "checked_tires": "777",
+      "low_press_tires": "12",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260122",
+      "date2": "2026-01-22",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "304",
+      "low_press_tires": "5",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260122",
+      "date2": "2026-01-22",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "398",
+      "low_press_tires": "7",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260122",
+      "date2": "2026-01-22",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "317",
+      "low_press_tires": "1",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260123",
+      "date2": "2026-01-23",
+      "trgt": "522",
+      "trgt2": null,
+      "checked_tires": "845",
+      "low_press_tires": "117",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260123",
+      "date2": "2026-01-23",
+      "trgt": "516",
+      "trgt2": null,
+      "checked_tires": "930",
+      "low_press_tires": "17",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260123",
+      "date2": "2026-01-23",
+      "trgt": "780",
+      "trgt2": "0",
+      "checked_tires": "800",
+      "low_press_tires": "14",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260123",
+      "date2": "2026-01-23",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "304",
+      "low_press_tires": "4",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260123",
+      "date2": "2026-01-23",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "398",
+      "low_press_tires": "7",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260123",
+      "date2": "2026-01-23",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "317",
+      "low_press_tires": "3",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260124",
+      "date2": "2026-01-24",
+      "trgt": "522",
+      "trgt2": null,
+      "checked_tires": "838",
+      "low_press_tires": "93",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260124",
+      "date2": "2026-01-24",
+      "trgt": "516",
+      "trgt2": null,
+      "checked_tires": "455",
+      "low_press_tires": "1",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260124",
+      "date2": "2026-01-24",
+      "trgt": "780",
+      "trgt2": "0",
+      "checked_tires": "770",
+      "low_press_tires": "11",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260124",
+      "date2": "2026-01-24",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "304",
+      "low_press_tires": "6",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260124",
+      "date2": "2026-01-24",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "398",
+      "low_press_tires": "2",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260124",
+      "date2": "2026-01-24",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "317",
+      "low_press_tires": "5",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260125",
+      "date2": "2026-01-25",
+      "trgt": "522",
+      "trgt2": null,
+      "checked_tires": "799",
+      "low_press_tires": "66",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260125",
+      "date2": "2026-01-25",
+      "trgt": "516",
+      "trgt2": null,
+      "checked_tires": "427",
+      "low_press_tires": "0",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260125",
+      "date2": "2026-01-25",
+      "trgt": "780",
+      "trgt2": "0",
+      "checked_tires": "770",
+      "low_press_tires": "7",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260125",
+      "date2": "2026-01-25",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "304",
+      "low_press_tires": "8",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260125",
+      "date2": "2026-01-25",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "398",
+      "low_press_tires": "9",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260125",
+      "date2": "2026-01-25",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "317",
+      "low_press_tires": "4",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260126",
+      "date2": "2026-01-26",
+      "trgt": "522",
+      "trgt2": null,
+      "checked_tires": "757",
+      "low_press_tires": "70",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260126",
+      "date2": "2026-01-26",
+      "trgt": "516",
+      "trgt2": null,
+      "checked_tires": "427",
+      "low_press_tires": "2",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260126",
+      "date2": "2026-01-26",
+      "trgt": "780",
+      "trgt2": "0",
+      "checked_tires": "770",
+      "low_press_tires": "11",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260126",
+      "date2": "2026-01-26",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "304",
+      "low_press_tires": "4",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260126",
+      "date2": "2026-01-26",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "402",
+      "low_press_tires": "8",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260126",
+      "date2": "2026-01-26",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "317",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260127",
+      "date2": "2026-01-27",
+      "trgt": "522",
+      "trgt2": null,
+      "checked_tires": "621",
+      "low_press_tires": "31",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260127",
+      "date2": "2026-01-27",
+      "trgt": "516",
+      "trgt2": null,
+      "checked_tires": "750",
+      "low_press_tires": "1",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260127",
+      "date2": "2026-01-27",
+      "trgt": "780",
+      "trgt2": "0",
+      "checked_tires": "762",
+      "low_press_tires": "4",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260127",
+      "date2": "2026-01-27",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "308",
+      "low_press_tires": "4",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260127",
+      "date2": "2026-01-27",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "402",
+      "low_press_tires": "9",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260127",
+      "date2": "2026-01-27",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "317",
+      "low_press_tires": "4",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260128",
+      "date2": "2026-01-28",
+      "trgt": "522",
+      "trgt2": null,
+      "checked_tires": "695",
+      "low_press_tires": "15",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260128",
+      "date2": "2026-01-28",
+      "trgt": "516",
+      "trgt2": null,
+      "checked_tires": "751",
+      "low_press_tires": "3",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260128",
+      "date2": "2026-01-28",
+      "trgt": "780",
+      "trgt2": "0",
+      "checked_tires": "774",
+      "low_press_tires": "4",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260128",
+      "date2": "2026-01-28",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "308",
+      "low_press_tires": "4",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260128",
+      "date2": "2026-01-28",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "402",
+      "low_press_tires": "6",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260128",
+      "date2": "2026-01-28",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "317",
+      "low_press_tires": "4",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260129",
+      "date2": "2026-01-29",
+      "trgt": "522",
+      "trgt2": null,
+      "checked_tires": "600",
+      "low_press_tires": "18",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260129",
+      "date2": "2026-01-29",
+      "trgt": "516",
+      "trgt2": null,
+      "checked_tires": "740",
+      "low_press_tires": "3",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260129",
+      "date2": "2026-01-29",
+      "trgt": "780",
+      "trgt2": "0",
+      "checked_tires": "796",
+      "low_press_tires": "12",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260129",
+      "date2": "2026-01-29",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "308",
+      "low_press_tires": "5",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260129",
+      "date2": "2026-01-29",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "402",
+      "low_press_tires": "3",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260129",
+      "date2": "2026-01-29",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "317",
+      "low_press_tires": "5",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260130",
+      "date2": "2026-01-30",
+      "trgt": "522",
+      "trgt2": null,
+      "checked_tires": "641",
+      "low_press_tires": "33",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260130",
+      "date2": "2026-01-30",
+      "trgt": "516",
+      "trgt2": null,
+      "checked_tires": "475",
+      "low_press_tires": "6",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260130",
+      "date2": "2026-01-30",
+      "trgt": "780",
+      "trgt2": "0",
+      "checked_tires": "766",
+      "low_press_tires": "3",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260130",
+      "date2": "2026-01-30",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "314",
+      "low_press_tires": "4",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260130",
+      "date2": "2026-01-30",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "402",
+      "low_press_tires": "2",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260130",
+      "date2": "2026-01-30",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "317",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260131",
+      "date2": "2026-01-31",
+      "trgt": "522",
+      "trgt2": null,
+      "checked_tires": "628",
+      "low_press_tires": "28",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260131",
+      "date2": "2026-01-31",
+      "trgt": "516",
+      "trgt2": null,
+      "checked_tires": "463",
+      "low_press_tires": "2",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260131",
+      "date2": "2026-01-31",
+      "trgt": "780",
+      "trgt2": "0",
+      "checked_tires": "778",
+      "low_press_tires": "2",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260131",
+      "date2": "2026-01-31",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "326",
+      "low_press_tires": "5",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260131",
+      "date2": "2026-01-31",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "402",
+      "low_press_tires": "2",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260131",
+      "date2": "2026-01-31",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "317",
+      "low_press_tires": "2",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260201",
+      "date2": "2026-02-01",
+      "trgt": "537",
+      "trgt2": null,
+      "checked_tires": "875",
+      "low_press_tires": "4",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260201",
+      "date2": "2026-02-01",
+      "trgt": "516",
+      "trgt2": null,
+      "checked_tires": "549",
+      "low_press_tires": "3",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260201",
+      "date2": "2026-02-01",
+      "trgt": "762",
+      "trgt2": "30",
+      "checked_tires": "42",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260201",
+      "date2": "2026-02-01",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "326",
+      "low_press_tires": "4",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260201",
+      "date2": "2026-02-01",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "400",
+      "low_press_tires": "4",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260201",
+      "date2": "2026-02-01",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "317",
+      "low_press_tires": "3",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260202",
+      "date2": "2026-02-02",
+      "trgt": "537",
+      "trgt2": null,
+      "checked_tires": "637",
+      "low_press_tires": "7",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260202",
+      "date2": "2026-02-02",
+      "trgt": "516",
+      "trgt2": null,
+      "checked_tires": "437",
+      "low_press_tires": "2",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260202",
+      "date2": "2026-02-02",
+      "trgt": "762",
+      "trgt2": "30",
+      "checked_tires": "30",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260202",
+      "date2": "2026-02-02",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "326",
+      "low_press_tires": "4",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260202",
+      "date2": "2026-02-02",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "375",
+      "low_press_tires": "8",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260202",
+      "date2": "2026-02-02",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "317",
+      "low_press_tires": "1",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260203",
+      "date2": "2026-02-03",
+      "trgt": "537",
+      "trgt2": null,
+      "checked_tires": "661",
+      "low_press_tires": "6",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260203",
+      "date2": "2026-02-03",
+      "trgt": "540",
+      "trgt2": null,
+      "checked_tires": "563",
+      "low_press_tires": "5",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260203",
+      "date2": "2026-02-03",
+      "trgt": "762",
+      "trgt2": "30",
+      "checked_tires": "30",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260203",
+      "date2": "2026-02-03",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "326",
+      "low_press_tires": "4",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260203",
+      "date2": "2026-02-03",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "375",
+      "low_press_tires": "4",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260203",
+      "date2": "2026-02-03",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "317",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260204",
+      "date2": "2026-02-04",
+      "trgt": "537",
+      "trgt2": null,
+      "checked_tires": "608",
+      "low_press_tires": "2",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260204",
+      "date2": "2026-02-04",
+      "trgt": "540",
+      "trgt2": null,
+      "checked_tires": "587",
+      "low_press_tires": "2",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260204",
+      "date2": "2026-02-04",
+      "trgt": "762",
+      "trgt2": "30",
+      "checked_tires": "18",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260204",
+      "date2": "2026-02-04",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "326",
+      "low_press_tires": "4",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260204",
+      "date2": "2026-02-04",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "375",
+      "low_press_tires": "6",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260204",
+      "date2": "2026-02-04",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "317",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260205",
+      "date2": "2026-02-05",
+      "trgt": "537",
+      "trgt2": null,
+      "checked_tires": "686",
+      "low_press_tires": "1",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260205",
+      "date2": "2026-02-05",
+      "trgt": "540",
+      "trgt2": null,
+      "checked_tires": "581",
+      "low_press_tires": "2",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260205",
+      "date2": "2026-02-05",
+      "trgt": "762",
+      "trgt2": "30",
+      "checked_tires": "54",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260205",
+      "date2": "2026-02-05",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "326",
+      "low_press_tires": "4",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260205",
+      "date2": "2026-02-05",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "375",
+      "low_press_tires": "0",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260205",
+      "date2": "2026-02-05",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "317",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260206",
+      "date2": "2026-02-06",
+      "trgt": "537",
+      "trgt2": null,
+      "checked_tires": "592",
+      "low_press_tires": "6",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260206",
+      "date2": "2026-02-06",
+      "trgt": "540",
+      "trgt2": null,
+      "checked_tires": "516",
+      "low_press_tires": "2",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260206",
+      "date2": "2026-02-06",
+      "trgt": "762",
+      "trgt2": "30",
+      "checked_tires": "30",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260206",
+      "date2": "2026-02-06",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "326",
+      "low_press_tires": "4",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260206",
+      "date2": "2026-02-06",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "375",
+      "low_press_tires": "3",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260206",
+      "date2": "2026-02-06",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "317",
+      "low_press_tires": "2",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260207",
+      "date2": "2026-02-07",
+      "trgt": "537",
+      "trgt2": null,
+      "checked_tires": "741",
+      "low_press_tires": "1",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260207",
+      "date2": "2026-02-07",
+      "trgt": "540",
+      "trgt2": null,
+      "checked_tires": "701",
+      "low_press_tires": "2",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260207",
+      "date2": "2026-02-07",
+      "trgt": "762",
+      "trgt2": "30",
+      "checked_tires": "30",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260207",
+      "date2": "2026-02-07",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "326",
+      "low_press_tires": "4",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260207",
+      "date2": "2026-02-07",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "374",
+      "low_press_tires": "1",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260207",
+      "date2": "2026-02-07",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "317",
+      "low_press_tires": "2",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260208",
+      "date2": "2026-02-08",
+      "trgt": "537",
+      "trgt2": null,
+      "checked_tires": "618",
+      "low_press_tires": "3",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260208",
+      "date2": "2026-02-08",
+      "trgt": "540",
+      "trgt2": null,
+      "checked_tires": "767",
+      "low_press_tires": "2",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260208",
+      "date2": "2026-02-08",
+      "trgt": "762",
+      "trgt2": "30",
+      "checked_tires": "30",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260208",
+      "date2": "2026-02-08",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "326",
+      "low_press_tires": "4",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260208",
+      "date2": "2026-02-08",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "374",
+      "low_press_tires": "3",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260208",
+      "date2": "2026-02-08",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "3",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260209",
+      "date2": "2026-02-09",
+      "trgt": "537",
+      "trgt2": null,
+      "checked_tires": "585",
+      "low_press_tires": "3",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260209",
+      "date2": "2026-02-09",
+      "trgt": "540",
+      "trgt2": null,
+      "checked_tires": "834",
+      "low_press_tires": "2",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260209",
+      "date2": "2026-02-09",
+      "trgt": "762",
+      "trgt2": "30",
+      "checked_tires": "30",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260209",
+      "date2": "2026-02-09",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "320",
+      "low_press_tires": "4",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260209",
+      "date2": "2026-02-09",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "402",
+      "low_press_tires": "2",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260209",
+      "date2": "2026-02-09",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260210",
+      "date2": "2026-02-10",
+      "trgt": "537",
+      "trgt2": null,
+      "checked_tires": "600",
+      "low_press_tires": "0",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260210",
+      "date2": "2026-02-10",
+      "trgt": "540",
+      "trgt2": null,
+      "checked_tires": "504",
+      "low_press_tires": "2",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260210",
+      "date2": "2026-02-10",
+      "trgt": "762",
+      "trgt2": "30",
+      "checked_tires": "30",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260210",
+      "date2": "2026-02-10",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "332",
+      "low_press_tires": "5",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260210",
+      "date2": "2026-02-10",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "402",
+      "low_press_tires": "2",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260210",
+      "date2": "2026-02-10",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260211",
+      "date2": "2026-02-11",
+      "trgt": "537",
+      "trgt2": null,
+      "checked_tires": "837",
+      "low_press_tires": "0",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260211",
+      "date2": "2026-02-11",
+      "trgt": "540",
+      "trgt2": null,
+      "checked_tires": "418",
+      "low_press_tires": "0",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260211",
+      "date2": "2026-02-11",
+      "trgt": "762",
+      "trgt2": "30",
+      "checked_tires": "30",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260211",
+      "date2": "2026-02-11",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "332",
+      "low_press_tires": "6",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260211",
+      "date2": "2026-02-11",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "402",
+      "low_press_tires": "6",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260211",
+      "date2": "2026-02-11",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260212",
+      "date2": "2026-02-12",
+      "trgt": "537",
+      "trgt2": null,
+      "checked_tires": "729",
+      "low_press_tires": "0",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260212",
+      "date2": "2026-02-12",
+      "trgt": "540",
+      "trgt2": null,
+      "checked_tires": "543",
+      "low_press_tires": "0",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260212",
+      "date2": "2026-02-12",
+      "trgt": "762",
+      "trgt2": "30",
+      "checked_tires": "30",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260212",
+      "date2": "2026-02-12",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "332",
+      "low_press_tires": "6",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260212",
+      "date2": "2026-02-12",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "402",
+      "low_press_tires": "2",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260212",
+      "date2": "2026-02-12",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260213",
+      "date2": "2026-02-13",
+      "trgt": "537",
+      "trgt2": null,
+      "checked_tires": "719",
+      "low_press_tires": "0",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260213",
+      "date2": "2026-02-13",
+      "trgt": "540",
+      "trgt2": null,
+      "checked_tires": "579",
+      "low_press_tires": "0",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260213",
+      "date2": "2026-02-13",
+      "trgt": "762",
+      "trgt2": "30",
+      "checked_tires": "30",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260213",
+      "date2": "2026-02-13",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "332",
+      "low_press_tires": "5",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260213",
+      "date2": "2026-02-13",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "402",
+      "low_press_tires": "1",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260213",
+      "date2": "2026-02-13",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260214",
+      "date2": "2026-02-14",
+      "trgt": "537",
+      "trgt2": null,
+      "checked_tires": "576",
+      "low_press_tires": "1",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260214",
+      "date2": "2026-02-14",
+      "trgt": "540",
+      "trgt2": null,
+      "checked_tires": "283",
+      "low_press_tires": "0",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260214",
+      "date2": "2026-02-14",
+      "trgt": "762",
+      "trgt2": "30",
+      "checked_tires": "30",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260214",
+      "date2": "2026-02-14",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "332",
+      "low_press_tires": "4",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260214",
+      "date2": "2026-02-14",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "402",
+      "low_press_tires": "3",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260214",
+      "date2": "2026-02-14",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260215",
+      "date2": "2026-02-15",
+      "trgt": "537",
+      "trgt2": null,
+      "checked_tires": "593",
+      "low_press_tires": "2",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260215",
+      "date2": "2026-02-15",
+      "trgt": "540",
+      "trgt2": null,
+      "checked_tires": "651",
+      "low_press_tires": "6",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260215",
+      "date2": "2026-02-15",
+      "trgt": "762",
+      "trgt2": "30",
+      "checked_tires": "30",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260215",
+      "date2": "2026-02-15",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "332",
+      "low_press_tires": "4",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260215",
+      "date2": "2026-02-15",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "402",
+      "low_press_tires": "4",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260215",
+      "date2": "2026-02-15",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "317",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260216",
+      "date2": "2026-02-16",
+      "trgt": "537",
+      "trgt2": null,
+      "checked_tires": "561",
+      "low_press_tires": "2",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260216",
+      "date2": "2026-02-16",
+      "trgt": "540",
+      "trgt2": null,
+      "checked_tires": "491",
+      "low_press_tires": "3",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260216",
+      "date2": "2026-02-16",
+      "trgt": "762",
+      "trgt2": "30",
+      "checked_tires": "30",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260216",
+      "date2": "2026-02-16",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "332",
+      "low_press_tires": "4",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260216",
+      "date2": "2026-02-16",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "402",
+      "low_press_tires": "3",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260216",
+      "date2": "2026-02-16",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "317",
+      "low_press_tires": "3",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260217",
+      "date2": "2026-02-17",
+      "trgt": "537",
+      "trgt2": null,
+      "checked_tires": "680",
+      "low_press_tires": "1",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260217",
+      "date2": "2026-02-17",
+      "trgt": "540",
+      "trgt2": null,
+      "checked_tires": "641",
+      "low_press_tires": "6",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260217",
+      "date2": "2026-02-17",
+      "trgt": "762",
+      "trgt2": "30",
+      "checked_tires": "42",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260217",
+      "date2": "2026-02-17",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "332",
+      "low_press_tires": "5",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260217",
+      "date2": "2026-02-17",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "400",
+      "low_press_tires": "2",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260217",
+      "date2": "2026-02-17",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260218",
+      "date2": "2026-02-18",
+      "trgt": "537",
+      "trgt2": null,
+      "checked_tires": "732",
+      "low_press_tires": "4",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260218",
+      "date2": "2026-02-18",
+      "trgt": "540",
+      "trgt2": null,
+      "checked_tires": "735",
+      "low_press_tires": "3",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260218",
+      "date2": "2026-02-18",
+      "trgt": "762",
+      "trgt2": "30",
+      "checked_tires": "36",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260218",
+      "date2": "2026-02-18",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "332",
+      "low_press_tires": "4",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260218",
+      "date2": "2026-02-18",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "400",
+      "low_press_tires": "5",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260218",
+      "date2": "2026-02-18",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260219",
+      "date2": "2026-02-19",
+      "trgt": "537",
+      "trgt2": null,
+      "checked_tires": "830",
+      "low_press_tires": "8",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260219",
+      "date2": "2026-02-19",
+      "trgt": "540",
+      "trgt2": null,
+      "checked_tires": "741",
+      "low_press_tires": "3",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260219",
+      "date2": "2026-02-19",
+      "trgt": "762",
+      "trgt2": "30",
+      "checked_tires": "48",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260219",
+      "date2": "2026-02-19",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "332",
+      "low_press_tires": "4",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260219",
+      "date2": "2026-02-19",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "400",
+      "low_press_tires": "4",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260219",
+      "date2": "2026-02-19",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260220",
+      "date2": "2026-02-20",
+      "trgt": "537",
+      "trgt2": null,
+      "checked_tires": "705",
+      "low_press_tires": "2",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260220",
+      "date2": "2026-02-20",
+      "trgt": "540",
+      "trgt2": null,
+      "checked_tires": "776",
+      "low_press_tires": "2",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260220",
+      "date2": "2026-02-20",
+      "trgt": "762",
+      "trgt2": "30",
+      "checked_tires": "30",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260220",
+      "date2": "2026-02-20",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "332",
+      "low_press_tires": "4",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260220",
+      "date2": "2026-02-20",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "400",
+      "low_press_tires": "4",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260220",
+      "date2": "2026-02-20",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260221",
+      "date2": "2026-02-21",
+      "trgt": "537",
+      "trgt2": null,
+      "checked_tires": "681",
+      "low_press_tires": "12",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260221",
+      "date2": "2026-02-21",
+      "trgt": "540",
+      "trgt2": null,
+      "checked_tires": "634",
+      "low_press_tires": "10",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260221",
+      "date2": "2026-02-21",
+      "trgt": "762",
+      "trgt2": "30",
+      "checked_tires": "42",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260221",
+      "date2": "2026-02-21",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "320",
+      "low_press_tires": "5",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260221",
+      "date2": "2026-02-21",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "400",
+      "low_press_tires": "5",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260221",
+      "date2": "2026-02-21",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "1",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260222",
+      "date2": "2026-02-22",
+      "trgt": "537",
+      "trgt2": null,
+      "checked_tires": "636",
+      "low_press_tires": "34",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260222",
+      "date2": "2026-02-22",
+      "trgt": "540",
+      "trgt2": null,
+      "checked_tires": "741",
+      "low_press_tires": "10",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260222",
+      "date2": "2026-02-22",
+      "trgt": "762",
+      "trgt2": "30",
+      "checked_tires": "30",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260222",
+      "date2": "2026-02-22",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "320",
+      "low_press_tires": "4",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260222",
+      "date2": "2026-02-22",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "400",
+      "low_press_tires": "1",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260222",
+      "date2": "2026-02-22",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260223",
+      "date2": "2026-02-23",
+      "trgt": "537",
+      "trgt2": null,
+      "checked_tires": "959",
+      "low_press_tires": "0",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260223",
+      "date2": "2026-02-23",
+      "trgt": "540",
+      "trgt2": null,
+      "checked_tires": "471",
+      "low_press_tires": "12",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260223",
+      "date2": "2026-02-23",
+      "trgt": "762",
+      "trgt2": "30",
+      "checked_tires": "36",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260223",
+      "date2": "2026-02-23",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "320",
+      "low_press_tires": "4",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260223",
+      "date2": "2026-02-23",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "400",
+      "low_press_tires": "1",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260223",
+      "date2": "2026-02-23",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260224",
+      "date2": "2026-02-24",
+      "trgt": "537",
+      "trgt2": null,
+      "checked_tires": "829",
+      "low_press_tires": "0",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260224",
+      "date2": "2026-02-24",
+      "trgt": "540",
+      "trgt2": null,
+      "checked_tires": "311",
+      "low_press_tires": "0",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260224",
+      "date2": "2026-02-24",
+      "trgt": "762",
+      "trgt2": "30",
+      "checked_tires": "36",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260224",
+      "date2": "2026-02-24",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "320",
+      "low_press_tires": "6",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260224",
+      "date2": "2026-02-24",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "400",
+      "low_press_tires": "1",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260224",
+      "date2": "2026-02-24",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260225",
+      "date2": "2026-02-25",
+      "trgt": "537",
+      "trgt2": null,
+      "checked_tires": "756",
+      "low_press_tires": "1",
+      "site": "CK-BIB GH"
+    },
+    {
+      "date": "20260225",
+      "date2": "2026-02-25",
+      "trgt": "540",
+      "trgt2": null,
+      "checked_tires": "662",
+      "low_press_tires": "15",
+      "site": "CK-BIB KGB"
+    },
+    {
+      "date": "20260225",
+      "date2": "2026-02-25",
+      "trgt": "762",
+      "trgt2": "30",
+      "checked_tires": "60",
+      "low_press_tires": "0",
+      "site": "CK-BMB Sitarum"
+    },
+    {
+      "date": "20260225",
+      "date2": "2026-02-25",
+      "trgt": "294",
+      "trgt2": null,
+      "checked_tires": "320",
+      "low_press_tires": "6",
+      "site": "CK-BMB Tabuhan"
+    },
+    {
+      "date": "20260225",
+      "date2": "2026-02-25",
+      "trgt": "402",
+      "trgt2": "0",
+      "checked_tires": "400",
+      "low_press_tires": "2",
+      "site": "CK-KIM"
+    },
+    {
+      "date": "20260225",
+      "date2": "2026-02-25",
+      "trgt": "318",
+      "trgt2": null,
+      "checked_tires": "318",
+      "low_press_tires": "0",
+      "site": "CK-MHU Mining"
+    },
+    {
+      "date": "20260226",
+      "date2": "2026-02-26",
+      "trgt": "537",
+      "trgt2": null,
+      "checked_tires": "689",
+      "low_press_tires": "5",
+      "site": "CK-BIB GH"
+    }
+  ]
+}

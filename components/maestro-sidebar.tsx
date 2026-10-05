@@ -113,6 +113,13 @@ export function MaestroSidebar({ session, ...props }: MaestroSidebarProps) {
           badge: 'Performance',
           description: 'Life Achievement & Scrap Reasons',
         },
+        {
+          title: 'Tire Check',
+          url: '/tire-check',
+          icon: Disc,
+          badge: 'Pressure',
+          description: 'Daily Pressure Monitoring',
+        },
       ],
     },
     {

@@ -20,6 +20,9 @@ import {
   Send,
   Settings,
   Users,
+  Printer,
+  Download,
+  ExternalLink,
 } from "lucide-react"
 
 import {
@@ -1178,12 +1181,55 @@ export function ContractReviewClientPage({
 
       <Dialog open={previewReviewId !== null} onOpenChange={(open) => { if (!open) setPreviewReviewId(null) }}>
         <DialogContent className="z-[10000] flex h-[92vh] w-[96vw] max-w-[1400px] flex-col overflow-hidden p-0">
-          <DialogHeader className="border-b px-6 py-4">
-            <DialogTitle>Preview Contract Review</DialogTitle>
-            <DialogDescription>Preview dokumen Contract Review sebelum dicetak atau disimpan sebagai PDF.</DialogDescription>
+          <DialogHeader className="border-b px-6 py-4 flex flex-row items-center justify-between">
+            <div>
+              <DialogTitle>Preview Contract Review</DialogTitle>
+              <DialogDescription>Preview dokumen Contract Review sebelum dicetak atau disimpan sebagai PDF.</DialogDescription>
+            </div>
+            <div className="flex items-center gap-2 pr-6">
+              {previewReviewId !== null && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  asChild
+                  className="gap-1.5 text-slate-600 hover:text-slate-900"
+                >
+                  <a href={`/print/contract-review/${previewReviewId}`} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="size-4" /> Tab Baru
+                  </a>
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  const iframe = document.getElementById('contract-review-preview-iframe') as HTMLIFrameElement | null
+                  if (iframe?.contentWindow) {
+                    iframe.contentWindow.print()
+                  }
+                }}
+                className="gap-1.5"
+              >
+                <Printer className="size-4" /> Cetak / Save PDF
+              </Button>
+              <Button
+                size="sm"
+                variant="default"
+                onClick={() => {
+                  const iframe = document.getElementById('contract-review-preview-iframe') as HTMLIFrameElement | null
+                  if (iframe?.contentWindow) {
+                    iframe.contentWindow.postMessage({ type: "DOWNLOAD_PDF" }, "*")
+                  }
+                }}
+                className="gap-1.5 bg-indigo-600 hover:bg-indigo-700"
+              >
+                <Download className="size-4" /> Download PDF
+              </Button>
+            </div>
           </DialogHeader>
           {previewReviewId !== null && (
             <iframe
+              id="contract-review-preview-iframe"
               title="Preview Contract Review"
               src={`/dashboard/hc/contract-review/${previewReviewId}?mode=print&embedded=1`}
               className="h-[calc(92vh-88px)] w-full flex-none border-0 bg-slate-100"

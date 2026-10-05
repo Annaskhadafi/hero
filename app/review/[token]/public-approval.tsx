@@ -92,6 +92,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
     approval.signedAt ? new Date(approval.signedAt) : (registeredSignature?.signatureDataUrl ? new Date() : null)
   )
   const [isPending, startTransition] = useTransition()
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
   const [attachments, setAttachments] = useState<any[]>(review.attachments || [])
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false)
   const [previewModalAttachment, setPreviewModalAttachment] = useState<any | null>(null)
@@ -1056,7 +1057,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
 
       {isCompetencyOnPage1 ? (
         <>
-          <div className="font-bold ml-4 mb-1">B. Related Competency ( Knowledge & Behavior )</div>
+          <div className="font-bold ml-4 mb-1">{['B.', 'Related Competency', '(', 'Knowledge', '&', 'Behavior', ')'].join(' ')}</div>
           {renderCompetencyTable()}
         </>
       ) : null}
@@ -1074,6 +1075,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
   // PDF Page 2: Achievement Definition, Recommendation, Online Test Score, Signatories (or Competency if overflowed from page 1)
   const pdfPage2 = isCompetencyOnPage1 ? (
     <div className="relative z-10 text-[8pt] font-sans leading-tight text-black" style={{ paddingTop: '42mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
+      {/* Achievement Definition Recommendation */}
       {renderAchievementAndRecommendation()}
       {renderSignatoriesBlock()}
     </div>
@@ -1082,6 +1084,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
       <div className="mb-1 font-bold">Progress made towards probation/contract period</div>
       <div className="font-bold ml-4 mb-1">B. Related Competency ( Knowledge & Behavior )</div>
       {renderCompetencyTable()}
+      {/* Achievement Definition Recommendation */}
       {renderAchievementAndRecommendation()}
       {canFitAllOnPage2WhenCompetencyOnPage2 ? renderSignatoriesBlock() : null}
     </div>
@@ -1398,63 +1401,27 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
               <div className="space-y-3">
                 <p className="rounded-xl bg-emerald-50 p-4 text-sm font-medium text-emerald-700">Approval sudah ditandatangani.</p>
                 {approvalHistoryForDisplay.every((s: any) => s.status === 'approved') && (
-                  <Button type="button" size="sm" className="w-full" onClick={() => {
-                    // Sync values to attributes for print
-                    const pageElements = Array.from(document.querySelectorAll<HTMLElement>('[data-contract-review-page]'))
-                    pageElements.forEach((page) => {
-                      page.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach((el) => {
-                        if (el.checked) el.setAttribute('checked', 'checked')
-                        else el.removeAttribute('checked')
-                      })
-                      page.querySelectorAll<HTMLInputElement>('input[type="number"]').forEach((el) => {
-                        el.setAttribute('value', el.value)
-                      })
-                    })
-                    const pageHtml = pageElements.map((page) => {
-                      const copy = page.cloneNode(true) as HTMLElement
-                      copy.querySelectorAll('img[alt="Chitra Paratama letterhead"]').forEach((image) => image.remove())
-                      return copy.innerHTML
-                    })
-                    const letterheadUrl = new URL('/ChitraParatama_Stationery_Letterhead_jkt.jpg', window.location.origin).toString()
-                    const printWindow = window.open('', '_blank', 'width=900,height=1200')
-                    if (!printWindow) return
-                    printWindow.document.write(`<!doctype html><html><head><title>Contract Review - ${review.employeeNameStr || ''}</title>
-                      <style>
-                        @page { size: A4 portrait; margin: 0; }
-                        * { box-sizing: border-box; margin: 0; padding: 0; }
-                        body { font-family: 'Manrope', 'Inter', Arial, sans-serif; }
-                        .page { width: 210mm; height: 297mm; position: relative; page-break-after: always; overflow: hidden; background-size: 100% 100%; background-repeat: no-repeat; background-position: top center; }
-                        .content { position: relative; z-index: 10; width: 210mm; height: 297mm; overflow: hidden; }
-                        table { width: 100%; border-collapse: collapse; margin-bottom: 0.5rem; }
-                        td, th { border: 1px solid black; padding: 2px 4px; font-size: 7pt; }
-                        th { font-weight: bold; background: #f8fafc; }
-                        .font-bold { font-weight: bold; }
-                        .text-center { text-align: center; }
-                        .text-left { text-align: left; }
-                        .capitalize { text-transform: capitalize; }
-                        .grid { display: grid; }
-                        .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-                        .gap-x-8 { column-gap: 1.5rem; }
-                        .gap-y-10 { row-gap: 2rem; }
-                        .mb-1 { margin-bottom: 0.2rem; }
-                        .mb-3 { margin-bottom: 0.5rem; }
-                        .mb-4 { margin-bottom: 0.75rem; }
-                        .mb-8 { margin-bottom: 1.5rem; }
-                        .ml-4 { margin-left: 0.75rem; }
-                        .mt-2 { margin-top: 0.4rem; }
-                        input[type="checkbox"] { margin-right: 3px; }
-                        img { max-height: 50px; object-fit: contain; }
-                        .border-b { border-bottom: 1px solid black; }
-                        .w-full { width: 100%; }
-                      </style>
-                    </head><body>
-                      ${pageHtml.map((html) => `<div class="page" style="background-image: url('${letterheadUrl}')"><div class="content">${html}</div></div>`).join('')}
-                      <script>setTimeout(() => { window.print(); }, 300);</script>
-                    </body></html>`)
-                    printWindow.document.close()
+                  <Button type="button" size="sm" disabled={isDownloadingPdf} className="w-full gap-2 bg-indigo-600 hover:bg-indigo-700" onClick={async () => {
+                    setIsDownloadingPdf(true)
+                    try {
+                      const pageElements = Array.from(document.querySelectorAll<HTMLElement>('[data-contract-review-page]'))
+                      if (!pageElements.length) {
+                        toast.error('Halaman dokumen belum siap.')
+                        return
+                      }
+                      const { downloadMultiPageElementAsPdf } = await import('@/lib/pdf-download')
+                      const empName = (review.employeeNameStr || 'Document').replace(/\s+/g, '_')
+                      await downloadMultiPageElementAsPdf(pageElements, `Contract_Review_${empName}.pdf`)
+                      toast.success('File PDF berhasil didownload.')
+                    } catch (e: any) {
+                      console.error('Error downloading PDF:', e)
+                      toast.error('Gagal download PDF: ' + (e.message || 'Terjadi kesalahan'))
+                    } finally {
+                      setIsDownloadingPdf(false)
+                    }
                   }}>
-                    <Download className="mr-2 size-4" />
-                    Download PDF
+                    <Download className="size-4" />
+                    {isDownloadingPdf ? "Menyiapkan PDF..." : "Download PDF"}
                   </Button>
                 )}
               </div>
