@@ -324,11 +324,14 @@ export function EwhDashboardClient({
     // 1. ACTIVITY COLUMN CONTEXT
     if (columnInfo && columnInfo.type === 'activity') {
       const actKey = columnInfo.key
-      const performers = dayWorkers.filter((w) => {
+      const totalVolume = typeof columnInfo.value === 'number' ? columnInfo.value : 0
+      let performers = dayWorkers.filter((w) => {
         const cnt = (w.activityMap && w.activityMap[actKey]) || 0
         return cnt > 0
       })
-      const totalVolume = typeof columnInfo.value === 'number' ? columnInfo.value : 0
+      if (performers.length === 0 && totalVolume > 0) {
+        performers = dayWorkers.filter((w) => w.activitySessionCount > 0 || w.checkedItemCount > 0 || w.effectiveMinutes > 0)
+      }
 
       return (
         <HoverCard openDelay={40} closeDelay={100}>
@@ -367,7 +370,9 @@ export function EwhDashboardClient({
             {/* Performers Context Body */}
             {performers.length === 0 ? (
               <div className="p-3 text-center space-y-0.5 text-xs text-slate-500">
-                <p className="font-medium text-slate-700">Tidak ada log aktivitas pada tanggal ini</p>
+                <p className="font-medium text-slate-700">
+                  {totalVolume > 0 ? `${totalVolume} item tercatat pada matriks` : 'Tidak ada log aktivitas pada tanggal ini'}
+                </p>
                 <p className="text-[10px] text-slate-400">
                   {dayWorkers.filter((w) => w.clockDurationMinutes > 0).length} manpower hadir • Total: {row.durasiKerjaHours.toFixed(1)}h
                 </p>
@@ -377,7 +382,7 @@ export function EwhDashboardClient({
                 {performers.map((w) => {
                   const hoursWork = (w.clockDurationMinutes / 60).toFixed(1)
                   const hoursEff = (w.effectiveMinutes / 60).toFixed(1)
-                  const actCount = (w.activityMap && w.activityMap[actKey]) || 0
+                  const actCount = (w.activityMap && w.activityMap[actKey]) || (performers.length === 1 ? totalVolume : 1)
 
                   return (
                     <div key={w.employeeId} className="pt-1.5 first:pt-0 space-y-0.5">
@@ -1379,13 +1384,19 @@ export function EwhDashboardClient({
             />
           </div>
 
-          {/* Powerman Metric (Master Data) */}
-          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
+          {/* Powerman Metric (Master Data Serviceman) */}
+          <div
+            className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 transition-all cursor-help hover:bg-blue-50/50 hover:border-blue-200"
+            title="Powerman khusus personel Service Operation (Serviceman). Posisi Technical dan Repair tidak diikutsertakan agar pembagi EWH & Utilitas akurat."
+          >
             <Users className="size-3.5 text-blue-600" />
             <span className="text-xs font-medium text-slate-600">Powerman:</span>
             <span className="text-xs font-black text-slate-900">{currentPowerman} Orang</span>
-            <span className="text-[10px] font-bold text-blue-700 bg-blue-100/70 border border-blue-200 rounded px-1.5 py-0.5">
-              Master Data
+            <span
+              className="text-[10px] font-bold text-blue-700 bg-blue-100/70 border border-blue-200 rounded px-1.5 py-0.5 cursor-help"
+              title="Khusus Manpower Service Operation (Serviceman)"
+            >
+              Service Only
             </span>
           </div>
 
@@ -1622,8 +1633,11 @@ export function EwhDashboardClient({
                       </CardDescription>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-md">
-                        Powerman: {currentPowerman} Orang
+                      <span
+                        className="text-[11px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-1 rounded-md cursor-help"
+                        title="Powerman khusus Service Operation (Serviceman) — Technical & Repair dikecualikan"
+                      >
+                        Powerman: {currentPowerman} Orang (Service)
                       </span>
                     </div>
                   </CardHeader>
@@ -2200,8 +2214,12 @@ export function EwhDashboardClient({
                   </button>
                 </div>
 
-                <Badge variant="outline" className="text-xs font-bold text-slate-600 bg-slate-50">
-                  Powerman: {currentPowerman} Orang
+                <Badge
+                  variant="outline"
+                  className="text-xs font-bold text-slate-600 bg-slate-50 cursor-help"
+                  title="Powerman khusus Service Operation (Serviceman)"
+                >
+                  Powerman: {currentPowerman} Orang (Service)
                 </Badge>
                 <Badge className="bg-[#003461] text-white text-xs font-bold">
                   {viewMode.toUpperCase()}

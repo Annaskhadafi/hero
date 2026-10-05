@@ -23,17 +23,18 @@ export function isServicemanEmployee(emp: EmployeeRoleInput): boolean {
   const role = (emp.role || '').toLowerCase().trim()
   const department = (emp.department || '').toLowerCase().trim()
 
-  // 1. Explicit Exclusions: Technical, PJO, Repair, Management, Admin, IT, Finance, HR
+  // 1. Explicit Exclusions: Technical, PJO, Repair, Retread, Management, Admin, IT, Finance, HR
   if (
-    jobTitle.includes('technical engineer') ||
-    jobTitle.includes('technical leader') ||
-    jobTitle.includes('leader technical') ||
+    isTechnicalOrPjoEmployee(emp) ||
+    isRepairEmployee(emp) ||
+    jobTitle.includes('technical') ||
+    jobTitle.includes('pjo') ||
     jobTitle.includes('planing') ||
     jobTitle.includes('planning') ||
+    jobTitle.includes('planner') ||
     jobTitle.includes('data analyst') ||
-    jobTitle.includes('repairman') ||
-    jobTitle.includes('repair admin') ||
-    jobTitle.includes('leader repair') ||
+    jobTitle.includes('repair') ||
+    jobTitle.includes('retread') ||
     jobTitle.includes('manager') ||
     jobTitle.includes('supervisor') ||
     jobTitle.includes('coordinator') ||
@@ -52,6 +53,7 @@ export function isServicemanEmployee(emp: EmployeeRoleInput): boolean {
     section.includes('technical') ||
     section.includes('repair') ||
     section.includes('retread') ||
+    section.includes('workshop') ||
     section.includes('billing') ||
     section.includes('management') ||
     section.includes('procurement') ||
@@ -68,7 +70,12 @@ export function isServicemanEmployee(emp: EmployeeRoleInput): boolean {
   }
 
   // 3. Positive match for Service Operation sections
-  if (section.includes('service operation') || section.includes('service operation mvc') || section.includes('service operation others')) {
+  if (
+    section.includes('service operation') ||
+    section.includes('service operation mvc') ||
+    section.includes('service operation others') ||
+    section.includes('service')
+  ) {
     return true
   }
 

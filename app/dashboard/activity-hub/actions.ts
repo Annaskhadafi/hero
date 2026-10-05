@@ -7564,6 +7564,30 @@ export async function createDailyActivitySessionAction(input: {
       console.warn('Non-blocking notification warning:', notifyErr)
     }
 
+    // Recalculate EWH for submitter and all team members in background
+    (async () => {
+      try {
+        const { recalculateEwhForEmployee, recalculateUnitUtility } = await import('@/app/dashboard/ewh/actions')
+        for (const targetEmp of allEmps) {
+          await recalculateEwhForEmployee(targetEmp.id, targetEmp.siteId || siteId || 1, parsedWorkDate)
+        }
+        const uniqueUnits = Array.from(
+          new Set(
+            (input.items || [])
+              .map((item) => item.unitNumber?.trim())
+              .filter((unit): unit is string => typeof unit === 'string' && unit.length > 0)
+          )
+        )
+        if (uniqueUnits.length > 0) {
+          await Promise.allSettled(
+            uniqueUnits.map((unit) => recalculateUnitUtility(unit, siteId || emp.siteId || 1, parsedWorkDate))
+          )
+        }
+      } catch (ewhErr) {
+        console.warn('Non-blocking EWH recalculation warning:', ewhErr)
+      }
+    })()
+
     try {
       safeRevalidatePath('/dashboard/activity-hub')
       safeRevalidatePath('/dashboard/activity-hub/my-day')

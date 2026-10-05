@@ -7,6 +7,7 @@ import {
   attendanceRecords,
   dailyActivitySessions,
   dailyActivitySessionItems,
+  dailyActivitySessionTeamMembers,
   employees,
   masterDepartments,
   sites,
@@ -172,13 +173,22 @@ export async function recalculateEwhForEmployee(
     breakMinutes,
   })
 
-  // 4. Hitung activity session counts
+  // 4. Hitung activity session counts (termasuk session di mana employee terdaftar sebagai anggota tim)
   const sessions = await db
     .select({ id: dailyActivitySessions.id })
     .from(dailyActivitySessions)
     .where(
       and(
-        eq(dailyActivitySessions.employeeId, employeeId),
+        or(
+          eq(dailyActivitySessions.employeeId, employeeId),
+          inArray(
+            dailyActivitySessions.id,
+            db
+              .select({ sessionId: dailyActivitySessionTeamMembers.sessionId })
+              .from(dailyActivitySessionTeamMembers)
+              .where(eq(dailyActivitySessionTeamMembers.employeeId, employeeId))
+          )
+        ),
         eq(dailyActivitySessions.siteId, siteId),
         gte(dailyActivitySessions.workDate, dayStart),
         lte(dailyActivitySessions.workDate, dayEnd)
@@ -463,10 +473,39 @@ export async function getEwhSummaryAction(
     .where(and(...empWhere))
     .orderBy(employees.name)
 
-  // Focus EWH calculations specifically on Servicemen (excluding Technical/PJO and Repairmen who don't fill daily activity)
-  const targetEmployees = parsedDeptId
-    ? rawTargetEmployees
-    : rawTargetEmployees.filter((e) => isServicemanEmployee(e))
+  // Check any employee who submitted Daily Activity or was included as a team member in this period
+  const periodSessionEmpRecords = await db
+    .select({ employeeId: dailyActivitySessions.employeeId })
+    .from(dailyActivitySessions)
+    .where(
+      and(
+        parsedSiteId !== null ? eq(dailyActivitySessions.siteId, parsedSiteId) : undefined,
+        gte(dailyActivitySessions.workDate, monthStart),
+        lte(dailyActivitySessions.workDate, monthEnd)
+      )!
+    )
+  const periodTeamEmpRecords = await db
+    .select({ employeeId: dailyActivitySessionTeamMembers.employeeId })
+    .from(dailyActivitySessionTeamMembers)
+    .innerJoin(
+      dailyActivitySessions,
+      eq(dailyActivitySessionTeamMembers.sessionId, dailyActivitySessions.id)
+    )
+    .where(
+      and(
+        parsedSiteId !== null ? eq(dailyActivitySessions.siteId, parsedSiteId) : undefined,
+        gte(dailyActivitySessions.workDate, monthStart),
+        lte(dailyActivitySessions.workDate, monthEnd)
+      )!
+    )
+  const activeSessionEmpIdSet = new Set([
+    ...periodSessionEmpRecords.map((s) => s.employeeId),
+    ...periodTeamEmpRecords.map((t) => t.employeeId),
+  ])
+
+  // Focus EWH calculations strictly on Servicemen across all sites & departments
+  // (Technical, PJO, and Repair/Retread are excluded to maintain true EWH ratio and powerman)
+  const targetEmployees = rawTargetEmployees.filter((e) => isServicemanEmployee(e))
 
   if (targetEmployees.length === 0) {
     return { success: true as const, rows: [] }
@@ -493,7 +532,16 @@ export async function getEwhSummaryAction(
   }
 
   const sessionsWhere = [
-    inArray(dailyActivitySessions.employeeId, targetEmpIds),
+    or(
+      inArray(dailyActivitySessions.employeeId, targetEmpIds),
+      inArray(
+        dailyActivitySessions.id,
+        db
+          .select({ sessionId: dailyActivitySessionTeamMembers.sessionId })
+          .from(dailyActivitySessionTeamMembers)
+          .where(inArray(dailyActivitySessionTeamMembers.employeeId, targetEmpIds))
+      )
+    ),
     gte(dailyActivitySessions.workDate, monthStart),
     lte(dailyActivitySessions.workDate, monthEnd),
   ]
@@ -603,19 +651,41 @@ export async function getEwhSummaryAction(
       ),
   ])
 
-  // Fetch session items count & labels
+  // Fetch session items count & labels + session team members
   let sessionItems: Array<{ sessionId: number; label: string; isChecked: boolean }> = []
+  let sessionTeamMembers: Array<{ sessionId: number; employeeId: number }> = []
   if (sessions.length > 0) {
     const sIds = sessions.map((s) => s.id)
-    sessionItems = await db
-      .select({
-        sessionId: dailyActivitySessionItems.sessionId,
-        label: dailyActivitySessionItems.snapshotLabel,
-        isChecked: dailyActivitySessionItems.isChecked,
-      })
-      .from(dailyActivitySessionItems)
-      .where(inArray(dailyActivitySessionItems.sessionId, sIds))
+    const [fetchedItems, fetchedTeamMembers] = await Promise.all([
+      db
+        .select({
+          sessionId: dailyActivitySessionItems.sessionId,
+          label: dailyActivitySessionItems.snapshotLabel,
+          isChecked: dailyActivitySessionItems.isChecked,
+        })
+        .from(dailyActivitySessionItems)
+        .where(inArray(dailyActivitySessionItems.sessionId, sIds)),
+      db
+        .select({
+          sessionId: dailyActivitySessionTeamMembers.sessionId,
+          employeeId: dailyActivitySessionTeamMembers.employeeId,
+        })
+        .from(dailyActivitySessionTeamMembers)
+        .where(inArray(dailyActivitySessionTeamMembers.sessionId, sIds)),
+    ])
+    sessionItems = fetchedItems
+    sessionTeamMembers = fetchedTeamMembers
   }
+
+  const sessionTeamMemberMap = new Map<number, Set<number>>()
+  sessionTeamMembers.forEach((tm) => {
+    let set = sessionTeamMemberMap.get(tm.sessionId)
+    if (!set) {
+      set = new Set()
+      sessionTeamMemberMap.set(tm.sessionId, set)
+    }
+    set.add(tm.employeeId)
+  })
 
   const sessionItemsMap = new Map<number, { total: number; checked: number; items: typeof sessionItems }>()
   sessionItems.forEach((it) => {
@@ -660,9 +730,10 @@ export async function getEwhSummaryAction(
         }
       }
 
-      // C. Daily Activity Sessions
+      // C. Daily Activity Sessions (author OR team member)
       const daySessions = sessions.filter((s) => {
-        if (s.employeeId !== emp.id) return false
+        const isMember = s.employeeId === emp.id || sessionTeamMemberMap.get(s.id)?.has(emp.id)
+        if (!isMember) return false
         const p = parseDateYMD(s.workDate)
         return p ? p.day === day && p.month === month && p.year === year : false
       })
@@ -1194,9 +1265,7 @@ export async function getEwhEmployeesAction(
     .where(and(...whereConditions))
     .orderBy(employees.name)
 
-  const list = parsedDeptId
-    ? rawList
-    : rawList.filter((e) => isServicemanEmployee(e))
+  const list = rawList.filter((e) => isServicemanEmployee(e))
   return { success: true as const, employees: list }
 }
 
@@ -1419,13 +1488,6 @@ export async function getEwhSiteMonthlyMatrixAction(
     .from(employees)
     .where(and(...empWhere))
 
-  // EWH dashboard is specifically dedicated to Servicemen so that utilities & EWH division is not diluted by Technical (PJO) & Repair who don't fill daily activity
-  const targetEmployees = parsedDeptId && selectedDept
-    ? rawTargetEmployees
-    : rawTargetEmployees.filter((e) => isServicemanEmployee(e))
-
-  const targetEmployeeIdSet = new Set(targetEmployees.map((e) => e.id))
-
   // 2. Query Year Sessions & Direct Activities for YTD & Current Month + Month Attendance
   const sessionWhere = [
     gte(dailyActivitySessions.workDate, yearStart),
@@ -1507,19 +1569,54 @@ export async function getEwhSiteMonthlyMatrixAction(
       .where(and(...attRecordsWhere)),
   ])
 
-  // Filter aktivitas khusus karyawan terpilih jika ada filter departemen tertentu
-  const yearSessions = parsedDeptId
-    ? allYearSessions.filter((s) => targetEmployeeIdSet.has(s.employeeId))
-    : allYearSessions
-  const yearDirectActs = parsedDeptId
-    ? allYearDirectActs.filter((a) => targetEmployeeIdSet.has(a.employeeId))
-    : allYearDirectActs
-  const monthAttOverrides = parsedDeptId
-    ? allMonthAttOverrides.filter((att) => targetEmployeeIdSet.has(att.employeeId))
-    : allMonthAttOverrides
-  const monthAttRecords = parsedDeptId
-    ? allMonthAttRecords.filter((att) => targetEmployeeIdSet.has(att.employeeId))
-    : allMonthAttRecords
+  // Include any employee who submitted activities or was registered as a team member in the period
+  const allYearTeamEmpRecords = await db
+    .select({
+      employeeId: dailyActivitySessionTeamMembers.employeeId,
+      sessionId: dailyActivitySessionTeamMembers.sessionId,
+    })
+    .from(dailyActivitySessionTeamMembers)
+    .innerJoin(
+      dailyActivitySessions,
+      eq(dailyActivitySessionTeamMembers.sessionId, dailyActivitySessions.id)
+    )
+    .where(and(...sessionWhere))
+
+  const activeSessionEmpIdSet = new Set([
+    ...allYearSessions.map((s) => s.employeeId),
+    ...allYearTeamEmpRecords.map((t) => t.employeeId),
+  ])
+
+  // EWH dashboard is strictly dedicated to Servicemen across all sites & departments
+  // (Technical, PJO, and Repair/Retread are excluded to maintain true EWH ratio and powerman)
+  const targetEmployees = rawTargetEmployees.filter((e) => isServicemanEmployee(e))
+
+  const targetEmployeeIdSet = new Set(targetEmployees.map((e) => e.id))
+
+  const sessionTeamMemberMap = new Map<number, Set<number>>()
+  allYearTeamEmpRecords.forEach((tm) => {
+    let set = sessionTeamMemberMap.get(tm.sessionId)
+    if (!set) {
+      set = new Set()
+      sessionTeamMemberMap.set(tm.sessionId, set)
+    }
+    set.add(tm.employeeId)
+  })
+
+  // Filter aktivitas khusus karyawan terpilih agar matriks dan hover data selalu 100% sinkron
+  const yearSessions = allYearSessions.filter((s) => {
+    if (targetEmployeeIdSet.has(s.employeeId)) return true
+    const tmSet = sessionTeamMemberMap.get(s.id)
+    if (tmSet) {
+      for (const id of tmSet) {
+        if (targetEmployeeIdSet.has(id)) return true
+      }
+    }
+    return false
+  })
+  const yearDirectActs = allYearDirectActs.filter((a) => targetEmployeeIdSet.has(a.employeeId))
+  const monthAttOverrides = allMonthAttOverrides.filter((att) => targetEmployeeIdSet.has(att.employeeId))
+  const monthAttRecords = allMonthAttRecords.filter((att) => targetEmployeeIdSet.has(att.employeeId))
 
   let yearSessionItems: Array<{
     sessionId: number
@@ -1690,7 +1787,17 @@ export async function getEwhSiteMonthlyMatrixAction(
       return p ? p.day === day : false
     })
     daySessions.forEach((s) => {
-      dayWorkers.add(s.employeeId)
+      if (targetEmployeeIdSet.has(s.employeeId)) {
+        dayWorkers.add(s.employeeId)
+      }
+      const tmSet = sessionTeamMemberMap.get(s.id)
+      if (tmSet) {
+        tmSet.forEach((tmId) => {
+          if (targetEmployeeIdSet.has(tmId)) {
+            dayWorkers.add(tmId)
+          }
+        })
+      }
       const hasItems = daySessionItems.some((it) => it.sessionId === s.id)
       if (!hasItems) {
         let sessDuration = 60

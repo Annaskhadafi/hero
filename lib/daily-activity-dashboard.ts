@@ -6,6 +6,7 @@ import {
   attendanceRecords,
   dailyActivitySessions,
   dailyActivitySessionItems,
+  dailyActivitySessionTeamMembers,
   employees,
   masterDepartments,
   masterPositions,
@@ -121,6 +122,8 @@ export interface EmployeeActivityRow {
   baseNormalHours?: number
   overtimeHours?: number
   rosterScheduleCode?: string
+  isTeamMember?: boolean
+  representedByName?: string | null
 }
 
 
@@ -591,7 +594,20 @@ export async function getDailyActivityDashboardData(
       or(
         ilike(employees.name, `%${searchKeyword}%`),
         ilike(employees.employeeSn, `%${searchKeyword}%`),
-        ilike(dailyActivitySessions.summaryRemark, `%${searchKeyword}%`)
+        ilike(dailyActivitySessions.summaryRemark, `%${searchKeyword}%`),
+        inArray(
+          dailyActivitySessions.id,
+          db
+            .select({ sessionId: dailyActivitySessionTeamMembers.sessionId })
+            .from(dailyActivitySessionTeamMembers)
+            .innerJoin(employees, eq(dailyActivitySessionTeamMembers.employeeId, employees.id))
+            .where(
+              or(
+                ilike(employees.name, `%${searchKeyword}%`),
+                ilike(employees.employeeSn, `%${searchKeyword}%`)
+              )
+            )
+        )
       )
     )
   }
@@ -711,26 +727,48 @@ export async function getDailyActivityDashboardData(
       .limit(50)
   }
 
-  // 3. Fetch real child items for these sessions
+  // 3. Fetch real child items and team members for these sessions
   const sessionIds = effectiveSessions.map((s) => s.id)
-  const rawItems = sessionIds.length > 0
-    ? await db
-        .select({
-          id: dailyActivitySessionItems.id,
-          sessionId: dailyActivitySessionItems.sessionId,
-          snapshotLabel: dailyActivitySessionItems.snapshotLabel,
-          snapshotGroupName: dailyActivitySessionItems.snapshotGroupName,
-          snapshotPayload: dailyActivitySessionItems.snapshotPayload,
-          unitNumber: dailyActivitySessionItems.unitNumber,
-          remark: dailyActivitySessionItems.remark,
-          actualPoints: dailyActivitySessionItems.actualPoints,
-          isChecked: dailyActivitySessionItems.isChecked,
-          startedAt: dailyActivitySessionItems.startedAt,
-          endedAt: dailyActivitySessionItems.endedAt,
-        })
-        .from(dailyActivitySessionItems)
-        .where(inArray(dailyActivitySessionItems.sessionId, sessionIds))
-    : []
+  const [rawItems, rawTeamMembers] = await Promise.all([
+    sessionIds.length > 0
+      ? db
+          .select({
+            id: dailyActivitySessionItems.id,
+            sessionId: dailyActivitySessionItems.sessionId,
+            snapshotLabel: dailyActivitySessionItems.snapshotLabel,
+            snapshotGroupName: dailyActivitySessionItems.snapshotGroupName,
+            snapshotPayload: dailyActivitySessionItems.snapshotPayload,
+            unitNumber: dailyActivitySessionItems.unitNumber,
+            remark: dailyActivitySessionItems.remark,
+            actualPoints: dailyActivitySessionItems.actualPoints,
+            isChecked: dailyActivitySessionItems.isChecked,
+            startedAt: dailyActivitySessionItems.startedAt,
+            endedAt: dailyActivitySessionItems.endedAt,
+          })
+          .from(dailyActivitySessionItems)
+          .where(inArray(dailyActivitySessionItems.sessionId, sessionIds))
+      : Promise.resolve([]),
+    sessionIds.length > 0
+      ? db
+          .select({
+            sessionId: dailyActivitySessionTeamMembers.sessionId,
+            employeeId: dailyActivitySessionTeamMembers.employeeId,
+            employeeSn: employees.employeeSn,
+            name: employees.name,
+            jobTitle: employees.jobTitle,
+            empDept: employees.department,
+            empSection: employees.section,
+            deptName: masterDepartments.name,
+            sectionName: masterSections.name,
+            siteId: employees.siteId,
+          })
+          .from(dailyActivitySessionTeamMembers)
+          .innerJoin(employees, eq(dailyActivitySessionTeamMembers.employeeId, employees.id))
+          .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+          .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+          .where(inArray(dailyActivitySessionTeamMembers.sessionId, sessionIds))
+      : Promise.resolve([]),
+  ])
 
   const itemsBySessionId = new Map<number, typeof rawItems>()
   for (const item of rawItems) {
@@ -1147,11 +1185,36 @@ export async function getDailyActivityDashboardData(
 
   // 8. Build Real Employee Activity Rows - Grouped by Employee (100% Real Live DB Data)
   // If an employee has multiple sessions or activities on the same date, group them into a single row per employee
-  const sessionsByEmployee = new Map<number, typeof effectiveSessions>()
+  const sessionsByEmployee = new Map<number, any[]>()
   for (const s of effectiveSessions) {
     const list = sessionsByEmployee.get(s.employeeId) || []
     list.push(s)
     sessionsByEmployee.set(s.employeeId, list)
+  }
+
+  // Include team members who participated in these sessions
+  for (const tm of rawTeamMembers) {
+    const origSession = effectiveSessions.find((s) => s.id === tm.sessionId)
+    if (origSession && tm.employeeId !== origSession.employeeId) {
+      const list = sessionsByEmployee.get(tm.employeeId) || []
+      if (!list.some((s) => s.id === origSession.id)) {
+        list.push({
+          ...origSession,
+          employeeId: tm.employeeId,
+          employeeSn: tm.employeeSn,
+          employeeName: tm.name,
+          jobTitle: tm.jobTitle,
+          empDept: tm.empDept,
+          empSection: tm.empSection,
+          deptName: tm.deptName,
+          sectionName: tm.sectionName,
+          siteId: origSession.siteId || tm.siteId,
+          isTeamMember: true,
+          representedByName: origSession.employeeName,
+        })
+        sessionsByEmployee.set(tm.employeeId, list)
+      }
+    }
   }
 
   const employeesList: EmployeeActivityRow[] = []
@@ -1560,6 +1623,8 @@ export async function getDailyActivityDashboardData(
       baseNormalHours,
       overtimeHours,
       rosterScheduleCode: empRosterCode || (isRosterOff ? 'OFF' : 'NORMAL'),
+      isTeamMember: Boolean(firstSession.isTeamMember),
+      representedByName: firstSession.representedByName || null,
     })
   }
 
@@ -1673,6 +1738,9 @@ export async function getDailyActivityDashboardData(
   const submittedEmpIds = new Set<number>()
   for (const s of effectiveSessions) {
     if (s.employeeId) submittedEmpIds.add(s.employeeId)
+  }
+  for (const tm of rawTeamMembers) {
+    if (tm.employeeId) submittedEmpIds.add(tm.employeeId)
   }
   for (const act of rawActivities) {
     if (act.employeeId) submittedEmpIds.add(act.employeeId)

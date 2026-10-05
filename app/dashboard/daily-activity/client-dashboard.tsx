@@ -1823,20 +1823,31 @@ export function DailyActivityClientDashboard({
                           {emp.employeeId}
                         </td>
                         <td className="py-3 px-4">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setActiveDetailItem({
-                                type: 'employee',
-                                employee: emp,
-                              })
-                            }
-                            className="font-semibold text-blue-600 hover:text-blue-800 hover:underline text-left inline-flex items-center gap-1 group cursor-pointer"
-                            title="Klik untuk melihat formulir detail aktivitas harian lengkap"
-                          >
-                            <span>{emp.name}</span>
-                            <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 text-blue-600 transition-opacity" />
-                          </button>
+                          <div className="flex flex-col items-start gap-1">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setActiveDetailItem({
+                                  type: 'employee',
+                                  employee: emp,
+                                })
+                              }
+                              className="font-semibold text-blue-600 hover:text-blue-800 hover:underline text-left inline-flex items-center gap-1 group cursor-pointer"
+                              title="Klik untuk melihat formulir detail aktivitas harian lengkap"
+                            >
+                              <span>{emp.name}</span>
+                              <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 text-blue-600 transition-opacity" />
+                            </button>
+                            {emp.isTeamMember && (
+                              <span
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200"
+                                title={`Diinput bersama / diwakilkan oleh ${emp.representedByName || 'Rekan Tim'}`}
+                              >
+                                <Users className="w-3 h-3 text-indigo-500" />
+                                Tim {emp.representedByName ? `(${emp.representedByName})` : ''}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3 px-4">
                           <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 whitespace-nowrap">
@@ -2572,6 +2583,12 @@ export function DailyActivityClientDashboard({
                     <div>
                       <span className="text-[11px] text-slate-400 block font-medium">Nama Karyawan</span>
                       <span className="font-bold text-slate-900 text-sm">{activeDetailItem.employee.name}</span>
+                      {activeDetailItem.employee.isTeamMember && (
+                        <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          <Users className="w-3 h-3 text-indigo-500" />
+                          Tim {activeDetailItem.employee.representedByName ? `(diwakilkan oleh ${activeDetailItem.employee.representedByName})` : ''}
+                        </span>
+                      )}
                     </div>
                     <div>
                       <span className="text-[11px] text-slate-400 block font-medium">Employee SN</span>
