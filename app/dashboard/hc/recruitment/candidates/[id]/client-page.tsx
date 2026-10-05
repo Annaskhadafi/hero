@@ -6,7 +6,7 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer, Tooltip as RechartsTooltip } from "recharts";
-import { IconArrowLeft, IconCalendarEvent, IconCheck, IconX, IconVideo, IconMapPin, IconStethoscope, IconLink, IconCopy, IconMail, IconFileText, IconEye, IconSend, IconMailForward, IconRefresh } from "@tabler/icons-react";
+import { IconArrowLeft, IconCalendarEvent, IconCheck, IconX, IconVideo, IconMapPin, IconStethoscope, IconLink, IconCopy, IconMail, IconFileText, IconEye, IconSend, IconMailForward, IconRefresh, IconSparkles } from "@tabler/icons-react";
 
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { Button } from "@/components/ui/button";
@@ -118,7 +118,7 @@ function ApplicationFormAnswer({ text }: { text: string | null | undefined }) {
 import { scheduleCandidateInterview, updateInterviewStatus, previewInterviewEmail } from "@/app/actions/interviews";
 import { scheduleCandidateMcu, recordMcuResult, uploadMcuResultFile, previewMcuEmail } from "@/app/actions/mcu";
 import { generateOnboardingToken } from "@/app/actions/onboarding";
-import { hireAndCreateEmployee, getCvDownloadUrl, createCandidatePanelEvaluation, updateCandidate, resendEmailFromLog } from "@/app/actions/recruitment";
+import { hireAndCreateEmployee, getCvDownloadUrl, createCandidatePanelEvaluation, updateCandidate, resendEmailFromLog, assessCandidateCv } from "@/app/actions/recruitment";
 import { resendTestAssignmentEmail } from "@/app/actions/recruitment-tests";
 import { getActiveMcuClinics } from "@/app/actions/hc-mcu-clinics";
 import { saveOffering, sendOfferingEmail, respondToOffering } from "@/app/actions/offering";
@@ -161,6 +161,26 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
   useEffect(() => {
     setAppOrigin(window.location.origin);
   }, []);
+
+  const [isSmartLoading, setIsSmartLoading] = useState(false);
+
+  const handleRunSmartAssessment = async () => {
+    setIsSmartLoading(true);
+    const toastId = toast.loading(`Menjalankan Smart Assessment untuk ${candidate.fullName}...`);
+    try {
+      const res = await assessCandidateCv(candidate.id);
+      if (res.success) {
+        toast.success(`Smart Assessment selesai: Skor ${res.score}%`, { id: toastId });
+        router.refresh();
+      } else {
+        toast.error(res.error || "Gagal menjalankan Smart Assessment.", { id: toastId });
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menjalankan Smart Assessment.", { id: toastId });
+    } finally {
+      setIsSmartLoading(false);
+    }
+  };
 
   const [isHireOpen, setIsHireOpen] = useState(false);
   const [isHiring, setIsHiring] = useState(false);
@@ -989,7 +1009,22 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                     )}
                   </>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No Smart assessment yet</p>
+                  <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-emerald-200 bg-emerald-50/30 p-6 text-center">
+                    <IconSparkles className="h-9 w-9 text-emerald-500/70 mb-2" />
+                    <div className="font-semibold text-slate-800 text-sm">Smart Assessment Belum Diproses</div>
+                    <p className="text-xs text-muted-foreground mt-1 max-w-sm">
+                      Jalankan analisis AI untuk mengevaluasi kualifikasi kandidat, riwayat pengalaman, dan CV terhadap lowongan ini.
+                    </p>
+                    <Button
+                      size="sm"
+                      className="mt-3 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                      onClick={handleRunSmartAssessment}
+                      disabled={isSmartLoading}
+                    >
+                      <IconSparkles className="h-4 w-4" />
+                      {isSmartLoading ? "Sedang Memproses..." : "Jalankan Smart Assessment"}
+                    </Button>
+                  </div>
                 )}
               </CardContent>
             </Card>

@@ -1950,7 +1950,50 @@ export async function getCvDownloadUrl(cvUrl: string | null) {
   return (await getS3ObjectReadUrl(cvUrl, 3600)) || resolved;
 }
 
-// ─── AI Assessment ────────────────────────────────────────────────────────
+// ─── AI Assessment (OpenAI & 9router Compatible) ──────────────────────────
+
+function getRecruitmentAiConfig() {
+  const apiKey = (
+    process.env.OPENAI_API_KEY ||
+    process.env.OLLAMA_API_KEY ||
+    process.env.OPENROUTER_API_KEY ||
+    ""
+  ).trim();
+
+  let rawUrl = (
+    process.env.OPENAI_BASE_URL ||
+    process.env.OLLAMA_API_URL ||
+    process.env.OLLAMA_URL ||
+    "https://9router.chitraparatama.com/v1"
+  ).trim();
+
+  if (rawUrl.endsWith("/")) {
+    rawUrl = rawUrl.slice(0, -1);
+  }
+  const apiUrl = rawUrl.endsWith("/chat/completions")
+    ? rawUrl
+    : `${rawUrl}/chat/completions`;
+
+  const configuredModel = (
+    process.env.OPENAI_MODEL ||
+    process.env.OLLAMA_MODEL ||
+    "cx/gpt-5.6-luna"
+  ).trim();
+
+  return { apiUrl, apiKey, configuredModel };
+}
+
+function extractAiJsonPayload(text: string): any {
+  const trimmed = text.trim();
+  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  const target = fenceMatch ? fenceMatch[1] : trimmed;
+  const firstBrace = target.indexOf('{');
+  const lastBrace = target.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    return JSON.parse(target.slice(firstBrace, lastBrace + 1));
+  }
+  return JSON.parse(target);
+}
 
 export async function assessCandidateCv(candidateId: number) {
   // 1. Fetch Candidate & Job Vacancy
@@ -1974,13 +2017,16 @@ export async function assessCandidateCv(candidateId: number) {
     if (candidate.cvUrl) {
       let fileBuffer: Buffer | null = null;
       try {
-        if (candidate.cvUrl.startsWith("http")) {
-          const fetchRes = await fetch(candidate.cvUrl);
+        const downloadUrl = await getCvDownloadUrl(candidate.cvUrl);
+        const fetchTarget = downloadUrl && downloadUrl.startsWith("http") ? downloadUrl : (candidate.cvUrl.startsWith("http") ? candidate.cvUrl : null);
+        if (fetchTarget) {
+          const fetchRes = await fetch(fetchTarget);
           if (fetchRes.ok) {
             const arrayBuffer = await fetchRes.arrayBuffer();
             fileBuffer = Buffer.from(arrayBuffer);
           }
-        } else {
+        }
+        if (!fileBuffer) {
           const filename = candidate.cvUrl.split("/").pop();
           if (filename) {
             const filePath = path.join(process.cwd(), "public", "uploads", filename);
@@ -2026,13 +2072,11 @@ export async function assessCandidateCv(candidateId: number) {
       knockoutCriteria: (job.knockoutCriteria || []).filter((criterion) => criterion.enabled),
     };
 
-    // 4. Call AI API (OpenRouter fallback)
-    const ollamaUrl = process.env.OLLAMA_URL || "https://openrouter.ai/api/v1/chat/completions";
-    const ollamaModel = process.env.OLLAMA_MODEL || "openai/gpt-4o-mini";
-    const ollamaKey = process.env.OLLAMA_API_KEY;
+    // 4. Call AI API with primary OpenAI env and fallbacks
+    const { apiUrl, apiKey, configuredModel } = getRecruitmentAiConfig();
 
-    if (!ollamaKey) {
-      return { success: false, error: "Smart API key belum dikonfigurasi. Set OLLAMA_API_KEY di .env.local (OpenRouter API key)" };
+    if (!apiKey) {
+      return { success: false, error: "Smart API key belum dikonfigurasi. Pastikan OPENAI_API_KEY sudah diset di environment (.env)." };
     }
 
     const promptSystem = `You are an expert HR Assessor. You will be provided with a Candidate Profile (JSON) and Job Requirements (JSON).
@@ -2041,38 +2085,73 @@ Return a JSON object strictly following this format: {"score": 85, "summary": "P
 All user-facing text values must be written in Bahasa Indonesia, including summary, breakdown criterion, breakdown reason, knockout criterion, knockout reason, and recommendation. Translate common criteria labels too: Education = Pendidikan, Experience = Pengalaman, Certification = Sertifikasi, License = SIM/Lisensi, Skill Match = Kesesuaian Keahlian, Availability = Kesiapan/Ketersediaan. Keep JSON keys in English exactly as specified.
 The final score must be 0-100. If any knockout criterion fails, keep score realistic and set recommendation to "Ditolak" or "Perlu Review Manual".`;
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 90_000);
-    const response = await fetch(ollamaUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${ollamaKey}`,
-        "HTTP-Referer": "https://hero.chitraparatama.com",
-        "X-Title": "HERO HC Assessment",
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: ollamaModel,
-        messages: [
-          { role: "system", content: promptSystem },
-          {
-            role: "user",
-            content: `Job Requirements: ${JSON.stringify(jobRequirements)}\n\nCandidate Profile: ${JSON.stringify(candidateProfile)}`
-          }
-        ],
-        stream: false,
-      })
-    }).finally(() => clearTimeout(timeout));
+    const candidateModels = [
+      configuredModel,
+      "openrouter/deepseek/deepseek-v4.1-flash",
+      "openrouter/inference-net/schematron-v2-turbo",
+      "Auto/gpt-5.6-luna",
+    ];
+    const modelsToTry = [...new Set(candidateModels.filter(Boolean))];
 
-    if (!response.ok) {
-      throw new Error(`Ollama API returned ${response.status}`);
+    let aiContent: any = null;
+    let lastError: any = null;
+
+    for (const model of modelsToTry) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 60_000);
+        const response = await fetch(apiUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${apiKey}`,
+            "HTTP-Referer": "https://hero.chitraparatama.com",
+            "X-Title": "HERO HC Assessment",
+          },
+          signal: controller.signal,
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: "system", content: promptSystem },
+              {
+                role: "user",
+                content: `Job Requirements: ${JSON.stringify(jobRequirements)}\n\nCandidate Profile: ${JSON.stringify(candidateProfile)}`
+              }
+            ],
+            stream: false,
+          })
+        }).finally(() => clearTimeout(timeout));
+
+        const rawText = await response.text();
+        if (!response.ok) {
+          console.warn(`[Smart Assessment] Model ${model} returned HTTP ${response.status}: ${rawText.slice(0, 150)}`);
+          lastError = new Error(`HTTP ${response.status} from model ${model}`);
+          continue;
+        }
+
+        // Clean trailing `data: [DONE]` from 9router/SSE proxies
+        const cleaned = rawText.replace(/data:\s*\[DONE\]\s*$/i, "").trim();
+        const aiData = JSON.parse(cleaned);
+        const rawContent = aiData.choices?.[0]?.message?.content || aiData.message?.content || "{}";
+        const parsed = extractAiJsonPayload(rawContent);
+
+        if (parsed && typeof parsed.score !== "undefined") {
+          aiContent = parsed;
+          break;
+        } else {
+          console.warn(`[Smart Assessment] Model ${model} returned invalid payload without score: ${rawContent.slice(0, 150)}`);
+          lastError = new Error(`Model ${model} output missing score`);
+        }
+      } catch (err: any) {
+        console.warn(`[Smart Assessment] Error calling model ${model}:`, err.message);
+        lastError = err;
+      }
     }
 
-    const aiData = await response.json();
-    const rawContent = aiData.choices?.[0]?.message?.content || aiData.message?.content || "{}";
-    const cleanedContent = rawContent.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-    const aiContent = JSON.parse(cleanedContent);
+    if (!aiContent) {
+      throw lastError || new Error("Gagal memproses penilaian AI dari semua model yang tersedia.");
+    }
+
     const criterionTranslations: Record<string, string> = {
       Education: "Pendidikan",
       Experience: "Pengalaman",
@@ -2125,7 +2204,7 @@ The final score must be 0-100. If any knockout criterion fails, keep score reali
   } catch (error: any) {
     console.error("AI Assessment Error:", error);
     if (error?.name === "AbortError") {
-      return { success: false, error: "Smart assessment timed out after 90 seconds. Check OLLAMA_URL / model availability." };
+      return { success: false, error: "Smart assessment timed out. Periksa ketersediaan AI endpoint / model." };
     }
     return { success: false, error: error.message };
   }

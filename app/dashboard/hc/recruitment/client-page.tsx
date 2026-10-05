@@ -19,13 +19,14 @@ import {
   IconStethoscope,
   IconArrowsExchange,
   IconUpload,
+  IconSparkles,
 } from "@tabler/icons-react";
 import { format, differenceInDays } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import { PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer, Tooltip as RechartsTooltip } from "recharts";
 const WITA_TZ = "Asia/Makassar";
 import { toast } from "sonner";
-import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated, updateCandidateStage, getCandidateEmailStatuses, getCvDownloadUrl, getCandidateComparisonData, sendStartDateEmails, previewStartDateEmail, adminCreateCandidate, bulkImportCandidates, sendBulkCustomEmail } from "@/app/actions/recruitment";
+import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated, updateCandidateStage, getCandidateEmailStatuses, getCvDownloadUrl, getCandidateComparisonData, sendStartDateEmails, previewStartDateEmail, adminCreateCandidate, bulkImportCandidates, sendBulkCustomEmail, assessCandidateCv } from "@/app/actions/recruitment";
 import { bulkAssignTestToCandidates } from "@/app/actions/recruitment-tests";
 import { getAllTestGroups, bulkAssignTestGroupToCandidates, previewTestGroupEmail } from "@/app/actions/test-group";
 import { bulkScheduleInterviews, previewInterviewEmail } from "@/app/actions/interviews";
@@ -248,6 +249,33 @@ export function RecruitmentClientPage({
   const [cvViewerName, setCvViewerName] = useState("");
   const [cvLoadingId, setCvLoadingId] = useState<number | null>(null);
   const [profileDrawerCandidate, setProfileDrawerCandidate] = useState<Candidate | null>(null);
+  const [aiLoadingIds, setAiLoadingIds] = useState<Set<number>>(new Set());
+
+  const handleRunSingleSmart = async (cand: Candidate) => {
+    setAiLoadingIds(prev => new Set(prev).add(cand.id));
+    const toastId = toast.loading(`Menjalankan Smart Assessment untuk ${cand.fullName}...`);
+    try {
+      const res = await assessCandidateCv(cand.id);
+      if (res.success) {
+        toast.success(`Smart Assessment selesai: Skor ${res.score}%`, { id: toastId });
+        setCandidates(prev => prev.map(c => c.id === cand.id ? { ...c, aiScore: res.score, aiSummary: res.summary || "", aiDetails: res.details } : c));
+        if (profileDrawerCandidate?.id === cand.id) {
+          setProfileDrawerCandidate(prev => prev ? { ...prev, aiScore: res.score, aiSummary: res.summary || "", aiDetails: res.details } : null);
+        }
+        router.refresh();
+      } else {
+        toast.error(res.error || "Gagal memproses Smart Assessment.", { id: toastId });
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Gagal memproses Smart Assessment.", { id: toastId });
+    } finally {
+      setAiLoadingIds(prev => {
+        const next = new Set(prev);
+        next.delete(cand.id);
+        return next;
+      });
+    }
+  };
   const [isCompareOpen, setIsCompareOpen] = useState(false);
 
   useEffect(() => {
@@ -1522,7 +1550,21 @@ export function RecruitmentClientPage({
                                   </span>
                                 )}
                               </div>
-                            ) : "-"}
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRunSingleSmart(candidate);
+                                }}
+                                disabled={aiLoadingIds.has(candidate.id)}
+                              >
+                                <IconSparkles className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                                {aiLoadingIds.has(candidate.id) ? "Proses..." : "Run Smart"}
+                              </Button>
+                            )}
                           </TableCell>
                           <TableCell className="px-2 text-center">
                             {emailStatuses[candidate.id] && emailStatuses[candidate.id].status !== "none" ? (
@@ -1639,10 +1681,41 @@ export function RecruitmentClientPage({
                 </div>
                 {profileDrawerCandidate.aiSummary ? (
                   <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Ringkasan Smart</div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Ringkasan Smart</div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-[10px] text-emerald-700 hover:bg-emerald-100/60"
+                        onClick={() => handleRunSingleSmart(profileDrawerCandidate)}
+                        disabled={aiLoadingIds.has(profileDrawerCandidate.id)}
+                      >
+                        <IconSparkles className="w-3 h-3 mr-1" />
+                        {aiLoadingIds.has(profileDrawerCandidate.id) ? "Memproses..." : "Re-run"}
+                      </Button>
+                    </div>
                     <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{profileDrawerCandidate.aiSummary}</div>
                   </div>
-                ) : null}
+                ) : (
+                  <div className="rounded-xl border border-dashed border-emerald-200 bg-emerald-50/30 p-3 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <IconSparkles className="w-5 h-5 text-emerald-600 shrink-0" />
+                      <div>
+                        <div className="text-xs font-semibold text-slate-900">Smart Assessment</div>
+                        <div className="text-[11px] text-muted-foreground">Kandidat belum dinilai AI</div>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      className="h-7 text-xs gap-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                      onClick={() => handleRunSingleSmart(profileDrawerCandidate)}
+                      disabled={aiLoadingIds.has(profileDrawerCandidate.id)}
+                    >
+                      <IconSparkles className="w-3.5 h-3.5" />
+                      {aiLoadingIds.has(profileDrawerCandidate.id) ? "Memproses..." : "Run Smart"}
+                    </Button>
+                  </div>
+                )}
                 {profileDrawerRadarData.length > 0 ? (
                   <div className="rounded-xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-3">
                     <div className="mb-2 flex items-center justify-between gap-3">
