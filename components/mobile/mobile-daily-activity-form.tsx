@@ -289,9 +289,11 @@ type MobileDailyActivityFormProps = {
   teamMembers?: Array<{
     id: number
     name: string
+    employeeSn?: string | null
     role: string
     department: string
     siteId?: number | null
+    siteName?: string | null
     sectionId?: number | null
     section?: string | null
   }>
@@ -1433,7 +1435,14 @@ export function MobileDailyActivityForm({
     const q = memberSearch.trim().toLowerCase()
     const pool = (teamMembers || []).filter((m) => m.id !== employeeId)
     if (!q) return pool
-    return pool.filter((m) => m.name.toLowerCase().includes(q))
+    return pool.filter(
+      (m) =>
+        m.name.toLowerCase().includes(q) ||
+        (m.employeeSn && m.employeeSn.toLowerCase().includes(q)) ||
+        (m.role && m.role.toLowerCase().includes(q)) ||
+        (m.section && m.section.toLowerCase().includes(q)) ||
+        (m.siteName && m.siteName.toLowerCase().includes(q))
+    )
   }, [teamMembers, memberSearch, employeeId])
 
   const safeAvailableLibrary = useMemo(() => {
@@ -3305,14 +3314,24 @@ export function MobileDailyActivityForm({
                     <PopoverContent className="w-[calc(100vw-2.5rem)] max-w-sm rounded-[1.25rem] border border-gray-100 bg-white p-3 shadow-lg" align="start">
                       <div className="space-y-2">
                         <div className="flex items-center gap-2 rounded-xl bg-gray-50 px-3 py-2">
-                          <Search className="size-4 text-gray-400" />
+                          <Search className="size-4 text-gray-400 shrink-0" />
                           <input
                             type="text"
-                            placeholder="Cari nama anggota..."
+                            placeholder="Cari nama atau SN anggota..."
                             value={memberSearch}
                             onChange={(e) => setMemberSearch(e.target.value)}
                             className="w-full bg-transparent text-sm font-semibold text-gray-900 outline-none placeholder:text-gray-400"
                           />
+                          {memberSearch && (
+                            <button
+                              type="button"
+                              onClick={() => setMemberSearch('')}
+                              className="text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer"
+                              title="Hapus pencarian"
+                            >
+                              <X className="size-3.5" />
+                            </button>
+                          )}
                         </div>
                         <div className="max-h-60 overflow-y-auto space-y-1">
                           {filteredTeamMembers.length > 0 ? (
@@ -3333,9 +3352,10 @@ export function MobileDailyActivityForm({
                                   <div className="flex flex-col">
                                     <span className="text-sm font-semibold text-gray-900">{member.name}</span>
                                     <span className="text-[10px] text-gray-500">
+                                      {member.employeeSn ? `SN: ${member.employeeSn} • ` : ''}
                                       {member.role}
                                       {member.section ? ` • ${member.section}` : ''}
-                                      {site?.name ? ` • ${site.name}` : ''}
+                                      {member.siteName ? ` • ${member.siteName}` : site?.name ? ` • ${site.name}` : ''}
                                     </span>
                                   </div>
                                   <Checkbox checked={isChecked} onCheckedChange={() => {}} className="pointer-events-none rounded-md" />
@@ -3343,9 +3363,20 @@ export function MobileDailyActivityForm({
                               )
                             })
                           ) : (
-                            <p className="text-center py-4 text-xs font-medium text-gray-500">
-                              Tidak ada anggota tim yang cocok
-                            </p>
+                            <div className="text-center py-4 space-y-1">
+                              <p className="text-xs font-semibold text-gray-700">
+                                Tidak ada anggota tim yang cocok
+                              </p>
+                              {memberSearch ? (
+                                <p className="text-[11px] text-gray-400">
+                                  Tidak ditemukan untuk kata kunci &ldquo;{memberSearch}&rdquo;. Silakan hapus atau ketik nama/SN rekan tim.
+                                </p>
+                              ) : (
+                                <p className="text-[11px] text-gray-400">
+                                  Belum ada rekan tim lain yang terdaftar aktif di site ini.
+                                </p>
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>

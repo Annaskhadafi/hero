@@ -407,6 +407,7 @@ export function MobileOvertimeRequestForm({
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 && e.pointerType === "mouse") return;
+    if ((e.target as HTMLElement)?.closest('button, a, input, select, textarea, [data-interactive="true"]')) return;
     setIsDragging(true);
     dragStartRef.current = {
       x: e.clientX - panOffset.x,
@@ -435,6 +436,7 @@ export function MobileOvertimeRequestForm({
   };
 
   const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement)?.closest('button, a, input, select, textarea, [data-interactive="true"]')) return;
     if (e.touches.length === 2) {
       const t1 = e.touches[0];
       const t2 = e.touches[1];

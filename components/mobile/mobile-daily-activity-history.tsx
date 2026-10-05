@@ -270,7 +270,8 @@ export function MobileDailyActivityHistory({
         const sessionId = activity.sessionId || activity.id
         const sessionCode = activity.sessionCode || activity.activityCode || `DAS-${activity.id}`
         const st = (activity.status || '').toLowerCase()
-        const isRevisable = ['returned', 'reverted', 'needs_revision', 'draft'].includes(st)
+        const isDraft = st === 'draft'
+        const isRevisable = ['returned', 'reverted', 'needs_revision'].includes(st)
 
         return (
           <details
@@ -394,9 +395,29 @@ export function MobileDailyActivityHistory({
                 </div>
               )}
 
-              {/* Tombol Aksi (Persis SPL Mobile) */}
+              {/* Tombol Aksi */}
               <div className="pt-1">
-                {isRevisable ? (
+                {isDraft ? (
+                  <div className="space-y-2">
+                    <Button
+                      asChild
+                      className="w-full h-12 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs"
+                    >
+                      <Link href={`/mobile/activity?tab=apply&edit=${sessionId}`}>
+                        <Pencil className="size-4 mr-1.5" /> Lanjutkan Pengisian DAR
+                      </Link>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => onOpenReview?.(sessionId)}
+                      className="w-full h-11 rounded-2xl border-slate-300 font-bold text-xs bg-white text-slate-700 shadow-2xs cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <FileText className="size-4" />
+                      <span>Lihat &amp; Unduh Dokumen PDF</span>
+                    </Button>
+                  </div>
+                ) : isRevisable ? (
                   <div className="space-y-2">
                     <Button
                       asChild

@@ -6,7 +6,7 @@ import { ArrowLeft, Clock3, UserRound } from "lucide-react";
 import { MobileDailyActivityForm } from "@/components/mobile/mobile-daily-activity-form";
 import { db } from "@/db";
 import { employees, masterSections, masterDepartments, sites } from "@/db/schema/hero";
-import { and, asc, eq, ne } from "drizzle-orm";
+import { and, asc, eq, ne, sql } from "drizzle-orm";
 import { getActivityPagePurpose } from "@/lib/activity-navigation";
 import { getServerSession } from "@/lib/auth-session";
 import { getDailyActivityEmployeeData } from "@/lib/daily-activity";
@@ -120,29 +120,33 @@ export default async function MobileActivityInputPage({
 
   const hierarchy = resolveEmployeeApproverHierarchy(data.employee.id, hierarchyEmployees);
 
-  // Team members must belong to the same site as the account. A site team can
-  // span sections, while the server still enforces the site boundary on save.
+  // Load active employees as candidate team members (same site prioritized first, but allows searching all employees)
   const teamMembers = await safeQuery(
     () =>
       db
         .select({
           id: employees.id,
           name: employees.name,
+          employeeSn: employees.employeeSn,
           role: employees.role,
           department: employees.department,
           siteId: employees.siteId,
           sectionId: employees.sectionId,
           section: employees.section,
+          siteName: sites.name,
         })
         .from(employees)
+        .leftJoin(sites, eq(employees.siteId, sites.id))
         .where(
           and(
             eq(employees.isActive, true),
-            eq(employees.siteId, data.employee.siteId),
             ne(employees.id, data.employee.id)
           )
         )
-        .orderBy(asc(employees.name)),
+        .orderBy(
+          sql`CASE WHEN ${employees.siteId} = ${data.employee.siteId || 0} THEN 0 ELSE 1 END`,
+          asc(employees.name)
+        ),
     [],
     "teamMembers"
   );

@@ -59,7 +59,9 @@ export function OvertimeEvidenceModal({
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
-        className="max-w-5xl max-h-[92vh] overflow-y-auto p-0 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 shadow-2xl overflow-x-hidden"
+        overlayClassName="z-[110]"
+        showCloseButton={false}
+        className="w-[96vw] max-w-5xl max-h-[92vh] overflow-y-auto p-0 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 shadow-2xl overflow-x-hidden z-[120]"
       >
         {isLoading ? (
           <div className="py-24 flex flex-col items-center justify-center text-center">

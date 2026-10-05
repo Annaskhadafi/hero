@@ -45,10 +45,12 @@ export function SplEvidenceQrBox({
 
   return (
     <>
-      <a
-        href={evidenceUrl || `/overtime-evidence/${splId}`}
+      <div
+        data-interactive="true"
+        onPointerDown={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
         onClick={handleClick}
-        className={`inline-block transition-opacity hover:opacity-80 cursor-pointer select-none ${className}`}
+        className={`inline-flex flex-col items-center justify-center p-1 rounded-lg border border-slate-200 bg-white shadow-2xs hover:border-blue-400 active:scale-95 transition-all cursor-pointer select-none group ${className}`}
         title="Klik untuk membuka jendela galeri foto bukti lembur (atau scan dengan HP untuk membuka halaman web)"
         style={{ textDecoration: 'none', color: 'inherit' }}
       >
@@ -57,7 +59,7 @@ export function SplEvidenceQrBox({
             src={qrDataUrl}
             alt="QR Validasi SPL"
             style={{ width: `${size}px`, height: `${size}px`, display: 'block' }}
-            className="object-contain"
+            className="object-contain rounded"
           />
         ) : (
           <div
@@ -67,7 +69,10 @@ export function SplEvidenceQrBox({
             <QrCode className="size-6 text-slate-400" />
           </div>
         )}
-      </a>
+        <span className="text-[6pt] font-bold text-blue-700 mt-0.5 group-hover:text-blue-900 leading-tight">
+          Scan / Klik Bukti
+        </span>
+      </div>
 
       {/* Floating Evidence Modal */}
       <OvertimeEvidenceModal

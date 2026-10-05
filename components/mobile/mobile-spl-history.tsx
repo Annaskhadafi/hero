@@ -11,6 +11,7 @@ import {
   FileText,
   Loader2,
   Move,
+  Pencil,
   PlusCircle,
   RotateCcw,
   Search,
@@ -158,6 +159,7 @@ export function MobileSplHistory({
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 && e.pointerType === 'mouse') return
+    if ((e.target as HTMLElement)?.closest('button, a, input, select, textarea, [data-interactive="true"]')) return
     setIsDragging(true)
     dragStartRef.current = {
       x: e.clientX - panOffset.x,
@@ -186,6 +188,7 @@ export function MobileSplHistory({
   }
 
   const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement)?.closest('button, a, input, select, textarea, [data-interactive="true"]')) return
     if (e.touches.length === 2) {
       const t1 = e.touches[0]
       const t2 = e.touches[1]
@@ -417,7 +420,24 @@ export function MobileSplHistory({
             </ol>
 
             <div className="pt-1">
-              {['returned', 'reverted', 'needs_revision', 'draft'].includes(row.status) ? (
+              {row.status === 'draft' ? (
+                <div className="space-y-2">
+                  <Button asChild className="w-full h-12 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs">
+                    <Link href={`/mobile/overtime?tab=apply&edit=${row.id}`}>
+                      <Pencil className="size-4 mr-1.5" /> Lanjutkan Pengisian SPL
+                    </Link>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => handleOpenPdf(row.id)}
+                    className="w-full h-11 rounded-2xl border-slate-300 font-bold text-xs bg-white text-slate-700 shadow-2xs cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <FileText className="size-4" />
+                    <span>Lihat &amp; Unduh Dokumen PDF</span>
+                  </Button>
+                </div>
+              ) : ['returned', 'reverted', 'needs_revision'].includes(row.status) ? (
                 <div className="space-y-2">
                   <Button asChild className="w-full h-12 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs">
                     <Link href={`/mobile/overtime?tab=apply&edit=${row.id}`}>

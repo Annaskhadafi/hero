@@ -71,7 +71,7 @@ function getPool(): Pool {
     connectionString,
     ssl: getSslConfig(connectionString),
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 6000,
+    connectionTimeoutMillis: 20000,
     max: maxConnections,
     keepAlive: true,
     keepAliveInitialDelayMillis: 5000,

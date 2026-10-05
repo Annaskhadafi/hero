@@ -2715,15 +2715,6 @@ export async function submitDailyActivityAction(formData: FormData) {
     throw new Error('Beberapa anggota tim tidak ditemukan.')
   }
 
-  // Verify that team members belong to the same site as the submitter
-  for (const emp of allTargetEmployees) {
-    if (emp.id !== employeeId) {
-      if (employee.siteId && emp.siteId && emp.siteId !== employee.siteId) {
-        throw new Error(`Anggota tim ${emp.name} tidak berada di site yang sama.`)
-      }
-    }
-  }
-
   // Sort them so that submitter (employeeId) is always first
   allTargetEmployees.sort((a, b) => {
     if (a.id === employeeId) return -1
@@ -6995,19 +6986,6 @@ export async function createDailyActivitySessionAction(input: {
       return {
         success: false as const,
         error: `Anggota tim tidak ditemukan: ${missingIds.join(', ')}.`,
-      }
-    }
-
-    const invalidSiteMember = allEmps.find(
-      (employee) =>
-        employee.id !== targetEmpId &&
-        primaryEmp.siteId != null &&
-        employee.siteId !== primaryEmp.siteId
-    )
-    if (invalidSiteMember) {
-      return {
-        success: false as const,
-        error: `Anggota tim ${invalidSiteMember.name} tidak berada di site yang sama dengan pemohon.`,
       }
     }
 
