@@ -60,6 +60,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
+  HoverCard,
+  HoverCardTrigger,
+  HoverCardContent,
+} from '@/components/ui/hover-card'
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -636,29 +641,53 @@ export function DailyActivityClientDashboard({
       'Jam Checkout',
       'EWH (Efektif/Target)',
       'EWH (%)',
-      'Aktivitas Utama',
-      'Unit / Tire ID',
+      'Aktivitas / Deskripsi',
+      'No. Unit / Equipment',
       'Status Aktivitas',
       'Progres (%)',
       'Update Terakhir',
     ]
 
-    const rows = filteredEmployees.map((e) => [
-      `"${e.employeeId}"`,
-      `"${e.name}"`,
-      `"${e.siteName || initialData.currentSite.name}"`,
-      `"${e.jobTitle}"`,
-      `"${e.shift}"`,
-      `"${e.checkInTime}"`,
-      `"${e.checkOutTime || '-'}"`,
-      `"${e.ewhActualHours}/${e.ewhTargetHours} Jam"`,
-      `"${e.ewhPercentage}%"`,
-      `"${e.primaryActivity}"`,
-      `"${e.unitTireId}"`,
-      `"${e.status}"`,
-      `"${e.progress}%"`,
-      `"${e.lastUpdate}"`,
-    ])
+    const rows: string[][] = []
+    for (const e of filteredEmployees) {
+      if (e.tasks && e.tasks.length > 0) {
+        for (const t of e.tasks) {
+          rows.push([
+            `"${e.employeeId}"`,
+            `"${e.name}"`,
+            `"${e.siteName || initialData.currentSite.name}"`,
+            `"${e.jobTitle}"`,
+            `"${e.shift}"`,
+            `"${e.checkInTime}"`,
+            `"${e.checkOutTime || '-'}"`,
+            `"${e.ewhActualHours}/${e.ewhTargetHours} Jam"`,
+            `"${e.ewhPercentage}%"`,
+            `"${(t.label || e.primaryActivity).replace(/"/g, '""')}"`,
+            `"${(t.unitNumber && t.unitNumber !== '-' ? t.unitNumber : '-').replace(/"/g, '""')}"`,
+            `"${t.status || e.status}"`,
+            `"${t.progress ?? e.progress}%"`,
+            `"${e.lastUpdate}"`,
+          ])
+        }
+      } else {
+        rows.push([
+          `"${e.employeeId}"`,
+          `"${e.name}"`,
+          `"${e.siteName || initialData.currentSite.name}"`,
+          `"${e.jobTitle}"`,
+          `"${e.shift}"`,
+          `"${e.checkInTime}"`,
+          `"${e.checkOutTime || '-'}"`,
+          `"${e.ewhActualHours}/${e.ewhTargetHours} Jam"`,
+          `"${e.ewhPercentage}%"`,
+          `"${(e.primaryActivity || '-').replace(/"/g, '""')}"`,
+          `"${(e.unitTireId || '-').replace(/"/g, '""')}"`,
+          `"${e.status}"`,
+          `"${e.progress}%"`,
+          `"${e.lastUpdate}"`,
+        ])
+      }
+    }
 
     const csvContent =
       'data:text/csv;charset=utf-8,\uFEFF' +
@@ -720,25 +749,53 @@ export function DailyActivityClientDashboard({
         return
       }
 
-      // Submitted tab
-      const data = filteredEmployees.map((e, idx) => ({
-        'No': idx + 1,
-        'Tanggal': initialData.currentDate || '-',
-        'Employee ID': e.employeeId,
-        'Nama Karyawan': e.name,
-        'Site': e.siteName || initialData.currentSite.name,
-        'Jabatan / Section': e.jobTitle,
-        'Shift': e.shift,
-        'Jam Check-in': e.checkInTime,
-        'Jam Checkout': e.checkOutTime || '-',
-        'EWH (Efektif)': `${e.ewhActualHours}/${e.ewhTargetHours} Jam`,
-        'EWH (%)': `${e.ewhPercentage}%`,
-        'Aktivitas Utama': e.primaryActivity,
-        'No. Unit / Equipment': e.unitTireId,
-        'Status Aktivitas': e.status,
-        'Progress (%)': `${e.progress}%`,
-        'Update Terakhir': e.lastUpdate,
-      }))
+      // Submitted tab - split rows per task/unit so each unit has its own description row
+      const data: any[] = []
+      let rowNumber = 1
+
+      for (const e of filteredEmployees) {
+        if (e.tasks && e.tasks.length > 0) {
+          for (const t of e.tasks) {
+            data.push({
+              'No': rowNumber++,
+              'Tanggal': initialData.currentDate || '-',
+              'Employee ID': e.employeeId,
+              'Nama Karyawan': e.name,
+              'Site': e.siteName || initialData.currentSite.name,
+              'Jabatan / Section': e.jobTitle,
+              'Shift': e.shift,
+              'Jam Check-in': e.checkInTime,
+              'Jam Checkout': e.checkOutTime || '-',
+              'EWH (Efektif)': `${e.ewhActualHours}/${e.ewhTargetHours} Jam`,
+              'EWH (%)': `${e.ewhPercentage}%`,
+              'Aktivitas / Deskripsi': t.label || e.primaryActivity,
+              'No. Unit / Equipment': t.unitNumber && t.unitNumber !== '-' ? t.unitNumber : '-',
+              'Status Aktivitas': t.status || e.status,
+              'Progress (%)': `${t.progress ?? e.progress}%`,
+              'Update Terakhir': e.lastUpdate,
+            })
+          }
+        } else {
+          data.push({
+            'No': rowNumber++,
+            'Tanggal': initialData.currentDate || '-',
+            'Employee ID': e.employeeId,
+            'Nama Karyawan': e.name,
+            'Site': e.siteName || initialData.currentSite.name,
+            'Jabatan / Section': e.jobTitle,
+            'Shift': e.shift,
+            'Jam Check-in': e.checkInTime,
+            'Jam Checkout': e.checkOutTime || '-',
+            'EWH (Efektif)': `${e.ewhActualHours}/${e.ewhTargetHours} Jam`,
+            'EWH (%)': `${e.ewhPercentage}%`,
+            'Aktivitas / Deskripsi': e.primaryActivity,
+            'No. Unit / Equipment': e.unitTireId,
+            'Status Aktivitas': e.status,
+            'Progress (%)': `${e.progress}%`,
+            'Update Terakhir': e.lastUpdate,
+          })
+        }
+      }
 
       const ws = XLSX.utils.json_to_sheet(data)
       ws['!cols'] = [
@@ -753,7 +810,7 @@ export function DailyActivityClientDashboard({
         { wch: 14 },
         { wch: 18 },
         { wch: 12 },
-        { wch: 35 },
+        { wch: 38 },
         { wch: 22 },
         { wch: 16 },
         { wch: 14 },
@@ -1943,9 +2000,44 @@ export function DailyActivityClientDashboard({
                             </span>
                           ))}
                           {emp.allUnits.length > 2 && (
-                            <span className="text-[10px] text-slate-500 font-semibold">
-                              +{emp.allUnits.length - 2} unit
-                            </span>
+                            <HoverCard openDelay={80} closeDelay={150}>
+                              <HoverCardTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="inline-flex items-center text-[10px] text-blue-700 hover:text-blue-900 font-semibold bg-blue-50 hover:bg-blue-100 border border-blue-200/80 px-1.5 py-0.5 rounded cursor-pointer transition-colors shadow-2xs"
+                                  title="Arahkan kursor atau klik untuk melihat seluruh unit"
+                                >
+                                  +{emp.allUnits.length - 2} unit
+                                </button>
+                              </HoverCardTrigger>
+                              <HoverCardContent
+                                className="w-64 p-3 text-xs shadow-xl bg-white border border-slate-200 z-50 rounded-xl"
+                                align="start"
+                                side="top"
+                              >
+                                <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-100">
+                                  <div className="flex items-center gap-1.5">
+                                    <Truck className="w-3.5 h-3.5 text-blue-600" />
+                                    <span className="font-bold text-slate-900 text-xs">
+                                      Semua Unit ({emp.allUnits.length})
+                                    </span>
+                                  </div>
+                                  <span className="text-[10px] text-slate-400 font-mono">
+                                    {emp.employeeId}
+                                  </span>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto">
+                                  {emp.allUnits.map((u, i) => (
+                                    <span
+                                      key={i}
+                                      className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200/80 text-slate-800 font-mono font-semibold text-[11px] border border-slate-200/80"
+                                    >
+                                      {u}
+                                    </span>
+                                  ))}
+                                </div>
+                              </HoverCardContent>
+                            </HoverCard>
                           )}
                         </div>
                       ) : (

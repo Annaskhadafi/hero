@@ -771,16 +771,35 @@ async function buildContractReviewApprovals(review: typeof hcEmployeeContractRev
     sectionName: section || null,
     departmentName: 'Central Services',
   })
-  const sectionHead =
+  let sectionHead =
     masterHeads.sectionHead ??
     (await getUserByName(legacySectionHead.name, legacySectionHead.email))
-  const departmentHead =
+  if (review.superiorName) {
+    const customSuperior = await getUserByName(review.superiorName)
+    if (customSuperior?.id || customSuperior?.name) {
+      sectionHead = customSuperior
+    }
+  }
+
+  let departmentHead =
     masterHeads.departmentHead ??
     (await getUserByName(settings.approvalMatrix.managerName, settings.approvalMatrix.managerEmail))
+  if (review.nextSuperiorName) {
+    const customDeptHead = await getUserByName(review.nextSuperiorName)
+    if (customDeptHead?.id || customDeptHead?.name) {
+      departmentHead = customDeptHead
+    }
+  }
+
   const hr = await getUserByName(review.hrName || settings.approvalMatrix.hrName, settings.approvalMatrix.hrEmail)
 
   let firstApprover = sectionHead
-  if (!isHo) {
+  if (review.leaderName) {
+    const customLeader = await getUserByName(review.leaderName)
+    if (customLeader?.id || customLeader?.name) {
+      firstApprover = customLeader
+    }
+  } else if (!isHo) {
     let siteHead: { id: number | null; name: string; email: string; jobTitle?: string } | null = null
     // 1. Lokasi Head / PJO from Master Data Sites
     if (siteRow?.headEmployeeId) {
@@ -844,7 +863,59 @@ async function buildContractReviewApprovals(review: typeof hcEmployeeContractRev
   }))
 }
 
+export async function ensureContractReviewApprovals(reviewId: number) {
+  const [review] = await db
+    .select()
+    .from(hcEmployeeContractReviews)
+    .where(eq(hcEmployeeContractReviews.id, reviewId))
+    .limit(1)
+
+  if (!review || !review.employeeId) return []
+
+  const existingApprovals = await db
+    .select()
+    .from(hcContractReviewApprovals)
+    .where(eq(hcContractReviewApprovals.reviewId, reviewId))
+    .orderBy(asc(hcContractReviewApprovals.stepOrder))
+
+  if (existingApprovals.length > 0) return existingApprovals
+
+  const approvalSteps = await buildContractReviewApprovals(review)
+  if (approvalSteps.length === 0) return []
+
+  const stepsWithSig = [...approvalSteps]
+  const canAutoApproveFirstStep = Boolean(review.leaderSignatureDataUrl) && !review.testRequired
+
+  if (canAutoApproveFirstStep && stepsWithSig[0]) {
+    stepsWithSig[0] = {
+      ...(stepsWithSig[0] as any),
+      status: 'approved',
+      signatureDataUrl: review.leaderSignatureDataUrl as string,
+      signedAt: new Date(),
+    }
+    if (stepsWithSig[1]) {
+      stepsWithSig[1] = { ...(stepsWithSig[1] as any), status: 'pending' }
+    }
+  }
+
+  await db.insert(hcContractReviewApprovals).values(stepsWithSig as any)
+
+  if (review.status === 'draft' && canAutoApproveFirstStep) {
+    await db
+      .update(hcEmployeeContractReviews)
+      .set({ status: 'in_progress', updatedAt: new Date() })
+      .where(eq(hcEmployeeContractReviews.id, reviewId))
+  }
+
+  return db
+    .select()
+    .from(hcContractReviewApprovals)
+    .where(eq(hcContractReviewApprovals.reviewId, reviewId))
+    .orderBy(asc(hcContractReviewApprovals.stepOrder))
+}
+
 async function getContractReviewReminderContext(review: typeof hcEmployeeContractReviews.$inferSelect) {
+  await ensureContractReviewApprovals(review.id)
   const [approvals, hrEmployee] = await Promise.all([
     db
       .select()
@@ -1874,6 +1945,7 @@ export async function autoAdvanceDraftReviewIfReady(reviewId: number) {
 export async function getContractReviewById(id: number) {
   try {
     await ensureContractReviewWorkflowTables()
+    await ensureContractReviewApprovals(id)
     const [record] = await db.select().from(hcEmployeeContractReviews).where(eq(hcEmployeeContractReviews.id, id))
     if (!record) return { success: false, error: 'Review not found' }
 
@@ -1926,7 +1998,7 @@ export async function getContractReviewById(id: number) {
             eq(hcContractReviewTestAttempts.employeeId, record.employeeId)
           )
         )
-        .orderBy(desc(hcContractReviewTestAttempts.attemptNumber))
+      .orderBy(desc(hcContractReviewTestAttempts.attemptNumber))
     }
 
     return {
@@ -1961,6 +2033,8 @@ export async function resendContractReviewApprovalEmail(reviewId: number) {
       .where(eq(hcEmployeeContractReviews.id, reviewId))
       .limit(1)
     if (!review) return { success: false, error: 'Review Contract Review tidak ditemukan.' }
+
+    await ensureContractReviewApprovals(reviewId)
 
     const result = await sendPendingContractReviewApprovalEmail(review)
     if (result.sent) {
@@ -2082,6 +2156,9 @@ export async function saveContractReview(data: Partial<typeof hcEmployeeContract
         .where(eq(hcEmployeeContractReviews.id, data.id))
         .returning()
       saved = updated
+
+      // Ensure approvals exist for existing review (e.g. if employee was chosen on edit or imported)
+      await ensureContractReviewApprovals(data.id)
 
       // Only a newly drawn leader signature can approve the initial workflow step.
       const hasNewLeaderSignature = Boolean(
@@ -2227,6 +2304,7 @@ export async function saveAdminContractReview(data: Partial<typeof hcEmployeeCon
       .set({ ...fields, status: existing.status, updatedAt: new Date() })
       .where(eq(hcEmployeeContractReviews.id, data.id))
       .returning()
+    await ensureContractReviewApprovals(data.id)
     revalidatePath('/dashboard/hc/contract-review')
     revalidatePath(`/dashboard/hc/contract-review/form/${data.id}`)
     return { success: true, data: saved }
@@ -2315,6 +2393,7 @@ export async function updateContractReviewStatus(
     }
 
     await ensureContractReviewWorkflowTables()
+    await ensureContractReviewApprovals(reviewId)
     const [review] = await db
       .select()
       .from(hcEmployeeContractReviews)

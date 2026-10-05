@@ -22,6 +22,10 @@ import {
   IconArrowUp,
   IconArrowDown,
   IconDatabaseImport,
+  IconRefresh,
+  IconExternalLink,
+  IconLoader2,
+  IconWifi,
 } from '@tabler/icons-react'
 import {
   ResponsiveContainer,
@@ -36,11 +40,18 @@ import {
   LabelList,
 } from 'recharts'
 import {
-  AVAILABLE_SITES,
-  AVAILABLE_PERIODS,
-  getTireCheckMockData,
-} from './mock-data'
-import { TireCheckApiResponse } from './types'
+  TireCheckApiResponse,
+  TireCheckFilterPeriod,
+  TireCheckFilterSite,
+} from './types'
+import { getTireCheckData } from '@/app/actions/tire-check'
+import {
+  CTS_TIRE_CHECK_API_URL,
+  DEFAULT_SITES,
+  DEFAULT_PERIODS,
+  formatNumberIndo,
+  getCurrentMonthPeriodId,
+} from './tire-check-utils'
 import { toast } from 'sonner'
 import {
   Dialog,
@@ -57,24 +68,100 @@ interface TireCheckClientProps {
 }
 
 export function TireCheckClientPage({ initialData }: TireCheckClientProps) {
-  const [selectedSiteId, setSelectedSiteId] = useState<string>('CK-BIB GH')
-  const [selectedPeriodId, setSelectedPeriodId] = useState<string>('2026-02')
+  const [currentData, setCurrentData] = useState<TireCheckApiResponse | null>(
+    initialData || null
+  )
+  const [selectedSiteId, setSelectedSiteId] = useState<string>(
+    initialData?.data?.siteInfo?.siteId || 'CK-BIB GH'
+  )
+  const [selectedPeriodId, setSelectedPeriodId] = useState<string>(() => {
+    return (
+      initialData?.availablePeriods?.[0]?.id ||
+      getCurrentMonthPeriodId()
+    )
+  })
   const [chartMetric, setChartMetric] = useState<'percentage' | 'count'>('percentage')
   const [tableSearch, setTableSearch] = useState<string>('')
   const [isJsonModalOpen, setIsJsonModalOpen] = useState<boolean>(false)
   const [activeJsonTab, setActiveJsonTab] = useState<'raw' | 'processed'>('raw')
   const [hasCopiedJson, setHasCopiedJson] = useState<boolean>(false)
+  const [isLoading, setIsLoading] = useState<boolean>(!initialData)
 
-  // Ambil data agregasi berdasarkan site dan periode dari dataset user
-  const currentData = useMemo(() => {
-    return getTireCheckMockData(selectedSiteId, selectedPeriodId)
-  }, [selectedSiteId, selectedPeriodId])
+  const [availableSitesList, setAvailableSitesList] = useState<TireCheckFilterSite[]>(
+    initialData?.availableSites && initialData.availableSites.length > 0
+      ? initialData.availableSites
+      : DEFAULT_SITES
+  )
+  const [availablePeriodsList, setAvailablePeriodsList] = useState<TireCheckFilterPeriod[]>(
+    initialData?.availablePeriods && initialData.availablePeriods.length > 0
+      ? initialData.availablePeriods
+      : DEFAULT_PERIODS
+  )
+
+  React.useEffect(() => {
+    if (!initialData) {
+      handleFilterChange('CK-BIB GH', getCurrentMonthPeriodId())
+    }
+  }, [initialData])
+
+  const handleFilterChange = async (siteId: string, periodId: string) => {
+    setIsLoading(true)
+    try {
+      const res = await getTireCheckData(siteId, periodId)
+      if (res && res.success) {
+        setCurrentData(res)
+        if (res.availableSites && res.availableSites.length > 0) {
+          setAvailableSitesList(res.availableSites)
+        }
+        if (res.availablePeriods && res.availablePeriods.length > 0) {
+          setAvailablePeriodsList(res.availablePeriods)
+        }
+      }
+    } catch (err: any) {
+      toast.error('Gagal memuat data dari API: ' + (err.message || 'Terjadi kesalahan'))
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleSiteChange = (newSite: string) => {
+    setSelectedSiteId(newSite)
+    handleFilterChange(newSite, selectedPeriodId)
+  }
+
+  const handlePeriodChange = (newPeriod: string) => {
+    setSelectedPeriodId(newPeriod)
+    handleFilterChange(selectedSiteId, newPeriod)
+  }
+
+  const handleRefresh = () => {
+    toast.promise(handleFilterChange(selectedSiteId, selectedPeriodId), {
+      loading: 'Mengambil data terbaru dari API...',
+      success: 'Data berhasil disegarkan dari API!',
+      error: 'Gagal memperbarui data dari API',
+    })
+  }
+
+  if (!currentData) {
+    return (
+      <div className="min-h-screen bg-[#f3f7fa] flex flex-col items-center justify-center p-6 space-y-4">
+        <IconLoader2 className="size-8 text-blue-600 animate-spin" />
+        <p className="text-sm font-semibold text-slate-600">
+          Memuat data dari API CTS Tire Manager...
+        </p>
+      </div>
+    )
+  }
 
   const { siteInfo, targetConfig, kpiSummary, chartTrend, rekapTable, rawItems } = currentData.data
 
   const currentPeriodMeta = useMemo(() => {
-    return AVAILABLE_PERIODS.find((p) => p.id === selectedPeriodId) || AVAILABLE_PERIODS[0]
-  }, [selectedPeriodId])
+    return (
+      availablePeriodsList.find((p) => p.id === selectedPeriodId) ||
+      availablePeriodsList[0] ||
+      DEFAULT_PERIODS[0]
+    )
+  }, [availablePeriodsList, selectedPeriodId])
 
   // Hitung domain numerik aman untuk YAxis (menghindari NaN dari string dataMax + 0.5)
   const yDomain = useMemo(() => {
@@ -112,12 +199,13 @@ export function TireCheckClientPage({ initialData }: TireCheckClientProps) {
     return undefined
   }, [yDomain, chartMetric])
 
-  // Filter baris tabel berdasarkan pencarian tanggal/qty
+  // Filter baris tabel berdasarkan pencarian site/tanggal/qty
   const filteredTable = useMemo(() => {
     if (!tableSearch.trim()) return rekapTable
     const query = tableSearch.toLowerCase()
     return rekapTable.filter(
       (row) =>
+        row.site.toLowerCase().includes(query) ||
         row.tanggal.toLowerCase().includes(query) ||
         String(row.totalTireChecked).includes(query) ||
         String(row.lowPressureQty).includes(query)
@@ -129,8 +217,8 @@ export function TireCheckClientPage({ initialData }: TireCheckClientProps) {
     try {
       const headers = [
         'No',
-        'Tanggal',
         'Site',
+        'Tanggal',
         'Total Tire Checked',
         'Low Pressure (Qty)',
         'Target Checked (Qty)',
@@ -138,8 +226,8 @@ export function TireCheckClientPage({ initialData }: TireCheckClientProps) {
       ]
       const rows = rekapTable.map((r) => [
         r.no,
+        r.site,
         r.tanggal,
-        selectedSiteId,
         r.totalTireChecked,
         r.lowPressureQty,
         r.targetCheckedQty,
@@ -180,42 +268,55 @@ export function TireCheckClientPage({ initialData }: TireCheckClientProps) {
   return (
     <div className="min-h-screen bg-[#f3f7fa] p-4 md:p-6 space-y-5 text-slate-800 antialiased">
       {/* 1. TOP BAR: SITE & PERIODE SELECTOR */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        {/* Site Selector */}
-        <div className="flex flex-col gap-1 w-full sm:w-auto">
-          <span className="text-[12px] font-medium text-slate-500">Site</span>
-          <div className="relative inline-block w-full sm:w-88">
-            <div className="flex items-center gap-2.5 bg-white border border-slate-200/90 rounded-xl px-3.5 py-2.5 shadow-xs hover:border-slate-300 transition-all cursor-pointer">
-              <IconTruck className="size-5 text-amber-500 shrink-0" />
-              <select
-                value={selectedSiteId}
-                onChange={(e) => setSelectedSiteId(e.target.value)}
-                className="w-full bg-transparent text-sm font-semibold text-slate-900 focus:outline-hidden cursor-pointer appearance-none pr-6 truncate"
+      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+        {/* Left Side: Selectors */}
+        <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+          {/* Site Selector */}
+          <div className="flex flex-col gap-1 w-full sm:w-auto">
+            <span className="text-[12px] font-medium text-slate-500">Site</span>
+            <div className="relative inline-block w-full sm:w-80">
+              <div
+                className={`flex items-center gap-2.5 bg-white border border-slate-200/90 rounded-xl px-3.5 py-2.5 shadow-2xs hover:border-slate-300 transition-all ${
+                  isLoading ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
+                }`}
               >
-                {AVAILABLE_SITES.map((site) => (
-                  <option key={site.id} value={site.id}>
-                    {site.code === 'ALL' ? site.name + ' – ' + site.plant : site.code + ' (' + site.plant + ')'}
-                  </option>
-                ))}
-              </select>
-              <IconChevronDown className="size-4 text-slate-400 absolute right-3 pointer-events-none" />
+                <IconTruck className="size-5 text-amber-500 shrink-0" />
+                <select
+                  value={selectedSiteId}
+                  onChange={(e) => handleSiteChange(e.target.value)}
+                  disabled={isLoading}
+                  className="w-full bg-transparent text-sm font-semibold text-slate-900 focus:outline-hidden cursor-pointer appearance-none pr-6 truncate"
+                >
+                  {availableSitesList.map((site) => (
+                    <option key={site.id} value={site.id}>
+                      {site.code === 'ALL'
+                        ? `${site.name} – ${site.plant}`
+                        : `${site.code} (${site.plant})`}
+                    </option>
+                  ))}
+                </select>
+                <IconChevronDown className="size-4 text-slate-400 absolute right-3 pointer-events-none" />
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Periode Selector & Quick Actions */}
-        <div className="flex items-end gap-2.5 w-full sm:w-auto justify-between sm:justify-end">
+          {/* Periode Selector */}
           <div className="flex flex-col gap-1 w-full sm:w-auto">
             <span className="text-[12px] font-medium text-slate-500">Periode</span>
-            <div className="relative inline-block w-full sm:w-56">
-              <div className="flex items-center gap-2.5 bg-white border border-slate-200/90 rounded-xl px-3.5 py-2.5 shadow-xs hover:border-slate-300 transition-all cursor-pointer">
+            <div className="relative inline-block w-full sm:w-60">
+              <div
+                className={`flex items-center gap-2.5 bg-white border border-slate-200/90 rounded-xl px-3.5 py-2.5 shadow-2xs hover:border-slate-300 transition-all ${
+                  isLoading ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
+                }`}
+              >
                 <IconCalendar className="size-5 text-blue-600 shrink-0" />
                 <select
                   value={selectedPeriodId}
-                  onChange={(e) => setSelectedPeriodId(e.target.value)}
+                  onChange={(e) => handlePeriodChange(e.target.value)}
+                  disabled={isLoading}
                   className="w-full bg-transparent text-sm font-bold text-slate-900 focus:outline-hidden cursor-pointer appearance-none pr-6"
                 >
-                  {AVAILABLE_PERIODS.map((period) => (
+                  {availablePeriodsList.map((period) => (
                     <option key={period.id} value={period.id}>
                       {period.label}
                     </option>
@@ -225,17 +326,63 @@ export function TireCheckClientPage({ initialData }: TireCheckClientProps) {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Right Side: Status Live API & Action Buttons */}
+        <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-between lg:justify-end">
+          {/* Live API Badge Indicator */}
+          <div
+            className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold shadow-2xs transition-colors ${
+              currentData.isLiveApi
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-200/90'
+                : 'bg-amber-50 text-amber-800 border-amber-200/90'
+            }`}
+            title={`Sumber data: ${
+              currentData.isLiveApi
+                ? 'API Resmi CTS Chitra Paratama (https://cts-chitraparatama.co.id)'
+                : 'Fallback Data Offline'
+            }`}
+          >
+            <span
+              className={`size-2 rounded-full ${
+                currentData.isLiveApi ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+              }`}
+            />
+            <span className="hidden sm:inline" suppressHydrationWarning>
+              {currentData.isLiveApi
+                ? `Live API CTS (${formatNumberIndo(currentData.totalRecordsInApi || 1339)} records)`
+                : 'Mode Offline'}
+            </span>
+            <span className="sm:hidden">
+              {currentData.isLiveApi ? 'Live API' : 'Offline'}
+            </span>
+          </div>
+
+          {/* Tombol Segarkan Data */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isLoading}
+            className="h-10 px-3.5 rounded-xl border-slate-200/90 bg-white hover:bg-slate-50 text-slate-700 shadow-2xs flex items-center gap-1.5 transition-colors"
+            title="Segarkan data dari server API CTS"
+          >
+            <IconRefresh
+              className={`size-4 text-slate-600 ${isLoading ? 'animate-spin text-blue-600' : ''}`}
+            />
+            <span className="text-xs font-semibold hidden md:inline">Segarkan</span>
+          </Button>
 
           {/* Tombol Lihat Kontrak JSON Response API */}
           <Button
             variant="outline"
             size="sm"
             onClick={() => setIsJsonModalOpen(true)}
-            className="h-10 px-3.5 rounded-xl border-blue-200 text-blue-700 bg-blue-50/70 hover:bg-blue-100 hover:text-blue-800 transition-colors flex items-center gap-1.5 shrink-0"
-            title="Lihat Data Dummy & Respon JSON API"
+            className="h-10 px-3.5 rounded-xl border-blue-200 text-blue-700 bg-blue-50/70 hover:bg-blue-100 hover:text-blue-800 transition-colors flex items-center gap-1.5 shrink-0 shadow-2xs"
+            title="Lihat Data Live & Endpoint API"
           >
             <IconCode className="size-4 text-blue-600" />
-            <span className="text-xs font-semibold hidden md:inline">Data & Struktur JSON</span>
+            <span className="text-xs font-semibold hidden md:inline">Data & Endpoint API</span>
           </Button>
         </div>
       </div>
@@ -331,8 +478,8 @@ export function TireCheckClientPage({ initialData }: TireCheckClientProps) {
           <div className="flex-1 min-w-0">
             <div className="text-xs font-medium text-slate-600">Total Check Hari Terakhir</div>
             <div className="flex items-baseline gap-2 mt-0.5 flex-wrap">
-              <span className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-                {kpiSummary.totalCheckToday.toLocaleString()}
+              <span className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight" suppressHydrationWarning>
+                {formatNumberIndo(kpiSummary.totalCheckToday)}
               </span>
               <div className="flex items-center text-[11px] text-emerald-600 font-bold">
                 {kpiSummary.totalCheckGrowthType === 'increase' ? (
@@ -341,8 +488,8 @@ export function TireCheckClientPage({ initialData }: TireCheckClientProps) {
                   <IconArrowDown className="size-3.5 stroke-[3] text-slate-500" />
                 )}
                 <span>{kpiSummary.totalCheckGrowthPct}%</span>
-                <span className="text-slate-400 font-normal ml-1">
-                  vs kemarin ({kpiSummary.totalCheckYesterday.toLocaleString()})
+                <span className="text-slate-400 font-normal ml-1" suppressHydrationWarning>
+                  vs kemarin ({formatNumberIndo(kpiSummary.totalCheckYesterday)})
                 </span>
               </div>
             </div>
@@ -401,14 +548,14 @@ export function TireCheckClientPage({ initialData }: TireCheckClientProps) {
           <div className="flex-1 min-w-0">
             <div className="text-xs font-medium text-slate-600">Total Equipment (Matrik)</div>
             <div className="flex items-center justify-between gap-2 mt-0.5">
-              <span className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-                {kpiSummary.totalEquipment.toLocaleString()}
+              <span className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight" suppressHydrationWarning>
+                {formatNumberIndo(kpiSummary.totalEquipment)}
               </span>
               <div className="text-[11px] space-y-0.5 text-right">
                 <div className="flex justify-between gap-2 text-slate-500">
                   <span>Normal</span>
-                  <span className="font-bold text-slate-800">
-                    {kpiSummary.equipmentBreakdown.normal.toLocaleString()}
+                  <span className="font-bold text-slate-800" suppressHydrationWarning>
+                    {formatNumberIndo(kpiSummary.equipmentBreakdown.normal)}
                   </span>
                 </div>
                 <div className="flex justify-between gap-2 text-slate-500">
@@ -719,7 +866,8 @@ export function TireCheckClientPage({ initialData }: TireCheckClientProps) {
             <thead className="sticky top-0 z-10">
               <tr className="bg-[#f0f6fc] text-slate-700 font-bold border-b border-slate-200 shadow-2xs">
                 <th className="py-3 px-4 text-center w-12 bg-[#f0f6fc]">No</th>
-                <th className="py-3 px-4 bg-[#f0f6fc]">Tanggal</th>
+                <th className="py-3 px-4 bg-[#f0f6fc] min-w-[130px]">Site</th>
+                <th className="py-3 px-4 bg-[#f0f6fc] min-w-[120px]">Tanggal</th>
                 <th className="py-3 px-4 text-center bg-[#f0f6fc]">Total Tire Checked</th>
                 <th className="py-3 px-4 text-center bg-[#f0f6fc]">Low Pressure (Qty)</th>
                 <th className="py-3 px-4 text-center bg-[#f0f6fc]">Target Checked (Qty)</th>
@@ -737,9 +885,14 @@ export function TireCheckClientPage({ initialData }: TireCheckClientProps) {
                   }
 
                   return (
-                    <tr key={row.date} className="hover:bg-slate-50/80 transition-colors">
+                    <tr key={`${row.site}-${row.date}`} className="hover:bg-slate-50/80 transition-colors">
                       <td className="py-3 px-4 text-center text-slate-500 font-medium">{row.no}</td>
-                      <td className="py-3 px-4 font-medium text-slate-900">
+                      <td className="py-3 px-4 font-semibold text-slate-800 whitespace-nowrap">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[11px] font-bold border border-slate-200/80">
+                          {row.site}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 font-medium text-slate-900 whitespace-nowrap">
                         {row.tanggal}
                         {row.notes && (
                           <span className="block text-[10px] text-amber-600 font-normal">
@@ -747,24 +900,24 @@ export function TireCheckClientPage({ initialData }: TireCheckClientProps) {
                           </span>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-center font-medium text-slate-700">
-                        {row.totalTireChecked.toLocaleString()}
+                      <td className="py-3 px-4 text-center font-medium text-slate-700" suppressHydrationWarning>
+                        {formatNumberIndo(row.totalTireChecked)}
                       </td>
-                      <td className={`py-3 px-4 text-center ${lowPressureCellClass}`}>
-                        {row.lowPressureQty}
+                      <td className={`py-3 px-4 text-center ${lowPressureCellClass}`} suppressHydrationWarning>
+                        {formatNumberIndo(row.lowPressureQty)}
                       </td>
-                      <td className="py-3 px-4 text-center font-medium text-slate-700">
-                        {row.targetCheckedQty.toLocaleString()}
+                      <td className="py-3 px-4 text-center font-medium text-slate-700" suppressHydrationWarning>
+                        {formatNumberIndo(row.targetCheckedQty)}
                       </td>
-                      <td className="py-3 px-4 text-center font-medium text-slate-700">
-                        {row.adjustedQty}
+                      <td className="py-3 px-4 text-center font-medium text-slate-700" suppressHydrationWarning>
+                        {formatNumberIndo(row.adjustedQty)}
                       </td>
                     </tr>
                   )
                 })
               ) : (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-400">
+                  <td colSpan={7} className="py-8 text-center text-slate-400">
                     Tidak ada data yang sesuai pencarian
                   </td>
                 </tr>
@@ -776,36 +929,88 @@ export function TireCheckClientPage({ initialData }: TireCheckClientProps) {
 
       {/* 6. MODAL: STRUKTUR RESPON JSON & DATA MENTAH */}
       <Dialog open={isJsonModalOpen} onOpenChange={setIsJsonModalOpen}>
-        <DialogContent className="sm:max-w-4xl max-h-[85vh] flex flex-col p-6 rounded-2xl">
+        <DialogContent className="sm:max-w-4xl max-h-[88vh] flex flex-col p-6 rounded-2xl">
           <DialogHeader>
             <div className="flex items-center justify-between pr-4">
               <DialogTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
                 <IconCode className="size-5 text-blue-600" />
-                <span>Struktur Respons JSON API & Data Dummy</span>
+                <span>Integrasi Live API & Struktur Data Tire Check</span>
               </DialogTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleCopyJson}
-                className="h-8 text-xs font-semibold flex items-center gap-1.5 border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100"
-              >
-                {hasCopiedJson ? (
-                  <>
-                    <IconCheck className="size-4 text-emerald-600" />
-                    <span>Tersalin!</span>
-                  </>
-                ) : (
-                  <>
-                    <IconCopy className="size-4" />
-                    <span>Salin JSON</span>
-                  </>
-                )}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    window.open(CTS_TIRE_CHECK_API_URL, '_blank', 'noopener,noreferrer')
+                  }
+                  className="h-8 text-xs font-semibold flex items-center gap-1.5 border-slate-200 text-slate-700 bg-white hover:bg-slate-50"
+                  title="Buka endpoint API langsung di tab baru"
+                >
+                  <IconExternalLink className="size-3.5 text-slate-500" />
+                  <span>Buka Endpoint Asli</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCopyJson}
+                  className="h-8 text-xs font-semibold flex items-center gap-1.5 border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100"
+                >
+                  {hasCopiedJson ? (
+                    <>
+                      <IconCheck className="size-4 text-emerald-600" />
+                      <span>Tersalin!</span>
+                    </>
+                  ) : (
+                    <>
+                      <IconCopy className="size-4" />
+                      <span>Salin JSON</span>
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
             <DialogDescription className="text-xs text-slate-500 pt-1">
-              Pilih tab di bawah untuk melihat format JSON mentah dari backend atau format olahan dashboard.
+              Data ditarik langsung dari server CTS Tire Manager dan diolah secara real-time untuk visualisasi dashboard.
             </DialogDescription>
           </DialogHeader>
+
+          {/* Endpoint Banner Info */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-slate-700 flex items-center gap-1.5">
+                <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-mono text-[10px] font-bold">
+                  GET
+                </span>
+                <span>Endpoint Resmi CTS:</span>
+              </span>
+              <span
+                className={`inline-flex items-center gap-1 text-[11px] font-bold ${
+                  currentData.isLiveApi ? 'text-emerald-700' : 'text-amber-700'
+                }`}
+              >
+                <span
+                  className={`size-2 rounded-full ${
+                    currentData.isLiveApi ? 'bg-emerald-500' : 'bg-amber-500'
+                  }`}
+                />
+                {currentData.isLiveApi ? 'Live Connected' : 'Offline Mode'}
+              </span>
+            </div>
+            <div className="font-mono text-[11px] text-slate-600 bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 truncate select-all">
+              {CTS_TIRE_CHECK_API_URL}
+            </div>
+            <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-500 pt-0.5">
+              <span>
+                Total Rekord API: <strong suppressHydrationWarning>{formatNumberIndo(currentData.totalRecordsInApi || 1339)} data</strong>
+              </span>
+              <span>
+                Site Terpilih: <strong>{selectedSiteId}</strong>
+              </span>
+              <span>
+                Periode Terpilih: <strong>{currentPeriodMeta.label} ({rawItems?.length || 0} data)</strong>
+              </span>
+            </div>
+          </div>
 
           {/* Tab Selector */}
           <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
@@ -819,7 +1024,7 @@ export function TireCheckClientPage({ initialData }: TireCheckClientProps) {
               }`}
             >
               <IconDatabaseImport className="size-4" />
-              <span>Format Data Mentah API (Data Kamu)</span>
+              <span>Data Mentah Live API ({rawItems?.length || 0} Baris)</span>
             </button>
             <button
               type="button"
@@ -831,11 +1036,11 @@ export function TireCheckClientPage({ initialData }: TireCheckClientProps) {
               }`}
             >
               <IconCode className="size-4" />
-              <span>Format Olahan Dashboard (Processed)</span>
+              <span>Data Olahan Dashboard (Processed JSON)</span>
             </button>
           </div>
 
-          <div className="flex-1 overflow-auto bg-slate-950 text-slate-200 p-4 rounded-xl font-mono text-xs leading-relaxed border border-slate-800 scrollbar-thin">
+          <div className="flex-1 overflow-auto bg-slate-950 text-slate-200 p-4 rounded-xl font-mono text-xs leading-relaxed border border-slate-800 scrollbar-thin max-h-[380px]">
             <pre>
               {activeJsonTab === 'raw'
                 ? JSON.stringify({ data: rawItems }, null, 2)
@@ -843,9 +1048,12 @@ export function TireCheckClientPage({ initialData }: TireCheckClientProps) {
             </pre>
           </div>
 
-          <div className="pt-3 text-[11px] text-slate-500 flex items-center justify-between">
+          <div className="pt-2 text-[11px] text-slate-500 flex items-center justify-between">
             <span>
-              Format input: <code className="font-mono text-slate-700">date2 (YYYY-MM-DD), trgt, checked_tires, low_press_tires, site</code>
+              API Route Internal:{' '}
+              <code className="font-mono text-blue-600 bg-blue-50 px-1 py-0.5 rounded">
+                /api/tire-check?site={selectedSiteId}&amp;period={selectedPeriodId}
+              </code>
             </span>
             <Button
               variant="default"

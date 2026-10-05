@@ -85,6 +85,7 @@ export interface TireCheckDailyTrendItem {
 
 export interface TireCheckRekapRow {
   no: number
+  site: string
   date: string
   tanggal: string
   totalTireChecked: number
@@ -104,9 +105,23 @@ export interface TireCheckData {
   rawItems?: RawTireCheckItem[]
 }
 
+export interface TireCheckFilterPeriod {
+  id: string
+  label: string
+  range: string
+  year: number
+  month: number
+  count: number
+}
+
 export interface TireCheckApiResponse {
   success: boolean
   message: string
   timestamp: string
+  isLiveApi?: boolean
+  apiEndpoint?: string
+  totalRecordsInApi?: number
+  availableSites?: TireCheckFilterSite[]
+  availablePeriods?: TireCheckFilterPeriod[]
   data: TireCheckData
 }

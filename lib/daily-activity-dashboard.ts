@@ -318,6 +318,14 @@ function normalizeUnit(unit?: string | null): string {
   return trimmed.replace(/^([A-Z]+)\s*(\d+)$/, '$1 $2')
 }
 
+export function splitAndNormalizeUnits(raw?: string | null): string[] {
+  if (!raw) return []
+  return raw
+    .split(/[,;\n\r]+/)
+    .map((u) => normalizeUnit(u))
+    .filter((u) => u && u !== '-')
+}
+
 function normalizeShift(shiftCode?: string | null): 'Pagi' | 'Siang' | 'Malam' {
   if (!shiftCode) return 'Pagi'
   const s = shiftCode.toLowerCase()
@@ -1266,11 +1274,13 @@ export async function getDailyActivityDashboardData(
             : (parsedPayload.unitNumber && parsedPayload.unitNumber.trim() !== '' && parsedPayload.unitNumber.trim() !== '-')
             ? parsedPayload.unitNumber.trim()
             : '-'
-          const uNum = normalizeUnit(rawUnit)
+          const itemUnits = splitAndNormalizeUnits(rawUnit)
 
-          if (uNum !== '-') {
-            unitSet.add(uNum)
-            sessionUnits.add(uNum)
+          if (itemUnits.length > 0) {
+            for (const u of itemUnits) {
+              unitSet.add(u)
+              sessionUnits.add(u)
+            }
           }
 
           const itemStart = item.startedAt || s.startedAt
@@ -1297,30 +1307,54 @@ export async function getDailyActivityDashboardData(
             ? 'Selesai'
             : normalizeStatus(s.status)
 
-          allTasks.push({
-            id: item.id,
-            sessionId: s.id,
-            sessionCode: s.sessionCode,
-            label: item.snapshotLabel || item.remark || 'Aktivitas Lapangan',
-            groupName: item.snapshotGroupName || undefined,
-            unitNumber: uNum,
-            status: itemStatus,
-            progress: item.isChecked ? 100 : normalizeStatus(s.status) === 'Selesai' ? 100 : 50,
-            startedAt: formatTimeHHmm(itemStart),
-            endedAt: formatTimeHHmm(itemEnd),
-            durationLabel: durationStr,
-            points,
-            remarks: item.remark || parsedPayload.remark || undefined,
-            photoUrl,
-            photos,
-          })
+          if (itemUnits.length > 1) {
+            for (const u of itemUnits) {
+              allTasks.push({
+                id: item.id,
+                sessionId: s.id,
+                sessionCode: s.sessionCode,
+                label: item.snapshotLabel || item.remark || 'Aktivitas Lapangan',
+                groupName: item.snapshotGroupName || undefined,
+                unitNumber: u,
+                status: itemStatus,
+                progress: item.isChecked ? 100 : normalizeStatus(s.status) === 'Selesai' ? 100 : 50,
+                startedAt: formatTimeHHmm(itemStart),
+                endedAt: formatTimeHHmm(itemEnd),
+                durationLabel: durationStr,
+                points,
+                remarks: item.remark || parsedPayload.remark || undefined,
+                photoUrl,
+                photos,
+              })
+            }
+          } else {
+            allTasks.push({
+              id: item.id,
+              sessionId: s.id,
+              sessionCode: s.sessionCode,
+              label: item.snapshotLabel || item.remark || 'Aktivitas Lapangan',
+              groupName: item.snapshotGroupName || undefined,
+              unitNumber: itemUnits[0] || normalizeUnit(rawUnit),
+              status: itemStatus,
+              progress: item.isChecked ? 100 : normalizeStatus(s.status) === 'Selesai' ? 100 : 50,
+              startedAt: formatTimeHHmm(itemStart),
+              endedAt: formatTimeHHmm(itemEnd),
+              durationLabel: durationStr,
+              points,
+              remarks: item.remark || parsedPayload.remark || undefined,
+              photoUrl,
+              photos,
+            })
+          }
         }
       } else if (matchedActivities.length > 0) {
         for (const act of matchedActivities) {
-          const uNum = normalizeUnit(act.unitNumber)
-          if (uNum !== '-') {
-            unitSet.add(uNum)
-            sessionUnits.add(uNum)
+          const actUnits = splitAndNormalizeUnits(act.unitNumber)
+          if (actUnits.length > 0) {
+            for (const u of actUnits) {
+              unitSet.add(u)
+              sessionUnits.add(u)
+            }
           }
 
           const actStart = act.startTime
@@ -1344,22 +1378,43 @@ export async function getDailyActivityDashboardData(
           const pts = act.pointsAwarded || 0
           totalPoints += pts
 
-          allTasks.push({
-            id: act.id,
-            sessionId: s.id,
-            sessionCode: s.sessionCode,
-            label: act.title + (act.activityCode ? ` (${act.activityCode})` : ''),
-            unitNumber: uNum,
-            status: actStatus,
-            progress: actStatus === 'Selesai' ? 100 : 50,
-            startedAt: formatTimeHHmm(act.startTime),
-            endedAt: formatTimeHHmm(act.endTime),
-            durationLabel: formatDuration(act.startTime, act.endTime),
-            points: pts,
-            remarks: act.remarks || undefined,
-            photoUrl: actPhotos[0] || null,
-            photos: actPhotos,
-          })
+          if (actUnits.length > 1) {
+            for (const u of actUnits) {
+              allTasks.push({
+                id: act.id,
+                sessionId: s.id,
+                sessionCode: s.sessionCode,
+                label: act.title + (act.activityCode ? ` (${act.activityCode})` : ''),
+                unitNumber: u,
+                status: actStatus,
+                progress: actStatus === 'Selesai' ? 100 : 50,
+                startedAt: formatTimeHHmm(act.startTime),
+                endedAt: formatTimeHHmm(act.endTime),
+                durationLabel: formatDuration(act.startTime, act.endTime),
+                points: pts,
+                remarks: act.remarks || undefined,
+                photoUrl: actPhotos[0] || null,
+                photos: actPhotos,
+              })
+            }
+          } else {
+            allTasks.push({
+              id: act.id,
+              sessionId: s.id,
+              sessionCode: s.sessionCode,
+              label: act.title + (act.activityCode ? ` (${act.activityCode})` : ''),
+              unitNumber: actUnits[0] || normalizeUnit(act.unitNumber),
+              status: actStatus,
+              progress: actStatus === 'Selesai' ? 100 : 50,
+              startedAt: formatTimeHHmm(act.startTime),
+              endedAt: formatTimeHHmm(act.endTime),
+              durationLabel: formatDuration(act.startTime, act.endTime),
+              points: pts,
+              remarks: act.remarks || undefined,
+              photoUrl: actPhotos[0] || null,
+              photos: actPhotos,
+            })
+          }
         }
       } else if (s.summaryRemark && s.summaryRemark.trim()) {
         allTasks.push({
@@ -1388,7 +1443,7 @@ export async function getDailyActivityDashboardData(
         status: s.status,
         summaryRemark: s.summaryRemark || '',
         unitNumbers: Array.from(sessionUnits),
-        taskCount: sessionChildItems.length > 0 ? sessionChildItems.length : (matchedActivities.length > 0 ? matchedActivities.length : 1),
+        taskCount: allTasks.filter((t) => t.sessionId === s.id).length || 1,
       })
     }
 

@@ -2,7 +2,7 @@ import { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { getServerSession } from '@/lib/auth-session'
 import { TireCheckClientPage } from './client-page'
-import { getTireCheckMockData } from './mock-data'
+import { getTireCheckData } from '@/app/actions/tire-check'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,8 +18,8 @@ export default async function HeroTireCheckPage() {
     redirect('/sign-in')
   }
 
-  // Pre-load initial mock data
-  const initialData = getTireCheckMockData('CK-BIB GH', '2026-02')
+  // Pre-load data langsung dari API resmi CTS Chitra Paratama (default bulan berjalan)
+  const initialData = await getTireCheckData('CK-BIB GH')
 
   return (
     <div className="flex-1 bg-[#f3f7fa]">

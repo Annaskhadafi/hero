@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getMaestroServerSession } from '@/lib/maestro-session'
 import { TireCheckClientPage } from '@/app/dashboard/tire-check/client-page'
-import { getTireCheckMockData } from '@/app/dashboard/tire-check/mock-data'
+import { getTireCheckData } from '@/app/actions/tire-check'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,7 +14,7 @@ export default async function MaestroTireCheckPage() {
   const session = await getMaestroServerSession()
   if (!session) redirect('/login')
 
-  const initialData = getTireCheckMockData('CK-BIB GH', '2026-02')
+  const initialData = await getTireCheckData('CK-BIB GH')
 
   return (
     <div className="flex-1 bg-[#f3f7fa]">

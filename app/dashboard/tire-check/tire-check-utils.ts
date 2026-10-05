@@ -2,12 +2,12 @@ import {
   RawTireCheckItem,
   TireCheckApiResponse,
   TireCheckData,
+  TireCheckFilterPeriod,
   TireCheckFilterSite,
 } from './types'
-import rawDataJson from './raw-tire-check-data.json'
 
-export const RAW_TIRE_CHECK_ITEMS: RawTireCheckItem[] =
-  rawDataJson.data as RawTireCheckItem[]
+export const CTS_TIRE_CHECK_API_URL =
+  'https://cts-chitraparatama.co.id/ChitraTireMngr/product/api_get.php?function=get_daily_and_target'
 
 export const SITE_METADATA_MAP: Record<
   string,
@@ -50,7 +50,7 @@ export const SITE_METADATA_MAP: Record<
   },
 }
 
-export const AVAILABLE_SITES: TireCheckFilterSite[] = [
+export const DEFAULT_SITES: TireCheckFilterSite[] = [
   {
     id: 'ALL',
     code: 'ALL',
@@ -62,7 +62,7 @@ export const AVAILABLE_SITES: TireCheckFilterSite[] = [
     id: 'CK-BIB GH',
     code: 'CK-BIB GH',
     name: 'PT CIPTA KRIDATAMA',
-    plant: 'Site BIB GH',
+    plant: 'Site BIB Port / GH',
     location: 'Tanah Bumbu, Kalimantan Selatan',
   },
   {
@@ -102,12 +102,41 @@ export const AVAILABLE_SITES: TireCheckFilterSite[] = [
   },
 ]
 
-export const AVAILABLE_PERIODS = [
-  { id: '2026-02', label: 'Februari 2026', range: '1 – 26 Februari 2026' },
-  { id: '2026-01', label: 'Januari 2026', range: '1 – 31 Januari 2026' },
+export const DEFAULT_PERIODS: TireCheckFilterPeriod[] = [
+  {
+    id: '2026-02',
+    label: 'Februari 2026',
+    range: '1 – 28 Februari 2026',
+    year: 2026,
+    month: 2,
+    count: 0,
+  },
+  {
+    id: '2026-01',
+    label: 'Januari 2026',
+    range: '1 – 31 Januari 2026',
+    year: 2026,
+    month: 1,
+    count: 0,
+  },
 ]
 
-const MONTH_NAMES_ID: Record<string, string> = {
+export const MONTH_NAMES_LONG_ID: Record<string, string> = {
+  '01': 'Januari',
+  '02': 'Februari',
+  '03': 'Maret',
+  '04': 'April',
+  '05': 'Mei',
+  '06': 'Juni',
+  '07': 'Juli',
+  '08': 'Agustus',
+  '09': 'September',
+  '10': 'Oktober',
+  '11': 'November',
+  '12': 'Desember',
+}
+
+export const MONTH_NAMES_SHORT_ID: Record<string, string> = {
   '01': 'Jan',
   '02': 'Feb',
   '03': 'Mar',
@@ -122,30 +151,151 @@ const MONTH_NAMES_ID: Record<string, string> = {
   '12': 'Des',
 }
 
-function formatDateIndo(dateStr: string): string {
-  // dateStr: "2026-02-15"
+export function formatDateIndo(dateStr: string): string {
   const parts = dateStr.split('-')
   if (parts.length < 3) return dateStr
   const day = parseInt(parts[2], 10)
-  const month = MONTH_NAMES_ID[parts[1]] || parts[1]
+  const month = MONTH_NAMES_SHORT_ID[parts[1]] || parts[1]
   const year = parts[0]
   return `${day} ${month} ${year}`
 }
 
 /**
- * Generator dan transformer data berbasis raw dataset user
+ * Format angka ribuan dengan pemisah titik (.) secara deterministik
+ * Mencegah hydration mismatch antara SSR Server (en-US) dan Client Browser (id-ID)
  */
-export function getTireCheckMockData(
+export function formatNumberIndo(val: number | string | null | undefined): string {
+  if (val === null || val === undefined || val === '') return '0'
+  const num = Math.round(Number(val))
+  if (isNaN(num)) return String(val)
+  return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+}
+
+/**
+ * Ekstrak daftar Site yang tersedia dari dataset aktif
+ */
+export function extractAvailableSites(items: RawTireCheckItem[]): TireCheckFilterSite[] {
+  if (!items || items.length === 0) return DEFAULT_SITES
+
+  const siteCodeSet = new Set<string>()
+  items.forEach((item) => {
+    if (item.site && item.site.trim()) {
+      siteCodeSet.add(item.site.trim())
+    }
+  })
+
+  const sortedSiteCodes = Array.from(siteCodeSet).sort()
+
+  const list: TireCheckFilterSite[] = [
+    {
+      id: 'ALL',
+      code: 'ALL',
+      name: 'PT CIPTA KRIDATAMA',
+      plant: 'Semua Site (Konsolidasi)',
+      location: 'Kalimantan & Sumatera',
+    },
+  ]
+
+  sortedSiteCodes.forEach((code) => {
+    const meta = SITE_METADATA_MAP[code] || {
+      name: 'PT CIPTA KRIDATAMA',
+      plant: `Site ${code}`,
+      location: 'Indonesia',
+    }
+    list.push({
+      id: code,
+      code,
+      name: meta.name,
+      plant: meta.plant,
+      location: meta.location,
+    })
+  })
+
+  return list
+}
+
+/**
+ * Ekstrak daftar Periode (YYYY-MM) dari dataset aktif secara dinamis
+ */
+export function extractAvailablePeriods(items: RawTireCheckItem[]): TireCheckFilterPeriod[] {
+  if (!items || items.length === 0) return DEFAULT_PERIODS
+
+  const periodMap = new Map<string, { days: Set<number>; count: number }>()
+
+  items.forEach((item) => {
+    if (!item.date2 || item.date2.length < 7) return
+    const periodKey = item.date2.slice(0, 7) // e.g. "2026-02"
+    const day = parseInt(item.date2.slice(8, 10), 10)
+
+    const existing = periodMap.get(periodKey) || { days: new Set<number>(), count: 0 }
+    if (!isNaN(day)) existing.days.add(day)
+    existing.count += 1
+    periodMap.set(periodKey, existing)
+  })
+
+  const sortedKeys = Array.from(periodMap.keys()).sort().reverse()
+  if (sortedKeys.length === 0) return DEFAULT_PERIODS
+
+  return sortedKeys.map((key) => {
+    const [yearStr, monthStr] = key.split('-')
+    const year = parseInt(yearStr, 10)
+    const month = parseInt(monthStr, 10)
+    const monthName = MONTH_NAMES_LONG_ID[monthStr] || `Bulan ${monthStr}`
+    const meta = periodMap.get(key)!
+
+    const sortedDays = Array.from(meta.days).sort((a, b) => a - b)
+    const minDay = sortedDays[0] || 1
+    const maxDay = sortedDays[sortedDays.length - 1] || 28
+
+    return {
+      id: key,
+      label: `${monthName} ${year}`,
+      range: `${minDay} – ${maxDay} ${monthName} ${year}`,
+      year,
+      month,
+      count: meta.count,
+    }
+  })
+}
+
+export function getCurrentMonthPeriodId(): string {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  return `${year}-${month}`
+}
+
+/**
+ * Transform dataset menjadi metrik dashboard, tren harian & tabel rekap
+ */
+export function transformTireCheckData(
+  allItems: RawTireCheckItem[],
   siteCode: string = 'CK-BIB GH',
-  periodId: string = '2026-02'
+  periodId?: string,
+  isLive: boolean = true,
 ): TireCheckApiResponse {
+  const availableSites = extractAvailableSites(allItems)
+  const availablePeriods = extractAvailablePeriods(allItems)
+
+  // Default periode ke bulan berjalan saat ini
+  const currentMonthId = getCurrentMonthPeriodId()
+  const requestedPeriodId = periodId || currentMonthId
+
+  // Pastikan periodId valid, fallback ke requestedPeriodId jika ada di list, atau periode pertama yang tersedia di dataset
+  const effectivePeriodId =
+    availablePeriods.some((p) => p.id === requestedPeriodId)
+      ? requestedPeriodId
+      : availablePeriods[0]?.id || currentMonthId
+
   const selectedMeta =
-    SITE_METADATA_MAP[siteCode] || SITE_METADATA_MAP['CK-BIB GH']
+    SITE_METADATA_MAP[siteCode] ||
+    availableSites.find((s) => s.id === siteCode) ||
+    SITE_METADATA_MAP['CK-BIB GH']
 
   // Filter dataset berdasarkan site dan periode
-  const filteredRaw = RAW_TIRE_CHECK_ITEMS.filter((item) => {
+  const filteredRaw = allItems.filter((item) => {
     const matchSite = siteCode === 'ALL' || item.site === siteCode
-    const matchPeriod = item.date2.startsWith(periodId)
+    const matchPeriod = item.date2 && item.date2.startsWith(effectivePeriodId)
     return matchSite && matchPeriod
   })
 
@@ -231,8 +381,12 @@ export function getTireCheckMockData(
         status = 'warning'
       }
 
+      const matchingRaw = filteredRaw.find((r) => r.date2 === item.date)
+      const rowSite = matchingRaw?.site || (siteCode === 'ALL' ? 'Semua Site' : siteCode)
+
       return {
         no: index + 1,
+        site: rowSite,
         date: item.date,
         tanggal: item.formattedDate,
         totalTireChecked: item.totalChecked,
@@ -260,7 +414,7 @@ export function getTireCheckMockData(
           (
             ((totalCheckToday - totalCheckYesterday) / totalCheckYesterday) *
             100
-          ).toFixed(1)
+          ).toFixed(1),
         )
       : 0
 
@@ -272,7 +426,7 @@ export function getTireCheckMockData(
           (
             ((lowPressureToday - lowPressureYesterday) / lowPressureYesterday) *
             100
-          ).toFixed(1)
+          ).toFixed(1),
         )
       : 0
 
@@ -288,9 +442,9 @@ export function getTireCheckMockData(
   const data: TireCheckData = {
     siteInfo: {
       siteId: siteCode,
-      companyName: selectedMeta.name,
-      plantName: selectedMeta.plant,
-      location: selectedMeta.location,
+      companyName: selectedMeta.name || 'PT CIPTA KRIDATAMA',
+      plantName: selectedMeta.plant || `Site ${siteCode}`,
+      location: selectedMeta.location || 'Indonesia',
       serviceProvider: 'Chitra Paratama – Service & Monitoring',
       bannerImageUrl: '/images/tire-check-banner.jpg',
       equipmentCountTotal: estimatedTotalEquipment,
@@ -328,8 +482,15 @@ export function getTireCheckMockData(
 
   return {
     success: true,
-    message: `Data Tire Check untuk site ${siteCode} periode ${periodId} berhasil dimuat (${filteredRaw.length} baris data)`,
+    message: isLive
+      ? `Data Tire Check dari Live API (${filteredRaw.length} record ditampilkan dari total ${allItems.length} records)`
+      : `Data Tire Check (${filteredRaw.length} records)`,
     timestamp: new Date().toISOString(),
+    isLiveApi: isLive,
+    apiEndpoint: CTS_TIRE_CHECK_API_URL,
+    totalRecordsInApi: allItems.length,
+    availableSites,
+    availablePeriods,
     data,
   }
 }
