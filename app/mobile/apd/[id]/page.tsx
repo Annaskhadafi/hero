@@ -166,7 +166,7 @@ export default async function MobileApdDetailPage({ params }: { params: Promise<
       {/* Informasi Tambahan */}
       <section className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm space-y-4">
         <div>
-          <h2 className="mb-1 text-[11px] font-bold uppercase tracking-wider text-gray-500">Catatan Tambahan</h2>
+          <h2 className="mb-1 text-[11px] font-bold uppercase tracking-wider text-gray-500">Remarks</h2>
           <p className="text-sm font-medium text-gray-900">{request.notes || "-"}</p>
         </div>
         {request.signatureUrl && (

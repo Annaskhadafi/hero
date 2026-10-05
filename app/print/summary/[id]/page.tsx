@@ -37,7 +37,11 @@ export default async function PrintSummaryPage({
       grouped[item.employeeName].remarks = item.remarks;
     }
     if (item.itemName === 'Safety Shoes Size') {
-      grouped[item.employeeName].items[item.itemName] = item.remarks || item.requestType || '';
+      const isReqTypeSize = item.requestType && item.requestType !== 'baru' && item.requestType !== 'pergantian';
+      const sizeVal = isReqTypeSize
+        ? item.requestType
+        : (item.remarks && item.remarks !== grouped[item.employeeName].remarks ? item.remarks : item.requestType || '');
+      grouped[item.employeeName].items[item.itemName] = sizeVal;
     } else {
       grouped[item.employeeName].items[item.itemName] = (Number(grouped[item.employeeName].items[item.itemName]) || 0) + item.quantity;
     }

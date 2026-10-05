@@ -245,7 +245,7 @@ export default async function PrintApdPage({
               <span className="font-medium">: {data.employeeName}</span>
             </div>
             <div className="flex items-start">
-              <span className="w-32 font-semibold">NIK / SN</span>
+              <span className="w-32 font-semibold">SN</span>
               <span>: {data.employeeSn}</span>
             </div>
             <div className="flex items-start">
@@ -323,7 +323,6 @@ export default async function PrintApdPage({
             <div className="mt-1 mb-2 p-2 border border-gray-400 rounded bg-gray-50/80">
               <div className="text-[7.5pt] font-bold text-gray-800 mb-1.5 flex items-center justify-between">
                 <span className="flex items-center gap-1.5">
-                  <span>📷</span>
                   <span>Lampiran Foto Bukti Fisik (Barang Rusak / Pergantian)</span>
                 </span>
                 <span className="text-[6.5pt] font-normal text-gray-500">

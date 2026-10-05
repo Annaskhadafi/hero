@@ -149,3 +149,15 @@ export async function approveSummaryAction(
     return { success: false, error: error.message || 'Gagal approve summary' };
   }
 }
+
+export async function getApdRequestDetailsAction(id: number) {
+  try {
+    const { fetchApdRequestById } = await import('@/lib/apd-data');
+    const request = await fetchApdRequestById(id);
+    if (!request) return { success: false, error: 'Pengajuan APD tidak ditemukan' };
+    return { success: true, request };
+  } catch (error: any) {
+    console.error('Get APD request details error:', error);
+    return { success: false, error: error.message || 'Gagal mengambil detail pengajuan' };
+  }
+}

@@ -38,6 +38,14 @@ export async function ensureSummarySchema() {
       ALTER TABLE hero_apd_summary_items
       ADD COLUMN IF NOT EXISTS remarks text NOT NULL DEFAULT ''
     `);
+    await db.execute(sql`
+      UPDATE hero_apd_summary_items
+      SET remarks = request_type
+      WHERE item_name = 'Safety Shoes Size'
+        AND request_type NOT IN ('baru', 'pergantian')
+        AND request_type IS NOT NULL
+        AND request_type != '';
+    `);
     summarySchemaChecked = true;
   } catch (err) {
     console.warn('[summary-engine] ensureSummarySchema warning:', err);
@@ -524,6 +532,11 @@ export async function generateSummary(
       let shoeSize = customOpt?.safetyShoesSize?.trim() || '';
 
       if (!shoeSize) {
+        const shoeItem = items.find(i => i.itemType.toLowerCase().includes('sepatu') || i.itemType.toLowerCase().includes('shoes'));
+        if (shoeItem?.notes) shoeSize = shoeItem.notes;
+      }
+
+      if (!shoeSize) {
         const [asset] = await db.select({ size: employeeAssets.size }).from(employeeAssets)
           .where(and(
             eq(employeeAssets.employeeId, req.employeeId),
@@ -542,7 +555,7 @@ export async function generateSummary(
           itemName: 'Safety Shoes Size',
           quantity: 0,
           requestType: shoeSize,
-          remarks: employeeRemarks || shoeSize,
+          remarks: shoeSize,
         });
       }
     }
@@ -632,7 +645,7 @@ export async function generateSummary(
           itemName: 'Safety Shoes Size',
           quantity: 0,
           requestType: shoeSize,
-          remarks: employeeRemarks || shoeSize,
+          remarks: shoeSize,
         });
       }
     }
@@ -727,6 +740,7 @@ export async function syncApprovedApdRequestToSummary(apdRequestId: number) {
   }
 
   let hasSafetyShoes = false;
+  let safetyShoesSizeFromItems = '';
   const summaryRows: Array<{
     apdRequestId: number;
     employeeId: number;
@@ -743,6 +757,9 @@ export async function syncApprovedApdRequestToSummary(apdRequestId: number) {
     const canonicalName = mapItemToColumn(item.itemType) || item.itemType;
     if (canonicalName === SAFETY_SHOES_COL || item.itemType.toLowerCase().includes('sepatu') || item.itemType.toLowerCase().includes('shoes')) {
       hasSafetyShoes = true;
+      if (item.notes) {
+        safetyShoesSizeFromItems = item.notes;
+      }
     }
     summaryRows.push({
       apdRequestId: req.requestId,
@@ -759,17 +776,19 @@ export async function syncApprovedApdRequestToSummary(apdRequestId: number) {
 
   // Handle Safety Shoes Size
   if (hasSafetyShoes) {
-    let shoeSize = '';
-    const [asset] = await db.select({ size: employeeAssets.size }).from(employeeAssets)
-      .where(and(
-        eq(employeeAssets.employeeId, req.employeeId),
-        ilike(employeeAssets.itemName, '%sepatu%')
-      ))
-      .orderBy(desc(employeeAssets.assignedAt))
-      .limit(1);
+    let shoeSize = safetyShoesSizeFromItems;
+    if (!shoeSize) {
+      const [asset] = await db.select({ size: employeeAssets.size }).from(employeeAssets)
+        .where(and(
+          eq(employeeAssets.employeeId, req.employeeId),
+          ilike(employeeAssets.itemName, '%sepatu%')
+        ))
+        .orderBy(desc(employeeAssets.assignedAt))
+        .limit(1);
 
-    if (asset?.size) {
-      shoeSize = asset.size;
+      if (asset?.size) {
+        shoeSize = asset.size;
+      }
     }
 
     if (shoeSize) {
@@ -782,7 +801,7 @@ export async function syncApprovedApdRequestToSummary(apdRequestId: number) {
         itemName: 'Safety Shoes Size',
         quantity: 0,
         requestType: shoeSize,
-        remarks: req.notes || shoeSize,
+        remarks: shoeSize,
       });
     }
   }

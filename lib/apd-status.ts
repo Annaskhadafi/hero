@@ -50,6 +50,19 @@ export const APD_ITEMS = [
   "Sunbrim Helmet",
 ] as const;
 
+export const APD_SIZE_OPTIONS = [
+  "5. (Uk 38)",
+  "5,5. (Uk 39)",
+  "6. (Uk 40)",
+  "7. (Uk 41)",
+  "8. (Uk 42)",
+  "9. (Uk 43)",
+  "9,5. (Uk 44)",
+  "10. (Uk 45)",
+  "11. (Uk 46)",
+] as const;
+
+
 export type ApproverOption = {
   id: number;
   name: string;

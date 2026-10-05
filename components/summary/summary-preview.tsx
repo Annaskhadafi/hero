@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Clock,
   FilePenLine,
+  FileText,
   Loader2,
   Maximize2,
   Printer,
@@ -20,6 +21,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { submitSummaryAction, deleteSummaryDraftAction } from '@/app/dashboard/summary/actions';
 import { SummaryApprovalDialog } from './summary-approval-dialog';
+import { ApdRequestDetailModal } from './apd-request-detail-modal';
 import { QTY_ONLY_COLUMNS, SAFETY_SHOES_COL } from '@/lib/summary-constants';
 
 type SummaryData = {
@@ -64,6 +66,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
   const [deleting, setDeleting] = useState(false);
   const [isZoomModalOpen, setIsZoomModalOpen] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
+  const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null);
 
   const handlePrintInPlace = () => {
     setPrinting(true);
@@ -134,19 +137,27 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
         sn: item.employeeSn,
         site: formatSiteName(item.siteName),
         remarks: item.remarks || '',
+        apdRequestId: item.apdRequestId || null,
         items: {} as Record<string, any>,
       };
+    }
+    if (item.apdRequestId && !acc[item.employeeName].apdRequestId) {
+      acc[item.employeeName].apdRequestId = item.apdRequestId;
     }
     if (item.remarks && !acc[item.employeeName].remarks) {
       acc[item.employeeName].remarks = item.remarks;
     }
     if (item.itemName === 'Safety Shoes Size') {
-      acc[item.employeeName].items[item.itemName] = item.remarks || item.requestType || '';
+      const isReqTypeSize = item.requestType && item.requestType !== 'baru' && item.requestType !== 'pergantian';
+      const sizeVal = isReqTypeSize
+        ? item.requestType
+        : (item.remarks && item.remarks !== acc[item.employeeName].remarks ? item.remarks : item.requestType || '');
+      acc[item.employeeName].items[item.itemName] = sizeVal;
     } else {
       acc[item.employeeName].items[item.itemName] = (Number(acc[item.employeeName].items[item.itemName]) || 0) + item.quantity;
     }
     return acc;
-  }, {} as Record<string, { name: string; sn: string; site: string; remarks: string; items: Record<string, any> }>);
+  }, {} as Record<string, { name: string; sn: string; site: string; remarks: string; apdRequestId?: number | null; items: Record<string, any> }>);
 
   const employees = Object.values(groupedByEmployee);
   const sites = [...new Set(employees.map(e => e.site))];
@@ -271,7 +282,8 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
               </th>
             ))}
             <th style={th} colSpan={2}>{SAFETY_SHOES_COL}</th>
-            <th style={{ ...th, width: '70px' }} rowSpan={2}>Remarks</th>
+            <th style={{ ...th, width: '65px' }} rowSpan={2}>Remarks</th>
+            <th style={{ ...th, width: '60px' }} className="print:hidden" rowSpan={2}>Dokumen</th>
           </tr>
           <tr>
             <th style={{ ...th, width: '22px' }}>QTY</th>
@@ -291,6 +303,21 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
               <td style={td}>{e.items['Safety Shoes'] || ''}</td>
               <td style={td}>{e.items['Safety Shoes Size'] || ''}</td>
               <td style={{ ...tdL, fontSize: '6pt', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'normal', wordBreak: 'break-word' }}>{e.remarks || '—'}</td>
+              <td style={{ ...td, padding: '1px' }} className="print:hidden">
+                {e.apdRequestId ? (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRequestId(e.apdRequestId || null)}
+                    className="inline-flex items-center justify-center gap-1 text-[8px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-1.5 py-0.5 rounded shadow-2xs cursor-pointer w-full"
+                    title="Lihat Dokumen Request Karyawan"
+                  >
+                    <FileText className="size-2.5 text-blue-600" />
+                    <span>Dokumen</span>
+                  </button>
+                ) : (
+                  <span className="text-slate-400 text-[8px]">—</span>
+                )}
+              </td>
             </tr>
           ))}
           {Array.from({ length: emptyRowCount }).map((_, i) => (
@@ -299,6 +326,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
               {Array.from({ length: QTY_ONLY_COLUMNS.length + 6 }).map((_, j) => (
                 <td key={j} style={td}></td>
               ))}
+              <td style={td} className="print:hidden"></td>
             </tr>
           ))}
           <tr style={{ background: '#e5e7eb', fontWeight: 'bold', height: '19px' }}>
@@ -309,6 +337,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
             <td style={td}>{totals['Safety Shoes'] || ''}</td>
             <td style={td}>—</td>
             <td style={td}>—</td>
+            <td style={td} className="print:hidden">—</td>
           </tr>
         </tbody>
       </table>
@@ -592,6 +621,13 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
           onClose={() => setShowApprovalDialog(false)}
         />
       )}
+
+      {/* APD Request Detail Modal */}
+      <ApdRequestDetailModal
+        isOpen={Boolean(selectedRequestId)}
+        onClose={() => setSelectedRequestId(null)}
+        requestId={selectedRequestId}
+      />
     </div>
   );
 }

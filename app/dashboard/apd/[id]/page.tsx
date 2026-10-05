@@ -81,7 +81,7 @@ export default async function ApdRequestDetailPage({ params }: { params: Promise
               <p className="font-medium">{request.employeeName}</p>
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">NIK / SN</p>
+              <p className="text-sm text-muted-foreground">SN</p>
               <p className="font-medium">{request.employeeSn}</p>
             </div>
             <div>
@@ -154,7 +154,7 @@ export default async function ApdRequestDetailPage({ params }: { params: Promise
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <p className="text-sm text-muted-foreground">Catatan Tambahan</p>
+              <p className="text-sm text-muted-foreground">Remarks</p>
               <p className="font-medium">{request.notes || "-"}</p>
             </div>
             
