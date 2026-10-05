@@ -33,6 +33,7 @@ import { toast } from 'sonner'
 
 import {
   createDailyActivitySessionAction,
+  deleteServerActivityDraftAction,
   getDailyActivityApproverCandidatesAction,
   resubmitDailyActivityApprovalFormAction,
   saveActivityDraftToServerAction,
@@ -1225,7 +1226,7 @@ export function MobileDailyActivityForm({
         [id]: {
           ...prev[id],
           photoFile: file,
-          photoFiles: files,
+          photoFiles: compressedFiles,
           photoName: names,
           previewUrls: previewUrls,
           restoredPhotoPayload: null,
@@ -1233,6 +1234,47 @@ export function MobileDailyActivityForm({
         },
       }))
     }
+
+    // Process photo uploads in background so Save Draft and Submit are fast
+    void (async () => {
+      try {
+        const uploaded = await Promise.all(
+          compressedFiles.map(async (cf) => {
+            try {
+              return await uploadActivityPhoto(cf)
+            } catch {
+              return null
+            }
+          })
+        )
+        const validUploaded = uploaded.filter((u): u is string => typeof u === 'string' && u.length > 0)
+        if (validUploaded.length > 0) {
+          if (targetId === 'single') {
+            setPhotoPreviewUrls(validUploaded)
+          } else if (targetId.startsWith('route:')) {
+            const id = parseInt(targetId.split(':')[1], 10)
+            setRouteItemState((prev) => ({
+              ...prev,
+              [id]: {
+                ...prev[id],
+                previewUrls: validUploaded,
+              },
+            }))
+          } else if (targetId.startsWith('library:')) {
+            const id = targetId.split(':')[1]
+            setSelfInputEntries((prev) => ({
+              ...prev,
+              [id]: {
+                ...prev[id],
+                previewUrls: validUploaded,
+              },
+            }))
+          }
+        }
+      } catch (err) {
+        console.warn('Background photo upload failed:', err)
+      }
+    })()
 
     toast.success(`${files.length} foto evidence berhasil dilampirkan`)
     event.target.value = ''
@@ -1284,7 +1326,15 @@ export function MobileDailyActivityForm({
   }>({ kind: 'idle', message: '' })
   const [isSubmitting, setIsSubmitting] = useState(false)
   // Tracks the server-side draft session ID so autosave updates the same record
-  const [serverDraftSessionId, setServerDraftSessionId] = useState<number | null>(null)
+  const [serverDraftSessionId, setServerDraftSessionId] = useState<number | null>(() => {
+    if (initialDraft?.serverDraftSessionId) return Number(initialDraft.serverDraftSessionId)
+    const activeKey = initialDraftKey?.trim() || queuedDraftKey
+    if (activeKey?.startsWith('hero:draft:activity:server-')) {
+      const parsed = Number(activeKey.replace('hero:draft:activity:server-', ''))
+      if (!isNaN(parsed) && parsed > 0) return parsed
+    }
+    return null
+  })
   const serverAutosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [routeItemState, setRouteItemState] = useState<Record<number, RouteItemState>>({})
 
@@ -2139,6 +2189,10 @@ export function MobileDailyActivityForm({
       setIsTeamLog(true)
     }
 
+    if (draft.serverDraftSessionId) {
+      setServerDraftSessionId(Number(draft.serverDraftSessionId))
+    }
+
     if (initialDraftKey || queuedDraftKey) {
       toast.success('Draft berhasil dimuat ke formulir ✓')
     }
@@ -2634,10 +2688,6 @@ export function MobileDailyActivityForm({
         selfInputEntries[libraryId] ??
         buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
 
-      if (!entry.notes?.trim()) {
-        return `Penjelasan / catatan aktivitas wajib diisi untuk "${library.activityCode} - ${library.activityName}".`
-      }
-
       if (library.requiresEquipmentNo && !entry.equipmentNo?.trim()) {
         return `Nomor Equipment / Unit wajib diisi untuk "${library.activityCode} - ${library.activityName}".`
       }
@@ -3004,6 +3054,7 @@ export function MobileDailyActivityForm({
           additionalApprovers: formattedAdditionalApprovers,
           teamMemberEmployeeIds: isTeamLog ? selectedMemberIds : [],
           items: itemsToSubmit,
+          existingDraftSessionId: serverDraftSessionId,
         })
 
         if (!res.success) {
@@ -3016,7 +3067,33 @@ export function MobileDailyActivityForm({
         })
       }
 
+      const draftSessionIdToDelete =
+        serverDraftSessionId ||
+        (initialDraft?.serverDraftSessionId ? Number(initialDraft.serverDraftSessionId) : null) ||
+        (activeDraftKey?.startsWith('hero:draft:activity:server-')
+          ? Number(activeDraftKey.replace('hero:draft:activity:server-', ''))
+          : null)
+
+      if (draftSessionIdToDelete) {
+        deleteServerActivityDraftAction(draftSessionIdToDelete).catch((err) =>
+          console.warn('[handleSubmit] deleteServerActivityDraftAction error:', err)
+        )
+      }
+
       removeActivityDraft(activeDraftKey)
+      if (initialDraftKey && initialDraftKey !== activeDraftKey) {
+        removeActivityDraft(initialDraftKey)
+      }
+      if (queuedDraftKey && queuedDraftKey !== activeDraftKey) {
+        removeActivityDraft(queuedDraftKey)
+      }
+      if (draftSessionIdToDelete) {
+        removeActivityDraft(`hero:draft:activity:server-${draftSessionIdToDelete}`)
+      }
+      try {
+        window.localStorage.removeItem(ACTIVITY_DRAFT_STORAGE_KEY)
+      } catch {}
+      window.dispatchEvent(new CustomEvent(ACTIVITY_DRAFTS_CHANGED_EVENT))
 
       window.setTimeout(() => {
         const targetUrl = `/mobile/activity?tab=approval&submitted=1${checklistContext?.overtimeCommandLetterId ? '&spl=1' : ''}`
@@ -4214,75 +4291,21 @@ export function MobileDailyActivityForm({
             disabled={isSubmitting || isSavingDraft}
             onClick={async () => {
               setIsSavingDraft(true)
-              toast.info('Menyimpan draft dan memproses foto evidence...', { duration: 2500 })
 
               try {
-                // 1. Process custom photos
-                const customEvidence = await processPhotosForDraft(
-                  photoFiles,
-                  photoFile,
-                  photoPreviewUrls,
-                  restoredPhotoPayload
-                )
-                if (customEvidence.urls.length > 0) {
-                  setPhotoPreviewUrls(customEvidence.urls)
-                  setPhotoName(customEvidence.photoName)
-                }
-
-                // 2. Process self-input library entries photos
-                const updatedSelfInputEntries = { ...selfInputEntries }
-                for (const lib of selectedLibraries) {
-                  const libId = `${lib.id}`
-                  const entry = selfInputEntries[libId]
-                  if (entry) {
-                    const entryEvidence = await processPhotosForDraft(
-                      entry.photoFiles,
-                      entry.photoFile,
-                      entry.previewUrls,
-                      entry.restoredPhotoPayload
-                    )
-                    updatedSelfInputEntries[libId] = {
-                      ...entry,
-                      photoFiles: [],
-                      previewUrls: entryEvidence.urls,
-                      photoName: entryEvidence.photoName,
-                      restoredPhotoPayload: entryEvidence.payloads[0] ?? null,
-                    }
-                  }
-                }
-                setSelfInputEntries(updatedSelfInputEntries)
-
-                // 3. Process route items photos
-                const updatedRouteItemState = { ...routeItemState }
-                for (const [keyStr, state] of Object.entries(routeItemState)) {
-                  if (state?.photoFiles?.length || state?.photoFile || state?.previewUrls?.length) {
-                    const evidence = await processPhotosForDraft(
-                      state.photoFiles,
-                      state.photoFile,
-                      state.previewUrls,
-                      state.restoredPhotoPayload
-                    )
-                    updatedRouteItemState[Number(keyStr)] = {
-                      ...state,
-                      photoFiles: [],
-                      previewUrls: evidence.urls,
-                      photoName: evidence.photoName,
-                      restoredPhotoPayload: evidence.payloads[0] ?? null,
-                    }
-                  }
-                }
-                setRouteItemState(updatedRouteItemState)
-
-                // 4. Construct complete draft payload with photos
+                // 1. Construct complete draft payload immediately from current form state
                 const completeDraftPayload: ActivitySyncPayload = {
                   ...draftPayload,
-                  photo: customEvidence.payloads[0] ?? null,
-                  photos: customEvidence.payloads,
-                  photoUrls: customEvidence.urls,
+                  photo: queuedPhotoPayloads[0] ?? restoredPhotoPayload ?? null,
+                  photos: queuedPhotoPayloads.length > 0 ? queuedPhotoPayloads : (restoredPhotoPayload ? [restoredPhotoPayload] : []),
+                  photoUrls: photoPreviewUrls,
+                  photoName,
+                  serverDraftSessionId: serverDraftSessionId || undefined,
                   selfInputActivities: selectedLibraries.map((lib, index) => {
                     const entry =
-                      updatedSelfInputEntries[`${lib.id}`] ??
+                      selfInputEntries[`${lib.id}`] ??
                       buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
+                    const photos = entry.previewUrls || []
                     return {
                       libraryActivityId: `${lib.id}`,
                       equipmentNo: entry.equipmentNo,
@@ -4291,14 +4314,16 @@ export function MobileDailyActivityForm({
                       materialUsed: entry.materialUsed,
                       tireCount: entry.tireCount ?? 0,
                       notes: entry.notes,
-                      photoName: entry.photoName,
-                      photoUrl: entry.previewUrls?.[0] || null,
-                      previewUrls: entry.previewUrls || [],
-                      photo: entry.restoredPhotoPayload || null,
+                      photoName: entry.photoName || (photos.length > 0 ? `${photos.length} foto terlampir` : ''),
+                      photoUrl: photos[0] || null,
+                      previewUrls: photos,
+                      photo: entry.queuedPhotoPayloads?.[0] ?? entry.restoredPhotoPayload ?? null,
+                      photos: entry.queuedPhotoPayloads ?? (entry.restoredPhotoPayload ? [entry.restoredPhotoPayload] : []),
+                      photoUrls: entry.previewUrls ?? [],
                     }
                   }),
                   routeSessionItems: routeSessionItems.map((item) => {
-                    const s = updatedRouteItemState[item.routeItemId ?? item.overtimeCommandLetterItemId ?? -1]
+                    const s = routeItemState[item.routeItemId ?? item.overtimeCommandLetterItemId ?? -1]
                     return {
                       ...item,
                       photoUrl: s?.previewUrls?.[0] || null,
@@ -4307,7 +4332,7 @@ export function MobileDailyActivityForm({
                   }),
                 }
 
-                // 5. Save locally (instant)
+                // 2. Save locally immediately (instant response < 50ms)
                 const draftKey =
                   activeDraftKey === ACTIVITY_DRAFT_STORAGE_KEY
                     ? createActivityDraftKey()
@@ -4318,7 +4343,7 @@ export function MobileDailyActivityForm({
                   toast.error(localResult.error, { duration: 5000 })
                 } else {
                   if (draftKey !== ACTIVITY_DRAFT_STORAGE_KEY) {
-                    saveActivityDraftIndexEntry(draftKey, completeDraftPayload)
+                    saveActivityDraftIndexEntry(draftKey, completeDraftPayload, serverDraftSessionId || undefined)
                     if (activeDraftKey === ACTIVITY_DRAFT_STORAGE_KEY) {
                       removeActivityDraft(ACTIVITY_DRAFT_STORAGE_KEY)
                     }
@@ -4326,71 +4351,78 @@ export function MobileDailyActivityForm({
                   }
                 }
 
-                // 6. Save to server (cloud persistence)
-                const itemsSnapshot = selectedLibraries.length > 0
-                  ? selectedLibraries.map((lib) => {
-                      const entry = updatedSelfInputEntries[`${lib.id}`]
-                      return {
-                        label: `${lib.activityCode} - ${lib.activityName}`,
-                        group: lib.activityCode || 'Technical',
-                        libraryActivityId: lib.id,
-                        unitNumber: entry?.equipmentNo || '',
-                        startedAt: entry?.startTime || defaultStartTime,
-                        endedAt: entry?.endTime || defaultEndTime,
-                        points: lib.basePoints || 5,
-                        remark: entry?.notes || '',
-                        materialUsed: entry?.materialUsed || '',
-                        photoUrl: entry?.previewUrls?.[0] || null,
-                        photos: entry?.previewUrls || [],
-                      }
-                    })
-                  : sourceMode === 'custom' && customActivityName
-                    ? [
-                        {
-                          label: customActivityName.trim(),
-                          group: 'Custom',
-                          libraryActivityId: null,
-                          unitNumber: equipmentNo.trim(),
-                          startedAt: startTime || defaultStartTime,
-                          endedAt: endTime || defaultEndTime,
-                          points: 5,
-                          remark: notes.trim() || customActivityDescription.trim(),
-                          materialUsed: materialUsed.trim(),
-                          photoUrl: customEvidence.urls[0] || null,
-                          photos: customEvidence.urls,
-                        },
-                      ]
-                    : []
-
-                try {
-                  const res = await saveActivityDraftToServerAction({
-                    employeeId,
-                    workDate,
-                    shiftCode,
-                    submissionSource: sourceMode,
-                    siteId: site?.id,
-                    notes: notes.trim(),
-                    summaryRemark: notes.trim(),
-                    teamMemberEmployeeIds: isTeamLog ? selectedMemberIds : [],
-                    items: itemsSnapshot,
-                    existingDraftSessionId: serverDraftSessionId,
-                  })
-                  if (res.success) {
-                    setServerDraftSessionId(res.sessionId)
-                    const updatedWithServer = {
-                      ...completeDraftPayload,
-                      serverDraftSessionId: res.sessionId,
-                    }
-                    writeDraft(draftKey, updatedWithServer)
-                    saveActivityDraftIndexEntry(draftKey, updatedWithServer, res.sessionId)
-                  }
-                } catch (srvErr) {
-                  console.warn('[MobileDailyActivityForm] Server draft save failed:', srvErr)
-                }
-                // 7. Open Success Modal and dispatch events
+                // 3. Open Success Modal immediately - do NOT make the user wait for network
                 window.dispatchEvent(new CustomEvent(ACTIVITY_DRAFTS_CHANGED_EVENT))
                 setIsDraftSavedModalOpen(true)
-                toast.success('Draft berhasil disimpan! Draft tersimpan aman di server.')
+                toast.success('Draft berhasil disimpan!')
+
+                // 4. Background sync to server without blocking the UI
+                const currentDraftSessionId = serverDraftSessionId
+                void (async () => {
+                  try {
+                    const itemsSnapshot = selectedLibraries.length > 0
+                      ? selectedLibraries.map((lib) => {
+                          const entry = selfInputEntries[`${lib.id}`]
+                          return {
+                            label: `${lib.activityCode} - ${lib.activityName}`,
+                            group: lib.activityCode || 'Technical',
+                            libraryActivityId: lib.id,
+                            unitNumber: entry?.equipmentNo || '',
+                            startedAt: entry?.startTime || defaultStartTime,
+                            endedAt: entry?.endTime || defaultEndTime,
+                            points: lib.basePoints || 5,
+                            remark: entry?.notes || '',
+                            materialUsed: entry?.materialUsed || '',
+                            photoUrl: entry?.previewUrls?.[0] || null,
+                            photos: entry?.previewUrls || [],
+                          }
+                        })
+                      : sourceMode === 'custom' && customActivityName
+                        ? [
+                            {
+                              label: customActivityName.trim(),
+                              group: 'Custom',
+                              libraryActivityId: null,
+                              unitNumber: equipmentNo.trim(),
+                              startedAt: startTime || defaultStartTime,
+                              endedAt: endTime || defaultEndTime,
+                              points: 5,
+                              remark: notes.trim() || customActivityDescription.trim(),
+                              materialUsed: materialUsed.trim(),
+                              photoUrl: photoPreviewUrls[0] || null,
+                              photos: photoPreviewUrls,
+                            },
+                          ]
+                        : []
+
+                    const res = await saveActivityDraftToServerAction({
+                      employeeId,
+                      workDate,
+                      shiftCode,
+                      submissionSource: sourceMode,
+                      siteId: site?.id,
+                      notes: notes.trim(),
+                      summaryRemark: notes.trim(),
+                      teamMemberEmployeeIds: isTeamLog ? selectedMemberIds : [],
+                      items: itemsSnapshot,
+                      existingDraftSessionId: currentDraftSessionId,
+                    })
+
+                    if (res.success) {
+                      setServerDraftSessionId(res.sessionId)
+                      const updatedWithServer = {
+                        ...completeDraftPayload,
+                        serverDraftSessionId: res.sessionId,
+                      }
+                      writeDraft(draftKey, updatedWithServer)
+                      saveActivityDraftIndexEntry(draftKey, updatedWithServer, res.sessionId)
+                      window.dispatchEvent(new CustomEvent(ACTIVITY_DRAFTS_CHANGED_EVENT))
+                      toast.success('Draft tersimpan aman di server & lokal!', { id: 'draft-server-sync' })
+                    }
+                  } catch (srvErr) {
+                    console.warn('[MobileDailyActivityForm] Background server draft save warning:', srvErr)
+                  }
+                })()
               } catch (saveErr: any) {
                 console.error('[SaveDraft] Error saving draft:', saveErr)
                 toast.error(saveErr?.message || 'Gagal menyimpan draft.')

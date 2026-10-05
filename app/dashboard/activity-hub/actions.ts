@@ -6918,6 +6918,7 @@ export async function createDailyActivitySessionAction(input: {
     photoUrl?: string | null
     photos?: string[]
   }>
+  existingDraftSessionId?: number | null
 }) {
   try {
     let targetEmpId = Number(input.employeeId)
@@ -7122,6 +7123,29 @@ export async function createDailyActivitySessionAction(input: {
         employeeId: mId,
       }))
       await db.insert(dailyActivitySessionTeamMembers).values(teamRows).onConflictDoNothing()
+    }
+
+    // Clean up previous server draft session if this submission originated from a draft
+    if (input.existingDraftSessionId) {
+      try {
+        const draftIdNum = Number(input.existingDraftSessionId)
+        if (!isNaN(draftIdNum) && draftIdNum > 0 && draftIdNum !== created.id) {
+          await db
+            .delete(dailyActivitySessionItems)
+            .where(eq(dailyActivitySessionItems.sessionId, draftIdNum))
+          await db
+            .delete(dailyActivitySessions)
+            .where(
+              and(
+                eq(dailyActivitySessions.id, draftIdNum),
+                eq(dailyActivitySessions.employeeId, emp.id),
+                eq(dailyActivitySessions.status, 'draft')
+              )
+            )
+        }
+      } catch (cleanDraftErr) {
+        console.warn('Failed to clean up draft session on createDailyActivitySessionAction:', cleanDraftErr)
+      }
     }
 
     // Insert activity items if provided

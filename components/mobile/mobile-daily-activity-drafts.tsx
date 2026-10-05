@@ -27,6 +27,7 @@ import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 import {
   ACTIVITY_DRAFTS_CHANGED_EVENT,
   getActivityDraftIndex,
+  readDraft,
   removeActivityDraft,
   saveActivityDraftIndexEntry,
   writeDraft,
@@ -124,11 +125,18 @@ export function MobileDailyActivityDrafts({
 
       // Find all local drafts corresponding to this server draft
       const matchingLocal = localDrafts.filter((d) => {
+        if (usedLocalKeys.has(d.key)) return false
         if (d.serverDraftSessionId && d.serverDraftSessionId === sd.id) return true
         if (d.key.includes(`server-${sd.id}`)) return true
-        const isSameDate = d.workDate === sd.workDate
-        const isSameTitle = norm(d.title) === norm(sd.title)
-        return isSameDate && isSameTitle
+        if (d.workDate && sd.workDate && d.workDate === sd.workDate) {
+          if (!d.serverDraftSessionId || d.serverDraftSessionId === sd.id) {
+            return true
+          }
+        }
+        const isSameTitle =
+          norm(d.title) === norm(sd.title) ||
+          (d.title && sd.title && (norm(d.title).includes(norm(sd.title)) || norm(sd.title).includes(norm(d.title))))
+        return d.workDate === sd.workDate && isSameTitle
       })
 
       // Sort matching local drafts newest first
@@ -160,12 +168,19 @@ export function MobileDailyActivityDrafts({
         sd.photoUrls.forEach(addPhoto)
       }
 
+      const bestTitle =
+        activeLocal?.title && !activeLocal.title.startsWith('Draft DAR #') && !activeLocal.title.startsWith('Draft Activity #')
+          ? activeLocal.title
+          : sd.title && !sd.title.startsWith('Draft DAR #') && !sd.title.startsWith('Draft Activity #')
+            ? sd.title
+            : activeLocal?.title || sd.title || `Draft DAR #${sd.id}`
+
       items.push({
         id: `unified:${sd.id}`,
         source: activeLocal ? 'both' : 'server',
         localKey: activeLocal?.key,
         serverId: sd.id,
-        title: activeLocal?.title || sd.title || `Draft DAR #${sd.id}`,
+        title: bestTitle,
         workDate: activeLocal?.workDate || sd.workDate,
         shiftCode: sd.shiftCode,
         itemCount: activeLocal?.itemCount || sd.itemCount || 1,
@@ -182,7 +197,7 @@ export function MobileDailyActivityDrafts({
     const remainingLocal = localDrafts.filter((d) => !usedLocalKeys.has(d.key))
     const localGroups = new Map<string, ActivityDraftIndexEntry[]>()
     for (const d of remainingLocal) {
-      const groupKey = `${d.workDate}::${norm(d.title)}`
+      const groupKey = `${d.workDate || 'nodate'}::${norm(d.title)}`
       if (!localGroups.has(groupKey)) {
         localGroups.set(groupKey, [])
       }
@@ -276,6 +291,16 @@ export function MobileDailyActivityDrafts({
   const handleOpenDraft = async (item: UnifiedDraftItem) => {
     // If local copy exists, open instantly
     if (item.localKey) {
+      if (item.serverId) {
+        try {
+          const cached = readDraft<ActivitySyncPayload>(item.localKey)
+          if (cached && !cached.serverDraftSessionId) {
+            cached.serverDraftSessionId = item.serverId
+            writeDraft(item.localKey, cached)
+            saveActivityDraftIndexEntry(item.localKey, cached, item.serverId)
+          }
+        } catch {}
+      }
       onSelectLocalDraft(item.localKey)
       return
     }
@@ -447,20 +472,16 @@ export function MobileDailyActivityDrafts({
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
-                    {item.source === 'both' ? (
+                    {(item.source === 'local' || item.source === 'both') && (
                       <Badge className="border-0 bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2 py-0.5 gap-1 flex items-center">
-                        <Cloud className="size-3" />
-                        Tersinkron Cloud
-                      </Badge>
-                    ) : item.source === 'local' ? (
-                      <Badge className="border-0 bg-amber-50 text-amber-700 text-[10px] font-bold px-2 py-0.5 gap-1 flex items-center">
                         <Smartphone className="size-3" />
-                        Di Perangkat
+                        Lokal
                       </Badge>
-                    ) : (
+                    )}
+                    {(item.source === 'server' || item.source === 'both') && (
                       <Badge className="border-0 bg-sky-50 text-sky-700 text-[10px] font-bold px-2 py-0.5 gap-1 flex items-center">
                         <Cloud className="size-3" />
-                        Di Server Cloud
+                        Server
                       </Badge>
                     )}
                     {item.shiftCode && (
