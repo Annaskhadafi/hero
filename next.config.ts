@@ -1,8 +1,25 @@
 import type { NextConfig } from 'next'
 
+const cspHeader = `
+  default-src 'self';
+  script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:;
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  font-src 'self' https://fonts.gstatic.com data:;
+  img-src 'self' data: blob: https://is3.cloudhost.id https://*.tile.openstreetmap.org https://tile.openstreetmap.org https://*.openstreetmap.org https://*.chitraparatama.com;
+  media-src 'self' blob: data:;
+  connect-src 'self' https://is3.cloudhost.id https://vision.chitraparatama.com https://*.chitraparatama.com https://*.tile.openstreetmap.org https://tile.openstreetmap.org wss: ws:;
+  frame-src 'self' blob: data:;
+  worker-src 'self' blob:;
+  frame-ancestors 'self';
+  form-action 'self';
+  base-uri 'self';
+  object-src 'none';
+`.replace(/\s{2,}/g, ' ').trim()
+
 const nextConfig: NextConfig = {
   output: 'standalone',
   productionBrowserSourceMaps: false,
+  poweredByHeader: false,
   turbopack: {
     root: process.cwd(),
   },
@@ -40,6 +57,43 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     return [
+      {
+        source: '/:path*',
+        headers: [
+          {
+            key: 'X-DNS-Prefetch-Control',
+            value: 'on',
+          },
+          {
+            key: 'Strict-Transport-Security',
+            value: 'max-age=63072000; includeSubDomains; preload',
+          },
+          {
+            key: 'X-Content-Type-Options',
+            value: 'nosniff',
+          },
+          {
+            key: 'X-Frame-Options',
+            value: 'SAMEORIGIN',
+          },
+          {
+            key: 'Referrer-Policy',
+            value: 'strict-origin-when-cross-origin',
+          },
+          {
+            key: 'X-XSS-Protection',
+            value: '1; mode=block',
+          },
+          {
+            key: 'Permissions-Policy',
+            value: 'camera=(self), microphone=(self), geolocation=(self), browsing-topics=()',
+          },
+          {
+            key: 'Content-Security-Policy',
+            value: cspHeader,
+          },
+        ],
+      },
       {
         source: '/models/:path*',
         headers: [

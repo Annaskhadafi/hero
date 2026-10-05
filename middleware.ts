@@ -5,6 +5,11 @@ import { isMaestroHost } from '@/lib/maestro-config'
 const MAESTRO_SESSION_COOKIE = 'maestro_session_token'
 
 export function middleware(request: NextRequest) {
+  // Block OPTIONS HTTP method to eliminate debug method enumeration (Pentest finding)
+  if (request.method === 'OPTIONS') {
+    return new NextResponse(null, { status: 403 })
+  }
+
   const url = request.nextUrl.clone()
   const pathname = decodeURIComponent(url.pathname)
 
@@ -31,6 +36,9 @@ export function middleware(request: NextRequest) {
     pathname === '/robots.txt' ||
     pathname === '/manifest.webmanifest' ||
     pathname === '/favicon.ico' ||
+    pathname === '/.well-known/security.txt' ||
+    pathname.startsWith('/.well-known/') ||
+    pathname.endsWith('.txt') ||
     pathname.endsWith('.js') ||
     pathname.endsWith('.json') ||
     pathname.endsWith('.png') ||

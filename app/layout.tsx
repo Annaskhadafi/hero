@@ -27,6 +27,7 @@ export const metadata: Metadata = {
   formatDetection: {
     telephone: false,
   },
+  referrer: "strict-origin-when-cross-origin",
   other: {
     google: "notranslate",
   },
