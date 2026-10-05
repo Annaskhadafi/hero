@@ -58,7 +58,7 @@ import {
   type JobcardRecord,
 } from '@/app/actions/tire-repair-jobcard-actions';
 import { getWaitingWoFromApi, getFormWoList } from '@/app/actions/form-wo';
-import { getTireRepairMasterDataAction } from '@/app/actions/tire-repair-actions';
+import { getTireRepairMasterDataAction, getTireRepairInspectionsAction } from '@/app/actions/tire-repair-actions';
 import type { WipRepairRecord } from '@/lib/types/wip-repair';
 import { TireRepairProcessTimer } from '@/components/mobile/tire-repair-process-timer';
 import { TireRepairSearchableSelect } from '@/components/mobile/tire-repair-searchable-select';
@@ -99,6 +99,7 @@ export function JobcardDesktopClient({
   const [jobcards, setJobcards] = useState<JobcardRecord[]>(initialJobcards);
   const [waitingWo, setWaitingWo] = useState<WipRepairRecord[]>(serverWaitingList);
   const [formWos, setFormWos] = useState<any[]>(serverFormWoList);
+  const [heroInspections, setHeroInspections] = useState<any[]>([]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'published' | 'input' | 'waiting' | 'upload'>('published');
@@ -150,11 +151,12 @@ export function JobcardDesktopClient({
     setIsLoading(true);
     startTransition(async () => {
       try {
-        const [jcRes, waitRes, formRes, masterRes] = await Promise.all([
+        const [jcRes, waitRes, formRes, masterRes, inspRes] = await Promise.all([
           getTireRepairJobcardsAction({ searchSN: searchQuery }),
           getWaitingWoFromApi().catch(() => []),
           getFormWoList().catch(() => []),
           getTireRepairMasterDataAction().catch(() => null),
+          getTireRepairInspectionsAction().catch(() => null),
         ]);
 
         if (jcRes.success && jcRes.data) {
@@ -165,6 +167,9 @@ export function JobcardDesktopClient({
         }
         if (Array.isArray(formRes)) {
           setFormWos(formRes);
+        }
+        if (inspRes?.success && Array.isArray(inspRes.data)) {
+          setHeroInspections(inspRes.data);
         }
         if (masterRes?.success && masterRes?.data) {
           if (masterRes.data.inspectors && masterRes.data.inspectors.length > 0) {
@@ -214,28 +219,90 @@ export function JobcardDesktopClient({
     }
   };
 
-  // Filter HERO KPC Sangatta records ONLY starting from today
   const heroKpcWaitingWo = waitingWo.filter((r) => {
-    const isHero = r.is_hero === true || r.source === 'hero';
-    const custLower = (r.customer || '').toLowerCase();
-    return isHero && (!r.customer || custLower.includes('kpc') || custLower.includes('kaltim prima coal'));
+    return r.is_hero === true || r.source === 'hero';
   });
 
-  const heroKpcFormWos = formWos.filter((f) => {
-    const custLower = (f.customer || '').toLowerCase();
-    const isKpc = !f.customer || custLower.includes('kpc') || custLower.includes('kaltim prima coal');
-    const isSubmittedToday = isFromToday(f.createdAt || f.tanggalPengajuan);
-    return isKpc && isSubmittedToday;
-  });
+  const inspectedSnSet = React.useMemo(() => {
+    return new Set(
+      heroInspections.map((i) => (i.serialNumber || '').trim().toLowerCase()).filter(Boolean)
+    );
+  }, [heroInspections]);
+
+  const extractTireItemsFromFormWo = (f: any): any[] => {
+    const result: any[] = [];
+    const assignedWo = f.noWoTerbit || f.noWoCp || f.noPengajuan || f.idWo || 'WO Active';
+    const seenSn = new Set<string>();
+
+    if (f.items) {
+      try {
+        const parsed = JSON.parse(f.items);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          for (const item of parsed) {
+            const sn = (item.description || item.serialNo || item.tire_sn || item.tireSn || f.tireSn || '').trim();
+            const snKey = sn.toLowerCase();
+            if (sn && !seenSn.has(snKey)) {
+              seenSn.add(snKey);
+              result.push({
+                id: `FORMWO-${f.id}-${item.id || sn}`,
+                customer: item.customer || f.customer || 'PT Kaltim Prima Coal',
+                site: item.site || f.site || 'Sangatta KPC',
+                storeLoc: f.storeLoc || item.refNo || 'Workshop Sangatta',
+                tireSn: sn,
+                serialNumber: sn,
+                size: item.size || f.size || '-',
+                brand: item.brand || f.brand || 'MICHELIN',
+                pattern: f.pattern || '',
+                noWoTerbit: item.noWoCp || assignedWo,
+                noPengajuan: f.noPengajuan,
+                idWo: assignedWo,
+                woNo: item.noWoCp || assignedWo,
+                formWoId: f.id,
+              });
+            }
+          }
+          if (result.length > 0) return result;
+        }
+      } catch {}
+    }
+
+    const sn = (f.tireSn || f.idWo || '').trim();
+    if (sn) {
+      result.push({
+        id: `FORMWO-${f.id}`,
+        customer: f.customer || 'PT Kaltim Prima Coal',
+        site: f.site || 'Sangatta KPC',
+        storeLoc: f.storeLoc || 'Workshop Sangatta',
+        tireSn: sn,
+        serialNumber: sn,
+        size: f.size || '-',
+        brand: f.brand || 'MICHELIN',
+        pattern: f.pattern || '',
+        noWoTerbit: f.noWoTerbit || f.noWoCp || assignedWo,
+        noPengajuan: f.noPengajuan,
+        idWo: assignedWo,
+        woNo: f.noWoTerbit || f.noWoCp || assignedWo,
+        formWoId: f.id,
+      });
+    }
+
+    return result;
+  };
 
   const issuedJobcardSns = new Set(
     jobcards.map((jc) => (jc.serialNumber || '').trim().toLowerCase()).filter(Boolean)
   );
 
-  const inputReadyFormItems = heroKpcFormWos.filter((f) => {
-    const snLower = (f.tireSn || f.idWo || '').trim().toLowerCase();
-    return !issuedJobcardSns.has(snLower);
-  });
+  const seenSnInFormWo = new Set<string>();
+  const inputReadyFormItems = formWos
+    .flatMap((f) => extractTireItemsFromFormWo(f))
+    .filter((item) => {
+      const snLower = (item.serialNumber || item.tireSn || '').trim().toLowerCase();
+      if (!snLower || issuedJobcardSns.has(snLower) || !inspectedSnSet.has(snLower)) return false;
+      if (seenSnInFormWo.has(snLower)) return false;
+      seenSnInFormWo.add(snLower);
+      return true;
+    });
 
   const handleOpenNewModal = (item?: any) => {
     const defaultOperator = currentUserEmployeeName || (employeeList.length > 0 ? employeeList[0] : '');
@@ -1091,28 +1158,8 @@ export function JobcardDesktopClient({
                 </div>
               </div>
 
-              {/* Bottom Section: Quality Check & Material Summary */}
-              <div className="grid grid-cols-2 gap-8 pt-2 text-xs font-sans">
-                {/* Left Column: Quality Check Signature Box */}
-                <div className="space-y-1.5 font-sans">
-                  <h4 className="font-bold text-slate-900 text-xs">Quality Check:</h4>
-                  <div
-                    className="w-64 border border-slate-400 bg-white relative"
-                    style={{ width: '260px', height: '130px', minHeight: '130px' }}
-                  >
-                    <span
-                      className="absolute top-2 right-2.5 text-[10px] text-slate-400 uppercase font-bold tracking-wider"
-                      style={{ position: 'absolute', top: '8px', right: '10px' }}
-                    >
-                      SIGN
-                    </span>
-                  </div>
-                  <div className="w-64 text-center font-bold text-xs text-slate-900 pt-1.5" style={{ width: '260px' }}>
-                    ( {selectedJobcard.signQc || '............................'} )
-                  </div>
-                </div>
-
-                {/* Right Column: Material Summary */}
+              {/* Bottom Section: Material Summary */}
+              <div className="pt-2 text-xs font-sans">
                 <div className="space-y-2">
                   <h4 className="font-bold text-slate-900 text-xs">Material Summary</h4>
                   <div className="overflow-x-auto border-t border-b border-slate-400">

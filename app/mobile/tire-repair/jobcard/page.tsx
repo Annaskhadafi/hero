@@ -48,12 +48,9 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import {
-  getTireRepairJobcardsAction,
-  deleteTireRepairJobcardAction,
-  type JobcardRecord,
-} from '@/app/actions/tire-repair-jobcard-actions';
+import { getTireRepairJobcardsAction, deleteTireRepairJobcardAction, type JobcardRecord } from '@/app/actions/tire-repair-jobcard-actions';
 import { getWaitingWoFromApi, getFormWoList } from '@/app/actions/form-wo';
+import { getTireRepairInspectionsAction } from '@/app/actions/tire-repair-actions';
 import type { WipRepairRecord } from '@/lib/types/wip-repair';
 import {
   computeMaterialSummary,
@@ -162,35 +159,33 @@ export default function MobileJobcardListPage() {
     setIsLoading(true);
     startTransition(async () => {
       try {
-        const [jobcardRes, waitingWoRes, formWoRes] = await Promise.all([
+        const [jobcardRes, waitingWoRes, formWoRes, inspectionsRes] = await Promise.all([
           getTireRepairJobcardsAction({ searchSN: searchQuery }),
           getWaitingWoFromApi().catch(() => []),
           getFormWoList().catch(() => []),
+          getTireRepairInspectionsAction().catch(() => null),
         ]);
 
+        const inspectedSnSet = new Set(
+          (inspectionsRes?.success && Array.isArray(inspectionsRes.data) ? inspectionsRes.data : [])
+            .map((i) => (i.serialNumber || '').trim().toLowerCase())
+            .filter(Boolean)
+        );
+
         if (jobcardRes.success && jobcardRes.data) {
-          const heroKpcJobcards = jobcardRes.data.filter((jc) => {
-            const custLower = (jc.customerName || '').toLowerCase();
-            return !jc.customerName || custLower.includes('kpc') || custLower.includes('kaltim prima coal');
-          });
-          setJobcards(heroKpcJobcards);
+          setJobcards(jobcardRes.data);
         }
 
         let mappedWaiting: JobcardWipItem[] = [];
         if (Array.isArray(waitingWoRes)) {
-          // Strictly filter for HERO-inputted records for KPC Sangatta only
-          const heroKpcOnly = waitingWoRes.filter((r) => {
-            const isHeroInput = r.is_hero === true || r.source === 'hero';
-            const custLower = (r.customer || '').toLowerCase();
-            const isKpc = !r.customer || custLower.includes('kpc') || custLower.includes('kaltim prima coal');
-            return isHeroInput && isKpc;
-          });
+          // Include all HERO-inputted records for any customer
+          const heroOnly = waitingWoRes.filter((r) => r.is_hero === true || r.source === 'hero');
 
-          mappedWaiting = heroKpcOnly.map((r) => ({
+          mappedWaiting = heroOnly.map((r) => ({
             id: r.id_wo || r.tire_sn,
-            customer: r.customer || 'PT Kaltim Prima Coal',
-            site: r.site || 'Sangatta KPC',
-            repairLocation: r.store_loc || r.site || 'Workshop Sangatta',
+            customer: r.customer || 'Customer',
+            site: r.site || 'Workshop',
+            repairLocation: r.store_loc || r.site || 'Workshop',
             serialNumber: r.tire_sn,
             tireSize: r.size || '-',
             brand: r.brand || '-',
@@ -199,41 +194,73 @@ export default function MobileJobcardListPage() {
           }));
         }
 
+        const issuedJobcardSns = new Set(
+          (jobcardRes.success && jobcardRes.data ? jobcardRes.data : [])
+            .map((jc: any) => (jc.serialNumber || '').trim().toLowerCase())
+            .filter(Boolean)
+        );
+
         let mappedFormWo: JobcardWipItem[] = [];
         if (Array.isArray(formWoRes)) {
-          const isFromToday = (dateVal?: Date | string | null) => {
-            if (!dateVal) return false;
-            try {
-              const d = new Date(dateVal);
-              if (isNaN(d.getTime())) return false;
-              const dateStr = d.toISOString().split('T')[0];
-              const todayStr = new Date().toISOString().split('T')[0];
-              return dateStr >= todayStr;
-            } catch {
-              return false;
-            }
-          };
+          const extractTireItemsFromFormWo = (f: any): JobcardWipItem[] => {
+            const items: JobcardWipItem[] = [];
+            const assignedWo = f.noWoTerbit || f.noWoCp || f.noPengajuan || f.idWo || 'WO Active';
+            const seenSn = new Set<string>();
 
-          mappedFormWo = formWoRes
-            .filter((f) => {
-              const custLower = (f.customer || '').toLowerCase();
-              const isKpc = !f.customer || custLower.includes('kpc') || custLower.includes('kaltim prima coal');
-              const isSubmittedToday = isFromToday(f.createdAt || f.tanggalPengajuan);
-              return isKpc && isSubmittedToday;
-            })
-            .map((f) => {
-              const assignedWo = f.noWoTerbit || f.noPengajuan || f.idWo || 'WO Active';
-              return {
+            if (f.items) {
+              try {
+                const parsed = JSON.parse(f.items);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                  for (const item of parsed) {
+                    const sn = (item.description || item.serialNo || item.tire_sn || item.tireSn || f.tireSn || '').trim();
+                    const snKey = sn.toLowerCase();
+                    if (sn && !seenSn.has(snKey)) {
+                      seenSn.add(snKey);
+                      items.push({
+                        id: `FORMWO-${f.id}-${item.id || sn}`,
+                        customer: item.customer || f.customer || 'PT Kaltim Prima Coal',
+                        site: item.site || f.site || 'Sangatta KPC',
+                        repairLocation: f.storeLoc || item.refNo || f.site || 'Workshop Sangatta',
+                        serialNumber: sn,
+                        tireSize: item.size || f.size || '-',
+                        brand: item.brand || f.brand || '-',
+                        woNo: item.noWoCp || assignedWo,
+                        pattern: f.pattern || '',
+                      });
+                    }
+                  }
+                  if (items.length > 0) return items;
+                }
+              } catch {}
+            }
+
+            const sn = (f.tireSn || f.idWo || '').trim();
+            if (sn) {
+              items.push({
                 id: `FORMWO-${f.id}`,
                 customer: f.customer || 'PT Kaltim Prima Coal',
                 site: f.site || 'Sangatta KPC',
                 repairLocation: f.storeLoc || f.site || 'Workshop Sangatta',
-                serialNumber: f.tireSn || f.idWo || '-',
+                serialNumber: sn,
                 tireSize: f.size || '-',
                 brand: f.brand || '-',
-                woNo: assignedWo,
+                woNo: f.noWoTerbit || f.noWoCp || assignedWo,
                 pattern: f.pattern || '',
-              };
+              });
+            }
+
+            return items;
+          };
+
+          const seenSnInFormWo = new Set<string>();
+          mappedFormWo = formWoRes
+            .flatMap((f) => extractTireItemsFromFormWo(f))
+            .filter((item) => {
+              const snLower = (item.serialNumber || '').trim().toLowerCase();
+              if (!snLower || issuedJobcardSns.has(snLower) || !inspectedSnSet.has(snLower)) return false;
+              if (seenSnInFormWo.has(snLower)) return false;
+              seenSnInFormWo.add(snLower);
+              return true;
             });
         }
 
@@ -1185,28 +1212,8 @@ export default function MobileJobcardListPage() {
 
               <div className="border-b border-slate-400 my-4" />
 
-              {/* Bottom Section: Quality Check & Material Summary */}
-              <div className="grid grid-cols-2 gap-6 pt-1 text-xs font-sans">
-                {/* Left Column: Quality Check Signature Box */}
-                <div className="space-y-1.5 font-sans">
-                  <h4 className="font-bold text-slate-900 text-xs">Quality Check:</h4>
-                  <div
-                    className="w-60 border border-slate-400 bg-white relative"
-                    style={{ width: '250px', height: '120px', minHeight: '120px' }}
-                  >
-                    <span
-                      className="absolute top-1.5 right-2 text-[10px] text-slate-400 uppercase font-bold tracking-wider"
-                      style={{ position: 'absolute', top: '6px', right: '8px' }}
-                    >
-                      SIGN
-                    </span>
-                  </div>
-                  <div className="w-60 text-center font-bold text-xs text-slate-900 pt-1.5" style={{ width: '250px' }}>
-                    ( {selectedJobcard.signQc || '............................'} )
-                  </div>
-                </div>
-
-                {/* Right Column: Material Summary */}
+              {/* Bottom Section: Material Summary */}
+              <div className="pt-1 text-xs font-sans">
                 <div className="space-y-2">
                   <h4 className="font-bold text-slate-900 text-xs">Material Summary</h4>
                   <div className="overflow-x-auto border-t border-b border-slate-400">

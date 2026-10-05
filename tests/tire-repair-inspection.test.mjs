@@ -85,8 +85,8 @@ test('app/mobile/tire-repair/inspection/page.tsx includes filters, add tire butt
     'Must have Add Tire button'
   );
   assert.ok(
-    content.includes('Not Inspect') && content.includes('Inspected'),
-    'Must have Not Inspect and Inspected tabs'
+    content.includes('Inspected'),
+    'Must have Inspected tab'
   );
 });
 
@@ -214,21 +214,17 @@ test('getWaitingWoFromApi queries local HERO tire repair inspections and tags th
   );
 });
 
-test('Mobile jobcard page strictly filters HERO-inputted records for KPC customer', () => {
+test('Mobile jobcard page filters HERO-inputted records for all customers', () => {
   const mobileJobcardPath = path.join(process.cwd(), 'app/mobile/tire-repair/jobcard/page.tsx');
   const content = fs.readFileSync(mobileJobcardPath, 'utf8');
 
   assert.ok(
-    content.includes('heroKpcOnly'),
-    'Mobile jobcard page must define heroKpcOnly filter'
+    content.includes('heroOnly'),
+    'Mobile jobcard page must define heroOnly filter'
   );
   assert.ok(
-    content.includes('isHeroInput'),
-    'Mobile jobcard page must filter for isHeroInput'
-  );
-  assert.ok(
-    content.includes('kaltim prima coal'),
-    'Mobile jobcard page must filter for KPC customer'
+    content.includes('r.is_hero === true || r.source === \'hero\''),
+    'Mobile jobcard page must filter for is_hero'
   );
 });
 

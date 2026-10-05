@@ -28,68 +28,78 @@ import {
   type TireRepairInspectionRecord,
   type InspectionFilterParams,
 } from '@/lib/tire-repair-constants';
+import { clearWaitingWoCache } from '@/app/actions/form-wo';
 
 let isSchemaEnsured = false;
+let schemaEnsurePromise: Promise<void> | null = null;
 
 export async function ensureTireRepairSchema(): Promise<void> {
   if (isSchemaEnsured) return;
-  try {
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS "hero_tire_repair_inspections" (
-        "id" serial PRIMARY KEY,
-        "serial_number" varchar(100) NOT NULL,
-        "customer" varchar(150) NOT NULL DEFAULT 'PT Kaltim Prima Coal',
-        "customer_site" varchar(150) NOT NULL DEFAULT 'Sangatta KPC',
-        "inspect_location" varchar(150) NOT NULL,
-        "date_inspect" timestamp NOT NULL DEFAULT now(),
-        "date_received" timestamp NOT NULL DEFAULT now(),
-        "report_by" varchar(150) NOT NULL,
-        "repair_duration" varchar(10) NOT NULL DEFAULT 'R1',
-        "max_days" integer NOT NULL DEFAULT 4,
-        "repair_completed_date" timestamp,
-        "cargo_manifest_no" varchar(100),
-        "rtd_1" varchar(50),
-        "rtd_2" varchar(50),
-        "remarks" text,
-        "tire_size" varchar(100) NOT NULL,
-        "is_custom_tire_size" boolean NOT NULL DEFAULT false,
-        "brand" varchar(100),
-        "type_construction" varchar(50) NOT NULL DEFAULT 'RADIAL',
-        "pattern" varchar(100),
-        "status" varchar(50) NOT NULL DEFAULT 'Repair',
-        "created_by" integer REFERENCES "hero_employees"("id") ON DELETE SET NULL,
-        "created_at" timestamp NOT NULL DEFAULT now(),
-        "updated_at" timestamp NOT NULL DEFAULT now()
-      );
+  if (schemaEnsurePromise) return schemaEnsurePromise;
 
-      CREATE TABLE IF NOT EXISTS "hero_tire_repair_photos" (
-        "id" serial PRIMARY KEY,
-        "inspection_id" integer NOT NULL REFERENCES "hero_tire_repair_inspections"("id") ON DELETE CASCADE,
-        "photo_area" varchar(255) NOT NULL,
-        "photo_url" text NOT NULL,
-        "inspect_date" timestamp NOT NULL DEFAULT now(),
-        "created_at" timestamp NOT NULL DEFAULT now()
-      );
+  schemaEnsurePromise = (async () => {
+    try {
+      await db.execute(sql`
+        CREATE TABLE IF NOT EXISTS "hero_tire_repair_inspections" (
+          "id" serial PRIMARY KEY,
+          "serial_number" varchar(100) NOT NULL,
+          "customer" varchar(150) NOT NULL DEFAULT 'PT Kaltim Prima Coal',
+          "customer_site" varchar(150) NOT NULL DEFAULT 'Sangatta KPC',
+          "inspect_location" varchar(150) NOT NULL,
+          "date_inspect" timestamp NOT NULL DEFAULT now(),
+          "date_received" timestamp NOT NULL DEFAULT now(),
+          "report_by" varchar(150) NOT NULL,
+          "repair_duration" varchar(10) NOT NULL DEFAULT 'R1',
+          "max_days" integer NOT NULL DEFAULT 4,
+          "repair_completed_date" timestamp,
+          "cargo_manifest_no" varchar(100),
+          "rtd_1" varchar(50),
+          "rtd_2" varchar(50),
+          "remarks" text,
+          "tire_size" varchar(100) NOT NULL,
+          "is_custom_tire_size" boolean NOT NULL DEFAULT false,
+          "brand" varchar(100),
+          "type_construction" varchar(50) NOT NULL DEFAULT 'RADIAL',
+          "pattern" varchar(100),
+          "status" varchar(50) NOT NULL DEFAULT 'Repair',
+          "created_by" integer REFERENCES "hero_employees"("id") ON DELETE SET NULL,
+          "created_at" timestamp NOT NULL DEFAULT now(),
+          "updated_at" timestamp NOT NULL DEFAULT now()
+        );
 
-      CREATE INDEX IF NOT EXISTS "idx_tire_repair_sn" ON "hero_tire_repair_inspections" ("serial_number");
-      CREATE INDEX IF NOT EXISTS "idx_tire_repair_customer" ON "hero_tire_repair_inspections" ("customer");
-      CREATE INDEX IF NOT EXISTS "idx_tire_repair_inspect_date" ON "hero_tire_repair_inspections" ("date_inspect");
-      CREATE INDEX IF NOT EXISTS "idx_tire_repair_photos_inspection" ON "hero_tire_repair_photos" ("inspection_id");
+        CREATE TABLE IF NOT EXISTS "hero_tire_repair_photos" (
+          "id" serial PRIMARY KEY,
+          "inspection_id" integer NOT NULL REFERENCES "hero_tire_repair_inspections"("id") ON DELETE CASCADE,
+          "photo_area" varchar(255) NOT NULL,
+          "photo_url" text NOT NULL,
+          "inspect_date" timestamp NOT NULL DEFAULT now(),
+          "created_at" timestamp NOT NULL DEFAULT now()
+        );
 
-      ALTER TABLE "hero_tire_repair_inspections" ADD COLUMN IF NOT EXISTS "removal_reason" varchar(255);
-      ALTER TABLE "hero_tire_repair_inspections" ADD COLUMN IF NOT EXISTS "scrap_reason" varchar(255);
-      ALTER TABLE "hero_tire_repair_inspections" ADD COLUMN IF NOT EXISTS "deffectex_repair" varchar(255);
-      ALTER TABLE "hero_tire_repair_inspections" ADD COLUMN IF NOT EXISTS "vehicle" varchar(100);
-      ALTER TABLE "hero_tire_repair_inspections" ADD COLUMN IF NOT EXISTS "wheel_position" varchar(100);
-      ALTER TABLE "hero_tire_repair_inspections" ADD COLUMN IF NOT EXISTS "hours" varchar(50);
-      ALTER TABLE "hero_tire_repair_inspections" ADD COLUMN IF NOT EXISTS "hours_since_last_repair" varchar(50);
-      ALTER TABLE "hero_tire_repair_inspections" ADD COLUMN IF NOT EXISTS "pit_location" varchar(150);
-      ALTER TABLE "hero_tire_repair_inspections" ADD COLUMN IF NOT EXISTS "marking" varchar(255);
-    `);
-    isSchemaEnsured = true;
-  } catch (error) {
-    console.error('ensureTireRepairSchema error:', error);
-  }
+        CREATE INDEX IF NOT EXISTS "idx_tire_repair_sn" ON "hero_tire_repair_inspections" ("serial_number");
+        CREATE INDEX IF NOT EXISTS "idx_tire_repair_customer" ON "hero_tire_repair_inspections" ("customer");
+        CREATE INDEX IF NOT EXISTS "idx_tire_repair_inspect_date" ON "hero_tire_repair_inspections" ("date_inspect");
+        CREATE INDEX IF NOT EXISTS "idx_tire_repair_photos_inspection" ON "hero_tire_repair_photos" ("inspection_id");
+
+        ALTER TABLE "hero_tire_repair_inspections" ADD COLUMN IF NOT EXISTS "removal_reason" varchar(255);
+        ALTER TABLE "hero_tire_repair_inspections" ADD COLUMN IF NOT EXISTS "scrap_reason" varchar(255);
+        ALTER TABLE "hero_tire_repair_inspections" ADD COLUMN IF NOT EXISTS "deffectex_repair" varchar(255);
+        ALTER TABLE "hero_tire_repair_inspections" ADD COLUMN IF NOT EXISTS "vehicle" varchar(100);
+        ALTER TABLE "hero_tire_repair_inspections" ADD COLUMN IF NOT EXISTS "wheel_position" varchar(100);
+        ALTER TABLE "hero_tire_repair_inspections" ADD COLUMN IF NOT EXISTS "hours" varchar(50);
+        ALTER TABLE "hero_tire_repair_inspections" ADD COLUMN IF NOT EXISTS "hours_since_last_repair" varchar(50);
+        ALTER TABLE "hero_tire_repair_inspections" ADD COLUMN IF NOT EXISTS "pit_location" varchar(150);
+        ALTER TABLE "hero_tire_repair_inspections" ADD COLUMN IF NOT EXISTS "marking" varchar(255);
+      `);
+      isSchemaEnsured = true;
+    } catch (error) {
+      console.error('ensureTireRepairSchema error:', error);
+    } finally {
+      schemaEnsurePromise = null;
+    }
+  })();
+
+  return schemaEnsurePromise;
 }
 
 export async function getTireRepairMasterDataAction() {
@@ -482,6 +492,8 @@ export async function createTireRepairInspectionAction(payload: CreateTireRepair
 
     revalidatePath('/mobile/tire-repair/inspection');
     revalidatePath('/mobile/tire-repair');
+    revalidatePath('/dashboard/repair-retread/form-wo');
+    clearWaitingWoCache();
 
     return {
       success: true,

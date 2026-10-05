@@ -239,8 +239,13 @@ export function computeGroupedProcessRows(injuries?: any[]): GroupedProcessRow[]
 
   injuries.forEach((inj) => {
     const injName = inj.injuryName || 'Injury';
-    const injDimStr = (inj.dimensiLukaL || inj.dimensiLukaW || inj.dimensiLukaP || inj.dimensiLukaT)
-      ? `L${inj.dimensiLukaL || '0'},W${inj.dimensiLukaW || '0'},P${inj.dimensiLukaP || '0'},T${inj.dimensiLukaT || '0'}`
+    const dimL = inj.dimensiLukaL ?? inj.dimensi_luka_l ?? inj.dimLukaL ?? '';
+    const dimW = inj.dimensiLukaW ?? inj.dimensi_luka_w ?? inj.dimLukaW ?? '';
+    const dimP = inj.dimensiLukaP ?? inj.dimensi_luka_p ?? inj.dimLukaP ?? '';
+    const dimT = inj.dimensiLukaT ?? inj.dimensi_luka_t ?? inj.dimLukaT ?? '';
+    const hasDim = !!(dimL || dimW || dimP || dimT);
+    const injDimStr = hasDim
+      ? `L${dimL || '0'},W${dimW || '0'},P${dimP || '0'},T${dimT || '0'}`
       : '';
 
     (inj.processes || []).forEach((p: any) => {
@@ -316,10 +321,9 @@ export function computeGroupedProcessRows(injuries?: any[]): GroupedProcessRow[]
   const result: GroupedProcessRow[] = [];
 
   map.forEach((item) => {
-    let injuriesLabel = Array.from(item.injuriesSet).join(', ') || '-';
-    if (item.dimensionsList.length > 0) {
-      injuriesLabel += `: ${item.dimensionsList.join(' / ')}`;
-    }
+    const injuriesLabel = item.dimensionsList.length > 0
+      ? item.dimensionsList.join(' / ')
+      : (Array.from(item.injuriesSet).join(', ') || '-');
 
     const matParts: string[] = [];
     const qtyParts: string[] = [];

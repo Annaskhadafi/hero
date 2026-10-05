@@ -98,7 +98,6 @@ export default function NewTireRepairInspectionPage() {
   const [dateInspect, setDateInspect] = useState(() => new Date().toISOString().split('T')[0]);
   const [reportBy, setReportBy] = useState('');
   const [repairDuration, setRepairDuration] = useState<DurationTag>('R1');
-  const [cargoManifestNo, setCargoManifestNo] = useState('');
   const [rtd1, setRtd1] = useState('');
   const [rtd2, setRtd2] = useState('');
   const [remarks, setRemarks] = useState('');
@@ -344,7 +343,6 @@ export default function NewTireRepairInspectionPage() {
         dateInspect,
         reportBy: reportBy || 'Inspector',
         repairDuration,
-        cargoManifestNo: cargoManifestNo.trim() || undefined,
         rtd1: rtd1 ? String(rtd1) : undefined,
         rtd2: rtd2 ? String(rtd2) : undefined,
         remarks: remarks.trim() || undefined,
@@ -479,18 +477,6 @@ export default function NewTireRepairInspectionPage() {
             </div>
           </div>
 
-          {/* Cargo Manifest No */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-[#486275]">
-              Cargo Manifest No.
-            </label>
-            <Input
-              value={cargoManifestNo}
-              onChange={(e) => setCargoManifestNo(e.target.value)}
-              placeholder="Contoh: CM-2026-09-001"
-              className="h-10 rounded-xl bg-slate-50 border-slate-200 text-xs text-[#082033]"
-            />
-          </div>
 
           {/* RTD mm */}
           <div className="space-y-1.5">

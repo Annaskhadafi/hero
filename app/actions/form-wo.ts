@@ -167,6 +167,10 @@ export async function saveWipPo(idWo: string, noPo: string, poDate?: string) {
   }
 }
 
+export async function clearWaitingWoCache() {
+  waitingWoCache = null
+}
+
 let waitingWoCache: { data: WipRepairRecord[]; timestamp: number } | null = null
 const WAITING_WO_CACHE_TTL = 3 * 60 * 1000 // 3 minutes cache for fast saves & revalidation
 
@@ -211,13 +215,38 @@ export async function getWaitingWoFromApi(
           .orderBy(desc(tireRepairInspections.createdAt))
 
         const existingFormWos = await db
-          .select({ tireSn: repairFormWo.tireSn, idWo: repairFormWo.idWo })
+          .select({
+            tireSn: repairFormWo.tireSn,
+            idWo: repairFormWo.idWo,
+            noWoTerbit: repairFormWo.noWoTerbit,
+            items: repairFormWo.items,
+          })
           .from(repairFormWo)
-        const existingSnSet = new Set(
-          existingFormWos
-            .map((f) => (f.tireSn || f.idWo || '').trim().toLowerCase())
-            .filter(Boolean)
-        )
+        const existingSnSet = new Set<string>()
+        for (const f of existingFormWos) {
+          if (f.tireSn) existingSnSet.add(f.tireSn.trim().toLowerCase())
+          if (f.idWo) existingSnSet.add(f.idWo.trim().toLowerCase())
+          if (f.noWoTerbit) existingSnSet.add(f.noWoTerbit.trim().toLowerCase())
+          if (f.items) {
+            try {
+              const parsed = JSON.parse(f.items)
+              if (Array.isArray(parsed)) {
+                for (const item of parsed) {
+                  const sn = item.description || item.serialNo || item.tire_sn || item.tireSn
+                  if (sn && typeof sn === 'string') {
+                    existingSnSet.add(sn.trim().toLowerCase())
+                  }
+                  const wo = item.noWoCp || item.id_wo || item.idWo
+                  if (wo && typeof wo === 'string') {
+                    existingSnSet.add(wo.trim().toLowerCase())
+                  }
+                }
+              }
+            } catch {
+              // ignore json parse error
+            }
+          }
+        }
 
         heroWipList = inspections
           .filter((insp) => !existingSnSet.has(insp.serialNumber.trim().toLowerCase()))
@@ -266,7 +295,15 @@ export async function getWaitingWoFromApi(
         console.error('Failed to query local HERO tire repair inspections:', e)
       }
 
-      waitingList = [...heroWipList, ...apiList]
+      // Local HERO inspections take precedence over external CAMOS API items with the same SN
+      const heroSnSet = new Set(
+        heroWipList.map((item) => (item.tire_sn || '').trim().toLowerCase()).filter(Boolean)
+      )
+      const filteredApiList = apiList.filter(
+        (item) => !heroSnSet.has((item.tire_sn || '').trim().toLowerCase())
+      )
+
+      waitingList = [...heroWipList, ...filteredApiList]
 
       // Merge saved PO numbers & PO dates from database repair_wip_po
       try {

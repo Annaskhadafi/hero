@@ -68,39 +68,37 @@ export async function getWipRepairData(): Promise<WipRepairRecord[]> {
         .from(tireRepairInspections)
         .orderBy(desc(tireRepairInspections.createdAt))
 
-      heroInspectionList = inspections
-        .filter((insp) => !apiSnSet.has(insp.serialNumber.trim().toLowerCase()))
-        .map((insp) => ({
-          id_wo: `HERO-${insp.id}`,
-          wo: "Waiting WO",
-          job_type: insp.status || "Repair",
-          status: insp.status || "In Progress",
-          size: insp.tireSize,
-          brand: insp.brand || "-",
-          pattern: insp.pattern || "-",
-          type: insp.typeConstruction || "RADIAL",
-          nocargo: insp.cargoManifestNo || null,
-          tire_sn: insp.serialNumber,
-          injury: insp.repairDuration || "R1",
-          remark: insp.remarks || "",
-          customer: insp.customer || "PT Kaltim Prima Coal",
-          site: insp.customerSite || insp.inspectLocation || "Sangatta KPC",
-          store_loc: insp.inspectLocation || "Workshop Sangatta",
-          inspect_date: formatDateStr(insp.dateInspect),
-          inspector: insp.reportBy,
-          createby: insp.reportBy,
-          wo_date: null,
-          received_date: formatDateStr(insp.dateReceived),
-          receiver: insp.reportBy,
-          po: null,
-          bast: null,
-          po_date: null,
-          bast_date: null,
-          invoice: null,
-          invoice_date: null,
-          is_hero: true,
-          source: "hero",
-        }))
+      heroInspectionList = inspections.map((insp) => ({
+        id_wo: `HERO-${insp.id}`,
+        wo: "Waiting WO",
+        job_type: insp.status || "Repair",
+        status: insp.status || "In Progress",
+        size: insp.tireSize,
+        brand: insp.brand || "-",
+        pattern: insp.pattern || "-",
+        type: insp.typeConstruction || "RADIAL",
+        nocargo: insp.cargoManifestNo || null,
+        tire_sn: insp.serialNumber,
+        injury: insp.repairDuration || "R1",
+        remark: insp.remarks || "",
+        customer: insp.customer || "PT Kaltim Prima Coal",
+        site: insp.customerSite || insp.inspectLocation || "Sangatta KPC",
+        store_loc: insp.inspectLocation || "Workshop Sangatta",
+        inspect_date: formatDateStr(insp.dateInspect),
+        inspector: insp.reportBy,
+        createby: insp.reportBy,
+        wo_date: null,
+        received_date: formatDateStr(insp.dateReceived),
+        receiver: insp.reportBy,
+        po: null,
+        bast: null,
+        po_date: null,
+        bast_date: null,
+        invoice: null,
+        invoice_date: null,
+        is_hero: true,
+        source: "hero",
+      }))
     } catch (err) {
       console.error("Failed to query local HERO tire repair inspections for WIP Repair:", err)
     }
@@ -113,13 +111,10 @@ export async function getWipRepairData(): Promise<WipRepairRecord[]> {
         .from(tireRepairJobcards)
         .orderBy(desc(tireRepairJobcards.createdAt))
 
-      const allExistingSnSet = new Set([
-        ...apiSnSet,
-        ...heroInspectionList.map((item) => item.tire_sn.trim().toLowerCase()),
-      ])
+      const heroInspectionSnSet = new Set(heroInspectionList.map((item) => item.tire_sn.trim().toLowerCase()))
 
       heroJobcardList = jobcards
-        .filter((jc) => !allExistingSnSet.has(jc.serialNumber.trim().toLowerCase()))
+        .filter((jc) => !heroInspectionSnSet.has(jc.serialNumber.trim().toLowerCase()))
         .map((jc) => ({
           id_wo: jc.jobcardNo,
           wo: jc.woNo || "Waiting WO",
@@ -155,7 +150,15 @@ export async function getWipRepairData(): Promise<WipRepairRecord[]> {
       console.error("Failed to query local HERO jobcards for WIP Repair:", err)
     }
 
-    return [...heroJobcardList, ...heroInspectionList, ...apiList]
+    // Filter out API items whose serial number is already managed locally in HERO
+    const heroSnSet = new Set([
+      ...heroInspectionList.map((item) => item.tire_sn.trim().toLowerCase()),
+      ...heroJobcardList.map((item) => item.tire_sn.trim().toLowerCase()),
+    ])
+
+    const filteredApiList = apiList.filter((item) => !heroSnSet.has((item.tire_sn || "").trim().toLowerCase()))
+
+    return [...heroJobcardList, ...heroInspectionList, ...filteredApiList]
   } catch (error) {
     console.error("Failed to load WIP Repair data", error)
     return []

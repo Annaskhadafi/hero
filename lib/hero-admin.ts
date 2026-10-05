@@ -1587,7 +1587,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     iconName: 'file-text',
     resource: 'repair_jobcard',
     sortOrder: 8,
-    isVisible: true,
+    isVisible: false,
     openInNewTab: false,
   },
   {
@@ -5575,6 +5575,13 @@ export async function ensureHeroGovernanceSeedData() {
           eq(navbarMenuItems.url, '/dashboard/central-service')
         )
       )
+
+    await db
+      .update(navbarMenuItems)
+      .set({
+        isVisible: false,
+      })
+      .where(eq(navbarMenuItems.url, '/dashboard/repair-retread/jobcard'))
 
     const csMenuItems = await db
       .select()

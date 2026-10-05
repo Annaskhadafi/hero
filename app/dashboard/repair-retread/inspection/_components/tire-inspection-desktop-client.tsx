@@ -23,7 +23,6 @@ import {
   ZoomIn,
   FileText,
   FileCheck,
-  FilePlus,
   ChevronLeft,
   ChevronRight,
   FileSpreadsheet,
@@ -792,14 +791,6 @@ export function TireInspectionDesktopClient({
         >
           <FileText className="w-3.5 h-3.5" />
           <span>Repair Job Card</span>
-        </Link>
-
-        <Link
-          href="/dashboard/repair-retread/form-wo"
-          className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 text-slate-600 hover:text-slate-900 hover:bg-white/60"
-        >
-          <FilePlus className="w-3.5 h-3.5" />
-          <span>Form WO & WIP</span>
         </Link>
       </div>
 

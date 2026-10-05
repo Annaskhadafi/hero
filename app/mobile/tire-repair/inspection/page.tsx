@@ -11,7 +11,6 @@ import {
   Plus,
   Building2,
   CheckCircle2,
-  MoreHorizontal,
   X,
   Eye,
   Camera,
@@ -189,8 +188,6 @@ export default function TireRepairInspectionListPage() {
   const [selectedMonth, setSelectedMonth] = useState(String(currentMonth));
   const [selectedYear, setSelectedYear] = useState(String(currentYear));
 
-  // Tabs: 'INSPECTED' | 'NOT_INSPECT'
-  const [activeTab, setActiveTab] = useState<'INSPECTED' | 'NOT_INSPECT'>('INSPECTED');
 
   // Data
   const [inspections, setInspections] = useState<TireRepairInspectionRecord[]>([]);
@@ -292,16 +289,7 @@ export default function TireRepairInspectionListPage() {
     loadData();
   };
 
-  // Filtered Tab Items
-  const inspectedList = useMemo(() => {
-    return inspections.filter((item) => !!item.dateInspect);
-  }, [inspections]);
-
-  const notInspectList = useMemo(() => {
-    return inspections.filter((item) => !item.dateInspect);
-  }, [inspections]);
-
-  const displayedList = activeTab === 'INSPECTED' ? inspectedList : notInspectList;
+  const displayedList = inspections;
 
   return (
     <div className="space-y-4 pb-6">
@@ -488,40 +476,11 @@ export default function TireRepairInspectionListPage() {
         </Link>
       </div>
 
-      {/* Segmented Tab Switcher */}
-      <div className="bg-slate-200/70 p-1 rounded-xl grid grid-cols-2 gap-1 text-xs font-black">
-        <button
-          type="button"
-          onClick={() => setActiveTab('NOT_INSPECT')}
-          className={`py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-            activeTab === 'NOT_INSPECT'
-              ? 'bg-white text-[#082033] shadow-xs'
-              : 'text-[#486275] hover:text-[#082033]'
-          }`}
-        >
-          <MoreHorizontal className="w-4 h-4 text-amber-600" />
-          <span>Not Inspect ({notInspectList.length})</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('INSPECTED')}
-          className={`py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-            activeTab === 'INSPECTED'
-              ? 'bg-[#003f78] text-white shadow-xs'
-              : 'text-[#486275] hover:text-[#082033]'
-          }`}
-        >
-          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-          <span>Inspected ({inspectedList.length})</span>
-        </button>
-      </div>
-
       {/* Main List Body */}
       <main className="space-y-3">
         <div className="flex items-center justify-between text-xs text-[#486275] px-1 font-semibold">
           <span>
-            Menampilkan <strong className="text-[#082033]">{displayedList.length}</strong> tire ({activeTab === 'INSPECTED' ? 'Inspected' : 'Not Inspect'})
+            Menampilkan <strong className="text-[#082033]">{displayedList.length}</strong> tire
           </span>
           <span className="text-[11px]">
             {MONTH_NAMES[Number(selectedMonth) - 1]} {selectedYear}
@@ -568,7 +527,7 @@ export default function TireRepairInspectionListPage() {
                 {/* Header row: Tire Graphic + Serial Number & Duration */}
                 <div className="flex items-start gap-3">
                   {/* Tire Graphic SVG (Black Rubber Tread + Yellow Rim Hub) */}
-                  <div className="w-11 h-11 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center shrink-0 shadow-xs">
+                  <div className="w-11 h-11 rounded-full bg-slate-950 border border-slate-800 flex items-center justify-center shrink-0 shadow-xs">
                     <svg
                       viewBox="0 0 64 64"
                       className="w-7 h-7 fill-none"
