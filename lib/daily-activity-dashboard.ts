@@ -364,26 +364,8 @@ function getTodayIsoString(): string {
   return `${y}-${m}-${day}`
 }
 
-export function getCurrentWeekRange(referenceDate: Date = new Date()): { startDate: string; endDate: string } {
-  const d = new Date(referenceDate)
-  // getDay(): 0 is Sunday, 1 is Monday, ..., 6 is Saturday
-  const day = d.getDay()
-  const diffToMonday = day === 0 ? -6 : 1 - day
-  const monday = new Date(d)
-  monday.setDate(d.getDate() + diffToMonday)
-  const sunday = new Date(monday)
-  sunday.setDate(monday.getDate() + 6)
-  const formatIso = (date: Date) => {
-    const y = date.getFullYear()
-    const m = String(date.getMonth() + 1).padStart(2, '0')
-    const dayStr = String(date.getDate()).padStart(2, '0')
-    return `${y}-${m}-${dayStr}`
-  }
-  return {
-    startDate: formatIso(monday),
-    endDate: formatIso(sunday),
-  }
-}
+import { getCurrentWeekRange } from './daily-activity-types'
+export { getCurrentWeekRange }
 
 function formatDateDisplay(date?: Date | string | null): string {
   if (!date) {

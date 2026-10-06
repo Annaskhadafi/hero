@@ -305,6 +305,13 @@ const nextConfig: NextConfig = {
       canvas: false,
       encoding: false,
       fs: false,
+      ...(!isServer && {
+        dns: false,
+        net: false,
+        tls: false,
+        pg: false,
+        'pg-native': false,
+      }),
     }
     return config
   },
