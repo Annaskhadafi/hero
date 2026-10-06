@@ -36,14 +36,14 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 
-import {
+import type {
   DailyActivityDashboardData,
   EmployeeActivityRow,
   UnsubmittedEmployeeRow,
   ActivityTaskItem,
   DelayedJobItem,
   TimelineActivityEvent,
-} from '@/lib/daily-activity-dashboard'
+} from '@/lib/daily-activity-types'
 import { cn } from '@/lib/utils'
 import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 import { Button } from '@/components/ui/button'

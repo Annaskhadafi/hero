@@ -41,13 +41,13 @@ import {
 import { toast } from 'sonner'
 
 import {
-  DailyActivityDashboardData,
-  EmployeeActivityRow,
-  UnsubmittedEmployeeRow,
-  DelayedJobItem,
-  TimelineActivityEvent,
+  type DailyActivityDashboardData,
+  type EmployeeActivityRow,
+  type UnsubmittedEmployeeRow,
+  type DelayedJobItem,
+  type TimelineActivityEvent,
   getCurrentWeekRange,
-} from '@/lib/daily-activity-dashboard'
+} from '@/lib/daily-activity-types'
 import { DailyActivityEmployeeAnalyticsModal } from '@/components/daily-activity-employee-analytics-modal'
 import { cn } from '@/lib/utils'
 import { formatPhotoDisplayUrl } from '@/lib/photo-url'
