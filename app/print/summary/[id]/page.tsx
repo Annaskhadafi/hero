@@ -48,7 +48,16 @@ export default async function PrintSummaryPage({
   }
   const emps = Object.values(grouped);
 
-  const allCols = [...QTY_ONLY_COLUMNS, SAFETY_SHOES_COL];
+  const dynamicQtyCols = Array.from(
+    new Set([
+      ...QTY_ONLY_COLUMNS,
+      ...data.items
+        .map((i) => i.itemName)
+        .filter((name) => name !== 'Safety Shoes' && name !== 'Safety Shoes Size'),
+    ])
+  );
+
+  const allCols = [...dynamicQtyCols, SAFETY_SHOES_COL];
   const totals: Record<string, number> = {};
   for (const col of allCols) {
     totals[col] = emps.reduce((s, e) => s + (Number(e.items[col]) || 0), 0);
@@ -135,7 +144,7 @@ export default async function PrintSummaryPage({
             <th style={{ ...th, width: '105px' }} rowSpan={2}>Nama Karyawan</th>
             <th style={{ ...th, width: '38px' }} rowSpan={2}>SN</th>
             <th style={{ ...th, width: '70px' }} rowSpan={2}>Site</th>
-            {QTY_ONLY_COLUMNS.map(c => (
+            {dynamicQtyCols.map(c => (
               <th key={c} style={thVert} rowSpan={2}>
                 <div style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', margin: 'auto', maxHeight: '86px', fontSize: '5.8pt', whiteSpace: 'nowrap', lineHeight: '1' }}>
                   {c}
@@ -157,7 +166,7 @@ export default async function PrintSummaryPage({
               <td style={{ ...tdL, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</td>
               <td style={td}>{e.sn}</td>
               <td style={{ ...td, fontSize: '6pt', lineHeight: '1.1', overflow: 'hidden', whiteSpace: 'normal', wordBreak: 'break-word', padding: '1px 2px' }}>{e.site}</td>
-              {QTY_ONLY_COLUMNS.map(c => (
+              {dynamicQtyCols.map(c => (
                 <td key={c} style={td}>{e.items[c] || ''}</td>
               ))}
               <td style={td}>{e.items['Safety Shoes'] || ''}</td>
@@ -168,14 +177,14 @@ export default async function PrintSummaryPage({
           {Array.from({ length: emptyRowCount }).map((_, i) => (
             <tr key={`e${i}`} style={{ height: '18px' }}>
               <td style={td}>{emps.length + i + 1}</td>
-              {Array.from({ length: QTY_ONLY_COLUMNS.length + 6 }).map((_, j) => (
+              {Array.from({ length: dynamicQtyCols.length + 6 }).map((_, j) => (
                 <td key={j} style={td}></td>
               ))}
             </tr>
           ))}
           <tr style={{ background: '#e5e7eb', fontWeight: 'bold', height: '19px' }}>
             <td style={td} colSpan={4}>Total Qty</td>
-            {QTY_ONLY_COLUMNS.map(c => (
+            {dynamicQtyCols.map(c => (
               <td key={c} style={td}>{totals[c] || ''}</td>
             ))}
             <td style={td}>{totals['Safety Shoes'] || ''}</td>

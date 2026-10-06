@@ -2,7 +2,8 @@
 'use server';
 
 import { db } from '@/db';
-import { masterApd } from '@/db/schema';
+import { masterApd, apdRequestItems } from '@/db/schema';
+import { apdSummaryItems } from '@/db/schema/apd-summary';
 import { eq, asc, desc } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 
@@ -123,11 +124,15 @@ export async function createMasterApdAction(input: MasterApdInput) {
 
 export async function updateMasterApdAction(id: number, input: Partial<MasterApdInput>) {
   try {
+    const [existing] = await db.select().from(masterApd).where(eq(masterApd.id, id)).limit(1);
+    const oldName = existing?.name;
+    const newName = input.name ? input.name.trim() : undefined;
+
     const [updated] = await db
       .update(masterApd)
       .set({
         ...(input.code && { code: input.code.trim() }),
-        ...(input.name && { name: input.name.trim() }),
+        ...(newName && { name: newName }),
         ...(input.category && { category: input.category }),
         ...(input.unit && { unit: input.unit }),
         ...(input.hasSize !== undefined && { hasSize: input.hasSize }),
@@ -140,6 +145,19 @@ export async function updateMasterApdAction(id: number, input: Partial<MasterApd
       })
       .where(eq(masterApd.id, id))
       .returning();
+
+    // If item name changed, update existing request items and summary items so documents reflect the new name
+    if (oldName && newName && oldName !== newName) {
+      await db
+        .update(apdRequestItems)
+        .set({ itemType: newName })
+        .where(eq(apdRequestItems.itemType, oldName));
+
+      await db
+        .update(apdSummaryItems)
+        .set({ itemName: newName })
+        .where(eq(apdSummaryItems.itemName, oldName));
+    }
 
     revalidateMasterApdPaths();
     return { success: true, data: updated };

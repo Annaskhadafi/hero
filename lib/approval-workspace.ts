@@ -3496,6 +3496,7 @@ export async function getApprovalCenterData(
         currentStepLabel: string
         workflowLabel: string
         lastDecision: string
+        notes?: ApprovalComment[]
         teamRole?: 'Pemohon' | 'Anggota Tim'
         teamPartner?: string | null
         totalPoints?: number | null
@@ -3988,7 +3989,7 @@ export async function getApprovalCenterData(
 
     let otherTeamMemberNames = sessionTeamMembers
       .map((t) => t.employeeName)
-      .filter((n): n is string => Boolean(n) && n.toLowerCase() !== (s.employeeName || '').toLowerCase().trim())
+      .filter((n): n is string => Boolean(n) && String(n).toLowerCase() !== (s.employeeName || '').toLowerCase().trim())
 
     if (otherTeamMemberNames.length === 0) {
       const teamMatch = (s as any).summaryRemark?.match(/\[Team:\s*([^\]]+)\]/i)

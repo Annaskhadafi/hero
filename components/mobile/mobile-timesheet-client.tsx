@@ -46,7 +46,8 @@ export function MobileTimesheetClient({ data }: { data: any }) {
         const d = new Date(now.getFullYear(), now.getMonth(), day)
         const isOff = d.getDay() === 0 || d.getDay() === 6
         days.push(
-          buildAttendanceDayData(day, {
+          buildAttendanceDayData({
+            day,
             shiftCode: isOff ? 'OFF' : 'DS',
             checkIn: isOff ? null : '07:00',
             checkOut: isOff ? null : '16:00',
@@ -54,7 +55,7 @@ export function MobileTimesheetClient({ data }: { data: any }) {
             overtimeHours: 0,
             status: isOff ? 'OFF' : 'PRESENT',
             splStatus: null,
-          })
+          } as any)
         )
       }
 
@@ -68,8 +69,8 @@ export function MobileTimesheetClient({ data }: { data: any }) {
         position: employee?.jobTitle || 'Staff Operasional',
         department: employee?.department || 'Central Services',
         siteName: site?.name || 'Site All',
-        days,
-        approvals: {
+        days: days as any,
+        signatures: {
           submittedBy: {
             name: employee?.name || 'Karyawan',
             title: employee?.jobTitle || 'Serviceman / Pemohon',
@@ -86,7 +87,7 @@ export function MobileTimesheetClient({ data }: { data: any }) {
             signedAt: new Date().toLocaleDateString('id-ID'),
           },
         },
-      })
+      } as any)
 
       const blob = new Blob([pdfBytes as any], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)

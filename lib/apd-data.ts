@@ -30,6 +30,8 @@ export async function fetchApdRequests(currentEmployeeId?: number) {
       employeeName: employees.name,
       employeeSn: employees.employeeSn,
       departmentName: masterDepartments.name,
+      sectionId: masterSections.id,
+      sectionName: masterSections.name,
       siteName: sites.name,
       employeeId: apdRequests.employeeId,
       pendingWith: approvals.approverName,
@@ -37,6 +39,7 @@ export async function fetchApdRequests(currentEmployeeId?: number) {
     .from(apdRequests)
     .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
     .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+    .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
     .leftJoin(sites, eq(apdRequests.siteId, sites.id))
     .leftJoin(
       approvals,
@@ -53,6 +56,19 @@ export async function fetchApdRequests(currentEmployeeId?: number) {
   const rows = await query.orderBy(desc(apdRequests.createdAt));
   
   return rows;
+}
+
+export async function fetchMasterSections() {
+  const sections = await db
+    .select({
+      id: masterSections.id,
+      name: masterSections.name,
+      code: masterSections.code,
+    })
+    .from(masterSections)
+    .where(eq(masterSections.isActive, true))
+    .orderBy(asc(masterSections.name));
+  return sections;
 }
 
 export async function fetchApdRequestById(id: number) {
