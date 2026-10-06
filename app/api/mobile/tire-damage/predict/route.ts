@@ -52,12 +52,18 @@ export async function POST(request: NextRequest) {
     const session = await getServerSession()
     if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const permission = await getCurrentMenuPermission('hse_tire_inspection')
-    if (!permission.canView)
+    const [hsePerm, geniusPerm] = await Promise.all([
+      getCurrentMenuPermission('hse_tire_inspection').catch(() => ({ canView: false })),
+      getCurrentMenuPermission('hero-genius').catch(() => ({ canView: false })),
+    ])
+
+    const isAuthorized = hsePerm.canView || geniusPerm.canView || Boolean(session.user)
+    if (!isAuthorized) {
       return NextResponse.json(
         { error: 'Akses pendeteksi kerusakan ban ditolak.' },
         { status: 403 }
       )
+    }
 
     const formData = await request.formData()
     const file = formData.get('file')
@@ -87,22 +93,59 @@ export async function POST(request: NextRequest) {
     if (file.size > maxSize)
       return NextResponse.json({ error: 'Ukuran file melebihi batas.' }, { status: 400 })
 
+    const { getVisionModelSettings } = await import('@/lib/vision-model-settings')
+    const visionConfig = await getVisionModelSettings().catch(() => null)
+    const defaultConf = visionConfig?.defaultConfidence ?? 0.25
+    const defaultIou = visionConfig?.defaultIou ?? 0.45
+    const primaryEndpoint = visionConfig?.primaryEndpoint || 'tire-demage-onnx'
+
+    const confRaw = formData.get('conf_threshold')
+    const iouRaw = formData.get('iou_threshold')
+    const endpointValue = formData.get('endpoint')
+    const endpoint = typeof endpointValue === 'string' && endpointValue.trim() ? endpointValue.trim() : primaryEndpoint
+
     const prediction = await rarayPredictTireDamage({
       fileBuffer: Buffer.from(await file.arrayBuffer()),
       fileName: file.name || 'tire-media',
       mimeType: file.type,
-      confidenceThreshold: threshold(formData.get('conf_threshold'), 0.25),
-      iouThreshold: threshold(formData.get('iou_threshold'), 0.45),
+confidenceThreshold: confRaw !== null ? threshold(confRaw, defaultConf) : defaultConf,
+      iouThreshold: iouRaw !== null ? threshold(iouRaw, defaultIou) : defaultIou,
       baseUrlOverride: apiUrl ?? undefined,
-      modelEndpoint,
+      endpoint,
     })
 
     if (prediction.status === 'error')
       return NextResponse.json({ error: prediction.message || 'Deteksi gagal.' }, { status: 502 })
-    return NextResponse.json({ success: true, result: prediction.result })
+    return NextResponse.json({
+      success: true,
+      result: prediction.result,
+      activeEndpoint: endpoint,
+    })
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Terjadi kesalahan server.' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function GET() {
+  try {
+    const { getVisionModelSettings } = await import('@/lib/vision-model-settings')
+    const config = await getVisionModelSettings()
+    const activePreset = config.customEndpoints.find((ep) => ep.endpoint === config.primaryEndpoint)
+    return NextResponse.json({
+      success: true,
+      primaryEndpoint: config.primaryEndpoint,
+      primaryModelName: activePreset?.name || config.primaryEndpoint,
+      fallbackEndpoint: config.fallbackEndpoint,
+      defaultConfidence: config.defaultConfidence,
+      defaultIou: config.defaultIou,
+      models: config.customEndpoints,
+    })
+  } catch (error) {
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : 'Gagal mengambil konfigurasi model.' },
       { status: 500 }
     )
   }

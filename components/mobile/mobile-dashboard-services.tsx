@@ -46,6 +46,7 @@ import {
 } from '@tabler/icons-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { isMobileHrefAllowed, type MobileAllowedLink } from '@/lib/mobile-access'
+import { useMobilePermissions } from '@/components/mobile/permission-provider'
 
 const iconMap = {
   'book-open': IconBook,
@@ -87,10 +88,17 @@ export function MobileDashboardServices({
 }: DashboardServicesProps) {
   const [open, setOpen] = useState(false)
   const [requestOpen, setRequestOpen] = useState(false)
+  const permissions = useMobilePermissions()
   const allowedResources = new Set(sidebarItems.map((item) => item.resource).filter(Boolean))
   const isServiceAllowed = (service: { href: string; resource?: string }) => {
     if (service.resource === 'hero-genius' || service.resource === 'sop-win') {
       return true
+    }
+    if (service.resource && permissions && Object.keys(permissions).length > 0) {
+      if (permissions[service.resource] !== undefined) {
+        return Boolean(permissions[service.resource]?.canView)
+      }
+      return false
     }
     if (service.resource) {
       return allowedResources.has(service.resource)
@@ -315,8 +323,18 @@ export function MobileDashboardServices({
   ]
   const visibleExtraServices = extraServices.filter(isServiceAllowed)
 
-  // Group sidebarItems by section
-  const groupedSidebarItems = sidebarItems.reduce(
+  // Filter sidebarItems by permissions if available
+  const filteredSidebarItems = sidebarItems.filter((item) => {
+    if (item.resource && permissions && Object.keys(permissions).length > 0) {
+      if (permissions[item.resource] !== undefined) {
+        return Boolean(permissions[item.resource]?.canView)
+      }
+    }
+    return true
+  })
+
+  // Group filteredSidebarItems by section
+  const groupedSidebarItems = filteredSidebarItems.reduce(
     (acc, item) => {
       const secName = item.section || 'Lainnya'
       if (!acc[secName]) {

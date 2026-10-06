@@ -22,6 +22,7 @@ import {
   ShieldCheck,
   Sparkles,
   Timer,
+  TrendingUp,
   Trophy,
   UserRound,
   X,
@@ -138,6 +139,8 @@ export function MobileAppShell({
     { type: 'link', label: 'Leaderboard', href: '/mobile/gamification', icon: Trophy, resource: 'point_setting' },
     { type: 'link', label: 'Executive', href: '/mobile/executive', icon: BarChart3, resource: 'ewh_dashboard' },
     { type: 'link', label: 'Cargo Manifest', href: '/mobile/cargo-manifest', icon: Package, resource: 'cargo_manifest' },
+    { type: 'link', label: 'CS Forecast', href: '/mobile/central-service/forecast', icon: TrendingUp, resource: 'cs-forecast' },
+    { type: 'link', label: 'CS Assets', href: '/mobile/central-service/assets', icon: Package, resource: 'central-service-assets' },
     { type: 'link', label: 'Profile', href: '/mobile/profile', icon: UserRound },
   ]
 

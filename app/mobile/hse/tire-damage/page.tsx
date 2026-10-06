@@ -155,10 +155,30 @@ export default function MobileTireDamagePage() {
   const streamRef = useRef<MediaStream | null>(null)
   const loading = stage !== 'idle'
 
+  const [activeModelInfo, setActiveModelInfo] = useState<{
+    endpoint: string
+    name: string
+  } | null>(null)
+
   useEffect(() => {
     if (!previewUrl) return
     return () => URL.revokeObjectURL(previewUrl)
   }, [previewUrl])
+
+  useEffect(() => {
+    void fetch('/api/mobile/tire-damage/predict', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.primaryEndpoint) {
+          setActiveModelInfo({
+            endpoint: data.primaryEndpoint,
+            name: data.primaryModelName || data.primaryEndpoint,
+          })
+        }
+      })
+      .catch(() => undefined)
+  }, [])
+
   useEffect(() => {
     void fetch('/api/mobile/tire-damage/feedback', { cache: 'no-store' })
       .then((response) => response.ok ? response.json() as Promise<{ canEdit?: boolean }> : null)
@@ -257,8 +277,6 @@ export default function MobileTireDamagePage() {
       const optimizedFile = await optimizeImage(file)
       const formData = new FormData()
       formData.append('file', optimizedFile)
-      formData.append('conf_threshold', '0.25')
-      formData.append('iou_threshold', '0.45')
       setStage('uploading')
       analyzeTimer = window.setTimeout(() => setStage('analyzing'), 700)
       const response = await fetch('/api/mobile/tire-damage/predict', {
@@ -266,10 +284,13 @@ export default function MobileTireDamagePage() {
         body: formData,
       })
       window.clearTimeout(analyzeTimer)
-      const payload = (await response.json()) as PredictionResponse
+      const payload = (await response.json()) as PredictionResponse & { activeEndpoint?: string }
       if (!response.ok || !payload.success)
         throw new Error(payload.error || 'Deteksi kerusakan gagal.')
       setResult(payload.result)
+      if (payload.activeEndpoint && !activeModelInfo) {
+        setActiveModelInfo({ endpoint: payload.activeEndpoint, name: payload.activeEndpoint })
+      }
       toast.success('Deteksi selesai.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Deteksi kerusakan gagal.')
@@ -350,13 +371,21 @@ export default function MobileTireDamagePage() {
 
   return (
     <div className="space-y-4 pb-24">
-      <div className="px-1 pt-1">
-        <h1 className="text-xl leading-tight font-black text-[#082033]">
-          Pendeteksi Kerusakan Ban
-        </h1>
-        <p className="mt-1 text-xs font-semibold text-slate-500">
-          Unggah satu foto atau video ban untuk analisis AI.
-        </p>
+      <div className="px-1 pt-1 flex items-start justify-between gap-2">
+        <div>
+          <h1 className="text-xl leading-tight font-black text-[#082033]">
+            Pendeteksi Kerusakan Ban
+          </h1>
+          <p className="mt-1 text-xs font-semibold text-slate-500">
+            Unggah satu foto atau video ban untuk analisis AI.
+          </p>
+        </div>
+        {activeModelInfo && (
+          <div className="shrink-0 flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-800 border border-emerald-200 shadow-2xs">
+            <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="truncate max-w-[130px]">{activeModelInfo.name}</span>
+          </div>
+        )}
       </div>
 
       <label className="flex min-h-56 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#bcd6e7] bg-white p-5 text-center shadow-[0_8px_24px_rgba(8,32,51,0.06)]">

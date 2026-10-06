@@ -1,10 +1,17 @@
+import { redirect } from "next/navigation";
 import { getForecastPeriods, getDailyForecastItems } from "@/app/actions/central-service-forecast";
 import { fetchSapRevenue } from "@/lib/cs-sap-db";
+import { getCurrentMenuPermission } from "@/lib/hero-access";
 import { MobileReportClientPage } from "./client-page";
 
 export const revalidate = 0;
 
 export default async function MobileDailyReportPage() {
+  const permission = await getCurrentMenuPermission("cs-forecast");
+  if (!permission.canView) {
+    redirect("/mobile/dashboard");
+  }
+
   let periods: any[] = [];
   let dailyItems: any[] = [];
   let sapRevenue: any = { service: { idr: 0, usd: 0 }, repair: { idr: 0, usd: 0 }, retread: { idr: 0, usd: 0 }, rows: [] };

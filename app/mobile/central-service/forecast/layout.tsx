@@ -1,18 +1,24 @@
 import React from 'react'
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { Metadata } from 'next'
 import { TrendingUp, ListTodo, BarChart3, ChevronLeft } from 'lucide-react'
+import { getCurrentMenuPermission } from '@/lib/hero-access'
 
 export const metadata: Metadata = {
   title: 'CS Forecast | HERO Mobile',
   description: 'Central Service Revenue Forecasting & Daily Report Mobile',
 }
 
-export default function MobileCSForecastLayout({
+export default async function MobileCSForecastLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const permission = await getCurrentMenuPermission('cs-forecast')
+  if (!permission.canView) {
+    redirect('/mobile/dashboard')
+  }
   return (
     <div className="space-y-4 pb-24 font-sans">
       {/* Top Mobile Header (Matching HERO Mobile Theme) */}

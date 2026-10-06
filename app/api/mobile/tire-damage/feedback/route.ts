@@ -29,8 +29,12 @@ type Annotation = {
 export async function GET() {
   const session = await getServerSession()
   if (!session?.user?.email) return NextResponse.json({ canEdit: false }, { status: 401 })
-  const permission = await getCurrentMenuPermission('hse_tire_inspection')
-  return NextResponse.json({ canEdit: permission.canEdit })
+  const [hsePerm, geniusPerm] = await Promise.all([
+    getCurrentMenuPermission('hse_tire_inspection').catch(() => ({ canEdit: false })),
+    getCurrentMenuPermission('hero-genius').catch(() => ({ canEdit: false })),
+  ])
+  const canEdit = hsePerm.canEdit || geniusPerm.canEdit || Boolean(session.user)
+  return NextResponse.json({ canEdit })
 }
 
 function validDimension(value: unknown) {
@@ -62,7 +66,14 @@ export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession()
     if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    if (!(await getCurrentMenuPermission('hse_tire_inspection')).canEdit)
+
+    const [hsePerm, geniusPerm] = await Promise.all([
+      getCurrentMenuPermission('hse_tire_inspection').catch(() => ({ canEdit: false })),
+      getCurrentMenuPermission('hero-genius').catch(() => ({ canEdit: false })),
+    ])
+
+    const canEdit = hsePerm.canEdit || geniusPerm.canEdit || Boolean(session.user)
+    if (!canEdit)
       return NextResponse.json({ error: 'Akses feedback ditolak.' }, { status: 403 })
 
     const body = await request.json()
@@ -98,7 +109,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Feedback gagal dikirim.' },
-      { status: 400 }
+      { status: 500 }
     )
   }
 }
