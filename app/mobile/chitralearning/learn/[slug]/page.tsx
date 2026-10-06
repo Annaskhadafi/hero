@@ -194,6 +194,31 @@ export default async function MobileLessonPlayerPage({
   const isGoogleSlide = activeLessonType === 'google_slide'
   const isDocument = isPdfResource || isOfficeResource || isGoogleSlide
 
+  let googleSlideEmbedUrl = ''
+  let googleSlideExternalUrl = ''
+  if (isGoogleSlide && rawFileUrl) {
+    if (rawFileUrl.includes('<iframe')) {
+      const srcMatch = rawFileUrl.match(/src=["']([^"']+)["']/i)
+      googleSlideEmbedUrl = srcMatch ? srcMatch[1] : ''
+    } else if (/^https?:\/\//i.test(rawFileUrl)) {
+      googleSlideEmbedUrl = rawFileUrl
+    }
+
+    if (googleSlideEmbedUrl) {
+      if (googleSlideEmbedUrl.includes('/pub?')) {
+        googleSlideEmbedUrl = googleSlideEmbedUrl.replace('/pub?', '/pubembed?')
+      } else if (googleSlideEmbedUrl.includes('/edit')) {
+        googleSlideEmbedUrl = googleSlideEmbedUrl.replace(/\/edit.*$/, '/embed?start=false&loop=false&delayms=3000')
+      }
+      googleSlideExternalUrl = googleSlideEmbedUrl
+        .replace(/\/embed.*$/, '/present')
+        .replace(/\/pubembed.*$/, '/present')
+      if (!googleSlideExternalUrl.startsWith('http')) {
+        googleSlideExternalUrl = googleSlideEmbedUrl
+      }
+    }
+  }
+
   // Section grouping for sidebar
   const sectionsMap = new Map<string, Array<{ id: number; title: string; type: string; active: boolean; index: number; isLocked: boolean }>>()
   lessons.forEach((lesson, idx) => {
@@ -353,12 +378,33 @@ export default async function MobileLessonPlayerPage({
             )}
 
             {/* Google Slide */}
-            {isGoogleSlide && rawFileUrl && rawFileUrl.includes('<iframe') && (
+            {isGoogleSlide && (googleSlideEmbedUrl || (rawFileUrl && rawFileUrl.includes('<iframe'))) && (
               <div>
-                <div
-                  className="w-full bg-slate-900 overflow-hidden [&>iframe]:w-full [&>iframe]:h-[70vh] [&>iframe]:border-none"
-                  dangerouslySetInnerHTML={{ __html: rawFileUrl }}
-                />
+                <div className="w-full bg-slate-900 overflow-hidden [&>iframe]:w-full [&>iframe]:h-[70vh] [&>iframe]:border-none">
+                  {googleSlideEmbedUrl ? (
+                    <iframe
+                      src={googleSlideEmbedUrl}
+                      allowFullScreen
+                      className="w-full h-[70vh] border-none"
+                      title={activeLesson.title}
+                    />
+                  ) : (
+                    <div dangerouslySetInnerHTML={{ __html: rawFileUrl }} />
+                  )}
+                </div>
+                {googleSlideExternalUrl && (
+                  <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-xs">
+                    <span className="text-slate-500 font-medium">Google Slides</span>
+                    <a
+                      href={googleSlideExternalUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-blue-600 font-bold underline"
+                    >
+                      Buka di Tab Baru ↗
+                    </a>
+                  </div>
+                )}
                 <div className="p-4">
                   <h2 className="text-base font-black text-[#082033]">{activeLesson.title}</h2>
                   {activeLesson.description && (
