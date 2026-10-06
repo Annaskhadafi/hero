@@ -104,7 +104,7 @@ async function getAuthHeader(baseUrlOverride?: string): Promise<string> {
   }
 
   const { email, password } = getCredentials()
-  const baseUrl = getBaseUrl()
+  const baseUrl = baseUrlOverride || getBaseUrl()
 
   const res = await fetch(`${baseUrl}/api/v1/auth/login`, {
     method: 'POST',
@@ -862,8 +862,10 @@ export async function rarayPredictTireDamage(params: {
   mimeType: string
   confidenceThreshold?: number
   iouThreshold?: number
+  baseUrlOverride?: string
+  modelEndpoint?: string
 }): Promise<{ status: 'success' | 'error'; result?: unknown; message?: string }> {
-  const { fileBuffer, fileName, mimeType, confidenceThreshold = 0.25, iouThreshold = 0.45 } = params
+  const { fileBuffer, fileName, mimeType, confidenceThreshold = 0.25, iouThreshold = 0.45, baseUrlOverride, modelEndpoint = 'tire-demage-onnx' } = params
 
   const predictWithEndpoint = async (endpoint: string, timeoutMs: number) => {
     const formData = new FormData()
