@@ -3496,13 +3496,19 @@ export async function getApprovalCenterData(
         currentStepLabel: string
         workflowLabel: string
         lastDecision: string
-        notes: ApprovalComment[]
         teamRole?: 'Pemohon' | 'Anggota Tim'
         teamPartner?: string | null
         totalPoints?: number | null
         totalItems?: number | null
         employeeName?: string | null
         employeeId?: number | null
+        repairFormWo?: any
+        repairFormWoId?: number | null
+        apdRequestId?: number | null
+        apdSummaryId?: number | null
+        fiveRReportId?: number | null
+        signatureUrl?: string | null
+        photoUrl?: string | null
         steps: Array<{
           approvalId: number | string
           approverName: string
@@ -3570,6 +3576,13 @@ export async function getApprovalCenterData(
         'Workflow Activity',
       lastDecision: formatLastDecision(notes),
       notes,
+      repairFormWo: seed.repairFormWo ?? null,
+      repairFormWoId: (seed as any).repairFormWoId ?? seed.repairFormWo?.id ?? null,
+      apdRequestId: (seed as any).apdRequestId ?? null,
+      apdSummaryId: (seed as any).apdSummaryId ?? null,
+      fiveRReportId: (seed as any).fiveRReportId ?? seed.fiveRReport?.id ?? null,
+      signatureUrl: seed.signatureUrl ?? null,
+      photoUrl: seed.photoUrl ?? null,
       steps: sortedRows.map((row) => ({
         approvalId: row.approvalId,
         approverName: row.approverName,

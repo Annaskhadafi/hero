@@ -107,7 +107,9 @@ import {
 } from '@/app/actions/contract-review'
 import { uploadFile } from '@/app/actions/upload'
 import { FormWoApprovalDialog } from '@/components/admin/form-wo-approval-dialog'
-import { FormWoDocumentView } from '@/components/form-wo-document-preview-dialog'
+import { FormWoDocumentPreviewDialog, FormWoDocumentView } from '@/components/form-wo-document-preview-dialog'
+import { ApdRequestDetailModal } from '@/components/summary/apd-request-detail-modal'
+import { getFormWoDetailAction } from '@/app/actions/form-wo'
 import { RfrApprovalDialog } from '@/components/admin/rfr-approval-dialog'
 import { AdminMetricGrid } from '@/components/admin-metric-grid'
 import { AdminPageShell } from '@/components/admin-page-shell'
@@ -4738,6 +4740,22 @@ function getHistoryItemLinks(item: any) {
     viewUrl = rawId ? `/mobile/rfr/${rawId}` : `/mobile/rfr`
     downloadUrl = rawId ? `/api/hc/rfr/${rawId}/pdf` : null
   } else if (
+    actId.startsWith('form-wo-') ||
+    actId.startsWith('wo-') ||
+    actType.includes('work order') ||
+    actType.includes('form wo') ||
+    actType.includes('wo') ||
+    title.includes('work order') ||
+    title.includes('form wo') ||
+    title.includes('wo service') ||
+    title.includes('wo repair') ||
+    title.includes('wo retread') ||
+    title.includes('frmwo')
+  ) {
+    rawId = actId.replace('form-wo-', '').replace('wo-', '').replace(/[^0-9]/g, '')
+    viewUrl = `/dashboard/repair-retread/form-wo`
+    downloadUrl = rawId ? `/api/form-wo/${rawId}/pdf` : null
+  } else if (
     actType.includes('apd') ||
     actType.includes('tools') ||
     actType.includes('material') ||
@@ -4746,7 +4764,13 @@ function getHistoryItemLinks(item: any) {
     title.includes('material')
   ) {
     rawId = actId.replace(/[^0-9]/g, '')
-    viewUrl = rawId ? `/mobile/apd/${rawId}` : `/mobile/apd`
+    const isSummary = actType.includes('summary') || title.includes('summary')
+    viewUrl = isSummary ? `/print/summary/${rawId}` : `/print/apd/${rawId}`
+    downloadUrl = isSummary
+      ? `/print/summary/${rawId}`
+      : actId.startsWith('rfr-') || actType.includes('rfr')
+      ? `/api/hc/rfr/${rawId}/pdf`
+      : `/print/apd/${rawId}`
   } else if (actType.includes('5r') || title.includes('5r')) {
     rawId = actId.replace(/[^0-9]/g, '')
     viewUrl = `/mobile/quality/5r`
@@ -4771,6 +4795,14 @@ export function HistoryTab({
   const [historyDocType, setHistoryDocType] = useState<'spl' | 'daily' | null>(null)
   const [ptwModalPermitId, setPtwModalPermitId] = useState<number | string | null>(null)
   const [isPtwModalOpen, setIsPtwModalOpen] = useState(false)
+
+  // APD & WO Modal States
+  const [selectedWoDoc, setSelectedWoDoc] = useState<any | null>(null)
+  const [isWoModalOpen, setIsWoModalOpen] = useState(false)
+  const [isApdModalOpen, setIsApdModalOpen] = useState(false)
+  const [apdModalRequestId, setApdModalRequestId] = useState<number | null>(null)
+  const [isApdSummary, setIsApdSummary] = useState(false)
+
   const [previewZoom, setPreviewZoom] = useState(1.0)
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
   const [mobileSearchQuery, setMobileSearchQuery] = useState('')
@@ -4840,11 +4872,90 @@ export function HistoryTab({
       title.includes('ptw') ||
       title.includes('izin kerja')
 
+    const isApd =
+      actId.startsWith('rfr-') ||
+      actId.startsWith('apd-') ||
+      actType.includes('apd') ||
+      actType.includes('rfr') ||
+      actType.includes('tools') ||
+      actType.includes('material') ||
+      title.includes('apd') ||
+      title.includes('rfr') ||
+      title.includes('tools') ||
+      title.includes('material')
+
+    const isWo =
+      actId.startsWith('form-wo-') ||
+      actId.startsWith('wo-') ||
+      actType.includes('work order') ||
+      actType.includes('form wo') ||
+      actType.includes('wo') ||
+      title.includes('work order') ||
+      title.includes('form wo') ||
+      title.includes('wo service') ||
+      title.includes('wo repair') ||
+      title.includes('wo retread') ||
+      title.includes('frmwo') ||
+      Boolean((item as any).repairFormWoId) ||
+      Boolean((item as any).repairFormWo)
+
     if (isPtw) {
       const rawId = actId.replace('ptw-', '').replace(/[^0-9]/g, '')
       if (!rawId) return
       setPtwModalPermitId(rawId)
       setIsPtwModalOpen(true)
+      return
+    }
+
+    if (isApd) {
+      let rawId = (item as any).apdRequestId || (item as any).apdSummaryId || actId.replace('rfr-', '').replace('apd-', '').replace(/[^0-9]/g, '')
+      if (!rawId) rawId = actId.replace(/[^0-9]/g, '')
+      if (!rawId) return
+      const isSummary = actType.includes('summary') || title.includes('summary') || Boolean((item as any).apdSummaryId)
+      setApdModalRequestId(Number(rawId))
+      setIsApdSummary(isSummary)
+      setIsApdModalOpen(true)
+      return
+    }
+
+    if (isWo) {
+      let rawId = (item as any).repairFormWoId || (item as any).repairFormWo?.id
+      if (!rawId) {
+        const cleanedId = actId.replace('form-wo-', '').replace('wo-', '').replace(/[^0-9]/g, '')
+        if (cleanedId) rawId = Number(cleanedId)
+      }
+      const codeMatch = (item.unitNumber || item.title || '').match(/FRMWO\/[A-Z0-9\/_-]+/i) ||
+                        (item.unitNumber || item.title || '').match(/WO\/[A-Z0-9\/_-]+/i)
+      const lookupCode = codeMatch ? codeMatch[0] : (item.unitNumber || item.title || undefined)
+
+      if (item.repairFormWo || (item as any).rawFormWo) {
+        const rawWo = item.repairFormWo || (item as any).rawFormWo
+        setSelectedWoDoc({
+          ...rawWo,
+          noPengajuan: rawWo.noPengajuan || lookupCode || item.title || item.unitNumber,
+          tanggalPengajuan: rawWo.tanggalPengajuan || item.submittedAt,
+          pemohon: rawWo.pemohon || (item as any).employeeName || (item as any).requesterName || '-',
+        })
+        setIsWoModalOpen(true)
+        return
+      }
+
+      toast.loading('Memuat dokumen Work Order...', { id: 'wo-loading' })
+      setSelectedWoDoc(null)
+      try {
+        const numId = rawId ? Number(rawId) : Number(actId.replace(/[^0-9]/g, '')) || 0
+        const res = await getFormWoDetailAction(numId, lookupCode)
+        toast.dismiss('wo-loading')
+        if (res.success && res.data) {
+          setSelectedWoDoc(res.data)
+          setIsWoModalOpen(true)
+        } else {
+          toast.error(res.error || 'Data dokumen Work Order tidak ditemukan.')
+        }
+      } catch (err: any) {
+        toast.dismiss('wo-loading')
+        toast.error(err?.message || 'Gagal memuat dokumen Work Order.')
+      }
       return
     }
 
@@ -4940,6 +5051,33 @@ export function HistoryTab({
       title.includes('ptw') ||
       title.includes('izin kerja')
 
+    const isApd =
+      actId.startsWith('rfr-') ||
+      actId.startsWith('apd-') ||
+      actType.includes('apd') ||
+      actType.includes('rfr') ||
+      actType.includes('tools') ||
+      actType.includes('material') ||
+      title.includes('apd') ||
+      title.includes('rfr') ||
+      title.includes('tools') ||
+      title.includes('material')
+
+    const isWo =
+      actId.startsWith('form-wo-') ||
+      actId.startsWith('wo-') ||
+      actType.includes('work order') ||
+      actType.includes('form wo') ||
+      actType.includes('wo') ||
+      title.includes('work order') ||
+      title.includes('form wo') ||
+      title.includes('wo service') ||
+      title.includes('wo repair') ||
+      title.includes('wo retread') ||
+      title.includes('frmwo') ||
+      Boolean((item as any).repairFormWoId) ||
+      Boolean((item as any).repairFormWo)
+
     if (isPtw) {
       const rawId = actId.replace('ptw-', '').replace(/[^0-9]/g, '')
       if (!rawId) return
@@ -4954,6 +5092,50 @@ export function HistoryTab({
         window.open(`/api/activity-sessions/${rawId}/pdf`, '_blank')
         return
       }
+    }
+
+    if (isApd) {
+      let rawId = (item as any).apdRequestId || (item as any).apdSummaryId || actId.replace('rfr-', '').replace('apd-', '').replace(/[^0-9]/g, '')
+      if (!rawId) rawId = actId.replace(/[^0-9]/g, '')
+      if (rawId) {
+        const isSummary = actType.includes('summary') || title.includes('summary') || Boolean((item as any).apdSummaryId)
+        const pdfUrl = isSummary
+          ? `/print/summary/${rawId}`
+          : actId.startsWith('rfr-') || actType.includes('rfr')
+          ? `/api/hc/rfr/${rawId}/pdf`
+          : `/print/apd/${rawId}`
+        window.open(pdfUrl, '_blank')
+        return
+      }
+    }
+
+    if (isWo) {
+      let rawId = (item as any).repairFormWoId || (item as any).repairFormWo?.id
+      if (!rawId) {
+        const cleanedId = actId.replace('form-wo-', '').replace('wo-', '').replace(/[^0-9]/g, '')
+        if (cleanedId) rawId = Number(cleanedId)
+      }
+      const codeMatch = (item.unitNumber || item.title || '').match(/FRMWO\/[A-Z0-9\/_-]+/i) ||
+                        (item.unitNumber || item.title || '').match(/WO\/[A-Z0-9\/_-]+/i)
+      const lookupCode = codeMatch ? codeMatch[0] : (item.unitNumber || item.title || undefined)
+      const numId = rawId ? Number(rawId) : Number(actId.replace(/[^0-9]/g, '')) || 0
+
+      toast.loading('Menyiapkan file PDF Work Order...', { id: 'wo-pdf-dl' })
+      try {
+        const res = await getFormWoDetailAction(numId, lookupCode)
+        toast.dismiss('wo-pdf-dl')
+        if (res.success && res.data?.id) {
+          window.open(`/api/form-wo/${res.data.id}/pdf`, '_blank')
+        } else {
+          toast.error(res.error || 'Dokumen PDF Work Order tidak ditemukan.')
+        }
+      } catch {
+        toast.dismiss('wo-pdf-dl')
+        if (numId > 0) {
+          window.open(`/api/form-wo/${numId}/pdf`, '_blank')
+        }
+      }
+      return
     }
 
     if (isSpl) {
@@ -6010,6 +6192,19 @@ export function HistoryTab({
           onClose={() => setIsPtwModalOpen(false)}
           permitId={ptwModalPermitId}
         />
+
+        <FormWoDocumentPreviewDialog
+          open={isWoModalOpen}
+          onOpenChange={setIsWoModalOpen}
+          doc={selectedWoDoc}
+        />
+
+        <ApdRequestDetailModal
+          isOpen={isApdModalOpen}
+          onClose={() => setIsApdModalOpen(false)}
+          requestId={apdModalRequestId}
+          isSummary={isApdSummary}
+        />
       </div>
     )
   }
@@ -6199,6 +6394,19 @@ export function HistoryTab({
         isOpen={isPtwModalOpen}
         onClose={() => setIsPtwModalOpen(false)}
         permitId={ptwModalPermitId}
+      />
+
+      <FormWoDocumentPreviewDialog
+        open={isWoModalOpen}
+        onOpenChange={setIsWoModalOpen}
+        doc={selectedWoDoc}
+      />
+
+      <ApdRequestDetailModal
+        isOpen={isApdModalOpen}
+        onClose={() => setIsApdModalOpen(false)}
+        requestId={apdModalRequestId}
+        isSummary={isApdSummary}
       />
     </>
   )

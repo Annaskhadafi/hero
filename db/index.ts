@@ -70,11 +70,11 @@ function getPool(): Pool {
   const pool = new Pool({
     connectionString,
     ssl: getSslConfig(connectionString),
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 20000,
+    idleTimeoutMillis: 10000,
+    connectionTimeoutMillis: 5000,
     max: maxConnections,
     keepAlive: true,
-    keepAliveInitialDelayMillis: 5000,
+    keepAliveInitialDelayMillis: 2000,
   });
 
   pool.on("error", (error) => {

@@ -15,12 +15,15 @@ interface ApdRequestDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   requestId: number | null;
+  isSummary?: boolean;
 }
 
-export function ApdRequestDetailModal({ isOpen, onClose, requestId }: ApdRequestDetailModalProps) {
+export function ApdRequestDetailModal({ isOpen, onClose, requestId, isSummary = false }: ApdRequestDetailModalProps) {
   const [iframeLoading, setIframeLoading] = useState(true);
 
   if (!isOpen || !requestId) return null;
+
+  const printUrl = isSummary ? `/print/summary/${requestId}` : `/print/apd/${requestId}`;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -48,7 +51,7 @@ export function ApdRequestDetailModal({ isOpen, onClose, requestId }: ApdRequest
               asChild
               className="h-8 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 gap-1.5 cursor-pointer"
             >
-              <a href={`/print/apd/${requestId}`} target="_blank" rel="noopener noreferrer">
+              <a href={printUrl} target="_blank" rel="noopener noreferrer">
                 <Printer className="size-3.5 text-emerald-400" />
                 <span>Cetak / Buka PDF</span>
                 <ExternalLink className="size-3 text-slate-400" />
@@ -72,8 +75,8 @@ export function ApdRequestDetailModal({ isOpen, onClose, requestId }: ApdRequest
             </div>
           )}
           <iframe
-            key={requestId}
-            src={`/print/apd/${requestId}`}
+            key={`${requestId}-${isSummary}`}
+            src={printUrl}
             className="w-full h-full rounded-xl border border-slate-800 shadow-2xl bg-white"
             onLoad={() => setIframeLoading(false)}
           />

@@ -1,6 +1,6 @@
 'use server'
 
-import { and, asc, desc, eq, gt, lt, inArray, ne, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, lt, inArray, ne, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
@@ -1288,3 +1288,129 @@ export async function updateWoCpNumber(id: number, noWoCp: string) {
     return { success: false, error: error instanceof Error ? error.message : 'Terjadi kesalahan' }
   }
 }
+
+export async function getFormWoDetailAction(id: number, lookupCode?: string) {
+  try {
+    await ensureFormWoTable()
+    let row =
+      id > 0
+        ? await db
+            .select()
+            .from(repairFormWo)
+            .where(eq(repairFormWo.id, id))
+            .limit(1)
+            .then((r) => r[0])
+        : undefined
+
+    if (!row && lookupCode) {
+      const cleanCode = lookupCode.trim()
+      row = await db
+        .select()
+        .from(repairFormWo)
+        .where(
+          or(
+            eq(repairFormWo.noPengajuan, cleanCode),
+            sql`${repairFormWo.noPengajuan} ILIKE ${'%' + cleanCode + '%'}`
+          )
+        )
+        .limit(1)
+        .then((r) => r[0])
+    }
+
+    if (!row && id > 0) {
+      const appRow = await db
+        .select({ repairFormWoId: approvals.repairFormWoId })
+        .from(approvals)
+        .where(or(eq(approvals.activityId, id), eq(approvals.id, id)))
+        .limit(1)
+        .then((r) => r[0])
+
+      if (appRow?.repairFormWoId) {
+        row = await db
+          .select()
+          .from(repairFormWo)
+          .where(eq(repairFormWo.id, appRow.repairFormWoId))
+          .limit(1)
+          .then((r) => r[0])
+      }
+    }
+
+    if (!row) {
+      return { success: false, error: 'Form WO tidak ditemukan' }
+    }
+
+    const realId = row.id
+
+    const appRows = await db
+      .select({
+        id: approvals.id,
+        level: approvals.level,
+        approverName: approvals.approverName,
+        approverEmployeeId: approvals.approverEmployeeId,
+        status: approvals.status,
+        reviewedAt: approvals.reviewedAt,
+        signatureUrl: approvals.signatureUrl,
+        decisionNote: approvals.decisionNote,
+        routeSnapshot: approvals.routeSnapshot,
+      })
+      .from(approvals)
+      .where(eq(approvals.repairFormWoId, realId))
+      .orderBy(asc(approvals.level))
+
+    const steps = appRows.map((a) => {
+      let jobTitle = 'Approver'
+      if (a.routeSnapshot) {
+        try {
+          const p = JSON.parse(a.routeSnapshot)
+          jobTitle = p.label || p.nodeLabel || jobTitle
+        } catch {}
+      }
+      return {
+        id: a.id,
+        level: a.level,
+        approverName: a.approverName,
+        approverEmployeeId: a.approverEmployeeId,
+        jobTitle,
+        status: a.status,
+        decision: a.status,
+        reviewedAt: a.reviewedAt,
+        signatureUrl: a.signatureUrl,
+        decisionNote: a.decisionNote,
+      }
+    })
+
+    const doc = {
+      ...row,
+      noPengajuan: row.noPengajuan || `WO-${row.id}`,
+      jenisPengajuan: row.jenisPengajuan || 'repair',
+      hari: row.hari || '-',
+      tanggal: row.tanggal || null,
+      tanggalPengajuan: row.tanggalPengajuan || row.createdAt,
+      pemohon: row.pemohon || '-',
+      pemohonJobTitle: (row as any).pemohonJobTitle || 'Pemohon',
+      customer: row.customer || '-',
+      site: row.site || '-',
+      deskripsiPekerjaan: row.deskripsiPekerjaan || '-',
+      catatanPengajuan: row.catatanPengajuan || null,
+      totalAmount: row.totalAmount || '0',
+      items: row.items || null,
+      noPo: row.noPo || null,
+      tanggalPo: row.tanggalPo || null,
+      tireSn: row.tireSn || null,
+      storeLoc: row.storeLoc || null,
+      brand: row.brand || null,
+      pattern: row.pattern || null,
+      size: row.size || null,
+      noWoCp: (row as any).noWoCp || row.noWoTerbit || null,
+      noWoTerbit: row.noWoTerbit || null,
+      statusPengajuan: row.statusPengajuan || 'pending',
+      steps,
+    }
+
+    return { success: true, data: doc }
+  } catch (error) {
+    console.error('Gagal mengambil detail Form WO:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Terjadi kesalahan' }
+  }
+}
+
