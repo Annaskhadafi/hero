@@ -349,9 +349,15 @@ export default async function OvertimeRequestsPage() {
     itemsMap.set(item.overtimeCommandLetterId, list)
   }
 
-  const rows: OvertimeListingRow[] = splRecords.map((r) => {
+  const rows: OvertimeListingRow[] = []
+  for (const r of splRecords) {
     const parts = participantsMap.get(r.id) || []
-    return {
+    const otherParticipantNames = parts
+      .filter((p) => p.employeeName && p.employeeName.toLowerCase() !== (r.requesterName || '').toLowerCase().trim())
+      .map((p) => p.employeeName)
+
+    // 1. Requester / Koordinator Row
+    rows.push({
       id: Number(r.id),
       splNumber: r.splNumber || `SPL-${r.id}`,
       title: r.title || 'Surat Perintah Lembur',
@@ -363,12 +369,46 @@ export default async function OvertimeRequestsPage() {
       requesterName: r.requesterName || 'Pemohon',
       requesterDepartment: r.requesterDepartment || 'Central Services',
       requestNotes: r.requestNotes || null,
-      workerCount: parts.length,
+      workerCount: parts.length > 0 ? parts.length : 1,
+      teamRole: otherParticipantNames.length > 0 ? 'Pemohon' : undefined,
+      teamMembersSummary: otherParticipantNames.length > 0 ? otherParticipantNames.join(', ') : undefined,
       participants: parts,
       lineItems: itemsMap.get(r.id) || [],
       approvals: approvalsMap.get(r.id) || [],
+    })
+
+    // 2. Participant Team Member Rows (e.g. Sanudin, mechanics in the team)
+    for (const p of parts) {
+      if (!p.employeeName || p.employeeName.toLowerCase().trim() === (r.requesterName || '').toLowerCase().trim()) {
+        continue
+      }
+
+      const partnerNames = [
+        r.requesterName,
+        ...parts.filter((other) => other.employeeName !== p.employeeName && other.employeeName !== r.requesterName).map((o) => o.employeeName)
+      ].filter(Boolean).join(', ')
+
+      rows.push({
+        id: Number(r.id),
+        splNumber: r.splNumber || `SPL-${r.id}`,
+        title: r.title || 'Surat Perintah Lembur',
+        workDate: r.workDate ? new Date(r.workDate).toISOString() : new Date().toISOString(),
+        plannedStartAt: r.plannedStartAt ? new Date(r.plannedStartAt).toISOString() : null,
+        plannedEndAt: r.plannedEndAt ? new Date(r.plannedEndAt).toISOString() : null,
+        status: r.status || 'draft',
+        requestedByEmployeeId: p.employeeId ? Number(p.employeeId) : null,
+        requesterName: p.employeeName,
+        requesterDepartment: r.requesterDepartment || 'Central Services',
+        requestNotes: r.requestNotes || null,
+        workerCount: parts.length > 0 ? parts.length : 1,
+        teamRole: 'Anggota Tim',
+        teamMembersSummary: partnerNames || undefined,
+        participants: parts,
+        lineItems: itemsMap.get(r.id) || [],
+        approvals: approvalsMap.get(r.id) || [],
+      })
     }
-  }) as any
+  }
 
   const sanitizedEmployees = (enrichedEmployees || []).map((e) => ({
     id: Number(e.id),

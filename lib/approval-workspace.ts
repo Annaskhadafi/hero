@@ -7,6 +7,7 @@ import {
   dailyActivitySessionItems,
   dailyActivitySessions,
   dailyActivityApprovals,
+  dailyActivitySessionTeamMembers,
   approvalAttachments,
   approvalMatrices,
   approvalMatrixSteps,
@@ -3496,6 +3497,12 @@ export async function getApprovalCenterData(
         workflowLabel: string
         lastDecision: string
         notes: ApprovalComment[]
+        teamRole?: 'Pemohon' | 'Anggota Tim'
+        teamPartner?: string | null
+        totalPoints?: number | null
+        totalItems?: number | null
+        employeeName?: string | null
+        employeeId?: number | null
         steps: Array<{
           approvalId: number | string
           approverName: string
@@ -3688,8 +3695,8 @@ export async function getApprovalCenterData(
         ),
       ])
 
-  const [allDaApprovals, allOtApprovals, allPtwApprovals, allSopWinApprovals, allOtParticipants] = skipHistory
-    ? [[], [], [], [], []]
+  const [allDaApprovals, allOtApprovals, allPtwApprovals, allSopWinApprovals, allOtParticipants, allDaTeamMembers, allDaSessionItems] = skipHistory
+    ? [[], [], [], [], [], [], []]
     : await Promise.all([
         safeQuery(
           () =>
@@ -3773,10 +3780,39 @@ export async function getApprovalCenterData(
               .select({
                 splId: overtimeCommandLetterParticipants.overtimeCommandLetterId,
                 employeeId: overtimeCommandLetterParticipants.employeeId,
+                employeeName: employees.name,
+                employeeEmail: employees.email,
               })
-              .from(overtimeCommandLetterParticipants),
+              .from(overtimeCommandLetterParticipants)
+              .leftJoin(employees, eq(overtimeCommandLetterParticipants.employeeId, employees.id)),
           [],
           "allOtParticipants"
+        ),
+        safeQuery(
+          () =>
+            db
+              .select({
+                sessionId: dailyActivitySessionTeamMembers.sessionId,
+                employeeId: dailyActivitySessionTeamMembers.employeeId,
+                employeeName: employees.name,
+                employeeEmail: employees.email,
+              })
+              .from(dailyActivitySessionTeamMembers)
+              .leftJoin(employees, eq(dailyActivitySessionTeamMembers.employeeId, employees.id)),
+          [],
+          "allDaTeamMembers"
+        ),
+        safeQuery(
+          () =>
+            db
+              .select({
+                sessionId: dailyActivitySessionItems.sessionId,
+                actualPoints: dailyActivitySessionItems.actualPoints,
+                isChecked: dailyActivitySessionItems.isChecked,
+              })
+              .from(dailyActivitySessionItems),
+          [],
+          "allDaSessionItems"
         ),
       ])
 
@@ -3798,6 +3834,34 @@ export async function getApprovalCenterData(
     }
   }
 
+  const daTeamMembersBySessionId = new Map<number, typeof allDaTeamMembers>()
+  const daSessionIdsWhereUserTeamMember = new Set<number>()
+  for (const tm of allDaTeamMembers) {
+    const list = daTeamMembersBySessionId.get(tm.sessionId) ?? []
+    list.push(tm)
+    daTeamMembersBySessionId.set(tm.sessionId, list)
+
+    const isCurrentUser =
+      (currentEmployee && tm.employeeId === currentEmployee.id) ||
+      (normalizedEmail && normalizeMatchValue(tm.employeeEmail) === normalizedEmail) ||
+      (employeeEmailNorm && normalizeMatchValue(tm.employeeEmail) === employeeEmailNorm) ||
+      (normalizedEmployeeName && normalizeMatchValue(tm.employeeName) === normalizedEmployeeName)
+
+    if (isCurrentUser) {
+      daSessionIdsWhereUserTeamMember.add(tm.sessionId)
+    }
+  }
+
+  const daPointsBySessionId = new Map<number, { totalPoints: number; totalItems: number }>()
+  for (const it of allDaSessionItems) {
+    if (it.isChecked !== false) {
+      const curr = daPointsBySessionId.get(it.sessionId) ?? { totalPoints: 0, totalItems: 0 }
+      curr.totalPoints += Number(it.actualPoints) || 0
+      curr.totalItems += 1
+      daPointsBySessionId.set(it.sessionId, curr)
+    }
+  }
+
   const otApprovalsBySplId = new Map<number, typeof allOtApprovals>()
   const otSplIdsWhereUserApprover = new Set<number>()
   for (const app of allOtApprovals) {
@@ -3816,10 +3880,21 @@ export async function getApprovalCenterData(
     }
   }
 
+  const otParticipantsBySplId = new Map<number, typeof allOtParticipants>()
   const otSplIdsWhereUserParticipant = new Set<number>()
-  if (currentEmployee?.id) {
-    for (const p of allOtParticipants) {
-      if (p.employeeId === currentEmployee.id && p.splId) {
+  for (const p of allOtParticipants) {
+    if (p.splId) {
+      const list = otParticipantsBySplId.get(p.splId) ?? []
+      list.push(p)
+      otParticipantsBySplId.set(p.splId, list)
+
+      const isCurrentParticipant =
+        (currentEmployee && p.employeeId === currentEmployee.id) ||
+        (normalizedEmail && normalizeMatchValue(p.employeeEmail) === normalizedEmail) ||
+        (employeeEmailNorm && normalizeMatchValue(p.employeeEmail) === employeeEmailNorm) ||
+        (normalizedEmployeeName && normalizeMatchValue(p.employeeName) === normalizedEmployeeName)
+
+      if (isCurrentParticipant) {
         otSplIdsWhereUserParticipant.add(p.splId)
       }
     }
@@ -3863,13 +3938,15 @@ export async function getApprovalCenterData(
 
   // ─── Daily Activity History ──────────────────────────────────────────────────────
   for (const s of allDaSessions) {
-    const isUserInvolved =
-      isAdmin ||
+    const isUserApprover = daSessionIdsWhereUserApprover.has(s.id)
+    const isUserTeamMember = daSessionIdsWhereUserTeamMember.has(s.id)
+    const isUserCreator =
       s.employeeId === currentEmployee?.id ||
       normalizeMatchValue(s.employeeEmail) === normalizedEmail ||
       (employeeEmailNorm && normalizeMatchValue(s.employeeEmail) === employeeEmailNorm) ||
-      (normalizedEmployeeName && normalizeMatchValue(s.employeeName) === normalizedEmployeeName) ||
-      daSessionIdsWhereUserApprover.has(s.id)
+      (normalizedEmployeeName && normalizeMatchValue(s.employeeName) === normalizedEmployeeName)
+
+    const isUserInvolved = isAdmin || isUserCreator || isUserTeamMember || isUserApprover
 
     if (!isUserInvolved) continue
 
@@ -3885,24 +3962,6 @@ export async function getApprovalCenterData(
         ? 'needs_revision'
         : 'in_review'
 
-    const group = historyGroupsMap.get(groupKey) ?? {
-      id: groupKey,
-      workDate,
-      workDateLabel: formatDateLabel(workDate),
-      activityCount: 0,
-      approvedCount: 0,
-      rejectedCount: 0,
-      revisionCount: 0,
-      pendingCount: 0,
-      items: [],
-    }
-
-    group.activityCount += 1
-    if (mappedStatus === 'approved') group.approvedCount += 1
-    else if (mappedStatus === 'rejected') group.rejectedCount += 1
-    else if (mappedStatus === 'needs_revision') group.revisionCount += 1
-    else group.pendingCount += 1
-
     const sessionSteps = (daApprovalsBySessionId.get(s.id) || []).slice().sort((a, b) => a.stepOrder - b.stepOrder)
     const latestDecisionStep = sessionSteps.filter((st) => ['approved', 'reverted', 'rejected'].includes((st.status || '').toLowerCase())).pop()
     const lastDecision = latestDecisionStep
@@ -3911,45 +3970,141 @@ export async function getApprovalCenterData(
       ? 'Disetujui secara lengkap'
       : 'Dalam proses review'
 
-    group.items.push({
-      activityId: `daily-${s.id}`,
-      title: `Daily Activity - ${s.employeeName || 'Teknisi'} (${s.sessionCode})`,
-      activityType: 'Daily Activity',
-      unitNumber: s.sessionCode,
-      siteName: s.siteName || 'Site Operasional',
-      priority: 'normal',
-      status: mappedStatus,
-      statusLabel: s.status || 'Submitted',
-      submittedAt: s.updatedAt || s.createdAt,
-      timeRange: s.workDate ? new Date(s.workDate).toLocaleDateString('id-ID') : '-',
-      shiftLabel: s.shiftCode ? `Shift ${s.shiftCode}` : 'Daily',
-      pendingWith: mappedStatus === 'approved' ? 'Completed' : 'Approver',
-      currentStepLabel: mappedStatus === 'approved' ? 'Approved' : 'In Review',
-      workflowLabel: 'Daily Activity Sequential Workflow',
-      lastDecision,
-      notes: [],
-      steps: sessionSteps.map((st) => ({
-        approvalId: st.id,
-        approverName: st.approverName || 'Approver',
-        level: st.stepOrder,
-        label: st.stepLabel,
-        status: st.status,
-        reviewedAt: st.signedAt,
-      })),
-    })
-    historyGroupsMap.set(groupKey, group)
+    const pointsInfo = daPointsBySessionId.get(s.id) ?? { totalPoints: 0, totalItems: 0 }
+    const sessionTeamMembers = daTeamMembersBySessionId.get(s.id) || []
+
+    let otherTeamMemberNames = sessionTeamMembers
+      .map((t) => t.employeeName)
+      .filter((n): n is string => Boolean(n) && n.toLowerCase() !== (s.employeeName || '').toLowerCase().trim())
+
+    if (otherTeamMemberNames.length === 0) {
+      const teamMatch = (s as any).summaryRemark?.match(/\[Team:\s*([^\]]+)\]/i)
+      if (teamMatch && teamMatch[1]) {
+        otherTeamMemberNames = teamMatch[1]
+          .split(',')
+          .map((n: string) => n.trim())
+          .filter((n: string) => n && n.toLowerCase() !== (s.employeeName || '').toLowerCase().trim())
+      }
+    }
+
+    const teamMembersSummary = otherTeamMemberNames.join(', ')
+
+    type TargetPerson = {
+      employeeName: string
+      employeeId?: number | null
+      teamRole: 'Pemohon' | 'Anggota Tim'
+      teamPartner?: string | null
+    }
+
+    const targets: TargetPerson[] = []
+
+    if (isAdmin || isUserApprover) {
+      targets.push({
+        employeeName: s.employeeName || 'Teknisi',
+        employeeId: s.employeeId,
+        teamRole: 'Pemohon',
+        teamPartner: teamMembersSummary || null,
+      })
+
+      for (const tm of sessionTeamMembers) {
+        if (tm.employeeName && tm.employeeName.toLowerCase().trim() !== (s.employeeName || '').toLowerCase().trim()) {
+          targets.push({
+            employeeName: tm.employeeName,
+            employeeId: tm.employeeId,
+            teamRole: 'Anggota Tim',
+            teamPartner: s.employeeName || 'Pemohon Utama',
+          })
+        }
+      }
+    } else if (isUserCreator) {
+      targets.push({
+        employeeName: s.employeeName || 'Teknisi',
+        employeeId: s.employeeId,
+        teamRole: 'Pemohon',
+        teamPartner: teamMembersSummary || null,
+      })
+    } else if (isUserTeamMember) {
+      const myTm = sessionTeamMembers.find(
+        (tm) =>
+          tm.employeeId === currentEmployee?.id ||
+          (normalizedEmail && normalizeMatchValue(tm.employeeEmail) === normalizedEmail) ||
+          (employeeEmailNorm && normalizeMatchValue(tm.employeeEmail) === employeeEmailNorm) ||
+          (normalizedEmployeeName && normalizeMatchValue(tm.employeeName) === normalizedEmployeeName)
+      )
+      targets.push({
+        employeeName: myTm?.employeeName || currentEmployee?.name || 'Anggota Tim',
+        employeeId: myTm?.employeeId || currentEmployee?.id,
+        teamRole: 'Anggota Tim',
+        teamPartner: s.employeeName || 'Pemohon Utama',
+      })
+    }
+
+    for (const target of targets) {
+      const group = historyGroupsMap.get(groupKey) ?? {
+        id: groupKey,
+        workDate,
+        workDateLabel: formatDateLabel(workDate),
+        activityCount: 0,
+        approvedCount: 0,
+        rejectedCount: 0,
+        revisionCount: 0,
+        pendingCount: 0,
+        items: [],
+      }
+
+      group.activityCount += 1
+      if (mappedStatus === 'approved') group.approvedCount += 1
+      else if (mappedStatus === 'rejected') group.rejectedCount += 1
+      else if (mappedStatus === 'needs_revision') group.revisionCount += 1
+      else group.pendingCount += 1
+
+      group.items.push({
+        activityId: `daily-${s.id}-${target.employeeId || target.employeeName}`,
+        title: `Daily Activity - ${target.employeeName} (${s.sessionCode})`,
+        activityType: 'Daily Activity',
+        unitNumber: s.sessionCode,
+        siteName: s.siteName || 'Site Operasional',
+        priority: 'normal',
+        status: mappedStatus,
+        statusLabel: s.status || 'Submitted',
+        submittedAt: s.updatedAt || s.createdAt,
+        timeRange: s.workDate ? new Date(s.workDate).toLocaleDateString('id-ID') : '-',
+        shiftLabel: s.shiftCode ? `Shift ${s.shiftCode}` : 'Daily',
+        pendingWith: mappedStatus === 'approved' ? 'Completed' : 'Approver',
+        currentStepLabel: mappedStatus === 'approved' ? 'Approved' : 'In Review',
+        workflowLabel: 'Daily Activity Sequential Workflow',
+        lastDecision,
+        notes: [],
+        teamRole: target.teamRole,
+        teamPartner: target.teamPartner,
+        totalPoints: pointsInfo.totalPoints,
+        totalItems: pointsInfo.totalItems,
+        employeeName: target.employeeName,
+        employeeId: target.employeeId,
+        steps: sessionSteps.map((st) => ({
+          approvalId: st.id,
+          approverName: st.approverName || 'Approver',
+          level: st.stepOrder,
+          label: st.stepLabel,
+          status: st.status,
+          reviewedAt: st.signedAt,
+        })),
+      })
+      historyGroupsMap.set(groupKey, group)
+    }
   }
 
   // ─── Overtime History ────────────────────────────────────────────────────────────
   for (const ot of allOtRequests) {
-    const isUserInvolved =
-      isAdmin ||
+    const isUserApprover = otSplIdsWhereUserApprover.has(ot.id)
+    const isUserParticipant = otSplIdsWhereUserParticipant.has(ot.id)
+    const isUserCreator =
       ot.requesterId === currentEmployee?.id ||
       normalizeMatchValue(ot.requesterEmail) === normalizedEmail ||
       (employeeEmailNorm && normalizeMatchValue(ot.requesterEmail) === employeeEmailNorm) ||
-      (normalizedEmployeeName && normalizeMatchValue(ot.requesterName) === normalizedEmployeeName) ||
-      otSplIdsWhereUserApprover.has(ot.id) ||
-      otSplIdsWhereUserParticipant.has(ot.id)
+      (normalizedEmployeeName && normalizeMatchValue(ot.requesterName) === normalizedEmployeeName)
+
+    const isUserInvolved = isAdmin || isUserCreator || isUserParticipant || isUserApprover
 
     if (!isUserInvolved) continue
 
@@ -3965,24 +4120,6 @@ export async function getApprovalCenterData(
         ? 'needs_revision'
         : 'in_review'
 
-    const group = historyGroupsMap.get(groupKey) ?? {
-      id: groupKey,
-      workDate,
-      workDateLabel: formatDateLabel(workDate),
-      activityCount: 0,
-      approvedCount: 0,
-      rejectedCount: 0,
-      revisionCount: 0,
-      pendingCount: 0,
-      items: [],
-    }
-
-    group.activityCount += 1
-    if (mappedStatus === 'approved') group.approvedCount += 1
-    else if (mappedStatus === 'rejected') group.rejectedCount += 1
-    else if (mappedStatus === 'needs_revision') group.revisionCount += 1
-    else group.pendingCount += 1
-
     const splSteps = (otApprovalsBySplId.get(ot.id) || []).slice().sort((a, b) => a.stepOrder - b.stepOrder)
     const latestDecisionStep = splSteps.filter((st) => ['approved', 'reverted', 'rejected'].includes((st.status || '').toLowerCase())).pop()
     const lastDecision = latestDecisionStep
@@ -3991,33 +4128,111 @@ export async function getApprovalCenterData(
       ? 'Disetujui secara lengkap'
       : 'Dalam proses review'
 
-    group.items.push({
-      activityId: `overtime-${ot.id}`,
-      title: `Surat Perintah Lembur (SPL) - ${ot.splNumber}`,
-      activityType: 'Surat Lembur (SPL)',
-      unitNumber: ot.splNumber,
-      siteName: ot.siteName || 'Site Operasional',
-      priority: 'high',
-      status: mappedStatus,
-      statusLabel: ot.status || 'Submitted',
-      submittedAt: ot.updatedAt || ot.createdAt,
-      timeRange: ot.workDate ? new Date(ot.workDate).toLocaleDateString('id-ID') : '-',
-      shiftLabel: 'Lembur',
-      pendingWith: mappedStatus === 'approved' ? 'Completed' : 'Approver',
-      currentStepLabel: mappedStatus === 'approved' ? 'Approved' : 'In Review',
-      workflowLabel: 'Overtime SPL Approval Workflow',
-      lastDecision,
-      notes: [],
-      steps: splSteps.map((st) => ({
-        approvalId: st.id,
-        approverName: st.approverName || 'Approver',
-        level: st.stepOrder,
-        label: st.stepLabel,
-        status: st.status,
-        reviewedAt: st.signedAt,
-      })),
-    })
-    historyGroupsMap.set(groupKey, group)
+    const participants = otParticipantsBySplId.get(ot.id) || []
+    const otherParticipantNames = participants
+      .filter((p) => p.employeeName && p.employeeName.toLowerCase().trim() !== (ot.requesterName || '').toLowerCase().trim())
+      .map((p) => p.employeeName!)
+
+    type TargetOtPerson = {
+      employeeName: string
+      employeeId?: number | null
+      teamRole: 'Pemohon' | 'Anggota Tim'
+      teamPartner?: string | null
+    }
+
+    const targets: TargetOtPerson[] = []
+
+    if (isAdmin || isUserApprover) {
+      targets.push({
+        employeeName: ot.requesterName || 'Pemohon',
+        employeeId: ot.requesterId,
+        teamRole: 'Pemohon',
+        teamPartner: otherParticipantNames.length > 0 ? otherParticipantNames.join(', ') : null,
+      })
+      for (const p of participants) {
+        if (p.employeeName && p.employeeName.toLowerCase().trim() !== (ot.requesterName || '').toLowerCase().trim()) {
+          targets.push({
+            employeeName: p.employeeName,
+            employeeId: p.employeeId,
+            teamRole: 'Anggota Tim',
+            teamPartner: ot.requesterName || 'Pemohon Utama',
+          })
+        }
+      }
+    } else if (isUserCreator) {
+      targets.push({
+        employeeName: ot.requesterName || 'Pemohon',
+        employeeId: ot.requesterId,
+        teamRole: 'Pemohon',
+        teamPartner: otherParticipantNames.length > 0 ? otherParticipantNames.join(', ') : null,
+      })
+    } else if (isUserParticipant) {
+      const myP = participants.find(
+        (p) =>
+          p.employeeId === currentEmployee?.id ||
+          (normalizedEmail && normalizeMatchValue(p.employeeEmail) === normalizedEmail) ||
+          (employeeEmailNorm && normalizeMatchValue(p.employeeEmail) === employeeEmailNorm) ||
+          (normalizedEmployeeName && normalizeMatchValue(p.employeeName) === normalizedEmployeeName)
+      )
+      targets.push({
+        employeeName: myP?.employeeName || currentEmployee?.name || 'Peserta Lembur',
+        employeeId: myP?.employeeId || currentEmployee?.id,
+        teamRole: 'Anggota Tim',
+        teamPartner: ot.requesterName || 'Pemohon Utama',
+      })
+    }
+
+    for (const target of targets) {
+      const group = historyGroupsMap.get(groupKey) ?? {
+        id: groupKey,
+        workDate,
+        workDateLabel: formatDateLabel(workDate),
+        activityCount: 0,
+        approvedCount: 0,
+        rejectedCount: 0,
+        revisionCount: 0,
+        pendingCount: 0,
+        items: [],
+      }
+
+      group.activityCount += 1
+      if (mappedStatus === 'approved') group.approvedCount += 1
+      else if (mappedStatus === 'rejected') group.rejectedCount += 1
+      else if (mappedStatus === 'needs_revision') group.revisionCount += 1
+      else group.pendingCount += 1
+
+      group.items.push({
+        activityId: `overtime-${ot.id}-${target.employeeId || target.employeeName}`,
+        title: `Surat Perintah Lembur (SPL) - ${ot.splNumber}${target.teamRole === 'Anggota Tim' ? ` • ${target.employeeName}` : ''}`,
+        activityType: 'Surat Lembur (SPL)',
+        unitNumber: ot.splNumber,
+        siteName: ot.siteName || 'Site Operasional',
+        priority: 'high',
+        status: mappedStatus,
+        statusLabel: ot.status || 'Submitted',
+        submittedAt: ot.updatedAt || ot.createdAt,
+        timeRange: ot.workDate ? new Date(ot.workDate).toLocaleDateString('id-ID') : '-',
+        shiftLabel: 'Lembur',
+        pendingWith: mappedStatus === 'approved' ? 'Completed' : 'Approver',
+        currentStepLabel: mappedStatus === 'approved' ? 'Approved' : 'In Review',
+        workflowLabel: 'Overtime SPL Approval Workflow',
+        lastDecision,
+        notes: [],
+        teamRole: target.teamRole,
+        teamPartner: target.teamPartner,
+        employeeName: target.employeeName,
+        employeeId: target.employeeId,
+        steps: splSteps.map((st) => ({
+          approvalId: st.id,
+          approverName: st.approverName || 'Approver',
+          level: st.stepOrder,
+          label: st.stepLabel,
+          status: st.status,
+          reviewedAt: st.signedAt,
+        })),
+      })
+      historyGroupsMap.set(groupKey, group)
+    }
   }
 
   // ─── PTW History ─────────────────────────────────────────────────────────────────

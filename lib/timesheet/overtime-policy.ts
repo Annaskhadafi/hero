@@ -453,7 +453,11 @@ export function calculateConfiguredOvertime(params: {
   if (!attendance) return { ...EMPTY_RESULT }
 
   const isTemplateMode = (params.config.mode ?? 'template') === 'template'
-  const overnight = params.shiftCode === 'NS'
+  const inMin = parseTimeMinutes(params.clockIn)
+  const outMin = parseTimeMinutes(params.clockOut)
+  const overnight =
+    params.shiftCode === 'NS' ||
+    (inMin != null && outMin != null && (outMin < inMin || inMin >= 15 * 60))
   const shiftKey: OvertimeShiftKey = overnight ? 'nightShift' : 'dayShift'
   const fullAttendance = [attendance]
   const rawIntervals = params.config[params.dayKey]?.[shiftKey] ?? []
@@ -561,5 +565,9 @@ export function calculateOvertime(
   params: Parameters<typeof calculateConfiguredOvertime>[0] & { legacyHours: number }
 ): OvertimeCalculationResult {
   if (!params.config.enabled) return legacyOvertimeResult(params.legacyHours)
-  return calculateConfiguredOvertime(params)
+  const configured = calculateConfiguredOvertime(params)
+  if (configured.totalHours === 0 && params.legacyHours > 0) {
+    return legacyOvertimeResult(params.legacyHours)
+  }
+  return configured
 }

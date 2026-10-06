@@ -172,18 +172,60 @@ export default async function MobileOvertimePage({
 
   const targetSplId = editSplId || parentSplId
   const initialSplData = targetSplId ? await safeQuery(() => getOvertimeApprovalData(targetSplId), null, "getOvertimeApprovalData") : null
-  const historyRows: MobileSplHistoryRow[] = data.splDocuments.map((document) => ({
-    id: document.id,
-    splNumber: document.splNumber,
-    title: document.title,
-    workDate: document.workDate.toISOString(),
-    status: document.status.toLowerCase(),
-    origin: document.origin,
-    pendingApproverName: document.pendingApproverName,
-    workerNames: document.workers.map((worker) => worker.employeeName),
-    progressPercent: document.progressPercent,
-    lineCount: document.lineCount,
-  }))
+  const historyRows: MobileSplHistoryRow[] = []
+  for (const document of data.splDocuments) {
+    const workers = document.workers || []
+    const otherWorkerNames = workers
+      .filter((w) => w.employeeName && w.employeeName.toLowerCase().trim() !== (document.requesterName || '').toLowerCase().trim())
+      .map((w) => w.employeeName)
+
+    // 1. Primary / Submitter Row
+    historyRows.push({
+      id: document.id,
+      splNumber: document.splNumber,
+      title: document.title,
+      workDate: document.workDate.toISOString(),
+      status: document.status.toLowerCase(),
+      origin: document.origin,
+      pendingApproverName: document.pendingApproverName,
+      workerNames: workers.map((worker) => worker.employeeName),
+      progressPercent: document.progressPercent,
+      lineCount: document.lineCount,
+      teamRole: otherWorkerNames.length > 0 ? 'Pemohon' : undefined,
+      teamMembersSummary: otherWorkerNames.length > 0 ? otherWorkerNames.join(', ') : undefined,
+      requesterName: document.requesterName || 'Pemohon',
+      participantName: document.requesterName || undefined,
+    })
+
+    // 2. Team Member Participant Rows (e.g. Sanudin)
+    for (const w of workers) {
+      if (!w.employeeName || w.employeeName.toLowerCase().trim() === (document.requesterName || '').toLowerCase().trim()) {
+        continue
+      }
+      const partnerNames = [
+        document.requesterName,
+        ...workers.filter((other) => other.employeeName !== w.employeeName && other.employeeName !== document.requesterName).map((o) => o.employeeName)
+      ].filter(Boolean).join(', ')
+
+      historyRows.push({
+        id: document.id,
+        splNumber: document.splNumber,
+        title: document.title,
+        workDate: document.workDate.toISOString(),
+        status: document.status.toLowerCase(),
+        origin: document.origin,
+        pendingApproverName: document.pendingApproverName,
+        workerNames: workers.map((worker) => worker.employeeName),
+        progressPercent: document.progressPercent,
+        lineCount: document.lineCount,
+        teamRole: 'Anggota Tim',
+        teamMembersSummary: partnerNames || undefined,
+        requesterName: document.requesterName || 'Pemohon',
+        participantName: w.employeeName,
+        employeeId: w.employeeId ? Number(w.employeeId) : undefined,
+      })
+    }
+  }
 
   const safeApprovals = approvals ?? {
     currentUserName: session.user.name || session.user.email,

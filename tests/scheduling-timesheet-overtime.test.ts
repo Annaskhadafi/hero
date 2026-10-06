@@ -277,5 +277,15 @@ describe('scheduling timesheet overtime policy', () => {
     const pdfWithoutTotal = await generateOvertimeRecordPdf({ ...baseInput, showTotalOvertime: false })
     expect(pdfWithoutTotal).toBeInstanceOf(Uint8Array)
     expect(pdfWithoutTotal.length).toBeGreaterThan(1000)
+
+    // Test with explicit evidenceUrl & verify PDF output structure
+    const pdfWithEvidenceUrl = await generateOvertimeRecordPdf({
+      ...baseInput,
+      employeeId: 42,
+      evidenceUrl: 'https://hero.chitraparatama.co.id/spl-evidence/SPL-001',
+    })
+    expect(pdfWithEvidenceUrl).toBeInstanceOf(Uint8Array)
+    expect(pdfWithEvidenceUrl.length).toBeGreaterThan(1000)
   })
 })
+

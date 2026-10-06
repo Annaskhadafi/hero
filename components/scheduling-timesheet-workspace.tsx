@@ -323,8 +323,8 @@ export const ATTENDANCE_PDF_OPTIONS: Array<{
   {
     id: 'overtime_record',
     number: 5,
-    label: 'overtime record',
-    description: 'Lembar catatan detail lembur per karyawan',
+    label: 'SUMMARY SPL PER ORANG (Overtime Record)',
+    description: 'Lembar catatan detail lembur / SPL per karyawan dengan form persetujuan lengkap',
   },
   {
     id: 'payable_site_allowance',
@@ -5883,6 +5883,7 @@ export function SchedulingTimesheetWorkspace({
     const secSigs = getSectionSignatures(employee.section, employee)
     return generateOvertimeRecordPdf({
       period,
+      employeeId: employee.id,
       employeeName: employee.name,
       employeeSn: employee.employeeSn || '',
       department: employee.department || '',
@@ -6856,6 +6857,17 @@ export function SchedulingTimesheetWorkspace({
     const effectiveClockIn = clockIn || defaultIn
     const effectiveClockOut = clockOut || defaultOut
 
+    const inMin = minutesFromTime(effectiveClockIn)
+    const outMin = minutesFromTime(effectiveClockOut)
+    const isOvernightTime =
+      inMin != null && outMin != null && (outMin < inMin || inMin >= 15 * 60)
+    const effectiveShiftCode =
+      shiftCode === 'NS' || isOvernightTime
+        ? 'NS'
+        : shiftCode === 'OFF' || shiftCode === 'FB'
+          ? 'DS'
+          : shiftCode
+
     const dayKey = classifyOvertimePolicyDay({
       schedule,
       dayIndex: day - 1,
@@ -6869,7 +6881,7 @@ export function SchedulingTimesheetWorkspace({
     const calculated = calculateOvertime({
       config: activeConfig,
       dayKey,
-      shiftCode,
+      shiftCode: effectiveShiftCode,
       workDate: `${period}-${String(day).padStart(2, '0')}`,
       clockIn: effectiveClockIn,
       clockOut: effectiveClockOut,
@@ -10776,6 +10788,15 @@ export function SchedulingTimesheetWorkspace({
                                               >
                                                 Preview
                                               </button>
+                                               <button
+                                                 className="rounded bg-indigo-50 border border-indigo-200/80 px-1.5 py-0.5 font-bold text-indigo-700 transition-colors hover:bg-indigo-100"
+                                                 title="Preview / Unduh Summary SPL Per Orang (Overtime Record)"
+                                                 onClick={() =>
+                                                   previewEmployeeOvertimePdf(row.employee)
+                                                 }
+                                               >
+                                                 SPL
+                                               </button>
                                               <button
                                                 className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 transition-colors hover:bg-slate-200"
                                                 title={

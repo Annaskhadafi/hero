@@ -151,6 +151,8 @@ export type OvertimeListingRow = {
   requesterDepartment: string
   requestNotes?: string | null
   workerCount: number
+  teamRole?: 'Pemohon' | 'Anggota Tim'
+  teamMembersSummary?: string
   participants?: Array<{
     employeeName: string
     shiftCode: string
@@ -1902,7 +1904,7 @@ export function OvertimeListingClient({
                 const isSelected = selectedIds.includes(row.id)
                 return (
                   <TableRow
-                    key={row.id}
+                    key={`${row.id}-${row.requestedByEmployeeId || row.requesterName}`}
                     className={cn(
                       'hover:bg-slate-50/80 transition-colors cursor-pointer',
                       isSelected && 'bg-indigo-50/40 hover:bg-indigo-50/60'
@@ -1922,7 +1924,25 @@ export function OvertimeListingClient({
                       </button>
                     </TableCell>
                     <TableCell className="font-medium">
-                      {row.requesterName || row.splNumber || '-'}
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-semibold text-slate-900">{row.requesterName || row.splNumber || '-'}</span>
+                          {row.teamRole === 'Anggota Tim' ? (
+                            <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
+                              Anggota Tim
+                            </span>
+                          ) : row.teamMembersSummary ? (
+                            <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              Pemohon
+                            </span>
+                          ) : null}
+                        </div>
+                        {row.teamMembersSummary ? (
+                          <div className="text-[10px] text-slate-400 italic leading-tight">
+                            Tim: {row.teamMembersSummary}
+                          </div>
+                        ) : null}
+                      </div>
                     </TableCell>
                     <TableCell className="capitalize">
                       <div className="font-medium text-slate-900">{row.title || 'Overtime Command'}</div>

@@ -118,6 +118,7 @@ export type SessionApprovalRow = {
   customerName?: string
   siteName: string
   teamMembersSummary?: string
+  teamRole?: 'Pemohon' | 'Anggota Tim'
   totalItems: number
   totalPoints: number
   items?: Array<{
@@ -1969,7 +1970,7 @@ async function uploadActivityPhoto(file: File): Promise<string> {
           { label: 'Total Sesi', value: (rows || []).length },
           { label: 'Menunggu Approval', value: (rows || []).filter((r) => (r.sessionStatus || '').toLowerCase().includes('pending') || (r.sessionStatus || '').toLowerCase().includes('submitted')).length },
           { label: 'Disetujui', value: (rows || []).filter((r) => (r.sessionStatus || '').toLowerCase() === 'approved' || (r.sessionStatus || '').toLowerCase() === 'completed').length },
-          { label: 'Draft', value: (rows || []).filter((r) => (r.sessionStatus || '').toLowerCase() === 'draft').length },
+          { label: 'Total Poin Disetujui', value: `${(rows || []).filter((r) => (r.sessionStatus || '').toLowerCase() === 'approved' || (r.sessionStatus || '').toLowerCase() === 'completed').reduce((sum, r) => sum + (r.totalPoints || 0), 0)} pts` },
         ]}
       />
 
@@ -2139,6 +2140,7 @@ async function uploadActivityPhoto(file: File): Promise<string> {
               <TableHead>Tgl Masuk</TableHead>
               <TableHead>Shift</TableHead>
               <TableHead>Site / Lokasi</TableHead>
+              <TableHead className="text-center">Total Poin</TableHead>
               <TableHead>Progress Approval</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Aksi</TableHead>
@@ -2147,7 +2149,7 @@ async function uploadActivityPhoto(file: File): Promise<string> {
           <TableBody>
             {filteredRows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                   {hasActiveFilters
                     ? 'Tidak ada aktivitas yang sesuai dengan filter pencarian.'
                     : 'Belum ada data review aktivitas harian.'}
@@ -2158,7 +2160,7 @@ async function uploadActivityPhoto(file: File): Promise<string> {
               const isSelected = selectedIds.includes(row.sessionId)
               return (
                 <TableRow
-                  key={row.sessionId}
+                  key={`${row.sessionId}-${row.employeeId || row.employeeName}`}
                   className={cn(
                     'hover:bg-slate-50/80 transition-colors cursor-pointer',
                     isSelected && 'bg-indigo-50/40 hover:bg-indigo-50/60'
@@ -2178,15 +2180,43 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                     </button>
                   </TableCell>
                   <TableCell className="font-medium">
-                    <div>
-                      <p className="font-semibold text-slate-900">{row.employeeName}</p>
-                      <p className="text-xs text-slate-500">{row.employeeSn}</p>
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="font-semibold text-slate-900">{row.employeeName}</p>
+                        {row.teamRole === 'Anggota Tim' ? (
+                          <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
+                            Anggota Tim
+                          </span>
+                        ) : row.teamMembersSummary ? (
+                          <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                            Pemohon
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-slate-500">
+                        <span>{row.employeeSn}</span>
+                        {row.teamMembersSummary ? (
+                          <span className="text-[10px] text-slate-400 italic leading-tight">
+                            • Tim: {row.teamMembersSummary}
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
                   </TableCell>
                   <TableCell className="font-mono text-xs text-slate-600">{row.sessionCode}</TableCell>
                   <TableCell>{formatDate(row.workDate)}</TableCell>
                   <TableCell className="font-semibold text-xs">{row.shiftCode}</TableCell>
                   <TableCell className="text-xs">{row.siteName}</TableCell>
+                  <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                    <div className="inline-flex flex-col items-center">
+                      <span className="font-bold text-xs text-emerald-700 font-mono bg-emerald-50 border border-emerald-200/90 px-2 py-0.5 rounded-md shadow-2xs">
+                        +{row.totalPoints || 0} pts
+                      </span>
+                      <span className="text-[10px] text-slate-400 mt-0.5">
+                        {row.totalItems || 0} item
+                      </span>
+                    </div>
+                  </TableCell>
                   <TableCell>
                     <ApprovalProgressBadge approvals={row.approvals} />
                   </TableCell>

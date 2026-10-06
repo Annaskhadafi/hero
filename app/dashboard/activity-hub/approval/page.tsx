@@ -9,6 +9,7 @@ import {
   dailyActivityApprovals,
   dailyActivitySessions,
   dailyActivitySessionItems,
+  dailyActivitySessionTeamMembers,
   employees,
   masterDepartments,
   masterSections,
@@ -204,8 +205,8 @@ export default async function DailyActivityApprovalListPage() {
 
     const sessionIds = sessions.map((s) => s.sessionId).filter(Boolean)
 
-    // Get all session items and item counts safely
-    const [allItems, itemCounts] = await Promise.all([
+    // Get all session items, item counts, and team members safely
+    const [allItems, itemCounts, allTeamMembers] = await Promise.all([
       sessionIds.length > 0
         ? safeQuery(
             () =>
@@ -245,7 +246,36 @@ export default async function DailyActivityApprovalListPage() {
             'fetchItemCounts'
           )
         : Promise.resolve([]),
+      sessionIds.length > 0
+        ? safeQuery(
+            () =>
+              db
+                .select({
+                  sessionId: dailyActivitySessionTeamMembers.sessionId,
+                  employeeId: dailyActivitySessionTeamMembers.employeeId,
+                  employeeName: employees.name,
+                  employeeSn: employees.employeeSn,
+                  department: employees.department,
+                  section: employees.section,
+                  jobTitle: employees.jobTitle,
+                })
+                .from(dailyActivitySessionTeamMembers)
+                .innerJoin(employees, eq(dailyActivitySessionTeamMembers.employeeId, employees.id))
+                .where(inArray(dailyActivitySessionTeamMembers.sessionId, sessionIds)),
+            [],
+            'fetchAllTeamMembers'
+          )
+        : Promise.resolve([]),
     ])
+
+    const teamMembersBySession = new Map<number, any[]>()
+    for (const tm of allTeamMembers || []) {
+      if (tm?.sessionId) {
+        const list = teamMembersBySession.get(tm.sessionId) || []
+        list.push(tm)
+        teamMembersBySession.set(tm.sessionId, list)
+      }
+    }
 
     const itemsBySession = new Map<number, any[]>()
     for (const item of allItems || []) {
@@ -476,19 +506,64 @@ export default async function DailyActivityApprovalListPage() {
       if (d?.id) deptHeadMap[String(d.id)] = d.headEmployeeId || null
     }
 
-    const rows: SessionApprovalRow[] = (sessions || []).map((s) => {
+    const rows: SessionApprovalRow[] = []
+    for (const s of sessions || []) {
       const teamMatch = (s.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)
-      let teamMembersSummary = teamMatch ? teamMatch[1].trim() : undefined
-      if (teamMembersSummary && s.employeeName) {
-        const requesterName = s.employeeName.trim().toLowerCase()
-        const otherMembers = teamMembersSummary
+      let parsedTeamNames: string[] = []
+      if (teamMatch && teamMatch[1]) {
+        parsedTeamNames = teamMatch[1]
           .split(',')
           .map((n) => n.trim())
-          .filter((n) => n && n.toLowerCase() !== requesterName)
-        teamMembersSummary = otherMembers.length > 0 ? otherMembers.join(', ') : undefined
+          .filter((n) => n.length > 0)
       }
 
-      return {
+      const dbTeamMembers = teamMembersBySession.get(s.sessionId) || []
+      const teamList: Array<{
+        employeeId?: number | null
+        employeeName: string
+        employeeSn?: string | null
+        department?: string | null
+        section?: string | null
+        jobTitle?: string | null
+      }> = [...dbTeamMembers]
+
+      // If DB team members is empty but summaryRemark has team names, try to match from employeeList
+      if (teamList.length === 0 && parsedTeamNames.length > 0) {
+        for (const tName of parsedTeamNames) {
+          if (tName.toLowerCase() === (s.employeeName || '').toLowerCase().trim()) continue
+          const matchedEmp = (employeeList || []).find(
+            (e) => (e.name || '').trim().toLowerCase() === tName.toLowerCase()
+          )
+          if (matchedEmp) {
+            teamList.push({
+              employeeId: matchedEmp.id,
+              employeeName: matchedEmp.name,
+              employeeSn: matchedEmp.employeeId,
+              department: matchedEmp.department,
+              section: matchedEmp.section,
+              jobTitle: matchedEmp.jobTitle,
+            })
+          } else {
+            teamList.push({
+              employeeId: null,
+              employeeName: tName,
+              employeeSn: '-',
+              department: s.department,
+              section: s.section,
+              jobTitle: 'Serviceman',
+            })
+          }
+        }
+      }
+
+      const teamNamesExceptCreator = teamList
+        .filter((tm) => tm.employeeId !== s.employeeId && tm.employeeName.toLowerCase() !== (s.employeeName || '').toLowerCase())
+        .map((tm) => tm.employeeName)
+
+      const mainTeamSummary = teamNamesExceptCreator.length > 0 ? teamNamesExceptCreator.join(', ') : undefined
+
+      // 1. Main Submitter Row
+      rows.push({
         sessionId: Number(s.sessionId),
         sessionCode: s.sessionCode || `ACT-${s.sessionId}`,
         workDate: s.workDate ? new Date(s.workDate).toISOString() : null,
@@ -502,13 +577,48 @@ export default async function DailyActivityApprovalListPage() {
         jobTitle: 'Serviceman',
         customerName: 'Default Customer',
         siteName: s.siteName || 'Central Site',
-        teamMembersSummary,
+        teamMembersSummary: mainTeamSummary,
+        teamRole: mainTeamSummary ? 'Pemohon' : undefined,
         totalItems: itemCountMap.get(s.sessionId)?.count ?? 0,
         totalPoints: itemCountMap.get(s.sessionId)?.totalPoints ?? 0,
         items: itemsBySession.get(s.sessionId) || [],
         approvals: approvalsBySession.get(s.sessionId) || [],
+      })
+
+      // 2. Team Member Rows (e.g. Sanudin)
+      for (const tm of teamList) {
+        if (tm.employeeId === s.employeeId || tm.employeeName.toLowerCase() === (s.employeeName || '').toLowerCase()) {
+          continue
+        }
+
+        const partnerNames = [
+          s.employeeName,
+          ...teamList.filter((other) => other.employeeName !== tm.employeeName && other.employeeName !== s.employeeName).map((o) => o.employeeName)
+        ].filter(Boolean).join(', ')
+
+        rows.push({
+          sessionId: Number(s.sessionId),
+          sessionCode: s.sessionCode || `ACT-${s.sessionId}`,
+          workDate: s.workDate ? new Date(s.workDate).toISOString() : null,
+          shiftCode: s.shiftCode || 'ALL',
+          sessionStatus: s.sessionStatus || 'Draft',
+          employeeId: tm.employeeId ? Number(tm.employeeId) : null,
+          employeeName: tm.employeeName || 'Karyawan',
+          employeeSn: tm.employeeSn || '-',
+          department: tm.department || s.department || 'Operasional',
+          section: tm.section || s.section || '-',
+          jobTitle: tm.jobTitle || 'Serviceman',
+          customerName: 'Default Customer',
+          siteName: s.siteName || 'Central Site',
+          teamMembersSummary: partnerNames || undefined,
+          teamRole: 'Anggota Tim',
+          totalItems: itemCountMap.get(s.sessionId)?.count ?? 0,
+          totalPoints: itemCountMap.get(s.sessionId)?.totalPoints ?? 0,
+          items: itemsBySession.get(s.sessionId) || [],
+          approvals: approvalsBySession.get(s.sessionId) || [],
+        })
       }
-    })
+    }
 
     const sanitizedEmployees = (employeeList || []).map((e) => ({
       id: Number(e.id),

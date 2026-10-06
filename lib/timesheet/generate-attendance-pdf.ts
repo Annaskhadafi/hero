@@ -1,4 +1,5 @@
-import { PDFDocument, rgb, StandardFonts, type PDFPage, type PDFFont } from 'pdf-lib'
+import { PDFDocument, rgb, StandardFonts, PDFString, type PDFPage, type PDFFont } from 'pdf-lib'
+import QRCode from 'qrcode'
 import { type OvertimeCalculationResult, type OvertimeInterval } from '@/lib/timesheet/overtime-policy'
 import {
   drawPdfSignatures,
@@ -29,6 +30,7 @@ type AttendanceDayData = {
 
 type OvertimeRecordInput = {
   period: string
+  employeeId?: number
   employeeName: string
   employeeSn: string
   department: string
@@ -38,6 +40,8 @@ type OvertimeRecordInput = {
   days: AttendanceDayData[]
   isNonStaff: boolean
   showTotalOvertime?: boolean
+  evidenceUrl?: string
+  appBaseUrl?: string
 }
 
 type SiteAllowanceInput = {
@@ -597,11 +601,137 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
   drawCell(page, colX[7], y, cols[7], rowH, { bgColor: tBg })
   drawCell(page, colX[8], y, cols[8], rowH, { bgColor: tBg })
 
-  // Signatures
+  // Signatures & Evidence QR (3 approvals + 1 QR code in bottom-right)
   y -= 30
-  drawPdfSignatures(page, { regular: font, italic: fontItalic }, y, input.signatures)
+  await drawOvertimeRecordSignatures(doc, page, { regular: font, italic: fontItalic, bold: fontBold }, y, input)
 
   return doc.save()
+}
+
+async function drawOvertimeRecordSignatures(
+  doc: PDFDocument,
+  page: PDFPage,
+  fonts: { regular: PDFFont; italic: PDFFont; bold: PDFFont },
+  y: number,
+  input: OvertimeRecordInput
+) {
+  const { width } = page.getSize()
+  const names = input.signatures
+
+  let labels: [string, string][] = []
+  if (names.useExternalOnly) {
+    labels = [
+      ['Dibuat oleh :', names.externalPreparedBy?.trim() || names.preparedBy || input.employeeName || '-'],
+      ['Approved by:', names.externalApprovedBy?.trim() || names.approvedBy || '-'],
+      ['Diketahui oleh:', names.pjoLeader || '-'],
+    ]
+  } else {
+    labels = [
+      ['Dibuat oleh :', names.preparedBy?.trim() || input.employeeName || '-'],
+      ['Approved by:', names.pjoLeader?.trim() || '-'],
+      ['Diketahui oleh:', names.approvedBy?.trim() || names.hrName?.trim() || '-'],
+    ]
+  }
+
+  const columnWidth = (width - 80) / 4
+  const lineWidth = columnWidth - 20
+
+  // Draw 3 Signature Columns
+  labels.forEach(([label, name], index) => {
+    const x = 40 + index * columnWidth
+    page.drawText(label, { x, y, font: fonts.italic, size: 8, color: rgb(0.3, 0.3, 0.3) })
+    page.drawLine({
+      start: { x, y: y - 42 },
+      end: { x: x + lineWidth, y: y - 42 },
+      color: rgb(0.5, 0.5, 0.5),
+      thickness: 0.5,
+    })
+    page.drawText(name || '-', {
+      x,
+      y: y - 54,
+      font: fonts.regular,
+      size: 7,
+      maxWidth: lineWidth,
+    })
+  })
+
+  // 4th Column: Evidence QR Code in bottom-right
+  const qrColX = 40 + 3 * columnWidth
+  const baseUrl =
+    input.appBaseUrl ||
+    (typeof window !== 'undefined'
+      ? window.location.origin
+      : process.env.NEXT_PUBLIC_APP_URL || 'https://hero.chitraparatama.co.id')
+
+  const splNumbers = (input.days || [])
+    .flatMap((d) => d.overtime?.splNumbers || [])
+    .filter((s) => Boolean(s && s.trim()))
+  const primarySpl = splNumbers[0]
+
+  const empKey = input.employeeId || input.employeeSn || input.employeeName
+  const evidenceUrl =
+    input.evidenceUrl ||
+    (primarySpl
+      ? `${baseUrl}/spl-evidence/${encodeURIComponent(primarySpl)}`
+      : `${baseUrl}/spl-evidence/emp-${encodeURIComponent(empKey)}-${input.period}`)
+
+  try {
+    const qrDataUrl = await QRCode.toDataURL(evidenceUrl, {
+      margin: 1,
+      width: 140,
+      errorCorrectionLevel: 'M',
+    })
+    const qrImage = await doc.embedPng(qrDataUrl)
+
+    const qrSize = 48
+    const qrX = qrColX + (columnWidth - qrSize) / 2
+    const qrY = y - 44
+
+    page.drawImage(qrImage, {
+      x: qrX,
+      y: qrY,
+      width: qrSize,
+      height: qrSize,
+    })
+
+    const titleText = 'Scan / Klik Bukti'
+    const titleW = fonts.bold.widthOfTextAtSize(titleText, 6.5)
+    page.drawText(titleText, {
+      x: qrColX + (columnWidth - titleW) / 2,
+      y: qrY - 8,
+      font: fonts.bold,
+      size: 6.5,
+      color: rgb(0.1, 0.35, 0.75),
+    })
+
+    const subText = 'Validasi Digital'
+    const subW = fonts.regular.widthOfTextAtSize(subText, 5.5)
+    page.drawText(subText, {
+      x: qrColX + (columnWidth - subW) / 2,
+      y: qrY - 15,
+      font: fonts.regular,
+      size: 5.5,
+      color: rgb(0.4, 0.4, 0.4),
+    })
+
+    // Clickable PDF Link Annotation on the QR area
+    const linkAnnot = doc.context.obj({
+      Type: 'Annot',
+      Subtype: 'Link',
+      Rect: [qrColX, qrY - 18, qrColX + columnWidth, qrY + qrSize + 4],
+      Border: [0, 0, 0],
+      C: [0, 0, 0],
+      A: {
+        Type: 'Action',
+        S: 'URI',
+        URI: PDFString.of(evidenceUrl),
+      },
+    })
+    const linkAnnotRef = doc.context.register(linkAnnot)
+    page.node.addAnnot(linkAnnotRef)
+  } catch (err) {
+    console.error('Failed to draw Evidence QR in Overtime Record PDF:', err)
+  }
 }
 
 // ============================================================

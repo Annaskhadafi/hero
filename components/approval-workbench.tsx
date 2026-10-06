@@ -5919,10 +5919,26 @@ export function HistoryTab({
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1 space-y-1">
-                    <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
-                      <FileText className="size-3" />
-                      {item.activityType || 'Dokumen'}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
+                        <FileText className="size-3" />
+                        {item.activityType || 'Dokumen'}
+                      </span>
+                      {item.teamRole === 'Anggota Tim' ? (
+                        <span className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold bg-teal-100 text-teal-900 border border-teal-200">
+                          Anggota Tim
+                        </span>
+                      ) : item.teamRole === 'Pemohon' ? (
+                        <span className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold bg-indigo-100 text-indigo-900 border border-indigo-200">
+                          Pemohon
+                        </span>
+                      ) : null}
+                      {item.totalPoints !== undefined && item.totalPoints !== null ? (
+                        <span className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-200">
+                          +{item.totalPoints} pts
+                        </span>
+                      ) : null}
+                    </div>
                     <p className="text-sm font-bold text-slate-900 leading-snug">
                       {item.title}
                     </p>
@@ -5937,6 +5953,20 @@ export function HistoryTab({
                 </div>
 
                 <div className="space-y-1 rounded-xl bg-slate-50/80 p-2.5 text-xs">
+                  {item.teamPartner ? (
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500 font-medium">
+                        {item.teamRole === 'Anggota Tim' ? 'Partner Utama:' : 'Anggota Tim:'}
+                      </span>
+                      <span className="font-bold text-slate-700 truncate max-w-[180px]">{item.teamPartner}</span>
+                    </div>
+                  ) : null}
+                  {item.totalItems !== undefined && item.totalItems !== null ? (
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500 font-medium">Jumlah Item:</span>
+                      <span className="font-bold text-slate-700">{item.totalItems} item</span>
+                    </div>
+                  ) : null}
                   <div className="flex items-center justify-between">
                      <span className="text-slate-500 font-medium">Posisi Terakhir:</span>
                      <span className="font-bold text-slate-700">{(item as any).currentStage || 'Selesai'}</span>
