@@ -27,7 +27,8 @@ function findDamages(value: unknown): Damage[] {
     })
     if (found.length) return found
   }
-  return findDamages(object.data) || findDamages(object.result)
+  const nested = findDamages(object.data)
+  return nested.length ? nested : findDamages(object.result)
 }
 
 function findAnnotatedUrl(value: unknown): string | null {
@@ -36,7 +37,8 @@ function findAnnotatedUrl(value: unknown): string | null {
   for (const key of ['annotated_url', 'annotated_image_url', 'image_url', 'output_url']) {
     if (typeof object[key] === 'string' && object[key]) return object[key]
   }
-  return findAnnotatedUrl(object.data) || findAnnotatedUrl(object.result)
+  const nested = findAnnotatedUrl(object.data)
+  return nested || findAnnotatedUrl(object.result)
 }
 
 export default function TireDamageDesktopClient({ canEdit }: { canEdit: boolean }) {
