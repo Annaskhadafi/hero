@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
       fileBuffer: Buffer.from(await file.arrayBuffer()),
       fileName: file.name || 'tire-media',
       mimeType: file.type,
-confidenceThreshold: confRaw !== null ? threshold(confRaw, defaultConf) : defaultConf,
+      confidenceThreshold: confRaw !== null ? threshold(confRaw, defaultConf) : defaultConf,
       iouThreshold: iouRaw !== null ? threshold(iouRaw, defaultIou) : defaultIou,
       baseUrlOverride: apiUrl ?? undefined,
       endpoint,
