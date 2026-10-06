@@ -34,6 +34,38 @@
     "createdAt": "2026-07-24T09:50:39.252Z"
   },
   {
+    "id": 1200,
+    "menuArea": "main",
+    "section": "HSE",
+    "title": "Analisis Kerusakan Ban (AI)",
+    "url": "/dashboard/hse/tire-damage",
+    "iconName": "camera",
+    "resource": "hse_tire_inspection",
+    "sortOrder": 2,
+    "isVisible": true,
+    "openInNewTab": false,
+    "itemType": "menu",
+    "parentId": null,
+    "groupLabel": "AI Inspection",
+    "isIframe": false
+  },
+  {
+    "id": 1201,
+    "menuArea": "mobile",
+    "section": "HSE",
+    "title": "Deteksi Kerusakan Ban",
+    "url": "/mobile/hse/tire-damage",
+    "iconName": "camera",
+    "resource": "hse_tire_inspection",
+    "sortOrder": 3,
+    "isVisible": true,
+    "openInNewTab": false,
+    "itemType": "menu",
+    "parentId": null,
+    "groupLabel": "AI Inspection",
+    "isIframe": false
+  },
+  {
     "id": 491,
     "menuArea": "main",
     "section": "Central Service",
