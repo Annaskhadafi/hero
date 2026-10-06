@@ -953,58 +953,6 @@ export async function rarayPredictTireDamage(params: {
       message: error instanceof Error ? error.message : 'Gagal menghubungi Vision API.',
     }
   }
-}): Promise<{ status: 'success' | 'error'; result?: unknown; message?: string }> {
-  const { fileBuffer, fileName, mimeType, confidenceThreshold = 0.25, iouThreshold = 0.45, baseUrlOverride, modelEndpoint = 'tire-demage-onnx' } = params
-
-  const predictWithEndpoint = async (endpoint: string, timeoutMs: number) => {
-    const formData = new FormData()
-    formData.append('file', new Blob([new Uint8Array(fileBuffer)], { type: mimeType }), fileName)
-    formData.append('conf_threshold', String(confidenceThreshold))
-    formData.append('iou_threshold', String(iouThreshold))
-
-    return fetch(`${baseUrlOverride || getBaseUrl()}/api/v1/models/endpoints/${endpoint}/predict`, {
-      method: 'POST',
-      headers: { Authorization: await getAuthHeader(baseUrlOverride) },
-      body: formData,
-      cache: 'no-store',
-      signal: AbortSignal.timeout(timeoutMs),
-    })
-  }
-
-  try {
-    // ponytail: keep the established model as one compatibility fallback.
-    let primary: Response | undefined
-    try {
-      primary = await predictWithEndpoint(modelEndpoint, 120_000)
-    } catch {
-      // The compatibility endpoint below handles unavailable or slow ONNX.
-    }
-
-    if (primary?.ok) return { status: 'success', result: await primary.json() }
-
-    if (primary && [400, 401, 403].includes(primary.status)) {
-      const details = await primary.text().catch(() => '')
-      return {
-        status: 'error',
-        message: `Vision API error (${primary.status}): ${details.slice(0, 240)}`,
-      }
-    }
-
-    const fallback = await predictWithEndpoint('tire-demage', 120_000)
-    if (fallback.ok) return { status: 'success', result: await fallback.json() }
-
-    const details = await fallback.text().catch(() => '')
-    return {
-      status: 'error',
-      message: `Vision API error (${fallback.status}): ${details.slice(0, 240)}`,
-    }
-  } catch (error) {
-    return {
-      status: 'error',
-      message: error instanceof Error ? error.message : 'Gagal menghubungi Vision API.',
-    }
-  }
-
 }
 
 export async function raraySubmitTireDamageFeedback(params: {
