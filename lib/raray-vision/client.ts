@@ -92,7 +92,7 @@ function getApiKey(): string | null {
 /**
  * Get valid Authorization header value (API Key or JWT Bearer)
  */
-async function getAuthHeader(): Promise<string> {
+async function getAuthHeader(baseUrlOverride?: string): Promise<string> {
   const apiKey = getApiKey()
   if (apiKey) {
     return apiKey.startsWith('Bearer ') ? apiKey : `Bearer ${apiKey}`
@@ -871,7 +871,7 @@ export async function rarayPredictTireDamage(params: {
     formData.append('conf_threshold', String(confidenceThreshold))
     formData.append('iou_threshold', String(iouThreshold))
 
-    return fetch(`${getBaseUrl()}/api/v1/models/endpoints/${endpoint}/predict`, {
+    return fetch(`${baseUrlOverride || getBaseUrl()}/api/v1/models/endpoints/${endpoint}/predict`, {
       method: 'POST',
       headers: { Authorization: await getAuthHeader() },
       body: formData,
@@ -884,7 +884,7 @@ export async function rarayPredictTireDamage(params: {
     // ponytail: keep the established model as one compatibility fallback.
     let primary: Response | undefined
     try {
-      primary = await predictWithEndpoint('tire-demage-onnx', 3_000)
+      primary = await predictWithEndpoint(modelEndpoint, 120_000)
     } catch {
       // The compatibility endpoint below handles unavailable or slow ONNX.
     }
