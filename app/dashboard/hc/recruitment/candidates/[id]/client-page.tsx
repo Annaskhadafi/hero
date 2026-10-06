@@ -2539,12 +2539,18 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
           </DialogHeader>
           <div className="flex-1 overflow-hidden bg-muted/20" style={{ minHeight: 0, flex: '1 1 0%' }}>
             {cvViewerUrl ? (
-              <iframe
-                src={cvViewerUrl}
+              <object
+                data={cvViewerUrl}
+                type="application/pdf"
                 className="w-full h-full border-0"
-                style={{ height: '100%', minHeight: 0 }}
-                title={`CV of ${candidate.fullName}`}
-              />
+              >
+                <iframe
+                  src={cvViewerUrl}
+                  className="w-full h-full border-0"
+                  style={{ height: '100%', minHeight: 0 }}
+                  title={`CV of ${candidate.fullName}`}
+                />
+              </object>
             ) : (
               <div className="flex items-center justify-center h-full text-muted-foreground">Loading...</div>
             )}

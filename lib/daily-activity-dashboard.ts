@@ -364,6 +364,27 @@ function getTodayIsoString(): string {
   return `${y}-${m}-${day}`
 }
 
+export function getCurrentWeekRange(referenceDate: Date = new Date()): { startDate: string; endDate: string } {
+  const d = new Date(referenceDate)
+  // getDay(): 0 is Sunday, 1 is Monday, ..., 6 is Saturday
+  const day = d.getDay()
+  const diffToMonday = day === 0 ? -6 : 1 - day
+  const monday = new Date(d)
+  monday.setDate(d.getDate() + diffToMonday)
+  const sunday = new Date(monday)
+  sunday.setDate(monday.getDate() + 6)
+  const formatIso = (date: Date) => {
+    const y = date.getFullYear()
+    const m = String(date.getMonth() + 1).padStart(2, '0')
+    const dayStr = String(date.getDate()).padStart(2, '0')
+    return `${y}-${m}-${dayStr}`
+  }
+  return {
+    startDate: formatIso(monday),
+    endDate: formatIso(sunday),
+  }
+}
+
 function formatDateDisplay(date?: Date | string | null): string {
   if (!date) {
     const today = new Date()
@@ -533,47 +554,59 @@ export async function getDailyActivityDashboardData(
       .orderBy(masterSections.name),
   ])
 
-  // Select active site
+  // Select active site (strictly 1 site monitoring)
   let sitesList: DailyActivitySiteItem[]
-  if (isCustomerScoped && allSites.length <= 1) {
-    sitesList = allSites.length > 0 ? allSites : [
+  if (isCustomerScoped && allSites.length > 0) {
+    sitesList = allSites
+  } else if (allSites.length > 0) {
+    sitesList = allSites
+  } else {
+    sitesList = [
       {
-        id: scopedSiteIds[0] || 0,
+        id: scopedSiteIds[0] || 1,
         name: 'Site Operasional',
         customerName: 'Customer',
         pjoName: 'PJO Site',
         pjoJobTitle: 'Operations Supervisory',
-      }
-    ]
-  } else {
-    sitesList = [
-      {
-        id: 0,
-        name: 'Semua Site',
-        customerName: allSites[0]?.customerName || 'Semua Customer',
-        pjoName: 'Seluruh PJO & Head Site',
-        pjoJobTitle: 'Operations Supervisory',
       },
-      ...allSites,
     ]
   }
 
   let currentSite = sitesList[0]
   if (params.siteId && params.siteId !== 'all' && params.siteId !== '0') {
-    const found = allSites.find((s) => String(s.id) === params.siteId)
+    const cleanSiteId = params.siteId.split(',')[0].trim()
+    const found = sitesList.find((s) => String(s.id) === cleanSiteId)
     if (found) currentSite = found
   }
 
   // 2. Fetch real sessions from DB
   const defaultToday = getTodayIsoString()
+  const currentWeek = getCurrentWeekRange()
   const requestedDate = params.date?.trim()
   const requestedStart = params.startDate?.trim()
   const requestedEnd = params.endDate?.trim()
 
-  // Operating mode: defaults to today if neither date nor date range is provided
-  const singleDate = requestedDate || (!requestedStart && !requestedEnd ? defaultToday : (requestedStart === requestedEnd ? requestedStart : ''))
-  const effectiveStartDate = singleDate || requestedStart || defaultToday
-  const effectiveEndDate = singleDate || requestedEnd || defaultToday
+  // Operating mode: defaults to current running week ("Minggu berjalannya") if neither date nor date range is provided
+  let effectiveStartDate: string
+  let effectiveEndDate: string
+  let singleDate = ''
+
+  if (requestedDate) {
+    singleDate = requestedDate
+    effectiveStartDate = requestedDate
+    effectiveEndDate = requestedDate
+  } else if (requestedStart || requestedEnd) {
+    effectiveStartDate = requestedStart || requestedEnd || currentWeek.startDate
+    effectiveEndDate = requestedEnd || requestedStart || currentWeek.endDate
+    if (effectiveStartDate === effectiveEndDate) {
+      singleDate = effectiveStartDate
+    }
+  } else {
+    // Default: Minggu berjalannya (Senin s/d Minggu)
+    effectiveStartDate = currentWeek.startDate
+    effectiveEndDate = currentWeek.endDate
+    singleDate = ''
+  }
 
   const sessionConditions = []
   if (currentSite.id !== 0) {
@@ -1191,20 +1224,24 @@ export async function getDailyActivityDashboardData(
     }
   }
 
-  // 8. Build Real Employee Activity Rows - Grouped by Employee (100% Real Live DB Data)
-  // If an employee has multiple sessions or activities on the same date, group them into a single row per employee
-  const sessionsByEmployee = new Map<number, any[]>()
+  // 8. Build Real Employee Activity Rows - Grouped by (Employee + WorkDate)
+  // In weekly / date-range view, an employee has distinct daily activities per date.
+  const sessionsByEmployeeAndDate = new Map<string, any[]>()
   for (const s of effectiveSessions) {
-    const list = sessionsByEmployee.get(s.employeeId) || []
+    const sDateStr = s.workDate ? new Date(s.workDate).toISOString().split('T')[0] : 'nodate'
+    const key = `${s.employeeId}_${sDateStr}`
+    const list = sessionsByEmployeeAndDate.get(key) || []
     list.push(s)
-    sessionsByEmployee.set(s.employeeId, list)
+    sessionsByEmployeeAndDate.set(key, list)
   }
 
   // Include team members who participated in these sessions
   for (const tm of rawTeamMembers) {
     const origSession = effectiveSessions.find((s) => s.id === tm.sessionId)
     if (origSession && tm.employeeId !== origSession.employeeId) {
-      const list = sessionsByEmployee.get(tm.employeeId) || []
+      const sDateStr = origSession.workDate ? new Date(origSession.workDate).toISOString().split('T')[0] : 'nodate'
+      const key = `${tm.employeeId}_${sDateStr}`
+      const list = sessionsByEmployeeAndDate.get(key) || []
       if (!list.some((s) => s.id === origSession.id)) {
         list.push({
           ...origSession,
@@ -1220,14 +1257,14 @@ export async function getDailyActivityDashboardData(
           isTeamMember: true,
           representedByName: origSession.employeeName,
         })
-        sessionsByEmployee.set(tm.employeeId, list)
+        sessionsByEmployeeAndDate.set(key, list)
       }
     }
   }
 
   const employeesList: EmployeeActivityRow[] = []
 
-  for (const [, empSessions] of sessionsByEmployee.entries()) {
+  for (const [, empSessions] of sessionsByEmployeeAndDate.entries()) {
     const firstSession = empSessions[0]
     const allTasks: ActivityTaskItem[] = []
     const sessionMetaList: EmployeeSessionMeta[] = []
@@ -1683,6 +1720,13 @@ export async function getDailyActivityDashboardData(
     })
   }
 
+  // Sort by date (descending) so newest activity dates appear first, then by employee name
+  employeesList.sort((a, b) => {
+    const timeA = a.rawWorkDate ? new Date(a.rawWorkDate).getTime() : 0
+    const timeB = b.rawWorkDate ? new Date(b.rawWorkDate).getTime() : 0
+    if (timeB !== timeA) return timeB - timeA
+    return (a.name || '').localeCompare(b.name || '')
+  })
 
   // 9. Real Timeline Activity Events
   const timeline: TimelineActivityEvent[] = effectiveSessions.slice(0, 5).map((s, idx) => {

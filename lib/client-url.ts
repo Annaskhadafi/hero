@@ -19,7 +19,7 @@ export function resolveClientUploadUrl(url: string | null | undefined): string {
   }
 
   // Match common S3 prefixes for this project
-  const s3UrlPattern = /\/(upload|attendance-photos|activity-photos|profile-photos|curhat|lms-materials|lms-covers|chitralearning|mcu-wellness-results)\/([a-zA-Z0-9\-._~%!$&'()*+,;=:@]+)/i;
+  const s3UrlPattern = /\/(upload|uploads|attendance-photos|activity-photos|profile-photos|curhat|curhat-attachments|lms-materials|lms-covers|chitralearning|mcu-wellness-results|mcu-referral-letters|mcu-results|offering-letters|sop-win-requests|sop-win|emergency-reports|safety|face-attendance|face-attendance-v2|contract-review-attachment|public-career-cv)\/([a-zA-Z0-9\-._~%!$&'()*+,;=:@]+)/i;
   const match = trimmed.match(s3UrlPattern);
 
   if (match) {

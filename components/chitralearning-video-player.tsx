@@ -34,11 +34,13 @@ export function ChitraLearningVideoPlayer({
   const getEmbedUrl = (url: string) => {
     if (!url) return '';
     if (isYouTube) {
-      const videoId = url.split('v=')[1]?.split('&')[0] || url.split('youtu.be/')[1]?.split('?')[0];
+      const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/i);
+      const videoId = match ? match[1] : (url.split('v=')[1]?.split('&')[0] || url.split('youtu.be/')[1]?.split('?')[0]);
       return `https://www.youtube.com/embed/${videoId}?rel=0`;
     }
     if (isVimeo) {
-      const videoId = url.split('vimeo.com/')[1]?.split('?')[0];
+      const match = url.match(/vimeo\.com\/(?:channels\/(?:\w+\/)?|groups\/[^\/]+\/videos\/|album\/\d+\/video\/|video\/|)(\d+)/i);
+      const videoId = match ? match[1] : url.split('vimeo.com/')[1]?.split('?')[0];
       return `https://player.vimeo.com/video/${videoId}`;
     }
     return url;

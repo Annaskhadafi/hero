@@ -46,6 +46,7 @@ import {
   UnsubmittedEmployeeRow,
   DelayedJobItem,
   TimelineActivityEvent,
+  getCurrentWeekRange,
 } from '@/lib/daily-activity-dashboard'
 import { DailyActivityEmployeeAnalyticsModal } from '@/components/daily-activity-employee-analytics-modal'
 import { cn } from '@/lib/utils'
@@ -115,14 +116,13 @@ export function DailyActivityClientDashboard({
   const searchParams = useSearchParams()
   const [isPending, startTransition] = useTransition()
 
-  // Top context bar & filters - site multi-select (tidak ada lock berdasarkan role)
-  const initialSiteIdsVal: string[] = (() => {
-    const param = searchParams.get('siteId') || initialFilters?.siteId || ''
-    if (!param || param === '0' || param === 'all') return []
-    return param.split(',').filter(Boolean)
-  })()
+  // 1 Site selection (sesuai permintaan 1 site)
+  const initialSiteId =
+    searchParams.get('siteId') ||
+    initialFilters?.siteId ||
+    String(initialData.currentSite.id)
 
-  const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>(initialSiteIdsVal)
+  const [selectedSiteId, setSelectedSiteId] = useState<string>(initialSiteId)
 
   const initialDeptVal = searchParams.get('dept') ||
     initialFilters?.dept ||
@@ -141,13 +141,24 @@ export function DailyActivityClientDashboard({
     return `${y}-${m}-${day}`
   }, [])
 
-  const initialDateVal =
-    searchParams.get('date') ||
-    searchParams.get('startDate') ||
-    initialData.currentDateIso ||
-    todayIso
+  // Running week (Minggu berjalannya) range
+  const currentWeek = useMemo(() => getCurrentWeekRange(), [])
 
-  const [selectedDate, setSelectedDate] = useState<string>(initialDateVal)
+  // Start Date & End Date for range filtering (Default: Minggu berjalannya)
+  const initialStartDate =
+    searchParams.get('startDate') ||
+    (searchParams.get('date') ? searchParams.get('date')! : '') ||
+    initialData.startDate ||
+    currentWeek.startDate
+
+  const initialEndDate =
+    searchParams.get('endDate') ||
+    (searchParams.get('date') ? searchParams.get('date')! : '') ||
+    initialData.endDate ||
+    currentWeek.endDate
+
+  const [startDate, setStartDate] = useState<string>(initialStartDate)
+  const [endDate, setEndDate] = useState<string>(initialEndDate)
 
   const [selectedShift, setSelectedShift] = useState<string>(
     searchParams.get('shift') || initialData.selectedShift
@@ -172,20 +183,26 @@ export function DailyActivityClientDashboard({
 
   // Keep state synchronized whenever URL searchParams or server initialData changes
   useEffect(() => {
-    const siteParam = searchParams.get('siteId') || ''
-    if (!siteParam || siteParam === '0' || siteParam === 'all') {
-      setSelectedSiteIds([])
-    } else {
-      setSelectedSiteIds(siteParam.split(',').filter(Boolean))
+    const siteParam = searchParams.get('siteId')
+    if (siteParam) {
+      setSelectedSiteId(siteParam)
+    } else if (initialData.currentSite.id) {
+      setSelectedSiteId(String(initialData.currentSite.id))
     }
 
-    const urlDate = searchParams.get('date') || searchParams.get('startDate')
-    if (urlDate) {
-      setSelectedDate(urlDate)
-    } else if (initialData.currentDateIso) {
-      setSelectedDate(initialData.currentDateIso)
+    const urlStart = searchParams.get('startDate')
+    const urlEnd = searchParams.get('endDate')
+    const urlDate = searchParams.get('date')
+
+    if (urlStart && urlEnd) {
+      setStartDate(urlStart)
+      setEndDate(urlEnd)
+    } else if (urlDate) {
+      setStartDate(urlDate)
+      setEndDate(urlDate)
     } else {
-      setSelectedDate(todayIso)
+      if (initialData.startDate) setStartDate(initialData.startDate)
+      if (initialData.endDate) setEndDate(initialData.endDate)
     }
 
     setSelectedShift(searchParams.get('shift') || initialData.selectedShift || 'Semua Shift')
@@ -215,7 +232,8 @@ export function DailyActivityClientDashboard({
     searchParams,
     initialData.currentSite.id,
     initialData.selectedShift,
-    initialData.currentDateIso,
+    initialData.startDate,
+    initialData.endDate,
     todayIso,
     currentUser,
   ])
@@ -281,20 +299,6 @@ export function DailyActivityClientDashboard({
   const [deletingEmployee, setDeletingEmployee] = useState<EmployeeActivityRow | null>(null)
   const [isDeleting, setIsDeleting] = useState<boolean>(false)
   const [deletedEmployeeKeys, setDeletedEmployeeKeys] = useState<string[]>([])
-  const [isSiteDropdownOpen, setIsSiteDropdownOpen] = useState(false)
-  const siteDropdownRef = useRef<HTMLDivElement>(null)
-
-  // Close site dropdown on outside click
-  useEffect(() => {
-    if (!isSiteDropdownOpen) return
-    const handler = (e: MouseEvent) => {
-      if (siteDropdownRef.current && !siteDropdownRef.current.contains(e.target as Node)) {
-        setIsSiteDropdownOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [isSiteDropdownOpen])
 
   const handleDeleteEmployeeActivity = async () => {
     if (!deletingEmployee) return
@@ -342,42 +346,57 @@ export function DailyActivityClientDashboard({
     }
   }
 
-  const isToday = selectedDate === todayIso
+  const isToday = startDate === todayIso && endDate === todayIso
+  const isCurrentWeek = startDate === currentWeek.startDate && endDate === currentWeek.endDate
 
-  const handleDateChange = (newDate: string) => {
-    if (!newDate) return
-    setSelectedDate(newDate)
-    applyFilters({ date: newDate })
+  const handleRangeChange = (newStart: string, newEnd: string) => {
+    setStartDate(newStart)
+    setEndDate(newEnd)
+    applyFilters({ startDate: newStart, endDate: newEnd })
   }
 
-  const handlePreviousDay = () => {
-    const base = selectedDate ? new Date(selectedDate) : new Date()
-    base.setDate(base.getDate() - 1)
-    const y = base.getFullYear()
-    const m = String(base.getMonth() + 1).padStart(2, '0')
-    const d = String(base.getDate()).padStart(2, '0')
-    const prevDate = `${y}-${m}-${d}`
-    handleDateChange(prevDate)
+  const handleSetCurrentWeek = () => {
+    const cw = getCurrentWeekRange()
+    handleRangeChange(cw.startDate, cw.endDate)
   }
 
-  const handleNextDay = () => {
-    const base = selectedDate ? new Date(selectedDate) : new Date()
-    base.setDate(base.getDate() + 1)
-    const y = base.getFullYear()
-    const m = String(base.getMonth() + 1).padStart(2, '0')
-    const d = String(base.getDate()).padStart(2, '0')
-    const nextDate = `${y}-${m}-${d}`
-    handleDateChange(nextDate)
+  const handleSetToday = () => {
+    handleRangeChange(todayIso, todayIso)
   }
 
-  const handleToday = () => {
-    handleDateChange(todayIso)
+  const handlePreviousWeek = () => {
+    const baseStart = startDate ? new Date(startDate) : new Date()
+    const baseEnd = endDate ? new Date(endDate) : new Date()
+    baseStart.setDate(baseStart.getDate() - 7)
+    baseEnd.setDate(baseEnd.getDate() - 7)
+    const format = (d: Date) => {
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const day = String(d.getDate()).padStart(2, '0')
+      return `${y}-${m}-${day}`
+    }
+    handleRangeChange(format(baseStart), format(baseEnd))
   }
 
-  // Sync navigation when filters change
+  const handleNextWeek = () => {
+    const baseStart = startDate ? new Date(startDate) : new Date()
+    const baseEnd = endDate ? new Date(endDate) : new Date()
+    baseStart.setDate(baseStart.getDate() + 7)
+    baseEnd.setDate(baseEnd.getDate() + 7)
+    const format = (d: Date) => {
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const day = String(d.getDate()).padStart(2, '0')
+      return `${y}-${m}-${day}`
+    }
+    handleRangeChange(format(baseStart), format(baseEnd))
+  }
+
+  // Sync navigation when filters change (1 Site & Date Range)
   const applyFilters = (overrides?: {
-    siteIds?: string[]
     siteId?: string
+    startDate?: string
+    endDate?: string
     date?: string
     shift?: string
     status?: string
@@ -386,14 +405,13 @@ export function DailyActivityClientDashboard({
     q?: string
     employeeName?: string
   }) => {
-    // Resolve siteIds: either from overrides or from current state
-    const resolvedSiteIds = overrides?.siteIds !== undefined
-      ? overrides.siteIds
-      : (overrides?.siteId !== undefined
-        ? (overrides.siteId && overrides.siteId !== '0' && overrides.siteId !== 'all' ? [overrides.siteId] : [])
-        : selectedSiteIds)
+    const resolvedSiteId = overrides?.siteId !== undefined
+      ? overrides.siteId
+      : selectedSiteId
 
-    const curDate = overrides?.date !== undefined ? overrides.date : selectedDate
+    const sStart = overrides?.startDate !== undefined ? overrides.startDate : startDate
+    const sEnd = overrides?.endDate !== undefined ? overrides.endDate : endDate
+    const curDate = overrides?.date !== undefined ? overrides.date : (sStart === sEnd ? sStart : undefined)
     const sh = overrides?.shift !== undefined ? overrides.shift : selectedShift
     const st = overrides?.status !== undefined ? overrides.status : selectedEmployeeStatus
     const dpt = overrides?.dept !== undefined ? overrides.dept : selectedDept
@@ -402,8 +420,17 @@ export function DailyActivityClientDashboard({
     const q = overrides?.q !== undefined ? overrides.q : searchQuery
 
     const params = new URLSearchParams()
-    if (resolvedSiteIds.length > 0) params.set('siteId', resolvedSiteIds.join(','))
-    if (curDate) params.set('date', curDate)
+    if (resolvedSiteId && resolvedSiteId !== '0') params.set('siteId', resolvedSiteId)
+
+    if (sStart && sEnd && sStart !== sEnd) {
+      params.set('startDate', sStart)
+      params.set('endDate', sEnd)
+    } else if (curDate || (sStart && sStart === sEnd)) {
+      params.set('date', curDate || sStart)
+    } else if (sStart) {
+      params.set('startDate', sStart)
+    }
+
     if (sh && sh !== 'Semua Shift') params.set('shift', sh)
     if (st && st !== 'Semua Status') params.set('status', st)
     if (dpt && dpt !== 'Semua Tim') params.set('dept', dpt)
@@ -426,8 +453,10 @@ export function DailyActivityClientDashboard({
       ? currentUser.assignedSection
       : 'Semua Section'
 
-    setSelectedSiteIds([])
-    setSelectedDate(todayIso)
+    const cw = getCurrentWeekRange()
+    setSelectedSiteId(String(initialData.currentSite.id))
+    setStartDate(cw.startDate)
+    setEndDate(cw.endDate)
     setSelectedShift('Semua Shift')
     setSelectedDept(defaultDpt)
     setSelectedSection(defaultSec)
@@ -439,7 +468,9 @@ export function DailyActivityClientDashboard({
     setUnsubmittedPage(1)
 
     const params = new URLSearchParams()
-    params.set('date', todayIso)
+    params.set('siteId', String(initialData.currentSite.id))
+    params.set('startDate', cw.startDate)
+    params.set('endDate', cw.endDate)
     if (defaultDpt !== 'Semua Tim') params.set('dept', defaultDpt)
     if (defaultSec !== 'Semua Section') params.set('section', defaultSec)
 
@@ -453,9 +484,9 @@ export function DailyActivityClientDashboard({
     return initialData.employees
       .filter((emp) => !deletedEmployeeKeys.includes(`${emp.employeeDbId}-${emp.sessionId}`))
       .filter((emp) => {
-      // Multi-site filter: jika ada lokasi yang dipilih, filter; jika kosong = semua lokasi
-      if (selectedSiteIds.length > 0 && emp.siteId !== undefined) {
-        if (!selectedSiteIds.includes(String(emp.siteId))) return false
+      // 1 Site filter: jika ada site terpilih, filter sesuai site
+      if (selectedSiteId && emp.siteId !== undefined) {
+        if (String(emp.siteId) !== selectedSiteId) return false
       }
       if (selectedShift !== 'Semua Shift' && emp.shift !== selectedShift) return false
       if (selectedDept !== 'Semua Tim' && emp.department !== selectedDept) return false
@@ -487,7 +518,7 @@ export function DailyActivityClientDashboard({
   }, [
     initialData.employees,
     deletedEmployeeKeys,
-    selectedSiteIds,
+    selectedSiteId,
     selectedShift,
     selectedDept,
     selectedSection,
@@ -500,9 +531,9 @@ export function DailyActivityClientDashboard({
   // Filter unsubmitted employees (Belum Mengisi, excluding Roster OFF)
   const filteredUnsubmittedEmployees = useMemo(() => {
     return (initialData.unsubmittedEmployees || []).filter((emp) => {
-      // Multi-site filter: jika ada lokasi yang dipilih, filter; jika kosong = semua lokasi
-      if (selectedSiteIds.length > 0 && emp.siteId !== undefined) {
-        if (!selectedSiteIds.includes(String(emp.siteId))) return false
+      // 1 Site filter: jika ada site terpilih, filter sesuai site
+      if (selectedSiteId && emp.siteId !== undefined) {
+        if (String(emp.siteId) !== selectedSiteId) return false
       }
       if (selectedShift !== 'Semua Shift' && emp.expectedShift !== selectedShift) return false
       if (selectedDept !== 'Semua Tim' && emp.department !== selectedDept) return false
@@ -524,7 +555,7 @@ export function DailyActivityClientDashboard({
     })
   }, [
     initialData.unsubmittedEmployees,
-    selectedSiteIds,
+    selectedSiteId,
     selectedShift,
     selectedDept,
     selectedSection,
@@ -632,6 +663,7 @@ export function DailyActivityClientDashboard({
     }
 
     const headers = [
+      'Tanggal',
       'Employee ID',
       'Nama Karyawan',
       'Site',
@@ -653,6 +685,7 @@ export function DailyActivityClientDashboard({
       if (e.tasks && e.tasks.length > 0) {
         for (const t of e.tasks) {
           rows.push([
+            `"${e.workDate || initialData.currentDate || '-'}"`,
             `"${e.employeeId}"`,
             `"${e.name}"`,
             `"${e.siteName || initialData.currentSite.name}"`,
@@ -671,6 +704,7 @@ export function DailyActivityClientDashboard({
         }
       } else {
         rows.push([
+          `"${e.workDate || initialData.currentDate || '-'}"`,
           `"${e.employeeId}"`,
           `"${e.name}"`,
           `"${e.siteName || initialData.currentSite.name}"`,
@@ -758,7 +792,7 @@ export function DailyActivityClientDashboard({
           for (const t of e.tasks) {
             data.push({
               'No': rowNumber++,
-              'Tanggal': initialData.currentDate || '-',
+              'Tanggal': e.workDate || initialData.currentDate || '-',
               'Employee ID': e.employeeId,
               'Nama Karyawan': e.name,
               'Site': e.siteName || initialData.currentSite.name,
@@ -778,7 +812,7 @@ export function DailyActivityClientDashboard({
         } else {
           data.push({
             'No': rowNumber++,
-            'Tanggal': initialData.currentDate || '-',
+            'Tanggal': e.workDate || initialData.currentDate || '-',
             'Employee ID': e.employeeId,
             'Nama Karyawan': e.name,
             'Site': e.siteName || initialData.currentSite.name,
@@ -1030,122 +1064,108 @@ export function DailyActivityClientDashboard({
       {/* ── Secondary Filter Bar Card ── */}
       <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs p-3.5">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-2.5 items-end">
-          {/* Site - Multi Select */}
-          <div className="relative" ref={siteDropdownRef}>
+          {/* Site / Lokasi (1 Site Sesuai Permintaan) */}
+          <div>
             <label className="text-[11px] font-semibold text-slate-500 mb-1 block">
               Site / Lokasi
             </label>
-            <button
-              type="button"
-              onClick={() => setIsSiteDropdownOpen((v) => !v)}
-              className="w-full text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-slate-50 border border-slate-200 text-slate-800 cursor-pointer flex items-center justify-between gap-1 min-h-[33px]"
+            <select
+              aria-label="Pilih Site / Lokasi"
+              value={selectedSiteId}
+              onChange={(e) => {
+                setSelectedSiteId(e.target.value)
+                applyFilters({ siteId: e.target.value })
+              }}
+              disabled={isPending}
+              className="w-full text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-slate-50 border border-slate-200 text-slate-800 cursor-pointer min-h-[33px]"
             >
-              <span className="truncate">
-                {selectedSiteIds.length === 0
-                  ? 'Semua Lokasi'
-                  : selectedSiteIds.length === 1
-                  ? (availableSites.find((s) => String(s.id) === selectedSiteIds[0])?.name || selectedSiteIds[0])
-                  : `${selectedSiteIds.length} Lokasi`}
-              </span>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            </button>
-            {isSiteDropdownOpen && (
-              <div className="absolute z-50 top-full mt-1 left-0 w-56 bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden">
-                <div className="max-h-52 overflow-y-auto">
-                  {/* Opsi: Semua Lokasi */}
-                  <label className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-xs font-semibold text-slate-700 border-b border-slate-100">
-                    <input
-                      type="checkbox"
-                      checked={selectedSiteIds.length === 0}
-                      onChange={() => {
-                        setSelectedSiteIds([])
-                        setIsSiteDropdownOpen(false)
-                        applyFilters({ siteIds: [] })
-                      }}
-                      className="rounded border-slate-300 text-blue-600 w-3.5 h-3.5"
-                    />
-                    Semua Lokasi
-                  </label>
-                  {availableSites.map((s) => (
-                    <label
-                      key={s.id}
-                      className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-xs text-slate-700"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedSiteIds.includes(String(s.id))}
-                        onChange={(e) => {
-                          const newIds = e.target.checked
-                            ? [...selectedSiteIds, String(s.id)]
-                            : selectedSiteIds.filter((id) => id !== String(s.id))
-                          setSelectedSiteIds(newIds)
-                          applyFilters({ siteIds: newIds })
-                        }}
-                        className="rounded border-slate-300 text-blue-600 w-3.5 h-3.5"
-                      />
-                      {s.name}
-                    </label>
-                  ))}
-                </div>
-                <div className="border-t border-slate-100 px-3 py-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setIsSiteDropdownOpen(false)}
-                    className="text-[10px] text-slate-500 hover:text-slate-700 cursor-pointer"
-                  >
-                    Tutup
-                  </button>
-                </div>
-              </div>
-            )}
+              {availableSites.map((s) => (
+                <option key={s.id} value={String(s.id)}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
           </div>
 
-          {/* Tanggal Operasional (Day Navigator: Hari Sebelumnya, Date Picker, Hari Berikutnya, Hari Ini) */}
+          {/* Periode Operasional (Minggu Berjalan & Date Range) */}
           <div className="sm:col-span-2">
             <div className="flex items-center justify-between mb-1">
-              <label className="text-[11px] font-semibold text-slate-500">Tanggal Operasional</label>
-              {isToday ? (
-                <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
-                  Hari Ini
-                </span>
-              ) : (
+              <label className="text-[11px] font-semibold text-slate-500 flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                Periode Operasional
+              </label>
+              <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={handleToday}
+                  onClick={handleSetCurrentWeek}
                   disabled={isPending}
-                  className="text-[9px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer"
-                  title="Kembali ke Hari Ini"
+                  className={cn(
+                    "text-[9px] font-bold px-1.5 py-0.5 rounded border transition-colors cursor-pointer",
+                    isCurrentWeek
+                      ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
+                      : "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                  )}
+                  title="Pilih Minggu Berjalan (Senin - Minggu)"
                 >
-                  Ke Hari Ini
+                  Minggu Ini
                 </button>
-              )}
+                <button
+                  type="button"
+                  onClick={handleSetToday}
+                  disabled={isPending}
+                  className={cn(
+                    "text-[9px] font-bold px-1.5 py-0.5 rounded border transition-colors cursor-pointer",
+                    isToday
+                      ? "bg-emerald-600 text-white border-emerald-600 shadow-2xs"
+                      : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200"
+                  )}
+                  title="Pilih Hari Ini Saja"
+                >
+                  Hari Ini
+                </button>
+              </div>
             </div>
             <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg p-0.5">
               <button
                 type="button"
-                onClick={handlePreviousDay}
+                onClick={handlePreviousWeek}
                 disabled={isPending}
-                className="h-[31px] w-8 rounded-md flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-200/80 disabled:opacity-40 transition-colors cursor-pointer shrink-0"
-                title="Hari Sebelumnya"
+                className="h-[31px] w-7 rounded-md flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-200/80 disabled:opacity-40 transition-colors cursor-pointer shrink-0"
+                title="1 Minggu Sebelumnya"
               >
-                <ChevronLeft className="w-4 h-4" />
+                <ChevronLeft className="w-3.5 h-3.5" />
               </button>
               <input
                 type="date"
-                aria-label="Pilih Tanggal Operasional"
-                value={selectedDate}
-                onChange={(e) => handleDateChange(e.target.value)}
+                aria-label="Tanggal Mulai"
+                value={startDate}
+                onChange={(e) => {
+                  setStartDate(e.target.value)
+                  applyFilters({ startDate: e.target.value, endDate })
+                }}
                 disabled={isPending}
-                className="w-full text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono cursor-pointer"
+                className="w-1/2 text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono cursor-pointer"
+              />
+              <span className="text-[10px] text-slate-400 font-semibold px-0.5">s/d</span>
+              <input
+                type="date"
+                aria-label="Tanggal Selesai"
+                value={endDate}
+                onChange={(e) => {
+                  setEndDate(e.target.value)
+                  applyFilters({ startDate, endDate: e.target.value })
+                }}
+                disabled={isPending}
+                className="w-1/2 text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono cursor-pointer"
               />
               <button
                 type="button"
-                onClick={handleNextDay}
+                onClick={handleNextWeek}
                 disabled={isPending}
-                className="h-[31px] w-8 rounded-md flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-200/80 disabled:opacity-40 transition-colors cursor-pointer shrink-0"
-                title="Hari Berikutnya"
+                className="h-[31px] w-7 rounded-md flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-200/80 disabled:opacity-40 transition-colors cursor-pointer shrink-0"
+                title="1 Minggu Berikutnya"
               >
-                <ChevronRight className="w-4 h-4" />
+                <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
@@ -1848,6 +1868,7 @@ export function DailyActivityClientDashboard({
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="bg-slate-50/70 text-slate-500 font-semibold border-b border-slate-200/80">
+                    <th className="py-3 px-4">Tanggal</th>
                     <th className="py-3 px-4">Employee ID</th>
                     <th className="py-3 px-4">Nama Karyawan</th>
                     <th className="py-3 px-4">Site</th>
@@ -1866,7 +1887,7 @@ export function DailyActivityClientDashboard({
                 <tbody className="divide-y divide-slate-100">
                   {paginatedEmployees.length === 0 ? (
                     <tr>
-                      <td colSpan={13} className="py-8 text-center text-slate-400">
+                      <td colSpan={14} className="py-8 text-center text-slate-400">
                         Tidak ada aktivitas karyawan yang sesuai dengan kriteria filter.
                       </td>
                     </tr>
@@ -1876,6 +1897,18 @@ export function DailyActivityClientDashboard({
                         key={`emp-row-${emp.sessionId ?? ''}-${emp.employeeId}-${idx}`}
                         className="hover:bg-slate-50/60 transition-colors"
                       >
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-slate-800 text-xs">
+                              {emp.workDate || '-'}
+                            </span>
+                            {emp.rawWorkDate && (
+                              <span className="text-[10px] text-slate-400 capitalize">
+                                {new Date(emp.rawWorkDate).toLocaleDateString('id-ID', { weekday: 'long' })}
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="py-3 px-4 font-mono font-medium text-slate-700">
                           {emp.employeeId}
                         </td>

@@ -268,12 +268,18 @@ export default async function LmsCoursePlayerPage({
                   ) : fileUrl && (activeLessonType as string) !== 'google_slide' ? (
                     <div className="mt-6 not-prose">
                       {isPdfResource ? (
-                        <iframe
-                          src={pdfViewerUrl}
-                          allowFullScreen
+                        <object
+                          data={pdfViewerUrl}
+                          type="application/pdf"
                           className="h-[82vh] w-full rounded-xl border border-slate-200"
-                          title={activeLesson.title}
-                        />
+                        >
+                          <iframe
+                            src={pdfViewerUrl}
+                            allowFullScreen
+                            className="h-[82vh] w-full rounded-xl border border-slate-200"
+                            title={activeLesson.title}
+                          />
+                        </object>
                       ) : officeViewerUrl ? (
                         <iframe
                           src={officeViewerUrl}

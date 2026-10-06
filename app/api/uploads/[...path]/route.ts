@@ -107,7 +107,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
     path[0] === "face-attendance-v2" ||
     path[0] === "sop-win" ||
     path[0] === "lms-covers" ||
-    path[0] === "chitralearning"
+    path[0] === "lms-materials" ||
+    path[0] === "chitralearning" ||
+    path[0] === "public-career-cv" ||
+    path[0] === "contract-review-attachment"
 
   const isSensitive = !isRootUpload && !isPublicPrefix
   if (isSensitive) {
@@ -165,6 +168,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
       `mcu-referral-letters/${fileName}`,
       `mcu-results/${fileName}`,
       `offering-letters/${fileName}`,
+      `public-career-cv/${fileName}`,
+      `lms-materials/${fileName}`,
+      `lms-covers/${fileName}`,
+      `chitralearning/${fileName}`,
+      `contract-review-attachment/${fileName}`,
     ]
 
     for (const key of candidateS3Keys) {

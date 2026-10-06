@@ -258,9 +258,9 @@ export function RecruitmentClientPage({
       const res = await assessCandidateCv(cand.id);
       if (res.success) {
         toast.success(`Smart Assessment selesai: Skor ${res.score}%`, { id: toastId });
-        setCandidates(prev => prev.map(c => c.id === cand.id ? { ...c, aiScore: res.score, aiSummary: res.summary || "", aiDetails: res.details } : c));
+        setCandidates(prev => prev.map(c => c.id === cand.id ? { ...c, aiScore: res.score ?? null, aiSummary: res.summary || "", aiDetails: res.details } : c));
         if (profileDrawerCandidate?.id === cand.id) {
-          setProfileDrawerCandidate(prev => prev ? { ...prev, aiScore: res.score, aiSummary: res.summary || "", aiDetails: res.details } : null);
+          setProfileDrawerCandidate(prev => prev ? { ...prev, aiScore: res.score ?? null, aiSummary: res.summary || "", aiDetails: res.details } : null);
         }
         router.refresh();
       } else {
@@ -2400,12 +2400,18 @@ export function RecruitmentClientPage({
         </DialogHeader>
         <div className="flex-1 overflow-hidden bg-muted/20" style={{ minHeight: 0, flex: '1 1 0%' }}>
           {cvViewerUrl ? (
-            <iframe
-              src={cvViewerUrl}
+            <object
+              data={cvViewerUrl}
+              type="application/pdf"
               className="w-full h-full border-0"
-              style={{ height: '100%', minHeight: 0 }}
-              title={`CV of ${cvViewerName}`}
-            />
+            >
+              <iframe
+                src={cvViewerUrl}
+                className="w-full h-full border-0"
+                style={{ height: '100%', minHeight: 0 }}
+                title={`CV of ${cvViewerName}`}
+              />
+            </object>
           ) : (
             <div className="flex items-center justify-center h-full text-muted-foreground">Loading...</div>
           )}
