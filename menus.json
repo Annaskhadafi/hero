@@ -10,6 +10,16 @@
     "resource": "hse_tire_inspection"
   },
   {
+    "title": "Analisis Kerusakan Ban (AI)",
+    "url": "/dashboard/hse/tire-damage",
+    "resource": "hse_tire_inspection"
+  },
+  {
+    "title": "Deteksi Kerusakan Ban",
+    "url": "/mobile/hse/tire-damage",
+    "resource": "hse_tire_inspection"
+  },
+  {
     "title": "Asset Management",
     "url": "/dashboard/central-service/assets",
     "resource": "central-service-assets"
