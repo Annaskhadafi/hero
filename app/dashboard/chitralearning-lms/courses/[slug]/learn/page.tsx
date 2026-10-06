@@ -237,6 +237,9 @@ export default async function LmsCoursePlayerPage({
                   <h2 className="text-2xl font-bold font-heading">{activeLesson.title}</h2>
                   <div className="mt-4 text-slate-700" dangerouslySetInnerHTML={{ __html: activeLesson.description || 'Tidak ada deskripsi.' }} />
                 </div>
+                <div className="mt-8 not-prose">
+                  <LmsLessonCompleteButton courseId={course.id} lessonId={activeLesson.id} nextLessonHref={nextLessonHref} />
+                </div>
               </div>
             ) : ['quiz', 'pretest', 'posttest'].includes(activeLessonType) ? (
               <div className="w-full py-8">

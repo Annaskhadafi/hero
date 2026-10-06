@@ -31,12 +31,22 @@ export function ChitraLearningVideoPlayer({
   const isVimeo = videoUrl?.includes('vimeo.com');
   const isEmbed = isYouTube || isVimeo;
 
+  const youTubeId = isYouTube
+    ? (videoUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/i)?.[1] ||
+       videoUrl.split('v=')[1]?.split('&')[0] ||
+       videoUrl.split('youtu.be/')[1]?.split('?')[0] || '')
+    : '';
+
+  const externalWatchUrl = isYouTube && youTubeId
+    ? `https://www.youtube.com/watch?v=${youTubeId}`
+    : isVimeo
+    ? videoUrl
+    : '';
+
   const getEmbedUrl = (url: string) => {
     if (!url) return '';
-    if (isYouTube) {
-      const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/i);
-      const videoId = match ? match[1] : (url.split('v=')[1]?.split('&')[0] || url.split('youtu.be/')[1]?.split('?')[0]);
-      return `https://www.youtube.com/embed/${videoId}?rel=0`;
+    if (isYouTube && youTubeId) {
+      return `https://www.youtube-nocookie.com/embed/${youTubeId}?rel=0&enablejsapi=1`;
     }
     if (isVimeo) {
       const match = url.match(/vimeo\.com\/(?:channels\/(?:\w+\/)?|groups\/[^\/]+\/videos\/|album\/\d+\/video\/|video\/|)(\d+)/i);
@@ -69,13 +79,33 @@ export function ChitraLearningVideoPlayer({
   return (
     <div className="grid gap-2">
       {isEmbed ? (
-        <div className="aspect-video w-full rounded-xl overflow-hidden bg-slate-900 border border-slate-100 shadow-sm relative">
-          <iframe
-            src={getEmbedUrl(videoUrl)}
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-            className="absolute top-0 left-0 w-full h-full border-0"
-          />
+        <div className="space-y-2">
+          <div className="aspect-video w-full rounded-xl overflow-hidden bg-slate-900 border border-slate-100 shadow-sm relative">
+            <iframe
+              src={getEmbedUrl(videoUrl)}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+              referrerPolicy="strict-origin-when-cross-origin"
+              className="absolute top-0 left-0 w-full h-full border-0"
+              title="Video Pembelajaran"
+            />
+          </div>
+          {externalWatchUrl ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600">
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+                Video materi dari {isYouTube ? 'YouTube' : 'Vimeo'}. Mengalami kendala pemutaran / adblocker?
+              </span>
+              <a
+                href={externalWatchUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium text-blue-600 hover:text-blue-700 underline inline-flex items-center gap-1 shrink-0"
+              >
+                Tonton di {isYouTube ? 'YouTube' : 'Vimeo'} ↗
+              </a>
+            </div>
+          ) : null}
         </div>
       ) : (
         <video

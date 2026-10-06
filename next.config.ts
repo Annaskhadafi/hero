@@ -5,12 +5,13 @@ const cspHeader = `
   script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:;
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   font-src 'self' https://fonts.gstatic.com data:;
-  img-src 'self' data: blob: https://is3.cloudhost.id https://*.tile.openstreetmap.org https://tile.openstreetmap.org https://*.openstreetmap.org https://*.chitraparatama.com;
-  media-src 'self' blob: data: https://is3.cloudhost.id https://*.chitraparatama.com;
-  connect-src 'self' https://is3.cloudhost.id https://vision.chitraparatama.com https://*.chitraparatama.com https://*.tile.openstreetmap.org https://tile.openstreetmap.org wss: ws:;
-  frame-src 'self' blob: data: https://www.youtube.com https://www.youtube-nocookie.com https://youtube.com https://player.vimeo.com https://vimeo.com https://docs.google.com https://drive.google.com https://view.officeapps.live.com https://*.chitraparatama.com;
+  img-src 'self' data: blob: https://is3.cloudhost.id https://*.ytimg.com https://i.ytimg.com https://*.googleusercontent.com https://*.tile.openstreetmap.org https://tile.openstreetmap.org https://*.openstreetmap.org https://*.chitraparatama.com;
+  media-src 'self' blob: data: https://is3.cloudhost.id https://*.googlevideo.com https://*.youtube.com https://*.chitraparatama.com;
+  connect-src 'self' https://is3.cloudhost.id https://vision.chitraparatama.com https://*.chitraparatama.com https://*.youtube.com https://*.googlevideo.com https://*.google.com https://*.tile.openstreetmap.org https://tile.openstreetmap.org wss: ws:;
+  frame-src 'self' blob: data: https://*.youtube.com https://*.youtube-nocookie.com https://youtube.com https://*.google.com https://*.googlevideo.com https://*.vimeo.com https://player.vimeo.com https://vimeo.com https://docs.google.com https://drive.google.com https://view.officeapps.live.com https://*.chitraparatama.com;
+  child-src 'self' blob: https://*.youtube.com https://*.youtube-nocookie.com https://*.google.com https://*.googlevideo.com https://*.vimeo.com https://player.vimeo.com https://docs.google.com https://drive.google.com;
   worker-src 'self' blob:;
-  frame-ancestors 'self';
+  frame-ancestors 'self' https://*.chitraparatama.com https://*.chitraparatama.co.id;
   form-action 'self';
   base-uri 'self';
   object-src 'self' blob: data:;
