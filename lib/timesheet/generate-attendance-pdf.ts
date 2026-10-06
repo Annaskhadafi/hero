@@ -683,9 +683,9 @@ async function drawOvertimeRecordSignatures(
     })
     const qrImage = await doc.embedPng(qrDataUrl)
 
-    const qrSize = 48
+    const qrSize = 50
     const qrX = qrColX + (columnWidth - qrSize) / 2
-    const qrY = y - 44
+    const qrY = y - 48
 
     page.drawImage(qrImage, {
       x: qrX,
@@ -694,37 +694,18 @@ async function drawOvertimeRecordSignatures(
       height: qrSize,
     })
 
-    const titleText = 'Scan / Klik Bukti'
-    const titleW = fonts.bold.widthOfTextAtSize(titleText, 6.5)
-    page.drawText(titleText, {
-      x: qrColX + (columnWidth - titleW) / 2,
-      y: qrY - 8,
-      font: fonts.bold,
-      size: 6.5,
-      color: rgb(0.1, 0.35, 0.75),
-    })
-
-    const subText = 'Validasi Digital'
-    const subW = fonts.regular.widthOfTextAtSize(subText, 5.5)
-    page.drawText(subText, {
-      x: qrColX + (columnWidth - subW) / 2,
-      y: qrY - 15,
-      font: fonts.regular,
-      size: 5.5,
-      color: rgb(0.4, 0.4, 0.4),
-    })
-
-    // Clickable PDF Link Annotation on the QR area
+    // Clickable PDF Link Annotation on the QR area (opens in new window/tab)
     const linkAnnot = doc.context.obj({
       Type: 'Annot',
       Subtype: 'Link',
-      Rect: [qrColX, qrY - 18, qrColX + columnWidth, qrY + qrSize + 4],
+      Rect: [qrX, qrY, qrX + qrSize, qrY + qrSize],
       Border: [0, 0, 0],
       C: [0, 0, 0],
       A: {
         Type: 'Action',
         S: 'URI',
         URI: PDFString.of(evidenceUrl),
+        NewWindow: true,
       },
     })
     const linkAnnotRef = doc.context.register(linkAnnot)
