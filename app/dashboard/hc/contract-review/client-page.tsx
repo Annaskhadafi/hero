@@ -340,13 +340,26 @@ export function ContractReviewClientPage({
 
   // Keep employees with an active review in the Daftar Review tab only.
   const monitoringEmployees = useMemo(() => {
-    const activeReviewEmployeeIds = new Set(
-      rows
-        .filter((row) => ['draft', 'in_progress'].includes(String(row.status || '').toLowerCase()))
-        .map((row) => row.employeeId)
-        .filter((id): id is number => typeof id === 'number')
-    )
-    return expiringEmployees.filter((employee) => !activeReviewEmployeeIds.has(employee.id))
+    const activeReviewEmpIds = new Set<number>()
+    const activeReviewNames = new Set<string>()
+    const activeReviewSns = new Set<string>()
+
+    for (const row of rows) {
+      const st = String(row.status || '').toLowerCase()
+      if (['draft', 'in_progress'].includes(st)) {
+        if (typeof row.employeeId === 'number') activeReviewEmpIds.add(row.employeeId)
+        if (row.employeeNameStr) activeReviewNames.add(row.employeeNameStr.trim().toLowerCase())
+        if (row.employeeSn) activeReviewSns.add(String(row.employeeSn).trim().replace(/^EMP-/i, ''))
+      }
+    }
+
+    return expiringEmployees.filter((employee) => {
+      if (activeReviewEmpIds.has(employee.id)) return false
+      if (employee.name && activeReviewNames.has(employee.name.trim().toLowerCase())) return false
+      if (employee.employeeSn && activeReviewSns.has(String(employee.employeeSn).trim().replace(/^EMP-/i, ''))) return false
+      if (employee.latestReview && ['draft', 'in_progress'].includes(employee.latestReview.status.toLowerCase())) return false
+      return true
+    })
   }, [expiringEmployees, rows])
 
   // Monitoring stats

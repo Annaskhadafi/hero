@@ -44,6 +44,7 @@ type SummaryData = {
     quantity: number;
     requestType: string;
     remarks?: string;
+    apdRequestId?: number | null;
   }>;
   approvals: Array<{
     id?: number;

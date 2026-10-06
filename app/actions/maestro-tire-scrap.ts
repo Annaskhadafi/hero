@@ -466,6 +466,7 @@ function transformRawRecordsToScrapResponse(
       },
       estimated_scrap_loss: {
         value: totalLoss,
+        unit: 'USD',
         formatted: formattedLoss,
         change_percentage: 0,
         change_direction: 'neutral',

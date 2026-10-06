@@ -14,7 +14,7 @@ import {
   notificationEvents,
   notificationDeliveries,
 } from '@/db/schema/hero'
-import { and, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { randomUUID } from 'crypto'
 import { headers } from 'next/headers'
@@ -23,6 +23,7 @@ import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center
 import { sendPushNotification } from '@/lib/push-notifications'
 import { logEmailDeliveryRecord, sendEmailViaSmtp, type EmailTransportSettings } from '@/lib/email-delivery'
 import { resolveWorkflowTemplateContent } from '@/lib/workflow-email'
+import { getHumanCapitalConfiguredRecipients } from '@/lib/human-capital-email'
 import { getContractReviewSettings, autoAdvanceDraftReviewIfReady } from './contract-review'
 
 async function getBaseUrl(): Promise<string> {
@@ -418,7 +419,7 @@ export async function findActiveTestConfigForEmployee(employeeId: number, review
           (name) => name?.trim().toLowerCase() === emp.sectionName!.trim().toLowerCase()
         )
       }
-      return cfg.sectionName?.trim().toLowerCase() === emp.sectionName.trim().toLowerCase()
+      return cfg.sectionName?.trim().toLowerCase() === emp.sectionName?.trim().toLowerCase()
     })
     if (configByName) return configByName
   }
@@ -746,7 +747,7 @@ export async function dispatchContractReviewTestInvitation(params: {
       name: employees.name,
       employeeSn: employees.employeeSn,
       email: employees.email,
-      phone: employees.phone,
+      phoneNumber: employees.phoneNumber,
       sectionName: masterSections.name,
     })
     .from(employees)
@@ -802,7 +803,8 @@ export async function dispatchContractReviewTestInvitation(params: {
     try {
       const smtpSettings = await getSmtpSettings()
       if (smtpSettings) {
-        const hcPolicyCc = await getHumanCapitalPolicyCcRecipients()
+        const hcRecipients = await getHumanCapitalConfiguredRecipients()
+        const hcPolicyCc = hcRecipients.cc
         const resolvedTemplate = await resolveWorkflowTemplateContent({
           templateCode: 'hc_contract_review_test_invitation',
           cc: hcPolicyCc,
@@ -831,6 +833,7 @@ export async function dispatchContractReviewTestInvitation(params: {
     try {
       await notifyWorkflowBellRecipients({
         recipientEmails: [emp.email.trim()],
+        eventType: 'hc_contract_review_test_invitation',
         category: 'approval_requests',
         title: `Ujian Online Contract Review: ${config.title}`,
         body: `Silakan kerjakan ujian evaluasi kompetensi sebagai syarat review kontrak. Durasi: ${config.durationMinutes} menit.`,
@@ -855,18 +858,26 @@ export async function dispatchContractReviewTestInvitation(params: {
   }
 
   // 4. WhatsApp / Phone Notification
-  if (emp.phone?.trim()) {
+  if (emp.phoneNumber?.trim()) {
     try {
       const waMessage = `Halo ${emp.name},\n\nAnda memiliki tugas *Test Online Contract Review* PT Chitra Paratama.\n\n*Materi:* ${config.title}\n*Durasi:* ${config.durationMinutes} Menit\n*Link Ujian:* ${testLink}\n\nHarap diselesaikan sebelum batas waktu berakhir. Terima kasih.`
-      // Log delivery record
-      await db.insert(notificationDeliveries).values({
+      const [ev] = await db.insert(notificationEvents).values({
         channel: 'whatsapp',
-        recipientAddress: emp.phone.trim(),
-        subjectOrTitle: 'Test Online Contract Review',
-        status: 'delivered',
+        eventType: 'hc_contract_review_test_invitation',
+        recipient: emp.phoneNumber.trim(),
+        payloadSnapshot: JSON.stringify({ message: waMessage }),
+        deliveryStatus: 'delivered',
         deliveredAt: new Date(),
-        errorMessage: null,
-      })
+      }).returning()
+      if (ev) {
+        await db.insert(notificationDeliveries).values({
+          notificationEventId: ev.id,
+          deliveryChannel: 'whatsapp',
+          recipient: emp.phoneNumber.trim(),
+          status: 'delivered',
+          sentAt: new Date(),
+        })
+      }
       // If external WA gateway endpoint exists in process.env, forward it
       if (process.env.WHATSAPP_API_URL) {
         await fetch(process.env.WHATSAPP_API_URL, {
@@ -876,7 +887,7 @@ export async function dispatchContractReviewTestInvitation(params: {
             ...(process.env.WHATSAPP_TOKEN ? { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } : {}),
           },
           body: JSON.stringify({
-            phone: emp.phone.trim(),
+            phone: emp.phoneNumber.trim(),
             message: waMessage,
           }),
         }).catch(() => {})

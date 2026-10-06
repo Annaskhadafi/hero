@@ -173,8 +173,8 @@ export function TestPlayerClient({
             ...prev,
             status: result.status,
             score: result.score,
-            totalQuestions: result.totalQuestions,
-            correctAnswers: result.correctAnswers,
+            totalQuestions: result.totalQuestions ?? prev.totalQuestions,
+            correctAnswers: result.correctAnswers ?? prev.correctAnswers,
             completedAt: new Date(),
           }))
           toast.success('Jawaban Anda berhasil dikumpulkan!')

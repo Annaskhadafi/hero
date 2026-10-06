@@ -1350,6 +1350,16 @@ export type ExpiringContractEmployee = {
   reviewStatus: string
   reviewRecommendation: string | null
   reviewType: string | null
+  latestReview?: {
+    id: number
+    status: string
+    reviewType: string
+    recommendation: string | null
+    currentStep: number | null
+    currentApproverRole: string | null
+    currentApproverName: string | null
+    todayDate: string | null
+  } | null
 }
 
 export async function getExpiringContractEmployees(): Promise<ExpiringContractEmployee[]> {
@@ -1372,6 +1382,7 @@ export async function getExpiringContractEmployees(): Promise<ExpiringContractEm
       employeeStatusType: employees.employeeStatusType,
       contractDurationStart: employees.contractDurationStart,
       contractDurationEnd: employees.contractDurationEnd,
+      permanentDate: employees.permanentDate,
       departmentName: masterDepartments.name,
       sectionName: masterSections.name,
       siteName: sites.name,
@@ -1385,25 +1396,77 @@ export async function getExpiringContractEmployees(): Promise<ExpiringContractEm
     .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
     .where(and(eq(employees.isActive, true), isNotNull(employees.contractDurationEnd)))
 
-  // 2. Fetch all contract reviews to match
-  const allReviews = await db
-    .select({
-      id: hcEmployeeContractReviews.id,
-      employeeId: hcEmployeeContractReviews.employeeId,
-      employeeNameStr: hcEmployeeContractReviews.employeeNameStr,
-      reviewType: hcEmployeeContractReviews.reviewType,
-      status: hcEmployeeContractReviews.status,
-      recommendation: hcEmployeeContractReviews.recommendation,
-      updatedAt: hcEmployeeContractReviews.updatedAt,
-      createdAt: hcEmployeeContractReviews.createdAt,
-    })
-    .from(hcEmployeeContractReviews)
-    .orderBy(desc(hcEmployeeContractReviews.createdAt))
+  // 2. Fetch all contract reviews and approvals to match
+  const [allReviews, allApprovals] = await Promise.all([
+    db
+      .select({
+        id: hcEmployeeContractReviews.id,
+        employeeId: hcEmployeeContractReviews.employeeId,
+        employeeNameStr: hcEmployeeContractReviews.employeeNameStr,
+        employeeSn: employees.employeeSn,
+        reviewType: hcEmployeeContractReviews.reviewType,
+        status: hcEmployeeContractReviews.status,
+        recommendation: hcEmployeeContractReviews.recommendation,
+        todayDate: hcEmployeeContractReviews.todayDate,
+        updatedAt: hcEmployeeContractReviews.updatedAt,
+        createdAt: hcEmployeeContractReviews.createdAt,
+      })
+      .from(hcEmployeeContractReviews)
+      .leftJoin(employees, eq(hcEmployeeContractReviews.employeeId, employees.id))
+      .orderBy(desc(hcEmployeeContractReviews.createdAt)),
+    db
+      .select()
+      .from(hcContractReviewApprovals)
+      .orderBy(asc(hcContractReviewApprovals.stepOrder)),
+  ])
 
-  const reviewsByEmpId = new Map<number, (typeof allReviews)[0]>()
+  const approvalsByReview = new Map<number, typeof allApprovals>()
+  for (const approval of allApprovals) {
+    const arr = approvalsByReview.get(approval.reviewId) ?? []
+    arr.push(approval)
+    approvalsByReview.set(approval.reviewId, arr)
+  }
+
+  type EnrichedReview = (typeof allReviews)[0] & {
+    currentStep: number | null
+    currentApproverName: string | null
+    currentApproverRole: string | null
+  }
+
+  const reviewsByEmpId = new Map<number, EnrichedReview>()
+  const reviewsByName = new Map<string, EnrichedReview>()
+  const reviewsBySn = new Map<string, EnrichedReview>()
+
   for (const rev of allReviews) {
+    const reviewApprovals = approvalsByReview.get(rev.id) ?? []
+    let currentApproval = reviewApprovals.find((approval) => approval.status === 'pending')
+    if (!currentApproval && rev.status === 'in_progress') {
+      currentApproval = reviewApprovals.find(
+        (approval) => approval.status !== 'approved' && !approval.signatureDataUrl
+      )
+    }
+
+    const enriched: EnrichedReview = {
+      ...rev,
+      currentStep: currentApproval?.stepOrder ?? (rev.status === 'completed' ? reviewApprovals.length : null),
+      currentApproverName: currentApproval?.approverName ?? null,
+      currentApproverRole: currentApproval?.approverRole ?? null,
+    }
+
     if (rev.employeeId && !reviewsByEmpId.has(rev.employeeId)) {
-      reviewsByEmpId.set(rev.employeeId, rev)
+      reviewsByEmpId.set(rev.employeeId, enriched)
+    }
+    if (rev.employeeNameStr?.trim()) {
+      const normName = rev.employeeNameStr.trim().toLowerCase()
+      if (!reviewsByName.has(normName)) {
+        reviewsByName.set(normName, enriched)
+      }
+    }
+    if (rev.employeeSn?.trim()) {
+      const normSn = normalizeSn(rev.employeeSn)
+      if (normSn && !reviewsBySn.has(normSn)) {
+        reviewsBySn.set(normSn, enriched)
+      }
     }
   }
 
@@ -1416,7 +1479,26 @@ export async function getExpiringContractEmployees(): Promise<ExpiringContractEm
     const daysLeft = differenceInCalendarDays(endDate, today)
     if (daysLeft > 90) continue
 
-    const matchingReview = reviewsByEmpId.get(emp.id)
+    const normEmpName = emp.name.trim().toLowerCase()
+    const normEmpSn = normalizeSn(emp.employeeSn)
+    const matchingReview =
+      reviewsByEmpId.get(emp.id) ||
+      (normEmpName ? reviewsByName.get(normEmpName) : null) ||
+      (normEmpSn ? reviewsBySn.get(normEmpSn) : null)
+
+    const isPermanent =
+      Boolean(emp.permanentDate) ||
+      emp.employmentStatus?.toLowerCase() === 'permanent' ||
+      emp.employmentStatus?.toLowerCase() === 'permanen' ||
+      (emp.employeeStatusType?.toLowerCase().includes('permanen') && !emp.employeeStatusType?.toLowerCase().includes('kontrak'))
+
+    if (isPermanent && (!matchingReview || matchingReview.status === 'completed')) {
+      continue
+    }
+
+    if (matchingReview?.status === 'completed' && matchingReview.recommendation === 'confirm_permanent') {
+      continue
+    }
 
     let urgency: 'overdue' | 'critical' | 'warning' | 'normal' = 'normal'
     if (daysLeft < 0) {
@@ -1427,10 +1509,23 @@ export async function getExpiringContractEmployees(): Promise<ExpiringContractEm
       urgency = 'warning'
     }
 
+    const latestReview = matchingReview
+      ? {
+          id: matchingReview.id,
+          status: matchingReview.status,
+          reviewType: matchingReview.reviewType || 'contract',
+          recommendation: matchingReview.recommendation,
+          currentStep: matchingReview.currentStep ?? 1,
+          currentApproverRole: matchingReview.currentApproverRole ?? null,
+          currentApproverName: matchingReview.currentApproverName ?? null,
+          todayDate: matchingReview.todayDate ? String(matchingReview.todayDate) : null,
+        }
+      : null
+
     expiringEmployees.push({
       id: emp.id,
       name: emp.name,
-      employeeSn: normalizeSn(emp.employeeSn),
+      employeeSn: normEmpSn,
       email: emp.email || '',
       jobTitle: emp.positionName || emp.jobTitle || 'Staff',
       department: emp.departmentName || '',
@@ -1448,6 +1543,7 @@ export async function getExpiringContractEmployees(): Promise<ExpiringContractEm
       reviewStatus: matchingReview?.status ?? 'unreviewed',
       reviewRecommendation: matchingReview?.recommendation ?? null,
       reviewType: matchingReview?.reviewType ?? null,
+      latestReview,
     })
   }
 

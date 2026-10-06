@@ -188,10 +188,12 @@ export function KanbanBoard({
       if (result.success) {
         setAiProgress((prev) => ({ ...prev, [candidate.id]: 100 }));
         toast.success(`Smart assessment completed: ${result.score}%`, { id: toastId });
-        candidate.aiScore = result.score;
+        candidate.aiScore = result.score ?? null;
         if (result.summary) candidate.aiSummary = result.summary;
         if (result.details) candidate.aiDetails = result.details;
-        onCandidateAiUpdate?.(candidate.id, result.score, result.summary, result.details);
+        if (typeof result.score === "number") {
+          onCandidateAiUpdate?.(candidate.id, result.score, result.summary, result.details);
+        }
         router.refresh();
       } else {
         toast.error(result.error || "Smart assessment failed.", { id: toastId });

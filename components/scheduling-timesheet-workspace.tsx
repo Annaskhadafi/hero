@@ -6057,7 +6057,7 @@ export function SchedulingTimesheetWorkspace({
               )
               if (overtime.totalHours > 0) return String(overtime.totalHours)
               if (overtime.unauthorizedMinutes > 0) return 'SPL'
-              if (code === 'ST' || cell.status === 'standby') return 'ST'
+              if (code === 'ST') return 'ST'
               if (code === 'GD') return 'GD'
               if (code === 'FB' || isFieldBreakDay) return 'FB'
               return ''
@@ -10994,7 +10994,7 @@ export function SchedulingTimesheetWorkspace({
                                                  } else if (overtime.unauthorizedMinutes > 0) {
                                                    cellValue = 'SPL'
                                                    cellBg = 'bg-orange-100 text-orange-900 font-semibold'
-                                                 } else if (scheduleCode === 'ST' || cell.status === 'standby') {
+                                                 } else if (scheduleCode === 'ST') {
                                                    cellValue = 'ST'
                                                    cellBg = 'bg-blue-50 text-blue-800'
                                                  } else if (scheduleCode === 'GD') {
