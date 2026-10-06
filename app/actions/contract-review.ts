@@ -520,50 +520,104 @@ function parseIsoDate(value: string | null | undefined) {
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
-function getCompletedEmployeeContractDates(
+export async function syncCompletedContractReviewToEmployee(
   review: typeof hcEmployeeContractReviews.$inferSelect,
-  completedAt: Date,
-) {
-  const employeeDates: Partial<typeof employees.$inferInsert> = {}
-  const contractStart = parseIsoDate(review.hireDate ? String(review.hireDate) : null)
-  const reviewDate = parseIsoDate(review.todayDate ? String(review.todayDate) : null) || completedAt
-
-  if (contractStart) {
-    employeeDates.contractDurationStart = contractStart.toISOString().slice(0, 10)
-  }
-
-  if (review.contractEndDate) {
-    employeeDates.contractDurationEnd = String(review.contractEndDate)
-  } else if (review.recommendation === 'contract_extended') {
-    let contractEnd: Date | null = null
-    if (!contractEnd && contractStart && review.contractExtendedMonths) {
-      contractEnd = new Date(contractStart)
-      contractEnd.setMonth(contractEnd.getMonth() + review.contractExtendedMonths)
-    }
-    if (contractEnd) employeeDates.contractDurationEnd = contractEnd.toISOString().slice(0, 10)
-  } else if (review.recommendation === 'contract_ended') {
-    employeeDates.contractDurationEnd = reviewDate.toISOString().slice(0, 10)
-  }
-
-  if (review.permanentDate) {
-    employeeDates.permanentDate = String(review.permanentDate)
-  } else if (review.recommendation === 'confirm_permanent') {
-    employeeDates.permanentDate = reviewDate.toISOString().slice(0, 10)
-  }
-
-  return employeeDates
-}
-
-async function syncCompletedContractReviewToEmployee(
-  review: typeof hcEmployeeContractReviews.$inferSelect,
-  completedAt: Date,
+  completedAt: Date = new Date(),
 ) {
   if (!review.employeeId) return
-  const employeeDates = getCompletedEmployeeContractDates(review, completedAt)
-  if (Object.keys(employeeDates).length === 0) return
-  await db.update(employees).set(employeeDates).where(eq(employees.id, review.employeeId))
+
+  const [emp] = await db
+    .select()
+    .from(employees)
+    .where(eq(employees.id, review.employeeId))
+    .limit(1)
+
+  if (!emp) return
+
+  const reviewDate = parseIsoDate(review.todayDate ? String(review.todayDate) : null) || completedAt
+  const updateEmpData: Partial<typeof employees.$inferInsert> = {}
+  const updateReviewData: Partial<typeof hcEmployeeContractReviews.$inferInsert> = {}
+
+  if (review.recommendation === 'confirm_permanent') {
+    const permDate = review.permanentDate
+      ? parseIsoDate(String(review.permanentDate))
+      : reviewDate
+    const permDateStr = permDate ? permDate.toISOString().slice(0, 10) : completedAt.toISOString().slice(0, 10)
+
+    updateEmpData.permanentDate = permDateStr
+    updateEmpData.employmentStatus = 'permanent'
+
+    const currentType = emp.employeeStatusType || ''
+    if (currentType.includes('Non Staff')) {
+      updateEmpData.employeeStatusType = 'Permanen | Non Staff'
+    } else if (currentType.toLowerCase().includes('contract') && !currentType.includes('|')) {
+      updateEmpData.employeeStatusType = 'Permanent'
+    } else {
+      updateEmpData.employeeStatusType = 'Permanen | Staff'
+    }
+    updateEmpData.isActive = true
+
+    if (!review.permanentDate) {
+      updateReviewData.permanentDate = permDateStr
+    }
+  } else if (review.recommendation === 'contract_extended') {
+    const months = review.contractExtendedMonths || 12
+    const currentEnd = emp.contractDurationEnd ? parseIsoDate(String(emp.contractDurationEnd)) : null
+    const currentStart = emp.contractDurationStart ? parseIsoDate(String(emp.contractDurationStart)) : null
+
+    // Extend from current contract end date if it is in the future relative to review,
+    // otherwise extend from reviewDate so the employee is extended forward into the future.
+    const baseDate = (currentEnd && currentEnd > reviewDate) ? currentEnd : reviewDate
+    const extendedEnd = new Date(baseDate)
+    extendedEnd.setMonth(extendedEnd.getMonth() + months)
+
+    const newStartStr = (currentEnd && currentEnd <= reviewDate)
+      ? currentEnd.toISOString().slice(0, 10)
+      : (currentStart ? currentStart.toISOString().slice(0, 10) : reviewDate.toISOString().slice(0, 10))
+    const newEndStr = extendedEnd.toISOString().slice(0, 10)
+
+    updateEmpData.contractDurationStart = newStartStr
+    updateEmpData.contractDurationEnd = newEndStr
+    updateEmpData.employmentStatus = 'active'
+    updateEmpData.isActive = true
+
+    const currentType = emp.employeeStatusType || ''
+    if (!currentType.toLowerCase().includes('kontrak') && !currentType.toLowerCase().includes('contract')) {
+      updateEmpData.employeeStatusType = currentType.includes('Non Staff') ? 'Kontrak | Non Staff' : 'Kontrak | Staff'
+    }
+
+    updateReviewData.contractEndDate = newEndStr
+  } else if (review.recommendation === 'contract_ended' || review.recommendation === 'terminate_probation') {
+    updateEmpData.employmentStatus = 'inactive'
+    if (emp.contractDurationEnd) {
+      updateEmpData.contractDurationEnd = String(emp.contractDurationEnd)
+    } else {
+      updateEmpData.contractDurationEnd = reviewDate.toISOString().slice(0, 10)
+    }
+  }
+
+  if (Object.keys(updateEmpData).length > 0) {
+    await db.update(employees).set(updateEmpData).where(eq(employees.id, review.employeeId))
+  }
+
+  if (Object.keys(updateReviewData).length > 0) {
+    await db.update(hcEmployeeContractReviews).set(updateReviewData).where(eq(hcEmployeeContractReviews.id, review.id))
+  }
+
   safeRevalidatePath('/dashboard/hc/employee')
   safeRevalidatePath(`/dashboard/hc/employee/${review.employeeId}`)
+  safeRevalidatePath('/dashboard/hc/contract-review')
+}
+
+export async function syncAllCompletedContractReviews() {
+  const completedReviews = await db
+    .select()
+    .from(hcEmployeeContractReviews)
+    .where(eq(hcEmployeeContractReviews.status, 'completed'))
+
+  for (const review of completedReviews) {
+    await syncCompletedContractReviewToEmployee(review, review.updatedAt || new Date())
+  }
 }
 
 function formatDisplayDate(value: Date) {
@@ -1492,11 +1546,16 @@ export async function getExpiringContractEmployees(): Promise<ExpiringContractEm
       emp.employmentStatus?.toLowerCase() === 'permanen' ||
       (emp.employeeStatusType?.toLowerCase().includes('permanen') && !emp.employeeStatusType?.toLowerCase().includes('kontrak'))
 
-    if (isPermanent && (!matchingReview || matchingReview.status === 'completed')) {
+    if (isPermanent) {
       continue
     }
 
-    if (matchingReview?.status === 'completed' && matchingReview.recommendation === 'confirm_permanent') {
+    if (emp.employmentStatus?.toLowerCase() === 'inactive') {
+      continue
+    }
+
+    // Yang sudah di-review (completed) atau sedang diproses review (in_progress, draft) hilang dari list outstanding
+    if (matchingReview && ['completed', 'in_progress', 'draft'].includes(matchingReview.status.toLowerCase())) {
       continue
     }
 
@@ -2449,7 +2508,10 @@ export async function saveContractReview(data: Partial<typeof hcEmployeeContract
             const [review] = await db.select().from(hcEmployeeContractReviews).where(eq(hcEmployeeContractReviews.id, data.id as number)).limit(1)
             if (review) await sendPendingContractReviewApprovalEmail(review)
           } else {
-            await db.update(hcEmployeeContractReviews).set({ status: 'completed', updatedAt: new Date() }).where(eq(hcEmployeeContractReviews.id, data.id))
+            const completedAt = new Date()
+            await db.update(hcEmployeeContractReviews).set({ status: 'completed', updatedAt: completedAt }).where(eq(hcEmployeeContractReviews.id, data.id))
+            const [rev] = await db.select().from(hcEmployeeContractReviews).where(eq(hcEmployeeContractReviews.id, data.id as number)).limit(1)
+            if (rev) await syncCompletedContractReviewToEmployee(rev, completedAt)
           }
         }
       }
@@ -2987,17 +3049,6 @@ export async function approveContractReviewStep(
       if (review) {
         const today = new Date()
         const updateData: Record<string, any> = { status: 'completed', updatedAt: today }
-
-        if (review.recommendation === 'contract_extended' && review.contractExtendedMonths) {
-          // Extend contract end date
-          const hireDate = review.hireDate ? new Date(review.hireDate) : today
-          const contractEnd = new Date(hireDate)
-          contractEnd.setMonth(contractEnd.getMonth() + review.contractExtendedMonths)
-          updateData.contractEndDate = contractEnd.toISOString().slice(0, 10)
-        } else if (review.recommendation === 'confirm_permanent') {
-          // Set permanent date to today
-          updateData.permanentDate = today.toISOString().slice(0, 10)
-        }
 
         await db.update(hcEmployeeContractReviews).set(updateData).where(eq(hcEmployeeContractReviews.id, approval.reviewId))
         await syncCompletedContractReviewToEmployee({ ...review, ...updateData }, today)

@@ -53,9 +53,11 @@ type Employee = {
   joinDate: string | null;
   contractStart: string | null;
   contractEnd: string | null;
+  permanentDate?: string | null;
   birthDate: string | null;
   expMinePermit: string | null;
   accountStatus: string;
+  employeeStatusType?: string | null;
   genderCode: string | null;
   jobTitle: string | null;
   levelName: string | null;
@@ -336,14 +338,35 @@ function PjoLeaderMultiSelect({
 
 /* ─── Helpers ───────────────────────────────────────────────────────── */
 
-function getContractStatus(contractEnd: string | null): ContractStatus {
-  if (!contractEnd) {
+function getContractStatus(emp: {
+  contractEnd: string | null;
+  permanentDate?: string | null;
+  accountStatus?: string;
+  employeeStatusType?: string | null;
+}): ContractStatus {
+  const isPermanent =
+    Boolean(emp.permanentDate) ||
+    emp.accountStatus?.toLowerCase() === "permanent" ||
+    emp.accountStatus?.toLowerCase() === "permanen" ||
+    (Boolean(emp.employeeStatusType) &&
+      emp.employeeStatusType!.toLowerCase().includes("permanen") &&
+      !emp.employeeStatusType!.toLowerCase().includes("kontrak"));
+
+  if (isPermanent) {
+    return { label: "Permanen", type: "ACTIVE" };
+  }
+
+  if (emp.accountStatus?.toLowerCase() === "inactive") {
+    return { label: "Nonaktif", type: "COMPLETED" };
+  }
+
+  if (!emp.contractEnd) {
     return { label: "Tanpa Kontrak", type: "NO_CONTRACT" };
   }
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const end = new Date(contractEnd);
+  const end = new Date(emp.contractEnd);
   end.setHours(0, 0, 0, 0);
   const diffDays = Math.ceil(
     (end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
@@ -562,7 +585,7 @@ export function EmployeeClientPage({
   const contractStatusMap = useMemo(() => {
     const map = new Map<number, ContractStatus>();
     for (const emp of data) {
-      map.set(emp.id, getContractStatus(emp.contractEnd));
+      map.set(emp.id, getContractStatus(emp));
     }
     return map;
   }, [data]);
@@ -1041,7 +1064,9 @@ export function EmployeeClientPage({
                       {formatDate(emp.contractStart)}
                     </TableCell>
                     <TableCell className="text-center text-muted-foreground">
-                      {status.type === "EXPIRING" ? (
+                      {status.label === "Permanen" ? (
+                        <span className="text-muted-foreground font-medium">-</span>
+                      ) : status.type === "EXPIRING" ? (
                         <Badge className="bg-amber-500 text-white hover:bg-amber-600 whitespace-nowrap shadow-sm">
                           {formatDate(emp.contractEnd)}
                         </Badge>
@@ -1083,7 +1108,10 @@ export function EmployeeClientPage({
                           variant={statusBadgeVariant(status.type)}
                           className={cn(
                             "rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
-                            status.type === "ACTIVE" &&
+                            status.label === "Permanen" &&
+                              "bg-sky-100 text-sky-800 hover:bg-sky-100",
+                            status.label !== "Permanen" &&
+                              status.type === "ACTIVE" &&
                               "bg-emerald-100 text-emerald-700 hover:bg-emerald-100",
                             status.type === "EXPIRING" &&
                               "bg-amber-100 text-amber-700 hover:bg-amber-100",
@@ -1544,8 +1572,11 @@ export function EmployeeClientPage({
                 )}
                 className={cn(
                   "rounded-full px-2.5 py-0.5 text-xs font-semibold",
-                  (contractStatusMap.get(viewingEmployee.id)?.type ?? "NO_CONTRACT") ===
-                    "ACTIVE" &&
+                  contractStatusMap.get(viewingEmployee.id)?.label === "Permanen" &&
+                    "bg-sky-100 text-sky-800 hover:bg-sky-100",
+                  contractStatusMap.get(viewingEmployee.id)?.label !== "Permanen" &&
+                    (contractStatusMap.get(viewingEmployee.id)?.type ?? "NO_CONTRACT") ===
+                      "ACTIVE" &&
                     "bg-emerald-100 text-emerald-700 hover:bg-emerald-100",
                   (contractStatusMap.get(viewingEmployee.id)?.type ?? "NO_CONTRACT") ===
                     "EXPIRING" &&
