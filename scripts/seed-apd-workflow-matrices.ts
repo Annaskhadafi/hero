@@ -59,7 +59,7 @@ async function main() {
     { siteId: 133, empId: 1374 }, // CK BIB -> Fathurrahman Sufi (HSE Officer)
     { siteId: 131, empId: 1285 }, // CK BMB -> Danny Hangga Irawan (HSE Officer)
     { siteId: 129, empId: 1380 }, // CK KIM -> Rizky Rahmadani (HSE Officer)
-    { siteId: 128, empId: 1308 }, // CK MHU -> Irfan Rivai Remba (HSE)
+    { siteId: 128, empId: 1375 }, // CK MHU -> Ade Saharu (HSE Officer)
     { siteId: 140, empId: 1307 }, // Vale -> Muhammad Wahyu Ichsan (HSE Officer)
   ]
 
