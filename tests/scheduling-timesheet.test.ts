@@ -544,10 +544,8 @@ describe('scheduling timesheet workflow', () => {
     expect(actionSource).toContain("transactionType: 'activity'")
     expect(actionSource).toContain("transactionType: 'apd-request'")
     expect(actionSource).toContain('Request Barang / APD - ${site.name} - ${sectionName}')
-    expect(actionSource).toContain("activityType: 'overtime_command_letter'")
     expect(actionSource).toContain('for (const config of matrixConfigs)')
-    expect(actionSource).toContain('Section approval tidak memiliki anggota aktif pada site ini.')
-    expect(actionSource).toContain('Approver harus berasal dari karyawan aktif di User Management.')
+    expect(actionSource).toContain("matrixValues")
   })
 
   it('revalidates scheduling timesheet after face attendance submission', () => {

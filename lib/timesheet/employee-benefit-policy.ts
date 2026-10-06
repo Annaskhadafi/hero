@@ -119,7 +119,7 @@ export function isNonLocalEmployee(identity: EmployeeBenefitIdentity) {
     .toLowerCase()
     .replace(/[-_]/g, ' ')
 
-  // Prioritize explicit database manpower status if available
+  // Prioritize explicit non-local manpower status if available
   if (
     manpowerStr.startsWith('non ') ||
     manpowerStr.includes('non lokal') ||
@@ -127,16 +127,17 @@ export function isNonLocalEmployee(identity: EmployeeBenefitIdentity) {
   ) {
     return true
   }
-  if (manpowerStr.includes('lokal') || manpowerStr.includes('local')) {
-    return false
-  }
 
-  // Fallback to pointOfHire vs workLocations comparison if manpower is not explicitly set
+  // Fallback to pointOfHire vs workLocations comparison
   const pointOfHire = normalizeLocation(identity.pointOfHire)
   const workLocations = (identity.workLocations ?? []).map(normalizeLocation).filter(Boolean)
 
   if (pointOfHire && workLocations.length > 0) {
     return !workLocations.some((location) => isSameLocation(pointOfHire, location))
+  }
+
+  if (manpowerStr.includes('lokal') || manpowerStr.includes('local')) {
+    return false
   }
 
   return !isLocalEmployee(identity.manpower)

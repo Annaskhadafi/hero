@@ -6943,11 +6943,9 @@ export function SchedulingTimesheetWorkspace({
       }
     }
 
-    const effectiveCode = upperScheduleCode || (attendanceStatus === 'off' ? 'OFF' : 'IN')
-
     return {
-      eligibleMsa: isMsaEligibleDay(effectiveCode, isFieldBreakDay),
-      eligibleMeals: isMealsEligibleScheduleCode(effectiveCode, isFieldBreakDay),
+      eligibleMsa: isMsaEligibleDay(scheduleCode, isFieldBreakDay),
+      eligibleMeals: isMealsEligibleScheduleCode(scheduleCode, isFieldBreakDay),
     }
   }
 
@@ -12529,7 +12527,7 @@ export function SchedulingTimesheetWorkspace({
                         <Input
                           id="overtime-hours-override"
                           type="number"
-                          step="1"
+                          step="0.5"
                           min="0"
                           max="24"
                           className="h-9 w-24"
@@ -12540,9 +12538,19 @@ export function SchedulingTimesheetWorkspace({
                         />
                         {draftOvertimeHours !== '' &&
                           Number(draftOvertimeHours) !== defaultOtHours && (
-                            <span className="text-xs font-medium text-amber-600 italic">
-                              (Override)
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-medium text-amber-600 italic">
+                                (Override)
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setDraftOvertimeHours('')}
+                                className="text-[11px] font-medium text-blue-600 hover:text-blue-800 underline hover:no-underline cursor-pointer"
+                                title={`Gunakan hitungan otomatis (${defaultOtHours} jam)`}
+                              >
+                                Gunakan Otomatis ({defaultOtHours}j)
+                              </button>
+                            </div>
                           )}
                       </div>
                       <div className="flex items-center gap-2">

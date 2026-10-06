@@ -467,7 +467,9 @@ export function calculateConfiguredOvertime(params: {
   const autoConfigured = intervalOccurrences(configuredIntervals)
   const autoEligible = (
     isTemplateMode && configuredIntervals.length > 0
-      ? configuredBaseIntervals(configuredIntervals)
+      ? (alignedConfiguredIntervals(configuredIntervals, overnight).length > 0
+          ? alignedConfiguredIntervals(configuredIntervals, overnight)
+          : configuredBaseIntervals(configuredIntervals))
       : intersectSets(fullAttendance, autoConfigured)
   ).map((item) => ({
     ...item,

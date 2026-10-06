@@ -101,6 +101,16 @@ describe('scheduling timesheet overtime policy', () => {
       clockOut: '06:00',
     })
     expect(night.totalHours).toBe(4)
+
+    const nightRealistic = calculateConfiguredOvertime({
+      config: activeConfig,
+      dayKey: 'hariBiasa',
+      shiftCode: 'NS',
+      workDate: '2026-07-01',
+      clockIn: '17:31',
+      clockOut: '05:59',
+    })
+    expect(nightRealistic.totalHours).toBe(4)
   })
 
   it('requires SPL for an OFF day', () => {
