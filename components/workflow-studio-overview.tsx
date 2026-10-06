@@ -335,7 +335,7 @@ const SITE_APPROVER_MAP: Record<string, string> = {
   '125': '1375', // Ade Saharu (Jakarta - HSE)
   '126': '955',  // Apriyanto (Balikpapan)
   '127': '1164', // Saipudin (Sangatta - HSE Leader)
-  '128': '1308', // Irfan Rivai Remba (CK MHU - HSE)
+  '128': '1375', // Ade Saharu (CK MHU - HSE)
   '129': '1380', // Rizky Rahmadani (CK KIM - HSE)
   '130': '97',   // Tommy Indra Aldiny Rambe (Tj. Adaro - Technical Leader / PJO)
   '131': '1285', // Danny Hangga Irawan (CK BMB - HSE)
@@ -423,7 +423,7 @@ const DEPARTMENT_HEAD_BY_DEPT_ID: Record<string, string> = {
 function resolvePjoOrAtasan(siteId: string, sectionId?: string): string {
   const SITES_WITH_DEDICATED_PJO: Record<string, string> = {
     '127': '1164', // Sangatta -> Saipudin (HSE Leader / PJO)
-    '128': '1308', // CK MHU -> Irfan Rivai Remba (HSE / PJO)
+    '128': '1375', // CK MHU -> Ade Saharu (HSE / PJO)
     '129': '1380', // CK KIM -> Rizky Rahmadani (HSE / PJO)
     '130': '97',   // Tj. Adaro -> Tommy Indra Aldiny Rambe (Technical Leader / PJO)
     '131': '1285', // CK BMB -> Danny Hangga Irawan (HSE / PJO)
@@ -489,7 +489,7 @@ export const MASTER_CATEGORIZED_SITES = [
   { id: '133', name: 'CK BIB', category: 'HSE', approverId: '1374' }, // Fathurrahman Sufi (HSE Officer)
   { id: '131', name: 'CK BMB', category: 'HSE', approverId: '1285' }, // Danny Hangga Irawan (HSE Officer)
   { id: '129', name: 'CK KIM', category: 'HSE', approverId: '1380' }, // Rizky Rahmadani (HSE Officer)
-  { id: '128', name: 'CK MHU', category: 'HSE', approverId: '1308' }, // Irfan Rivai Remba (HSE)
+  { id: '128', name: 'CK MHU', category: 'HSE', approverId: '1375' }, // Ade Saharu (HSE)
   { id: '140', name: 'Vale - Sorowako', category: 'HSE', approverId: '1307' }, // Muhammad Wahyu Ichsan (HSE Officer)
 
   // 3. PJO (13 Sites)
@@ -594,7 +594,7 @@ function WorkflowBuilderDialog({
   function resolveApproverForSiteAndSection(siteId: string, sectionId?: string): string {
     const SITES_WITH_DEDICATED_PJO: Record<string, string> = {
       '127': '1164', // Sangatta -> Saipudin (HSE Leader / PJO)
-      '128': '1308', // CK MHU -> Irfan Rivai Remba (HSE / PJO)
+      '128': '1375', // CK MHU -> Ade Saharu (HSE / PJO)
       '129': '1380', // CK KIM -> Rizky Rahmadani (HSE / PJO)
       '130': '97',   // Tj. Adaro -> Tommy Indra Aldiny Rambe (Technical Leader / PJO)
       '131': '1285', // CK BMB -> Danny Hangga Irawan (HSE / PJO)
@@ -1146,7 +1146,7 @@ function WorkflowBuilderDialog({
       }
 
       if (name.includes('mhu') || siteId === '128') {
-        return '1308' // Irfan Rivai Remba (HSE / PJO)
+        return '1375' // Ade Saharu (HSE / PJO)
       }
 
       if (name.includes('bmb') || siteId === '131') {

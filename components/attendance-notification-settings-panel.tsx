@@ -51,7 +51,7 @@ const SITE_DATA: SiteRecipientRow[] = [
   { no: 14, siteName: "CK BIB", category: "HSE", approverName: "Fathurrahman Sufi", approverTitle: "HSE Officer", approverEmail: "77169@chitraparatama.co.id" },
   { no: 15, siteName: "CK BMB", category: "HSE", approverName: "Danny Hangga Irawan", approverTitle: "HSE Officer", approverEmail: "danny.hangga@chitraparatama.co.id" },
   { no: 16, siteName: "CK KIM", category: "HSE", approverName: "Rizky Rahmadani", approverTitle: "HSE Officer", approverEmail: "77477@chitraparatama.co.id" },
-  { no: 17, siteName: "CK MHU", category: "HSE", approverName: "Irfan Rivai Remba", approverTitle: "HSE", approverEmail: "irfan.rifai@chitraparatama.co.id" },
+  { no: 17, siteName: "CK MHU", category: "HSE", approverName: "Ade Saharu", approverTitle: "HSE Officer", approverEmail: "77170@chitraparatama.co.id" },
   { no: 18, siteName: "Vale - Sorowako", category: "HSE", approverName: "Muhammad Wahyu Ichsan", approverTitle: "HSE Officer", approverEmail: "muhammad.w.ichsan@chitraparatama.co.id" },
 
   // 13 Site PJO

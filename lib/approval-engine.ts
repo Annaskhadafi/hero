@@ -1067,7 +1067,7 @@ async function resolveApdApprovalRoute(context: ApprovalContext): Promise<Approv
         133: 1374, // CK BIB -> Fathurrahman Sufi (HSE Officer)
         131: 1285, // CK BMB -> Danny Hangga Irawan (HSE Officer)
         129: 1380, // CK KIM -> Rizky Rahmadani (HSE Officer)
-        128: 1308, // CK MHU -> Irfan Rivai Remba (HSE)
+        128: 1375, // CK MHU -> Ade Saharu (HSE Officer)
         140: 1307, // Vale -> Muhammad Wahyu Ichsan (HSE Officer)
       }
       const hseEmpId = hseMap[siteId]
@@ -1227,7 +1227,7 @@ async function resolveApdApprovalRoute(context: ApprovalContext): Promise<Approv
         133: 1374, // CK BIB -> Fathurrahman Sufi (HSE Officer)
         131: 1285, // CK BMB -> Danny Hangga Irawan (HSE Officer)
         129: 1380, // CK KIM -> Rizky Rahmadani (HSE Officer)
-        128: 1308, // CK MHU -> Irfan Rivai Remba (HSE)
+        128: 1375, // CK MHU -> Ade Saharu (HSE Officer)
         140: 1307, // Vale -> Muhammad Wahyu Ichsan (HSE Officer)
       }
       const hseEmpId = hseMap[siteId]

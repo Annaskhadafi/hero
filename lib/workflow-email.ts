@@ -632,7 +632,7 @@ export const ATTENDANCE_SITE_ROUTING_MAP: Record<
   'ck bib': { category: 'HSE', approverName: 'Fathurrahman Sufi', approverEmail: '77169@chitraparatama.co.id', approverTitle: 'HSE Officer' },
   'ck bmb': { category: 'HSE', approverName: 'Danny Hangga Irawan', approverEmail: 'danny.hangga@chitraparatama.co.id', approverTitle: 'HSE Officer' },
   'ck kim': { category: 'HSE', approverName: 'Rizky Rahmadani', approverEmail: '77477@chitraparatama.co.id', approverTitle: 'HSE Officer' },
-  'ck mhu': { category: 'HSE', approverName: 'Irfan Rivai Remba', approverEmail: 'irfan.rifai@chitraparatama.co.id', approverTitle: 'HSE' },
+  'ck mhu': { category: 'HSE', approverName: 'Ade Saharu', approverEmail: '77170@chitraparatama.co.id', approverTitle: 'HSE Officer' },
   'vale - sorowako': { category: 'HSE', approverName: 'Muhammad Wahyu Ichsan', approverEmail: 'muhammad.w.ichsan@chitraparatama.co.id', approverTitle: 'HSE Officer' },
 }
 

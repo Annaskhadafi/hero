@@ -909,7 +909,7 @@ export async function deleteSummaryDraft(summaryId: number) {
   return { success: true };
 }
 
-export async function resolveSummaryApprovers(sectionId: number) {
+export async function resolveSummaryApprovers(sectionId: number, targetSite?: string | null, itemSiteNames?: string[]) {
   const [targetSection] = await db.select({
     id: masterSections.id,
     name: masterSections.name,
@@ -921,6 +921,14 @@ export async function resolveSummaryApprovers(sectionId: number) {
     sectionId === 33 ||
     sectionId === 34 ||
     (targetSection?.name && targetSection.name.toLowerCase().includes('service operation'));
+
+  const isHseSection =
+    sectionId === 15 ||
+    (targetSection?.name && (
+      targetSection.name.toLowerCase().includes('hse') ||
+      targetSection.name.toLowerCase().includes('health') ||
+      targetSection.name.toLowerCase().includes('safety')
+    ));
 
   let level1Approvers: Array<{ id: number; name: string; email: string; jobTitle: string; sectionName: string }> = [];
   let level2Approver: { id: number; name: string; email: string; jobTitle: string; departmentName: string } | null = null;
@@ -994,6 +1002,61 @@ export async function resolveSummaryApprovers(sectionId: number) {
         email: empDept.email || '',
         jobTitle: empDept.jobTitle || 'Department Head',
         departmentName: dept2?.name || 'Central Services',
+      };
+    }
+  } else if (isHseSection) {
+    // Single source of truth for HSE Summary APD:
+    // - CK (apapun) dan Sangatta (apapun) -> Saipudin (#1164, HSE Leader)
+    // - Others -> Andi Safari (#1104, HSE Coordinator)
+    const siteLower = (targetSite || '').toLowerCase().trim();
+    const hasCkOrSangattaInItems = (itemSiteNames || []).some(s => {
+      const l = (s || '').toLowerCase();
+      return l.includes('ck') || l.includes('sangatta');
+    });
+    const isCkOrSangatta = siteLower.includes('ck') || siteLower.includes('sangatta') || hasCkOrSangattaInItems;
+
+    const targetHseEmpId = isCkOrSangatta ? 1164 : 1104; // 1164 = Saipudin, 1104 = Andi Safari
+
+    const [hseEmp] = await db.select({
+      id: employees.id,
+      name: employees.name,
+      email: employees.email,
+      jobTitle: employees.jobTitle,
+    }).from(employees).where(and(eq(employees.id, targetHseEmpId), eq(employees.isActive, true))).limit(1);
+
+    if (hseEmp) {
+      level1Approvers.push({
+        id: hseEmp.id,
+        name: hseEmp.name,
+        email: hseEmp.email || '',
+        jobTitle: hseEmp.jobTitle || (isCkOrSangatta ? 'HSE Leader' : 'HSE Coordinator'),
+        sectionName: 'HSE',
+      });
+    }
+
+    // Level 2 (Department Head of Human Capital / HSE)
+    const [deptHC] = await db.select({
+      headEmployeeId: masterDepartments.headEmployeeId,
+      name: masterDepartments.name,
+    }).from(masterDepartments)
+      .where(targetSection?.departmentId ? eq(masterDepartments.id, targetSection.departmentId) : ilike(masterDepartments.name, '%human%'))
+      .limit(1);
+
+    const deptHeadId = deptHC?.headEmployeeId || 972;
+    const [empDept] = await db.select({
+      id: employees.id,
+      name: employees.name,
+      email: employees.email,
+      jobTitle: employees.jobTitle,
+    }).from(employees).where(and(eq(employees.id, deptHeadId), eq(employees.isActive, true))).limit(1);
+
+    if (empDept) {
+      level2Approver = {
+        id: empDept.id,
+        name: empDept.name,
+        email: empDept.email || '',
+        jobTitle: empDept.jobTitle || 'Department Head',
+        departmentName: deptHC?.name || 'Human Capital',
       };
     }
   } else {
@@ -1112,7 +1175,12 @@ export async function submitSummary(summaryId: number, signatureUrl: string) {
   await db.delete(apdSummaryApprovals).where(eq(apdSummaryApprovals.summaryId, summaryId));
   await db.delete(heroApprovals).where(eq(heroApprovals.apdSummaryId, summaryId));
 
-  const { level1Approvers, level2Approver } = await resolveSummaryApprovers(summary.sectionId);
+  const items = await db.select({ siteName: apdSummaryItems.siteName })
+    .from(apdSummaryItems)
+    .where(eq(apdSummaryItems.summaryId, summaryId));
+  const itemSiteNames = Array.from(new Set(items.map(i => i.siteName).filter(Boolean)));
+
+  const { level1Approvers, level2Approver } = await resolveSummaryApprovers(summary.sectionId, summary.targetSite, itemSiteNames);
 
   // 3. Insert Level 1 approver rows into apdSummaryApprovals & heroApprovals
   for (const approver of level1Approvers) {
@@ -1445,7 +1513,8 @@ export async function getSummaryDetails(summaryId: number) {
     .orderBy(asc(apdSummaryApprovals.level), asc(apdSummaryApprovals.id));
 
   // Resolve expected approvers so names & job titles are always populated even if not yet reviewed
-  const { level1Approvers, level2Approver } = await resolveSummaryApprovers(summary.sectionId);
+  const itemSiteNames = Array.from(new Set(items.map(i => i.siteName).filter(Boolean)));
+  const { level1Approvers, level2Approver } = await resolveSummaryApprovers(summary.sectionId, summary.targetSite, itemSiteNames);
 
   const enrichedApprovals: Array<{
     id: number;
