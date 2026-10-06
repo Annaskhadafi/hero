@@ -27,7 +27,7 @@ function validateApiUrl(value: FormDataEntryValue | null) {
     const privateHost = host === 'localhost' || host === '::1' || host === '0.0.0.0' ||
       /^127\\./.test(host) || /^10\\./.test(host) || /^192\\.168\\./.test(host) ||
       /^172\\.(1[6-9]|2\\d|3[0-1])\\./.test(host)
-    if (privateHost) return host === 'localhost' && url.protocol === 'http:' ? url.toString().replace(/\\/$/, '') : null
+    if (privateHost) return host === 'localhost' && url.protocol === 'http:' ? url.toString().replace(/\/$/, '') : null
     if (url.protocol !== 'https:') return null
     return url.toString().replace(/\/$/, '')
   } catch {
