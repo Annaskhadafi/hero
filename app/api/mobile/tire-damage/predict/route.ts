@@ -18,6 +18,23 @@ const ALLOWED_MEDIA_TYPES = new Set([
 const MAX_IMAGE_SIZE = 15 * 1024 * 1024
 const MAX_VIDEO_SIZE = 100 * 1024 * 1024
 
+function validateApiUrl(value: FormDataEntryValue | null) {
+  if (typeof value !== 'string' || !value.trim()) return null
+  try {
+    const url = new URL(value.trim())
+    if (url.username || url.password) return null
+    if (url.protocol !== 'https:' && !(url.hostname === 'localhost' && url.protocol === 'http:')) return null
+    return url.toString().replace(/\/$/, '')
+  } catch {
+    return null
+  }
+}
+
+function validateModelEndpoint(value: FormDataEntryValue | null) {
+  if (typeof value !== 'string' || !value.trim()) return 'tire-demage-onnx'
+  return /^[a-zA-Z0-9._-]{1,80}$/.test(value.trim()) ? value.trim() : null
+}
+
 function threshold(value: FormDataEntryValue | null, fallback: number) {
   const numberValue = Number(value)
   return Number.isFinite(numberValue) && numberValue >= 0 && numberValue <= 1
@@ -52,6 +69,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const apiUrl = validateApiUrl(formData.get('api_url'))
+    const requestedApiUrl = formData.get('api_url')
+    if (requestedApiUrl && !apiUrl)
+      return NextResponse.json({ error: 'URL API harus HTTPS (HTTP hanya di localhost).' }, { status: 400 })
+
+    const modelEndpoint = validateModelEndpoint(formData.get('model_endpoint'))
+    if (!modelEndpoint)
+      return NextResponse.json({ error: 'Nama model tidak valid.' }, { status: 400 })
+
     const maxSize = file.type.startsWith('video/') ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE
     if (file.size > maxSize)
       return NextResponse.json({ error: 'Ukuran file melebihi batas.' }, { status: 400 })
@@ -62,6 +88,8 @@ export async function POST(request: NextRequest) {
       mimeType: file.type,
       confidenceThreshold: threshold(formData.get('conf_threshold'), 0.25),
       iouThreshold: threshold(formData.get('iou_threshold'), 0.45),
+      baseUrlOverride: apiUrl ?? undefined,
+      modelEndpoint,
     })
 
     if (prediction.status === 'error')
