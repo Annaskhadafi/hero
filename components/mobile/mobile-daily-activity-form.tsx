@@ -626,8 +626,39 @@ function toDateTimeLocalValue(value?: string | Date | null) {
   return local.toISOString().slice(0, 16)
 }
 
+function extractTimeValue(value?: string | Date | null): string {
+  if (!value) return ''
+  if (value instanceof Date) {
+    if (isNaN(value.getTime())) return ''
+    const hours = String(value.getHours()).padStart(2, '0')
+    const mins = String(value.getMinutes()).padStart(2, '0')
+    return `${hours}:${mins}`
+  }
+  const trimmed = String(value).trim()
+  if (/^\d{2}:\d{2}$/.test(trimmed)) return trimmed
+  if (/^\d{2}:\d{2}:\d{2}$/.test(trimmed)) return trimmed.slice(0, 5)
+  if (trimmed.includes('T')) {
+    const timePart = trimmed.split('T')[1]
+    return timePart ? timePart.slice(0, 5) : ''
+  }
+  const d = new Date(trimmed)
+  if (!isNaN(d.getTime())) {
+    const hours = String(d.getHours()).padStart(2, '0')
+    const mins = String(d.getMinutes()).padStart(2, '0')
+    return `${hours}:${mins}`
+  }
+  return ''
+}
+
+function combineDateAndTime(baseDate: string, timeVal: string): string {
+  const cleanTime = (timeVal || '').trim().slice(0, 5)
+  const cleanDate = (baseDate || '').trim().slice(0, 10) || new Date().toISOString().slice(0, 10)
+  if (!cleanTime) return `${cleanDate}T00:00`
+  return `${cleanDate}T${cleanTime}`
+}
+
 function timeInputValue(value: string) {
-  return value.slice(11, 16)
+  return extractTimeValue(value)
 }
 
 function replaceTimeValue(value: string, time: string) {
@@ -3665,23 +3696,23 @@ export function MobileDailyActivityForm({
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Label className="block space-y-2">
                     <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
-                      Mulai
+                      Mulai <span className="text-rose-500">*</span>
                     </span>
                     <Input
-                      type="datetime-local"
-                      value={startTime}
-                      onChange={(event) => setStartTime(event.target.value)}
+                      type="time"
+                      value={extractTimeValue(startTime)}
+                      onChange={(event) => setStartTime(combineDateAndTime(workDate, event.target.value))}
                       className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
                     />
                   </Label>
                   <Label className="block space-y-2">
                     <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
-                      Selesai
+                      Selesai <span className="text-rose-500">*</span>
                     </span>
                     <Input
-                      type="datetime-local"
-                      value={endTime}
-                      onChange={(event) => setEndTime(event.target.value)}
+                      type="time"
+                      value={extractTimeValue(endTime)}
+                      onChange={(event) => setEndTime(combineDateAndTime(workDate, event.target.value))}
                       className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
                     />
                   </Label>
@@ -3817,10 +3848,12 @@ export function MobileDailyActivityForm({
                                 Mulai <span className="text-rose-500">*</span>
                               </span>
                               <Input
-                                type="datetime-local"
-                                value={entry.startTime}
+                                type="time"
+                                value={extractTimeValue(entry.startTime)}
                                 onChange={(event) =>
-                                  updateSelfInputEntry(libraryId, { startTime: event.target.value })
+                                  updateSelfInputEntry(libraryId, {
+                                    startTime: combineDateAndTime(workDate, event.target.value),
+                                  })
                                 }
                                 className="h-12 rounded-2xl border-0 bg-white px-4 text-sm font-semibold text-[#082033]"
                               />
@@ -3830,10 +3863,12 @@ export function MobileDailyActivityForm({
                                 Selesai <span className="text-rose-500">*</span>
                               </span>
                               <Input
-                                type="datetime-local"
-                                value={entry.endTime}
+                                type="time"
+                                value={extractTimeValue(entry.endTime)}
                                 onChange={(event) =>
-                                  updateSelfInputEntry(libraryId, { endTime: event.target.value })
+                                  updateSelfInputEntry(libraryId, {
+                                    endTime: combineDateAndTime(workDate, event.target.value),
+                                  })
                                 }
                                 className="h-12 rounded-2xl border-0 bg-white px-4 text-sm font-semibold text-[#082033]"
                               />
@@ -4160,23 +4195,23 @@ export function MobileDailyActivityForm({
               <div className="grid gap-4 sm:grid-cols-2">
                 <Label className="block space-y-2">
                   <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
-                    Start time
+                    Mulai
                   </span>
                   <Input
-                    type="datetime-local"
-                    value={startTime}
-                    onChange={(event) => setStartTime(event.target.value)}
+                    type="time"
+                    value={extractTimeValue(startTime)}
+                    onChange={(event) => setStartTime(combineDateAndTime(workDate, event.target.value))}
                     className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
                   />
                 </Label>
                 <Label className="block space-y-2">
                   <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
-                    End time
+                    Selesai
                   </span>
                   <Input
-                    type="datetime-local"
-                    value={endTime}
-                    onChange={(event) => setEndTime(event.target.value)}
+                    type="time"
+                    value={extractTimeValue(endTime)}
+                    onChange={(event) => setEndTime(combineDateAndTime(workDate, event.target.value))}
                     className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
                   />
                 </Label>

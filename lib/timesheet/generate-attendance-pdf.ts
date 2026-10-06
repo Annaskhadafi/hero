@@ -1427,7 +1427,7 @@ export async function generateSummaryTablePdf(
         cellColor = cRedText
       } else if (text === 'FB') {
         cellBg = cFbBg
-      } else if (text === 'ST') {
+      } else if (text === 'ST' || text === 'GD') {
         cellColor = cBlueText
       } else if (text === 'SPL') {
         cellColor = cRedText

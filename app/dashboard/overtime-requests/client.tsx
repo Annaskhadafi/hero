@@ -1602,8 +1602,17 @@ export function OvertimeListingClient({
 
     setIsCreating(true)
     try {
-      const startDateTime = new Date(`${createForm.plannedStartDate}T${createForm.plannedStartTime}:00`)
-      const endDateTime = new Date(`${createForm.plannedEndDate}T${createForm.plannedEndTime}:00`)
+      const baseDate = createForm.workDate || new Date().toISOString().split('T')[0]
+      const cleanStartTime = createForm.plannedStartTime?.trim() || '17:00'
+      const cleanEndTime = createForm.plannedEndTime?.trim() || '20:00'
+      let effectiveEndDate = baseDate
+      if (cleanEndTime < cleanStartTime) {
+        const nextDay = new Date(`${baseDate}T00:00:00`)
+        nextDay.setDate(nextDay.getDate() + 1)
+        effectiveEndDate = nextDay.toISOString().split('T')[0]
+      }
+      const startDateTime = new Date(`${baseDate}T${cleanStartTime}:00`)
+      const endDateTime = new Date(`${effectiveEndDate}T${cleanEndTime}:00`)
       const firstPhoto = validLineItems.find((i) => i.photoUrl || (i.photos && i.photos.length > 0))?.photoUrl || createForm.photoUrl || undefined
 
       const res = await createOvertimeCommandLetterAction({
@@ -2845,39 +2854,23 @@ export function OvertimeListingClient({
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Jadwal Mulai (Planned Start) *</Label>
-                  <div className="flex gap-1.5">
-                    <Input
-                      type="date"
-                      value={createForm.plannedStartDate}
-                      onChange={(e) => setCreateForm({ ...createForm, plannedStartDate: e.target.value })}
-                      className="bg-white border-slate-200 h-9 text-xs w-3/5"
-                    />
-                    <Input
-                      type="time"
-                      value={createForm.plannedStartTime}
-                      onChange={(e) => setCreateForm({ ...createForm, plannedStartTime: e.target.value })}
-                      className="bg-white border-slate-200 h-9 text-xs w-2/5"
-                    />
-                  </div>
+                  <Label className="text-xs font-semibold text-slate-700">Jam Mulai (Planned Start) *</Label>
+                  <Input
+                    type="time"
+                    value={createForm.plannedStartTime}
+                    onChange={(e) => setCreateForm({ ...createForm, plannedStartTime: e.target.value })}
+                    className="bg-white border-slate-200 h-9 text-xs font-semibold w-full"
+                  />
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Jadwal Selesai (Planned End) *</Label>
-                  <div className="flex gap-1.5">
-                    <Input
-                      type="date"
-                      value={createForm.plannedEndDate}
-                      onChange={(e) => setCreateForm({ ...createForm, plannedEndDate: e.target.value })}
-                      className="bg-white border-slate-200 h-9 text-xs w-3/5"
-                    />
-                    <Input
-                      type="time"
-                      value={createForm.plannedEndTime}
-                      onChange={(e) => setCreateForm({ ...createForm, plannedEndTime: e.target.value })}
-                      className="bg-white border-slate-200 h-9 text-xs w-2/5"
-                    />
-                  </div>
+                  <Label className="text-xs font-semibold text-slate-700">Jam Selesai (Planned End) *</Label>
+                  <Input
+                    type="time"
+                    value={createForm.plannedEndTime}
+                    onChange={(e) => setCreateForm({ ...createForm, plannedEndTime: e.target.value })}
+                    className="bg-white border-slate-200 h-9 text-xs font-semibold w-full"
+                  />
                 </div>
 
                 <div className="space-y-1.5 md:col-span-2">

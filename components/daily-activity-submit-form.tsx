@@ -220,6 +220,46 @@ export function DailyActivitySubmitForm({
     return local.toISOString().slice(0, 16);
   }
 
+  function extractTimeValue(value?: string | Date | null): string {
+    if (!value) return "";
+    if (value instanceof Date) {
+      if (isNaN(value.getTime())) return "";
+      const hours = String(value.getHours()).padStart(2, "0");
+      const mins = String(value.getMinutes()).padStart(2, "0");
+      return `${hours}:${mins}`;
+    }
+    const trimmed = String(value).trim();
+    if (/^\d{2}:\d{2}$/.test(trimmed)) return trimmed;
+    if (/^\d{2}:\d{2}:\d{2}$/.test(trimmed)) return trimmed.slice(0, 5);
+    if (trimmed.includes("T")) {
+      const timePart = trimmed.split("T")[1];
+      return timePart ? timePart.slice(0, 5) : "";
+    }
+    const d = new Date(trimmed);
+    if (!isNaN(d.getTime())) {
+      const hours = String(d.getHours()).padStart(2, "0");
+      const mins = String(d.getMinutes()).padStart(2, "0");
+      return `${hours}:${mins}`;
+    }
+    return "";
+  }
+
+  function combineDateAndTime(baseValue: string | Date | null | undefined, timeVal: string): string {
+    const cleanTime = (timeVal || "").trim().slice(0, 5);
+    let cleanDate = "";
+    if (baseValue instanceof Date) {
+      cleanDate = baseValue.toISOString().slice(0, 10);
+    } else if (typeof baseValue === "string" && baseValue.includes("T")) {
+      cleanDate = baseValue.split("T")[0];
+    } else if (typeof baseValue === "string" && /^\d{4}-\d{2}-\d{2}/.test(baseValue)) {
+      cleanDate = baseValue.slice(0, 10);
+    } else {
+      cleanDate = new Date().toISOString().slice(0, 10);
+    }
+    if (!cleanTime) return `${cleanDate}T00:00`;
+    return `${cleanDate}T${cleanTime}`;
+  }
+
   useEffect(() => {
     if (!routeChecklist) {
       setRouteItemState({});
@@ -471,10 +511,12 @@ export function DailyActivitySubmitForm({
                               <Label className={labelClass}>
                                 <span className={labelTextClass}>Mulai</span>
                                 <Input
-                                  type="datetime-local"
-                                  value={itemState.startedAt || defaultStartTime}
+                                  type="time"
+                                  value={extractTimeValue(itemState.startedAt || defaultStartTime)}
                                   onChange={(event) =>
-                                    updateRouteItemState(item.id, { startedAt: event.target.value })
+                                    updateRouteItemState(item.id, {
+                                      startedAt: combineDateAndTime(itemState.startedAt || defaultStartTime, event.target.value),
+                                    })
                                   }
                                   className={fieldClass}
                                 />
@@ -482,10 +524,12 @@ export function DailyActivitySubmitForm({
                               <Label className={labelClass}>
                                 <span className={labelTextClass}>Selesai</span>
                                 <Input
-                                  type="datetime-local"
-                                  value={itemState.endedAt || defaultEndTime}
+                                  type="time"
+                                  value={extractTimeValue(itemState.endedAt || defaultEndTime)}
                                   onChange={(event) =>
-                                    updateRouteItemState(item.id, { endedAt: event.target.value })
+                                    updateRouteItemState(item.id, {
+                                      endedAt: combineDateAndTime(itemState.endedAt || defaultEndTime, event.target.value),
+                                    })
                                   }
                                   className={fieldClass}
                                 />
@@ -836,8 +880,8 @@ export function DailyActivitySubmitForm({
                   <span className={labelTextClass}>Start time</span>
                   <Input
                     name="startTime"
-                    type="datetime-local"
-                    defaultValue={defaultStartTime}
+                    type="time"
+                    defaultValue={extractTimeValue(defaultStartTime)}
                     className={fieldClass}
                     required
                   />
@@ -847,8 +891,8 @@ export function DailyActivitySubmitForm({
                   <span className={labelTextClass}>End time</span>
                   <Input
                     name="endTime"
-                    type="datetime-local"
-                    defaultValue={defaultEndTime}
+                    type="time"
+                    defaultValue={extractTimeValue(defaultEndTime)}
                     className={fieldClass}
                     required
                   />
@@ -956,8 +1000,8 @@ export function DailyActivitySubmitForm({
               <span className={labelTextClass}>Start time</span>
               <Input
                 name="startTime"
-                type="datetime-local"
-                defaultValue={defaultStartTime}
+                type="time"
+                defaultValue={extractTimeValue(defaultStartTime)}
                 className={fieldClass}
               />
             </Label>
@@ -965,8 +1009,8 @@ export function DailyActivitySubmitForm({
               <span className={labelTextClass}>End time</span>
               <Input
                 name="endTime"
-                type="datetime-local"
-                defaultValue={defaultEndTime}
+                type="time"
+                defaultValue={extractTimeValue(defaultEndTime)}
                 className={fieldClass}
               />
             </Label>

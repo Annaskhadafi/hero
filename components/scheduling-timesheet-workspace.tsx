@@ -6029,7 +6029,15 @@ export function SchedulingTimesheetWorkspace({
             if (view === 'ovt') {
               if (staff) return '-'
               if (cell.status !== 'present') {
-                return ['OFF', 'FB', 'Libur', 'Sakit', 'ST'].includes(code) ? code : ''
+                if (isFieldBreakDay || cell.status === 'field_break' || code === 'FB') return 'FB'
+                if (cell.status === 'standby' || code === 'ST') return 'ST'
+                if (code === 'GD') return 'GD'
+                if (cell.status === 'off' || isRosterOff || code === 'OFF') return 'OFF'
+                if (cell.status === 'sick' || code === 'Sakit') return 'Sakit'
+                if (cell.status === 'leave' || code === 'Izin') return 'Izin'
+                if (cell.status === 'absent') return 'Alpha'
+                if (code && code !== 'IN' && code !== 'DS' && code !== 'NS') return code
+                return ''
               }
               // Prioritize manually saved overtime hours (from attendance override)
               if (
@@ -6049,6 +6057,9 @@ export function SchedulingTimesheetWorkspace({
               )
               if (overtime.totalHours > 0) return String(overtime.totalHours)
               if (overtime.unauthorizedMinutes > 0) return 'SPL'
+              if (code === 'ST' || cell.status === 'standby') return 'ST'
+              if (code === 'GD') return 'GD'
+              if (code === 'FB' || isFieldBreakDay) return 'FB'
               return ''
             }
             if (view === 'msa') {
@@ -10932,39 +10943,70 @@ export function SchedulingTimesheetWorkspace({
                                                       ? 'bg-white text-foreground'
                                                       : 'bg-slate-50 text-muted-foreground'
                                               }
-                                            } else if (attendanceView === 'ovt') {
-                                              // Overtime hanya untuk Non Staff
-                                              if (staff) {
-                                                cellValue = '-'
-                                                cellBg = 'bg-slate-50 text-muted-foreground'
-                                              } else if (cell.status !== 'present') {
-                                                cellValue = isOff ? scheduleCode : ''
-                                                cellBg = isOff
-                                                  ? 'bg-rose-50 text-rose-700'
-                                                  : isHolidayDay
-                                                    ? 'bg-amber-50 text-amber-700'
-                                                    : ''
-                                              } else {
-                                                const overtime = calculateDayOvertime(
-                                                  row.schedule,
-                                                  day,
-                                                  cell.clockIn,
-                                                  cell.clockOut,
-                                                  staff,
-                                                  row.employee.id
-                                                )
-                                                cellValue =
-                                                  overtime.totalHours > 0
-                                                    ? overtime.totalHours
-                                                    : overtime.unauthorizedMinutes > 0
-                                                      ? 'SPL'
-                                                      : ''
-                                                cellBg =
-                                                  overtime.unauthorizedMinutes > 0
-                                                    ? 'bg-orange-100 text-orange-900 font-semibold'
-                                                    : overtime.totalHours > 0
-                                                      ? 'bg-white text-foreground font-semibold'
-                                                      : ''
+                                             } else if (attendanceView === 'ovt') {
+                                               // Overtime hanya untuk Non Staff
+                                               if (staff) {
+                                                 cellValue = '-'
+                                                 cellBg = 'bg-slate-50 text-muted-foreground'
+                                               } else if (cell.status !== 'present') {
+                                                 const isFb = isFieldBreakDay || cell.status === 'field_break' || scheduleCode === 'FB'
+                                                 const isSt = cell.status === 'standby' || scheduleCode === 'ST'
+                                                 const isGd = scheduleCode === 'GD'
+                                                 const isRosterOffDay = isOff || cell.status === 'off' || scheduleCode === 'OFF'
+
+                                                 if (isFb) {
+                                                   cellValue = 'FB'
+                                                   cellBg = 'bg-amber-50 text-amber-800'
+                                                 } else if (isSt) {
+                                                   cellValue = 'ST'
+                                                   cellBg = 'bg-blue-50 text-blue-800'
+                                                 } else if (isGd) {
+                                                   cellValue = 'GD'
+                                                   cellBg = 'bg-purple-50 text-purple-800'
+                                                 } else if (isRosterOffDay) {
+                                                   cellValue = 'OFF'
+                                                   cellBg = 'bg-rose-50 text-rose-700'
+                                                 } else if (cell.status === 'sick' || scheduleCode === 'Sakit') {
+                                                   cellValue = 'Sakit'
+                                                   cellBg = 'bg-rose-50 text-rose-700'
+                                                 } else if (cell.status === 'leave' || scheduleCode === 'Izin') {
+                                                   cellValue = 'Izin'
+                                                   cellBg = 'bg-blue-50 text-blue-700'
+                                                 } else if (cell.status === 'absent') {
+                                                   cellValue = 'Alpha'
+                                                   cellBg = 'bg-rose-100 text-rose-900'
+                                                 } else {
+                                                   cellValue = scheduleCode && scheduleCode !== 'IN' && scheduleCode !== 'DS' && scheduleCode !== 'NS' ? scheduleCode : ''
+                                                   cellBg = isHolidayDay ? 'bg-amber-50 text-amber-700' : ''
+                                                 }
+                                               } else {
+                                                 const overtime = calculateDayOvertime(
+                                                   row.schedule,
+                                                   day,
+                                                   cell.clockIn,
+                                                   cell.clockOut,
+                                                   staff,
+                                                   row.employee.id
+                                                 )
+                                                 if (overtime.totalHours > 0) {
+                                                   cellValue = overtime.totalHours
+                                                   cellBg = 'bg-white text-foreground font-semibold'
+                                                 } else if (overtime.unauthorizedMinutes > 0) {
+                                                   cellValue = 'SPL'
+                                                   cellBg = 'bg-orange-100 text-orange-900 font-semibold'
+                                                 } else if (scheduleCode === 'ST' || cell.status === 'standby') {
+                                                   cellValue = 'ST'
+                                                   cellBg = 'bg-blue-50 text-blue-800'
+                                                 } else if (scheduleCode === 'GD') {
+                                                   cellValue = 'GD'
+                                                   cellBg = 'bg-purple-50 text-purple-800'
+                                                 } else if (scheduleCode === 'FB' || isFieldBreakDay) {
+                                                   cellValue = 'FB'
+                                                   cellBg = 'bg-amber-50 text-amber-800'
+                                                 } else {
+                                                   cellValue = ''
+                                                   cellBg = ''
+                                                 }
                                                 overtimeMeta =
                                                   overtime.unauthorizedMinutes > 0
                                                     ? `${overtime.source === 'None' ? '' : `${overtime.source} · `}Perlu SPL`

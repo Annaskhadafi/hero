@@ -720,8 +720,15 @@ export function MobileOvertimeRequestForm({
     try {
       const cleanStartTime = plannedStartTime?.trim().length === 5 ? `${plannedStartTime.trim()}:00` : (plannedStartTime?.trim() || '17:00:00');
       const cleanEndTime = plannedEndTime?.trim().length === 5 ? `${plannedEndTime.trim()}:00` : (plannedEndTime?.trim() || '20:00:00');
-      const startDateTime = plannedStartDate ? new Date(`${plannedStartDate}T${cleanStartTime}`) : undefined;
-      const endDateTime = plannedEndDate ? new Date(`${plannedEndDate}T${cleanEndTime}`) : undefined;
+      const baseDate = workDate || dateInputValue();
+      let effectiveEndDate = baseDate;
+      if (cleanEndTime < cleanStartTime) {
+        const nextDay = new Date(`${baseDate}T00:00:00`);
+        nextDay.setDate(nextDay.getDate() + 1);
+        effectiveEndDate = nextDay.toISOString().slice(0, 10);
+      }
+      const startDateTime = new Date(`${baseDate}T${cleanStartTime}`);
+      const endDateTime = new Date(`${effectiveEndDate}T${cleanEndTime}`);
 
       if (editSplId) {
         const res = await resubmitOvertimeCommandLetterAction({
@@ -1019,39 +1026,23 @@ export function MobileOvertimeRequestForm({
 
           <div className="grid grid-cols-2 gap-3 pt-1">
             <div className="space-y-1.5">
-              <span className="text-[11px] font-bold text-slate-700">Mulai (Start) *</span>
-              <div className="flex gap-1">
-                <Input
-                  type="date"
-                  value={plannedStartDate}
-                  onChange={(e) => setPlannedStartDate(e.target.value)}
-                  className="h-9 rounded-lg bg-slate-50/70 border-slate-200 text-[11px] w-3/5 px-1.5"
-                />
-                <Input
-                  type="time"
-                  value={plannedStartTime}
-                  onChange={(e) => setPlannedStartTime(e.target.value)}
-                  className="h-9 rounded-lg bg-slate-50/70 border-slate-200 text-[11px] w-2/5 px-1.5 font-semibold"
-                />
-              </div>
+              <span className="text-[11px] font-bold text-slate-700">Jam Mulai *</span>
+              <Input
+                type="time"
+                value={plannedStartTime}
+                onChange={(e) => setPlannedStartTime(e.target.value)}
+                className="h-10 rounded-xl bg-slate-50/70 border-slate-200 text-xs px-3 font-semibold w-full"
+              />
             </div>
 
             <div className="space-y-1.5">
-              <span className="text-[11px] font-bold text-slate-700">Selesai (End) *</span>
-              <div className="flex gap-1">
-                <Input
-                  type="date"
-                  value={plannedEndDate}
-                  onChange={(e) => setPlannedEndDate(e.target.value)}
-                  className="h-9 rounded-lg bg-slate-50/70 border-slate-200 text-[11px] w-3/5 px-1.5"
-                />
-                <Input
-                  type="time"
-                  value={plannedEndTime}
-                  onChange={(e) => setPlannedEndTime(e.target.value)}
-                  className="h-9 rounded-lg bg-slate-50/70 border-slate-200 text-[11px] w-2/5 px-1.5 font-semibold"
-                />
-              </div>
+              <span className="text-[11px] font-bold text-slate-700">Jam Selesai *</span>
+              <Input
+                type="time"
+                value={plannedEndTime}
+                onChange={(e) => setPlannedEndTime(e.target.value)}
+                className="h-10 rounded-xl bg-slate-50/70 border-slate-200 text-xs px-3 font-semibold w-full"
+              />
             </div>
           </div>
 
@@ -1707,7 +1698,7 @@ export function MobileOvertimeRequestForm({
                     <tr>
                       <td className="font-bold bg-slate-50 text-black">Planned Schedule</td>
                       <td colSpan={3} className="text-black">
-                        {plannedStartDate ? fmtDate(plannedStartDate) : ''} ({plannedStartTime} s.d. {plannedEndTime})
+                        {workDate ? fmtDate(workDate) : ''} ({plannedStartTime} s.d. {plannedEndTime})
                       </td>
                     </tr>
                     {(() => {

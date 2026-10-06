@@ -4691,9 +4691,10 @@ function getHistoryItemLinks(item: any) {
   const actId = String(item.activityId || '')
   const actType = String(item.activityType || '').toLowerCase()
   const title = String(item.title || '').toLowerCase()
+  const unitNumber = String(item.unitNumber || '').toLowerCase()
 
   let rawId = ''
-  let viewUrl = '/dashboard/activity-hub'
+  let viewUrl = '/mobile/approval'
   let downloadUrl: string | null = null
 
   if (
@@ -4701,30 +4702,54 @@ function getHistoryItemLinks(item: any) {
     actType.includes('lembur') ||
     actType.includes('overtime') ||
     actType.includes('spl') ||
-    title.includes('spl')
+    title.includes('spl') ||
+    unitNumber.includes('spl')
   ) {
     rawId = actId.replace('overtime-', '').replace(/[^0-9]/g, '')
-    viewUrl = `/mobile/overtime?edit=${rawId}`
+    viewUrl = `/mobile/overtime`
     downloadUrl = null
-  } else if (actId.startsWith('daily-') || actType.includes('daily') || title.includes('daily') || title.includes('dar')) {
+  } else if (
+    actId.startsWith('daily-') ||
+    actId.startsWith('das-') ||
+    actType.includes('daily') ||
+    actType.includes('dar') ||
+    actType.includes('das') ||
+    title.includes('daily') ||
+    title.includes('dar') ||
+    title.includes('das-') ||
+    unitNumber.startsWith('das-')
+  ) {
     rawId = actId.replace('daily-', '').replace(/[^0-9]/g, '')
-    viewUrl = `/mobile/activity?edit=${rawId}`
-    downloadUrl = `/api/activity-sessions/${rawId}/pdf`
+    viewUrl = rawId ? `/mobile/activity/document/${rawId}` : `/mobile/activity`
+    downloadUrl = rawId ? `/api/activity-sessions/${rawId}/pdf` : null
   } else if (actId.startsWith('ptw-') || actType.includes('ptw') || title.includes('izin kerja')) {
     rawId = actId.replace('ptw-', '').replace(/[^0-9]/g, '')
     viewUrl = `/mobile/hse/ptw`
-    downloadUrl = `/dashboard/hse/izin-kerja-ptw/${rawId}`
+    downloadUrl = rawId ? `/dashboard/hse/izin-kerja-ptw/${rawId}` : null
   } else if (actId.startsWith('sop-') || actType.includes('sop') || actType.includes('win')) {
     rawId = actId.replace('sop-', '').replace(/[^0-9]/g, '')
     viewUrl = `/mobile/sop-win`
-    downloadUrl = `/api/sop-win/watermarked-pdf?requestId=${rawId}`
+    downloadUrl = rawId ? `/api/sop-win/watermarked-pdf?requestId=${rawId}` : null
   } else if (actId.startsWith('cr-') || actType.includes('contract')) {
     rawId = actId.replace('cr-', '').replace(/[^0-9]/g, '')
-    viewUrl = `/dashboard/human-capital`
+    viewUrl = `/mobile/hc/contract-review`
   } else if (actId.startsWith('rfr-') || actType.includes('rfr')) {
     rawId = actId.replace('rfr-', '').replace(/[^0-9]/g, '')
-    viewUrl = `/dashboard/human-capital`
-    downloadUrl = `/api/hc/rfr/${rawId}/pdf`
+    viewUrl = rawId ? `/mobile/rfr/${rawId}` : `/mobile/rfr`
+    downloadUrl = rawId ? `/api/hc/rfr/${rawId}/pdf` : null
+  } else if (
+    actType.includes('apd') ||
+    actType.includes('tools') ||
+    actType.includes('material') ||
+    title.includes('apd') ||
+    title.includes('tools') ||
+    title.includes('material')
+  ) {
+    rawId = actId.replace(/[^0-9]/g, '')
+    viewUrl = rawId ? `/mobile/apd/${rawId}` : `/mobile/apd`
+  } else if (actType.includes('5r') || title.includes('5r')) {
+    rawId = actId.replace(/[^0-9]/g, '')
+    viewUrl = `/mobile/quality/5r`
   }
 
   return { viewUrl, downloadUrl, rawId }
@@ -4739,6 +4764,7 @@ export function HistoryTab({
   filterCategory?: string
   viewMode?: 'desktop' | 'mobile'
 }) {
+  const router = useRouter()
   const [selectedHistoryDoc, setSelectedHistoryDoc] = useState<any | null>(null)
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false)
   const [isLoadingHistoryDoc, setIsLoadingHistoryDoc] = useState(false)
@@ -4785,17 +4811,26 @@ export function HistoryTab({
     const actId = String(item.activityId || '')
     const actType = String(item.activityType || '').toLowerCase()
     const title = String(item.title || '').toLowerCase()
+    const unitNumber = String(item.unitNumber || '').toLowerCase()
+
     const isSpl =
       actId.startsWith('overtime-') ||
       actType.includes('lembur') ||
       actType.includes('overtime') ||
       actType.includes('spl') ||
-      title.includes('spl')
+      title.includes('spl') ||
+      unitNumber.includes('spl')
+
     const isDaily =
       actId.startsWith('daily-') ||
+      actId.startsWith('das-') ||
       actType.includes('daily') ||
+      actType.includes('dar') ||
+      actType.includes('das') ||
       title.includes('daily') ||
-      title.includes('dar')
+      title.includes('dar') ||
+      title.includes('das-') ||
+      unitNumber.startsWith('das-')
 
     const isPtw =
       actId.startsWith('ptw-') ||
@@ -4836,15 +4871,16 @@ export function HistoryTab({
         setIsLoadingHistoryDoc(false)
       }
     } else if (isDaily) {
-      const rawId = actId.replace('daily-', '').replace(/[^0-9]/g, '')
-      if (!rawId) return
+      const rawNumeric = actId.replace('daily-', '').replace(/[^0-9]/g, '')
+      const lookupKey = rawNumeric ? Number(rawNumeric) : (item.unitNumber || actId.replace('daily-', ''))
+      if (!lookupKey) return
       setIsHistoryModalOpen(true)
       setIsLoadingHistoryDoc(true)
       setHistoryDocType('daily')
       setSelectedHistoryDoc(null)
       setPreviewZoom(1.0)
       try {
-        const data = await getDailyActivityApprovalData(Number(rawId))
+        const data = await getDailyActivityApprovalData(lookupKey)
         if (!data) {
           toast.error('Data dokumen Daily Activity tidak ditemukan.')
           setIsHistoryModalOpen(false)
@@ -4861,8 +4897,12 @@ export function HistoryTab({
       const { downloadUrl, viewUrl } = getHistoryItemLinks(item)
       if (downloadUrl) {
         window.open(downloadUrl, '_blank')
-      } else if (typeof window !== 'undefined') {
-        window.open(viewUrl, '_blank')
+      } else if (typeof window !== 'undefined' && viewUrl) {
+        if (viewMode === 'mobile') {
+          router.push(viewUrl)
+        } else {
+          window.open(viewUrl, '_blank')
+        }
       }
     }
   }
@@ -4871,17 +4911,27 @@ export function HistoryTab({
     const actId = String(item.activityId || '')
     const actType = String(item.activityType || '').toLowerCase()
     const title = String(item.title || '').toLowerCase()
+    const unitNumber = String(item.unitNumber || '').toLowerCase()
+
     const isSpl =
       actId.startsWith('overtime-') ||
       actType.includes('lembur') ||
       actType.includes('overtime') ||
       actType.includes('spl') ||
-      title.includes('spl')
+      title.includes('spl') ||
+      unitNumber.includes('spl')
+
     const isDaily =
       actId.startsWith('daily-') ||
+      actId.startsWith('das-') ||
       actType.includes('daily') ||
+      actType.includes('dar') ||
+      actType.includes('das') ||
       title.includes('daily') ||
-      title.includes('dar')
+      title.includes('dar') ||
+      title.includes('das-') ||
+      unitNumber.startsWith('das-')
+
     const isPtw =
       actId.startsWith('ptw-') ||
       actType.includes('ptw') ||

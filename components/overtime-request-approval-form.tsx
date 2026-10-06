@@ -434,8 +434,16 @@ export function OvertimeRequestApprovalForm({
 
   const handleSaveForm = () => {
     startTransition(async () => {
-      const plannedStartAt = startDate && startTime ? new Date(`${startDate}T${startTime}:00`) : null
-      const plannedEndAt = endDate && endTime ? new Date(`${endDate}T${endTime}:00`) : null
+      const buildDateTime = (dateStr: string, timeStr: string, isEnd = false) => {
+        if (!dateStr || !timeStr) return null
+        const date = new Date(`${dateStr}T${timeStr}:00`)
+        if (isEnd && startTime && timeStr < startTime) {
+          date.setDate(date.getDate() + 1)
+        }
+        return date
+      }
+      const plannedStartAt = buildDateTime(workDate, startTime)
+      const plannedEndAt = buildDateTime(workDate, endTime, true)
 
       const selectedRequester = employeesProp.find((e) => String(e.id) === selectedRequesterId)
       const selectedLeader = employeesProp.find((e) => String(e.id) === selectedLeaderId)
@@ -870,42 +878,24 @@ export function OvertimeRequestApprovalForm({
                   <Input value={data.requesterDepartment || 'Central Services'} disabled className="bg-slate-50 h-10 text-xs" />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Planned Start (Tgl & Jam Mulai)</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      type="date"
-                      value={startDate}
-                      disabled={isLocked}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      className={cn("h-10 text-xs w-2/3", isLocked ? "bg-slate-50 text-slate-600 cursor-not-allowed border-slate-200" : "bg-slate-50/70 border-slate-200")}
-                    />
-                    <Input
-                      type="time"
-                      value={startTime}
-                      disabled={isLocked}
-                      onChange={(e) => setStartTime(e.target.value)}
-                      className={cn("h-10 text-xs w-1/3", isLocked ? "bg-slate-50 text-slate-600 cursor-not-allowed border-slate-200" : "bg-slate-50/70 border-slate-200")}
-                    />
-                  </div>
+                  <Label className="text-xs font-semibold text-slate-700">Jam Mulai Lembur</Label>
+                  <Input
+                    type="time"
+                    value={startTime}
+                    disabled={isLocked}
+                    onChange={(e) => setStartTime(e.target.value)}
+                    className={cn("h-10 text-xs", isLocked ? "bg-slate-50 text-slate-600 cursor-not-allowed border-slate-200" : "bg-slate-50/70 border-slate-200")}
+                  />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Planned End (Tgl & Jam Selesai)</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      type="date"
-                      value={endDate}
-                      disabled={isLocked}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      className={cn("h-10 text-xs w-2/3", isLocked ? "bg-slate-50 text-slate-600 cursor-not-allowed border-slate-200" : "bg-slate-50/70 border-slate-200")}
-                    />
-                    <Input
-                      type="time"
-                      value={endTime}
-                      disabled={isLocked}
-                      onChange={(e) => setEndTime(e.target.value)}
-                      className={cn("h-10 text-xs w-1/3", isLocked ? "bg-slate-50 text-slate-600 cursor-not-allowed border-slate-200" : "bg-slate-50/70 border-slate-200")}
-                    />
-                  </div>
+                  <Label className="text-xs font-semibold text-slate-700">Jam Selesai Lembur</Label>
+                  <Input
+                    type="time"
+                    value={endTime}
+                    disabled={isLocked}
+                    onChange={(e) => setEndTime(e.target.value)}
+                    className={cn("h-10 text-xs", isLocked ? "bg-slate-50 text-slate-600 cursor-not-allowed border-slate-200" : "bg-slate-50/70 border-slate-200")}
+                  />
                 </div>
                 <div className="sm:col-span-2 space-y-1.5">
                   <Label className="text-xs font-semibold text-slate-700">Catatan Khusus / Request Notes</Label>
@@ -1650,7 +1640,7 @@ export function OvertimeRequestApprovalForm({
                     <tr>
                       <td className="font-bold bg-slate-50">Planned Schedule</td>
                       <td colSpan={3}>
-                        {startDate} ({startTime}) s.d. {endDate} ({endTime})
+                        {workDate} ({startTime} s.d. {endTime})
                       </td>
                     </tr>
                     {requestNotes && (

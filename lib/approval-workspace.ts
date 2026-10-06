@@ -2022,7 +2022,7 @@ async function getDailyActivityInboxItems(
     )
     .where(
       and(
-        ne(dailyActivitySessions.status, 'approved'),
+        sql`LOWER(${dailyActivitySessions.status}) != 'approved'`,
         or(
           inArray(dailyActivityApprovals.status, ['pending', 'reverted', 'waiting']),
           inArray(dailyActivitySessions.status, ['reverted', 'needs_revision', 'Reverted'])

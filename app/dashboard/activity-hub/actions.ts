@@ -962,7 +962,21 @@ async function getImportCsvText(formData: FormData) {
   return typeof rawCsv === 'string' ? rawCsv : ''
 }
 
-function parseDateTime(value: string, label: string) {
+function parseDateTime(value: string, label: string, baseDate?: Date | string) {
+  if (!value) throw new Error(`${label} tidak valid.`)
+  const trimmed = value.trim()
+  if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(trimmed)) {
+    const today = baseDate
+      ? typeof baseDate === 'string'
+        ? baseDate.slice(0, 10)
+        : baseDate.toISOString().slice(0, 10)
+      : new Date().toISOString().slice(0, 10)
+    const timePart = trimmed.length === 5 ? `${trimmed}:00` : trimmed
+    const combined = new Date(`${today}T${timePart}`)
+    if (!Number.isNaN(combined.getTime())) {
+      return combined
+    }
+  }
   const parsed = new Date(value)
   if (Number.isNaN(parsed.getTime())) {
     throw new Error(`${label} tidak valid.`)
@@ -2088,14 +2102,19 @@ export async function manageOvertimeCommandLetterAction(formData: FormData) {
 
   const workDate = parseDateTime(payload.workDate, 'Tanggal kerja SPL')
   const plannedStartAt = payload.plannedStartAt
-    ? parseDateTime(payload.plannedStartAt, 'Jam mulai SPL')
+    ? parseDateTime(payload.plannedStartAt, 'Jam mulai SPL', workDate)
     : null
-  const plannedEndAt = payload.plannedEndAt
-    ? parseDateTime(payload.plannedEndAt, 'Jam selesai SPL')
+  let plannedEndAt = payload.plannedEndAt
+    ? parseDateTime(payload.plannedEndAt, 'Jam selesai SPL', workDate)
     : null
 
   if (plannedStartAt && plannedEndAt && plannedEndAt <= plannedStartAt) {
-    throw new Error('Jam selesai SPL harus setelah jam mulai.')
+    const nextDayEnd = new Date(plannedEndAt.getTime() + 24 * 60 * 60 * 1000)
+    if (nextDayEnd > plannedStartAt) {
+      plannedEndAt = nextDayEnd
+    } else {
+      throw new Error('Jam selesai SPL harus setelah jam mulai.')
+    }
   }
   if (!plannedStartAt || !plannedEndAt) throw new Error('Jam mulai dan selesai SPL wajib diisi.')
   if (
@@ -5427,37 +5446,67 @@ export async function approveDailyActivityStepByToken(
     }
 
     const now = new Date()
-    await db
-      .update(dailyActivityApprovals)
-      .set({
-        status: 'approved',
-        signatureDataUrl: payload.signatureDataUrl,
-        remarks: payload.remarks ?? '',
-        signedAt: now,
-      })
-      .where(eq(dailyActivityApprovals.id, approval.id))
+    let currentStepToApprove = approval
+    let nextStep: any = null
+    let isCompleted = false
 
-    // Check for next step
-    const [nextStep] = await db
-      .select()
-      .from(dailyActivityApprovals)
-      .where(
-        and(
-          eq(dailyActivityApprovals.sessionId, approval.sessionId),
-          sql`${dailyActivityApprovals.stepOrder} > ${approval.stepOrder}`
+    while (currentStepToApprove) {
+      await db
+        .update(dailyActivityApprovals)
+        .set({
+          status: 'approved',
+          signatureDataUrl: payload.signatureDataUrl,
+          remarks: payload.remarks ?? '',
+          signedAt: now,
+        })
+        .where(eq(dailyActivityApprovals.id, currentStepToApprove.id))
+
+      // Check for next step
+      const [candidateNext] = await db
+        .select()
+        .from(dailyActivityApprovals)
+        .where(
+          and(
+            eq(dailyActivityApprovals.sessionId, approval.sessionId),
+            sql`${dailyActivityApprovals.stepOrder} > ${currentStepToApprove.stepOrder}`
+          )
         )
-      )
-      .orderBy(asc(dailyActivityApprovals.stepOrder))
-      .limit(1)
+        .orderBy(asc(dailyActivityApprovals.stepOrder))
+        .limit(1)
 
-    if (nextStep) {
-      if (nextStep.status !== 'approved') {
-        await db
-          .update(dailyActivityApprovals)
-          .set({ status: 'pending' })
-          .where(eq(dailyActivityApprovals.id, nextStep.id))
+      if (!candidateNext) {
+        isCompleted = true
+        break
       }
 
+      const isSameApprover =
+        (candidateNext.approverEmployeeId &&
+          currentStepToApprove.approverEmployeeId &&
+          candidateNext.approverEmployeeId === currentStepToApprove.approverEmployeeId) ||
+        (candidateNext.approverEmail &&
+          currentStepToApprove.approverEmail &&
+          candidateNext.approverEmail.toLowerCase().trim() ===
+            currentStepToApprove.approverEmail.toLowerCase().trim()) ||
+        (candidateNext.approverName &&
+          currentStepToApprove.approverName &&
+          candidateNext.approverName.toLowerCase().trim() ===
+            currentStepToApprove.approverName.toLowerCase().trim())
+
+      if (isSameApprover) {
+        currentStepToApprove = candidateNext
+      } else {
+        nextStep = candidateNext
+        if (nextStep.status !== 'approved') {
+          await db
+            .update(dailyActivityApprovals)
+            .set({ status: 'pending' })
+            .where(eq(dailyActivityApprovals.id, nextStep.id))
+        }
+        break
+      }
+    }
+
+    if (!isCompleted && nextStep) {
       // Notify next approver with email + bell notification
       let nextApproverEmail = nextStep.approverEmail
       if (!nextApproverEmail && nextStep.approverEmployeeId) {
@@ -5520,10 +5569,25 @@ export async function approveDailyActivityStepByToken(
         }
       }
     } else {
+      // Auto-approve any remaining steps just in case
+      await db
+        .update(dailyActivityApprovals)
+        .set({
+          status: 'approved',
+          signatureDataUrl: payload.signatureDataUrl,
+          signedAt: now,
+        })
+        .where(
+          and(
+            eq(dailyActivityApprovals.sessionId, approval.sessionId),
+            eq(dailyActivityApprovals.status, 'waiting')
+          )
+        )
+
       // All steps completed!
       await db
         .update(dailyActivitySessions)
-        .set({ status: 'approved', approvedAt: now })
+        .set({ status: 'approved', approvedAt: now, updatedAt: now })
         .where(eq(dailyActivitySessions.id, approval.sessionId))
 
       // Award points & update streak for submitter and all team members
@@ -7090,6 +7154,30 @@ export async function createDailyActivitySessionAction(input: {
       ? new Date(`${input.workDate}T00:00:00.000Z`)
       : new Date()
 
+    // Check if an approved session already exists for this employee and date
+    const [existingApproved] = await db
+      .select({ id: dailyActivitySessions.id, sessionCode: dailyActivitySessions.sessionCode })
+      .from(dailyActivitySessions)
+      .where(
+        and(
+          eq(dailyActivitySessions.employeeId, targetEmpId),
+          eq(dailyActivitySessions.workDate, parsedWorkDate),
+          or(
+            eq(dailyActivitySessions.status, 'Approved'),
+            eq(dailyActivitySessions.status, 'approved'),
+            eq(dailyActivitySessions.status, 'completed')
+          )
+        )
+      )
+      .limit(1)
+
+    if (existingApproved) {
+      return {
+        success: false as const,
+        error: `Laporan aktivitas harian untuk tanggal ${input.workDate} sudah pernah diajukan dan disetujui (${existingApproved.sessionCode}).`,
+      }
+    }
+
     // Parallelize dept/section/position validation — was 3 serial round-trips, now 1 batch
     const [deptRows, secRows, posRows] = await Promise.all([
       emp.departmentId
@@ -7426,53 +7514,6 @@ export async function createDailyActivitySessionAction(input: {
         createdAt: now,
       },
     ]
-
-    let nextStepOrder = 3
-    if (input.additionalApprovers && input.additionalApprovers.length > 0) {
-      const extraEmpIds = Array.from(new Set(input.additionalApprovers.map((a) => Number(a.employeeId)).filter(Boolean)))
-      const extraEmps = extraEmpIds.length > 0
-        ? await db
-            .select({ id: employees.id, name: employees.name, email: employees.email })
-            .from(employees)
-            .where(inArray(employees.id, extraEmpIds))
-        : []
-      const extraMap = new Map(extraEmps.map((e) => [e.id, e]))
-
-      for (const extra of input.additionalApprovers) {
-        const extraEmpId = Number(extra.employeeId)
-        if (!extraEmpId) continue
-        const foundExtra = extraMap.get(extraEmpId)
-        const extraName = foundExtra?.name || extra.name || `Approver ${nextStepOrder}`
-        const extraEmail = foundExtra?.email || ''
-        approvalStepsToInsert.push({
-          sessionId: created.id,
-          stepOrder: nextStepOrder,
-          stepLabel: extra.stepLabel || `Approver Tambahan (Tahap ${nextStepOrder})`,
-          approverRole: extra.role || 'additional_approver',
-          approverEmployeeId: extraEmpId,
-          approverName: extraName,
-          approverEmail: extraEmail,
-          status: 'waiting',
-          approvalToken: randomUUID(),
-          createdAt: now,
-        })
-        nextStepOrder++
-      }
-    } else if (superiorEmpId) {
-      // Auto-fallback: Section Head if resolved and no manual additional approvers
-      approvalStepsToInsert.push({
-        sessionId: created.id,
-        stepOrder: 3,
-        stepLabel: 'Section Head',
-        approverRole: 'section_head',
-        approverEmployeeId: superiorEmpId,
-        approverName: superiorName,
-        approverEmail: superiorEmail,
-        status: 'waiting',
-        approvalToken: step3Token,
-        createdAt: now,
-      })
-    }
 
     await db.insert(dailyActivityApprovals).values(approvalStepsToInsert)
 
@@ -8092,30 +8133,63 @@ export async function batchApproveDailyActivitySessionsAction(
 
       if (!waitingStep) continue
 
-      // Approve this step
-      await db
-        .update(dailyActivityApprovals)
-        .set({
-          status: 'approved',
-          signatureDataUrl: sigUrl,
-          signedAt: now,
-          approverName: empRecord?.name || waitingStep.approverName,
-          approverEmployeeId: empRecord?.id || emp.id,
-          remarks: remarks || 'Approved',
-        })
-        .where(eq(dailyActivityApprovals.id, waitingStep.id))
+      let currentStepToApprove = waitingStep
+      let nextStep: any = null
+      let isCompleted = false
 
-      // Check next step
-      const [nextStep] = await db
-        .select()
-        .from(dailyActivityApprovals)
-        .where(
-          and(
-            eq(dailyActivityApprovals.sessionId, sessionId),
-            eq(dailyActivityApprovals.stepOrder, waitingStep.stepOrder + 1)
+      while (currentStepToApprove) {
+        // Approve this step
+        await db
+          .update(dailyActivityApprovals)
+          .set({
+            status: 'approved',
+            signatureDataUrl: sigUrl,
+            signedAt: now,
+            approverName: empRecord?.name || currentStepToApprove.approverName,
+            approverEmployeeId: empRecord?.id || emp.id,
+            remarks: remarks || 'Approved',
+          })
+          .where(eq(dailyActivityApprovals.id, currentStepToApprove.id))
+
+        // Find next step
+        const [candidateNext] = await db
+          .select()
+          .from(dailyActivityApprovals)
+          .where(
+            and(
+              eq(dailyActivityApprovals.sessionId, sessionId),
+              sql`${dailyActivityApprovals.stepOrder} > ${currentStepToApprove.stepOrder}`
+            )
           )
-        )
-        .limit(1)
+          .orderBy(asc(dailyActivityApprovals.stepOrder))
+          .limit(1)
+
+        if (!candidateNext) {
+          isCompleted = true
+          break
+        }
+
+        const isSameApproverAsNext =
+          (candidateNext.approverEmployeeId &&
+            candidateNext.approverEmployeeId === (empRecord?.id || emp.id)) ||
+          (candidateNext.approverEmail &&
+            emp.email &&
+            candidateNext.approverEmail.toLowerCase().trim() === emp.email.toLowerCase().trim()) ||
+          (candidateNext.approverName &&
+            empRecord?.name &&
+            candidateNext.approverName.toLowerCase().trim() === empRecord.name.toLowerCase().trim())
+
+        if (isSameApproverAsNext) {
+          currentStepToApprove = candidateNext
+        } else {
+          nextStep = candidateNext
+          await db
+            .update(dailyActivityApprovals)
+            .set({ status: 'pending' })
+            .where(eq(dailyActivityApprovals.id, nextStep.id))
+          break
+        }
+      }
 
       const [sessionDoc] = await db
         .select({
@@ -8129,13 +8203,7 @@ export async function batchApproveDailyActivitySessionsAction(
         .where(eq(dailyActivitySessions.id, sessionId))
         .limit(1)
 
-      if (nextStep) {
-        // Next step is now active and pending approval
-        await db
-          .update(dailyActivityApprovals)
-          .set({ status: 'pending' })
-          .where(eq(dailyActivityApprovals.id, nextStep.id))
-
+      if (!isCompleted && nextStep) {
         if (sessionDoc) {
           const [requester] = await db
             .select({ name: employees.name })
@@ -8173,12 +8241,29 @@ export async function batchApproveDailyActivitySessionsAction(
           }
         }
       } else {
+        // Auto-approve any remaining steps just in case
+        await db
+          .update(dailyActivityApprovals)
+          .set({
+            status: 'approved',
+            signatureDataUrl: sigUrl,
+            approverEmployeeId: empRecord?.id || emp.id,
+            signedAt: now,
+          })
+          .where(
+            and(
+              eq(dailyActivityApprovals.sessionId, sessionId),
+              eq(dailyActivityApprovals.status, 'waiting')
+            )
+          )
+
         // Final approval -> Complete session status
         await db
           .update(dailyActivitySessions)
           .set({
             status: 'Approved',
             approvedAt: now,
+            updatedAt: now,
           })
           .where(eq(dailyActivitySessions.id, sessionId))
 
