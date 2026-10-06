@@ -875,7 +875,7 @@ export async function rarayPredictTireDamage(params: {
 
     return fetch(`${baseUrlOverride || getBaseUrl()}/api/v1/models/endpoints/${endpoint}/predict`, {
       method: 'POST',
-      headers: { Authorization: await getAuthHeader() },
+      headers: { Authorization: await getAuthHeader(baseUrlOverride) },
       body: formData,
       cache: 'no-store',
       signal: AbortSignal.timeout(timeoutMs),
