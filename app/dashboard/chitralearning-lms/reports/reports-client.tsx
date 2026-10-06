@@ -19,6 +19,7 @@ export type ReportRow = {
   progress: number
   pretestScore: number | null
   posttestScore: number | null
+  posttestAttempts?: number | null
   finalScore: number | null
   isPassed: boolean
   completedAt: Date | null
@@ -194,9 +195,28 @@ export function ReportsClient({
                   <p className="text-xs text-slate-500 font-medium mb-1 uppercase tracking-wider">Nilai Pre-test</p>
                   <p className="text-2xl font-bold text-slate-900">{selectedRow.pretestScore ?? '-'}</p>
                 </div>
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                  <p className="text-xs text-slate-500 font-medium mb-1 uppercase tracking-wider">Nilai Post-test</p>
-                  <p className="text-2xl font-bold text-slate-900">{selectedRow.posttestScore ?? '-'}</p>
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Nilai Post-test</p>
+                      {selectedRow.posttestAttempts != null && selectedRow.posttestAttempts > 0 && (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-200/80 text-slate-700">
+                          {selectedRow.posttestAttempts}x tes
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-2xl font-bold text-slate-900">{selectedRow.posttestScore ?? '-'}</p>
+                  </div>
+                  <div className="pt-2 border-t border-slate-200/60 mt-2 text-[11px] text-muted-foreground">
+                    <span>Jumlah Percobaan: </span>
+                    <strong className="font-semibold text-slate-800">
+                      {selectedRow.posttestAttempts != null && selectedRow.posttestAttempts > 0
+                        ? `${selectedRow.posttestAttempts} kali`
+                        : selectedRow.posttestScore != null
+                        ? '1 kali'
+                        : 'Belum tes'}
+                    </strong>
+                  </div>
                 </div>
                 <div className="col-span-2 bg-blue-50/50 p-4 rounded-xl border border-blue-100 flex items-center justify-between">
                   <div>

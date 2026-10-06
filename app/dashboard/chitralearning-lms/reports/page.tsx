@@ -2,7 +2,7 @@ import { getServerSession } from '@/lib/auth-session'
 import { redirect } from 'next/navigation'
 import { db } from '@/db'
 import { chitraLearningEnrollments, chitraLearningCourses, employees, chitraLearningCertificates, sites } from '@/db/schema/hero'
-import { eq, desc, asc } from 'drizzle-orm'
+import { eq, desc, asc, sql } from 'drizzle-orm'
 import { ReportsClient } from './reports-client'
 
 export const metadata = {
@@ -25,6 +25,20 @@ export default async function LmsReportsPage() {
         progress: chitraLearningEnrollments.progress,
         pretestScore: chitraLearningEnrollments.pretestScore,
         posttestScore: chitraLearningEnrollments.posttestScore,
+        posttestAttempts: sql<number>`GREATEST(
+          COALESCE(
+            (
+              SELECT count(*)::int 
+              FROM hero_chitralearning_audit_logs a 
+              WHERE a.course_id = ${chitraLearningEnrollments.courseId} 
+                AND a.employee_id = ${chitraLearningEnrollments.employeeId} 
+                AND a.action = 'quiz_submitted' 
+                AND a.after_value->>'phase' = 'posttest'
+            ),
+            0
+          ),
+          CASE WHEN ${chitraLearningEnrollments.posttestScore} IS NOT NULL THEN 1 ELSE 0 END
+        )`,
         finalScore: chitraLearningEnrollments.finalScore,
         isPassed: chitraLearningEnrollments.isPassed,
         completedAt: chitraLearningEnrollments.completedAt,

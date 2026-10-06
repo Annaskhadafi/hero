@@ -23,7 +23,7 @@ import { computeAggregates } from "@/lib/sio-certification";
 import { db } from "@/db";
 import { chitraLearningCourses, chitraLearningEnrollments, employees, chitraLearningCertificates, sites } from "@/db/schema/hero";
 import { ChitraLearningProgressTable } from "@/components/chitra-learning-progress-table";
-import { eq, desc, inArray } from "drizzle-orm";
+import { eq, desc, inArray, sql } from "drizzle-orm";
 
 const APP_TIME_ZONE = "Asia/Makassar";
 
@@ -111,6 +111,20 @@ export default async function TrainingRecordsPage({
       pretestStatus: chitraLearningEnrollments.pretestStatus,
       posttestScore: chitraLearningEnrollments.posttestScore,
       posttestStatus: chitraLearningEnrollments.posttestStatus,
+      posttestAttempts: sql<number>`GREATEST(
+        COALESCE(
+          (
+            SELECT count(*)::int 
+            FROM hero_chitralearning_audit_logs a 
+            WHERE a.course_id = ${chitraLearningEnrollments.courseId} 
+              AND a.employee_id = ${chitraLearningEnrollments.employeeId} 
+              AND a.action = 'quiz_submitted' 
+              AND a.after_value->>'phase' = 'posttest'
+          ),
+          0
+        ),
+        CASE WHEN ${chitraLearningEnrollments.posttestScore} IS NOT NULL THEN 1 ELSE 0 END
+      )`,
       finalScore: chitraLearningEnrollments.finalScore,
       isPassed: chitraLearningEnrollments.isPassed,
       passingScore: chitraLearningCourses.passingScore,

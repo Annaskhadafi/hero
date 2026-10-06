@@ -52,6 +52,7 @@ export interface ChitraLearningProgressRow {
   pretestStatus?: string | null
   posttestScore?: number | null
   posttestStatus?: string | null
+  posttestAttempts?: number | null
   finalScore?: number | null
   isPassed?: boolean | null
   passingScore: number
@@ -142,18 +143,25 @@ export function ChitraLearningProgressTable({ rows }: ChitraLearningProgressTabl
                     {row.posttestScore == null ? (
                       <span className="text-xs text-muted-foreground">-</span>
                     ) : (
-                      <span
-                        className={
-                          row.posttestScore >= row.passingScore
-                            ? 'font-bold text-emerald-600'
-                            : 'font-bold text-rose-600'
-                        }
-                      >
-                        {row.posttestScore}%{' '}
-                        <span className="text-[11px] font-normal text-muted-foreground">
-                          / {row.passingScore}%
+                      <div>
+                        <span
+                          className={
+                            row.posttestScore >= row.passingScore
+                              ? 'font-bold text-emerald-600'
+                              : 'font-bold text-rose-600'
+                          }
+                        >
+                          {row.posttestScore}%{' '}
+                          <span className="text-[11px] font-normal text-muted-foreground">
+                            / {row.passingScore}%
+                          </span>
                         </span>
-                      </span>
+                        {row.posttestAttempts != null && row.posttestAttempts > 0 && (
+                          <div className="text-[11px] text-muted-foreground font-medium">
+                            {row.posttestAttempts}x percobaan
+                          </div>
+                        )}
+                      </div>
                     )}
                   </TableCell>
                   <TableCell className="px-4 py-3">
@@ -273,30 +281,59 @@ export function ChitraLearningProgressTable({ rows }: ChitraLearningProgressTabl
 
               {/* Scores Grid */}
               <div className="grid grid-cols-2 gap-3">
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
-                  <p className="text-[11px] text-slate-500 font-medium uppercase tracking-wider">Nilai Pre-test</p>
-                  <p className="text-2xl font-bold text-slate-900 mt-1">
-                    {selectedRow.pretestScore != null ? `${selectedRow.pretestScore}%` : '-'}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5 capitalize">
-                    Status: {selectedRow.pretestStatus ? selectedRow.pretestStatus.replace('_', ' ') : '-'}
-                  </p>
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100 flex flex-col justify-between">
+                  <div>
+                    <p className="text-[11px] text-slate-500 font-medium uppercase tracking-wider">Nilai Pre-test</p>
+                    <p className="text-2xl font-bold text-slate-900 mt-1">
+                      {selectedRow.pretestScore != null ? `${selectedRow.pretestScore}%` : '-'}
+                    </p>
+                  </div>
+                  <div className="pt-2 border-t border-slate-200/60 mt-2 text-[10px] text-muted-foreground">
+                    <div className="flex items-center justify-between">
+                      <span>Status:</span>
+                      <strong className="font-semibold text-slate-700 capitalize">
+                        {selectedRow.pretestStatus ? selectedRow.pretestStatus.replace('_', ' ') : '-'}
+                      </strong>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
-                  <p className="text-[11px] text-slate-500 font-medium uppercase tracking-wider">Nilai Post-test</p>
-                  <p className="text-2xl font-bold mt-1 text-slate-900">
-                    {selectedRow.posttestScore != null ? (
-                      <span className={selectedRow.posttestScore >= selectedRow.passingScore ? 'text-emerald-600' : 'text-rose-600'}>
-                        {selectedRow.posttestScore}%
-                      </span>
-                    ) : (
-                      '-'
-                    )}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">
-                    Syarat Kelulusan: <strong className="font-semibold text-slate-700">{selectedRow.passingScore}%</strong>
-                  </p>
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between gap-1">
+                      <p className="text-[11px] text-slate-500 font-medium uppercase tracking-wider">Nilai Post-test</p>
+                      {selectedRow.posttestAttempts != null && selectedRow.posttestAttempts > 0 && (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-200/80 text-slate-700">
+                          {selectedRow.posttestAttempts}x Tes
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-2xl font-bold mt-1 text-slate-900">
+                      {selectedRow.posttestScore != null ? (
+                        <span className={selectedRow.posttestScore >= selectedRow.passingScore ? 'text-emerald-600' : 'text-rose-600'}>
+                          {selectedRow.posttestScore}%
+                        </span>
+                      ) : (
+                        '-'
+                      )}
+                    </p>
+                  </div>
+                  <div className="pt-2 border-t border-slate-200/60 mt-2 space-y-1 text-[10px] text-muted-foreground">
+                    <div className="flex items-center justify-between">
+                      <span>Syarat Kelulusan:</span>
+                      <strong className="font-semibold text-slate-700">{selectedRow.passingScore}%</strong>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Jumlah Percobaan:</span>
+                      <strong className="font-semibold text-slate-800">
+                        {selectedRow.posttestAttempts != null && selectedRow.posttestAttempts > 0
+                          ? `${selectedRow.posttestAttempts} kali`
+                          : selectedRow.posttestScore != null
+                          ? '1 kali'
+                          : 'Belum tes'}
+                      </strong>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="col-span-2 bg-gradient-to-r from-blue-50/60 to-indigo-50/60 p-4 rounded-xl border border-blue-100 flex items-center justify-between">
