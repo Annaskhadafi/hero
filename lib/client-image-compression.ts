@@ -10,17 +10,18 @@ export interface CompressionOptions {
   maxDimension?: number
   maxWidthOrHeight?: number
   quality?: number
-  mimeType?: 'image/jpeg' | 'image/webp'
+  mimeType?: 'image/webp' | 'image/jpeg'
 }
 
 const DEFAULT_OPTIONS: Required<Omit<CompressionOptions, 'maxWidthOrHeight'>> = {
-  maxDimension: 1280,
-  quality: 0.75,
-  mimeType: 'image/jpeg',
+  maxDimension: 1000,
+  quality: 0.7,
+  mimeType: 'image/webp',
 }
 
 /**
  * Compresses an image File or Blob in the browser using HTML5 Canvas.
+ * Converts to WebP by default, scaling down to max 1000px dimension (~20KB-60KB).
  * Non-blocking, memory-efficient, and safe on mobile WebViews.
  */
 export async function compressImageFile(
@@ -30,25 +31,31 @@ export async function compressImageFile(
   // If not in browser or not an image, return original
   if (typeof window === 'undefined' || !file.type.startsWith('image/')) {
     if (file instanceof File) return file
-    return new File([file], 'image.jpg', { type: file.type || 'image/jpeg' })
+    return new File([file], 'image.webp', { type: file.type || 'image/webp' })
   }
 
-  // If image is already tiny (< 200KB) and JPEG, skip recompression
-  if (file.size < 200 * 1024 && (file.type === 'image/jpeg' || file.type === 'image/webp')) {
+  // If image is already tiny (< 50KB) and WebP, skip recompression
+  if (file.size < 50 * 1024 && file.type === 'image/webp') {
     if (file instanceof File) return file
-    return new File([file], 'photo.jpg', { type: file.type })
+    return new File([file], 'photo.webp', { type: file.type })
   }
 
   const maxDimension = options?.maxWidthOrHeight || options?.maxDimension || DEFAULT_OPTIONS.maxDimension
   const quality = options?.quality ?? DEFAULT_OPTIONS.quality
   const mimeType = options?.mimeType || DEFAULT_OPTIONS.mimeType
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const reader = new FileReader()
-    reader.onerror = () => reject(new Error('Gagal membaca file gambar.'))
+    reader.onerror = () => {
+      if (file instanceof File) resolve(file)
+      else resolve(new File([file], 'photo.webp', { type: 'image/webp' }))
+    }
     reader.onload = () => {
       const img = new Image()
-      img.onerror = () => reject(new Error('Gagal memproses data gambar.'))
+      img.onerror = () => {
+        if (file instanceof File) resolve(file)
+        else resolve(new File([file], 'photo.webp', { type: 'image/webp' }))
+      }
       img.onload = () => {
         try {
           let { width, height } = img
@@ -70,12 +77,8 @@ export async function compressImageFile(
 
           const ctx = canvas.getContext('2d', { willReadFrequently: false })
           if (!ctx) {
-            // Fallback if canvas context fails
-            if (file instanceof File) {
-              resolve(file)
-            } else {
-              resolve(new File([file], 'photo.jpg', { type: file.type }))
-            }
+            if (file instanceof File) resolve(file)
+            else resolve(new File([file], 'photo.webp', { type: 'image/webp' }))
             return
           }
 
@@ -84,38 +87,39 @@ export async function compressImageFile(
           ctx.imageSmoothingQuality = 'medium'
           ctx.drawImage(img, 0, 0, width, height)
 
-          canvas.toBlob(
-            (blob) => {
-              if (!blob) {
-                if (file instanceof File) {
-                  resolve(file)
-                } else {
-                  resolve(new File([file], 'photo.jpg', { type: file.type }))
+          const tryEncode = (targetMime: 'image/webp' | 'image/jpeg', ext: string) => {
+            canvas.toBlob(
+              (blob) => {
+                if (!blob) {
+                  if (targetMime === 'image/webp') {
+                    tryEncode('image/jpeg', '.jpg')
+                  } else {
+                    if (file instanceof File) resolve(file)
+                    else resolve(new File([file], 'photo.jpg', { type: 'image/jpeg' }))
+                  }
+                  return
                 }
-                return
-              }
 
-              const fileName = (file as File).name
-                ? (file as File).name.replace(/\.[^/.]+$/, '.jpg')
-                : `photo_${Date.now()}.jpg`
+                const rawName = (file as File).name || `photo_${Date.now()}`
+                const fileName = rawName.replace(/\.[^/.]+$/, ext)
 
-              const compressedFile = new File([blob], fileName, {
-                type: mimeType,
-                lastModified: Date.now(),
-              })
+                const compressedFile = new File([blob], fileName, {
+                  type: targetMime,
+                  lastModified: Date.now(),
+                })
 
-              resolve(compressedFile)
-            },
-            mimeType,
-            quality
-          )
+                resolve(compressedFile)
+              },
+              targetMime,
+              quality
+            )
+          }
+
+          tryEncode(mimeType, mimeType === 'image/webp' ? '.webp' : '.jpg')
         } catch (err) {
           console.warn('[compressImageFile] Canvas compression error, falling back to original:', err)
-          if (file instanceof File) {
-            resolve(file)
-          } else {
-            resolve(new File([file], 'photo.jpg', { type: file.type }))
-          }
+          if (file instanceof File) resolve(file)
+          else resolve(new File([file], 'photo.webp', { type: 'image/webp' }))
         }
       }
 

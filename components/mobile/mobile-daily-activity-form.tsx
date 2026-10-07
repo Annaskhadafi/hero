@@ -374,7 +374,7 @@ const initialGeo: GeoState = {
 async function uploadActivityPhoto(file: File): Promise<string> {
   if (!file.type.startsWith('image/')) throw new Error('Evidence harus berupa gambar.')
 
-  const compressed = await compressImageFile(file, { maxWidthOrHeight: 1280, quality: 0.75 })
+  const compressed = await compressImageFile(file, { maxDimension: 1000, quality: 0.7, mimeType: 'image/webp' })
   const formData = new FormData()
   formData.append('file', compressed)
   formData.append('uploadTarget', 'activity-photos')
@@ -389,14 +389,14 @@ async function uploadActivityPhoto(file: File): Promise<string> {
 
 async function fileToQueuedPhoto(file: File): Promise<QueuedFilePayload> {
   if (!file.type.startsWith('image/')) throw new Error('Evidence harus berupa gambar.')
-  if (file.size > 5 * 1024 * 1024) throw new Error('Ukuran foto maksimal 5MB.')
+  const compressed = await compressImageFile(file, { maxDimension: 1000, quality: 0.7, mimeType: 'image/webp' })
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(String(reader.result || ''))
     reader.onerror = () => reject(new Error('Gagal membaca foto untuk draft.'))
-    reader.readAsDataURL(file)
+    reader.readAsDataURL(compressed)
   })
-  return { name: file.name, type: file.type, size: file.size, dataUrl }
+  return { name: compressed.name || file.name, type: 'image/webp', size: compressed.size, dataUrl }
 }
 
 function queuedPhotoToFile(payload: QueuedFilePayload): File {
@@ -1262,7 +1262,12 @@ export function MobileDailyActivityForm({
     setPhotoCaptureMode('camera')
     if (cameraInputRef.current) {
       cameraInputRef.current.value = ''
-      cameraInputRef.current.click()
+      try {
+        cameraInputRef.current.click()
+      } catch (err) {
+        console.error('Camera trigger error:', err)
+        toast.error('Gagal membuka kamera. Pastikan izin kamera telah diizinkan pada browser/perangkat Anda.')
+      }
     }
   }
 
@@ -1272,7 +1277,12 @@ export function MobileDailyActivityForm({
     setPhotoCaptureMode('gallery')
     if (galleryInputRef.current) {
       galleryInputRef.current.value = ''
-      galleryInputRef.current.click()
+      try {
+        galleryInputRef.current.click()
+      } catch (err) {
+        console.error('Gallery trigger error:', err)
+        toast.error('Gagal membuka galeri. Pastikan izin galeri/foto telah diizinkan pada browser/perangkat Anda.')
+      }
     }
   }
 
@@ -1283,7 +1293,7 @@ export function MobileDailyActivityForm({
     const targetId = activePhotoTargetRef.current || activePhotoTarget
     if (!targetId) return
 
-    const compressedFiles = await compressImageFiles(rawFiles, { maxWidthOrHeight: 1280, quality: 0.75 })
+    const compressedFiles = await compressImageFiles(rawFiles, { maxDimension: 1000, quality: 0.7, mimeType: 'image/webp' })
     const file = compressedFiles[0] ?? null
     const names = compressedFiles.map((item) => item.name).join(', ')
     const previewUrls = compressedFiles.map((f) => URL.createObjectURL(f))
@@ -4623,17 +4633,17 @@ export function MobileDailyActivityForm({
         <input
           ref={cameraInputRef}
           type="file"
-          accept="image/*"
+          accept="image/*,image/heic,image/heif,image/webp,image/jpeg,image/png"
           capture="environment"
-          className="hidden"
+          className="sr-only fixed -top-full left-0 w-1 h-1 opacity-0 pointer-events-none"
           onChange={handlePhotoChange}
         />
         <input
           ref={galleryInputRef}
           type="file"
-          accept="image/*"
+          accept="image/*,image/heic,image/heif,image/webp,image/jpeg,image/png"
           multiple
-          className="hidden"
+          className="sr-only fixed -top-full left-0 w-1 h-1 opacity-0 pointer-events-none"
           onChange={handlePhotoChange}
         />
 
