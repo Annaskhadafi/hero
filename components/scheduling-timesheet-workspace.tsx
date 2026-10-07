@@ -5809,7 +5809,13 @@ export function SchedulingTimesheetWorkspace({
         )
       },
     }).map((day) => {
-      const shiftKey = day.scheduleCode === 'NS' ? 'nightShift' : 'dayShift'
+      const cell = getAttendanceCell(employee.id, day)
+      const inM = cell.clockIn ? minutesFromTime(cell.clockIn) : null
+      const outM = cell.clockOut ? minutesFromTime(cell.clockOut) : null
+      const isNightShift =
+        day.scheduleCode === 'NS' ||
+        (inM != null && outM != null && (outM < inM || inM >= 15 * 60))
+      const shiftKey = isNightShift ? 'nightShift' : 'dayShift'
       const dayKey = classifyOvertimePolicyDay({
         schedule: employeeSchedule,
         dayIndex: day.day - 1,
@@ -5820,26 +5826,26 @@ export function SchedulingTimesheetWorkspace({
       const useDay6WorkingTime = dayKey === 'hariKe6' && empSiteConfig.day6WorkingTimeEnabled
       const useDay7WorkingTime = dayKey === 'hariKe7' && empSiteConfig.day7WorkingTimeEnabled
       const defaultWorkFrom = useDay7WorkingTime
-        ? day.scheduleCode === 'NS'
+        ? isNightShift
           ? empSiteConfig.day7NightShiftClockIn
           : empSiteConfig.day7DayShiftClockIn
         : useDay6WorkingTime
-          ? day.scheduleCode === 'NS'
+          ? isNightShift
             ? empSiteConfig.day6NightShiftClockIn
             : empSiteConfig.day6DayShiftClockIn
-          : day.scheduleCode === 'NS'
+          : isNightShift
             ? empSiteConfig.nightShiftClockIn
             : empSiteConfig.dayShiftClockIn
 
       const defaultWorkTo = useDay7WorkingTime
-        ? day.scheduleCode === 'NS'
+        ? isNightShift
           ? empSiteConfig.day7NightShiftClockOut
           : empSiteConfig.day7DayShiftClockOut
         : useDay6WorkingTime
-          ? day.scheduleCode === 'NS'
+          ? isNightShift
             ? empSiteConfig.day6NightShiftClockOut
             : empSiteConfig.day6DayShiftClockOut
-          : day.scheduleCode === 'NS'
+          : isNightShift
             ? empSiteConfig.nightShiftClockOut
             : empSiteConfig.dayShiftClockOut
 

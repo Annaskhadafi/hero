@@ -41,6 +41,7 @@ import { toast } from 'sonner'
 import { downloadElementAsPdf, downloadHtmlAsPdf, generateElementAsPdfBlob, generateHtmlAsPdfBlob, downloadFilesAsZip } from '@/lib/pdf-download'
 import { uploadFile } from '@/app/actions/upload'
 import { resolveUploadUrl } from '@/lib/resolve-upload-url'
+import { formatPhotoDisplayUrl } from '@/lib/photo-url'
 import { compressImageFile } from '@/lib/client-image-compression'
 import type { RouteFolder } from '@/lib/daily-activity'
 import { SplEvidenceQrBox } from '@/components/overtime-document-qr'
@@ -687,7 +688,7 @@ export function OvertimeListingClient({
     setIsUploadingLinePhoto((prev) => ({ ...prev, [targetIdx]: true }))
     try {
       // Compress image client-side to keep upload speed lightning fast even on low-end phones
-      const compressedFile = await compressImageFile(file, { maxWidthOrHeight: 1280, quality: 0.75 })
+      const compressedFile = await compressImageFile(file, { maxDimension: 1000, quality: 0.7, mimeType: 'image/webp' })
       const formData = new FormData()
       formData.append('file', compressedFile)
       formData.append('uploadTarget', 'activity-photos')
@@ -709,7 +710,7 @@ export function OvertimeListingClient({
       }
     } catch {
       try {
-        const fallbackCompressed = await compressImageFile(file, { maxWidthOrHeight: 1280, quality: 0.75 })
+        const fallbackCompressed = await compressImageFile(file, { maxDimension: 1000, quality: 0.7, mimeType: 'image/webp' })
         const reader = new FileReader()
         reader.onload = () => {
           const base64Url = reader.result as string
@@ -3191,7 +3192,7 @@ export function OvertimeListingClient({
                         {item.photoUrl ? (
                           <div className="relative inline-block border border-slate-200 rounded-lg p-1 bg-slate-50">
                             <img
-                              src={resolveUploadUrl(item.photoUrl)}
+                              src={formatPhotoDisplayUrl(item.photoUrl, 400)}
                               alt={`Evidence #${idx + 1}`}
                               className="size-20 object-cover rounded-md border border-slate-300"
                             />
@@ -3412,7 +3413,7 @@ export function OvertimeListingClient({
                         {item.photoUrl ? (
                           <div className="relative inline-block border border-slate-200 rounded-lg p-1 bg-slate-50">
                             <img
-                              src={resolveUploadUrl(item.photoUrl)}
+                              src={formatPhotoDisplayUrl(item.photoUrl, 400)}
                               alt={`Evidence #${idx + 1}`}
                               className="size-20 object-cover rounded-md border border-slate-300"
                             />
@@ -3696,7 +3697,7 @@ export function OvertimeListingClient({
                               {item.photoUrl ? (
                                 <div className="relative inline-block border border-slate-200 rounded-lg p-1 bg-slate-50">
                                   <img
-                                    src={resolveUploadUrl(item.photoUrl)}
+                                    src={formatPhotoDisplayUrl(item.photoUrl, 400)}
                                     alt={`Evidence #${idx + 1}`}
                                     className="size-20 object-cover rounded-md border border-slate-300"
                                   />

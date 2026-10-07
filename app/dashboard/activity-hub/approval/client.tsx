@@ -269,7 +269,7 @@ export function ApprovalListingClient({
 async function uploadActivityPhoto(file: File): Promise<string> {
   if (!file.type.startsWith('image/')) throw new Error('Evidence harus berupa gambar.')
 
-  const compressedFile = await compressImageFile(file, { maxWidthOrHeight: 1280, quality: 0.75 })
+  const compressedFile = await compressImageFile(file, { maxDimension: 1000, quality: 0.7, mimeType: 'image/webp' })
   const formData = new FormData()
   formData.append('file', compressedFile)
   const uploadResponse = await fetch('/api/uploads/activity-presign', {

@@ -26,6 +26,7 @@ import {
   resubmitOvertimeCommandLetterAction,
 } from "@/app/dashboard/overtime-requests/actions";
 import { uploadFile } from "@/app/actions/upload";
+import { compressImageFile } from "@/lib/client-image-compression";
 import { resolveUploadUrl } from "@/lib/resolve-upload-url";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -676,11 +677,18 @@ export function MobileOvertimeRequestForm({
       return next;
     });
     try {
+      const compressedFile = await compressImageFile(file, {
+        maxDimension: 1000,
+        quality: 0.7,
+        mimeType: 'image/webp',
+      });
       const fd = new FormData();
-      fd.append('file', file);
+      fd.append('file', compressedFile);
+      fd.append('uploadTarget', 'activity-photos');
       const result = await uploadFile(fd);
-      if (result.success && result.url) {
-        updateLineItem(idx, 'photoUrl', result.url);
+      if (result.success && (result.readableUrl || result.url)) {
+        const finalUrl = result.readableUrl || result.url;
+        updateLineItem(idx, 'photoUrl', finalUrl);
         toast.success('Foto evidence berhasil diunggah');
       } else {
         toast.error('Gagal mengunggah foto evidence');

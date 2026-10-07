@@ -33,6 +33,7 @@ import {
 import { SearchableSelect } from '@/components/ui/searchable-select'
 import { createDailyActivitySessionAction } from '@/app/dashboard/activity-hub/actions'
 import { uploadFile } from '@/app/actions/upload'
+import { compressImageFile } from '@/lib/client-image-compression'
 import { cn } from '@/lib/utils'
 import type { RouteFolder } from '@/lib/daily-activity'
 
@@ -494,15 +495,12 @@ export function DailyActivityCreateModal({
       toast.error('File harus berupa gambar (JPG, PNG, WebP)')
       return
     }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Ukuran foto maksimal 5MB')
-      return
-    }
 
     setIsUploadingPhoto((prev) => ({ ...prev, [targetKey]: true }))
     try {
+      const compressedFile = await compressImageFile(file, { maxDimension: 1000, quality: 0.7, mimeType: 'image/webp' })
       const formData = new FormData()
-      formData.append('file', file)
+      formData.append('file', compressedFile)
       formData.append('uploadTarget', 'daily_activity')
       const res = await uploadFile(formData)
       if (res.success && (res.readableUrl || res.url)) {
@@ -531,23 +529,28 @@ export function DailyActivityCreateModal({
           }
           toast.success('Foto evidence tersimpan')
         }
-        reader.readAsDataURL(file)
+        reader.readAsDataURL(compressedFile)
       }
     } catch {
-      const reader = new FileReader()
-      reader.onload = () => {
-        const base64Url = reader.result as string
-        if (typeof targetKey === 'number') {
-          updateItemRow(targetKey, 'photoUrl', base64Url)
-          updateItemRow(targetKey, 'photos', [base64Url])
-        } else if (targetKey === 'custom') {
-          setCreateForm((p) => ({ ...p, customPhotoUrl: base64Url }))
-        } else if (targetKey === 'assigned') {
-          setCreateForm((p) => ({ ...p, assignedPhotoUrl: base64Url }))
+      try {
+        const fallbackCompressed = await compressImageFile(file, { maxDimension: 1000, quality: 0.7, mimeType: 'image/webp' })
+        const reader = new FileReader()
+        reader.onload = () => {
+          const base64Url = reader.result as string
+          if (typeof targetKey === 'number') {
+            updateItemRow(targetKey, 'photoUrl', base64Url)
+            updateItemRow(targetKey, 'photos', [base64Url])
+          } else if (targetKey === 'custom') {
+            setCreateForm((p) => ({ ...p, customPhotoUrl: base64Url }))
+          } else if (targetKey === 'assigned') {
+            setCreateForm((p) => ({ ...p, assignedPhotoUrl: base64Url }))
+          }
+          toast.success('Foto evidence tersimpan')
         }
-        toast.success('Foto evidence tersimpan')
+        reader.readAsDataURL(fallbackCompressed)
+      } catch {
+        toast.error('Gagal mengunggah foto evidence')
       }
-      reader.readAsDataURL(file)
     } finally {
       setIsUploadingPhoto((prev) => ({ ...prev, [targetKey]: false }))
     }

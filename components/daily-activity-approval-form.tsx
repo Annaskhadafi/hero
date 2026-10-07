@@ -661,7 +661,7 @@ export function DailyActivityApprovalForm({
     setUploadingItemIdx(index)
     try {
       // Compress image client-side to prevent network and payload bottlenecks
-      const compressedFile = await compressImageFile(file, { maxWidthOrHeight: 1280, quality: 0.75 })
+      const compressedFile = await compressImageFile(file, { maxDimension: 1000, quality: 0.7, mimeType: 'image/webp' })
       const formData = new FormData()
       formData.append('file', compressedFile)
       formData.append('uploadTarget', 'daily_activity')
@@ -683,7 +683,7 @@ export function DailyActivityApprovalForm({
     } catch (err) {
       console.error('Error uploading photo:', err)
       try {
-        const fallbackCompressed = await compressImageFile(file, { maxWidthOrHeight: 1280, quality: 0.75 })
+        const fallbackCompressed = await compressImageFile(file, { maxDimension: 1000, quality: 0.7, mimeType: 'image/webp' })
         const reader = new FileReader()
         reader.onload = () => {
           const base64Url = reader.result as string
