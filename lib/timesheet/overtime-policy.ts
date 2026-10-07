@@ -23,6 +23,7 @@ export type SiteOvertimeConfig = {
 export type ApprovedSplWindow = {
   id: number
   splNumber: string
+  title?: string
   siteId: number
   employeeId: number
   plannedStartAt: string

@@ -5864,8 +5864,26 @@ export function SchedulingTimesheetWorkspace({
         day.scheduleCode === 'FB' ||
         day.scheduleCode === 'Libur'
 
+      const dateStr = `${period}-${String(day.day).padStart(2, '0')}`
+      const empSpls = (approvedSplByEmployee.get(employee.id) ?? []).filter((w) => {
+        if (!w.plannedStartAt) return false
+        return w.plannedStartAt.slice(0, 10) === dateStr
+      })
+      const splNumbers = Array.from(new Set(empSpls.map((s) => s.splNumber).filter(Boolean)))
+      const splTitles = Array.from(new Set(empSpls.map((s) => s.title).filter(Boolean)))
+      const splDetails = empSpls.map((s) => ({
+        splNumber: s.splNumber,
+        title: s.title,
+        plannedStartAt: s.plannedStartAt,
+        plannedEndAt: s.plannedEndAt,
+        status: s.status,
+      }))
+
       return {
         ...day,
+        splNumber: splNumbers.join(', '),
+        splTitle: splTitles.join('; '),
+        splDetails,
         workingTimeFrom:
           day.isHoliday || (isOffsiteOrAbsent && !hasRealAttendance)
             ? ''
@@ -5882,6 +5900,7 @@ export function SchedulingTimesheetWorkspace({
     })
     const secSigs = getSectionSignatures(employee.section, employee)
     return generateOvertimeRecordPdf({
+      documentTitle: 'SURAT PENGAJUAN LEMBUR',
       period,
       employeeId: employee.id,
       employeeName: employee.name,

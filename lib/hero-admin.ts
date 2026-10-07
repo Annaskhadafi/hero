@@ -6996,6 +6996,7 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
       .select({
         id: overtimeCommandLetters.id,
         splNumber: overtimeCommandLetters.splNumber,
+        title: overtimeCommandLetters.title,
         siteId: overtimeCommandLetters.siteId,
         employeeId: overtimeCommandLetterParticipants.employeeId,
         plannedStartAt: overtimeCommandLetters.plannedStartAt,
@@ -7363,6 +7364,7 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
       .map((row) => ({
         id: row.id,
         splNumber: row.splNumber,
+        title: row.title ?? '',
         siteId: row.siteId,
         employeeId: row.employeeId!,
         plannedStartAt: row.plannedStartAt!.toISOString(),

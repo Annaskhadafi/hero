@@ -37,57 +37,48 @@ export function MobileTimesheetClient({ data }: { data: any }) {
       )
 
       const now = new Date()
+      const year = now.getFullYear()
+      const monthStr = String(now.getMonth() + 1).padStart(2, '0')
+      const periodKey = `${year}-${monthStr}`
       const periodLabel = now.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
-      const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+      const daysInMonth = new Date(year, now.getMonth() + 1, 0).getDate()
 
-      // Generate days
-      const days = []
-      for (let day = 1; day <= daysInMonth; day++) {
-        const d = new Date(now.getFullYear(), now.getMonth(), day)
-        const isOff = d.getDay() === 0 || d.getDay() === 6
-        days.push(
-          buildAttendanceDayData({
-            day,
-            shiftCode: isOff ? 'OFF' : 'DS',
-            checkIn: isOff ? null : '07:00',
-            checkOut: isOff ? null : '16:00',
-            actualHours: isOff ? 0 : 8,
-            overtimeHours: 0,
-            status: isOff ? 'OFF' : 'PRESENT',
-            splStatus: null,
-          } as any)
-        )
-      }
+      // Generate days using buildAttendanceDayData
+      const days = buildAttendanceDayData({
+        period: periodKey,
+        dayCount: daysInMonth,
+        getCell: (day) => {
+          const d = new Date(year, now.getMonth(), day)
+          const isOff = d.getDay() === 0 || d.getDay() === 6
+          return {
+            status: isOff ? 'off' : 'present',
+            clockIn: isOff ? '' : '07:00',
+            clockOut: isOff ? '' : '16:00',
+          }
+        },
+        getScheduleCode: (day) => {
+          const d = new Date(year, now.getMonth(), day)
+          return d.getDay() === 0 || d.getDay() === 6 ? 'OFF' : 'DS'
+        },
+        holidays: [],
+      })
 
       const pdfBytes = await generateOvertimeRecordPdf({
-        companyName: 'PT CHITRA PARATAMA',
-        title: 'REKAPITULASI SURAT PERINTAH LEMBUR (SPL)',
-        subtitle: `${employee?.name || 'Karyawan'} • ${periodLabel}`,
-        period: periodLabel,
+        documentTitle: 'SURAT PENGAJUAN LEMBUR',
+        period: periodKey,
         employeeName: employee?.name || 'Karyawan',
-        employeeId: (employee as any)?.employeeSn || employee?.id || '—',
-        position: employee?.jobTitle || 'Staff Operasional',
+        employeeSn: (employee as any)?.employeeSn || String(employee?.id || '—'),
         department: employee?.department || 'Central Services',
+        section: employee?.jobTitle || 'Staff Operasional',
         siteName: site?.name || 'Site All',
-        days: days as any,
         signatures: {
-          submittedBy: {
-            name: employee?.name || 'Karyawan',
-            title: employee?.jobTitle || 'Serviceman / Pemohon',
-            signedAt: new Date().toLocaleDateString('id-ID'),
-          },
-          supervisorApprovedBy: {
-            name: 'Supervisor Site',
-            title: 'Supervisor / Section Head',
-            signedAt: new Date().toLocaleDateString('id-ID'),
-          },
-          pjoAcknowledgedBy: {
-            name: 'PJO Site',
-            title: 'PJO / HR Site',
-            signedAt: new Date().toLocaleDateString('id-ID'),
-          },
+          preparedBy: employee?.name || 'Karyawan',
+          pjoLeader: 'Supervisor Site',
+          approvedBy: 'Manager Site',
         },
-      } as any)
+        days,
+        isNonStaff: true,
+      })
 
       const blob = new Blob([pdfBytes as any], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
