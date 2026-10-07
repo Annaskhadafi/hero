@@ -478,6 +478,7 @@ export function transformTireCheckData(
     chartTrend,
     rekapTable,
     rawItems: filteredRaw,
+    allRawItems: allItems,
   }
 
   return {

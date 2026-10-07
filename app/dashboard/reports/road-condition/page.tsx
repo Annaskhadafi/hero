@@ -23,8 +23,20 @@ export default async function RoadConditionAnalysisPage() {
       })
       .from(sites)
       .where(eq(sites.isActive, true))
-      .orderBy(asc(sites.name)),
-    db.select().from(roadConditionReports).orderBy(desc(roadConditionReports.updatedAt)).limit(50),
+      .orderBy(asc(sites.name))
+      .catch((err) => {
+        console.warn('[road-condition] Failed to load sites:', err)
+        return []
+      }),
+    db
+      .select()
+      .from(roadConditionReports)
+      .orderBy(desc(roadConditionReports.updatedAt))
+      .limit(50)
+      .catch((err) => {
+        console.warn('[road-condition] Failed to load history rows:', err)
+        return []
+      }),
   ])
 
   if (!access.canView) {

@@ -63,6 +63,7 @@ test("road condition page supports multi-category 16:9 compiled report", () => {
   const historyHelperSource = read("lib/road-condition-history.ts");
   const historyApiSource = read("app/api/reports/road-condition/history/route.ts");
   const historyDeleteSource = read("app/api/reports/road-condition/history/[id]/route.ts");
+  const pptxRouteSource = read("app/api/reports/road-condition/pptx/route.ts");
 
   assert.match(source, /PHOTO_ANGLES = \['Angle 1', 'Angle 2', 'Angle 3'\]/);
   assert.match(source, /ROAD_CONDITION_SCORE_OPTIONS/);
@@ -132,7 +133,8 @@ test("road condition page supports multi-category 16:9 compiled report", () => {
   assert.match(source, /generateHistoryPdf/);
   assert.match(source, /generateReportPptx/);
   assert.match(source, /generateHistoryPptx/);
-  assert.match(source, /pptxgenjs/);
+  assert.match(pptxRouteSource, /pptxgenjs/);
+  assert.match(source, /\/api\/reports\/road-condition\/pptx/);
   assert.match(source, /downloadReportPptx/);
   assert.match(source, /Download PPTX/);
   assert.match(source, /drawPdfStars/);
@@ -181,13 +183,28 @@ test("road condition menu seed is managed by HSE permissions", () => {
 });
 
 test("inspection AI config properly maps OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL and 9router", () => {
+  function cleanEnv(value) {
+    if (!value) return "";
+    let trimmed = String(value).trim();
+    if (
+      (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'"))
+    ) {
+      trimmed = trimmed.slice(1, -1).trim();
+    }
+    return trimmed;
+  }
+
   // Simulate getInspectionAiConfig function logic
   function testConfig(env) {
+    const preferOpenAi = cleanEnv(env.LLM_PROVIDER).toLowerCase() === "openai";
+
     let rawUrl = (
-      env.INSPECTION_AI_URL ||
-      env.OPENAI_BASE_URL ||
-      env.OLLAMA_API_URL ||
-      env.OLLAMA_URL ||
+      (preferOpenAi ? cleanEnv(env.OPENAI_BASE_URL) : "") ||
+      cleanEnv(env.INSPECTION_AI_URL) ||
+      cleanEnv(env.OPENAI_BASE_URL) ||
+      (preferOpenAi ? "" : cleanEnv(env.OLLAMA_API_URL)) ||
+      (preferOpenAi ? "" : cleanEnv(env.OLLAMA_URL)) ||
       "https://9router.chitraparatama.com/v1"
     ).trim();
 
@@ -199,19 +216,21 @@ test("inspection AI config properly maps OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI
       : `${rawUrl}/chat/completions`;
 
     const apiKey = (
-      env.INSPECTION_AI_API_KEY ||
-      env.OPENAI_API_KEY ||
-      env.OLLAMA_API_KEY ||
-      env.TIRE_PATTERN_API_KEY ||
-      env.OPENROUTER_API_KEY ||
+      (preferOpenAi ? cleanEnv(env.OPENAI_API_KEY) : "") ||
+      cleanEnv(env.INSPECTION_AI_API_KEY) ||
+      cleanEnv(env.OPENAI_API_KEY) ||
+      (preferOpenAi ? "" : cleanEnv(env.OLLAMA_API_KEY)) ||
+      (preferOpenAi ? "" : cleanEnv(env.TIRE_PATTERN_API_KEY)) ||
+      (preferOpenAi ? "" : cleanEnv(env.OPENROUTER_API_KEY)) ||
       ""
     ).trim();
 
     const configuredModel = (
-      env.INSPECTION_AI_MODEL ||
-      env.OPENAI_MODEL ||
-      env.TIRE_PATTERN_MODEL ||
-      env.OLLAMA_MODEL ||
+      (preferOpenAi ? cleanEnv(env.OPENAI_MODEL) : "") ||
+      cleanEnv(env.INSPECTION_AI_MODEL) ||
+      cleanEnv(env.OPENAI_MODEL) ||
+      (preferOpenAi ? "" : cleanEnv(env.TIRE_PATTERN_MODEL)) ||
+      (preferOpenAi ? "" : cleanEnv(env.OLLAMA_MODEL)) ||
       "cx/gpt-5.6-luna"
     ).trim();
 
@@ -258,5 +277,16 @@ test("inspection AI config properly maps OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI
   });
   assert.equal(c4.apiKey, "sk-custom");
   assert.equal(c4.model, "openrouter/inference-net/schematron-v2-turbo");
+
+  // Case 5: Env variables with surrounding quotes (Dokploy UI)
+  const c5 = testConfig({
+    OPENAI_API_KEY: '"sk-quoted-key"',
+    OPENAI_BASE_URL: '"https://9router.chitraparatama.com/v1"',
+    OPENAI_MODEL: '"cx/gpt-5.6-luna"',
+    LLM_PROVIDER: '"openai"',
+  });
+  assert.equal(c5.apiUrl, "https://9router.chitraparatama.com/v1/chat/completions");
+  assert.equal(c5.apiKey, "sk-quoted-key");
+  assert.equal(c5.model, "cx/gpt-5.6-luna");
 });
 

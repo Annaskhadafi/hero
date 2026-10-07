@@ -71,7 +71,9 @@ function getPool(): Pool {
     connectionString,
     ssl: getSslConfig(connectionString),
     idleTimeoutMillis: 10000,
-    connectionTimeoutMillis: 5000,
+    connectionTimeoutMillis: process.env.DB_CONNECTION_TIMEOUT_MS
+      ? parseInt(process.env.DB_CONNECTION_TIMEOUT_MS, 10)
+      : 15000,
     max: maxConnections,
     keepAlive: true,
     keepAliveInitialDelayMillis: 2000,

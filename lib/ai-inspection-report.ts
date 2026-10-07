@@ -61,12 +61,27 @@ export interface InspectionAiCallResult {
   model: string;
 }
 
+function cleanEnv(value?: string): string {
+  if (!value) return "";
+  let trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    trimmed = trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
 export function getInspectionAiConfig() {
+  const preferOpenAi = cleanEnv(process.env.LLM_PROVIDER).toLowerCase() === "openai";
+
   let rawUrl = (
-    process.env.INSPECTION_AI_URL ||
-    process.env.OPENAI_BASE_URL ||
-    process.env.OLLAMA_API_URL ||
-    process.env.OLLAMA_URL ||
+    (preferOpenAi ? cleanEnv(process.env.OPENAI_BASE_URL) : "") ||
+    cleanEnv(process.env.INSPECTION_AI_URL) ||
+    cleanEnv(process.env.OPENAI_BASE_URL) ||
+    (preferOpenAi ? "" : cleanEnv(process.env.OLLAMA_API_URL)) ||
+    (preferOpenAi ? "" : cleanEnv(process.env.OLLAMA_URL)) ||
     "https://9router.chitraparatama.com/v1"
   ).trim();
 
@@ -78,20 +93,22 @@ export function getInspectionAiConfig() {
     : `${rawUrl}/chat/completions`;
 
   const apiKey = (
-    process.env.INSPECTION_AI_API_KEY ||
-    process.env.OPENAI_API_KEY ||
-    process.env.OLLAMA_API_KEY ||
-    process.env.TIRE_PATTERN_API_KEY ||
-    process.env.OPENROUTER_API_KEY ||
+    (preferOpenAi ? cleanEnv(process.env.OPENAI_API_KEY) : "") ||
+    cleanEnv(process.env.INSPECTION_AI_API_KEY) ||
+    cleanEnv(process.env.OPENAI_API_KEY) ||
+    (preferOpenAi ? "" : cleanEnv(process.env.OLLAMA_API_KEY)) ||
+    (preferOpenAi ? "" : cleanEnv(process.env.TIRE_PATTERN_API_KEY)) ||
+    (preferOpenAi ? "" : cleanEnv(process.env.OPENROUTER_API_KEY)) ||
     ""
   ).trim();
 
   // Vision-capable model required if photos are processed
   const configuredModel = (
-    process.env.INSPECTION_AI_MODEL ||
-    process.env.OPENAI_MODEL ||
-    process.env.TIRE_PATTERN_MODEL ||
-    process.env.OLLAMA_MODEL ||
+    (preferOpenAi ? cleanEnv(process.env.OPENAI_MODEL) : "") ||
+    cleanEnv(process.env.INSPECTION_AI_MODEL) ||
+    cleanEnv(process.env.OPENAI_MODEL) ||
+    (preferOpenAi ? "" : cleanEnv(process.env.TIRE_PATTERN_MODEL)) ||
+    (preferOpenAi ? "" : cleanEnv(process.env.OLLAMA_MODEL)) ||
     "cx/gpt-5.6-luna"
   ).trim();
 

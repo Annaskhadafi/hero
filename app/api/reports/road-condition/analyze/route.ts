@@ -235,7 +235,12 @@ Wajib isi satu assessment untuk setiap parameter rubric. Score 1 paling buruk, 5
 
     const rawText = await response.text()
     if (!response.ok) {
-      throw new Error(`AI API error ${response.status}: ${rawText.slice(0, 240)}`)
+      console.error(`[road-condition-analyze] AI error ${response.status} from ${apiUrl} (model: ${model}):`, rawText)
+      let detail = rawText.slice(0, 240)
+      if (response.status === 401) {
+        detail = `${rawText.slice(0, 200)} [Target: ${apiUrl}] - Pastikan OPENAI_API_KEY & OPENAI_BASE_URL (https://9router.chitraparatama.com/v1) sesuai di environment Dokploy.`
+      }
+      throw new Error(`AI API error ${response.status}: ${detail}`)
     }
 
     const cleanedText = rawText.replace(/data:\s*\[DONE\]\s*$/i, '').trim()

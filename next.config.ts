@@ -47,7 +47,7 @@ const nextConfig: NextConfig = {
     ],
   },
   typescript: { ignoreBuildErrors: true },
-  serverExternalPackages: ['face-api.js'],
+  serverExternalPackages: ['face-api.js', 'pptxgenjs'],
   experimental: {
     serverActions: {
       bodySizeLimit: '25mb',
@@ -305,12 +305,19 @@ const nextConfig: NextConfig = {
       canvas: false,
       encoding: false,
       fs: false,
+      https: false,
+      http: false,
       ...(!isServer && {
         dns: false,
         net: false,
         tls: false,
         pg: false,
         'pg-native': false,
+        'node:fs': false,
+        'node:https': false,
+        'node:http': false,
+        'node:path': false,
+        'node:os': false,
       }),
     }
     return config

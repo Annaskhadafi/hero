@@ -26,7 +26,9 @@ import {
   IconExternalLink,
   IconLoader2,
   IconWifi,
+  IconChartBar,
 } from '@tabler/icons-react'
+import { TireCheckSummaryTab } from './tire-check-summary-tab'
 import {
   ResponsiveContainer,
   BarChart,
@@ -80,6 +82,7 @@ export function TireCheckClientPage({ initialData }: TireCheckClientProps) {
       getCurrentMonthPeriodId()
     )
   })
+  const [mainTab, setMainTab] = useState<'monitoring' | 'summary'>('monitoring')
   const [chartMetric, setChartMetric] = useState<'percentage' | 'count'>('percentage')
   const [tableSearch, setTableSearch] = useState<string>('')
   const [isJsonModalOpen, setIsJsonModalOpen] = useState<boolean>(false)
@@ -267,8 +270,50 @@ export function TireCheckClientPage({ initialData }: TireCheckClientProps) {
 
   return (
     <div className="min-h-screen bg-[#f3f7fa] p-4 md:p-6 space-y-5 text-slate-800 antialiased">
-      {/* 1. TOP BAR: SITE & PERIODE SELECTOR */}
-      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+      {/* ─── MAIN MODULE NAVIGATION TABS ─── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/90 pb-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setMainTab('monitoring')}
+            className={`inline-flex items-center gap-2 px-4 py-2 text-xs md:text-sm font-bold rounded-xl transition-all cursor-pointer ${
+              mainTab === 'monitoring'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200/80 shadow-2xs hover:border-slate-300'
+            }`}
+          >
+            <IconClipboardText className="size-4" />
+            Monitoring Harian
+          </button>
+          <button
+            type="button"
+            onClick={() => setMainTab('summary')}
+            className={`inline-flex items-center gap-2 px-4 py-2 text-xs md:text-sm font-bold rounded-xl transition-all cursor-pointer ${
+              mainTab === 'summary'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200/80 shadow-2xs hover:border-slate-300'
+            }`}
+          >
+            <IconChartBar className="size-4" />
+            Summary (Perbandingan Antar Site)
+          </button>
+        </div>
+
+        <div className="hidden sm:flex items-center gap-2 text-xs text-slate-500 font-semibold">
+          <IconTruck className="size-4 text-amber-500" />
+          <span>Total Tire Solution · Cipta Kridatama</span>
+        </div>
+      </div>
+
+      {mainTab === 'summary' ? (
+        <TireCheckSummaryTab
+          rawItems={currentData.data.allRawItems || currentData.data.rawItems || []}
+          onRefresh={handleRefresh}
+        />
+      ) : (
+        <>
+          {/* 1. TOP BAR: SITE & PERIODE SELECTOR */}
+          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
         {/* Left Side: Selectors */}
         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
           {/* Site Selector */}
@@ -926,6 +971,8 @@ export function TireCheckClientPage({ initialData }: TireCheckClientProps) {
           </table>
         </div>
       </div>
+      </>
+      )}
 
       {/* 6. MODAL: STRUKTUR RESPON JSON & DATA MENTAH */}
       <Dialog open={isJsonModalOpen} onOpenChange={setIsJsonModalOpen}>

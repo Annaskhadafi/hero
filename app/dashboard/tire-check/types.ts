@@ -103,6 +103,7 @@ export interface TireCheckData {
   chartTrend: TireCheckDailyTrendItem[]
   rekapTable: TireCheckRekapRow[]
   rawItems?: RawTireCheckItem[]
+  allRawItems?: RawTireCheckItem[]
 }
 
 export interface TireCheckFilterPeriod {
@@ -124,4 +125,40 @@ export interface TireCheckApiResponse {
   availableSites?: TireCheckFilterSite[]
   availablePeriods?: TireCheckFilterPeriod[]
   data: TireCheckData
+}
+
+export type TireCheckSummaryPeriodType = 'monthly' | 'quarterly' | 'yearly' | 'custom'
+export type TireCheckTireSize = 'all_stacked' | '24.00R35' | '27.00R49' | 'consolidation'
+
+export interface TireCheckSummaryBucket {
+  key: string
+  label: string
+  fullLabel: string
+  targetTires: number
+  checkedTires: number
+  checkedPct: number
+  lowPressureTires: number
+  lowPressurePct: number
+  targetLowPressurePct: number
+}
+
+export interface TireCheckSiteSummaryGroup {
+  siteCode: string
+  siteName: string
+  buckets: TireCheckSummaryBucket[]
+  totalTarget: number
+  totalChecked: number
+  avgCheckedPct: number
+  totalLowPressure: number
+  avgLowPressurePct: number
+  isAchieved: boolean
+}
+
+export interface TireCheckSizeSummaryDataset {
+  sizeKey: string
+  sizeLabel: string
+  sites: TireCheckSiteSummaryGroup[]
+  yLeftMax: number
+  yRightMax: number
+  targetBenchmarkPct: number
 }
