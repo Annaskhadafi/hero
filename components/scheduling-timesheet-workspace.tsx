@@ -5866,16 +5866,23 @@ export function SchedulingTimesheetWorkspace({
 
       const dateStr = `${period}-${String(day.day).padStart(2, '0')}`
       const empSpls = (approvedSplByEmployee.get(employee.id) ?? []).filter((w) => {
-        if (!w.plannedStartAt) return false
-        return w.plannedStartAt.slice(0, 10) === dateStr
+        if (w.workDate) {
+          const wStr = typeof w.workDate === 'string' ? w.workDate.slice(0, 10) : new Date(w.workDate).toISOString().slice(0, 10)
+          if (wStr === dateStr) return true
+        }
+        if (w.plannedStartAt) {
+          const pStr = typeof w.plannedStartAt === 'string' ? w.plannedStartAt.slice(0, 10) : new Date(w.plannedStartAt).toISOString().slice(0, 10)
+          if (pStr === dateStr) return true
+        }
+        return false
       })
       const splNumbers = Array.from(new Set(empSpls.map((s) => s.splNumber).filter(Boolean)))
       const splTitles = Array.from(new Set(empSpls.map((s) => s.title).filter(Boolean)))
       const splDetails = empSpls.map((s) => ({
         splNumber: s.splNumber,
         title: s.title,
-        plannedStartAt: s.plannedStartAt,
-        plannedEndAt: s.plannedEndAt,
+        plannedStartAt: s.plannedStartAt || undefined,
+        plannedEndAt: s.plannedEndAt || undefined,
         status: s.status,
       }))
 

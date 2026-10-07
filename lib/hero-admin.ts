@@ -6999,6 +6999,7 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
         title: overtimeCommandLetters.title,
         siteId: overtimeCommandLetters.siteId,
         employeeId: overtimeCommandLetterParticipants.employeeId,
+        workDate: overtimeCommandLetters.workDate,
         plannedStartAt: overtimeCommandLetters.plannedStartAt,
         plannedEndAt: overtimeCommandLetters.plannedEndAt,
         status: overtimeCommandLetters.status,
@@ -7014,11 +7015,17 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
       )
       .where(
         and(
-          inArray(sql`lower(${overtimeCommandLetters.status})`, ['approved', 'closed']),
-          isNotNull(overtimeCommandLetters.plannedStartAt),
-          isNotNull(overtimeCommandLetters.plannedEndAt),
-          gte(overtimeCommandLetters.plannedStartAt, fromDate),
-          lte(overtimeCommandLetters.plannedStartAt, toDate)
+          inArray(sql`lower(${overtimeCommandLetters.status})`, ['approved', 'closed', 'submitted', 'pending']),
+          or(
+            and(
+              gte(overtimeCommandLetters.workDate, fromDate),
+              lte(overtimeCommandLetters.workDate, toDate)
+            ),
+            and(
+              gte(overtimeCommandLetters.plannedStartAt, fromDate),
+              lte(overtimeCommandLetters.plannedStartAt, toDate)
+            )
+          )
         )
       )
       .catch((err) => {
@@ -7357,8 +7364,6 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
       .filter(
         (row) =>
           row.employeeId != null &&
-          row.plannedStartAt != null &&
-          row.plannedEndAt != null &&
           canSeeSchedulingEmployee(row.employeeId, row.siteId)
       )
       .map((row) => ({
@@ -7367,8 +7372,9 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
         title: row.title ?? '',
         siteId: row.siteId,
         employeeId: row.employeeId!,
-        plannedStartAt: row.plannedStartAt!.toISOString(),
-        plannedEndAt: row.plannedEndAt!.toISOString(),
+        workDate: row.workDate ? row.workDate.toISOString() : null,
+        plannedStartAt: row.plannedStartAt ? row.plannedStartAt.toISOString() : null,
+        plannedEndAt: row.plannedEndAt ? row.plannedEndAt.toISOString() : null,
         status: row.status,
         category: row.category as 'break' | 'off_day' | 'after_mandatory_ot',
         overtimeCreditMinutes: row.overtimeCreditMinutes,

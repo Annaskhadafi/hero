@@ -428,7 +428,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     fontSize: 7,
     align: 'center',
   })
-  drawCell(page, colX[8], y - hH, cols[8], hH, {
+  drawCell(page, colX[10], y - hH, cols[10], hH, {
     text: 'Remarks',
     font: fontBold,
     fontSize: 7,

@@ -26,8 +26,9 @@ export type ApprovedSplWindow = {
   title?: string
   siteId: number
   employeeId: number
-  plannedStartAt: string
-  plannedEndAt: string
+  workDate?: string | null
+  plannedStartAt?: string | null
+  plannedEndAt?: string | null
   status: string
   category?: 'break' | 'off_day' | 'after_mandatory_ot'
   overtimeCreditMinutes?: number | null
@@ -431,6 +432,7 @@ function utcDayNumber(value: string) {
 }
 
 function splInterval(window: ApprovedSplWindow, workDate: string): MinuteInterval | null {
+  if (!window.plannedStartAt || !window.plannedEndAt) return null
   const start = zonedDateTimeParts(window.plannedStartAt)
   const end = zonedDateTimeParts(window.plannedEndAt)
   if (!start || !end) return null

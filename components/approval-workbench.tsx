@@ -4982,8 +4982,11 @@ export function HistoryTab({
         setIsLoadingHistoryDoc(false)
       }
     } else if (isDaily) {
-      const rawNumeric = actId.replace('daily-', '').replace(/[^0-9]/g, '')
-      const lookupKey = rawNumeric ? Number(rawNumeric) : (item.unitNumber || actId.replace('daily-', ''))
+      const itemSessionId = (item as any)?.sessionId || (item as any)?.rawDaily?.sessionId || (item as any)?.session?.id || (item as any)?.id
+      const itemSessionCode = (item as any)?.sessionCode || (item as any)?.rawDaily?.sessionCode || (item as any)?.session?.sessionCode || item.unitNumber
+      const cleanActId = actId.replace(/^daily-activity-/, '').replace(/^daily-/, '')
+      const numericFromId = !isNaN(Number(cleanActId)) && Number(cleanActId) > 0 && Number(cleanActId) < 10000000 ? Number(cleanActId) : null
+      const lookupKey = itemSessionId ? Number(itemSessionId) : (numericFromId ?? (itemSessionCode || cleanActId || actId))
       if (!lookupKey) return
       setIsHistoryModalOpen(true)
       setIsLoadingHistoryDoc(true)
@@ -4991,7 +4994,13 @@ export function HistoryTab({
       setSelectedHistoryDoc(null)
       setPreviewZoom(1.0)
       try {
-        const data = await getDailyActivityApprovalData(lookupKey)
+        let data = await getDailyActivityApprovalData(lookupKey)
+        if (!data && itemSessionCode && String(itemSessionCode) !== String(lookupKey)) {
+          data = await getDailyActivityApprovalData(itemSessionCode)
+        }
+        if (!data && actId && String(actId) !== String(lookupKey)) {
+          data = await getDailyActivityApprovalData(actId)
+        }
         if (!data) {
           toast.error('Data dokumen Daily Activity tidak ditemukan.')
           setIsHistoryModalOpen(false)

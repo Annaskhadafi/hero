@@ -4693,8 +4693,10 @@ export async function submitDailyActivityApprovalStepAction(
 }
 
 export async function getDailyActivityApprovalData(sessionIdInput: number | string, overrideEmail?: string) {
-  const numId = typeof sessionIdInput === 'number' ? sessionIdInput : Number(sessionIdInput)
-  const isNumeric = !isNaN(numId) && numId > 0
+  const strInput = String(sessionIdInput).trim()
+  const cleanStr = strInput.replace(/^daily-activity-/, '').replace(/^daily-/, '')
+  const numId = typeof sessionIdInput === 'number' ? sessionIdInput : Number(cleanStr)
+  const isNumeric = !isNaN(numId) && numId > 0 && numId < 10000000
   let userEmail = overrideEmail?.trim().toLowerCase()
   let authUserId: string | null = null
   let userName: string | null = null
@@ -4779,9 +4781,12 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
       .leftJoin(employees, eq(dailyActivitySessions.employeeId, employees.id))
       .leftJoin(sites, eq(dailyActivitySessions.siteId, sites.id))
       .where(
-        isNumeric
-          ? or(eq(dailyActivitySessions.id, numId), eq(dailyActivitySessions.sessionCode, String(sessionIdInput)))
-          : eq(dailyActivitySessions.sessionCode, String(sessionIdInput))
+        or(
+          ...(isNumeric ? [eq(dailyActivitySessions.id, numId)] : []),
+          eq(dailyActivitySessions.sessionCode, strInput),
+          eq(dailyActivitySessions.sessionCode, cleanStr),
+          eq(dailyActivitySessions.sessionCode, `DAS-${cleanStr}`)
+        )
       )
       .limit(1)
   )
