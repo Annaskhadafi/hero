@@ -5780,10 +5780,6 @@ export async function revertDailyActivityStepByToken(
       return { success: false as const, error: 'Approval tidak ditemukan.' }
     }
 
-    if (approval.stepOrder < 2) {
-      return { success: false as const, error: 'Hanya jabatan Leader ke atas yang dapat mengembalikan (revert) dokumen untuk revisi.' }
-    }
-
     const now = new Date()
 
     // 1. Mark reverting step as reverted, clearing signature & timestamp
@@ -8463,14 +8459,14 @@ export async function batchRevertDailyActivitySessionsAction(sessionIds: number[
     const now = new Date()
 
     for (const sessionId of sessionIds) {
-      // Find current active step: first pending step, or fallback to first waiting/approved step
+      // Find current active step: first pending/waiting/submitted step, or fallback to any step
       const [pendingStep] = await db
         .select()
         .from(dailyActivityApprovals)
         .where(
           and(
             eq(dailyActivityApprovals.sessionId, sessionId),
-            eq(dailyActivityApprovals.status, 'pending')
+            inArray(dailyActivityApprovals.status, ['pending', 'waiting', 'submitted', 'submitted_for_review'])
           )
         )
         .orderBy(asc(dailyActivityApprovals.stepOrder))
@@ -8479,15 +8475,7 @@ export async function batchRevertDailyActivitySessionsAction(sessionIds: number[
       const activeStep = pendingStep || (await db
         .select()
         .from(dailyActivityApprovals)
-        .where(
-          and(
-            eq(dailyActivityApprovals.sessionId, sessionId),
-            or(
-              eq(dailyActivityApprovals.status, 'waiting'),
-              eq(dailyActivityApprovals.status, 'approved')
-            )
-          )
-        )
+        .where(eq(dailyActivityApprovals.sessionId, sessionId))
         .orderBy(desc(dailyActivityApprovals.stepOrder))
         .limit(1))[0]
 
@@ -8537,24 +8525,44 @@ export async function batchRevertDailyActivitySessionsAction(sessionIds: number[
         .limit(1)
 
       const [sessionRow] = await db
-        .select({ sessionCode: dailyActivitySessions.sessionCode })
+        .select({
+          sessionCode: dailyActivitySessions.sessionCode,
+          employeeId: dailyActivitySessions.employeeId,
+        })
         .from(dailyActivitySessions)
         .where(eq(dailyActivitySessions.id, sessionId))
         .limit(1)
 
+      // Fallback: resolve recipient email from hero_employees if step1 approverEmail is missing
+      let recipientEmail = step1?.approverEmail || null
+      let recipientName = step1?.approverName || 'Karyawan'
+
+      if (!recipientEmail && sessionRow?.employeeId) {
+        const [empRow] = await db
+          .select({ name: heroEmployees.name, email: heroEmployees.email })
+          .from(heroEmployees)
+          .where(eq(heroEmployees.id, sessionRow.employeeId))
+          .limit(1)
+
+        if (empRow) {
+          recipientEmail = empRow.email || null
+          recipientName = empRow.name || recipientName
+        }
+      }
+
       try {
-        if (step1?.approverEmail) {
+        if (recipientEmail) {
           await sendDailyActivityRevertedEmail({
             sessionId,
             sessionCode: sessionRow?.sessionCode || `ACT-${sessionId}`,
-            targetApproverName: step1.approverName || 'Karyawan',
-            targetApproverEmail: step1.approverEmail,
+            targetApproverName: recipientName,
+            targetApproverEmail: recipientEmail,
             managerName: emp.name || 'Department Head',
             revertReason: remarks || 'Dokumen dikembalikan untuk revisi.',
           })
 
           await notifyWorkflowBellRecipients({
-            recipientEmails: [step1.approverEmail],
+            recipientEmails: [recipientEmail],
             eventType: 'daily_activity_reverted',
             category: 'approval_requests',
             title: `Daily Activity Dikembalikan: ${sessionRow?.sessionCode || ''}`,

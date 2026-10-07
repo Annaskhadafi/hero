@@ -1196,8 +1196,15 @@ export function InboxTab({
     const currentRemark = approvalRemarks[docId] || reason || ''
 
     try {
-      if (currentBatchDoc.category === 'DAILY_ACTIVITY' && currentBatchDoc.rawDaily) {
-        const sessId = currentBatchDoc.rawDaily.sessionId
+      if (currentBatchDoc.category === 'DAILY_ACTIVITY' && (currentBatchDoc.rawDaily || (currentBatchDoc as any).sessionId || (currentBatchDoc as any).id)) {
+        const sessId = Number(
+          (currentBatchDoc.rawDaily as any)?.sessionId ||
+          (currentBatchDoc.rawDaily as any)?.id ||
+          (currentBatchDoc as any)?.sessionId ||
+          (currentBatchDoc as any)?.id ||
+          String(currentBatchDoc.id).replace(/^daily-activity-/, '')
+        )
+        if (!sessId || isNaN(sessId)) throw new Error('ID Sesi Daily Activity tidak valid.')
         if (action === 'approve') {
           const res = await singleApproveDailyActivityAction(sessId, currentRemark)
           if (!res.success) throw new Error(res.error || 'Gagal menyetujui Daily Activity')
@@ -1445,7 +1452,7 @@ export function InboxTab({
     let failCount = 0
 
     try {
-      const dailyItems = itemsToProcess.filter(it => it.category === 'DAILY_ACTIVITY' && it.rawDaily)
+      const dailyItems = itemsToProcess.filter(it => it.category === 'DAILY_ACTIVITY' && (it.rawDaily || (it as any).sessionId || (it as any).id))
       const overtimeItems = itemsToProcess.filter(it => it.category === 'OVERTIME' && it.rawOvertime)
       const ptwItems = itemsToProcess.filter(it => it.category === 'PTW' && it.rawPtw)
       const sopWinItems = itemsToProcess.filter(it => it.category === 'SOP_WIN_REQUEST' && it.rawSopWinRequest)
@@ -1470,7 +1477,9 @@ export function InboxTab({
 
       // Daily Activity Batch
       if (dailyItems.length > 0) {
-        const sessionIds = dailyItems.map(it => it.rawDaily!.sessionId)
+        const sessionIds = dailyItems
+          .map(it => Number((it.rawDaily as any)?.sessionId || (it.rawDaily as any)?.id || (it as any).sessionId || (it as any).id || String(it.id).replace(/^daily-activity-/, '')))
+          .filter(id => !isNaN(id) && id > 0)
         const remarkText = reason || (action === 'approve' ? 'Approved' : action === 'revert' ? 'Reverted' : 'Rejected')
         let res: { success: boolean; error?: string } = { success: false }
         if (action === 'approve') {
