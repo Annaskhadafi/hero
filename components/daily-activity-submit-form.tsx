@@ -490,7 +490,7 @@ export function DailyActivitySubmitForm({
 
                           {item.requiresTireCount ? (
                             <Label className={labelClass}>
-                              <span className={labelTextClass}>Jumlah Tire</span>
+                              <span className={labelTextClass}>Jumlah Pcs / Qty</span>
                               <Input
                                 type="number"
                                 min={1}
@@ -500,7 +500,7 @@ export function DailyActivitySubmitForm({
                                     tireCount: Math.max(1, parseInt(event.target.value, 10) || 1),
                                   })
                                 }
-                                placeholder="Jumlah tire"
+                                placeholder="Jumlah pcs / qty"
                                 className={fieldClass}
                               />
                             </Label>
@@ -655,7 +655,7 @@ export function DailyActivitySubmitForm({
             ) : null}
             {selectedLibrary.requiresTireCount ? (
               <span className="rounded-md bg-emerald-100 border border-emerald-300 px-2 py-0.5 text-[10px] font-bold text-emerald-900">
-                TIRE COUNT
+                PCS / QTY
               </span>
             ) : null}
           </div>
@@ -862,7 +862,7 @@ export function DailyActivitySubmitForm({
 
               {selectedLibrary?.requiresTireCount ? (
                 <Label className={labelClass}>
-                  <span className={labelTextClass}>Jumlah tire</span>
+                  <span className={labelTextClass}>Jumlah Pcs / Qty</span>
                   <Input
                     name="tireCount"
                     type="number"
@@ -985,7 +985,7 @@ export function DailyActivitySubmitForm({
             </Label>
             {selectedLibrary?.requiresTireCount ? (
               <Label className={labelClass}>
-                <span className={labelTextClass}>Jumlah tire</span>
+                <span className={labelTextClass}>Jumlah Pcs / Qty</span>
                 <Input
                   name="tireCount"
                   type="number"

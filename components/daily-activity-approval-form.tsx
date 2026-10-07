@@ -2100,7 +2100,7 @@ export function DailyActivityApprovalForm({
                           {(itemPreset?.requiresTireCount || item.tireCount != null) ? (
                             <div className="space-y-1">
                               <Label className="text-xs font-semibold text-slate-700">
-                                Jumlah Tire {itemPreset?.requiresTireCount ? '*' : ''}
+                                Jumlah Pcs / Qty {itemPreset?.requiresTireCount ? '*' : ''}
                               </Label>
                               <Input
                                 type="number"

@@ -11,22 +11,22 @@ async function testTireCountIntegration() {
   assert.ok(actions.includes('tireCount: z.coerce.number()'), 'actions.ts missing tireCount in submitActivitySchema')
 
   const createForm = await fs.readFile('components/activity-library-create-form.tsx', 'utf8')
-  assert.ok(createForm.includes('["requiresTireCount", "Pilihan jumlah tire"]'), 'create form missing Pilihan jumlah tire field')
+  assert.ok(createForm.includes('["requiresTireCount", "Pilihan jumlah pcs / qty"]'), 'create form missing Pilihan jumlah pcs / qty field')
 
   const rowActions = await fs.readFile('components/activity-library-row-actions.tsx', 'utf8')
-  assert.ok(rowActions.includes('["requiresTireCount", "Pilihan jumlah tire"]'), 'row actions missing Pilihan jumlah tire field')
+  assert.ok(rowActions.includes('["requiresTireCount", "Pilihan jumlah pcs / qty"]'), 'row actions missing Pilihan jumlah pcs / qty field')
 
   const mobileForm = await fs.readFile('components/mobile/mobile-daily-activity-form.tsx', 'utf8')
   assert.ok(mobileForm.includes('requiresTireCount: boolean'), 'mobile form missing requiresTireCount in LibraryOption')
   assert.ok(mobileForm.includes('requiresTireCount?: boolean'), 'mobile form missing requiresTireCount in ChecklistRenderItem')
-  assert.ok(mobileForm.includes('Jumlah tire'), 'mobile form missing Jumlah tire input label')
+  assert.ok(mobileForm.includes('Jumlah Pcs / Qty'), 'mobile form missing Jumlah Pcs / Qty input label')
   assert.ok(mobileForm.includes('GpsLocationPreviewCard'), 'mobile form missing GpsLocationPreviewCard component')
   assert.ok(mobileForm.includes('needsGps={needsGps}'), 'mobile form missing conditional needsGps prop')
 
   const desktopForm = await fs.readFile('components/daily-activity-submit-form.tsx', 'utf8')
   assert.ok(desktopForm.includes('requiresTireCount?: boolean'), 'desktop form missing requiresTireCount in LibraryOption')
   assert.ok(desktopForm.includes('requiresTireCount?: boolean'), 'desktop form missing requiresTireCount in RouteChecklistItem')
-  assert.ok(desktopForm.includes('Jumlah Tire'), 'desktop form missing Jumlah tire input label')
+  assert.ok(desktopForm.includes('Jumlah Pcs / Qty'), 'desktop form missing Jumlah Pcs / Qty input label')
 
   const approvalWorkspace = await fs.readFile('lib/approval-workspace.ts', 'utf8')
   assert.ok(approvalWorkspace.includes('tireCount: activities.tireCount'), 'approval workspace missing tireCount select')
@@ -35,7 +35,7 @@ async function testTireCountIntegration() {
   assert.ok(approvalWorkbench.includes('Tire'), 'approval workbench missing Tire label display')
 
   const approvalDetails = await fs.readFile('components/approval-request-details.tsx', 'utf8')
-  assert.ok(approvalDetails.includes('Jumlah Tire'), 'approval details missing Jumlah Tire label display')
+  assert.ok(approvalDetails.includes('Jumlah Pcs / Qty'), 'approval details missing Jumlah Pcs / Qty label display')
 
   assert.ok(heroSchema.includes("departmentIds: jsonb('department_ids')"), 'hero.ts missing departmentIds column')
   assert.ok(heroSchema.includes("sectionIds: jsonb('section_ids')"), 'hero.ts missing sectionIds column')

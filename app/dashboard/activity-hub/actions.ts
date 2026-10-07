@@ -7113,7 +7113,7 @@ export async function createDailyActivitySessionAction(input: {
           return { success: false as const, error: `Material used wajib diisi untuk "${label}".` }
         }
         if (lib.requiresTireCount && (!it.tireCount || Number(it.tireCount) < 1)) {
-          return { success: false as const, error: `Jumlah tire wajib diisi (minimal 1) untuk "${label}".` }
+          return { success: false as const, error: `Jumlah pcs / qty wajib diisi (minimal 1) untuk "${label}".` }
         }
         if (lib.requiresDuration !== false && (!it.startedAt || !it.endedAt)) {
           return { success: false as const, error: `Durasi waktu mulai dan selesai wajib diisi untuk "${label}".` }

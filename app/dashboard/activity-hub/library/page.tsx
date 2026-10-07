@@ -181,7 +181,7 @@ export default async function DailyActivityLibraryPage({
                           <div className="flex flex-wrap gap-2">
                             {row.requiresPhoto ? <Badge variant="outline">Photo</Badge> : null}
                             {row.requiresEquipmentNo ? <Badge variant="outline">Equipment</Badge> : null}
-                            {row.requiresTireCount ? <Badge variant="outline">Jumlah Tire</Badge> : null}
+                            {row.requiresTireCount ? <Badge variant="outline">Jumlah Pcs / Qty</Badge> : null}
                             {row.requiresLocationGps ? <Badge variant="outline">GPS</Badge> : null}
                             {row.requiresMaterialUsed ? <Badge variant="outline">Material</Badge> : null}
                             {row.autoApproveIfGpsValid ? <Badge variant="outline">Auto approve</Badge> : null}

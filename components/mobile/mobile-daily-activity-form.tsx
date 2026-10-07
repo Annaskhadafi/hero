@@ -1296,7 +1296,6 @@ export function MobileDailyActivityForm({
     const compressedFiles = await compressImageFiles(rawFiles, { maxDimension: 1000, quality: 0.7, mimeType: 'image/webp' })
     const file = compressedFiles[0] ?? null
     const names = compressedFiles.map((item) => item.name).join(', ')
-    const previewUrls = compressedFiles.map((f) => URL.createObjectURL(f))
     let queuedPayloads: QueuedFilePayload[] = []
     try {
       queuedPayloads = await Promise.all(compressedFiles.map(fileToQueuedPhoto))
@@ -1304,6 +1303,7 @@ export function MobileDailyActivityForm({
       toast.error(error instanceof Error ? error.message : 'Gagal menyimpan foto ke draft.')
       return
     }
+    const previewUrls = queuedPayloads.map((qp) => qp.dataUrl)
 
     if (targetId === 'single') {
       setPhotoFile(file)
@@ -1998,13 +1998,15 @@ export function MobileDailyActivityForm({
       return (itLibId && itLibId === rawId) || (itId && itId === rawId)
     })
     const sessionPhotos = matchingSessionItem ? extractItemPhotos(matchingSessionItem) : []
+    const validPassedUrls = (previewUrls || []).filter((u) => u && !u.startsWith('blob:'))
+    const validSingleUrls = photoPreviewUrls.filter((u) => u && !u.startsWith('blob:'))
     const effectivePreviewUrls =
-      previewUrls && previewUrls.length > 0
-        ? previewUrls
+      validPassedUrls.length > 0
+        ? validPassedUrls
         : sessionPhotos.length > 0
           ? sessionPhotos
-          : targetId === 'single' && photoPreviewUrls.length > 0
-            ? photoPreviewUrls
+          : targetId === 'single' && validSingleUrls.length > 0
+            ? validSingleUrls
             : []
     const effectivePhotoName =
       currentPhotoName ||
@@ -2151,16 +2153,21 @@ export function MobileDailyActivityForm({
     const restoredSelfInputEntries = Array.isArray(draft.selfInputActivities)
       ? Object.fromEntries(
           draft.selfInputActivities.map((item, index) => {
+            const photosPayloads = item.photos || (item.photo ? [item.photo] : [])
+            const photoDataUrls = photosPayloads.map((p) => p.dataUrl).filter(Boolean)
+            const validRawUrls = [
+              ...(item.previewUrls || []),
+              ...(item.photoUrls || []),
+              ...(item.photoUrl ? [item.photoUrl] : []),
+            ].filter((u: string) => u && !u.startsWith('blob:'))
             const previewUrls =
-              item.previewUrls && item.previewUrls.length > 0
-                ? item.previewUrls
-                : item.photoUrls && item.photoUrls.length > 0
-                  ? item.photoUrls
-                  : item.photoUrl
-                    ? [item.photoUrl]
-                    : item.photo?.dataUrl
-                      ? [item.photo.dataUrl]
-                      : []
+              validRawUrls.length > 0
+                ? validRawUrls
+                : photoDataUrls.length > 0
+                  ? photoDataUrls
+                  : item.photo?.dataUrl
+                    ? [item.photo.dataUrl]
+                    : []
             const photoCount = previewUrls.length || (item.photos?.length ?? (item.photo ? 1 : 0))
             const photoName =
               item.photoName ||
@@ -2201,7 +2208,11 @@ export function MobileDailyActivityForm({
               notes: draft.notes ?? '',
               photoFiles: [],
               photoName: draft.photo?.name || '',
-              previewUrls: draft.photoUrls || (draft.photo?.dataUrl ? [draft.photo.dataUrl] : []),
+              previewUrls: (draft.photoUrls || []).filter((u: string) => u && !u.startsWith('blob:')).length > 0
+                ? (draft.photoUrls || []).filter((u: string) => u && !u.startsWith('blob:'))
+                : draft.photo?.dataUrl
+                  ? [draft.photo.dataUrl]
+                  : [],
               restoredPhotoPayload: draft.photo ?? null,
             },
           }
@@ -2238,12 +2249,16 @@ export function MobileDailyActivityForm({
     setNotes(draft.notes ?? '')
     setManualLocation(draft.manualLocation ?? '')
     // Restore custom activity photos
+    const customPhotoDataUrls = (draft.photos || []).map((p) => p.dataUrl).filter(Boolean)
+    const customValidUrls = (draft.photoUrls || []).filter((u: string) => u && !u.startsWith('blob:'))
     const customUrls =
-      draft.photoUrls && draft.photoUrls.length > 0
-        ? draft.photoUrls
-        : draft.photo?.dataUrl
-          ? [draft.photo.dataUrl]
-          : []
+      customValidUrls.length > 0
+        ? customValidUrls
+        : customPhotoDataUrls.length > 0
+          ? customPhotoDataUrls
+          : draft.photo?.dataUrl
+            ? [draft.photo.dataUrl]
+            : []
     setPhotoPreviewUrls(customUrls)
     const customPhotoCount = customUrls.length || (draft.photos?.length ?? (draft.photo ? 1 : 0))
     setPhotoName(
@@ -2261,11 +2276,18 @@ export function MobileDailyActivityForm({
               return []
             }
 
+            const routePhotos = item.photos || (item.photo ? [item.photo] : [])
+            const routeDataUrls = routePhotos.map((p) => p.dataUrl).filter(Boolean)
+            const routeValidUrls = [
+              ...(item.previewUrls || []),
+              ...(item.photoUrls || []),
+              ...(item.photoUrl ? [item.photoUrl] : []),
+            ].filter((u: string) => u && !u.startsWith('blob:'))
             const itemUrls =
-              item.previewUrls && item.previewUrls.length > 0
-                ? item.previewUrls
-                : item.photoUrl
-                  ? [item.photoUrl]
+              routeValidUrls.length > 0
+                ? routeValidUrls
+                : routeDataUrls.length > 0
+                  ? routeDataUrls
                   : item.photo?.dataUrl
                     ? [item.photo.dataUrl]
                     : []
@@ -2646,13 +2668,30 @@ export function MobileDailyActivityForm({
       return
     }
 
-    // Do NOT autosave if the form is empty, to prevent wiping specific draft keys
+    const hasCheckedRoute = Object.values(routeItemState).some(
+      (item) => item.isChecked || Boolean(item.remark?.trim()) || Boolean(item.unitNumber?.trim())
+    )
+    const hasSelfInputContent = Object.values(selfInputEntries).some(
+      (e) =>
+        Boolean(e.notes?.trim()) ||
+        Boolean(e.equipmentNo?.trim()) ||
+        Boolean(e.materialUsed?.trim()) ||
+        (e.previewUrls && e.previewUrls.length > 0)
+    )
+
+    // Do NOT autosave if the form is completely empty, to prevent wiping specific draft keys
     const hasAnyContent =
       selectedLibraryIds.length > 0 ||
       Boolean(customActivityName.trim()) ||
+      Boolean(customActivityDescription.trim()) ||
       Boolean(notes.trim()) ||
+      Boolean(equipmentNo.trim()) ||
+      Boolean(materialUsed.trim()) ||
       Boolean(assignmentId) ||
-      photoPreviewUrls.length > 0
+      photoPreviewUrls.length > 0 ||
+      queuedPhotoPayloads.length > 0 ||
+      hasCheckedRoute ||
+      hasSelfInputContent
 
     if (!hasAnyContent) return
 
@@ -3907,7 +3946,7 @@ export function MobileDailyActivityForm({
                         {library.requiresTireCount ? (
                           <Label className="block space-y-2">
                             <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
-                              Jumlah Tire <span className="text-rose-500">*</span>
+                              Jumlah Pcs / Qty <span className="text-rose-500">*</span>
                             </span>
                             <Input
                               type="number"
@@ -3918,7 +3957,7 @@ export function MobileDailyActivityForm({
                                   tireCount: Math.max(0, parseInt(event.target.value, 10) || 0),
                                 })
                               }
-                              placeholder="Jumlah tire yang dikerjakan"
+                              placeholder="Jumlah pcs / qty yang dikerjakan"
                               className="h-12 rounded-2xl border-0 bg-white px-4 text-sm font-semibold text-[#082033]"
                             />
                           </Label>
@@ -4093,7 +4132,7 @@ export function MobileDailyActivityForm({
                               {item.requiresTireCount ? (
                                 <Label className="block space-y-2">
                                   <span className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
-                                    Jumlah tire
+                                    Jumlah Pcs / Qty
                                   </span>
                                   <Input
                                     type="number"
@@ -4104,7 +4143,7 @@ export function MobileDailyActivityForm({
                                         tireCount: Math.max(0, parseInt(event.target.value, 10) || 0),
                                       })
                                     }
-                                    placeholder="Jumlah tire yang dikerjakan"
+                                    placeholder="Jumlah pcs / qty yang dikerjakan"
                                     className="h-12 rounded-2xl border-0 bg-[#e9f6fd] px-4 text-sm font-semibold text-[#082033]"
                                   />
                                 </Label>

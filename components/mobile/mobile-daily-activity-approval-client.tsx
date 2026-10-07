@@ -591,7 +591,7 @@ export function MobileDailyActivityApprovalClient({
                       {(item.requiresTireCount || item.tireCount != null) ? (
                         <div className="space-y-1">
                           <Label className="text-[11px] font-semibold text-gray-600">
-                            Jumlah Tire {item.requiresTireCount ? '*' : ''}
+                            Jumlah Pcs / Qty {item.requiresTireCount ? '*' : ''}
                           </Label>
                           <Input
                             type="number"

@@ -11,10 +11,12 @@ import {
   CheckCircle2,
   CheckSquare,
   ChevronRight,
+  Clock,
   Download,
   Eye,
   FileCheck,
   FileDown,
+  FileEdit,
   FilePenLine,
   FileSpreadsheet,
   FileText,
@@ -77,6 +79,7 @@ import {
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { SignatureFloatingWidget } from '@/components/signature-floating-widget'
 import { getUserSignatureAction } from '@/app/actions/user-signature'
@@ -879,7 +882,8 @@ export function OvertimeListingClient({
     })
   }, [])
 
-  // Filters State (as seen in Direktori Pengguna / User Management)
+  // Filters & Tabs State
+  const [activeTab, setActiveTab] = useState<'all' | 'submitted' | 'approved' | 'draft' | 'rejected'>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([])
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([])
@@ -900,12 +904,14 @@ export function OvertimeListingClient({
   const workerCountFilterOptions = ['1 - 3 Orang', '4 - 10 Orang', '> 10 Orang']
 
   const hasActiveFilters =
+    activeTab !== 'all' ||
     searchQuery.trim().length > 0 ||
     selectedDepartments.length > 0 ||
     selectedStatuses.length > 0 ||
     selectedWorkerCounts.length > 0
 
   const handleResetFilters = () => {
+    setActiveTab('all')
     setSearchQuery('')
     setSelectedDepartments([])
     setSelectedStatuses([])
@@ -914,6 +920,14 @@ export function OvertimeListingClient({
 
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
+      const rowStatus = (row.status || '').toLowerCase()
+
+      if (activeTab !== 'all') {
+        if (activeTab === 'submitted' && rowStatus !== 'submitted') return false
+        if (activeTab === 'approved' && rowStatus !== 'approved') return false
+        if (activeTab === 'draft' && rowStatus !== 'draft') return false
+        if (activeTab === 'rejected' && rowStatus !== 'rejected' && rowStatus !== 'cancelled') return false
+      }
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase()
         const matchSearch =
@@ -1594,7 +1608,7 @@ export function OvertimeListingClient({
         return
       }
       if (item.requiresTireCount && (!item.tireCount || item.tireCount < 1)) {
-        toast.error(`Jumlah Tire wajib diisi minimal 1 untuk aktivitas #${i + 1}`)
+        toast.error(`Jumlah Pcs / Qty wajib diisi minimal 1 untuk aktivitas #${i + 1}`)
         return
       }
       if (item.requiresMaterialUsed && !item.materialUsed?.trim()) {
@@ -1735,6 +1749,67 @@ export function OvertimeListingClient({
           { label: 'Draft', value: rows.filter((r) => r.status.toLowerCase() === 'draft').length },
         ]}
       />
+
+      {/* Tab Navigation Menu */}
+      <div className="mb-4 rounded-[1.1rem] bg-white p-2 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)] dark:bg-slate-900">
+        <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as any)} className="w-full">
+          <TabsList className="h-auto w-full justify-start overflow-x-auto bg-slate-100/80 p-1 dark:bg-slate-800">
+            <TabsTrigger
+              value="all"
+              className="gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-[#003461] data-[state=active]:shadow-xs"
+            >
+              <FileText className="size-3.5 text-slate-600" />
+              Semua Pengajuan
+              <Badge variant="secondary" className="ml-1 px-1.5 py-0.2 text-[10px] font-bold">
+                {rows.length}
+              </Badge>
+            </TabsTrigger>
+            <TabsTrigger
+              value="submitted"
+              className="gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-amber-700 data-[state=active]:shadow-xs"
+            >
+              <Clock className="size-3.5 text-amber-500" />
+              Menunggu Review
+              <Badge className="ml-1 bg-amber-100 text-amber-800 hover:bg-amber-100 px-1.5 py-0.2 text-[10px] font-bold border-0">
+                {rows.filter((r) => (r.status || '').toLowerCase() === 'submitted').length}
+              </Badge>
+            </TabsTrigger>
+            <TabsTrigger
+              value="approved"
+              className="gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-emerald-700 data-[state=active]:shadow-xs"
+            >
+              <CheckCircle2 className="size-3.5 text-emerald-500" />
+              Disetujui
+              <Badge className="ml-1 bg-emerald-100 text-emerald-800 hover:bg-emerald-100 px-1.5 py-0.2 text-[10px] font-bold border-0">
+                {rows.filter((r) => (r.status || '').toLowerCase() === 'approved').length}
+              </Badge>
+            </TabsTrigger>
+            <TabsTrigger
+              value="draft"
+              className="gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-700 data-[state=active]:shadow-xs"
+            >
+              <FileEdit className="size-3.5 text-slate-500" />
+              Draft
+              <Badge variant="outline" className="ml-1 px-1.5 py-0.2 text-[10px] font-bold">
+                {rows.filter((r) => (r.status || '').toLowerCase() === 'draft').length}
+              </Badge>
+            </TabsTrigger>
+            <TabsTrigger
+              value="rejected"
+              className="gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-rose-700 data-[state=active]:shadow-xs"
+            >
+              <XCircle className="size-3.5 text-rose-500" />
+              Ditolak / Batal
+              <Badge className="ml-1 bg-rose-100 text-rose-800 hover:bg-rose-100 px-1.5 py-0.2 text-[10px] font-bold border-0">
+                {rows.filter((r) => {
+                  const st = (r.status || '').toLowerCase()
+                  return st === 'rejected' || st === 'cancelled'
+                }).length}
+              </Badge>
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
 
       <MinimalTableShell
         label="surat perintah lembur"
@@ -3652,7 +3727,7 @@ export function OvertimeListingClient({
 
                             {item.requiresTireCount ? (
                               <div className="space-y-1">
-                                <Label className="text-xs font-semibold text-slate-700">Jumlah Tire <span className="text-red-500 font-bold">*</span></Label>
+                                <Label className="text-xs font-semibold text-slate-700">Jumlah Pcs / Qty <span className="text-red-500 font-bold">*</span></Label>
                                 <Input
                                   type="number"
                                   min={1}

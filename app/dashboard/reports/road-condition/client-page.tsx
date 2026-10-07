@@ -1388,7 +1388,7 @@ export function RoadConditionAnalysisClient({
     setPptxProgress({ mode, label: 'Menyiapkan PPTX', current: 0.2, total })
 
     try {
-      const PptxGenJS = (await import('pptxgenjs')).default || (await import('pptxgenjs'))
+      const PptxGenJS = (await import('pptxgenjs/dist/pptxgen.bundle.js')).default || (await import('pptxgenjs/dist/pptxgen.bundle.js'))
       const pptx = new (PptxGenJS as any)()
       pptx.defineLayout({ name: 'HERO_WIDE', width: 13.333, height: 7.5 })
       pptx.layout = 'HERO_WIDE'

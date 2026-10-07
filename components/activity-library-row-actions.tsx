@@ -100,7 +100,7 @@ const VALIDATION_FIELDS = [
   ["requiresDuration", "Wajib durasi"],
   ["requiresLocationGps", "Wajib GPS"],
   ["requiresMaterialUsed", "Wajib material"],
-  ["requiresTireCount", "Pilihan jumlah tire"],
+  ["requiresTireCount", "Pilihan jumlah pcs / qty"],
 ] as const;
 
 const BEHAVIOR_FIELDS = [

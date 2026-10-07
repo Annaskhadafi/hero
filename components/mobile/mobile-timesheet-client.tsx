@@ -136,39 +136,6 @@ export function MobileTimesheetClient({ data }: { data: any }) {
         </div>
       </section>
 
-      {/* Official Summary SPL PDF Card */}
-      <section className="rounded-[1.25rem] bg-gradient-to-br from-[#003461] to-[#002244] p-4 text-white shadow-lg space-y-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="space-y-1">
-            <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider bg-white/20 text-white px-2 py-0.5 rounded-full">
-              <Sparkles className="size-3" /> Dokumen Resmi
-            </span>
-            <h3 className="text-base font-extrabold text-white">Summary SPL Per Orang</h3>
-            <p className="text-xs text-sky-200 leading-relaxed">
-              Format 3 Approval (Dibuat oleh, Approved by Supervisor, Diketahui oleh PJO) + Evidence QR Code interaktif di kanan bawah.
-            </p>
-          </div>
-        </div>
-
-        <Button
-          type="button"
-          onClick={handleDownloadSummarySpl}
-          disabled={isDownloadingSpl}
-          className="w-full h-11 rounded-xl bg-white hover:bg-slate-100 text-[#003461] font-bold text-xs shadow-md flex items-center justify-center gap-2 cursor-pointer"
-        >
-          {isDownloadingSpl ? (
-            <>
-              <Loader2 className="size-4 animate-spin" />
-              <span>Membuat Dokumen PDF...</span>
-            </>
-          ) : (
-            <>
-              <Download className="size-4 text-[#003461]" />
-              <span>Unduh Summary SPL (PDF)</span>
-            </>
-          )}
-        </Button>
-      </section>
 
       {/* Timesheet Entries */}
       <section className="space-y-3">

@@ -321,14 +321,8 @@ export const ATTENDANCE_PDF_OPTIONS: Array<{
     description: 'Tabel Rekapitulasi Tunjangan Khusus / Lokasi (TU)',
   },
   {
-    id: 'overtime_record',
-    number: 5,
-    label: 'SUMMARY SPL PER ORANG (Overtime Record)',
-    description: 'Lembar catatan detail lembur / SPL per karyawan dengan form persetujuan lengkap',
-  },
-  {
     id: 'payable_site_allowance',
-    number: 6,
+    number: 5,
     label: 'payable site allowance',
     description: 'Lembar rincian tunjangan site per karyawan',
   },
@@ -1680,7 +1674,6 @@ export function SchedulingTimesheetWorkspace({
     'msa_summary',
     'mls_summary',
     'tu_summary',
-    'overtime_record',
     'payable_site_allowance',
   ])
   const [pdfDocTypesPickerOpen, setPdfDocTypesPickerOpen] = useState(false)
@@ -10818,15 +10811,6 @@ export function SchedulingTimesheetWorkspace({
                                               >
                                                 Preview
                                               </button>
-                                               <button
-                                                 className="rounded bg-indigo-50 border border-indigo-200/80 px-1.5 py-0.5 font-bold text-indigo-700 transition-colors hover:bg-indigo-100"
-                                                 title="Preview / Unduh Summary SPL Per Orang (Overtime Record)"
-                                                 onClick={() =>
-                                                   previewEmployeeOvertimePdf(row.employee)
-                                                 }
-                                               >
-                                                 SPL
-                                               </button>
                                               <button
                                                 className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 transition-colors hover:bg-slate-200"
                                                 title={

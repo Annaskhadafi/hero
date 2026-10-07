@@ -410,7 +410,7 @@ export function OvertimeEvidenceViewer({
                           {photo.tireCount != null && Number(photo.tireCount) > 0 && (
                             <div className="flex items-center gap-1.5 text-[11px] text-slate-600 font-medium">
                               <Disc className="size-3 text-slate-400" />
-                              <span>Jumlah Tire: <strong>{photo.tireCount}</strong></span>
+                              <span>Jumlah Pcs / Qty: <strong>{photo.tireCount}</strong></span>
                             </div>
                           )}
                           {photo.materialUsed && (
@@ -711,7 +711,7 @@ export function OvertimeEvidenceViewer({
                 )}
                 {selectedPhoto.tireCount != null && (
                   <span className="bg-slate-800 px-2 py-1 rounded-md">
-                    Jumlah Tire: <strong>{selectedPhoto.tireCount}</strong>
+                    Jumlah Pcs / Qty: <strong>{selectedPhoto.tireCount}</strong>
                   </span>
                 )}
                 {selectedPhoto.materialUsed && (

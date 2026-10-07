@@ -668,7 +668,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
           return
         }
         if ((it as any).requiresTireCount && (!it.tireCount || it.tireCount < 1)) {
-          toast.error(`Jumlah tire wajib diisi (minimal 1) untuk "${it.label}"!`)
+          toast.error(`Jumlah pcs / qty wajib diisi (minimal 1) untuk "${it.label}"!`)
           return
         }
         if ((it as any).requiresDuration !== false && (!it.startTime || !it.endTime)) {
@@ -1470,7 +1470,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
 
                             {item.requiresTireCount ? (
                               <div className="space-y-1">
-                                <Label className="text-xs font-semibold text-slate-700">Jumlah Tire <span className="text-red-500 font-bold">*</span></Label>
+                                <Label className="text-xs font-semibold text-slate-700">Jumlah Pcs / Qty <span className="text-red-500 font-bold">*</span></Label>
                                 <Input
                                   type="number"
                                   min={1}
