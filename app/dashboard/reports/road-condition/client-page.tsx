@@ -1386,17 +1386,7 @@ export function RoadConditionAnalysisClient({
     setIsGeneratingPptx(true)
     setPptxProgress({ mode, label: 'Menyiapkan PPTX...', current: 1, total: 3 })
 
-      const PptxGenJS = (await import('pptxgenjs/dist/pptxgen.bundle.js')).default || (await import('pptxgenjs/dist/pptxgen.bundle.js'))
-      const pptx = new (PptxGenJS as any)()
-      pptx.defineLayout({ name: 'HERO_WIDE', width: 13.333, height: 7.5 })
-      pptx.layout = 'HERO_WIDE'
-      pptx.author = 'HERO'
-      pptx.company = 'Chitra Paratama'
-      pptx.title = `Road Condition Analysis - ${source.siteName}`
-
-      const coverImage = await loadPdfAsset('/cover.png')
-      const backCoverImage = await loadPdfAsset('/backcover.png')
-
+    try {
       // Pre-resolve draft photos so freshly uploaded photos always render
       for (const draft of source.drafts) {
         for (const photo of draft.photos) {
