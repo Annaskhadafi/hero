@@ -164,7 +164,7 @@ async function callRoadConditionAi(payload: RoadConditionAnalyzePayload) {
   const { apiUrl, apiKey, model } = getInspectionAiConfig()
 
   if (!apiKey) {
-    throw new Error('API key AI vision belum dikonfigurasi. Set INSPECTION_AI_API_KEY, OLLAMA_API_KEY, atau TIRE_PATTERN_API_KEY.')
+    throw new Error('API key AI vision belum dikonfigurasi. Set OPENAI_API_KEY, INSPECTION_AI_API_KEY, atau OLLAMA_API_KEY.')
   }
 
   const userText = `Analisis road condition tambang.
@@ -233,12 +233,18 @@ Wajib isi satu assessment untuk setiap parameter rubric. Score 1 paling buruk, 5
       }),
     })
 
+    const rawText = await response.text()
     if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`AI API error ${response.status}: ${errorText.slice(0, 240)}`)
+      throw new Error(`AI API error ${response.status}: ${rawText.slice(0, 240)}`)
     }
 
-    const data = await response.json()
+    const cleanedText = rawText.replace(/data:\s*\[DONE\]\s*$/i, '').trim()
+    let data: any
+    try {
+      data = JSON.parse(cleanedText)
+    } catch {
+      throw new Error(`AI API response format tidak valid: ${cleanedText.slice(0, 240)}`)
+    }
     const rawContent = data.choices?.[0]?.message?.content || data.message?.content || '{}'
     const parsed = parseJsonObject(Array.isArray(rawContent) ? JSON.stringify(rawContent) : rawContent)
 

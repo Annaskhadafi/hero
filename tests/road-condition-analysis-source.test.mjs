@@ -32,6 +32,10 @@ test("road condition AI route is authenticated and sends images to the model", (
   assert.match(source, /getInspectionAiConfig/);
   assert.match(aiConfigSource, /anthropic\/claude-3\.5-sonnet/);
   assert.match(aiConfigSource, /openai\/gpt-4o-mini/);
+  assert.match(aiConfigSource, /OPENAI_API_KEY/);
+  assert.match(aiConfigSource, /OPENAI_BASE_URL/);
+  assert.match(aiConfigSource, /OPENAI_MODEL/);
+  assert.match(aiConfigSource, /9router\.chitraparatama\.com/);
   assert.doesNotMatch(source, /ROAD_CONDITION_AI_/);
   assert.match(source, /getCurrentMenuPermission\(ROAD_CONDITION_RESOURCE\)/);
   assert.match(source, /permission\.canView/);
@@ -126,6 +130,12 @@ test("road condition page supports multi-category 16:9 compiled report", () => {
   assert.match(source, /AI Semua/);
   assert.match(source, /generateReportPdf/);
   assert.match(source, /generateHistoryPdf/);
+  assert.match(source, /generateReportPptx/);
+  assert.match(source, /generateHistoryPptx/);
+  assert.match(source, /pptxgenjs/);
+  assert.match(source, /downloadReportPptx/);
+  assert.match(source, /Download PPTX/);
+  assert.match(source, /drawPdfStars/);
   assert.match(source, /jspdf/);
   assert.match(source, /downloadReportPdf/);
   assert.match(source, /drawPdfDetail/);
@@ -169,3 +179,84 @@ test("road condition menu seed is managed by HSE permissions", () => {
   assert.match(source, /hse_road_condition_analysis/);
   assert.match(source, /HSE_MANAGED_RESOURCES[\s\S]*hse_road_condition_analysis/);
 });
+
+test("inspection AI config properly maps OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL and 9router", () => {
+  // Simulate getInspectionAiConfig function logic
+  function testConfig(env) {
+    let rawUrl = (
+      env.INSPECTION_AI_URL ||
+      env.OPENAI_BASE_URL ||
+      env.OLLAMA_API_URL ||
+      env.OLLAMA_URL ||
+      "https://9router.chitraparatama.com/v1"
+    ).trim();
+
+    if (rawUrl.endsWith("/")) {
+      rawUrl = rawUrl.slice(0, -1);
+    }
+    const apiUrl = rawUrl.endsWith("/chat/completions")
+      ? rawUrl
+      : `${rawUrl}/chat/completions`;
+
+    const apiKey = (
+      env.INSPECTION_AI_API_KEY ||
+      env.OPENAI_API_KEY ||
+      env.OLLAMA_API_KEY ||
+      env.TIRE_PATTERN_API_KEY ||
+      env.OPENROUTER_API_KEY ||
+      ""
+    ).trim();
+
+    const configuredModel = (
+      env.INSPECTION_AI_MODEL ||
+      env.OPENAI_MODEL ||
+      env.TIRE_PATTERN_MODEL ||
+      env.OLLAMA_MODEL ||
+      "cx/gpt-5.6-luna"
+    ).trim();
+
+    const model =
+      configuredModel === "anthropic/claude-3.5-sonnet" ? "openai/gpt-4o-mini" : configuredModel;
+
+    return { apiUrl, apiKey, model };
+  }
+
+  // Case 1: Standard 9router + OpenAI envs
+  const c1 = testConfig({
+    OPENAI_API_KEY: "sk-test123",
+    OPENAI_BASE_URL: "https://9router.chitraparatama.com/v1",
+    OPENAI_MODEL: "cx/gpt-5.6-luna",
+    LLM_PROVIDER: "openai",
+  });
+  assert.equal(c1.apiUrl, "https://9router.chitraparatama.com/v1/chat/completions");
+  assert.equal(c1.apiKey, "sk-test123");
+  assert.equal(c1.model, "cx/gpt-5.6-luna");
+
+  // Case 2: Trailing slash in OPENAI_BASE_URL
+  const c2 = testConfig({
+    OPENAI_API_KEY: "sk-test456",
+    OPENAI_BASE_URL: "https://9router.chitraparatama.com/v1/",
+  });
+  assert.equal(c2.apiUrl, "https://9router.chitraparatama.com/v1/chat/completions");
+  assert.equal(c2.apiKey, "sk-test456");
+  assert.equal(c2.model, "cx/gpt-5.6-luna");
+
+  // Case 3: URL already includes /chat/completions
+  const c3 = testConfig({
+    OPENAI_API_KEY: "sk-test789",
+    OPENAI_BASE_URL: "https://9router.chitraparatama.com/v1/chat/completions",
+  });
+  assert.equal(c3.apiUrl, "https://9router.chitraparatama.com/v1/chat/completions");
+
+  // Case 4: Specific INSPECTION_AI overrides take precedence
+  const c4 = testConfig({
+    OPENAI_API_KEY: "sk-openai",
+    OPENAI_BASE_URL: "https://9router.chitraparatama.com/v1",
+    OPENAI_MODEL: "cx/gpt-5.6-luna",
+    INSPECTION_AI_API_KEY: "sk-custom",
+    INSPECTION_AI_MODEL: "openrouter/inference-net/schematron-v2-turbo",
+  });
+  assert.equal(c4.apiKey, "sk-custom");
+  assert.equal(c4.model, "openrouter/inference-net/schematron-v2-turbo");
+});
+

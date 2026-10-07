@@ -62,26 +62,43 @@ export interface InspectionAiCallResult {
 }
 
 export function getInspectionAiConfig() {
-  const apiUrl =
+  let rawUrl = (
     process.env.INSPECTION_AI_URL ||
+    process.env.OPENAI_BASE_URL ||
+    process.env.OLLAMA_API_URL ||
     process.env.OLLAMA_URL ||
-    "https://openrouter.ai/api/v1/chat/completions";
-  const apiKey =
+    "https://9router.chitraparatama.com/v1"
+  ).trim();
+
+  if (rawUrl.endsWith("/")) {
+    rawUrl = rawUrl.slice(0, -1);
+  }
+  const apiUrl = rawUrl.endsWith("/chat/completions")
+    ? rawUrl
+    : `${rawUrl}/chat/completions`;
+
+  const apiKey = (
     process.env.INSPECTION_AI_API_KEY ||
+    process.env.OPENAI_API_KEY ||
     process.env.OLLAMA_API_KEY ||
     process.env.TIRE_PATTERN_API_KEY ||
-    "";
-  
+    process.env.OPENROUTER_API_KEY ||
+    ""
+  ).trim();
+
   // Vision-capable model required if photos are processed
-  const configuredModel =
+  const configuredModel = (
     process.env.INSPECTION_AI_MODEL ||
+    process.env.OPENAI_MODEL ||
     process.env.TIRE_PATTERN_MODEL ||
     process.env.OLLAMA_MODEL ||
-    "openai/gpt-4o-mini";
-  // ponytail: legacy OpenRouter model id has no endpoint; remove after envs are cleaned up.
+    "cx/gpt-5.6-luna"
+  ).trim();
+
+  // ponytail: legacy OpenRouter model id has no endpoint; fallback if legacy anthropic/claude-3.5-sonnet is provided
   const model =
     configuredModel === "anthropic/claude-3.5-sonnet" ? "openai/gpt-4o-mini" : configuredModel;
-    
+
   return { apiUrl, apiKey, model };
 }
 
