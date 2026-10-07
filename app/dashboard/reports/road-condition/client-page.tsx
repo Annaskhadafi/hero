@@ -1383,23 +1383,11 @@ export function RoadConditionAnalysisClient({
   }
 
   const downloadReportPptx = async (source: PdfReportSource, mode: PdfProgressState['mode'], filename: string) => {
-    const total = source.drafts.length + 3
     setIsGeneratingPptx(true)
-    setPptxProgress({ mode, label: 'Menyiapkan PPTX', current: 0.2, total })
+    setPptxProgress({ mode, label: 'Menyiapkan PPTX...', current: 1, total: 3 })
 
     try {
-      const PptxGenJS = (await import('pptxgenjs')).default || (await import('pptxgenjs'))
-      const pptx = new (PptxGenJS as any)()
-      pptx.defineLayout({ name: 'HERO_WIDE', width: 13.333, height: 7.5 })
-      pptx.layout = 'HERO_WIDE'
-      pptx.author = 'HERO'
-      pptx.company = 'Chitra Paratama'
-      pptx.title = `Road Condition Analysis - ${source.siteName}`
-
-      const coverImage = await loadPdfAsset('/cover.png')
-      const backCoverImage = await loadPdfAsset('/backcover.png')
-
-      // Pre-resolve draft photos
+      // Pre-resolve draft photos so freshly uploaded photos always render
       for (const draft of source.drafts) {
         for (const photo of draft.photos) {
           if (!photo.dataUrl || !isImageDataUrl(photo.dataUrl)) {
@@ -1408,233 +1396,31 @@ export function RoadConditionAnalysisClient({
         }
       }
 
-      setPptxProgress({ mode, label: 'Membuat cover slide', current: 0.5, total })
-      // Slide 1: Cover
-      const slide1 = pptx.addSlide()
-      if (coverImage) {
-        slide1.addImage({ data: coverImage, x: 0, y: 0, w: 13.333, h: 7.5 })
-      } else {
-        slide1.background = { color: 'F4F8F7' }
-      }
-      slide1.addText('Site Condition Assessment', {
-        x: 0.9, y: 1.6, w: 8, h: 0.35, fontSize: 13, bold: true, color: '0B6F9F', charSpace: 1.2
-      })
-      slide1.addText([
-        { text: 'Road Condition\n', options: { color: '0A315F', bold: true } },
-        { text: 'Analysis Report', options: { color: '79BF23', bold: true } },
-      ], {
-        x: 0.9, y: 2.05, w: 8.5, h: 1.6, fontSize: 36, fontFace: 'Arial'
-      })
-      slide1.addShape(pptx.ShapeType.rect, {
-        x: 0.9, y: 3.85, w: 2.2, h: 0.08, fill: { color: '79BF23' }, line: { color: '79BF23' }
-      })
-      slide1.addText(`Site: ${source.siteName}\nCustomer: ${source.customerName}\nInspector: ${source.inspectorName}\nDate: ${formatReportDate(source.reportDate)}`, {
-        x: 0.9, y: 4.15, w: 6, h: 1.6, fontSize: 13, color: '153B63', bold: true, lineSpacing: 22
-      })
-      slide1.addText(`Slide 1/${total}`, {
-        x: 0.9, y: 6.8, w: 3, h: 0.3, fontSize: 10, color: '153B63', bold: true
-      })
-      setPptxProgress({ mode, label: 'Cover siap', current: 1, total })
-
-      // Slide 2: Summary Slide
-      setPptxProgress({ mode, label: 'Membuat summary slide', current: 1.5, total })
-      const slide2 = pptx.addSlide()
-      slide2.background = { color: 'FFFFFF' }
-      slide2.addShape(pptx.ShapeType.rect, {
-        x: 0, y: 0, w: 13.333, h: 0.65, fill: { color: '1A365D' }, line: { color: '1A365D' }
-      })
-      slide2.addText('Site Condition Assessment', {
-        x: 0, y: 0, w: 13.333, h: 0.65, fontSize: 18, bold: true, color: 'FFFFFF', align: 'center'
+      setPptxProgress({ mode, label: 'Memproses slide PPTX...', current: 2, total: 3 })
+      const response = await fetch('/api/reports/road-condition/pptx', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(source),
       })
 
-      const { summaryRows, categorySummaryScores, overallSummaryScore } = getSourceSummaryData(source)
-
-      // Top Table in Slide 2
-      const topTableRows: any[] = [
-        [
-          { text: 'DATE', options: { fill: { color: 'E2E8F0' }, bold: true, align: 'center', fontSize: 10 } },
-          { text: 'LOADING AREA', options: { fill: { color: 'E2E8F0' }, bold: true, align: 'center', fontSize: 10 } },
-          { text: 'HAULING ROAD', options: { fill: { color: 'E2E8F0' }, bold: true, align: 'center', fontSize: 10 } },
-          { text: 'DUMPING AREA', options: { fill: { color: 'E2E8F0' }, bold: true, align: 'center', fontSize: 10 } },
-          { text: 'AVERAGE', options: { fill: { color: 'E2E8F0' }, bold: true, align: 'center', fontSize: 10 } },
-          { text: 'STAR RATING', options: { fill: { color: 'E2E8F0' }, bold: true, align: 'center', fontSize: 10 } },
-        ],
-        [
-          { text: formatReportDate(source.reportDate), options: { bold: true, align: 'center', fontSize: 10 } },
-          { text: formatSummaryPercent(categorySummaryScores.loading_point), options: { align: 'center', fontSize: 10 } },
-          { text: formatSummaryPercent(categorySummaryScores.haulroad), options: { align: 'center', fontSize: 10 } },
-          { text: formatSummaryPercent(categorySummaryScores.disposal), options: { align: 'center', fontSize: 10 } },
-          { text: formatSummaryPercent(overallSummaryScore), options: { bold: true, align: 'center', fontSize: 10 } },
-          { text: formatSummaryScore(overallSummaryScore), options: { bold: true, align: 'center', fontSize: 10 } },
-        ],
-        [
-          { text: source.siteName || '-', options: { color: 'DC2626', bold: true, fontSize: 14, align: 'left' } },
-          { text: `Inspector: ${source.inspectorName || '-'} · Customer: ${source.customerName || '-'}`, options: { colspan: 4, align: 'center', fontSize: 10 } },
-          { text: formatStars(overallSummaryScore), options: { color: 'DC2626', bold: true, fontSize: 16, align: 'center' } },
-        ],
-      ]
-
-      slide2.addTable(topTableRows, {
-        x: 0.5, y: 0.85, w: 12.333,
-        colW: [2.0, 2.0, 2.0, 2.0, 2.0, 2.333],
-        border: { pt: 1, color: '0F172A' },
-        valign: 'middle',
-      })
-
-      // Bottom Detail Table in Slide 2
-      const detailTableRows: any[] = [
-        [
-          { text: 'AREA', options: { fill: { color: 'E2E8F0' }, bold: true, align: 'center', fontSize: 9.5 } },
-          { text: 'POINT / SEGMENT', options: { fill: { color: 'E2E8F0' }, bold: true, align: 'center', fontSize: 9.5 } },
-          { text: 'AVG', options: { fill: { color: 'E2E8F0' }, bold: true, align: 'center', fontSize: 9.5 } },
-          { text: 'STAR RATING', options: { fill: { color: 'E2E8F0' }, bold: true, align: 'center', fontSize: 9.5 } },
-          { text: 'POINT*', options: { fill: { color: 'E2E8F0' }, bold: true, align: 'center', fontSize: 9.5 } },
-        ],
-      ]
-
-      SUMMARY_CATEGORY_ORDER.forEach((catKey) => {
-        const category = ROAD_CONDITION_CATEGORIES[catKey]
-        const rows = summaryRows.filter((r) => r.draft.categoryKey === catKey)
-        if (!rows.length) return
-
-        // Category banner row
-        const bannerHex = category.color.replace('#', '')
-        detailTableRows.push([
-          {
-            text: SUMMARY_CATEGORY_LABELS[catKey],
-            options: {
-              colspan: 5,
-              fill: { color: bannerHex },
-              color: 'FFFFFF',
-              bold: true,
-              fontSize: 10,
-              align: 'left',
-            },
-          },
-        ])
-
-        // Rows for each point
-        rows.forEach((row) => {
-          detailTableRows.push([
-            { text: category.label, options: { fontSize: 9 } },
-            { text: row.pointLabel, options: { bold: true, fontSize: 9 } },
-            { text: formatSummaryScore(row.score), options: { align: 'center', fontSize: 9 } },
-            { text: formatStars(row.score), options: { color: 'DC2626', bold: true, align: 'center', fontSize: 13 } },
-            { text: formatSummaryPercent(row.score), options: { bold: true, align: 'center', fontSize: 9 } },
-          ])
-        })
-
-        // Subtotal row
-        const catScore = categorySummaryScores[catKey]
-        detailTableRows.push([
-          { text: 'Star Rating', options: { colspan: 2, fill: { color: 'E2E8F0' }, bold: true, fontSize: 9.5 } },
-          { text: formatSummaryScore(catScore), options: { fill: { color: 'E2E8F0' }, bold: true, align: 'center', fontSize: 9.5 } },
-          { text: formatStars(catScore), options: { fill: { color: 'E2E8F0' }, color: 'DC2626', bold: true, align: 'center', fontSize: 13 } },
-          { text: formatSummaryPercent(catScore), options: { fill: { color: 'E2E8F0' }, bold: true, align: 'center', fontSize: 9.5 } },
-        ])
-      })
-
-      slide2.addTable(detailTableRows, {
-        x: 0.5, y: 2.35, w: 12.333,
-        colW: [1.8, 5.2, 1.6, 2.133, 1.6],
-        border: { pt: 0.75, color: '0F172A' },
-        valign: 'middle',
-      })
-      slide2.addText(`Slide 2/${total}`, {
-        x: 10.5, y: 7.15, w: 2.3, h: 0.25, fontSize: 9, color: '64748B', align: 'right', bold: true
-      })
-      setPptxProgress({ mode, label: 'Summary siap', current: 2, total })
-
-      // Slide 3+: Detail Slides
-      source.drafts.forEach((draft, index) => {
-        const slideIndex = index + 1
-        setPptxProgress({ mode, label: `Membuat slide ${slideIndex} dari ${source.drafts.length}`, current: index + 2, total })
-        const slide = pptx.addSlide()
-        slide.background = { color: 'FFFFFF' }
-        const category = ROAD_CONDITION_CATEGORIES[draft.categoryKey]
-        const catHex = category.color.replace('#', '')
-        const pointLabel = getDraftPointLabel(draft, index)
-        const score = getDraftAverageScore(draft)
-
-        // Banner header
-        slide.addShape(pptx.ShapeType.rect, {
-          x: 0, y: 0, w: 13.333, h: 1.25, fill: { color: catHex }, line: { color: catHex }
-        })
-        slide.addText(`Report Analysis Road Condition\n${category.reportLabel} - ${pointLabel}`, {
-          x: 0.5, y: 0.1, w: 8.5, h: 0.7, color: 'FFFFFF', bold: true, fontSize: 15
-        })
-        if (draft.analysis?.summary) {
-          slide.addText(draft.analysis.summary, {
-            x: 0.5, y: 0.8, w: 8.5, h: 0.4, color: 'FFFFFF', fontSize: 9, italic: true
-          })
-        }
-        // Right info box
-        slide.addShape(pptx.ShapeType.rect, {
-          x: 9.2, y: 0.1, w: 3.65, h: 1.05, fill: { color: 'FFFFFF', transparency: 85 }, line: { color: 'FFFFFF' }
-        })
-        slide.addText(`Site: ${source.siteName} · Customer: ${source.customerName}\nInspector: ${source.inspectorName} · Tanggal: ${formatReportDate(source.reportDate)}\nNilai Akhir: ${score ? score.toFixed(2) : '-'}/5`, {
-          x: 9.3, y: 0.15, w: 3.45, h: 0.95, color: 'FFFFFF', fontSize: 9, lineSpacing: 15
-        })
-
-        // 3 Photos
-        const photoY = 1.45
-        const photoW = 3.9
-        const photoH = 2.45
-        draft.photos.forEach((photo, pIdx) => {
-          const photoX = 0.5 + pIdx * 4.2
-          slide.addShape(pptx.ShapeType.rect, {
-            x: photoX, y: photoY, w: photoW, h: photoH, fill: { color: 'F8FAFC' }, line: { color: 'E2E8F0', pt: 1 }
-          })
-          if (photo.dataUrl) {
-            slide.addImage({ data: photo.dataUrl, x: photoX + 0.05, y: photoY + 0.05, w: photoW - 0.1, h: photoH - 0.1, sizing: { type: 'contain' } })
-          } else {
-            slide.addText('No Photo', { x: photoX, y: photoY + 1.0, w: photoW, h: 0.4, align: 'center', color: '94A3B8', fontSize: 11 })
-          }
-        })
-
-        // Assessment table: NILAI | DESKRIPSI | REKOMENDASI
-        const assessmentRows = getActiveAssessmentRows(draft)
-        const assessTableRows: any[] = [
-          [
-            { text: 'NILAI', options: { fill: { color: '0F172A' }, color: 'FFFFFF', bold: true, align: 'center', fontSize: 8.5 } },
-            { text: 'DESKRIPSI', options: { fill: { color: '0F172A' }, color: 'FFFFFF', bold: true, align: 'left', fontSize: 8.5 } },
-            { text: 'REKOMENDASI', options: { fill: { color: '0F172A' }, color: 'FFFFFF', bold: true, align: 'left', fontSize: 8.5 } },
-          ],
-        ]
-
-        assessmentRows.forEach((row, rIdx) => {
-          const bgHex = rIdx % 2 === 0 ? 'FFFFFF' : 'F8FAFC'
-          assessTableRows.push([
-            { text: String(row.score || '-'), options: { fill: { color: bgHex }, bold: true, align: 'center', fontSize: 9 } },
-            { text: `${row.criterion.title}\n${row.description}`, options: { fill: { color: bgHex }, fontSize: 8 } },
-            { text: row.recommendation, options: { fill: { color: bgHex }, fontSize: 8 } },
-          ])
-        })
-
-        slide.addTable(assessTableRows, {
-          x: 0.5, y: 4.05, w: 12.333,
-          colW: [1.0, 5.8, 5.533],
-          border: { pt: 0.5, color: 'E2E8F0' },
-          valign: 'top',
-        })
-
-        slide.addText(`Slide ${index + 3}/${total}`, {
-          x: 10.5, y: 7.15, w: 2.3, h: 0.25, fontSize: 9, color: '64748B', align: 'right', bold: true
-        })
-        setPptxProgress({ mode, label: `Slide ${slideIndex} siap`, current: index + 3, total })
-      })
-
-      // Slide Last: Back cover
-      setPptxProgress({ mode, label: 'Membuat back cover', current: total - 0.5, total })
-      const slideLast = pptx.addSlide()
-      if (backCoverImage) {
-        slideLast.addImage({ data: backCoverImage, x: 0, y: 0, w: 13.333, h: 7.5 })
-      } else {
-        slideLast.background = { color: '0F172A' }
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        throw new Error(err.error || `Gagal generate PPTX (${response.status})`)
       }
 
-      setPptxProgress({ mode, label: 'PPTX siap didownload', current: total, total })
-      await pptx.writeFile({ fileName: filename })
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = filename
+      anchor.rel = 'noopener'
+      anchor.style.display = 'none'
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 30_000)
+
+      setPptxProgress({ mode, label: 'PPTX siap didownload', current: 3, total: 3 })
       toast.success('PPTX berhasil didownload.')
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Gagal generate PPTX.'

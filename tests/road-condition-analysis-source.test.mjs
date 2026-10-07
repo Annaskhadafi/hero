@@ -63,6 +63,7 @@ test("road condition page supports multi-category 16:9 compiled report", () => {
   const historyHelperSource = read("lib/road-condition-history.ts");
   const historyApiSource = read("app/api/reports/road-condition/history/route.ts");
   const historyDeleteSource = read("app/api/reports/road-condition/history/[id]/route.ts");
+  const pptxRouteSource = read("app/api/reports/road-condition/pptx/route.ts");
 
   assert.match(source, /PHOTO_ANGLES = \['Angle 1', 'Angle 2', 'Angle 3'\]/);
   assert.match(source, /ROAD_CONDITION_SCORE_OPTIONS/);
@@ -132,7 +133,8 @@ test("road condition page supports multi-category 16:9 compiled report", () => {
   assert.match(source, /generateHistoryPdf/);
   assert.match(source, /generateReportPptx/);
   assert.match(source, /generateHistoryPptx/);
-  assert.match(source, /pptxgenjs/);
+  assert.match(pptxRouteSource, /pptxgenjs/);
+  assert.match(source, /\/api\/reports\/road-condition\/pptx/);
   assert.match(source, /downloadReportPptx/);
   assert.match(source, /Download PPTX/);
   assert.match(source, /drawPdfStars/);
