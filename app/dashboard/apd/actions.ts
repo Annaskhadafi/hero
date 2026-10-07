@@ -206,6 +206,9 @@ export async function submitApdRequest(formData: FormData) {
     }
 
     // ===== NEW REQUEST FLOW =====
+    const rawTargetSectionId = formData.get('targetSectionId') || formData.get('target_section_id')
+    const targetSectionId = rawTargetSectionId ? Number(rawTargetSectionId) : null
+
     // Generate request number
     const countRes = await tx.$count(apdRequests)
     const requestNumber = `APD-${new Date().getFullYear()}-${String(countRes + 1).padStart(4, '0')}`
@@ -217,6 +220,7 @@ export async function submitApdRequest(formData: FormData) {
         requestNumber,
         employeeId: currentEmployee.id,
         siteId: currentEmployee.siteId ?? 0,
+        targetSectionId: (targetSectionId && !isNaN(targetSectionId)) ? targetSectionId : null,
         requestCategory,
         status: 'pending_approval',
         notes,
@@ -306,12 +310,13 @@ export async function submitApdRequest(formData: FormData) {
       }
       firstStep = steps[0]
     } else {
-      // Standard dynamic matrix resolution
+      // Standard dynamic matrix resolution using targetSectionId if specified
+      const effectiveSectionId = (targetSectionId && !isNaN(targetSectionId)) ? targetSectionId : (currentEmployee.sectionId ?? undefined)
       route = await resolveApprovalRouteForActivity({
         employeeId: currentEmployee.id,
         siteId: currentEmployee.siteId ?? undefined,
         departmentId: currentEmployee.departmentId ?? undefined,
-        sectionId: currentEmployee.sectionId ?? undefined,
+        sectionId: effectiveSectionId,
         activityType: 'apd-request',
         priority: 'Normal',
         overtimeMinutes: 0,

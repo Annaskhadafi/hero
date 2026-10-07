@@ -42,7 +42,7 @@ test('APD actions pass siteId, departmentId, and sectionId to resolveApprovalRou
     'apd actions must supply employee siteId to resolveApprovalRouteForActivity'
   )
   assert.ok(
-    content.includes('sectionId: currentEmployee.sectionId ?? undefined'),
+    content.includes('sectionId: effectiveSectionId') || content.includes('sectionId: currentEmployee.sectionId ?? undefined'),
     'apd actions must supply employee sectionId to resolveApprovalRouteForActivity'
   )
 })

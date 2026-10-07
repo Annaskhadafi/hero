@@ -5,7 +5,8 @@ import { db } from "@/db";
 import { employees, masterDepartments, masterSections } from "@/db/schema/hero";
 import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
-import { fetchApdItemOptions, fetchApdRequestById, fetchApproverOptions } from "@/lib/apd-data";
+import { isSuperAdminRole } from "@/lib/hero-access";
+import { fetchApdItemOptions, fetchApdRequestById, fetchApproverOptions, fetchMasterSections } from "@/lib/apd-data";
 
 export default async function NewApdRequestPage(props: {
   searchParams: Promise<{ category?: string; edit?: string; id?: string }>;
@@ -42,12 +43,20 @@ export default async function NewApdRequestPage(props: {
 
   if (!employeeProfile) return notFound();
 
-  const [apdOptions, toolsOptions, materialOptions, approverOptions] = await Promise.all([
+  const [apdOptions, toolsOptions, materialOptions, approverOptions, sectionOptions] = await Promise.all([
     fetchApdItemOptions("APD"),
     fetchApdItemOptions("TOOLS"),
     fetchApdItemOptions("MATERIAL"),
     fetchApproverOptions(),
+    fetchMasterSections(),
   ]);
+
+  const canSelectTargetSection =
+    isSuperAdminRole(currentEmployee.accessRole) ||
+    Boolean(employeeProfile?.departmentName?.toLowerCase().includes("hse")) ||
+    Boolean(currentEmployee.accessRole?.toLowerCase().includes("hse")) ||
+    Boolean(currentEmployee.accessRole?.toLowerCase().includes("admin")) ||
+    Boolean(currentEmployee.accessRole?.toLowerCase().includes("manager"));
 
   const initialItems = existingRequest?.items?.map((item) => ({
     itemType: item.itemType,
@@ -84,6 +93,8 @@ export default async function NewApdRequestPage(props: {
           sectionName={employeeProfile.sectionName}
           itemOptions={{ APD: apdOptions, TOOLS: toolsOptions, MATERIAL: materialOptions }}
           approverOptions={approverOptions}
+          sectionOptions={sectionOptions}
+          canSelectTargetSection={canSelectTargetSection}
           defaultMode={defaultMode}
           requestId={existingRequest?.id}
           initialNotes={existingRequest?.notes || ""}

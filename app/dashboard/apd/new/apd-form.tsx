@@ -36,6 +36,8 @@ interface ApdRequestFormProps {
   sectionName: string | null;
   itemOptions: Record<string, string[]>;
   approverOptions?: ApproverOption[];
+  sectionOptions?: Array<{ id: number; name: string }>;
+  canSelectTargetSection?: boolean;
   defaultMode?: "apd" | "tools" | "material";
   mobileWide?: boolean;
   requestId?: number;
@@ -49,6 +51,7 @@ interface ApdRequestFormProps {
   }>;
   initialApprover1Id?: string;
   initialApprover2Id?: string;
+  initialTargetSectionId?: number | null;
 }
 
 function parsePhotoPreviews(photoUrl?: string | null): string[] {
@@ -69,6 +72,8 @@ export function ApdRequestForm({
   sectionName,
   itemOptions,
   approverOptions,
+  sectionOptions = [],
+  canSelectTargetSection = false,
   defaultMode = "apd",
   mobileWide = false,
   requestId,
@@ -76,10 +81,12 @@ export function ApdRequestForm({
   initialItems,
   initialApprover1Id = "",
   initialApprover2Id = "",
+  initialTargetSectionId = null,
 }: ApdRequestFormProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [requestMode, setRequestMode] = useState<"apd" | "tools" | "material">(defaultMode);
+  const [targetSectionId, setTargetSectionId] = useState<string>(initialTargetSectionId ? String(initialTargetSectionId) : "");
   const [notes, setNotes] = useState(initialNotes);
   const [approver1Id, setApprover1Id] = useState<string>(initialApprover1Id);
   const [approver2Id, setApprover2Id] = useState<string>(initialApprover2Id);
@@ -288,6 +295,9 @@ export function ApdRequestForm({
       submitData.append("signatureUrl", signatureUrl);
       submitData.append("requestCategory", requestMode === "apd" ? "APD" : requestMode.toUpperCase());
       submitData.append("items", JSON.stringify(processedItems));
+      if (targetSectionId) {
+        submitData.append("targetSectionId", targetSectionId);
+      }
       if (approver1Id) {
         submitData.append("approver1Id", approver1Id);
       }
@@ -316,7 +326,7 @@ export function ApdRequestForm({
       <Card className="border-slate-200/80 bg-slate-50/70 shadow-2xs rounded-2xl">
         <CardContent className={mobileWide ? "p-3.5 sm:p-5" : "p-4 sm:p-5"}>
           <div className="flex items-center justify-between mb-2.5 border-b border-slate-200/60 pb-2">
-            <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Informasi Pemohon</h3>
+            <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Informasi Pemohon & Seksi Target</h3>
             <span className="text-[10px] font-semibold bg-slate-200/80 text-slate-700 px-2 py-0.5 rounded-full">Otomatis</span>
           </div>
           <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4 sm:gap-4">
@@ -329,7 +339,7 @@ export function ApdRequestForm({
               <p className="font-semibold text-slate-900">{employeeSn}</p>
             </div>
             <div>
-              <p className="text-[11px] text-slate-500">Departemen / Section</p>
+              <p className="text-[11px] text-slate-500">Departemen / Section Asal</p>
               <p className="font-semibold text-slate-900 truncate">
                 {departmentName || "-"} {sectionName ? `/ ${sectionName}` : ""}
               </p>
@@ -339,6 +349,30 @@ export function ApdRequestForm({
               <p className="font-semibold text-slate-900">{today}</p>
             </div>
           </div>
+
+          {canSelectTargetSection && sectionOptions.length > 0 && (
+            <div className="mt-3.5 pt-3 border-t border-slate-200/60">
+              <Label htmlFor="targetSectionId" className="text-xs font-semibold text-slate-700">
+                Seksi Pemilik / Tujuan APD <span className="text-amber-600 font-normal">(Khusus HSE & Admin)</span>
+              </Label>
+              <p className="text-[11px] text-slate-500 mb-1.5">
+                Pilih seksi yang APD-nya dipesankan. Pengajuan akan dirutekan ke Section Head seksi target dan masuk ke Summary APD seksi tersebut.
+              </p>
+              <Select value={targetSectionId} onValueChange={setTargetSectionId}>
+                <SelectTrigger id="targetSectionId" className="h-10 bg-white border-slate-300 text-xs">
+                  <SelectValue placeholder={`Default: Seksi Pemohon (${sectionName || "Seksi Asal"})`} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Default: Seksi Pemohon ({sectionName || "Seksi Asal"})</SelectItem>
+                  {sectionOptions.map((sec) => (
+                    <SelectItem key={sec.id} value={String(sec.id)}>
+                      {sec.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </CardContent>
       </Card>
 

@@ -9,7 +9,8 @@ let apdSchemaReady: Promise<void> | null = null;
 export function ensureApdRequestSchema() {
   apdSchemaReady ??= db.execute(sql`
     ALTER TABLE hero_apd_requests
-    ADD COLUMN IF NOT EXISTS request_category text NOT NULL DEFAULT 'APD'
+    ADD COLUMN IF NOT EXISTS request_category text NOT NULL DEFAULT 'APD',
+    ADD COLUMN IF NOT EXISTS target_section_id integer REFERENCES hero_master_sections(id) ON DELETE SET NULL;
   `).then(() => undefined).catch((error) => {
     apdSchemaReady = null;
     throw error;

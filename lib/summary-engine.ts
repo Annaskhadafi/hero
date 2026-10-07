@@ -209,9 +209,10 @@ export async function getSectionsWithApprovedRequests() {
   }
 
   // 3. Find UNASSIGNED approved requests (ready to be generated into a new summary)
+  const effectiveSectionCol = sql<number>`COALESCE(${apdRequests.targetSectionId}, ${employees.sectionId})`;
   const unassignedReqs = await db.select({
     requestId: apdRequests.id,
-    sectionId: employees.sectionId,
+    sectionId: effectiveSectionCol,
     siteName: sites.name,
     latestReqAt: sql<Date | null>`MAX(COALESCE(${apdRequests.updatedAt}, ${apdRequests.createdAt}))`,
     updatedAt: apdRequests.updatedAt,
@@ -224,7 +225,7 @@ export async function getSectionsWithApprovedRequests() {
       sql`(${apdRequests.requestCategory} IS NULL OR ${apdRequests.requestCategory} = 'APD' OR UPPER(${apdRequests.requestCategory}) = 'APD')`,
       sql`(${apdRequests.requestCategory} IS NULL OR UPPER(${apdRequests.requestCategory}) NOT IN ('TOOLS', 'MATERIAL'))`
     ))
-    .groupBy(apdRequests.id, employees.sectionId, sites.name, apdRequests.updatedAt, apdRequests.createdAt);
+    .groupBy(apdRequests.id, apdRequests.targetSectionId, employees.sectionId, sites.name, apdRequests.updatedAt, apdRequests.createdAt);
 
   const pendingRequests = unassignedReqs.filter(r => !assignedRequestIds.has(r.requestId));
 
@@ -314,9 +315,10 @@ export async function getPendingRequestsForSection(sectionId: number, targetSite
 
   // Check if this is Service Operation (sections 33/34)
   const isServiceCombined = sectionId === 33 || sectionId === 34;
+  const effectiveSec = sql<number>`COALESCE(${apdRequests.targetSectionId}, ${employees.sectionId})`;
   const sectionFilter = isServiceCombined
-    ? inArray(employees.sectionId, [33, 34])
-    : eq(employees.sectionId, sectionId);
+    ? inArray(effectiveSec, [33, 34])
+    : eq(effectiveSec, sectionId);
 
   // Get active summary items to avoid duplicates
   const activeSummaryRows = await db.select({
@@ -443,9 +445,10 @@ export async function generateSummary(
     : sql`NOT (${sites.name} ILIKE '%vale%' OR ${sites.name} = 'VALE')`;
 
   const isServiceCombined = sectionId === 33 || sectionId === 34;
+  const effectiveSecGen = sql<number>`COALESCE(${apdRequests.targetSectionId}, ${employees.sectionId})`;
   const sectionFilter = isServiceCombined
-    ? inArray(employees.sectionId, [33, 34])
-    : eq(employees.sectionId, sectionId);
+    ? inArray(effectiveSecGen, [33, 34])
+    : eq(effectiveSecGen, sectionId);
 
   let approvedRequests = await db.select({
     requestId: apdRequests.id,

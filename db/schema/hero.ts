@@ -4186,6 +4186,7 @@ export const apdRequests = pgTable('hero_apd_requests', {
   siteId: integer('site_id')
     .notNull()
     .references(() => sites.id, { onDelete: 'cascade' }),
+  targetSectionId: integer('target_section_id').references(() => masterSections.id, { onDelete: 'set null' }),
   requestDate: timestamp('request_date').notNull().defaultNow(),
   requestCategory: text('request_category').notNull().default('APD'),
   status: text('status').notNull().default('pending_approval'),

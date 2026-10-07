@@ -1,5 +1,5 @@
 import { boolean, integer, jsonb, pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core';
-import { employees, sites } from './hero';
+import { employees, masterSections, sites } from './hero';
 
 export const masterApd = pgTable('hero_master_apd', {
   id: serial('id').primaryKey(),
@@ -22,6 +22,7 @@ export const apdRequests = pgTable('hero_apd_requests', {
   requestNumber: text('request_number').notNull().unique(),
   employeeId: integer('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
   siteId: integer('site_id').notNull().references(() => sites.id, { onDelete: 'cascade' }),
+  targetSectionId: integer('target_section_id').references(() => masterSections.id, { onDelete: 'set null' }),
   requestDate: timestamp('request_date').notNull().defaultNow(),
   requestCategory: text('request_category').notNull().default('APD'),
   status: text('status').notNull().default('pending_approval'),
