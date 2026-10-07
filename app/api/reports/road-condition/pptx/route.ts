@@ -102,7 +102,6 @@ export async function POST(request: NextRequest) {
       fontSize: 13,
       bold: true,
       color: '0B6F9F',
-      charSpace: 1.2,
     })
     slide1.addText(
       [
@@ -385,7 +384,7 @@ export async function POST(request: NextRequest) {
             y: photoY + 0.05,
             w: photoW - 0.1,
             h: photoH - 0.1,
-            sizing: { type: 'contain' },
+            sizing: { type: 'contain', w: photoW - 0.1, h: photoH - 0.1 },
           })
         } else {
           slide.addText(photo.angle || 'No Photo', {
@@ -461,7 +460,7 @@ export async function POST(request: NextRequest) {
 
     const buffer = (await pptx.write({ outputType: 'nodebuffer' })) as Buffer
 
-    return new NextResponse(buffer, {
+    return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
