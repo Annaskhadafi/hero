@@ -24,6 +24,11 @@ export function formatPhotoDisplayUrl(url?: string | null, width?: number): stri
   // When width is specified (e.g. 400 for thumbnails, 1200 for lightbox/modal) or if it's HEIC,
   // route through the high-performance Sharp image optimizer & caching API.
   if ((width && width > 0) || isHeic) {
+    if (resolved.startsWith('/api/uploads/')) {
+      const sep = resolved.includes('?') ? '&' : '?'
+      return `${resolved}${sep}w=${width || 1200}`
+    }
+
     const params = new URLSearchParams()
     params.set('url', resolved)
     if (width && width > 0) {

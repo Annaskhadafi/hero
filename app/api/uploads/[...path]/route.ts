@@ -2,7 +2,8 @@ import { NextResponse } from "next/server"
 import { getS3ObjectForProxy, isS3UploadConfigured } from "@/lib/s3-storage"
 import { getServerSession } from "@/lib/auth-session"
 import { join } from "path"
-import { existsSync, readFileSync } from "fs"
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs"
+import { createHash } from "crypto"
 // @ts-ignore
 import heicDecode from "heic-decode"
 import sharp from "sharp"
@@ -66,21 +67,66 @@ function isAllowedUploadPath(path: string[]) {
   return ALLOWED_UPLOAD_PREFIXES.has(path[0])
 }
 
-async function prepareResponseBuffer(buffer: Buffer, fileName: string): Promise<{ data: Buffer; contentType: string }> {
+async function prepareResponseBuffer(
+  buffer: Buffer,
+  fileName: string,
+  targetWidth?: number | null,
+  cachedThumbPath?: string,
+  cacheDir?: string
+): Promise<{ data: Buffer; contentType: string; isThumbnail?: boolean }> {
   const lower = fileName.toLowerCase()
-  if (lower.endsWith(".heic") || lower.endsWith(".heif")) {
+  const isHeic = lower.endsWith(".heic") || lower.endsWith(".heif")
+  const isRasterImage = /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(lower)
+
+  if (isHeic) {
     try {
       const { width, height, data } = await heicDecode({ buffer })
-      const converted = await sharp(Buffer.from(data), {
+      let pipeline = sharp(Buffer.from(data), {
         raw: { width, height, channels: 4 },
-      })
-        .jpeg({ quality: 85, mozjpeg: true })
+      }).rotate()
+
+      if (targetWidth && targetWidth < width) {
+        pipeline = pipeline.resize({ width: targetWidth, withoutEnlargement: true })
+      }
+
+      const converted = await pipeline
+        .jpeg({ quality: targetWidth ? 82 : 85, mozjpeg: true })
         .toBuffer()
-      return { data: converted, contentType: "image/jpeg" }
+
+      if (targetWidth && cachedThumbPath && cacheDir) {
+        try {
+          if (!existsSync(cacheDir)) mkdirSync(cacheDir, { recursive: true })
+          writeFileSync(cachedThumbPath, converted)
+        } catch {}
+      }
+
+      return { data: converted, contentType: "image/jpeg", isThumbnail: !!targetWidth }
     } catch (e) {
       console.warn("HEIC auto-conversion failed in uploads proxy:", e)
     }
   }
+
+  if (targetWidth && isRasterImage) {
+    try {
+      const resized = await sharp(buffer)
+        .rotate()
+        .resize({ width: targetWidth, withoutEnlargement: true })
+        .jpeg({ quality: 82, mozjpeg: true })
+        .toBuffer()
+
+      if (cachedThumbPath && cacheDir) {
+        try {
+          if (!existsSync(cacheDir)) mkdirSync(cacheDir, { recursive: true })
+          writeFileSync(cachedThumbPath, resized)
+        } catch {}
+      }
+
+      return { data: resized, contentType: "image/jpeg", isThumbnail: true }
+    } catch (resizeErr) {
+      console.warn("Image thumbnail resize failed in uploads proxy, falling back to original:", resizeErr)
+    }
+  }
+
   return { data: buffer, contentType: getContentType(fileName) }
 }
 
@@ -123,8 +169,36 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
   const relativePath = path.join("/")
   const fileName = path[path.length - 1]
 
-  // 1. Check local public/uploads directory candidates
+  // Parse thumbnail width query param (?w=800 or ?width=800)
+  const reqUrl = new URL(request.url)
+  const widthParam = reqUrl.searchParams.get("w") || reqUrl.searchParams.get("width")
+  const targetWidth = widthParam && !isNaN(Number(widthParam)) ? Math.min(Math.max(Math.round(Number(widthParam)), 32), 2560) : null
+
+  // Fast disk cache check for generated thumbnails
   const publicDir = join(/*turbopackIgnore: true*/ process.cwd(), "public")
+  const thumbCacheDir = join(publicDir, "uploads", "cache", "thumbnails")
+  let cachedThumbPath: string | undefined
+  if (targetWidth) {
+    const thumbHash = createHash("md5").update(`${relativePath}_w${targetWidth}`).digest("hex")
+    cachedThumbPath = join(thumbCacheDir, `${thumbHash}.jpg`)
+    if (existsSync(cachedThumbPath)) {
+      try {
+        const cachedThumbBuf = readFileSync(cachedThumbPath)
+        return new NextResponse(new Uint8Array(cachedThumbBuf), {
+          headers: {
+            "Content-Type": "image/jpeg",
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": `inline; filename="thumb-${encodeURIComponent(fileName)}"`,
+          },
+        })
+      } catch (err) {
+        console.warn("Failed reading cached thumbnail:", err)
+      }
+    }
+  }
+
+  // 1. Check local public/uploads directory candidates
   const candidateLocalPaths = [
     join(publicDir, "uploads", relativePath),
     join(publicDir, "uploads", fileName),
@@ -136,12 +210,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
     if (existsSync(localPath)) {
       try {
         const rawBuffer = readFileSync(localPath)
-        const { data: fileBuffer, contentType } = await prepareResponseBuffer(rawBuffer, fileName)
+        const { data: fileBuffer, contentType, isThumbnail } = await prepareResponseBuffer(rawBuffer, fileName, targetWidth, cachedThumbPath, thumbCacheDir)
         const isSafeInline = contentType.startsWith("image/") || contentType === "application/pdf"
         return new NextResponse(new Uint8Array(fileBuffer), {
           headers: {
             "Content-Type": contentType,
-            "Cache-Control": "private, max-age=300",
+            "Cache-Control": isThumbnail ? "public, max-age=31536000, immutable" : "private, max-age=300",
             "X-Content-Type-Options": "nosniff",
             "Content-Disposition": `${isSafeInline ? "inline" : "attachment"}; filename="${encodeURIComponent(fileName)}"`,
           },
@@ -180,12 +254,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
         const object = await getS3ObjectForProxy(key)
         if (object && object.body) {
           const rawBuffer = Buffer.from(object.body)
-          const { data: fileBuffer, contentType } = await prepareResponseBuffer(rawBuffer, fileName)
+          const { data: fileBuffer, contentType, isThumbnail } = await prepareResponseBuffer(rawBuffer, fileName, targetWidth, cachedThumbPath, thumbCacheDir)
           const isSafeInline = contentType.startsWith("image/") || contentType === "application/pdf"
           return new NextResponse(new Uint8Array(fileBuffer), {
             headers: {
               "Content-Type": contentType,
-              "Cache-Control": "private, max-age=300",
+              "Cache-Control": isThumbnail ? "public, max-age=31536000, immutable" : "private, max-age=300",
               "X-Content-Type-Options": "nosniff",
               "Content-Disposition": `${isSafeInline ? "inline" : "attachment"}; filename="${encodeURIComponent(fileName)}"`,
             },

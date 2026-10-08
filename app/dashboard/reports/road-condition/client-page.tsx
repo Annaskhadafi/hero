@@ -206,19 +206,34 @@ function scoreTone(score: number) {
 }
 
 function getActiveAssessmentRows(draft: CategoryDraft) {
-  return ROAD_CONDITION_CATEGORIES[draft.categoryKey].criteria.map((criterion) => {
-    const assessment = draft.analysis?.assessments.find((item) => item.criterionId === criterion.id) ?? null
-    const score = assessment ? normalizeRoadConditionScore(assessment.score) : null
-    const template = score ? getRoadConditionAssessmentTemplate(draft.categoryKey, criterion.id, score) : null
+  const category = ROAD_CONDITION_CATEGORIES[draft.categoryKey]
+  if (!category) return []
 
-    return {
+  if (!draft.analysis) {
+    return category.criteria.map((criterion) => ({
       criterion,
-      score,
-      template,
-      description: template?.description ?? assessment?.description ?? '-',
-      recommendation: assessment?.recommendation?.trim() || template?.recommendation || '-',
-    }
-  })
+      score: null,
+      template: null,
+      description: `${criterion.title}: -`,
+      recommendation: '-',
+    }))
+  }
+
+  return category.criteria
+    .filter((criterion) => draft.analysis!.assessments.some((item) => item.criterionId === criterion.id))
+    .map((criterion) => {
+      const assessment = draft.analysis!.assessments.find((item) => item.criterionId === criterion.id)!
+      const score = normalizeRoadConditionScore(assessment.score)
+      const template = getRoadConditionAssessmentTemplate(draft.categoryKey, criterion.id, score)
+
+      return {
+        criterion,
+        score,
+        template,
+        description: assessment.description || template.description || '-',
+        recommendation: assessment.recommendation?.trim() || template.recommendation || '-',
+      }
+    })
 }
 
 function getDraftAverageScore(draft: CategoryDraft) {
@@ -750,6 +765,77 @@ export function RoadConditionAnalysisClient({
 
     draftsRef.current = nextDrafts
     setDrafts(nextDrafts)
+  }
+
+  const deleteAssessmentCriterion = (draftId: string, criterionId: string) => {
+    const draft = draftsRef.current.find((d) => d.id === draftId)
+    if (!draft || !draft.analysis) return
+
+    if (draft.analysis.assessments.length <= 1) {
+      toast.error('Minimal harus ada 1 parameter penilaian tersisa.')
+      return
+    }
+
+    const nextAssessments = draft.analysis.assessments.filter((a) => a.criterionId !== criterionId)
+    const nextOverallScore = getRoadConditionOverallScore(nextAssessments)
+
+    const nextDrafts = draftsRef.current.map((d) => {
+      if (d.id !== draftId || !d.analysis) return d
+      return {
+        ...d,
+        analysis: {
+          ...d.analysis,
+          assessments: nextAssessments,
+          overallScore: nextOverallScore,
+        },
+      }
+    })
+
+    draftsRef.current = nextDrafts
+    setDrafts(nextDrafts)
+    void saveReport(nextDrafts, true).catch(() => {})
+    toast.success('Parameter berhasil dihapus dari penilaian.')
+  }
+
+  const restoreAssessmentCriterion = (draftId: string, criterionId: string) => {
+    const draft = draftsRef.current.find((d) => d.id === draftId)
+    if (!draft || !draft.analysis) return
+
+    const category = ROAD_CONDITION_CATEGORIES[draft.categoryKey]
+    const criterion = category.criteria.find((c) => c.id === criterionId)
+    if (!criterion) return
+
+    const defaultScore = 3
+    const template = getRoadConditionAssessmentTemplate(draft.categoryKey, criterionId, defaultScore)
+    const newAssessment: AnalysisAssessment = {
+      criterionId,
+      score: defaultScore,
+      description: template.description,
+      recommendation: template.recommendation,
+    }
+
+    const originalOrder = category.criteria.map((c) => c.id)
+    const combined = [...draft.analysis.assessments, newAssessment]
+    combined.sort((a, b) => originalOrder.indexOf(a.criterionId) - originalOrder.indexOf(b.criterionId))
+
+    const nextOverallScore = getRoadConditionOverallScore(combined)
+
+    const nextDrafts = draftsRef.current.map((d) => {
+      if (d.id !== draftId || !d.analysis) return d
+      return {
+        ...d,
+        analysis: {
+          ...d.analysis,
+          assessments: combined,
+          overallScore: nextOverallScore,
+        },
+      }
+    })
+
+    draftsRef.current = nextDrafts
+    setDrafts(nextDrafts)
+    void saveReport(nextDrafts, true).catch(() => {})
+    toast.success(`Parameter ${criterion.title} berhasil dipulihkan.`)
   }
 
   const loadHistoryRow = (row: HistoryRow) => {
@@ -1808,64 +1894,106 @@ export function RoadConditionAnalysisClient({
           </div>
         ) : null}
 
-        {activeDraft.analysis ? (
-          <div className="overflow-x-auto rounded-xl ring-1 ring-slate-200">
-            <table className="w-full border-collapse text-left text-sm min-w-[500px]">
-              <thead>
-                <tr className="bg-slate-100 text-[11px] uppercase tracking-[0.12em] text-slate-600">
-                  <th className="w-[30%] px-3 py-2">Parameter</th>
-                  <th className="w-[10%] px-3 py-2">Nilai</th>
-                  <th className="w-[35%] px-3 py-2">Deskripsi</th>
-                  <th className="px-3 py-2">Rekomendasi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {activeAssessmentRows.map((row) => (
-                  <tr key={row.criterion.id} className="border-t border-slate-200 align-top">
-                    <td className="px-3 py-3">
-                      <div className="font-semibold text-slate-950">{row.criterion.title}</div>
-                      <div className="text-xs text-slate-500">{row.criterion.prompt}</div>
-                    </td>
-                    <td className="px-3 py-3">
-                      <Select
-                        value={row.score ? String(row.score) : '3'}
-                        onValueChange={(value) => updateAssessmentScore(activeDraft.id, row.criterion.id, value)}
-                      >
-                        <SelectTrigger className="h-9 w-24">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {ROAD_CONDITION_SCORE_OPTIONS.map((score) => (
-                            <SelectItem key={score} value={String(score)}>
-                              {score}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    <td className="px-3 py-3 text-sm leading-snug text-slate-700">
-                      <span className="block font-medium text-slate-950">{row.description}</span>
-                    </td>
-                    <td className="px-3 py-3">
-                      <Textarea
-                        value={row.recommendation}
-                        onChange={(event) =>
-                          updateAssessmentRecommendation(activeDraft.id, row.criterion.id, event.target.value)
-                        }
-                        onBlur={() =>
-                          saveReport(draftsRef.current, true).catch((error) => {
-                            toast.error(error instanceof Error ? error.message : 'Gagal menyimpan rekomendasi.')
-                          })
-                        }
-                        className="min-h-20 resize-none bg-white text-sm leading-snug"
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
+        {activeDraft.analysis ? (() => {
+          const availableCategoryCriteria = activeCategory.criteria
+          const currentCriterionIds = new Set(activeDraft.analysis.assessments.map((a) => a.criterionId))
+          const deletedCriteria = availableCategoryCriteria.filter((c) => !currentCriterionIds.has(c.id))
+
+          return (
+            <div className="space-y-3">
+              {deletedCriteria.length > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-emerald-300 bg-emerald-50/60 p-2.5 px-3">
+                  <div className="text-xs text-emerald-800 font-medium">
+                    Ada {deletedCriteria.length} parameter yang dihapus dari penilaian point ini.
+                  </div>
+                  <Select onValueChange={(criterionId) => restoreAssessmentCriterion(activeDraft.id, criterionId)}>
+                    <SelectTrigger className="h-8 gap-1.5 text-xs bg-white text-emerald-800 border-emerald-300 hover:bg-emerald-50">
+                      <Plus className="size-3.5" />
+                      <span>Pulihkan Parameter ({deletedCriteria.length})</span>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {deletedCriteria.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          + {c.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              <div className="overflow-x-auto rounded-xl ring-1 ring-slate-200">
+                <table className="w-full border-collapse text-left text-sm min-w-[540px]">
+                  <thead>
+                    <tr className="bg-slate-100 text-[11px] uppercase tracking-[0.12em] text-slate-600">
+                      <th className="w-[28%] px-3 py-2">Parameter</th>
+                      <th className="w-[10%] px-3 py-2">Nilai</th>
+                      <th className="w-[32%] px-3 py-2">Deskripsi</th>
+                      <th className="px-3 py-2">Rekomendasi</th>
+                      <th className="w-[50px] px-2 py-2 text-center">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activeAssessmentRows.map((row) => (
+                      <tr key={row.criterion.id} className="border-t border-slate-200 align-top">
+                        <td className="px-3 py-3">
+                          <div className="font-semibold text-slate-950">{row.criterion.title}</div>
+                          <div className="text-xs text-slate-500">{row.criterion.prompt}</div>
+                        </td>
+                        <td className="px-3 py-3">
+                          <Select
+                            value={row.score ? String(row.score) : '3'}
+                            onValueChange={(value) => updateAssessmentScore(activeDraft.id, row.criterion.id, value)}
+                          >
+                            <SelectTrigger className="h-9 w-24">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ROAD_CONDITION_SCORE_OPTIONS.map((score) => (
+                                <SelectItem key={score} value={String(score)}>
+                                  {score}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="px-3 py-3 text-sm leading-snug text-slate-700">
+                          <span className="block font-medium text-slate-950">{row.description}</span>
+                        </td>
+                        <td className="px-3 py-3">
+                          <Textarea
+                            value={row.recommendation}
+                            onChange={(event) =>
+                              updateAssessmentRecommendation(activeDraft.id, row.criterion.id, event.target.value)
+                            }
+                            onBlur={() =>
+                              saveReport(draftsRef.current, true).catch((error) => {
+                                toast.error(error instanceof Error ? error.message : 'Gagal menyimpan rekomendasi.')
+                              })
+                            }
+                            className="min-h-20 resize-none bg-white text-sm leading-snug"
+                          />
+                        </td>
+                        <td className="px-2 py-3 text-center">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 text-rose-500 hover:bg-rose-50 hover:text-rose-600"
+                            onClick={() => deleteAssessmentCriterion(activeDraft.id, row.criterion.id)}
+                            title="Hapus parameter ini dari penilaian"
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
+        })() : (
           <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm font-medium text-slate-600">
             Jalankan AI pada kategori aktif dulu untuk membuka validasi skor.
           </div>
@@ -2082,7 +2210,7 @@ export function RoadConditionAnalysisClient({
           return (
             <article
               key={draft.id}
-              className="road-condition-slide grid aspect-video grid-rows-[auto_auto_1fr] overflow-hidden rounded-[1.1rem] bg-white shadow-[0_18px_48px_rgba(8,32,51,0.12)] ring-1 ring-slate-200"
+              className="road-condition-slide relative flex flex-col min-h-[560px] overflow-hidden rounded-[1.1rem] bg-white shadow-[0_18px_48px_rgba(8,32,51,0.12)] ring-1 ring-slate-200"
             >
               <header
                 className="grid gap-1.5 sm:gap-3 px-2 sm:px-5 py-1.5 sm:py-3 text-white md:grid-cols-[1fr_auto]"
@@ -2119,7 +2247,7 @@ export function RoadConditionAnalysisClient({
                 </div>
               </header>
 
-              <section className="grid grid-cols-3 gap-2 sm:gap-3 px-2.5 sm:px-4 py-2 sm:py-3">
+              <section className="grid grid-cols-3 gap-2 sm:gap-3 px-2.5 sm:px-4 py-2 sm:py-3 shrink-0">
                 {reportPhotos.map((photo, photoIndex) => (
                   <figure key={photoIndex} className="overflow-hidden rounded-lg bg-slate-50 ring-1 ring-slate-200">
                     {photo.imageUrl ? (
@@ -2133,9 +2261,9 @@ export function RoadConditionAnalysisClient({
                 ))}
               </section>
 
-              <section className="px-2.5 sm:px-4 pb-4 sm:pb-7">
+              <section className="px-2.5 sm:px-4 pb-6 flex-1">
                 <div className="overflow-hidden rounded-lg ring-1 ring-slate-200">
-                <table className="h-full w-full border-collapse text-left text-[8px] sm:text-[9px] lg:text-[10px]">
+                <table className="w-full border-collapse text-left text-[8px] sm:text-[9px] lg:text-[10px]">
                   <thead>
                     <tr className="bg-slate-100 text-[6px] sm:text-[7px] lg:text-[8px] uppercase tracking-[0.12em] text-slate-600">
                       <th className="w-[7%] px-1 sm:px-2 py-0.5 sm:py-1">Nilai</th>
@@ -2177,7 +2305,7 @@ export function RoadConditionAnalysisClient({
                 </div>
               </section>
 
-              <footer className="absolute bottom-1.5 sm:bottom-2 right-2 sm:right-4 text-[7px] sm:text-[8px] lg:text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">
+              <footer className="mt-auto px-4 pb-2 pt-1 text-right text-[7px] sm:text-[8px] lg:text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">
                 Slide {slideIndex + 3}/{totalSlides}
               </footer>
             </article>

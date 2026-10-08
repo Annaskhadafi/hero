@@ -362,9 +362,9 @@ export async function POST(request: NextRequest) {
       )
 
       // 3 Photos
-      const photoY = 1.45
+      const photoY = 1.28
       const photoW = 3.9
-      const photoH = 2.45
+      const photoH = 2.05
       const photos = Array.isArray(draft.photos) ? draft.photos : []
       photos.forEach((photo: any, pIdx: number) => {
         const photoX = 0.5 + pIdx * 4.2
@@ -389,7 +389,7 @@ export async function POST(request: NextRequest) {
         } else {
           slide.addText(photo.angle || 'No Photo', {
             x: photoX,
-            y: photoY + 1.0,
+            y: photoY + 0.8,
             w: photoW,
             h: 0.4,
             align: 'center',
@@ -399,7 +399,7 @@ export async function POST(request: NextRequest) {
         }
       })
 
-      // Assessment table: NILAI | DESKRIPSI | REKOMENDASI
+      // Assessment table: NILAI | DESKRIPSI | REKOMENDASI (Only active criteria)
       const assessTableRows: any[] = [
         [
           { text: 'NILAI', options: { fill: { color: '0F172A' }, color: 'FFFFFF', bold: true, align: 'center', fontSize: 8.5 } },
@@ -408,27 +408,66 @@ export async function POST(request: NextRequest) {
         ],
       ]
 
-      category.criteria.forEach((criterion, rIdx) => {
+      const activeCriteria = category.criteria.filter((criterion) => {
+        if (!draft.analysis) return true
+        return draft.analysis.assessments?.some((a: any) => a.criterionId === criterion.id)
+      })
+      const criteriaToRender = activeCriteria.length > 0 ? activeCriteria : category.criteria
+
+      criteriaToRender.forEach((criterion, rIdx) => {
         const assessment = draft.analysis?.assessments?.find((a: any) => a.criterionId === criterion.id)
         const itemScore = assessment ? normalizeRoadConditionScore(assessment.score) : null
         const desc = assessment?.description || `${criterion.title}: -`
         const rec = assessment?.recommendation || '-'
         const bgHex = rIdx % 2 === 0 ? 'FFFFFF' : 'F8FAFC'
 
+        let scoreBadgeBg = 'F1F5F9'
+        let scoreBadgeColor = '64748B'
+        if (itemScore) {
+          if (itemScore >= 4) {
+            scoreBadgeBg = 'DCFCE7'
+            scoreBadgeColor = '15803D'
+          } else if (itemScore === 3) {
+            scoreBadgeBg = 'FEF08A'
+            scoreBadgeColor = 'A16207'
+          } else {
+            scoreBadgeBg = 'FEE2E2'
+            scoreBadgeColor = 'B91C1C'
+          }
+        }
+
         assessTableRows.push([
-          { text: String(itemScore || '-'), options: { fill: { color: bgHex }, bold: true, align: 'center', fontSize: 9 } },
-          { text: `${criterion.title}\n${desc}`, options: { fill: { color: bgHex }, fontSize: 8 } },
-          { text: rec, options: { fill: { color: bgHex }, fontSize: 8 } },
+          {
+            text: String(itemScore || '-'),
+            options: {
+              fill: { color: scoreBadgeBg },
+              color: scoreBadgeColor,
+              bold: true,
+              align: 'center',
+              fontSize: 9.5,
+            },
+          },
+          {
+            text: [
+              { text: `${criterion.title}\n`, options: { bold: true, color: '0F172A', fontSize: 8.5 } },
+              { text: desc, options: { color: '334155', fontSize: 7.5 } },
+            ],
+            options: { fill: { color: bgHex }, align: 'left' },
+          },
+          {
+            text: rec,
+            options: { fill: { color: bgHex }, color: '334155', fontSize: 7.5, align: 'left' },
+          },
         ])
       })
 
       slide.addTable(assessTableRows, {
         x: 0.5,
-        y: 4.05,
+        y: 3.48,
         w: 12.333,
-        colW: [1.0, 5.8, 5.533],
-        border: { pt: 0.5, color: 'E2E8F0' },
-        valign: 'top',
+        colW: [0.9, 5.8, 5.633],
+        border: { pt: 0.5, color: 'CBD5E1' },
+        valign: 'middle',
       })
 
       slide.addText(`Slide ${index + 3}/${total}`, {
