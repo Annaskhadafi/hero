@@ -486,6 +486,16 @@ export function DailyActivityEvidenceModal({
                               alt={item.snapshotLabel}
                               className="h-full w-full object-contain group-hover:scale-105 transition-transform duration-300"
                               loading="lazy"
+                              onError={(e) => {
+                                const img = e.currentTarget
+                                const fallback = formatPhotoDisplayUrl(item.photoUrl)
+                                if (img.src !== fallback) {
+                                  img.src = fallback
+                                  return
+                                }
+                                const raw = item.photoUrl || ''
+                                if (img.src !== raw && raw) img.src = raw
+                              }}
                             />
                             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
                               <span className="bg-white/90 backdrop-blur-xs text-slate-900 rounded-full px-3 py-1 text-[11px] font-bold flex items-center gap-1 shadow-md">
@@ -546,11 +556,25 @@ export function DailyActivityEvidenceModal({
               </button>
             </div>
 
-            <div className="flex-1 max-h-[68vh] min-h-[220px] bg-slate-950 flex items-center justify-center p-2 overflow-hidden">
+            <div className="flex-1 max-h-[68vh] min-h-[220px] bg-slate-100 flex items-center justify-center p-2 overflow-hidden">
               <img
                 src={formatPhotoDisplayUrl(selectedImage.url, 1200)}
                 alt={selectedImage.label}
                 className="max-h-[65vh] max-w-full object-contain rounded shadow-lg"
+                onError={(e) => {
+                  const img = e.currentTarget
+                  // Fallback 1: try without resize param
+                  const withoutResize = formatPhotoDisplayUrl(selectedImage.url)
+                  if (img.src !== withoutResize) {
+                    img.src = withoutResize
+                    return
+                  }
+                  // Fallback 2: try raw resolved URL
+                  const raw = selectedImage.url
+                  if (img.src !== raw && raw) {
+                    img.src = raw
+                  }
+                }}
               />
             </div>
 
