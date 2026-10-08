@@ -5913,7 +5913,7 @@ export function SchedulingTimesheetWorkspace({
     })
     const secSigs = getSectionSignatures(employee.section, employee)
     return generateOvertimeRecordPdf({
-      documentTitle: 'SURAT PENGAJUAN LEMBUR',
+      documentTitle: 'OVERTIME RECORD',
       period,
       employeeId: employee.id,
       employeeName: employee.name,
