@@ -308,18 +308,18 @@ function buildOvertimeRecordMonthlyDays(
       const startStr = primaryRow.plannedStartAt ? formatTime(primaryRow.plannedStartAt).replace(':', '.') : '17.00'
       const endStr = primaryRow.plannedEndAt ? formatTime(primaryRow.plannedEndAt).replace(':', '.') : '21.00'
 
-      const taskSummaries = matchingRows
-        .map((r) => {
-          const uniqueLineItems = Array.from(
-            new Map((r.lineItems || []).map((l) => [`${l.code || ''}-${l.name || l.lineLabel || ''}-${l.unitNumber || ''}`, l])).values()
-          )
-          const itemDesc = uniqueLineItems.length
-            ? uniqueLineItems.map((l) => `${l.name || l.lineLabel || l.code || ''}${l.unitNumber ? ` (Unit: ${l.unitNumber})` : ''}`).join(', ')
-            : r.title || 'Penugasan Lembur'
-          const roleLabel = r.teamRole ? ` (${r.teamRole})` : ''
-          return `[${r.splNumber}] ${r.requesterName}${roleLabel} - ${itemDesc}`
-        })
-        .join(' | ')
+      const taskSummaries = Array.from(
+        new Set(
+          matchingRows.map((r) => {
+            const uniqueLineItems = Array.from(
+              new Map((r.lineItems || []).map((l) => [`${l.code || ''}-${l.name || l.lineLabel || ''}-${l.unitNumber || ''}`, l])).values()
+            )
+            return uniqueLineItems.length
+              ? uniqueLineItems.map((l) => `${l.name || l.lineLabel || l.code || ''}${l.unitNumber ? ` (Unit: ${l.unitNumber})` : ''}`).join(', ')
+              : r.title || 'Penugasan Lembur'
+          })
+        )
+      ).join('\n')
 
       days.push({
         day: d,
@@ -415,8 +415,7 @@ function renderSummarySplPdfHtml(
                 .join('<br/>')
             : row.title || 'Penugasan Lembur'
 
-          const roleLabel = row.teamRole ? ` <span style="color: #475569; font-weight: 600; font-size: 7.5pt;">(${row.teamRole})</span>` : ''
-          const taskContent = `<strong>[${row.splNumber || 'SPL'}] ${row.requesterName}</strong>${roleLabel}<br/>${lineItemsSummary}`
+          const taskContent = lineItemsSummary
 
           const rowBgStyle = isWeekend ? 'background-color: #fef2f2;' : 'background-color: #ffffff;'
           const textRedStyle = isWeekend ? 'color: #dc2626; font-weight: bold;' : ''
@@ -1644,6 +1643,11 @@ export function OvertimeListingClient({
   }, [summaryFilteredRows, summaryEmployeeId, summaryMonth, summaryEmployeeOptions, summaryStats, employees])
 
   const handleOpenSummaryPreview = async () => {
+    if (!summaryEmployeeId || summaryEmployeeId === 'ALL') {
+      toast.error('Silakan pilih karyawan terlebih dahulu untuk melihat preview PDF Summary SPL.')
+      return
+    }
+
     if (summaryFilteredRows.length === 0) {
       toast.error('Tidak ada data summary SPL untuk ditampilkan.')
       return
@@ -1716,6 +1720,11 @@ export function OvertimeListingClient({
   }
 
   const handleDownloadSummaryPdf = async () => {
+    if (!summaryEmployeeId || summaryEmployeeId === 'ALL') {
+      toast.error('Silakan pilih karyawan terlebih dahulu untuk mengunduh PDF Summary SPL.')
+      return
+    }
+
     if (summaryFilteredRows.length === 0) {
       toast.error('Tidak ada data summary SPL untuk dibuatkan PDF.')
       return
@@ -2639,8 +2648,14 @@ export function OvertimeListingClient({
               type="button"
               size="sm"
               onClick={handleOpenSummaryPreview}
-              disabled={filteredRows.length === 0}
-              className="h-9 gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 shadow-xs cursor-pointer"
+              disabled={filteredRows.length === 0 || summaryEmployeeId === 'ALL'}
+              title={summaryEmployeeId === 'ALL' ? 'Pilih karyawan terlebih dahulu untuk melihat preview PDF' : ''}
+              className={cn(
+                "h-9 gap-2 rounded-xl text-white text-xs font-semibold px-4 shadow-xs cursor-pointer",
+                summaryEmployeeId === 'ALL'
+                  ? "bg-slate-400 opacity-60 cursor-not-allowed"
+                  : "bg-emerald-600 hover:bg-emerald-700"
+              )}
             >
               <Eye className="size-4" />
               Preview & Unduh Summary SPL (PDF)
@@ -3780,7 +3795,7 @@ export function OvertimeListingClient({
         }
       }}>
         <DialogContent
-          className="max-w-5xl h-[92vh] flex flex-col p-0 overflow-hidden bg-[#2d3238] border-slate-700 shadow-2xl rounded-2xl"
+          className="max-w-[96vw] w-[96vw] h-[95vh] sm:max-w-[96vw] flex flex-col p-0 overflow-hidden bg-[#2d3238] border-slate-700 shadow-2xl rounded-2xl"
           showCloseButton={false}
         >
           {/* Top Viewer Toolbar */}
@@ -3788,7 +3803,7 @@ export function OvertimeListingClient({
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-sm">📄</span>
               <span className="font-semibold text-xs text-slate-100 truncate">
-                Preview Overtime Record (A4) • {formatMonthYearLabel(summaryMonth)} ({summaryStats.totalCount} Dokumen, {summaryStats.totalHours} Jam)
+                Preview Summary SPL (A4) • {formatMonthYearLabel(summaryMonth)} ({summaryStats.totalCount} Dokumen, {summaryStats.totalHours} Jam)
               </span>
             </div>
             <div className="flex items-center gap-2">

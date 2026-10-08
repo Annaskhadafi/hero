@@ -143,14 +143,15 @@ function drawCell(
     if (opts.wrap) {
       const pad = opts.pad ?? 4
       const maxWidth = Math.max(1, w - pad * 2)
-      const lineHeight = fontSize * 0.9
-      const maxLines = Math.max(1, Math.floor((h - 1) / lineHeight))
+      const effectiveFontSize = fontSize
+      const lineHeight = Math.max(7, effectiveFontSize * 1.15)
+      const maxLines = Math.max(1, Math.floor((h - 2) / lineHeight))
       const lines: string[] = []
       for (const paragraph of cleanText.split('\n')) {
         let line = ''
         for (const word of paragraph.split(/\s+/)) {
           const next = line ? `${line} ${word}` : word
-          if (line && opts.font.widthOfTextAtSize(next, fontSize) > maxWidth) {
+          if (line && opts.font.widthOfTextAtSize(next, effectiveFontSize) > maxWidth) {
             lines.push(line)
             line = word
           } else {
@@ -160,16 +161,15 @@ function drawCell(
         if (line) lines.push(line)
       }
       // Pecah per karakter kata yang masih lebih lebar dari cell
-      // (mis. nominal angka panjang di cell hari yang sempit)
       for (let i = 0; i < lines.length; i++) {
-        if (opts.font.widthOfTextAtSize(lines[i], fontSize) <= maxWidth) continue
+        if (opts.font.widthOfTextAtSize(lines[i], effectiveFontSize) <= maxWidth) continue
         let remainder = lines[i]
         const chunks: string[] = []
         while (remainder.length > 0) {
           let take = 1
           while (
             take < remainder.length &&
-            opts.font.widthOfTextAtSize(remainder.slice(0, take + 1), fontSize) <= maxWidth
+            opts.font.widthOfTextAtSize(remainder.slice(0, take + 1), effectiveFontSize) <= maxWidth
           ) {
             take++
           }
@@ -184,15 +184,18 @@ function drawCell(
         const last = visibleLines.length - 1
         while (
           visibleLines[last].length > 1 &&
-          opts.font.widthOfTextAtSize(`${visibleLines[last]}…`, fontSize) > maxWidth
+          opts.font.widthOfTextAtSize(`${visibleLines[last]}…`, effectiveFontSize) > maxWidth
         ) {
           visibleLines[last] = visibleLines[last].slice(0, -1)
         }
         visibleLines[last] = `${visibleLines[last]}…`
       }
-      const firstY = y + (h + lineHeight * (visibleLines.length - 1)) / 2 - fontSize + 1
+      // Top-align text inside cell bounded safely between top (y + h) and bottom (y)
+      const totalTextH = (visibleLines.length - 1) * lineHeight + effectiveFontSize
+      const topPad = Math.max(2, (h - totalTextH) / 2)
+      const firstY = y + h - topPad - effectiveFontSize
       visibleLines.forEach((line, index) => {
-        const textWidth = opts.font!.widthOfTextAtSize(line, fontSize)
+        const textWidth = opts.font!.widthOfTextAtSize(line, effectiveFontSize)
         const textX =
           opts.align === 'center'
             ? x + (w - textWidth) / 2
@@ -203,7 +206,7 @@ function drawCell(
           x: textX,
           y: firstY - index * lineHeight,
           font: opts.font!,
-          size: fontSize,
+          size: effectiveFontSize,
           color: textColor,
         })
       })
@@ -649,7 +652,7 @@ export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise
   const font = await doc.embedFont(StandardFonts.Helvetica)
   const fontBold = await doc.embedFont(StandardFonts.HelveticaBold)
   const fontItalic = await doc.embedFont(StandardFonts.HelveticaOblique)
-  const page = doc.addPage([595, 842])
+  let page = doc.addPage([595, 842])
   const { width } = page.getSize()
   const logo = await embedLogo(doc)
 
@@ -771,9 +774,6 @@ export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise
   const showTotal = input.showTotalOvertime ?? true
 
   for (const day of input.days) {
-    y -= rowH
-    if (y < 90) break
-
     const isOff =
       day.scheduleCode === 'OFF' ||
       day.scheduleCode === 'FB' ||
@@ -830,6 +830,54 @@ export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise
       totalOT += ot
     }
 
+    const taskDesc = day.splTitle || (ot > 0 ? 'Penugasan Lembur' : '')
+
+    // Hitung tinggi baris dinamis agar deskripsi pekerjaan panjang tidak pernah terpotong / bertumpuk
+    const maxTextW = cols[5] - 8
+    let taskLines = 1
+    if (taskDesc && font) {
+      let linesCount = 0
+      for (const paragraph of taskDesc.split('\n')) {
+        let line = ''
+        for (const word of paragraph.split(/\s+/)) {
+          const test = line ? `${line} ${word}` : word
+          if (line && font.widthOfTextAtSize(test, 6.5) > maxTextW) {
+            linesCount++
+            line = word
+          } else {
+            line = test
+          }
+        }
+        if (line) linesCount++
+      }
+      taskLines = Math.max(1, linesCount)
+    }
+    const dynamicRowH = Math.max(14, taskLines * 8.5 + 5)
+
+    // Jika baris berikutnya melebihi batas bawah halaman, buat halaman baru (halaman 2, 3, dst)
+    if (y - dynamicRowH < 90) {
+      page = doc.addPage([595, 842])
+      y = 790
+
+      // Sub-header halaman lanjutan
+      const titleCont = 'PT. CHITRA PARATAMA — SUMMARY SPL (Lanjutan)'
+      page.drawText(titleCont, { x: centerX(width, titleCont, fontBold, 10), y, font: fontBold, size: 10 })
+      y -= 22
+
+      // Re-draw Table Header
+      drawCell(page, colX[0], y - hH, cols[0], hH, { text: 'Tanggal', font: fontBold, fontSize: 7.5, align: 'center' })
+      drawCell(page, colX[1], y - hH, cols[1], hH, { text: 'Hari', font: fontBold, fontSize: 7.5, align: 'center' })
+      drawCell(page, colX[2], y - 13, cols[2] + cols[3], 13, { text: 'Jam Lembur', font: fontBold, fontSize: 7.5, align: 'center' })
+      drawCell(page, colX[2], y - hH, cols[2], 13, { text: 'Mulai', font: fontBold, fontSize: 7, align: 'center' })
+      drawCell(page, colX[3], y - hH, cols[3], 13, { text: 'Selesai', font: fontBold, fontSize: 7, align: 'center' })
+      drawCell(page, colX[4], y - hH, cols[4], hH, { text: 'Total Lembur', font: fontBold, fontSize: 7, align: 'center' })
+      drawCell(page, colX[5], y - hH, cols[5], hH, { text: 'Yang Dikerjakan', font: fontBold, fontSize: 7.5, align: 'center' })
+
+      y -= hH
+    }
+
+    y -= dynamicRowH
+
     const bgColor = day.isHoliday
       ? rgb(1, 1, 0.75)
       : isSunday || isOff
@@ -838,7 +886,7 @@ export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise
     const dayColor = isSunday || day.isHoliday ? rgb(0.8, 0, 0) : rgb(0, 0, 0)
 
     // Col 0: Tanggal
-    drawCell(page, colX[0], y, cols[0], rowH, {
+    drawCell(page, colX[0], y, cols[0], dynamicRowH, {
       text: String(day.day),
       font,
       fontSize: 8,
@@ -847,7 +895,7 @@ export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise
       color: dayColor,
     })
     // Col 1: Hari
-    drawCell(page, colX[1], y, cols[1], rowH, {
+    drawCell(page, colX[1], y, cols[1], dynamicRowH, {
       text: day.dayName,
       font,
       fontSize: 7.5,
@@ -860,14 +908,14 @@ export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise
       hasOvertimeIntervals && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualAttendance)
 
     // Col 2-3: Overtime Mulai & Selesai
-    drawCell(page, colX[2], y, cols[2], rowH, {
+    drawCell(page, colX[2], y, cols[2], dynamicRowH, {
       text: shouldRenderOtTimes ? otFrom : '',
       font,
       fontSize: otFrom.length > 8 ? 6 : 7.5,
       align: 'center',
       bgColor,
     })
-    drawCell(page, colX[3], y, cols[3], rowH, {
+    drawCell(page, colX[3], y, cols[3], dynamicRowH, {
       text: shouldRenderOtTimes ? otTo : '',
       font,
       fontSize: otTo.length > 8 ? 6 : 7.5,
@@ -877,7 +925,7 @@ export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise
 
     // Col 4: Total Lembur
     if (showTotal) {
-      drawCell(page, colX[4], y, cols[4], rowH, {
+      drawCell(page, colX[4], y, cols[4], dynamicRowH, {
         text: ot > 0 ? String(Math.round(ot * 10) / 10) : '',
         font: fontBold,
         fontSize: 8,
@@ -885,12 +933,11 @@ export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise
         bgColor,
       })
     } else {
-      drawCell(page, colX[4], y, cols[4], rowH, { bgColor })
+      drawCell(page, colX[4], y, cols[4], dynamicRowH, { bgColor })
     }
 
     // Col 5: Yang Dikerjakan
-    const taskDesc = day.splTitle || (ot > 0 ? 'Penugasan Lembur' : '')
-    drawCell(page, colX[5], y, cols[5], rowH, {
+    drawCell(page, colX[5], y, cols[5], dynamicRowH, {
       text: taskDesc,
       font,
       fontSize: 6.5,
@@ -898,6 +945,12 @@ export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise
       wrap: true,
       bgColor,
     })
+  }
+
+  // Jika baris total & tanda tangan tidak cukup di halaman terakhir, pindahkan tanda tangan ke halaman baru
+  if (y - 90 < 50) {
+    page = doc.addPage([595, 842])
+    y = 790
   }
 
   // Total Row
@@ -943,7 +996,7 @@ async function drawSummarySplSignatures(
   const names = input.signatures
 
   const labels: [string, string][] = [
-    ['Dibuat oleh :', names.preparedBy?.trim() || input.employeeName || 'Karyawan'],
+    ['Dibuat oleh :', names.preparedBy?.trim() || input.employeeName || 'Pemohon'],
     ['Approved by:', names.pjoLeader?.trim() || 'Supervisor'],
     ['Diketahui oleh:', names.approvedBy?.trim() || names.hrName?.trim() || 'Branch Manager / Factory Manager'],
   ]
