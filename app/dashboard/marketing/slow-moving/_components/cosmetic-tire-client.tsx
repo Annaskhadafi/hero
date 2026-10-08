@@ -10,7 +10,6 @@ import {
 } from "@/app/actions/cosmetic-tires"
 import type { getProducts } from "@/app/actions/product"
 import { Check, ChevronsUpDown, Edit2, FileUp, Loader2, Plus, Search, Trash2, Upload } from "lucide-react"
-import * as XLSX from "xlsx"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -338,6 +337,7 @@ function CosmeticTireImportDialog({
         setLoading(true)
         try {
             const buffer = await file.arrayBuffer()
+            const XLSX = await import("xlsx")
             const workbook = XLSX.read(buffer, { type: "array" })
             const sheet = workbook.Sheets[workbook.SheetNames[0]]
             const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {

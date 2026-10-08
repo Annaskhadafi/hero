@@ -40,7 +40,6 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react'
-import * as XLSX from 'xlsx'
 import { toast } from 'sonner'
 import { downloadElementAsPdf, downloadHtmlAsPdf, generateElementAsPdfBlob, generateHtmlAsPdfBlob, downloadFilesAsZip } from '@/lib/pdf-download'
 import { uploadFile } from '@/app/actions/upload'
@@ -1801,7 +1800,7 @@ export function OvertimeListingClient({
     }
   }
 
-  const handleExportSummaryExcel = () => {
+  const handleExportSummaryExcel = async () => {
     if (summaryFilteredRows.length === 0) {
       toast.error('Tidak ada data summary SPL untuk diekspor ke Excel.')
       return
@@ -1821,6 +1820,7 @@ export function OvertimeListingClient({
       Catatan: row.requestNotes || '—',
     }))
 
+    const XLSX = await import('xlsx')
     const ws = XLSX.utils.json_to_sheet(data)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Summary SPL')
@@ -2333,7 +2333,7 @@ export function OvertimeListingClient({
     }
   }
 
-  const handleDownloadSelectedExcel = () => {
+  const handleDownloadSelectedExcel = async () => {
     if (selectedIds.length === 0) return
     const selectedRows = filteredRows.filter((r) => selectedIds.includes(r.id))
     if (selectedRows.length === 0) return
@@ -2353,6 +2353,7 @@ export function OvertimeListingClient({
       'Tanggal Dibuat': (row as any).createdAt ? formatTimestamp((row as any).createdAt) : '—',
     }))
 
+    const XLSX = await import('xlsx')
     const ws = XLSX.utils.json_to_sheet(data)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'SPL Terpilih')

@@ -4,7 +4,7 @@ import * as React from "react"
 import { useState, useTransition, useMemo, useRef } from "react"
 import Link from "next/link"
 import Image from "next/image"
-import * as XLSX from "xlsx"
+import dynamic from "next/dynamic"
 import {
   Search,
   Filter,
@@ -70,7 +70,10 @@ import {
   deleteTireRepairInspectionAction,
 } from "@/app/actions/tire-repair-actions"
 import { TireRepairSearchableSelect } from "@/components/mobile/tire-repair-searchable-select"
-import { TireInspectionImportDialog } from "./tire-inspection-import-dialog"
+const TireInspectionImportDialog = dynamic(
+  () => import("./tire-inspection-import-dialog").then((m) => m.TireInspectionImportDialog),
+  { ssr: false }
+)
 import {
   STANDARD_TIRE_SIZES,
   STANDARD_TIRE_BRANDS,
@@ -320,7 +323,7 @@ export function TireInspectionDesktopClient({
   }, [inspections])
 
   // Export Excel (KPC Format)
-  const handleExportExcel = (itemsOrEvent?: TireRepairInspectionRecord[] | React.MouseEvent) => {
+  const handleExportExcel = async (itemsOrEvent?: TireRepairInspectionRecord[] | React.MouseEvent) => {
     if (itemsOrEvent && 'preventDefault' in itemsOrEvent && typeof itemsOrEvent.preventDefault === 'function') {
       itemsOrEvent.preventDefault()
     }
@@ -439,6 +442,7 @@ export function TireInspectionDesktopClient({
         ])
       }
 
+      const XLSX = await import("xlsx")
       const worksheet = XLSX.utils.aoa_to_sheet(rows)
       const workbook = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(workbook, worksheet, "Oktober-2025")

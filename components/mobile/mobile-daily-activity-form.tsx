@@ -414,20 +414,20 @@ async function prepareEvidence(
   restored?: QueuedFilePayload | null,
   existingPreviewUrls?: string[]
 ) {
+  // If we already have valid uploaded preview URLs (from background upload), reuse them immediately
+  const validExistingUrls = (existingPreviewUrls || []).filter(
+    (url) => typeof url === 'string' && (url.startsWith('/api/') || url.startsWith('http')) && !url.startsWith('blob:')
+  )
+  if (validExistingUrls.length > 0) {
+    return { payloads: [], urls: validExistingUrls }
+  }
+
   const selectedFiles = files?.length ? files : fallbackFile ? [fallbackFile] : []
   if (selectedFiles.length > 0) {
     return { payloads: [], urls: await Promise.all(selectedFiles.map(uploadActivityPhoto)) }
   }
   if (restored) {
     return { payloads: [], urls: [await uploadActivityPhoto(queuedPhotoToFile(restored))] }
-  }
-  if (existingPreviewUrls && existingPreviewUrls.length > 0) {
-    const validExistingUrls = existingPreviewUrls.filter(
-      (url) => typeof url === 'string' && (url.startsWith('http') || url.startsWith('/'))
-    )
-    if (validExistingUrls.length > 0) {
-      return { payloads: [], urls: validExistingUrls }
-    }
   }
   return { payloads: restored ? [restored] : [], urls: [] }
 }
@@ -1049,6 +1049,7 @@ export function MobileDailyActivityForm({
   const siteHeadEmployeeId = site?.headEmployeeId || hierarchy?.superior?.id || null
 
   const [leaderEmployeeId, setLeaderEmployeeId] = useState<string>(() => {
+    if (initialDraft?.leaderEmployeeId) return String(initialDraft.leaderEmployeeId)
     if (existingLeaderApproval?.approverEmployeeId) return String(existingLeaderApproval.approverEmployeeId)
     // Sesuai Master Data Location: PJO Activities disesuaikan dengan Head Location di Master Data Location
     if (siteHeadEmployeeId && siteHeadEmployeeId !== employeeId) {
@@ -1057,6 +1058,7 @@ export function MobileDailyActivityForm({
     return hierarchy?.leader?.id ? String(hierarchy.leader.id) : ''
   })
   const [superiorEmployeeId, setSuperiorEmployeeId] = useState<string>(() => {
+    if (initialDraft?.superiorEmployeeId) return String(initialDraft.superiorEmployeeId)
     if (existingSuperiorApproval?.approverEmployeeId) return String(existingSuperiorApproval.approverEmployeeId)
     return hierarchy?.superior?.id ? String(hierarchy.superior.id) : ''
   })
@@ -1070,6 +1072,14 @@ export function MobileDailyActivityForm({
   }
 
   const [additionalApprovers, setAdditionalApprovers] = useState<AdditionalApproverItem[]>(() => {
+    if (initialDraft?.additionalApprovers && Array.isArray(initialDraft.additionalApprovers) && initialDraft.additionalApprovers.length > 0) {
+      return initialDraft.additionalApprovers.map((a, idx) => ({
+        id: a.id || `extra-${idx}`,
+        employeeId: a.employeeId ? String(a.employeeId) : '',
+        role: a.role || 'additional_approver',
+        stepLabel: a.stepLabel || `Approver Tambahan (Tahap ${idx + 3})`,
+      }))
+    }
     if (rawSession?.approvals && Array.isArray(rawSession.approvals)) {
       const extraSteps = rawSession.approvals
         .filter((a: any) => a.stepOrder > 2 && a.approverRole !== 'employee')
@@ -1164,13 +1174,13 @@ export function MobileDailyActivityForm({
     const leaderApp =
       rawSession.approvals?.find((a: any) => a.approverRole === 'leader' || a.stepOrder === 2) ||
       rawSession.approvals?.find((a: any) => a.stepOrder === 1)
-    if (leaderApp?.approverEmployeeId) {
+    if (leaderApp?.approverEmployeeId && !initialDraft?.leaderEmployeeId) {
       setLeaderEmployeeId(String(leaderApp.approverEmployeeId))
     }
     const superiorApp =
       rawSession.approvals?.find((a: any) => a.approverRole === 'section_head' || a.stepOrder === 3) ||
       rawSession.approvals?.find((a: any) => a.stepOrder === 2)
-    if (superiorApp?.approverEmployeeId) {
+    if (superiorApp?.approverEmployeeId && !initialDraft?.superiorEmployeeId) {
       setSuperiorEmployeeId(String(superiorApp.approverEmployeeId))
     }
 
@@ -2658,6 +2668,16 @@ export function MobileDailyActivityForm({
     photoUrls: photoPreviewUrls.filter((url) => typeof url === 'string' && (url.startsWith('http') || url.startsWith('/') || url.startsWith('data:'))),
     photoName,
     teamMemberEmployeeIds: selectedMemberIds,
+    leaderEmployeeId: leaderEmployeeId || undefined,
+    leaderName: leaderOptions.find((l) => l.value === leaderEmployeeId)?.label?.split('—')[0]?.trim() || undefined,
+    superiorEmployeeId: superiorEmployeeId || undefined,
+    superiorName: superiorOptions.find((s) => s.value === superiorEmployeeId)?.label?.split('—')[0]?.trim() || undefined,
+    additionalApprovers: additionalApprovers.map((a) => ({
+      id: a.id,
+      employeeId: a.employeeId,
+      role: a.role,
+      stepLabel: a.stepLabel,
+    })),
   }
 
   const isFirstMountRef = useRef(true)
@@ -3023,6 +3043,10 @@ export function MobileDailyActivityForm({
     }
 
     setIsSubmitting(true)
+    if (serverAutosaveTimerRef.current) {
+      clearTimeout(serverAutosaveTimerRef.current)
+      serverAutosaveTimerRef.current = null
+    }
     try {
       let itemsToSubmit: any[] = []
 
@@ -3159,6 +3183,18 @@ export function MobileDailyActivityForm({
 
       const selectedLeader = leaderOptions.find((l) => l.value === leaderEmployeeId)
       const selectedSuperior = superiorOptions.find((s) => s.value === superiorEmployeeId)
+      const resolvedLeaderName =
+        selectedLeader?.label?.split('—')[0]?.trim() ||
+        (candidateEmployees.find((c) => String(c.id) === String(leaderEmployeeId))?.name) ||
+        (teamMembers?.find((m) => String(m.id) === String(leaderEmployeeId))?.name) ||
+        existingLeaderApproval?.approverName ||
+        undefined
+
+      const resolvedSuperiorName =
+        selectedSuperior?.label?.split('—')[0]?.trim() ||
+        (candidateEmployees.find((c) => String(c.id) === String(superiorEmployeeId))?.name) ||
+        existingSuperiorApproval?.approverName ||
+        undefined
 
       const formattedAdditionalApprovers = additionalApprovers
         .filter((a) => a.employeeId && a.employeeId.trim())
@@ -3184,9 +3220,9 @@ export function MobileDailyActivityForm({
           teamMemberEmployeeIds: isTeamLog ? selectedMemberIds : [],
           items: itemsToSubmit,
           leaderEmployeeId: leaderEmployeeId ? Number(leaderEmployeeId) : undefined,
-          leaderName: selectedLeader?.label?.split('—')[0]?.trim() || undefined,
+          leaderName: resolvedLeaderName,
           superiorEmployeeId: superiorEmployeeId ? Number(superiorEmployeeId) : undefined,
-          superiorName: selectedSuperior?.label?.split('—')[0]?.trim() || undefined,
+          superiorName: resolvedSuperiorName,
           additionalApprovers: formattedAdditionalApprovers,
         })
 
@@ -3208,9 +3244,9 @@ export function MobileDailyActivityForm({
           notes: notes.trim(),
           summaryRemark: notes.trim(),
           leaderEmployeeId: leaderEmployeeId ? Number(leaderEmployeeId) : undefined,
-          leaderName: selectedLeader?.label?.split('—')[0]?.trim() || undefined,
+          leaderName: resolvedLeaderName,
           superiorEmployeeId: superiorEmployeeId ? Number(superiorEmployeeId) : undefined,
-          superiorName: selectedSuperior?.label?.split('—')[0]?.trim() || undefined,
+          superiorName: resolvedSuperiorName,
           additionalApprovers: formattedAdditionalApprovers,
           teamMemberEmployeeIds: isTeamLog ? selectedMemberIds : [],
           items: itemsToSubmit,
@@ -3235,9 +3271,11 @@ export function MobileDailyActivityForm({
           : null)
 
       if (draftSessionIdToDelete) {
-        deleteServerActivityDraftAction(draftSessionIdToDelete).catch((err) =>
+        try {
+          await deleteServerActivityDraftAction(draftSessionIdToDelete)
+        } catch (err) {
           console.warn('[handleSubmit] deleteServerActivityDraftAction error:', err)
-        )
+        }
       }
 
       removeActivityDraft(activeDraftKey)
@@ -3255,10 +3293,8 @@ export function MobileDailyActivityForm({
       } catch {}
       window.dispatchEvent(new CustomEvent(ACTIVITY_DRAFTS_CHANGED_EVENT))
 
-      window.setTimeout(() => {
-        const targetUrl = `/mobile/activity?tab=approval&submitted=1${checklistContext?.overtimeCommandLetterId ? '&spl=1' : ''}`
-        window.location.href = targetUrl
-      }, 1000)
+      const targetUrl = `/mobile/activity?tab=approval&submitted=1${checklistContext?.overtimeCommandLetterId ? '&spl=1' : ''}`
+      window.location.replace(targetUrl)
     } catch (error) {
       let message = error instanceof Error ? error.message : 'Submit activity gagal.'
       if (
@@ -4883,10 +4919,13 @@ export function MobileDailyActivityForm({
 
                 const leaderName =
                   leaderOptions.find((l) => l.value === leaderEmployeeId)?.label?.split('—')[0]?.trim() ||
+                  (candidateEmployees.find((c) => String(c.id) === String(leaderEmployeeId))?.name) ||
+                  (teamMembers?.find((m) => String(m.id) === String(leaderEmployeeId))?.name) ||
                   existingLeaderApproval?.approverName ||
                   'Leader Lapangan'
                 const superiorName =
                   superiorOptions.find((s) => s.value === superiorEmployeeId)?.label?.split('—')[0]?.trim() ||
+                  (candidateEmployees.find((c) => String(c.id) === String(superiorEmployeeId))?.name) ||
                   existingSuperiorApproval?.approverName ||
                   'Section Head'
 

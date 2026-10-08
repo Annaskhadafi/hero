@@ -40,7 +40,6 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react'
-import * as XLSX from 'xlsx'
 import QRCode from 'qrcode'
 import { toast } from 'sonner'
 import { downloadElementAsPdf, downloadHtmlAsPdf, generateElementAsPdfBlob, generateHtmlAsPdfBlob, downloadFilesAsZip } from '@/lib/pdf-download'
@@ -1779,11 +1778,12 @@ async function uploadActivityPhoto(file: File): Promise<string> {
     }
   }
 
-  const handleDownloadSelectedExcel = () => {
+  const handleDownloadSelectedExcel = async () => {
     if (selectedIds.length === 0) return
     const selectedRows = filteredRows.filter((r) => selectedIds.includes(r.sessionId))
     if (selectedRows.length === 0) return
 
+    const XLSX = await import('xlsx')
     const data = selectedRows.map((row, idx) => ({
       'No': idx + 1,
       'Kode Sesi': row.sessionCode,

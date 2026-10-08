@@ -49,6 +49,12 @@ const nextConfig: NextConfig = {
   typescript: { ignoreBuildErrors: true },
   serverExternalPackages: ['face-api.js', 'pptxgenjs'],
   experimental: {
+    optimizePackageImports: [
+      'lucide-react',
+      '@tabler/icons-react',
+      'date-fns',
+      'recharts',
+    ],
     serverActions: {
       bodySizeLimit: '25mb',
       // Increase timeout: DAR submit involves photo uploads + DB writes + email — default 5s is too short on mobile

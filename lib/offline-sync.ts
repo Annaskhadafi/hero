@@ -112,6 +112,16 @@ export type ActivitySyncPayload = {
   photoName?: string
   teamMemberEmployeeIds?: number[]
   serverDraftSessionId?: number
+  leaderEmployeeId?: string | number
+  leaderName?: string
+  superiorEmployeeId?: string | number
+  superiorName?: string
+  additionalApprovers?: Array<{
+    id: string
+    employeeId: string
+    role?: string
+    stepLabel?: string
+  }>
 }
 
 export type ActivityDraftIndexEntry = {

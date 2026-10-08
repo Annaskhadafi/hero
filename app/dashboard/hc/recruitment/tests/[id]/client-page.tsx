@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import * as XLSX from "xlsx";
 import Link from "next/link";
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { Button } from "@/components/ui/button";
@@ -345,7 +344,8 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
     return answerText;
   };
 
-  const exportEntries = (targetEntries: any[], fileName: string) => {
+  const exportEntries = async (targetEntries: any[], fileName: string) => {
+    const XLSX = await import("xlsx");
     const rows = targetEntries.flatMap((entry) => (entry.answers?.length ? entry.answers : [{ questionText: "Belum ada jawaban" }]).map((answer: any, index: number) => ({
       "Candidate Name": entry.candidate?.fullName || "N/A",
       Email: entry.candidate?.email || "N/A",

@@ -99,7 +99,8 @@ export function MobileDashboardServices({
       if (permissions[service.resource] !== undefined) {
         return Boolean(permissions[service.resource]?.canView)
       }
-      return false
+      // Resource not in RBAC permissions map → fall through to allowedResources/href check
+      // (prevents SSR/client mismatch when layout and page fetch permissions independently)
     }
     if (service.resource) {
       return allowedResources.has(service.resource)

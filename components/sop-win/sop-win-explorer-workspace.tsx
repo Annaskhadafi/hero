@@ -32,6 +32,7 @@ import {
   FileCheck,
   Filter,
   Play,
+  ExternalLink,
 } from "lucide-react";
 import {
   Dialog,
@@ -1106,6 +1107,22 @@ export function SopWinExplorerWorkspace({
                 type="button"
                 variant="ghost"
                 size="sm"
+                onClick={() => {
+                  const targetStream = `/api/hero-genius/document-stream?url=${encodeURIComponent(
+                    activeDoc.pdfFileUrl
+                  )}&filename=${encodeURIComponent(activeDoc.documentNumber || activeDoc.title)}#toolbar=0&navpanes=0&scrollbar=1`;
+                  window.open(targetStream, "_blank");
+                }}
+                className="size-7 p-0 text-white/80 hover:bg-white/15 hover:text-white rounded-lg"
+                title="Buka Dokumen di Tab Baru"
+              >
+                <ExternalLink className="size-3.5" />
+              </Button>
+
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() =>
                   setFullscreenPreviewDoc({
                     filename: activeDoc.title,
@@ -1154,6 +1171,9 @@ export function SopWinExplorerWorkspace({
                   )}&filename=${encodeURIComponent(activeDoc.documentNumber)}`}
                   filename={activeDoc.documentNumber || activeDoc.title}
                   defaultViewMode="single"
+                  preferNativeViewer={true}
+                  hideToolbar={true}
+                  hideDownload={true}
                   className="h-full w-full"
                 />
               )

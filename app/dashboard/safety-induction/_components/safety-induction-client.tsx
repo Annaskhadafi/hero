@@ -2,7 +2,6 @@
 
 import React, { useState, useMemo, useTransition } from 'react'
 import Image from 'next/image'
-import * as XLSX from 'xlsx'
 import { toast } from 'sonner'
 import {
   FileSpreadsheet,
@@ -234,7 +233,7 @@ export function SafetyInductionClient({ initialData }: SafetyInductionClientProp
     Boolean(endDate)
 
   // Export to Excel
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     try {
       setIsExporting(true)
       if (sortedData.length === 0) {
@@ -260,6 +259,7 @@ export function SafetyInductionClient({ initialData }: SafetyInductionClientProp
         'Waktu Disetujui': new Date(item.agreedAt).toLocaleString('id-ID'),
       }))
 
+      const XLSX = await import('xlsx')
       const worksheet = XLSX.utils.json_to_sheet(rows)
 
       // Set column widths

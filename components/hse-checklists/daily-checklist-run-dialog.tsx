@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import type { ChecklistInputType } from '@/app/actions/hse-checklists'
 import { saveDailyChecklistAnswers } from '@/app/actions/hse-checklists'
 import { uploadFile } from '@/app/actions/upload'
+import { compressImageFile } from '@/lib/client-image-compression'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -373,8 +374,9 @@ export function DailyChecklistRunDialog({
                               try {
                                 const uploadedUrls: string[] = []
                                 for (const file of files) {
+                                  const fileToUpload = await compressImageFile(file, { maxDimension: 1200, quality: 0.75 })
                                   const fd = new FormData()
-                                  fd.append('file', file)
+                                  fd.append('file', fileToUpload)
                                   const result = await uploadFile(fd)
                                   if (result.success && result.url) {
                                     uploadedUrls.push(result.readableUrl || result.url)

@@ -123,3 +123,5 @@ scripts/safe-v2-migration.ts
 scripts/create-maestro-customer-user.ts
 scripts/grant-more-sites.ts
 scripts/sync-customers-*
+# CocoIndex Code (ccc)
+/.cocoindex_code/

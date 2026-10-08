@@ -160,6 +160,16 @@ disimpan pada URL atau nama file.
 * Selalu minta konfirmasi sebelum setiap `git commit` atau `git push`, meskipun user pernah menyetujui di sesi/percakapan sebelumnya.
 * Operasi git read-only seperti `git status`, `git diff`, `git log`, `git branch` boleh dilakukan tanpa konfirmasi.
 
+## cocoindex-code (`ccc`) — Default Semantic Code Search
+
+This project uses `cocoindex-code` (`ccc`) as the primary AST-based semantic code search engine.
+
+Rules:
+* **Default Search First**: Before reading raw files or running broad `grep` across the codebase, ALWAYS prioritize `ccc search "<query>"` (via the `ccc` skill or CLI) to find relevant files, functions, classes, and logic snippets.
+* **Semantic over Literal**: Use descriptive conceptual terms for queries (e.g. `ccc search "SOP approval matrix workflow"`, `ccc search "timesheet calculation engine"`, `ccc search "dynamic upload proxy url"`).
+* **Incremental Maintenance**: Run `ccc index` (or `ccc search --refresh <query>`) after adding new modules, schemas, or large refactors so the local index remains fresh.
+* **Fallback**: Use `git grep` only for targeted literal string replacement, exact imports, or CSS token checks.
+
 ## graphify
 
 This project has a graphify knowledge graph at graphify-out/.

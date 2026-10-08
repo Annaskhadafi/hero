@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Inter, Manrope } from "next/font/google";
 import { PwaRegistration } from "@/components/pwa-registration";
 import { HeroInstallPrompt } from "@/components/hero-install-prompt";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -8,6 +9,18 @@ import { GlobalInputAutoSelect } from "@/components/global-input-auto-select";
 import { DomCleanupPatch } from "@/components/dom-cleanup-patch";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
+const manrope = Manrope({
+  subsets: ["latin"],
+  variable: "--font-manrope",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "HERO",
@@ -41,12 +54,14 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="id" className="notranslate" translate="no" suppressHydrationWarning>
+    <html
+      lang="id"
+      className={`notranslate ${inter.variable} ${manrope.variable}`}
+      translate="no"
+      suppressHydrationWarning
+    >
       <head>
         <meta name="google" content="notranslate" />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Manrope:wght@500;600;700&display=swap" rel="stylesheet" />
       </head>
       <body className="font-sans antialiased" suppressHydrationWarning>
         <ThemeProvider

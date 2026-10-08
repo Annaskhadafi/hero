@@ -1,6 +1,7 @@
 "use server"
 
 import { getS3ObjectReadUrl, isS3UploadConfigured, uploadAnyFileToS3, uploadAttendancePhotoToS3 } from "@/lib/s3-storage";
+import { optimizeUploadFile } from "@/lib/server-image-optimization";
 import { getServerSession } from "@/lib/auth-session";
 import { getMaestroServerSession } from "@/lib/maestro-session";
 import { db } from "@/db";
@@ -115,12 +116,17 @@ export async function uploadFile(formData: FormData) {
     if (isOffice && file.size > MAX_DOC_FILE_SIZE) {
       return { success: false, error: "Document size max 10MB." };
     }
+
+    // Automatically optimize raster images to WebP
+    const fileToUpload = isImage ? await optimizeUploadFile(file) : file;
+    const finalFileExt = getCurhatFileExtension(fileToUpload.name, fileToUpload.type);
+
     if (isS3UploadConfigured()) {
       try {
         const result =
           uploadTarget === "attendance"
-            ? await uploadAttendancePhotoToS3(file)
-            : await uploadAnyFileToS3(file);
+            ? await uploadAttendancePhotoToS3(fileToUpload)
+            : await uploadAnyFileToS3(fileToUpload);
         const proxyUrl = `/api/uploads/${result.key}`;
         return { success: true, url: proxyUrl, readableUrl: proxyUrl };
       } catch (s3Error) {
@@ -132,11 +138,11 @@ export async function uploadFile(formData: FormData) {
     const uploadDir = join(process.cwd(), "public", "uploads");
     await mkdir(uploadDir, { recursive: true });
 
-    const ext = fileExt;
-    const safeName = sanitizeFileName(file.name.replace(/\.[^/.]+$/, "")) || "file";
+    const ext = finalFileExt;
+    const safeName = sanitizeFileName(fileToUpload.name.replace(/\.[^/.]+$/, "")) || "file";
     const uniqueName = `${safeName}-${randomUUID().slice(0, 8)}.${ext}`;
     const filePath = join(uploadDir, uniqueName);
-    const buffer = Buffer.from(await file.arrayBuffer());
+    const buffer = Buffer.from(await fileToUpload.arrayBuffer());
 
     await writeFile(filePath, buffer);
 
@@ -180,8 +186,9 @@ export async function uploadImageFromUrl(imageUrl: string) {
     if (!fileName.includes('.')) fileName += ".jpg";
     
     const file = new File([blob], fileName, { type: blob.type });
+    const fileToUpload = await optimizeUploadFile(file);
 
-    const result = await uploadAnyFileToS3(file);
+    const result = await uploadAnyFileToS3(fileToUpload);
     const proxyUrl = `/api/uploads/${result.key}`;
     
     return { success: true, url: proxyUrl, readableUrl: proxyUrl };
@@ -246,25 +253,28 @@ export async function uploadCurhatAttachment(formData: FormData) {
       return { success: false, error: "Document size max 10MB." };
     }
 
+    const fileToUpload = isImage ? await optimizeUploadFile(file) : file;
+    const finalExt = getCurhatFileExtension(fileToUpload.name, fileToUpload.type);
+
     if (isS3UploadConfigured()) {
-      const result = await uploadAnyFileToS3(file, "curhat-attachments");
+      const result = await uploadAnyFileToS3(fileToUpload, "curhat-attachments");
       const proxyUrl = `/api/uploads/${result.key}`;
-      return { success: true, url: proxyUrl, readableUrl: proxyUrl, fileName: file.name };
+      return { success: true, url: proxyUrl, readableUrl: proxyUrl, fileName: fileToUpload.name };
     }
 
     // Local fallback storage when S3 is not configured
     const uploadDir = join(process.cwd(), "public", "uploads", "curhat");
     await mkdir(uploadDir, { recursive: true });
 
-    const safeName = sanitizeFileName(file.name.replace(/\.[^/.]+$/, "")) || "attachment";
-    const uniqueName = `${safeName}-${randomUUID().slice(0, 8)}.${fileExt}`;
+    const safeName = sanitizeFileName(fileToUpload.name.replace(/\.[^/.]+$/, "")) || "attachment";
+    const uniqueName = `${safeName}-${randomUUID().slice(0, 8)}.${finalExt}`;
     const filePath = join(uploadDir, uniqueName);
-    const buffer = Buffer.from(await file.arrayBuffer());
+    const buffer = Buffer.from(await fileToUpload.arrayBuffer());
 
     await writeFile(filePath, buffer);
 
     const publicUrl = `/api/uploads/curhat/${uniqueName}`;
-    return { success: true, url: publicUrl, readableUrl: publicUrl, fileName: file.name };
+    return { success: true, url: publicUrl, readableUrl: publicUrl, fileName: fileToUpload.name };
   } catch (error) {
     console.error("Curhat upload error:", error);
     return { success: false, error: "Failed to upload attachment." };

@@ -130,6 +130,55 @@ async function prepareResponseBuffer(
   return { data: buffer, contentType: getContentType(fileName) }
 }
 
+function createStreamingResponse(
+  fileBuffer: Buffer,
+  contentType: string,
+  fileName: string,
+  isThumbnail: boolean | undefined,
+  request: Request
+): NextResponse {
+  const isSafeInline = contentType.startsWith("image/") || contentType === "application/pdf";
+  const rangeHeader = request.headers.get("range");
+
+  if (rangeHeader && rangeHeader.startsWith("bytes=")) {
+    const parts = rangeHeader.replace(/bytes=/, "").split("-");
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : fileBuffer.length - 1;
+
+    if (!isNaN(start) && start < fileBuffer.length) {
+      const safeEnd = Math.min(isNaN(end) ? fileBuffer.length - 1 : end, fileBuffer.length - 1);
+      const chunk = fileBuffer.subarray(start, safeEnd + 1);
+
+      const headers = new Headers();
+      headers.set("Content-Type", contentType);
+      headers.set("Accept-Ranges", "bytes");
+      headers.set("Content-Range", `bytes ${start}-${safeEnd}/${fileBuffer.length}`);
+      headers.set("Content-Length", chunk.length.toString());
+      headers.set("Cache-Control", isThumbnail ? "public, max-age=31536000, immutable" : "public, max-age=86400, stale-while-revalidate=604800");
+      headers.set("X-Content-Type-Options", "nosniff");
+      headers.set("Content-Disposition", `${isSafeInline ? "inline" : "attachment"}; filename="${encodeURIComponent(fileName)}"`);
+
+      return new NextResponse(new Uint8Array(chunk), {
+        status: 206,
+        headers,
+      });
+    }
+  }
+
+  const headers = new Headers();
+  headers.set("Content-Type", contentType);
+  headers.set("Accept-Ranges", "bytes");
+  headers.set("Content-Length", fileBuffer.length.toString());
+  headers.set("Cache-Control", isThumbnail ? "public, max-age=31536000, immutable" : "public, max-age=86400, stale-while-revalidate=604800");
+  headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("Content-Disposition", `${isSafeInline ? "inline" : "attachment"}; filename="${encodeURIComponent(fileName)}"`);
+
+  return new NextResponse(new Uint8Array(fileBuffer), {
+    status: 200,
+    headers,
+  });
+}
+
 export async function GET(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params
 
@@ -211,15 +260,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
       try {
         const rawBuffer = readFileSync(localPath)
         const { data: fileBuffer, contentType, isThumbnail } = await prepareResponseBuffer(rawBuffer, fileName, targetWidth, cachedThumbPath, thumbCacheDir)
-        const isSafeInline = contentType.startsWith("image/") || contentType === "application/pdf"
-        return new NextResponse(new Uint8Array(fileBuffer), {
-          headers: {
-            "Content-Type": contentType,
-            "Cache-Control": isThumbnail ? "public, max-age=31536000, immutable" : "private, max-age=300",
-            "X-Content-Type-Options": "nosniff",
-            "Content-Disposition": `${isSafeInline ? "inline" : "attachment"}; filename="${encodeURIComponent(fileName)}"`,
-          },
-        })
+        return createStreamingResponse(fileBuffer, contentType, fileName, isThumbnail, request)
       } catch (e) {
         console.error("Local file read error:", e)
       }
@@ -254,16 +295,19 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
         const object = await getS3ObjectForProxy(key)
         if (object && object.body) {
           const rawBuffer = Buffer.from(object.body)
+
+          // Persist S3 download to local public/uploads disk cache so future requests are instantaneous
+          try {
+            const localCachePath = join(publicDir, "uploads", relativePath)
+            const localCacheDir = join(publicDir, "uploads", ...path.slice(0, -1))
+            if (!existsSync(localCacheDir)) mkdirSync(localCacheDir, { recursive: true })
+            writeFileSync(localCachePath, rawBuffer)
+          } catch (writeErr) {
+            console.warn("Failed caching S3 file to local disk:", writeErr)
+          }
+
           const { data: fileBuffer, contentType, isThumbnail } = await prepareResponseBuffer(rawBuffer, fileName, targetWidth, cachedThumbPath, thumbCacheDir)
-          const isSafeInline = contentType.startsWith("image/") || contentType === "application/pdf"
-          return new NextResponse(new Uint8Array(fileBuffer), {
-            headers: {
-              "Content-Type": contentType,
-              "Cache-Control": isThumbnail ? "public, max-age=31536000, immutable" : "private, max-age=300",
-              "X-Content-Type-Options": "nosniff",
-              "Content-Disposition": `${isSafeInline ? "inline" : "attachment"}; filename="${encodeURIComponent(fileName)}"`,
-            },
-          })
+          return createStreamingResponse(fileBuffer, contentType, fileName, isThumbnail, request)
         }
       } catch (error) {
         console.warn("Failed to proxy S3 upload key:", key, error)
@@ -271,11 +315,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
     }
   }
 
-
-
-  // 3. For missing image files, return clean 404 so <img> tags trigger proper error handling instead of receiving HTML
-  const isImageFile = /\.(jpe?g|png|webp|gif|heic|heif|svg|bmp|ico)$/i.test(fileName)
-  if (isImageFile) {
+  // 3. For missing image/document/PDF files, return clean 404 instead of receiving HTML
+  const isBinaryOrDocFile = /\.(jpe?g|png|webp|gif|heic|heif|svg|bmp|ico|pdf|docx?|xlsx?|pptx?|zip)$/i.test(fileName)
+  if (isBinaryOrDocFile) {
     return new NextResponse(null, { status: 404 })
   }
 

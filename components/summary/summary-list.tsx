@@ -19,7 +19,6 @@ import {
   Sparkles,
   Trash2,
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -173,7 +172,7 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
   const pendingCount = sections.filter((s) => s.summaryStatus === 'pending' || s.summaryStatus === 'draft').length;
   const approvedCount = sections.filter((s) => s.summaryStatus === 'approved').length;
 
-  function exportToExcel() {
+  async function exportToExcel() {
     const exportData = filtered.map((s, idx) => ({
       No: idx + 1,
       'No. Dokumen': s.summaryNumber || '(Belum Dibuat)',
@@ -185,6 +184,7 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
       'Summary ID': s.summaryId ?? '-',
     }));
 
+    const XLSX = await import('xlsx');
     const worksheet = XLSX.utils.json_to_sheet(exportData);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Summary APD');

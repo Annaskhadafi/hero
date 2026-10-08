@@ -30,7 +30,6 @@ import {
   XCircle,
   Building2,
 } from 'lucide-react'
-import * as XLSX from 'xlsx'
 import { toast } from 'sonner'
 import { downloadElementAsPdf, downloadHtmlAsPdf, generateElementAsPdfBlob, generateHtmlAsPdfBlob, downloadFilesAsZip } from '@/lib/pdf-download'
 import { PtwDocumentModal } from '@/components/ptw-document-modal'
@@ -1278,11 +1277,12 @@ export function PtwListingClient({
     }
   }
 
-  const handleDownloadSelectedExcel = () => {
+  const handleDownloadSelectedExcel = async () => {
     if (selectedIds.length === 0) return
     const selectedRows = filteredRows.filter((r) => selectedIds.includes(r.id))
     if (selectedRows.length === 0) return
 
+    const XLSX = await import('xlsx')
     const data = selectedRows.map((row, idx) => ({
       'No': idx + 1,
       'No. Dokumen PTW': row.permitNumber,

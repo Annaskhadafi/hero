@@ -21,7 +21,6 @@ import {
   TrendingDown,
   TrendingUp,
 } from 'lucide-react'
-import * as XLSX from 'xlsx'
 import { toast } from 'sonner'
 import {
   Cell,
@@ -194,12 +193,13 @@ export function FiveRAnalyticsDashboard() {
     })
   }, [data?.areaMatrix, scaleFilter, searchArea])
 
-  const exportExcelMatrix = () => {
+  const exportExcelMatrix = async () => {
     if (!data || !data.areaMatrix) {
       toast.error('Tidak ada data analitik untuk diekspor.')
       return
     }
 
+    const XLSX = await import('xlsx')
     const rows = filteredMatrix.map((item: any, idx: number) => {
       const rowObj: Record<string, any> = {
         No: idx + 1,

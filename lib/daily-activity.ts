@@ -1694,110 +1694,68 @@ async function ensureDailyActivityTables() {
 
   await db.execute(sql`
     alter table hero_activities add column if not exists library_activity_id integer;
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists assignment_id integer;
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists source_mode text not null default 'self_input';
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists custom_activity_name text not null default '';
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists custom_activity_description text not null default '';
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists submission_time timestamp;
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists submission_category text not null default 'on_time';
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists equipment_no text not null default '';
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists material_used text not null default '';
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists gps_lat text not null default '';
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists gps_lng text not null default '';
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists gps_valid boolean not null default false;
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists photo_count integer not null default 0;
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists penalty_deducted integer not null default 0;
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists deleted_at timestamp;
-  `)
-  await db.execute(sql`
-    alter table hero_activities
-    add column if not exists deleted_by_employee_id integer references hero_employees(id) on delete set null;
-  `)
-
-  await db.execute(sql`
+    alter table hero_activities add column if not exists deleted_by_employee_id integer references hero_employees(id) on delete set null;
     alter table hero_approvals add column if not exists points_override integer;
-  `)
-  await db.execute(sql`
     alter table hero_approvals add column if not exists rejection_reason text not null default '';
-  `)
-  await db.execute(sql`
     alter table hero_approvals add column if not exists points_override_reason text not null default '';
-  `)
-  await db.execute(sql`
     alter table hero_approvals add column if not exists created_at timestamp not null default now();
-  `)
-
-  await db.execute(sql`
     alter table hero_point_events add column if not exists transaction_type text not null default 'reward';
-  `)
-  await db.execute(sql`
     alter table hero_point_events add column if not exists source_type text not null default 'activity';
-  `)
-  await db.execute(sql`
     alter table hero_point_events add column if not exists source_id integer;
-  `)
-  await db.execute(sql`
     alter table hero_point_events add column if not exists balance_after integer;
-  `)
-  await db.execute(sql`
     alter table hero_point_events add column if not exists metadata text not null default '';
-  `)
-  await db.execute(sql`
     alter table hero_daily_activity_session_items add column if not exists tire_count integer not null default 0;
   `)
 }
 
 async function seedDailyActivityReferenceData() {
+  const countsResult = await db.execute(sql`
+    SELECT
+      (SELECT count(*)::int FROM hero_daily_activity_configs) as config_count,
+      (SELECT count(*)::int FROM hero_activity_libraries) as library_count,
+      (SELECT count(*)::int FROM hero_streak_records) as streak_count,
+      (SELECT count(*)::int FROM hero_activity_modifiers) as modifier_count,
+      (SELECT count(*)::int FROM hero_activity_route_templates) as route_count
+  `)
+
+  const countsRow = ((countsResult as any)?.rows?.[0] ?? (countsResult as any)?.[0] ?? {}) as Record<string, number>
+  const configCount = Number(countsRow.config_count ?? 0)
+  const libraryCount = Number(countsRow.library_count ?? 0)
+  const streakCount = Number(countsRow.streak_count ?? 0)
+  const modifierCount = Number(countsRow.modifier_count ?? 0)
+  const routeTemplateCount = Number(countsRow.route_count ?? 0)
+
+  // Fast path: if all core reference tables are already seeded, skip heavy employee & master data loading entirely!
+  if (configCount > 0 && libraryCount > 0 && streakCount > 0 && modifierCount > 0 && routeTemplateCount > 0) {
+    return
+  }
+
   const [
     employeeRows,
     departmentRows,
     sectionRows,
     positionRows,
     siteRows,
-    libraryCount,
-    routeTemplateCount,
-    configCount,
-    streakCount,
-    modifierCount,
   ] = await Promise.all([
     db.select().from(employees).where(eq(employees.isActive, true)).orderBy(asc(employees.id)),
     db.select().from(masterDepartments).orderBy(asc(masterDepartments.id)),
     db.select().from(masterSections).orderBy(asc(masterSections.id)),
     db.select().from(masterPositions).orderBy(asc(masterPositions.id)),
     db.select().from(sites).where(eq(sites.isActive, true)).orderBy(asc(sites.id)),
-    db.select({ count: sql<number>`count(*)::int` }).from(activityLibraries),
-    db.select({ count: sql<number>`count(*)::int` }).from(activityRouteTemplates),
-    db.select({ count: sql<number>`count(*)::int` }).from(dailyActivityConfigs),
-    db.select({ count: sql<number>`count(*)::int` }).from(streakRecords),
-    db.select({ count: sql<number>`count(*)::int` }).from(activityModifiers),
   ])
 
   const creatorEmployee =
@@ -1820,7 +1778,7 @@ async function seedDailyActivityReferenceData() {
     positionRows[0] ??
     null
 
-  if ((libraryCount[0]?.count ?? 0) === 0 && creatorEmployee) {
+  if (libraryCount === 0 && creatorEmployee) {
     await db.insert(activityLibraries).values(
       DEFAULT_LIBRARY_SEEDS.map((item) => ({
         activityCode: item.activityCode,
@@ -1853,7 +1811,7 @@ async function seedDailyActivityReferenceData() {
     )
   }
 
-  if ((configCount[0]?.count ?? 0) === 0) {
+  if (configCount === 0) {
     await db.insert(dailyActivityConfigs).values(
       DEFAULT_CONFIG_SEEDS.map((config) => ({
         siteId: defaultSite?.id ?? null,
@@ -1871,7 +1829,7 @@ async function seedDailyActivityReferenceData() {
     )
   }
 
-  if ((streakCount[0]?.count ?? 0) === 0 && employeeRows.length > 0) {
+  if (streakCount === 0 && employeeRows.length > 0) {
     await db.insert(streakRecords).values(
       employeeRows.slice(0, 8).map((employee, index) => ({
         employeeId: employee.id,
@@ -1885,7 +1843,7 @@ async function seedDailyActivityReferenceData() {
     )
   }
 
-  if ((modifierCount[0]?.count ?? 0) === 0 && creatorEmployee && defaultSite) {
+  if (modifierCount === 0 && creatorEmployee && defaultSite) {
     await db.insert(activityModifiers).values([
       {
         siteId: defaultSite.id,
@@ -1901,7 +1859,7 @@ async function seedDailyActivityReferenceData() {
     ])
   }
 
-  if ((routeTemplateCount[0]?.count ?? 0) === 0 && creatorEmployee) {
+  if (routeTemplateCount === 0 && creatorEmployee) {
     const [libraryRows] = await Promise.all([
       db
         .select({
@@ -2072,14 +2030,16 @@ export async function ensureDailyActivitySeedData() {
   }
 
   dailyActivitySeedPromise = (async () => {
-    await ensureHeroGovernanceSeedData()
-    await ensureDailyActivityTables()
-    await seedDailyActivityReferenceData()
-    globalDailyActivityState.__heroDailyActivitySeedReady = true
-  })().catch((error) => {
-    dailyActivitySeedPromise = null
-    throw error
-  })
+    try {
+      await ensureHeroGovernanceSeedData()
+      await ensureDailyActivityTables()
+      await seedDailyActivityReferenceData()
+      globalDailyActivityState.__heroDailyActivitySeedReady = true
+    } catch (error) {
+      dailyActivitySeedPromise = null
+      console.warn('[daily-activity] ensureDailyActivitySeedData warning:', (error as any)?.message || error)
+    }
+  })()
 
   return dailyActivitySeedPromise
 }

@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useMemo, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import * as XLSX from 'xlsx';
 import { toast } from 'sonner';
 import {
   ChevronLeft,

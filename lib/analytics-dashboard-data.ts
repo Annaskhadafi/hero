@@ -127,28 +127,103 @@ export async function getIndividualDashboardData(): Promise<IndividualDashboardD
   // 1. Fetch Logged-in Employee (STRICT SINGLE USER DATA)
   const currentEmp = await getCurrentEmployee().catch(() => null)
 
-  let avatarUrl: string | null = null
-  if (currentEmp?.authUserId) {
-    const userRows = await db
-      .select({ image: user.image })
-      .from(user)
-      .where(eq(user.id, currentEmp.authUserId))
-      .limit(1)
-      .catch(() => [])
-    if (userRows[0]?.image) {
-      avatarUrl = userRows[0].image
-    }
-  }
+  // Parallel execution of all independent sub-queries to eliminate waterfall latency
+  const [
+    userRows,
+    siteRows,
+    actRows,
+    userActivitiesThisMonth,
+    manualRecords,
+    lmsEnrollments,
+    tsQuery,
+    pendingApprovalsRes,
+  ] = await Promise.all([
+    currentEmp?.authUserId
+      ? db
+          .select({ image: user.image })
+          .from(user)
+          .where(eq(user.id, currentEmp.authUserId))
+          .limit(1)
+          .catch(() => [])
+      : Promise.resolve([]),
+    currentEmp?.siteId
+      ? db.select().from(sites).where(eq(sites.id, currentEmp.siteId)).limit(1).catch(() => [])
+      : db.select().from(sites).limit(1).catch(() => []),
+    currentEmp?.id
+      ? db
+          .select()
+          .from(activities)
+          .where(eq(activities.employeeId, currentEmp.id))
+          .orderBy(desc(activities.createdAt))
+          .limit(1)
+          .catch(() => [])
+      : Promise.resolve([]),
+    currentEmp?.id
+      ? db
+          .select({
+            tireCount: activities.tireCount,
+            pointsAwarded: activities.pointsAwarded,
+            submissionCategory: activities.submissionCategory,
+          })
+          .from(activities)
+          .where(and(eq(activities.employeeId, currentEmp.id), gte(activities.startTime, currentMonthStart)))
+          .catch(() => [])
+      : Promise.resolve([]),
+    currentEmp?.id
+      ? db
+          .select()
+          .from(trainingRecords)
+          .where(eq(trainingRecords.employeeId, currentEmp.id))
+          .orderBy(desc(trainingRecords.completedYear))
+          .catch(() => [])
+      : Promise.resolve([]),
+    currentEmp?.id
+      ? db
+          .select({
+            enrollmentId: chitraLearningEnrollments.id,
+            courseTitle: chitraLearningCourses.title,
+            category: chitraLearningCourses.category,
+            status: chitraLearningEnrollments.status,
+            isPassed: chitraLearningEnrollments.isPassed,
+            score: chitraLearningEnrollments.finalScore,
+            completedAt: chitraLearningEnrollments.completedAt,
+            createdAt: chitraLearningEnrollments.createdAt,
+          })
+          .from(chitraLearningEnrollments)
+          .leftJoin(chitraLearningCourses, eq(chitraLearningEnrollments.courseId, chitraLearningCourses.id))
+          .where(eq(chitraLearningEnrollments.employeeId, currentEmp.id))
+          .orderBy(desc(chitraLearningEnrollments.createdAt))
+          .catch(() => [])
+      : Promise.resolve([]),
+    currentEmp?.id
+      ? db
+          .select({
+            totalReg: sql<number>`coalesce(sum(${timesheetEntries.regularMinutes}), 0)::int`,
+            totalOt: sql<number>`coalesce(sum(${timesheetEntries.overtimeMinutes}), 0)::int`,
+          })
+          .from(timesheetEntries)
+          .where(eq(timesheetEntries.employeeId, currentEmp.id))
+          .catch(() => [{ totalReg: 0, totalOt: 0 }])
+      : Promise.resolve([{ totalReg: 0, totalOt: 0 }]),
+    currentEmp?.id
+      ? db
+          .select({
+            id: approvals.id,
+            status: approvals.status,
+            submittedAt: approvals.submittedAt,
+            approverName: approvals.approverName,
+            overtimeMinutes: approvals.overtimeMinutes,
+          })
+          .from(approvals)
+          .where(or(eq(approvals.approverEmployeeId, currentEmp.id)))
+          .orderBy(desc(approvals.submittedAt))
+          .limit(6)
+          .catch(() => [])
+      : Promise.resolve([]),
+  ])
 
-  // Site Info
-  let siteName = "Balikpapan Base"
-  if (currentEmp?.siteId) {
-    const siteRows = await db.select().from(sites).where(eq(sites.id, currentEmp.siteId)).limit(1).catch(() => [])
-    if (siteRows[0]?.name) siteName = siteRows[0].name
-  } else {
-    const defaultSite = await db.select().from(sites).limit(1).catch(() => [])
-    if (defaultSite[0]?.name) siteName = defaultSite[0].name
-  }
+  const avatarUrl: string | null = userRows[0]?.image || null
+  const siteName = siteRows[0]?.name || "Balikpapan Base"
 
   // Contract & Mine Permit Date calculations
   let daysUntilContractEnd: number | null = null
@@ -186,52 +261,30 @@ export async function getIndividualDashboardData(): Promise<IndividualDashboardD
     employmentStatus: currentEmp?.employmentStatus || (currentEmp?.isActive === false ? 'inactive' : 'active'),
   }
 
-  // 2. Fetch Last Daily Activity STRICTLY for this user
+  // 2. Process Last Daily Activity
   let lastActivityData: IndividualDashboardData["lastActivity"] = null
-  let userActivitiesThisMonth: Array<{ tireCount: number; pointsAwarded: number; submissionCategory: string }> = []
-
-  if (currentEmp?.id) {
-    const actRows = await db
-      .select()
-      .from(activities)
-      .where(eq(activities.employeeId, currentEmp.id))
-      .orderBy(desc(activities.createdAt))
-      .limit(1)
-      .catch(() => [])
-
-    if (actRows[0]) {
-      const act = actRows[0]
-      lastActivityData = {
-        id: act.id,
-        title: act.title || act.customActivityName || "Aktivitas Lapangan",
-        activityCode: act.activityCode,
-        activityType: act.activityType,
-        unitNumber: act.unitNumber || act.equipmentNo || "-",
-        tireCount: act.tireCount || 0,
-        pointsAwarded: act.pointsAwarded || 0,
-        submissionTimeFormatted: act.startTime
-          ? new Date(act.startTime).toLocaleDateString("id-ID", {
-              day: "numeric",
-              month: "short",
-              year: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            })
-          : "Hari ini",
-        status: act.status || "Approved",
-        remarks: act.remarks || act.customActivityDescription || "",
-      }
+  if (actRows[0]) {
+    const act = actRows[0]
+    lastActivityData = {
+      id: act.id,
+      title: act.title || act.customActivityName || "Aktivitas Lapangan",
+      activityCode: act.activityCode,
+      activityType: act.activityType,
+      unitNumber: act.unitNumber || act.equipmentNo || "-",
+      tireCount: act.tireCount || 0,
+      pointsAwarded: act.pointsAwarded || 0,
+      submissionTimeFormatted: act.startTime
+        ? new Date(act.startTime).toLocaleDateString("id-ID", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : "Hari ini",
+      status: act.status || "Approved",
+      remarks: act.remarks || act.customActivityDescription || "",
     }
-
-    userActivitiesThisMonth = await db
-      .select({
-        tireCount: activities.tireCount,
-        pointsAwarded: activities.pointsAwarded,
-        submissionCategory: activities.submissionCategory,
-      })
-      .from(activities)
-      .where(and(eq(activities.employeeId, currentEmp.id), gte(activities.startTime, currentMonthStart)))
-      .catch(() => [])
   }
 
   const tireCountThisMonth = userActivitiesThisMonth.reduce((acc, a) => acc + (a.tireCount || 0), 0)
@@ -254,55 +307,27 @@ export async function getIndividualDashboardData(): Promise<IndividualDashboardD
   const combinedTrainingList: IndividualDashboardData["trainingStats"]["trainingList"] = []
   let expiringList: IndividualDashboardData["trainingStats"]["expiringList"] = []
 
-  if (currentEmp?.id) {
-    // Query 1: Manual Training Records
-    const manualRecords = await db
-      .select()
-      .from(trainingRecords)
-      .where(eq(trainingRecords.employeeId, currentEmp.id))
-      .orderBy(desc(trainingRecords.completedYear))
-      .catch(() => [])
+  for (const t of manualRecords) {
+    combinedTrainingList.push({
+      id: `manual-${t.id}`,
+      trainingName: t.trainingName,
+      provider: t.provider || "Internal HERO Academy",
+      completedYear: t.completedYear,
+      expiresAtFormatted: t.expiresAt ? new Date(t.expiresAt).toLocaleDateString("id-ID", { month: "short", year: "numeric" }) : "Permanen",
+      status: t.status || "Lulus",
+    })
+  }
 
-    for (const t of manualRecords) {
+  for (const e of lmsEnrollments) {
+    if (e.courseTitle) {
       combinedTrainingList.push({
-        id: `manual-${t.id}`,
-        trainingName: t.trainingName,
-        provider: t.provider || "Internal HERO Academy",
-        completedYear: t.completedYear,
-        expiresAtFormatted: t.expiresAt ? new Date(t.expiresAt).toLocaleDateString("id-ID", { month: "short", year: "numeric" }) : "Permanen",
-        status: t.status || "Lulus",
+        id: `lms-${e.enrollmentId}`,
+        trainingName: e.courseTitle,
+        provider: `Chitra Learning LMS • ${e.category || "Internal"}`,
+        completedYear: e.completedAt ? new Date(e.completedAt).getFullYear() : e.createdAt ? new Date(e.createdAt).getFullYear() : now.getFullYear(),
+        expiresAtFormatted: "Permanen",
+        status: e.isPassed ? "Lulus" : e.status === "completed" ? "Selesai" : "Proses",
       })
-    }
-
-    // Query 2: LMS ChitraLearning Enrollments
-    const lmsEnrollments = await db
-      .select({
-        enrollmentId: chitraLearningEnrollments.id,
-        courseTitle: chitraLearningCourses.title,
-        category: chitraLearningCourses.category,
-        status: chitraLearningEnrollments.status,
-        isPassed: chitraLearningEnrollments.isPassed,
-        score: chitraLearningEnrollments.finalScore,
-        completedAt: chitraLearningEnrollments.completedAt,
-        createdAt: chitraLearningEnrollments.createdAt,
-      })
-      .from(chitraLearningEnrollments)
-      .leftJoin(chitraLearningCourses, eq(chitraLearningEnrollments.courseId, chitraLearningCourses.id))
-      .where(eq(chitraLearningEnrollments.employeeId, currentEmp.id))
-      .orderBy(desc(chitraLearningEnrollments.createdAt))
-      .catch(() => [])
-
-    for (const e of lmsEnrollments) {
-      if (e.courseTitle) {
-        combinedTrainingList.push({
-          id: `lms-${e.enrollmentId}`,
-          trainingName: e.courseTitle,
-          provider: `Chitra Learning LMS • ${e.category || "Internal"}`,
-          completedYear: e.completedAt ? new Date(e.completedAt).getFullYear() : e.createdAt ? new Date(e.createdAt).getFullYear() : now.getFullYear(),
-          expiresAtFormatted: "Permanen",
-          status: e.isPassed ? "Lulus" : e.status === "completed" ? "Selesai" : "Proses",
-        })
-      }
     }
   }
 
@@ -341,22 +366,8 @@ export async function getIndividualDashboardData(): Promise<IndividualDashboardD
   }
 
   // 5. Work Hours from Timesheet Entries for this user
-  let totalWorkHoursThisMonth = 0
-  let overtimeHoursThisMonth = 0
-
-  if (currentEmp?.id) {
-    const tsQuery = await db
-      .select({
-        totalReg: sql<number>`coalesce(sum(${timesheetEntries.regularMinutes}), 0)::int`,
-        totalOt: sql<number>`coalesce(sum(${timesheetEntries.overtimeMinutes}), 0)::int`,
-      })
-      .from(timesheetEntries)
-      .where(eq(timesheetEntries.employeeId, currentEmp.id))
-      .catch(() => [{ totalReg: 0, totalOt: 0 }])
-
-    totalWorkHoursThisMonth = Math.round((tsQuery[0]?.totalReg ?? 0) / 60)
-    overtimeHoursThisMonth = Math.round((tsQuery[0]?.totalOt ?? 0) / 60)
-  }
+  let totalWorkHoursThisMonth = Math.round((tsQuery[0]?.totalReg ?? 0) / 60)
+  let overtimeHoursThisMonth = Math.round((tsQuery[0]?.totalOt ?? 0) / 60)
 
   if (totalWorkHoursThisMonth === 0) {
     totalWorkHoursThisMonth = 168
@@ -371,22 +382,7 @@ export async function getIndividualDashboardData(): Promise<IndividualDashboardD
   }
 
   // 6. Inbox & Approvals List
-  let pendingApprovals: Array<any> = []
-  if (currentEmp?.id) {
-    pendingApprovals = await db
-      .select({
-        id: approvals.id,
-        status: approvals.status,
-        submittedAt: approvals.submittedAt,
-        approverName: approvals.approverName,
-        overtimeMinutes: approvals.overtimeMinutes,
-      })
-      .from(approvals)
-      .where(or(eq(approvals.approverEmployeeId, currentEmp.id)))
-      .orderBy(desc(approvals.submittedAt))
-      .limit(6)
-      .catch(() => [])
-  }
+  let pendingApprovals: Array<any> = pendingApprovalsRes
 
   if (pendingApprovals.length === 0) {
     const globalRecent = await db

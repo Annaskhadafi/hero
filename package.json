@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack",
-    "dev:turbopack": "next dev --turbopack",
+    "dev": "cross-env NODE_OPTIONS=\"--max-old-space-size=8192\" next dev --webpack",
+    "dev:turbopack": "cross-env NODE_OPTIONS=\"--max-old-space-size=8192\" next dev --turbopack",
     "build": "node scripts/download-face-models.mjs && cross-env NODE_OPTIONS=\"--max-old-space-size=8192\" next build --webpack",
     "start": "next start",
     "lint": "eslint",

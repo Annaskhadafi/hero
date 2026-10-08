@@ -7516,6 +7516,37 @@ export async function createDailyActivitySessionAction(input: {
       },
     ]
 
+    if (input.additionalApprovers && Array.isArray(input.additionalApprovers) && input.additionalApprovers.length > 0) {
+      const extraEmpIds = Array.from(new Set(input.additionalApprovers.map((a) => Number(a.employeeId)).filter(Boolean)))
+      const extraEmps = extraEmpIds.length > 0
+        ? await db
+            .select({ id: employees.id, name: employees.name, email: employees.email })
+            .from(employees)
+            .where(inArray(employees.id, extraEmpIds))
+        : []
+      const extraMap = new Map(extraEmps.map((e) => [e.id, e]))
+
+      let startOrder = 3
+      for (const extra of input.additionalApprovers) {
+        const extraEmpId = Number(extra.employeeId)
+        if (!extraEmpId) continue
+        const found = extraMap.get(extraEmpId)
+        approvalStepsToInsert.push({
+          sessionId: created.id,
+          stepOrder: startOrder,
+          stepLabel: extra.stepLabel || `Approver Tambahan (Tahap ${startOrder})`,
+          approverRole: extra.role || 'additional_approver',
+          approverEmployeeId: extraEmpId,
+          approverName: found?.name || extra.name || 'Approver Tambahan',
+          approverEmail: found?.email || '',
+          status: 'waiting',
+          approvalToken: randomUUID(),
+          createdAt: now,
+        })
+        startOrder++
+      }
+    }
+
     await db.insert(dailyActivityApprovals).values(approvalStepsToInsert)
 
     // Send Step 2 email to Leader / PJO

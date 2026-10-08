@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
-import * as XLSX from 'xlsx'
 import {
   ResponsiveContainer,
   BarChart,
@@ -877,7 +876,8 @@ export function EwhDashboardClient({
   }, [teamAggregates, sectionFilter, search])
 
   // Excel Export Handler (Mendukung Matriks Harian/Mingguan/MTD/YTD, Rekap Individu, dan Rekap Team)
-  const exportEwhToExcel = () => {
+  const exportEwhToExcel = async () => {
+    const XLSX = await import('xlsx')
     const wb = XLSX.utils.book_new()
     const cleanSiteName = monthlyMatrixData.siteName.replace(/\s+/g, '_')
     const currentDepartmentName =

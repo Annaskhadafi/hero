@@ -24,7 +24,6 @@ import {
   Download,
 } from 'lucide-react'
 import { formatMinutesToHours, classifyEwh } from '@/lib/ewh/calculate-ewh'
-import * as XLSX from 'xlsx'
 import { toast } from 'sonner'
 
 interface EwhSnapshot {
@@ -112,7 +111,8 @@ export function EwhEmployeeDetailClient({ employee, rows, period }: Props) {
 
   const cfg = EWH_CLASS_CONFIG[stats.classification]
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
+    const XLSX = await import('xlsx')
     const wb = XLSX.utils.book_new()
     const wsData: any[][] = []
     wsData.push([`LAPORAN EWH INDIVIDU - ${employee.name.toUpperCase()} (${employee.employeeSn})`])

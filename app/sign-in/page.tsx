@@ -13,7 +13,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authClient, signIn, useSession } from "@/lib/auth-client";
 import { isMobileUserAgent } from "@/lib/device";
-import { FaceLoginModal } from "@/components/auth/face-login-modal";
+import dynamic from "next/dynamic";
+const FaceLoginModal = dynamic(() => import("@/components/auth/face-login-modal").then((m) => m.FaceLoginModal), { ssr: false });
 
 import { resolveSnAction } from "@/app/actions/resolve-sn-action";
 

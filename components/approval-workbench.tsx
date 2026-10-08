@@ -4,7 +4,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import * as XLSX from 'xlsx'
 import QRCode from 'qrcode'
 import {
   Check,
@@ -1729,7 +1728,7 @@ export function InboxTab({
   }
 
   // Export Excel
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     const itemsToExport = selectedItems.length > 0 ? selectedItems : allUnifiedItems
     if (itemsToExport.length === 0) {
       toast.warning('Tidak ada data untuk diekspor.')
@@ -1751,6 +1750,7 @@ export function InboxTab({
       'Tanggal Pengajuan': formatDate(it.submittedAt),
     }))
 
+    const XLSX = await import('xlsx')
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Inbox Approval')

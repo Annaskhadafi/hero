@@ -6,6 +6,7 @@ import { AlertCircle, AlertTriangle, CheckCircle, CheckCircle2, Eye, FileSpreads
 import { toast } from 'sonner'
 import { createHseInventory, deleteHseInventory, getHseUserEmails, updateHseInventory, updateHseInventoryStatus } from '@/app/actions/hse-inventaris'
 import { uploadFile } from '@/app/actions/upload'
+import { compressImageFile } from '@/lib/client-image-compression'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -134,7 +135,28 @@ export function MobileHseInventarisClient({ data, access, userEmails: initialEma
 
   const openDetail = React.useCallback((item: HseInventory) => { setDetailItem(item); setDetailOpen(true) }, [])
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; setUploading(true); const fd = new FormData(); fd.append('file', file); fd.append('uploadTarget', 'safety'); try { const r = await uploadFile(fd); if (r.success && r.url) { setFphoto(r.readableUrl || r.url); toast.success('Foto unggah berhasil') } else toast.error(r.error || 'Gagal unggah foto') } catch { toast.error('Gagal unggah foto') } finally { setUploading(false) } }
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const fileToUpload = await compressImageFile(file, { maxDimension: 1200, quality: 0.75 })
+      const fd = new FormData()
+      fd.append('file', fileToUpload)
+      fd.append('uploadTarget', 'safety')
+      const r = await uploadFile(fd)
+      if (r.success && r.url) {
+        setFphoto(r.readableUrl || r.url)
+        toast.success('Foto unggah berhasil')
+      } else {
+        toast.error(r.error || 'Gagal unggah foto')
+      }
+    } catch {
+      toast.error('Gagal unggah foto')
+    } finally {
+      setUploading(false)
+    }
+  }
 
   const handleSave = async () => { if (!fn || !fcat || !floc) return toast.error('Nama, kategori, dan lokasi wajib diisi'); setSaving(true); const payload = { name: fn, category: fcat, qty: Number(fq) || 1, location: floc, condition: fcond, notes: fnotes, picName: fpic || 'System', photoUrl: fphoto, purchaseDate: fpdate || undefined, validityMonths: Number(fvmonths) || undefined, reminderDaysBefore: Number(frdays) || undefined, reminderEmailRecipients: fremails }; try { const r = editing ? await updateHseInventory(editing.id, payload) : await createHseInventory(payload); if (r.success) { toast.success(editing ? 'Aset diperbarui' : 'Aset ditambahkan'); setFormOpen(false); router.refresh() } else toast.error(r.error || 'Gagal simpan') } catch { toast.error('Gagal simpan') } finally { setSaving(false) } }
 

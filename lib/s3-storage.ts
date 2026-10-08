@@ -204,10 +204,12 @@ function buildS3PublicUrl(key: string) {
 }
 
 export async function uploadProfilePhotoToS3(file: File) {
-  const contentType = file.type || "application/octet-stream";
-  const extension = getObjectExtension(contentType, file.name);
+  const { optimizeUploadFile } = await import("@/lib/server-image-optimization");
+  const fileToUpload = await optimizeUploadFile(file, { maxDimension: 800, quality: 85 });
+  const contentType = fileToUpload.type || "application/octet-stream";
+  const extension = getObjectExtension(contentType, fileToUpload.name);
   const key = `${PROFILE_PHOTO_PREFIX}/${randomUUID()}.${extension}`;
-  const buffer = Buffer.from(await file.arrayBuffer());
+  const buffer = Buffer.from(await fileToUpload.arrayBuffer());
 
   const client = getS3Client();
 

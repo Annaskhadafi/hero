@@ -64,16 +64,16 @@ function getPool(): Pool {
     !isNaN(parsedMax) && parsedMax > 0
       ? parsedMax
       : process.env.NODE_ENV === "production"
-      ? 15
-      : 10;
+      ? 20
+      : 15;
 
   const pool = new Pool({
     connectionString,
     ssl: getSslConfig(connectionString),
-    idleTimeoutMillis: 10000,
+    idleTimeoutMillis: 30000,
     connectionTimeoutMillis: process.env.DB_CONNECTION_TIMEOUT_MS
       ? parseInt(process.env.DB_CONNECTION_TIMEOUT_MS, 10)
-      : 15000,
+      : 30000,
     max: maxConnections,
     keepAlive: true,
     keepAliveInitialDelayMillis: 2000,

@@ -2,8 +2,6 @@
 
 import * as React from "react"
 import { useState, useRef } from "react"
-import * as XLSX from "xlsx"
-import ExcelJS from "exceljs"
 import {
   Upload,
   FileSpreadsheet,
@@ -113,6 +111,11 @@ export function TireInspectionImportDialog({
 
     try {
       const buffer = await selectedFile.arrayBuffer()
+      const [XLSX, ExcelJSModule] = await Promise.all([
+        import("xlsx"),
+        import("exceljs"),
+      ])
+      const ExcelJS = (ExcelJSModule as any).default || ExcelJSModule
       const workbook = XLSX.read(buffer, { type: "array" })
       const firstSheetName = workbook.SheetNames[0]
       if (!firstSheetName) {
@@ -186,7 +189,7 @@ export function TireInspectionImportDialog({
         const excelJsSheet = excelJsWorkbook.worksheets[0]
         if (excelJsSheet) {
           const images = excelJsSheet.getImages()
-          images.forEach((img) => {
+          images.forEach((img: any) => {
             const imgData = excelJsWorkbook.getImage(img.imageId as any)
             if (imgData && imgData.buffer) {
               const rowIdx = Math.floor(img.range.tl.row)

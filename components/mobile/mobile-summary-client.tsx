@@ -20,7 +20,6 @@ import {
   ShieldCheck,
   Sparkles,
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -96,7 +95,7 @@ export function MobileSummaryClient({ sections, currentEmployeeId = 0 }: MobileS
     }
   };
 
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
     const excelRows = filtered.map((sec, idx) => ({
       No: idx + 1,
       'No. Dokumen': sec.summaryNumber || '(Belum Dibuat)',
@@ -112,6 +111,7 @@ export function MobileSummaryClient({ sections, currentEmployeeId = 0 }: MobileS
       'Summary ID': sec.summaryId || '-',
     }));
 
+    const XLSX = await import('xlsx');
     const worksheet = XLSX.utils.json_to_sheet(excelRows);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Summary APD');
