@@ -641,6 +641,337 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
   return doc.save()
 }
 
+// ============================================================
+// SUMMARY SPL PDF (6 Columns matching user PDF standard)
+// ============================================================
+export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise<Uint8Array> {
+  const doc = await PDFDocument.create()
+  const font = await doc.embedFont(StandardFonts.Helvetica)
+  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold)
+  const fontItalic = await doc.embedFont(StandardFonts.HelveticaOblique)
+  const page = doc.addPage([595, 842])
+  const { width } = page.getSize()
+  const logo = await embedLogo(doc)
+
+  const LM = 45
+  let y = 790
+
+  // === LOGO + HEADER ===
+  if (logo) {
+    page.drawImage(logo.image, { x: LM, y: y - 15, width: logo.width, height: logo.height })
+  }
+  // Customer logo on right side if provided and NOT duplicate
+  if (input.signatures.logoUrl) {
+    const custLogo = await embedCustomLogo(doc, input.signatures.logoUrl)
+    if (custLogo) {
+      page.drawImage(custLogo.image, {
+        x: width - LM - custLogo.width,
+        y: y - 15,
+        width: custLogo.width,
+        height: custLogo.height,
+      })
+    }
+  }
+  const title1 = 'PT. CHITRA PARATAMA'
+  const title2 = input.documentTitle || 'SUMMARY SPL'
+  page.drawText(title1, { x: centerX(width, title1, fontBold, 14), y, font: fontBold, size: 14 })
+  y -= 18
+  page.drawText(title2, { x: centerX(width, title2, fontBold, 11), y, font: fontBold, size: 11 })
+  y -= 35
+
+  // === INFO ===
+  const colonX = LM + 110
+  const valX = colonX + 15
+  page.drawText('MONTH', { x: LM, y, font, size: 9 })
+  page.drawText(':', { x: colonX, y, font, size: 9 })
+  page.drawText(formatPeriodLabel(input.period), { x: valX, y, font: fontBold, size: 9 })
+  page.drawText(`SN  ${input.employeeSn}`, { x: width - 140, y, font, size: 9 })
+  y -= 15
+  page.drawText('Name of Employee', { x: LM, y, font, size: 9 })
+  page.drawText(':', { x: colonX, y, font, size: 9 })
+  page.drawText(input.employeeName, { x: valX, y, font: fontBold, size: 9 })
+  y -= 15
+  page.drawText('Department', { x: LM, y, font, size: 9 })
+  page.drawText(':', { x: colonX, y, font, size: 9 })
+  page.drawText(input.department || input.section, { x: valX, y, font: fontBold, size: 9 })
+  y -= 15
+  page.drawText('Site', { x: LM, y, font, size: 9 })
+  page.drawText(':', { x: colonX, y, font, size: 9 })
+  page.drawText(input.siteName, { x: valX, y, font: fontBold, size: 9 })
+  y -= 22
+
+  // === TABLE (6 Columns SPL Summary matching user screenshot) ===
+  const rowH = 15
+  // cols: Tanggal (32), Hari (60), Jam Lembur Mulai (48), Jam Lembur Selesai (48), Total Lembur (60), Yang Dikerjakan (257)
+  const cols = [32, 60, 48, 48, 60, 257]
+  const totalTableW = cols.reduce((s, c) => s + c, 0)
+  const tableStartX = (width - totalTableW) / 2
+  const colX: number[] = []
+  let cx = tableStartX
+  for (const w of cols) {
+    colX.push(cx)
+    cx += w
+  }
+
+  // Header (2 sub-rows)
+  const hH = 26
+  drawCell(page, colX[0], y - hH, cols[0], hH, {
+    text: 'Tanggal',
+    font: fontBold,
+    fontSize: 7.5,
+    align: 'center',
+  })
+  drawCell(page, colX[1], y - hH, cols[1], hH, {
+    text: 'Hari',
+    font: fontBold,
+    fontSize: 7.5,
+    align: 'center',
+  })
+
+  // Jam Lembur Header Group
+  drawCell(page, colX[2], y - 13, cols[2] + cols[3], 13, {
+    text: 'Jam Lembur',
+    font: fontBold,
+    fontSize: 7.5,
+    align: 'center',
+  })
+  drawCell(page, colX[2], y - hH, cols[2], 13, {
+    text: 'Mulai',
+    font: fontBold,
+    fontSize: 7,
+    align: 'center',
+  })
+  drawCell(page, colX[3], y - hH, cols[3], 13, {
+    text: 'Selesai',
+    font: fontBold,
+    fontSize: 7,
+    align: 'center',
+  })
+
+  // Total Lembur
+  drawCell(page, colX[4], y - hH, cols[4], hH, {
+    text: 'Total Lembur',
+    font: fontBold,
+    fontSize: 7,
+    align: 'center',
+  })
+
+  // Yang Dikerjakan
+  drawCell(page, colX[5], y - hH, cols[5], hH, {
+    text: 'Yang Dikerjakan',
+    font: fontBold,
+    fontSize: 7.5,
+    align: 'center',
+  })
+
+  y -= hH
+
+  // Rows
+  let totalOT = 0
+  const showTotal = input.showTotalOvertime ?? true
+
+  for (const day of input.days) {
+    y -= rowH
+    if (y < 90) break
+
+    const isOff =
+      day.scheduleCode === 'OFF' ||
+      day.scheduleCode === 'FB' ||
+      day.scheduleCode === 'Libur' ||
+      day.status === 'off'
+    const isStatusWithoutTime = day.status === 'standby' || day.status === 'field_break'
+    const isSunday = day.dayName === 'Sunday' || day.dayName === 'Saturday'
+    const isAbsent =
+      day.status === 'sick' ||
+      day.status === 'leave' ||
+      day.status === 'absent' ||
+      day.status === 'empty'
+    const hasManualAttendance = Boolean(
+      (day.clockIn && day.clockIn.trim() !== '') ||
+      (day.clockOut && day.clockOut.trim() !== '') ||
+      day.status === 'present'
+    )
+    const hasAttendance =
+      !isAbsent &&
+      (hasManualAttendance || (Boolean(day.workingTimeFrom) && day.status !== 'empty' && !isOff))
+    const configuredOvertimeIntervals =
+      isOff && !hasManualAttendance
+        ? []
+        : (day.configuredOvertimeIntervals ?? day.overtime?.intervals ?? [])
+    const hasOvertimeIntervals = configuredOvertimeIntervals.length > 0
+
+    const formatOvertimeInterval = (interval: OvertimeInterval | undefined) =>
+      interval ? `${String(interval.start).replace(':', '.')}` : ''
+    const formatOvertimeIntervalEnd = (interval: OvertimeInterval | undefined) =>
+      interval ? `${String(interval.end).replace(':', '.')}` : ''
+
+    const otFrom = formatOvertimeInterval(configuredOvertimeIntervals[0])
+    const otTo = formatOvertimeIntervalEnd(
+      configuredOvertimeIntervals[configuredOvertimeIntervals.length - 1] || configuredOvertimeIntervals[0]
+    )
+
+    let ot = day.overtime?.totalHours ?? 0
+    if (isAbsent || isStatusWithoutTime || (isOff && !hasManualAttendance)) {
+      ot = 0
+    } else if (ot <= 0 && hasOvertimeIntervals && !isOff && (hasAttendance || day.isHoliday)) {
+      ot = configuredOvertimeIntervals.reduce((sum, inv) => {
+        if (!inv || !inv.start || !inv.end) return sum
+        const [sh, sm] = String(inv.start).split(/[:.]/).map(Number)
+        const [eh, em] = String(inv.end).split(/[:.]/).map(Number)
+        if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return sum
+        let startMin = sh * 60 + sm
+        let endMin = eh * 60 + em
+        if (endMin < startMin) endMin += 1440
+        return sum + (endMin - startMin) / 60
+      }, 0)
+    }
+
+    if (ot > 0 && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualAttendance)) {
+      totalOT += ot
+    }
+
+    const bgColor = day.isHoliday
+      ? rgb(1, 1, 0.75)
+      : isSunday || isOff
+        ? rgb(1, 0.93, 0.93)
+        : undefined
+    const dayColor = isSunday || day.isHoliday ? rgb(0.8, 0, 0) : rgb(0, 0, 0)
+
+    // Col 0: Tanggal
+    drawCell(page, colX[0], y, cols[0], rowH, {
+      text: String(day.day),
+      font,
+      fontSize: 8,
+      align: 'center',
+      bgColor,
+      color: dayColor,
+    })
+    // Col 1: Hari
+    drawCell(page, colX[1], y, cols[1], rowH, {
+      text: day.dayName,
+      font,
+      fontSize: 7.5,
+      align: 'center',
+      bgColor,
+      color: dayColor,
+    })
+
+    const shouldRenderOtTimes =
+      hasOvertimeIntervals && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualAttendance)
+
+    // Col 2-3: Overtime Mulai & Selesai
+    drawCell(page, colX[2], y, cols[2], rowH, {
+      text: shouldRenderOtTimes ? otFrom : '',
+      font,
+      fontSize: otFrom.length > 8 ? 6 : 7.5,
+      align: 'center',
+      bgColor,
+    })
+    drawCell(page, colX[3], y, cols[3], rowH, {
+      text: shouldRenderOtTimes ? otTo : '',
+      font,
+      fontSize: otTo.length > 8 ? 6 : 7.5,
+      align: 'center',
+      bgColor,
+    })
+
+    // Col 4: Total Lembur
+    if (showTotal) {
+      drawCell(page, colX[4], y, cols[4], rowH, {
+        text: ot > 0 ? String(Math.round(ot * 10) / 10) : '',
+        font: fontBold,
+        fontSize: 8,
+        align: 'center',
+        bgColor,
+      })
+    } else {
+      drawCell(page, colX[4], y, cols[4], rowH, { bgColor })
+    }
+
+    // Col 5: Yang Dikerjakan
+    const taskDesc = day.splTitle || (ot > 0 ? 'Penugasan Lembur' : '')
+    drawCell(page, colX[5], y, cols[5], rowH, {
+      text: taskDesc,
+      font,
+      fontSize: 6.5,
+      align: 'left',
+      wrap: true,
+      bgColor,
+    })
+  }
+
+  // Total Row
+  y -= rowH
+  const tBg = rgb(0.8, 1, 0.8)
+  const tW = cols[0] + cols[1] + cols[2] + cols[3]
+  drawCell(page, colX[0], y, tW, rowH, {
+    text: 'TOTAL',
+    font: fontBold,
+    fontSize: 9,
+    align: 'center',
+    bgColor: tBg,
+  })
+  if (showTotal) {
+    drawCell(page, colX[4], y, cols[4], rowH, {
+      text: String(Math.round(totalOT * 10) / 10),
+      font: fontBold,
+      fontSize: 9.5,
+      align: 'center',
+      bgColor: tBg,
+      color: rgb(0, 0.5, 0),
+    })
+  } else {
+    drawCell(page, colX[4], y, cols[4], rowH, { bgColor: tBg })
+  }
+  drawCell(page, colX[5], y, cols[5], rowH, { bgColor: tBg })
+
+  // Signatures (3 equal columns)
+  y -= 30
+  await drawSummarySplSignatures(doc, page, { regular: font, italic: fontItalic, bold: fontBold }, y, input)
+
+  return doc.save()
+}
+
+async function drawSummarySplSignatures(
+  doc: PDFDocument,
+  page: PDFPage,
+  fonts: { regular: PDFFont; italic: PDFFont; bold: PDFFont },
+  y: number,
+  input: OvertimeRecordInput
+) {
+  const { width } = page.getSize()
+  const names = input.signatures
+
+  const labels: [string, string][] = [
+    ['Dibuat oleh :', names.preparedBy?.trim() || input.employeeName || 'Karyawan'],
+    ['Approved by:', names.pjoLeader?.trim() || 'Supervisor'],
+    ['Diketahui oleh:', names.approvedBy?.trim() || names.hrName?.trim() || 'Branch Manager / Factory Manager'],
+  ]
+
+  const LM = 45
+  const printableWidth = width - LM * 2
+  const columnWidth = printableWidth / 3
+  const lineWidth = columnWidth - 25
+
+  labels.forEach(([label, name], index) => {
+    const x = LM + index * columnWidth
+    page.drawText(label, { x, y, font: fonts.italic, size: 8, color: rgb(0.3, 0.3, 0.3) })
+    page.drawLine({
+      start: { x, y: y - 42 },
+      end: { x: x + lineWidth, y: y - 42 },
+      color: rgb(0.5, 0.5, 0.5),
+      thickness: 0.5,
+    })
+    page.drawText(name || '-', {
+      x,
+      y: y - 54,
+      font: fonts.regular,
+      size: 7,
+      maxWidth: lineWidth,
+    })
+  })
+}
+
 async function drawOvertimeRecordSignatures(
   doc: PDFDocument,
   page: PDFPage,

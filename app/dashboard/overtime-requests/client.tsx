@@ -50,7 +50,7 @@ import { compressImageFile } from '@/lib/client-image-compression'
 import type { RouteFolder } from '@/lib/daily-activity'
 import { SplEvidenceQrBox } from '@/components/overtime-document-qr'
 import QRCode from 'qrcode'
-import { generateOvertimeRecordPdf, type AttendanceDayData } from '@/lib/timesheet/generate-attendance-pdf'
+import { generateOvertimeRecordPdf, generateSummarySplPdf, type AttendanceDayData } from '@/lib/timesheet/generate-attendance-pdf'
 
 import { AdminPageShell } from '@/components/admin-page-shell'
 import { MissingSignatureDialog } from '@/components/missing-signature-dialog'
@@ -266,7 +266,7 @@ function getIndonesianDayName(dateValue: Date | string): string {
 
 function resolveSiteLogoUrl(siteName?: string, customLogoUrl?: string): string | undefined {
   if (customLogoUrl && customLogoUrl.trim()) return resolveUploadUrl(customLogoUrl.trim())
-  if (!siteName) return '/images/logo-cp.png'
+  if (!siteName) return undefined
   const s = siteName.toLowerCase()
   if (s.includes('kpc') || s.includes('sangatta') || s.includes('bengalon') || s.includes('kutai timur')) {
     return '/images/logo-kpc.png'
@@ -274,7 +274,7 @@ function resolveSiteLogoUrl(siteName?: string, customLogoUrl?: string): string |
   if (s.includes('ck') || s.includes('cipta kridatama')) {
     return '/brand/cipta-kridatama-logo.png'
   }
-  return '/images/logo-cp.png'
+  return undefined
 }
 
 function buildOvertimeRecordMonthlyDays(
@@ -443,7 +443,7 @@ function renderSummarySplPdfHtml(
             </div>
             <div style="flex: 1; text-align: center;">
               <div style="font-weight: 800; font-size: 13pt; text-transform: uppercase; letter-spacing: 0.5px; color: #000;">PT. CHITRA PARATAMA</div>
-              <div style="font-weight: 700; font-size: 10.5pt; text-transform: uppercase; letter-spacing: 0.5px; color: #000; margin-top: 2px;">SURAT PERINTAH LEMBUR - REKAPITULASI</div>
+              <div style="font-weight: 700; font-size: 10.5pt; text-transform: uppercase; letter-spacing: 0.5px; color: #000; margin-top: 2px;">SUMMARY SPL</div>
               <div style="font-weight: 600; font-size: 7.5pt; color: #334155; margin-top: 2px; letter-spacing: 0.5px;">HUMAN CAPITAL • PAYABLE SITE ALLOWANCE</div>
             </div>
             <div style="width: 130px; text-align: right;">
@@ -1673,8 +1673,8 @@ export function OvertimeListingClient({
 
       const daysData = buildOvertimeRecordMonthlyDays(summaryFilteredRows, summaryMonth)
 
-      const pdfBytes = await generateOvertimeRecordPdf({
-        documentTitle: 'OVERTIME RECORD',
+      const pdfBytes = await generateSummarySplPdf({
+        documentTitle: 'SUMMARY SPL',
         period: summaryMonth || '2026-10',
         employeeName,
         employeeSn,
@@ -1683,9 +1683,9 @@ export function OvertimeListingClient({
         siteName,
         signatures: {
           preparedBy: employeeName,
-          pjoLeader: leaderName || 'Supervisor / Leader',
-          approvedBy: pjoName || hcName || 'PJO / Manager',
-          hrName: hcName || 'HC / Admin',
+          pjoLeader: leaderName || 'Supervisor',
+          approvedBy: pjoName || hcName || 'Branch Manager / Factory Manager',
+          hrName: hcName || 'Branch Manager / Factory Manager',
           logoUrl: siteLogoUrl,
         },
         days: daysData,
@@ -1703,7 +1703,7 @@ export function OvertimeListingClient({
       setIsSummaryPreviewOpen(true)
     } catch (err) {
       console.error('Preview error:', err)
-      toast.error('Gagal memuat preview Overtime Record.')
+      toast.error('Gagal memuat preview Summary SPL.')
     }
   }
 
@@ -1723,7 +1723,7 @@ export function OvertimeListingClient({
 
     setIsGeneratingSummaryPdf(true)
     const toastId = 'download-summary-pdf'
-    toast.loading('Menyiapkan dokumen PDF Overtime Record...', { id: toastId })
+    toast.loading('Menyiapkan dokumen PDF Summary SPL...', { id: toastId })
 
     try {
       const selectedEmpObj = summaryEmployeeOptions.find((e) => e.value === summaryEmployeeId)
@@ -1750,8 +1750,8 @@ export function OvertimeListingClient({
 
       const daysData = buildOvertimeRecordMonthlyDays(summaryFilteredRows, summaryMonth)
 
-      const pdfBytes = await generateOvertimeRecordPdf({
-        documentTitle: 'OVERTIME RECORD',
+      const pdfBytes = await generateSummarySplPdf({
+        documentTitle: 'SUMMARY SPL',
         period: summaryMonth || '2026-10',
         employeeName,
         employeeSn,
@@ -1760,9 +1760,9 @@ export function OvertimeListingClient({
         siteName,
         signatures: {
           preparedBy: employeeName,
-          pjoLeader: leaderName || 'Supervisor / Leader',
-          approvedBy: pjoName || hcName || 'PJO / Manager',
-          hrName: hcName || 'HC / Admin',
+          pjoLeader: leaderName || 'Supervisor',
+          approvedBy: pjoName || hcName || 'Branch Manager / Factory Manager',
+          hrName: hcName || 'Branch Manager / Factory Manager',
           logoUrl: siteLogoUrl,
         },
         days: daysData,
@@ -1772,7 +1772,7 @@ export function OvertimeListingClient({
 
       const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' })
       const cleanEmp = employeeName.replace(/[^a-zA-Z0-9]/g, '_')
-      const fileName = `Overtime_Record_${cleanEmp}_${summaryMonth || 'Semua'}.pdf`
+      const fileName = `Summary_SPL_${cleanEmp}_${summaryMonth || 'Semua'}.pdf`
 
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
