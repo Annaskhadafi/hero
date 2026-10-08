@@ -4,13 +4,26 @@ import { eq, desc, and, asc, sql } from "drizzle-orm";
 import { type ApdRequestCategory, APD_ITEMS, type ApproverOption } from "@/lib/apd-status";
 export { APD_ITEMS, type ApproverOption };
 
+export function getRequestedForLabel(requestedFor?: string | null): string {
+  switch (requestedFor?.toLowerCase()) {
+    case "service":
+      return "Service";
+    case "repair":
+      return "Repair";
+    case "self":
+    default:
+      return "Diri sendiri";
+  }
+}
+
 let apdSchemaReady: Promise<void> | null = null;
 
 export function ensureApdRequestSchema() {
   apdSchemaReady ??= db.execute(sql`
     ALTER TABLE hero_apd_requests
     ADD COLUMN IF NOT EXISTS request_category text NOT NULL DEFAULT 'APD',
-    ADD COLUMN IF NOT EXISTS target_section_id integer REFERENCES hero_master_sections(id) ON DELETE SET NULL;
+    ADD COLUMN IF NOT EXISTS target_section_id integer REFERENCES hero_master_sections(id) ON DELETE SET NULL,
+    ADD COLUMN IF NOT EXISTS requested_for text NOT NULL DEFAULT 'self';
   `).then(() => undefined).catch((error) => {
     apdSchemaReady = null;
     throw error;
@@ -26,6 +39,7 @@ export async function fetchApdRequests(currentEmployeeId?: number) {
       requestNumber: apdRequests.requestNumber,
       requestDate: apdRequests.requestDate,
       requestCategory: apdRequests.requestCategory,
+      requestedFor: apdRequests.requestedFor,
       status: apdRequests.status,
       notes: apdRequests.notes,
       employeeName: employees.name,
@@ -80,6 +94,8 @@ export async function fetchApdRequestById(id: number) {
       requestNumber: apdRequests.requestNumber,
       requestDate: apdRequests.requestDate,
       requestCategory: apdRequests.requestCategory,
+      requestedFor: apdRequests.requestedFor,
+      targetSectionId: apdRequests.targetSectionId,
       status: apdRequests.status,
       notes: apdRequests.notes,
       signatureUrl: apdRequests.signatureUrl,

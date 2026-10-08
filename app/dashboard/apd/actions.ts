@@ -16,7 +16,7 @@ import { and, desc, eq, ilike, inArray, or } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import { normalizeApdRequestCategory, normalizeApdRequestStatus } from '@/lib/apd-status'
-import { ensureApdRequestSchema } from '@/lib/apd-data'
+import { ensureApdRequestSchema, getRequestedForLabel } from '@/lib/apd-data'
 
 export async function submitApdRequest(formData: FormData) {
   const currentEmployee = await getCurrentEmployee()
@@ -57,8 +57,20 @@ export async function submitApdRequest(formData: FormData) {
 
   const notes = (formData.get('notes') as string) || ''
   const signatureUrl = formData.get('signatureUrl') as string
+  const requestedFor = (formData.get('requestedFor') as string) || 'self'
   const rawRequestId = formData.get('requestId') || formData.get('id')
   const existingId = rawRequestId ? Number(rawRequestId) : null
+
+  let targetSectionId: number | null = null
+  if (requestedFor === 'service') {
+    targetSectionId = 33
+  } else if (requestedFor === 'repair') {
+    targetSectionId = 29
+  } else {
+    const rawTargetSectionId = formData.get('targetSectionId') || formData.get('target_section_id')
+    targetSectionId = rawTargetSectionId ? Number(rawTargetSectionId) : null
+    if (targetSectionId && isNaN(targetSectionId)) targetSectionId = null
+  }
 
   // Use a transaction
   return await db.transaction(async (tx) => {
@@ -82,6 +94,8 @@ export async function submitApdRequest(formData: FormData) {
         .set({
           status: 'pending_approval',
           notes,
+          requestedFor,
+          targetSectionId,
           ...(signatureUrl ? { signatureUrl } : {}),
           updatedAt: new Date(),
         })
@@ -206,9 +220,6 @@ export async function submitApdRequest(formData: FormData) {
     }
 
     // ===== NEW REQUEST FLOW =====
-    const rawTargetSectionId = formData.get('targetSectionId') || formData.get('target_section_id')
-    const targetSectionId = rawTargetSectionId ? Number(rawTargetSectionId) : null
-
     // Generate request number
     const countRes = await tx.$count(apdRequests)
     const requestNumber = `APD-${new Date().getFullYear()}-${String(countRes + 1).padStart(4, '0')}`
@@ -221,6 +232,7 @@ export async function submitApdRequest(formData: FormData) {
         employeeId: currentEmployee.id,
         siteId: currentEmployee.siteId ?? 0,
         targetSectionId: (targetSectionId && !isNaN(targetSectionId)) ? targetSectionId : null,
+        requestedFor,
         requestCategory,
         status: 'pending_approval',
         notes,
@@ -373,12 +385,14 @@ export async function submitApdRequest(formData: FormData) {
             tagPrefix: 'apd',
           }).catch(console.error)
         } else {
+          const requestedForLabel = getRequestedForLabel(requestedFor)
           sendApdRequestSubmittedEmail({
             employeeName: currentEmployee.name,
             requestNumber,
             approverEmail: approverEmailRec.email,
             approverName: firstStep.approverName,
             requestType: requestCategory,
+            requestedForLabel,
           }).catch(console.error)
 
           notifyWorkflowBellRecipients({
@@ -386,7 +400,7 @@ export async function submitApdRequest(formData: FormData) {
             eventType: 'apd_request_review',
             category: 'approval_requests',
             title: `Review Permohonan APD Baru`,
-            body: `${currentEmployee.name} mengajukan permohonan APD (${requestNumber}) yang memerlukan peninjauan dan persetujuan Anda.`,
+            body: `${currentEmployee.name} mengajukan permohonan APD (${requestNumber}) untuk ${requestedForLabel} yang memerlukan peninjauan dan persetujuan Anda.`,
             url: `/dashboard/approval`,
             tagPrefix: 'apd',
           }).catch(console.error)

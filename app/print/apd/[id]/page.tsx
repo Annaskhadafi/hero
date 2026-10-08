@@ -1,7 +1,7 @@
 import React from 'react';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
-import { fetchApdRequestById } from '@/lib/apd-data';
+import { fetchApdRequestById, getRequestedForLabel } from '@/lib/apd-data';
 import { PrintAction } from '@/app/print/jsa/[id]/print-action';
 import { getS3ObjectReadUrl } from '@/lib/s3-storage';
 import { resolveUploadUrl } from '@/lib/resolve-upload-url';
@@ -255,6 +255,10 @@ export default async function PrintApdPage({
             <div className="flex items-start">
               <span className="w-32 font-semibold">Lokasi Site</span>
               <span>: {data.siteName || '-'}</span>
+            </div>
+            <div className="flex items-start col-span-2">
+              <span className="w-32 font-semibold">Diajukan Untuk</span>
+              <span className="font-semibold text-blue-900">: {getRequestedForLabel(data.requestedFor)}</span>
             </div>
             <div className="flex items-start col-span-2 mt-0.5">
               <span className="w-32 font-semibold">Alasan Permintaan</span>

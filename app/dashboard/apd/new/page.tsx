@@ -51,10 +51,15 @@ export default async function NewApdRequestPage(props: {
     fetchMasterSections(),
   ]);
 
+  const isHseUser =
+    Boolean(employeeProfile?.departmentName?.toLowerCase().includes("hse")) ||
+    Boolean(employeeProfile?.sectionName?.toLowerCase().includes("hse")) ||
+    Boolean(currentEmployee.accessRole?.toLowerCase().includes("hse")) ||
+    Boolean(currentEmployee.role?.toLowerCase().includes("hse"));
+
   const canSelectTargetSection =
     isSuperAdminRole(currentEmployee.accessRole) ||
-    Boolean(employeeProfile?.departmentName?.toLowerCase().includes("hse")) ||
-    Boolean(currentEmployee.accessRole?.toLowerCase().includes("hse")) ||
+    isHseUser ||
     Boolean(currentEmployee.accessRole?.toLowerCase().includes("admin")) ||
     Boolean(currentEmployee.accessRole?.toLowerCase().includes("manager"));
 
@@ -95,6 +100,8 @@ export default async function NewApdRequestPage(props: {
           approverOptions={approverOptions}
           sectionOptions={sectionOptions}
           canSelectTargetSection={canSelectTargetSection}
+          isHseUser={isHseUser}
+          initialRequestedFor={existingRequest?.requestedFor ?? "self"}
           defaultMode={defaultMode}
           requestId={existingRequest?.id}
           initialNotes={existingRequest?.notes || ""}

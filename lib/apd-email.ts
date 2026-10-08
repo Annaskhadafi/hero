@@ -14,11 +14,13 @@ export async function sendApdRequestSubmittedEmail(params: {
   approverEmail: string
   approverName: string
   requestType: string
+  requestedForLabel?: string
   ccEmails?: string[]
 }) {
   const baseUrl = getPublicAppUrl()
   const approvalLink = `${baseUrl}/dashboard/approval`
   const categoryBadge = resolveApdCategoryBadge(params.requestType)
+  const requestedForText = params.requestedForLabel || 'Diri sendiri'
 
   return sendWorkflowEmail({
     to: params.approverEmail,
@@ -29,6 +31,7 @@ export async function sendApdRequestSubmittedEmail(params: {
       requestNumber: params.requestNumber,
       approverName: params.approverName,
       requestType: params.requestType,
+      requestedFor: requestedForText,
       categoryBadge,
       approvalLink,
       approvalUrl: approvalLink,
@@ -36,8 +39,8 @@ export async function sendApdRequestSubmittedEmail(params: {
       viewLink: approvalLink,
     },
     fallbackSubject: `Permohonan ${params.requestType} Baru: ${params.requestNumber} - ${params.employeeName}`,
-    fallbackHtml: `Yth. ${params.approverName},<br><br>Karyawan <b>${params.employeeName}</b> telah mengajukan permohonan <b>${params.requestType}</b> dengan nomor permohonan <b>${params.requestNumber}</b> yang memerlukan peninjauan dan persetujuan Anda.<br><br><b>Detail Permohonan:</b><br>No. Permohonan: ${params.requestNumber}<br>Kategori: ${params.requestType}<br>Pemohon: ${params.employeeName}<br><br>Silakan buka tautan berikut untuk melakukan review dan memberikan persetujuan:<br><div style="margin: 16px 0;"><a href="${approvalLink}" style="background-color: #2563eb; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Buka Inbox Approval</a></div><br><small style="color: #64748b;">Atau salin tautan: <a href="${approvalLink}">${approvalLink}</a></small><br><br>Demikian pemberitahuan ini disampaikan. Terima kasih.`,
-    fallbackText: `Yth. ${params.approverName},\n\nKaryawan ${params.employeeName} telah mengajukan permohonan ${params.requestType} dengan nomor permohonan ${params.requestNumber} yang memerlukan peninjauan dan persetujuan Anda.\n\nDetail Permohonan:\nNo. Permohonan: ${params.requestNumber}\nKategori: ${params.requestType}\nPemohon: ${params.employeeName}\n\nSilakan tinjau dan berikan persetujuan melalui tautan berikut:\n${approvalLink}\n\nDemikian pemberitahuan ini disampaikan. Terima kasih.`,
+    fallbackHtml: `Yth. ${params.approverName},<br><br>Karyawan <b>${params.employeeName}</b> telah mengajukan permohonan <b>${params.requestType}</b> (Diajukan Untuk: <b>${requestedForText}</b>) dengan nomor permohonan <b>${params.requestNumber}</b> yang memerlukan peninjauan dan persetujuan Anda.<br><br><b>Detail Permohonan:</b><br>No. Permohonan: ${params.requestNumber}<br>Kategori: ${params.requestType}<br>Diajukan Untuk: ${requestedForText}<br>Pemohon: ${params.employeeName}<br><br>Silakan buka tautan berikut untuk melakukan review dan memberikan persetujuan:<br><div style="margin: 16px 0;"><a href="${approvalLink}" style="background-color: #2563eb; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Buka Inbox Approval</a></div><br><small style="color: #64748b;">Atau salin tautan: <a href="${approvalLink}">${approvalLink}</a></small><br><br>Demikian pemberitahuan ini disampaikan. Terima kasih.`,
+    fallbackText: `Yth. ${params.approverName},\n\nKaryawan ${params.employeeName} telah mengajukan permohonan ${params.requestType} (Diajukan Untuk: ${requestedForText}) dengan nomor permohonan ${params.requestNumber} yang memerlukan peninjauan dan persetujuan Anda.\n\nDetail Permohonan:\nNo. Permohonan: ${params.requestNumber}\nKategori: ${params.requestType}\nDiajukan Untuk: ${requestedForText}\nPemohon: ${params.employeeName}\n\nSilakan tinjau dan berikan persetujuan melalui tautan berikut:\n${approvalLink}\n\nDemikian pemberitahuan ini disampaikan. Terima kasih.`,
   })
 }
 

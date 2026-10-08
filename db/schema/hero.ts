@@ -4199,6 +4199,7 @@ export const apdRequests = pgTable('hero_apd_requests', {
   targetSectionId: integer('target_section_id').references(() => masterSections.id, { onDelete: 'set null' }),
   requestDate: timestamp('request_date').notNull().defaultNow(),
   requestCategory: text('request_category').notNull().default('APD'),
+  requestedFor: text('requested_for').notNull().default('self'),
   status: text('status').notNull().default('pending_approval'),
   notes: text('notes').notNull().default(''),
   signatureUrl: text('signature_url'),

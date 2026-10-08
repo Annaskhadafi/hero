@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 
 import { getServerSession } from "@/lib/auth-session";
-import { fetchApdRequestById } from "@/lib/apd-data";
+import { fetchApdRequestById, getRequestedForLabel } from "@/lib/apd-data";
 import { APD_REQUEST_STATUS_LABELS, normalizeApdRequestStatus } from "@/lib/apd-status";
 import { getS3ObjectReadUrl } from "@/lib/s3-storage";
 
@@ -118,8 +118,16 @@ export default async function MobileApdDetailPage({ params }: { params: Promise<
       </section>
 
       <section className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-        <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Jenis Request</p>
-        <p className="mt-1 font-semibold text-gray-900">{request.requestCategory || "APD"}</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Jenis Request</p>
+            <p className="mt-0.5 font-semibold text-gray-900">{request.requestCategory || "APD"}</p>
+          </div>
+          <div>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Diajukan Untuk</p>
+            <p className="mt-0.5 font-semibold text-blue-700">{getRequestedForLabel(request.requestedFor)}</p>
+          </div>
+        </div>
       </section>
 
       {/* Detail Item */}

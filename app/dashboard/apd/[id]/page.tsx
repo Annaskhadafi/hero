@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { fetchApdRequestById } from "@/lib/apd-data";
+import { fetchApdRequestById, getRequestedForLabel } from "@/lib/apd-data";
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AdminStatusBadge } from "@/components/admin-status-badge";
@@ -91,6 +91,10 @@ export default async function ApdRequestDetailPage({ params }: { params: Promise
             <div>
               <p className="text-sm text-muted-foreground">Lokasi Kerja</p>
               <p className="font-medium">{request.siteName}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Diajukan Untuk</p>
+              <p className="font-semibold text-blue-700">{getRequestedForLabel(request.requestedFor)}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Status Permintaan</p>

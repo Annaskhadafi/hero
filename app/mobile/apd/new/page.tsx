@@ -54,6 +54,12 @@ export default async function MobileNewApdPage(props: {
     fetchApproverOptions(),
   ]);
 
+  const isHseUser =
+    Boolean(employeeProfile?.departmentName?.toLowerCase().includes("hse")) ||
+    Boolean(employeeProfile?.sectionName?.toLowerCase().includes("hse")) ||
+    Boolean(currentEmployee.accessRole?.toLowerCase().includes("hse")) ||
+    Boolean(currentEmployee.role?.toLowerCase().includes("hse"));
+
   const initialItems = existingRequest?.items?.map((item) => ({
     itemType: item.itemType,
     requestType: item.requestType as "baru" | "pergantian",
@@ -104,6 +110,8 @@ export default async function MobileNewApdPage(props: {
           sectionName={employeeProfile.sectionName}
           itemOptions={{ TOOLS: toolsOptions, MATERIAL: materialOptions }}
           approverOptions={approverOptions}
+          isHseUser={isHseUser}
+          initialRequestedFor={existingRequest?.requestedFor ?? "self"}
           defaultMode={defaultMode}
           requestId={existingRequest?.id}
           initialNotes={existingRequest?.notes || ""}

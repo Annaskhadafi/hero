@@ -692,6 +692,7 @@ export async function syncApprovedApdRequestToSummary(apdRequestId: number) {
     employeeName: employees.name,
     employeeSn: employees.employeeSn,
     sectionId: employees.sectionId,
+    targetSectionId: apdRequests.targetSectionId,
     siteId: sites.id,
     siteName: sites.name,
   }).from(apdRequests)
@@ -731,8 +732,9 @@ export async function syncApprovedApdRequestToSummary(apdRequestId: number) {
   // 3. Determine targetSite & canonical sectionId
   const isVale = req.siteName.toLowerCase().includes('vale') || req.siteName.toUpperCase() === 'VALE';
   const targetSite = isVale ? 'VALE' : 'GABUNGAN';
-  const isServiceCombined = req.sectionId === 33 || req.sectionId === 34;
-  const sectionId = isServiceCombined ? 33 : (req.sectionId || 33);
+  const effectiveSecId = req.targetSectionId || req.sectionId;
+  const isServiceCombined = effectiveSecId === 33 || effectiveSecId === 34;
+  const sectionId = isServiceCombined ? 33 : (effectiveSecId || 33);
 
   // 4. Fetch request items
   const items = await db.select().from(apdRequestItems)

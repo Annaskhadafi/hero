@@ -38,6 +38,8 @@ interface ApdRequestFormProps {
   approverOptions?: ApproverOption[];
   sectionOptions?: Array<{ id: number; name: string }>;
   canSelectTargetSection?: boolean;
+  isHseUser?: boolean;
+  initialRequestedFor?: string;
   defaultMode?: "apd" | "tools" | "material";
   mobileWide?: boolean;
   requestId?: number;
@@ -80,6 +82,8 @@ export function ApdRequestForm({
   approverOptions,
   sectionOptions = [],
   canSelectTargetSection = false,
+  isHseUser = false,
+  initialRequestedFor = "self",
   defaultMode = "apd",
   mobileWide = false,
   requestId,
@@ -92,6 +96,7 @@ export function ApdRequestForm({
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [requestMode, setRequestMode] = useState<"apd" | "tools" | "material">(defaultMode);
+  const [requestedFor, setRequestedFor] = useState<"self" | "service" | "repair">((initialRequestedFor as any) || "self");
   const [targetSectionId, setTargetSectionId] = useState<string>(initialTargetSectionId ? String(initialTargetSectionId) : "");
   const [notes, setNotes] = useState(initialNotes);
   const [approver1Id, setApprover1Id] = useState<string>(initialApprover1Id);
@@ -300,6 +305,7 @@ export function ApdRequestForm({
       submitData.append("notes", notes);
       submitData.append("signatureUrl", signatureUrl);
       submitData.append("requestCategory", requestMode === "apd" ? "APD" : requestMode.toUpperCase());
+      submitData.append("requestedFor", requestedFor);
       submitData.append("items", JSON.stringify(processedItems));
       if (targetSectionId) {
         submitData.append("targetSectionId", targetSectionId);
@@ -356,10 +362,61 @@ export function ApdRequestForm({
             </div>
           </div>
 
-          {canSelectTargetSection && sectionOptions.length > 0 && (
+          {isHseUser && (
+            <div className="mt-3.5 pt-3 border-t border-slate-200/60">
+              <Label className="text-xs font-semibold text-slate-700 block mb-1">
+                Diajukan Untuk <span className="text-rose-500">*</span>
+              </Label>
+              <p className="text-[11px] text-slate-500 mb-2">
+                Pilih tujuan pengajuan APD untuk menentukan Summary APD pesanan barang.
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRequestedFor("self")}
+                  className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-xs transition-all cursor-pointer ${
+                    requestedFor === "self"
+                      ? "border-blue-600 bg-blue-50 text-blue-700 shadow-xs font-bold"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 font-medium"
+                  }`}
+                >
+                  <span>Diri sendiri</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRequestedFor("service")}
+                  className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-xs transition-all cursor-pointer ${
+                    requestedFor === "service"
+                      ? "border-blue-600 bg-blue-50 text-blue-700 shadow-xs font-bold"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 font-medium"
+                  }`}
+                >
+                  <span>Service</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRequestedFor("repair")}
+                  className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-xs transition-all cursor-pointer ${
+                    requestedFor === "repair"
+                      ? "border-blue-600 bg-blue-50 text-blue-700 shadow-xs font-bold"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 font-medium"
+                  }`}
+                >
+                  <span>Repair</span>
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-2 font-medium">
+                {requestedFor === "self" && "Diajukan untuk penggunaan HSE pengaju. Barang akan masuk ke Summary APD standar HSE."}
+                {requestedFor === "service" && "Diajukan untuk kebutuhan Manpower Service. Barang pesanan akan masuk ke Summary Service."}
+                {requestedFor === "repair" && "Diajukan untuk kebutuhan Manpower Repair. Barang pesanan akan masuk ke Summary Repair."}
+              </p>
+            </div>
+          )}
+
+          {canSelectTargetSection && sectionOptions.length > 0 && !isHseUser && (
             <div className="mt-3.5 pt-3 border-t border-slate-200/60">
               <Label htmlFor="targetSectionId" className="text-xs font-semibold text-slate-700">
-                Seksi Pemilik / Tujuan APD <span className="text-amber-600 font-normal">(Khusus HSE & Admin)</span>
+                Seksi Pemilik / Tujuan APD <span className="text-amber-600 font-normal">(Khusus Admin)</span>
               </Label>
               <p className="text-[11px] text-slate-500 mb-1.5">
                 Pilih seksi yang APD-nya dipesankan. Pengajuan akan dirutekan ke Section Head seksi target dan masuk ke Summary APD seksi tersebut.
