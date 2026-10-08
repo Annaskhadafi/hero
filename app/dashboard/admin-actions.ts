@@ -4568,6 +4568,7 @@ async function applyApprovalDecision(params: {
       decisionNote: approvals.decisionNote,
       overtimeMinutes: approvals.overtimeMinutes,
       activityId: approvals.activityId,
+      maritalStatusRequestId: approvals.maritalStatusRequestId,
       activityTitle: activities.title,
       activityType: activities.activityType,
       priority: activities.priority,
@@ -4693,16 +4694,25 @@ async function applyApprovalDecision(params: {
 
     if (marReq) {
       if (params.decision === 'approved') {
-        await approveMaritalStatusStepAction(
+        const res = await approveMaritalStatusStepAction(
           marReq.id,
           params.approvalId,
           params.note,
           resolvedSignatureUrl
         )
+        if (res && !res.success) {
+          throw new Error(res.error || 'Gagal menyetujui permohonan status pernikahan.')
+        }
       } else if (params.decision === 'reverted' || params.decision === 'revert' || params.decision === 'needs_revision') {
-        await revertMaritalStatusStepAction(marReq.id, params.approvalId, params.note)
+        const res = await revertMaritalStatusStepAction(marReq.id, params.approvalId, params.note)
+        if (res && !res.success) {
+          throw new Error(res.error || 'Gagal mengembalikan permohonan status pernikahan.')
+        }
       } else {
-        await rejectMaritalStatusStepAction(marReq.id, params.approvalId, params.note)
+        const res = await rejectMaritalStatusStepAction(marReq.id, params.approvalId, params.note)
+        if (res && !res.success) {
+          throw new Error(res.error || 'Gagal menolak permohonan status pernikahan.')
+        }
       }
       return true
     }

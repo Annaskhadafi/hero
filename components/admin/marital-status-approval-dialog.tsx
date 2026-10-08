@@ -39,7 +39,12 @@ export function MaritalStatusApprovalDialog({ item }: { item: any; group?: any }
   const [isUsingProfileSig, setIsUsingProfileSig] = useState(true);
   const throttleTimer = useRef<NodeJS.Timeout | null>(null);
 
-  const reqId = item.maritalStatusRequestId || item.activityId || item.entityId || item.id;
+  const reqId =
+    item.maritalStatusRequestId ||
+    (item.rawGeneralGroup?.items?.find((i: any) => i.maritalStatusRequestId != null) as any)?.maritalStatusRequestId ||
+    (typeof item.id === 'number' ? item.id : Number(String(item.id || '').replace(/\D/g, ''))) ||
+    item.activityId ||
+    item.id;
 
   const handleDirectPrint = () => {
     if (iframeRef.current?.contentWindow) {

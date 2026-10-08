@@ -15,15 +15,30 @@ export default async function PrintMaritalStatusPage({
   params: Promise<{ id: string }>;
   searchParams?: Promise<{ embed?: string }>;
 }) {
-  const { id } = await params;
+  const resolvedParams = await params;
+  const id = resolvedParams?.id || '';
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const isEmbed = resolvedSearchParams?.embed === '1' || resolvedSearchParams?.embed === 'true';
   
   const reqId = parseInt(id, 10);
-  if (isNaN(reqId)) return notFound();
+  let data: Awaited<ReturnType<typeof fetchMaritalStatusRequestById>> = null;
 
-  const data = await fetchMaritalStatusRequestById(reqId);
-  if (!data) return notFound();
+  if (!isNaN(reqId) && reqId > 0) {
+    try {
+      data = await fetchMaritalStatusRequestById(reqId);
+    } catch (err) {
+      console.error('[PrintMaritalStatusPage] Error fetching marital status request:', err);
+    }
+  }
+
+  if (!data) {
+    return (
+      <div className="bg-white min-h-[300px] p-8 text-center text-slate-500 font-sans flex flex-col items-center justify-center border border-slate-200 rounded-xl m-4">
+        <p className="font-bold text-slate-700 text-sm">Dokumen Status Pernikahan Tidak Ditemukan</p>
+        <p className="text-xs text-slate-400 mt-1">Pengajuan dengan ID #{id || '—'} tidak ditemukan atau belum tersedia.</p>
+      </div>
+    );
+  }
 
   // Convert submitter signature URL if stored on S3
   const submitterSignatureUrl = data.signatureUrl

@@ -14,6 +14,8 @@ import { getEmployeeDisplayDataByEmail } from "@/lib/hero-admin";
 import { getUserMobilePermissions } from "@/lib/mobile-permissions";
 import { MobilePermissionProvider } from "@/components/mobile/permission-provider";
 
+import { isRedirectError } from "next/dist/client/components/redirect-error";
+
 import "@/app/dashboard/theme.css";
 
 export const metadata: Metadata = {
@@ -85,7 +87,7 @@ export default async function MobileLayout({ children }: { children: ReactNode }
       siteId = empData?.siteId;
     }
   } catch (err) {
-    if ((err as any)?.digest?.startsWith("NEXT_REDIRECT")) {
+    if (isRedirectError(err) || (err as any)?.digest?.includes("NEXT_REDIRECT")) {
       throw err;
     }
     console.error("[mobile/layout] Parallel layout fetch error:", err);

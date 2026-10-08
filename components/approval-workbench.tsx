@@ -982,10 +982,10 @@ export function InboxTab({
           dueState: g.overdueCount > 0 ? 'overdue' : g.dueSoonCount > 0 ? 'due_soon' : 'open',
           dueAt: nonFormWoItems[0]?.dueAt || new Date(),
           submittedAt: nonFormWoItems[0]?.submittedAt || new Date(),
-          url: isMaritalStatus ? `/print/central-service/marital-status/${(maritalItem as any)?.maritalStatusRequestId || (maritalItem as any)?.activityId || (maritalItem as any)?.approvalId}` : (isApd ? (isSummary ? `/print/summary/${apdItem?.activityId}` : `/print/apd/${apdItem?.activityId}`) : '#'),
+          url: isMaritalStatus ? `/print/central-service/marital-status/${(maritalItem as any)?.maritalStatusRequestId || 1}` : (isApd ? (isSummary ? `/print/summary/${apdItem?.activityId}` : `/print/apd/${apdItem?.activityId}`) : '#'),
           activityType: isMaritalStatus ? 'Perubahan Status Pernikahan' : (isSummary ? 'Summary APD' : (apdItem?.activityType || (isApd ? (isMaterial ? 'Request Material' : isTools ? 'Request Tools' : 'Request APD') : 'Form Activity'))),
           activityId: (isMaritalStatus ? (maritalItem as any)?.activityId : (apdItem?.activityId)) ?? Number(g.id),
-          maritalStatusRequestId: (maritalItem as any)?.maritalStatusRequestId || (maritalItem as any)?.id,
+          maritalStatusRequestId: (maritalItem as any)?.maritalStatusRequestId || null,
           requestNumber: (maritalItem as any)?.requestNumber || resolvedDocNumber,
           approvalId: (maritalItem as any)?.approvalId || apdItem?.approvalId || nonFormWoItems[0]?.approvalId,
           approverName: (nonFormWoItems[0] as any)?.approverName || null,
@@ -2515,7 +2515,22 @@ export function InboxTab({
               (currentBatchDoc?.category as any) === 'CONTRACT_REVIEW' ||
               Boolean((currentBatchDoc as any)?.rawContractReview)
 
-            const isCleanCustomDoc = isLandscapeDoc || isFiveRDoc || isApdDoc || isContractReviewDoc
+            const isMaritalStatusDoc =
+              (currentBatchDoc?.category as any) === 'MARITAL_STATUS' ||
+              Boolean((currentBatchDoc as any)?.maritalStatusRequestId) ||
+              Boolean((currentBatchDoc as any)?.rawMaritalStatus) ||
+              Boolean(
+                currentBatchDoc?.rawGeneralGroup?.items?.some(
+                  (i: any) =>
+                    i.maritalStatusRequestId != null ||
+                    i.activityType === 'marital_status' ||
+                    i.activityType === 'Permohonan Status Pernikahan' ||
+                    i.activityType === 'Perubahan Status Pernikahan' ||
+                    i.title?.toLowerCase().includes('status pernikahan')
+                )
+              )
+
+            const isCleanCustomDoc = isLandscapeDoc || isFiveRDoc || isApdDoc || isContractReviewDoc || isMaritalStatusDoc
             return (
               <DialogContent
                 showCloseButton={false}
@@ -4045,6 +4060,43 @@ export function InboxTab({
                         )
                       })()}
 
+                      {/* Marital Status Document Preview */}
+                      {isMaritalStatusDoc && (() => {
+                        const msReqId =
+                          (currentBatchDoc as any)?.maritalStatusRequestId ||
+                          (currentBatchDoc as any)?.rawMaritalStatus?.id ||
+                          currentBatchDoc.rawGeneralGroup?.items?.find((i: any) => i.maritalStatusRequestId != null)?.maritalStatusRequestId ||
+                          currentBatchDoc.rawGeneralGroup?.items?.find((i: any) => (i.activityType === 'marital_status' || i.activityType === 'Permohonan Status Pernikahan' || i.activityType === 'Perubahan Status Pernikahan') && i.maritalStatusRequestId != null)?.maritalStatusRequestId ||
+                          (typeof (currentBatchDoc as any)?.id === 'number'
+                            ? (currentBatchDoc as any).id
+                            : Number(String((currentBatchDoc as any)?.id || '').replace(/\D/g, '')))
+                        const printUrl = `/print/central-service/marital-status/${msReqId}?embed=true`
+                        return (
+                          <div className="w-[210mm] h-[297mm] min-h-[297mm] max-h-[297mm] overflow-hidden flex justify-center p-0 m-0">
+                            <iframe
+                              src={printUrl}
+                              className="w-[210mm] min-h-[297mm] h-[297mm] border-0 bg-white shadow-none p-0 m-0 block"
+                              title={`Preview Dokumen Status Pernikahan ${currentBatchDoc.documentNumber}`}
+                              onLoad={(e) => {
+                                const iframe = e.target as HTMLIFrameElement
+                                const sendSig = () => {
+                                  if (signatureDataUrl && iframe?.contentWindow) {
+                                    iframe.contentWindow.postMessage(
+                                      { type: 'previewSignature', dataUrl: signatureDataUrl },
+                                      '*'
+                                    )
+                                  }
+                                }
+                                sendSig()
+                                setTimeout(sendSig, 200)
+                                setTimeout(sendSig, 600)
+                                setTimeout(sendSig, 1200)
+                              }}
+                            />
+                          </div>
+                        )
+                      })()}
+
                       {/* Jobcard Repair (QC) Document Preview */}
                       {(currentBatchDoc.category === 'JOBCARD' || (currentBatchDoc as any).activityType === 'Jobcard Repair (QC)' || (currentBatchDoc as any).activityType === 'jobcard_qc') && (
                         <div>
@@ -4093,6 +4145,7 @@ export function InboxTab({
 
                       {/* General Group (Form Activity) */}
                       {!isApdDoc &&
+                        !isMaritalStatusDoc &&
                         currentBatchDoc.category === 'GENERAL' &&
                         !Boolean(currentBatchDoc.rawGeneralGroup?.items?.some((i: any) => i.repairFormWo)) &&
                         !Boolean(
