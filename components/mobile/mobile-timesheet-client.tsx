@@ -5,6 +5,7 @@ import {
   Banknote,
   Clock3,
   Download,
+  FileDown,
   FileText,
   Loader2,
   QrCode,
@@ -136,6 +137,29 @@ export function MobileTimesheetClient({ data }: { data: any }) {
         </div>
       </section>
 
+
+      {/* Overtime Record PDF Download */}
+      <section className="rounded-[1.25rem] bg-white p-4 border border-slate-100 shadow-[0_14px_32px_rgba(8,32,51,0.08)] flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="flex size-11 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+            <FileText className="size-5" />
+          </span>
+          <div>
+            <p className="text-xs font-black text-[#082033]">Overtime Record (PDF)</p>
+            <p className="text-[11px] font-semibold text-[#486275]">Unduh rincian lembur bulan ini</p>
+          </div>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          onClick={handleDownloadSummarySpl}
+          disabled={isDownloadingSpl}
+          className="h-9 rounded-xl bg-[#003461] hover:bg-[#00274a] text-white text-xs font-bold px-3 gap-1.5"
+        >
+          {isDownloadingSpl ? <Loader2 className="size-3.5 animate-spin" /> : <FileDown className="size-3.5" />}
+          Unduh PDF
+        </Button>
+      </section>
 
       {/* Timesheet Entries */}
       <section className="space-y-3">

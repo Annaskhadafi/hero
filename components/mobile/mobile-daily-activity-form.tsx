@@ -20,6 +20,7 @@ import {
   Navigation,
   Plus,
   RotateCcw,
+  RefreshCw,
   Save,
   Search,
   SendHorizontal,
@@ -2715,15 +2716,11 @@ export function MobileDailyActivityForm({
       if (!employeeId || !workDate || isSubmitting) return
       try {
         const itemsSnapshot = selectedLibraries.length > 0
-          ? selectedLibraries.flatMap((lib) => {
+          ? selectedLibraries.map((lib) => {
               const entry = selfInputEntries[`${lib.id}`]
               const pUrls = entry?.previewUrls || []
-              const unitList = (entry?.equipmentNo || '')
-                .split(/[,;\n\r]+/)
-                .map((u) => u.trim())
-                .filter(Boolean)
-              const unitsToCreate = unitList.length > 0 ? unitList : ['']
-              return unitsToCreate.map((u: string) => ({
+              const u = (entry?.equipmentNo || '').trim()
+              return {
                 label: `${lib.activityCode} - ${lib.activityName}`,
                 group: lib.activityCode || 'Technical',
                 libraryActivityId: lib.id,
@@ -2735,20 +2732,15 @@ export function MobileDailyActivityForm({
                 materialUsed: entry?.materialUsed || '',
                 photoUrl: pUrls[0] || null,
                 photos: pUrls,
-              }))
+              }
             })
           : sourceMode === 'custom' && customActivityName.trim()
-            ? (() => {
-                const customUnits = (equipmentNo || '')
-                  .split(/[,;\n\r]+/)
-                  .map((u: string) => u.trim())
-                  .filter(Boolean)
-                const unitsToCreate = customUnits.length > 0 ? customUnits : ['']
-                return unitsToCreate.map((u: string) => ({
+            ? [
+                {
                   label: customActivityName.trim(),
                   group: 'Custom',
                   libraryActivityId: null,
-                  unitNumber: u,
+                  unitNumber: (equipmentNo || '').trim(),
                   startedAt: startTime || defaultStartTime,
                   endedAt: endTime || defaultEndTime,
                   points: 5,
@@ -2756,8 +2748,8 @@ export function MobileDailyActivityForm({
                   materialUsed: materialUsed.trim(),
                   photoUrl: photoPreviewUrls[0] || null,
                   photos: photoPreviewUrls,
-                }))
-              })()
+                },
+              ]
             : []
 
         const res = await saveActivityDraftToServerAction({
@@ -3065,14 +3057,10 @@ export function MobileDailyActivityForm({
                     ? Number(library.id)
                     : null
 
-              const unitList = (entry.equipmentNo || '')
-                .split(/[,;\n\r]+/)
-                .map((u: string) => u.trim())
-                .filter(Boolean)
-              const unitsToCreate = unitList.length > 0 ? unitList : ['']
+              const u = (entry.equipmentNo || '').trim()
 
-              return unitsToCreate.map((u: string, uIdx: number) => ({
-                id: uIdx === 0 ? matchingSessionItem?.id : undefined,
+              return {
+                id: matchingSessionItem?.id,
                 label: `${library.activityCode} - ${library.activityName}`,
                 group: library.activityCode || 'Technical',
                 libraryActivityId: validLibraryId,
@@ -3085,10 +3073,10 @@ export function MobileDailyActivityForm({
                 tireCount: library.requiresTireCount ? (entry.tireCount ?? 0) : (entry.tireCount ?? null),
                 photoUrl: entryEvidence.urls[0] || null,
                 photos: entryEvidence.urls,
-              }))
+              }
             })
           )
-        ).flat()
+        )
       } else if (sourceMode === 'custom' && customActivityName) {
         const customEvidence = await prepareEvidence(
           photoFiles,
@@ -3097,26 +3085,23 @@ export function MobileDailyActivityForm({
           photoPreviewUrls
         )
         const matchingCustomItem = initialSessionData?.sessionItems?.find((i: any) => !i.libraryActivityId)
-        const customUnits = (equipmentNo || '')
-          .split(/[,;\n\r]+/)
-          .map((u: string) => u.trim())
-          .filter(Boolean)
-        const unitsToCreate = customUnits.length > 0 ? customUnits : ['']
 
-        itemsToSubmit = unitsToCreate.map((u: string, uIdx: number) => ({
-          id: uIdx === 0 ? matchingCustomItem?.id : undefined,
-          label: customActivityName.trim(),
-          group: 'Custom',
-          libraryActivityId: null,
-          unitNumber: u,
-          startedAt: formatSubmitDateTime(startTime, workDate),
-          endedAt: formatSubmitDateTime(endTime, workDate),
-          points: 5,
-          remark: notes.trim(),
-          materialUsed: materialUsed.trim(),
-          photoUrl: customEvidence.urls[0] || null,
-          photos: customEvidence.urls,
-        }))
+        itemsToSubmit = [
+          {
+            id: matchingCustomItem?.id,
+            label: customActivityName.trim(),
+            group: 'Custom',
+            libraryActivityId: null,
+            unitNumber: (equipmentNo || '').trim(),
+            startedAt: formatSubmitDateTime(startTime, workDate),
+            endedAt: formatSubmitDateTime(endTime, workDate),
+            points: 5,
+            remark: notes.trim(),
+            materialUsed: materialUsed.trim(),
+            photoUrl: customEvidence.urls[0] || null,
+            photos: customEvidence.urls,
+          },
+        ]
       } else if (checklistContext && routeSessionItems.length > 0) {
         const checkedRouteItems = routeSessionItems.filter((item) => item.isChecked)
         if (checkedRouteItems.length > 0) {
@@ -3275,7 +3260,14 @@ export function MobileDailyActivityForm({
         window.location.href = targetUrl
       }, 1000)
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Submit activity gagal.'
+      let message = error instanceof Error ? error.message : 'Submit activity gagal.'
+      if (
+        message.includes('was not found on the server') ||
+        message.includes('failed-to-find-server-action')
+      ) {
+        message =
+          'Sistem HERO telah diperbarui di server (Server Action kedaluwarsa). Silakan muat ulang (refresh) halaman ini untuk melanjutkan.'
+      }
       setSubmitState({ kind: 'error', message })
       toast.error(message, {
         duration: 5000,
@@ -4470,9 +4462,23 @@ export function MobileDailyActivityForm({
             <div className="flex size-7 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600 mt-0.5">
               <AlertCircle className="size-4" />
             </div>
-            <div className="flex-1 space-y-0.5">
-              <p className="font-extrabold text-red-900 text-xs">Perhatian: Formulir Belum Lengkap</p>
+            <div className="flex-1 space-y-1">
+              <p className="font-extrabold text-red-900 text-xs">
+                {submitState.message.includes('diperbarui') || submitState.message.includes('Server Action')
+                  ? 'Perhatian: Aplikasi Perlu Dimuat Ulang'
+                  : 'Perhatian: Formulir Belum Lengkap'}
+              </p>
               <p className="font-semibold text-red-700 text-xs leading-relaxed">{submitState.message}</p>
+              {submitState.message.includes('diperbarui') || submitState.message.includes('Server Action') || submitState.message.includes('was not found') ? (
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-3.5 py-2 text-xs font-bold text-white shadow-md hover:bg-red-700 active:scale-95 transition-all cursor-pointer"
+                >
+                  <RefreshCw className="size-3.5" />
+                  Muat Ulang Halaman (Refresh)
+                </button>
+              ) : null}
             </div>
             <button
               type="button"
@@ -4562,14 +4568,10 @@ export function MobileDailyActivityForm({
                 void (async () => {
                   try {
                     const itemsSnapshot = selectedLibraries.length > 0
-                      ? selectedLibraries.flatMap((lib) => {
+                      ? selectedLibraries.map((lib) => {
                           const entry = selfInputEntries[`${lib.id}`]
-                          const unitList = (entry?.equipmentNo || '')
-                            .split(/[,;\n\r]+/)
-                            .map((u: string) => u.trim())
-                            .filter(Boolean)
-                          const unitsToCreate = unitList.length > 0 ? unitList : ['']
-                          return unitsToCreate.map((u: string) => ({
+                          const u = (entry?.equipmentNo || '').trim()
+                          return {
                             label: `${lib.activityCode} - ${lib.activityName}`,
                             group: lib.activityCode || 'Technical',
                             libraryActivityId: lib.id,
@@ -4581,20 +4583,15 @@ export function MobileDailyActivityForm({
                             materialUsed: entry?.materialUsed || '',
                             photoUrl: entry?.previewUrls?.[0] || null,
                             photos: entry?.previewUrls || [],
-                          }))
+                          }
                         })
                       : sourceMode === 'custom' && customActivityName
-                        ? (() => {
-                            const customUnits = (equipmentNo || '')
-                              .split(/[,;\n\r]+/)
-                              .map((u: string) => u.trim())
-                              .filter(Boolean)
-                            const unitsToCreate = customUnits.length > 0 ? customUnits : ['']
-                            return unitsToCreate.map((u: string) => ({
+                        ? [
+                            {
                               label: customActivityName.trim(),
                               group: 'Custom',
                               libraryActivityId: null,
-                              unitNumber: u,
+                              unitNumber: (equipmentNo || '').trim(),
                               startedAt: startTime || defaultStartTime,
                               endedAt: endTime || defaultEndTime,
                               points: 5,
@@ -4602,8 +4599,8 @@ export function MobileDailyActivityForm({
                               materialUsed: materialUsed.trim(),
                               photoUrl: photoPreviewUrls[0] || null,
                               photos: photoPreviewUrls,
-                            }))
-                          })()
+                            },
+                          ]
                         : []
 
                     const res = await saveActivityDraftToServerAction({
@@ -4830,19 +4827,15 @@ export function MobileDailyActivityForm({
             >
               {(() => {
                 const previewItemsList = selectedLibraries.length > 0
-                  ? selectedLibraries.flatMap((lib, idx) => {
+                  ? selectedLibraries.map((lib, idx) => {
                       const entry = selfInputEntries[`${lib.id}`]
                       const durationStr = lib.requiresDuration && entry?.startTime && entry?.endTime ? `${entry.startTime} - ${entry.endTime}` : '-'
                       const photoUrl = entry?.previewUrls?.[0] || null
-                      const unitList = (entry?.equipmentNo || '')
-                        .split(/[,;\n\r]+/)
-                        .map((u) => u.trim())
-                        .filter(Boolean)
-                      const unitsToCreate = unitList.length > 0 ? unitList : ['—']
-                      return unitsToCreate.map((u: string, uIdx: number) => ({
-                        id: `${lib.id}-${uIdx}`,
+                      const u = (entry?.equipmentNo || '').trim()
+                      return {
+                        id: `${lib.id}-${idx}`,
                         label: `${lib.activityCode} - ${lib.activityName}`,
-                        unitNumber: lib.requiresEquipmentNo ? u : '—',
+                        unitNumber: lib.requiresEquipmentNo ? (u || '—') : '—',
                         duration: lib.requiresDuration ? durationStr : '—',
                         tireCount: lib.requiresTireCount ? (entry?.tireCount ?? 0) : 0,
                         materialUsed: lib.requiresMaterialUsed ? (entry?.materialUsed || '-') : '—',
@@ -4853,31 +4846,28 @@ export function MobileDailyActivityForm({
                         points: lib.basePoints || 5,
                         remark: entry?.notes || '-',
                         photoUrl,
-                      }))
+                      }
                     })
                   : sourceMode === 'custom' && customActivityName
                   ? (() => {
-                      const customUnits = (equipmentNo || '')
-                        .split(/[,;\n\r]+/)
-                        .map((u: string) => u.trim())
-                        .filter(Boolean)
-                      const unitsToCreate = customUnits.length > 0 ? customUnits : ['—']
                       const durationStr = startTime && endTime ? `${startTime} - ${endTime}` : '-'
-                      return unitsToCreate.map((u: string, uIdx: number) => ({
-                        id: `custom-${uIdx}`,
-                        label: customActivityName.trim(),
-                        unitNumber: u,
-                        duration: durationStr,
-                        tireCount: 0,
-                        materialUsed: materialUsed || '—',
-                        requiresEquipmentNo: true,
-                        requiresDuration: true,
-                        requiresTireCount: false,
-                        requiresMaterialUsed: Boolean(materialUsed),
-                        points: 5,
-                        remark: notes.trim() || customActivityDescription.trim() || '-',
-                        photoUrl: photoPreviewUrls[0] || null,
-                      }))
+                      return [
+                        {
+                          id: `custom-0`,
+                          label: customActivityName.trim(),
+                          unitNumber: (equipmentNo || '').trim() || '—',
+                          duration: durationStr,
+                          tireCount: 0,
+                          materialUsed: materialUsed || '—',
+                          requiresEquipmentNo: true,
+                          requiresDuration: true,
+                          requiresTireCount: false,
+                          requiresMaterialUsed: Boolean(materialUsed),
+                          points: 5,
+                          remark: notes.trim() || customActivityDescription.trim() || '-',
+                          photoUrl: photoPreviewUrls[0] || null,
+                        },
+                      ]
                     })()
                   : initialSessionData?.sessionItems && initialSessionData.sessionItems.length > 0
                   ? initialSessionData.sessionItems.map((it: any) => ({

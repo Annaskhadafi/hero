@@ -566,7 +566,10 @@ async function drawWorkTable(
     cellX += columns[3].width;
 
     // Col 4: Catatan
-    const remarkText = (item.remark?.trim() || (item as any).remarks?.trim() || item.workSummary?.match(/Remark:\s*([^,\-]+)/i)?.[1]?.trim() || "-");
+    let remarkText = (item.remark?.trim() || (item as any).remarks?.trim() || item.workSummary?.match(/Remark:\s*([^,\-]+)/i)?.[1]?.trim() || "-");
+    if (item.unitNumber && item.unitNumber !== '-' && !remarkText.includes(item.unitNumber)) {
+      remarkText = remarkText === '-' ? `Unit: ${item.unitNumber}` : `[Unit: ${item.unitNumber}] ${remarkText}`;
+    }
     const remarkLines = splitText(remarkText, 30);
     let remY = rowTopY - 11;
     for (const line of remarkLines.slice(0, 2)) {

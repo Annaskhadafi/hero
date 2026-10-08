@@ -216,6 +216,242 @@ function formatTime(value: Date | string | null | undefined) {
   return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
 }
 
+function calculateSplDurationHours(row: OvertimeListingRow): number {
+  if (row.plannedStartAt && row.plannedEndAt) {
+    const start = new Date(row.plannedStartAt).getTime()
+    const end = new Date(row.plannedEndAt).getTime()
+    if (!isNaN(start) && !isNaN(end) && end > start) {
+      return Math.round(((end - start) / (1000 * 60 * 60)) * 10) / 10
+    }
+  }
+  if (row.lineItems && row.lineItems.length > 0) {
+    const mins = row.lineItems.reduce((acc, item) => acc + (item.estimatedMinutes || 0), 0)
+    if (mins > 0) return Math.round((mins / 60) * 10) / 10
+  }
+  return 0
+}
+
+function formatMonthYearLabel(monthStr: string): string {
+  if (!monthStr) return 'Semua Periode'
+  const [yearStr, monthNumStr] = monthStr.split('-')
+  const year = parseInt(yearStr, 10)
+  const monthNum = parseInt(monthNumStr, 10)
+  if (isNaN(year) || isNaN(monthNum) || monthNum < 1 || monthNum > 12) return monthStr
+  const monthNames = [
+    'Januari',
+    'Februari',
+    'Maret',
+    'April',
+    'Mei',
+    'Juni',
+    'Juli',
+    'Agustus',
+    'September',
+    'Oktober',
+    'November',
+    'Desember',
+  ]
+  return `${monthNames[monthNum - 1]} ${year}`
+}
+
+function getIndonesianDayName(dateValue: Date | string): string {
+  const d = dateValue instanceof Date ? dateValue : new Date(dateValue)
+  if (isNaN(d.getTime())) return '—'
+  const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']
+  return dayNames[d.getDay()]
+}
+
+function renderSummarySplPdfHtml(
+  summaryRows: OvertimeListingRow[],
+  filterInfo: {
+    employeeName: string
+    department?: string
+    periodLabel: string
+    totalHours: number
+    totalCount: number
+  }
+): string {
+  const formattedDate = new Date().toLocaleDateString('id-ID', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+
+  const rowsHtml = summaryRows
+    .map((row) => {
+      const dateStr = formatDate(row.workDate)
+      const dayNameStr = getIndonesianDayName(row.workDate)
+      const isWeekend = dayNameStr === 'Minggu' || dayNameStr === 'Sabtu'
+
+      const startTime = row.plannedStartAt ? formatTime(row.plannedStartAt) : '—'
+      const endTime = row.plannedEndAt ? formatTime(row.plannedEndAt) : '—'
+      const durationHours = calculateSplDurationHours(row)
+
+      const lineItemsSummary = row.lineItems?.length
+        ? row.lineItems
+            .map(
+              (l) =>
+                `• ${l.name || l.lineLabel || l.code || 'Aktivitas'}${
+                  l.unitNumber ? ` (Unit: ${l.unitNumber})` : ''
+                }${l.tireCount ? ` [${l.tireCount} pcs/qty]` : ''}`
+            )
+            .join('<br/>')
+        : row.title || 'Penugasan Lembur'
+
+      const taskContent = `<strong>[${row.splNumber || 'SPL'}] ${row.requesterName}</strong><br/>${lineItemsSummary}`
+
+      return `
+        <tr style="page-break-inside: avoid;">
+          <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center; font-size: 8pt; vertical-align: middle;">${dateStr}</td>
+          <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center; font-size: 8pt; vertical-align: middle; font-weight: bold; ${isWeekend ? 'color: #dc2626;' : ''}">${dayNameStr}</td>
+          <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center; font-size: 8pt; vertical-align: middle; font-family: monospace;">${startTime}</td>
+          <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center; font-size: 8pt; vertical-align: middle; font-family: monospace;">${endTime}</td>
+          <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center; font-size: 8.5pt; vertical-align: middle; font-weight: bold; color: #0369a1;">${durationHours} Jam</td>
+          <td style="border: 1px solid #cbd5e1; padding: 6px 8px; font-size: 7.5pt; vertical-align: top; line-height: 1.3;">${taskContent}</td>
+        </tr>
+      `
+    })
+    .join('')
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>Summary SPL - ${filterInfo.employeeName}</title>
+      <style>
+        body { font-family: 'Segoe UI', Helvetica, Arial, sans-serif; color: #0f172a; margin: 0; padding: 15px; background: #ffffff; }
+        .header-table { width: 100%; border-bottom: 2px solid #003461; padding-bottom: 10px; margin-bottom: 14px; }
+        .info-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; }
+        .info-grid { display: table; width: 100%; }
+        .info-cell { display: table-cell; width: 50%; vertical-align: top; font-size: 8.5pt; }
+        .metric-box { text-align: center; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px; }
+        .data-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+        .data-table th { background: #003461; color: #ffffff; font-size: 7.5pt; font-weight: bold; padding: 6px; text-align: center; border: 1px solid #003461; }
+        .summary-total-row { background: #f1f5f9; font-weight: bold; font-size: 8.5pt; }
+        .signature-table { width: 100%; border-collapse: collapse; margin-top: 24px; page-break-inside: avoid; }
+        .signature-table td { border: 1px solid #cbd5e1; padding: 6px; text-align: center; width: 33.33%; vertical-align: top; }
+      </style>
+    </head>
+    <body>
+      <table class="header-table">
+        <tr>
+          <td style="vertical-align: middle;">
+            <div style="font-size: 13pt; font-weight: 800; color: #003461; letter-spacing: 0.5px;">PT CHITRA PARATAMA</div>
+            <div style="font-size: 10.5pt; font-weight: 700; color: #334155; margin-top: 2px;">SURAT PERINTAH LEMBUR</div>
+            <div style="font-size: 8pt; color: #64748b; margin-top: 1px;">Laporan Rekapitulasi & Evaluasi Jam Lembur Karyawan</div>
+          </td>
+          <td style="text-align: right; vertical-align: middle;">
+            <div style="font-size: 7.5pt; color: #64748b;">Tanggal Cetak:</div>
+            <div style="font-size: 8pt; font-weight: bold; color: #0f172a;">${formattedDate}</div>
+          </td>
+        </tr>
+      </table>
+
+      <div class="info-card">
+        <div class="info-grid">
+          <div class="info-cell">
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="width: 110px; color: #64748b; font-weight: 600; padding: 2px 0;">Bulan</td>
+                <td style="width: 10px; color: #64748b;">:</td>
+                <td style="font-weight: 700; color: #0284c7; padding: 2px 0;">${filterInfo.periodLabel}</td>
+              </tr>
+              <tr>
+                <td style="color: #64748b; font-weight: 600; padding: 2px 0;">Nama Karyawan</td>
+                <td style="color: #64748b;">:</td>
+                <td style="font-weight: 700; color: #0f172a; padding: 2px 0;">${filterInfo.employeeName}</td>
+              </tr>
+              <tr>
+                <td style="color: #64748b; font-weight: 600; padding: 2px 0;">Departemen</td>
+                <td style="color: #64748b;">:</td>
+                <td style="padding: 2px 0;">${filterInfo.department || '—'}</td>
+              </tr>
+            </table>
+          </div>
+          <div class="info-cell" style="padding-left: 15px;">
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="padding: 3px;">
+                  <div class="metric-box">
+                    <div style="font-size: 7pt; color: #64748b; font-weight: 600;">TOTAL DOKUMEN SPL</div>
+                    <div style="font-size: 12pt; font-weight: 800; color: #003461; margin-top: 1px;">${filterInfo.totalCount} SPL</div>
+                  </div>
+                </td>
+                <td style="padding: 3px;">
+                  <div class="metric-box" style="border-color: #0284c7; background: #f0f9ff;">
+                    <div style="font-size: 7pt; color: #0369a1; font-weight: 600;">TOTAL JAM LEMBUR</div>
+                    <div style="font-size: 12pt; font-weight: 800; color: #0284c7; margin-top: 1px;">${filterInfo.totalHours} Jam</div>
+                  </div>
+                </td>
+              </tr>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th style="width: 12%;" rowspan="2">Tanggal</th>
+            <th style="width: 12%;" rowspan="2">Hari</th>
+            <th style="width: 20%;" colspan="2">Jam Lembur</th>
+            <th style="width: 12%;" rowspan="2">Total Lembur</th>
+            <th style="width: 44%;" rowspan="2">Yang Dikerjakan</th>
+          </tr>
+          <tr>
+            <th style="width: 10%;">Mulai</th>
+            <th style="width: 10%;">Selesai</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${
+            rowsHtml ||
+            `<tr><td colspan="6" style="text-align: center; padding: 16px; color: #64748b; font-style: italic;">Tidak ada dokumen SPL pada periode ini.</td></tr>`
+          }
+          <tr class="summary-total-row">
+            <td colspan="4" style="border: 1px solid #cbd5e1; padding: 6px; text-align: right;">TOTAL LEMBUR:</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: center; color: #0284c7; font-size: 9pt;">${filterInfo.totalHours} Jam</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px; text-align: left; color: #64748b; font-size: 7.5pt;">(${filterInfo.totalCount} Dokumen Pengajuan)</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <table class="signature-table">
+        <thead>
+          <tr style="background: #f8fafc; font-weight: bold; font-size: 7.5pt;">
+            <td>Karyawan</td>
+            <td>Supervisor</td>
+            <td>Branch Manager / Factory Manager</td>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="height: 55px; vertical-align: bottom; font-size: 7.5pt;">
+              <div style="border-top: 1px solid #94a3b8; padding-top: 3px; font-weight: bold;">
+                ${filterInfo.employeeName !== 'Semua Karyawan' ? filterInfo.employeeName : 'Karyawan'}
+              </div>
+              <div style="font-size: 7pt; color: #64748b;">Tanggal: ${formattedDate.split(',')[0]}</div>
+            </td>
+            <td style="height: 55px; vertical-align: bottom; font-size: 7.5pt;">
+              <div style="border-top: 1px solid #94a3b8; padding-top: 3px; font-weight: bold;">Supervisor</div>
+              <div style="font-size: 7pt; color: #64748b;">Reviewer Operational</div>
+            </td>
+            <td style="height: 55px; vertical-align: bottom; font-size: 7.5pt;">
+              <div style="border-top: 1px solid #94a3b8; padding-top: 3px; font-weight: bold;">Branch Manager / Factory Manager</div>
+              <div style="font-size: 7pt; color: #64748b;">Approval Otorisasi</div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </body>
+    </html>
+  `
+}
+
+
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
     approved: 'bg-emerald-50 text-emerald-700 border-0',
@@ -916,6 +1152,243 @@ export function OvertimeListingClient({
     setSelectedDepartments([])
     setSelectedStatuses([])
     setSelectedWorkerCounts([])
+  }
+
+  // Main Navigation Tab (Semua SPL vs Summary SPL)
+  const [mainTab, setMainTab] = useState<'semua_spl' | 'summary_spl'>('semua_spl')
+
+  // Summary SPL Tab State
+  const [summaryEmployeeId, setSummaryEmployeeId] = useState<string>('ALL')
+  const [summaryMonth, setSummaryMonth] = useState<string>(() => {
+    const d = new Date()
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    return `${year}-${month}`
+  })
+  const [summaryStatus, setSummaryStatus] = useState<string>('ALL')
+  const [summarySearchQuery, setSummarySearchQuery] = useState<string>('')
+  const [isGeneratingSummaryPdf, setIsGeneratingSummaryPdf] = useState<boolean>(false)
+
+  const summaryEmployeeOptions = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; dept?: string }>()
+    map.set('ALL', { id: 'ALL', name: 'Semua Karyawan' })
+
+    employees?.forEach((emp) => {
+      const key = String(emp.id || emp.name)
+      if (emp.name) {
+        map.set(key, {
+          id: String(emp.id),
+          name: emp.name,
+          dept: emp.department || emp.section || undefined,
+        })
+      }
+    })
+
+    rows.forEach((row) => {
+      if (row.requestedByEmployeeId && !map.has(String(row.requestedByEmployeeId))) {
+        map.set(String(row.requestedByEmployeeId), {
+          id: String(row.requestedByEmployeeId),
+          name: row.requesterName,
+          dept: row.requesterDepartment,
+        })
+      }
+      if (row.requesterName && !map.has(row.requesterName)) {
+        map.set(row.requesterName, {
+          id: row.requesterName,
+          name: row.requesterName,
+          dept: row.requesterDepartment,
+        })
+      }
+      row.participants?.forEach((p) => {
+        if (p.employeeName && !map.has(p.employeeName)) {
+          map.set(p.employeeName, {
+            id: p.employeeName,
+            name: p.employeeName,
+          })
+        }
+      })
+    })
+
+    return Array.from(map.values()).map((emp) => ({
+      value: emp.id,
+      label: emp.id === 'ALL' ? 'Semua Karyawan' : (emp.dept ? `${emp.name} (${emp.dept})` : emp.name),
+    }))
+  }, [employees, rows])
+
+  const summaryFilteredRows = useMemo(() => {
+    return rows.filter((row) => {
+      // 1. Employee Filter
+      if (summaryEmployeeId !== 'ALL') {
+        const selectedEmp = summaryEmployeeOptions.find((e) => e.value === summaryEmployeeId)
+        const empNameOnly = selectedEmp
+          ? selectedEmp.label.split(' (')[0].trim().toLowerCase()
+          : summaryEmployeeId.toLowerCase()
+
+        const matchReqId = row.requestedByEmployeeId && String(row.requestedByEmployeeId) === summaryEmployeeId
+        const matchReqName = (row.requesterName || '').toLowerCase().includes(empNameOnly)
+        const matchParticipant = (row.participants || []).some((p) =>
+          (p.employeeName || '').toLowerCase().includes(empNameOnly)
+        )
+
+        if (!matchReqId && !matchReqName && !matchParticipant) {
+          return false
+        }
+      }
+
+      // 2. Month Filter ("YYYY-MM")
+      if (summaryMonth) {
+        const d = row.workDate instanceof Date ? row.workDate : new Date(row.workDate)
+        if (!isNaN(d.getTime())) {
+          const year = d.getFullYear()
+          const month = String(d.getMonth() + 1).padStart(2, '0')
+          const rowMonthStr = `${year}-${month}`
+          if (rowMonthStr !== summaryMonth) {
+            return false
+          }
+        }
+      }
+
+      // 3. Status Filter
+      if (summaryStatus !== 'ALL') {
+        const rowSt = (row.status || '').toLowerCase()
+        if (summaryStatus === 'rejected_cancelled') {
+          if (rowSt !== 'rejected' && rowSt !== 'cancelled') return false
+        } else if (rowSt !== summaryStatus.toLowerCase()) {
+          return false
+        }
+      }
+
+      // 4. Keyword Search
+      if (summarySearchQuery.trim()) {
+        const q = summarySearchQuery.toLowerCase()
+        const matchSpl = (row.splNumber || '').toLowerCase().includes(q)
+        const matchTitle = (row.title || '').toLowerCase().includes(q)
+        const matchReq = (row.requesterName || '').toLowerCase().includes(q)
+        const matchNotes = (row.requestNotes || '').toLowerCase().includes(q)
+        const matchLine = (row.lineItems || []).some(
+          (l) =>
+            (l.name || '').toLowerCase().includes(q) ||
+            (l.lineLabel || '').toLowerCase().includes(q) ||
+            (l.unitNumber || '').toLowerCase().includes(q)
+        )
+        if (!matchSpl && !matchTitle && !matchReq && !matchNotes && !matchLine) {
+          return false
+        }
+      }
+
+      return true
+    })
+  }, [rows, summaryEmployeeId, summaryMonth, summaryStatus, summarySearchQuery, summaryEmployeeOptions])
+
+  const summaryStats = useMemo(() => {
+    let totalHours = 0
+    let approvedCount = 0
+    let submittedCount = 0
+    let draftCount = 0
+    let rejectedCount = 0
+
+    summaryFilteredRows.forEach((row) => {
+      totalHours += calculateSplDurationHours(row)
+      const st = (row.status || '').toLowerCase()
+      if (st === 'approved') approvedCount++
+      else if (st === 'submitted') submittedCount++
+      else if (st === 'draft') draftCount++
+      else if (st === 'rejected' || st === 'cancelled') rejectedCount++
+    })
+
+    return {
+      totalCount: summaryFilteredRows.length,
+      totalHours: Math.round(totalHours * 10) / 10,
+      approvedCount,
+      submittedCount,
+      draftCount,
+      rejectedCount,
+    }
+  }, [summaryFilteredRows])
+
+  const handleResetSummaryFilters = () => {
+    setSummaryEmployeeId('ALL')
+    const d = new Date()
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    setSummaryMonth(`${year}-${month}`)
+    setSummaryStatus('ALL')
+    setSummarySearchQuery('')
+  }
+
+  const handleDownloadSummaryPdf = async () => {
+    if (summaryFilteredRows.length === 0) {
+      toast.error('Tidak ada data summary SPL untuk dibuatkan PDF.')
+      return
+    }
+
+    setIsGeneratingSummaryPdf(true)
+    const toastId = 'download-summary-pdf'
+    toast.loading('Menyiapkan dokumen PDF Summary SPL...', { id: toastId })
+
+    try {
+      const selectedEmpObj = summaryEmployeeOptions.find((e) => e.value === summaryEmployeeId)
+      const employeeName =
+        selectedEmpObj && selectedEmpObj.value !== 'ALL'
+          ? selectedEmpObj.label.split(' (')[0]
+          : 'Semua Karyawan'
+      const deptName =
+        selectedEmpObj && selectedEmpObj.label.includes('(')
+          ? selectedEmpObj.label.split('(')[1].replace(')', '')
+          : 'Semua Departemen'
+      const periodLabel = formatMonthYearLabel(summaryMonth)
+
+      const htmlContent = renderSummarySplPdfHtml(summaryFilteredRows, {
+        employeeName,
+        department: deptName,
+        periodLabel,
+        totalHours: summaryStats.totalHours,
+        totalCount: summaryStats.totalCount,
+      })
+
+      const cleanEmp = employeeName.replace(/[^a-zA-Z0-9]/g, '_')
+      const fileName = `Summary_SPL_${cleanEmp}_${summaryMonth || 'Semua'}.pdf`
+
+      await downloadHtmlAsPdf(htmlContent, fileName, '/ChitraParatama_Stationery_Letterhead_jkt.jpg', {
+        orientation: 'portrait',
+        withLetterhead: false,
+      })
+      toast.success('Dokumen PDF Summary SPL berhasil diunduh!', { id: toastId })
+    } catch (err: any) {
+      console.error('Error generating summary PDF:', err)
+      toast.error('Gagal mengunduh PDF Summary SPL.', { id: toastId })
+    } finally {
+      setIsGeneratingSummaryPdf(false)
+    }
+  }
+
+  const handleExportSummaryExcel = () => {
+    if (summaryFilteredRows.length === 0) {
+      toast.error('Tidak ada data summary SPL untuk diekspor ke Excel.')
+      return
+    }
+
+    const data = summaryFilteredRows.map((row, idx) => ({
+      No: idx + 1,
+      Tanggal: formatDate(row.workDate),
+      'No. SPL': row.splNumber,
+      'Pemohon / Karyawan': row.requesterName,
+      Departemen: row.requesterDepartment || '—',
+      'Jam Mulai': row.plannedStartAt ? formatTime(row.plannedStartAt) : '—',
+      'Jam Selesai': row.plannedEndAt ? formatTime(row.plannedEndAt) : '—',
+      'Total Durasi (Jam)': calculateSplDurationHours(row),
+      'Keperluan / Pekerjaan': row.title || 'Overtime Command',
+      Status: row.status,
+      Catatan: row.requestNotes || '—',
+    }))
+
+    const ws = XLSX.utils.json_to_sheet(data)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Summary SPL')
+    const selectedEmpObj = summaryEmployeeOptions.find((e) => e.value === summaryEmployeeId)
+    const empName = selectedEmpObj ? selectedEmpObj.label.split(' (')[0].replace(/[^a-zA-Z0-9]/g, '_') : 'Semua'
+    XLSX.writeFile(wb, `Summary_SPL_${empName}_${summaryMonth || 'Semua'}.xlsx`)
+    toast.success('File Excel Summary SPL berhasil diunduh!')
   }
 
   const filteredRows = useMemo(() => {
@@ -1750,7 +2223,37 @@ export function OvertimeListingClient({
         ]}
       />
 
-      {/* Tab Navigation Menu */}
+      {/* Primary Navigation Tab: Semua SPL vs Summary SPL */}
+      <div className="mb-4 rounded-[1.1rem] bg-white p-2 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)] dark:bg-slate-900">
+        <Tabs value={mainTab} onValueChange={(val) => setMainTab(val as 'semua_spl' | 'summary_spl')} className="w-full">
+          <TabsList className="h-auto w-full justify-start overflow-x-auto bg-slate-100/80 p-1 dark:bg-slate-800">
+            <TabsTrigger
+              value="semua_spl"
+              className="gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-[#003461] data-[state=active]:shadow-xs"
+            >
+              <FileText className="size-3.5 text-slate-600" />
+              Semua SPL
+              <Badge variant="secondary" className="ml-1 px-1.5 py-0.2 text-[10px] font-bold">
+                {rows.length}
+              </Badge>
+            </TabsTrigger>
+            <TabsTrigger
+              value="summary_spl"
+              className="gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-emerald-700 data-[state=active]:shadow-xs"
+            >
+              <FileSpreadsheet className="size-3.5 text-emerald-600" />
+              Summary SPL
+              <Badge className="ml-1 bg-emerald-100 text-emerald-800 hover:bg-emerald-100 px-1.5 py-0.2 text-[10px] font-bold border-0">
+                {summaryStats.totalCount}
+              </Badge>
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
+
+      {mainTab === 'semua_spl' ? (
+        <>
+          {/* Tab Navigation Menu */}
       <div className="mb-4 rounded-[1.1rem] bg-white p-2 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)] dark:bg-slate-900">
         <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as any)} className="w-full">
           <TabsList className="h-auto w-full justify-start overflow-x-auto bg-slate-100/80 p-1 dark:bg-slate-800">
@@ -2120,6 +2623,273 @@ export function OvertimeListingClient({
           </TableBody>
         </Table>
       </MinimalTableShell>
+        </>
+      ) : (
+        /* ── SUMMARY SPL TAB VIEW ── */
+        <div className="space-y-4">
+          {/* Summary Search & Filter Box */}
+          <div className="rounded-[1.1rem] bg-white p-4 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)] dark:bg-slate-900">
+            <div className="mb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3 border-slate-100 dark:border-slate-800">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <ListFilter className="size-4 text-emerald-600" />
+                  Mesin Pencarian & Filter Summary SPL
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Filter pengajuan lembur berdasarkan Nama Karyawan dan Bulan untuk diunduh sebagai dokumen PDF Summary.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleDownloadSummaryPdf}
+                  disabled={isGeneratingSummaryPdf || summaryFilteredRows.length === 0}
+                  className="h-9 gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 shadow-xs"
+                >
+                  {isGeneratingSummaryPdf ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <FileDown className="size-3.5" />
+                  )}
+                  Unduh Summary SPL (PDF)
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportSummaryExcel}
+                  disabled={summaryFilteredRows.length === 0}
+                  className="h-9 gap-2 rounded-xl border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300"
+                >
+                  <FileSpreadsheet className="size-3.5 text-emerald-600" />
+                  Ekspor Excel
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* Employee Filter */}
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Nama Karyawan
+                </Label>
+                <SearchableSelect
+                  options={summaryEmployeeOptions}
+                  value={summaryEmployeeId}
+                  onChange={setSummaryEmployeeId}
+                  placeholder="Pilih / Cari Karyawan..."
+                  className="w-full h-9 rounded-xl border-slate-200 text-xs shadow-xs"
+                />
+              </div>
+
+              {/* Month & Year Filter */}
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Bulan & Tahun
+                </Label>
+                <Input
+                  type="month"
+                  value={summaryMonth}
+                  onChange={(e) => setSummaryMonth(e.target.value)}
+                  className="h-9 rounded-xl border-slate-200 text-xs shadow-xs bg-white dark:bg-slate-950"
+                />
+              </div>
+
+              {/* Status Filter */}
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Status Pengajuan
+                </Label>
+                <select
+                  value={summaryStatus}
+                  onChange={(e) => setSummaryStatus(e.target.value)}
+                  className="w-full h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 shadow-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300"
+                >
+                  <option value="ALL">Semua Status</option>
+                  <option value="approved">Disetujui (Approved)</option>
+                  <option value="submitted">Menunggu Review (Submitted)</option>
+                  <option value="draft">Draft</option>
+                  <option value="rejected_cancelled">Ditolak / Batal</option>
+                </select>
+              </div>
+
+              {/* Keyword Search */}
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Cari Kata Kunci
+                </Label>
+                <div className="relative">
+                  <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2" />
+                  <Input
+                    placeholder="No. SPL, keperluan, unit..."
+                    value={summarySearchQuery}
+                    onChange={(e) => setSummarySearchQuery(e.target.value)}
+                    className="h-9 rounded-xl border-slate-200 pl-9 text-xs shadow-xs"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {(summaryEmployeeId !== 'ALL' || summaryMonth !== '' || summaryStatus !== 'ALL' || summarySearchQuery !== '') && (
+              <div className="mt-3 flex items-center justify-between border-t pt-2 border-slate-100 dark:border-slate-800 text-xs">
+                <span className="text-slate-500">
+                  Filter Aktif: <strong className="text-slate-800 dark:text-slate-200">{summaryEmployeeOptions.find(e => e.value === summaryEmployeeId)?.label}</strong> • Periode: <strong className="text-slate-800 dark:text-slate-200">{formatMonthYearLabel(summaryMonth)}</strong>
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleResetSummaryFilters}
+                  className="h-7 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                >
+                  <RotateCcw className="size-3 mr-1" />
+                  Reset Filter
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* Metric Cards Header */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="rounded-[1.1rem] bg-white p-3.5 shadow-xs border border-slate-200 dark:border-slate-800 dark:bg-slate-900">
+              <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total SPL</div>
+              <div className="mt-1 text-xl font-extrabold text-slate-900 dark:text-white">
+                {summaryStats.totalCount} <span className="text-xs font-normal text-slate-500">Dokumen</span>
+              </div>
+            </div>
+            <div className="rounded-[1.1rem] bg-sky-50/70 p-3.5 shadow-xs border border-sky-200 dark:border-sky-900/50 dark:bg-sky-950/30">
+              <div className="text-[11px] font-semibold text-sky-700 dark:text-sky-400 uppercase tracking-wider">Total Jam Lembur</div>
+              <div className="mt-1 text-xl font-extrabold text-sky-700 dark:text-sky-300">
+                {summaryStats.totalHours} <span className="text-xs font-normal text-sky-600">Jam</span>
+              </div>
+            </div>
+            <div className="rounded-[1.1rem] bg-emerald-50/70 p-3.5 shadow-xs border border-emerald-200 dark:border-emerald-900/50 dark:bg-emerald-950/30">
+              <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">Disetujui (Approved)</div>
+              <div className="mt-1 text-xl font-extrabold text-emerald-700 dark:text-emerald-300">
+                {summaryStats.approvedCount} <span className="text-xs font-normal text-emerald-600">Dokumen</span>
+              </div>
+            </div>
+            <div className="rounded-[1.1rem] bg-amber-50/70 p-3.5 shadow-xs border border-amber-200 dark:border-amber-900/50 dark:bg-amber-950/30">
+              <div className="text-[11px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wider">Menunggu Review</div>
+              <div className="mt-1 text-xl font-extrabold text-amber-700 dark:text-amber-300">
+                {summaryStats.submittedCount} <span className="text-xs font-normal text-amber-600">Dokumen</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Detailed Summary Data Table */}
+          <div className="rounded-[1.1rem] bg-white shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)] overflow-hidden dark:bg-slate-900">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <div>
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Daftar Rekapitulasi SPL - {formatMonthYearLabel(summaryMonth)}
+                </h4>
+                <p className="text-xs text-slate-500">
+                  Menampilkan {summaryFilteredRows.length} pengajuan lembur yang sesuai filter.
+                </p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader className="bg-slate-50 dark:bg-slate-800/60">
+                  <TableRow>
+                    <TableHead className="w-12 text-center text-xs font-bold">#</TableHead>
+                    <TableHead className="text-xs font-bold">Tanggal</TableHead>
+                    <TableHead className="text-xs font-bold">No. SPL</TableHead>
+                    <TableHead className="text-xs font-bold">Pemohon / Karyawan</TableHead>
+                    <TableHead className="text-xs font-bold text-center">Jam Lembur</TableHead>
+                    <TableHead className="text-xs font-bold text-center">Durasi</TableHead>
+                    <TableHead className="text-xs font-bold">Uraian Pekerjaan / Activity</TableHead>
+                    <TableHead className="text-xs font-bold text-center">Status</TableHead>
+                    <TableHead className="text-xs font-bold text-right">Aksi</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {summaryFilteredRows.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={9} className="h-32 text-center text-xs text-slate-500">
+                        Tidak ada dokumen SPL yang sesuai dengan filter pencarian.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    summaryFilteredRows.map((row, idx) => {
+                      const duration = calculateSplDurationHours(row)
+                      const lineSummary = row.lineItems?.length
+                        ? row.lineItems.map(l => l.name || l.lineLabel).join(', ')
+                        : row.title || 'Overtime Command'
+
+                      return (
+                        <TableRow key={row.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50">
+                          <TableCell className="text-center text-xs text-slate-500">{idx + 1}</TableCell>
+                          <TableCell className="text-xs font-semibold whitespace-nowrap">
+                            {formatDate(row.workDate)}
+                          </TableCell>
+                          <TableCell className="text-xs font-mono font-bold text-[#003461] dark:text-sky-400">
+                            {row.splNumber}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            <div className="font-bold text-slate-900 dark:text-white">{row.requesterName}</div>
+                            <div className="text-[11px] text-slate-500">{row.requesterDepartment || '—'}</div>
+                          </TableCell>
+                          <TableCell className="text-center text-xs whitespace-nowrap">
+                            {row.plannedStartAt && row.plannedEndAt
+                              ? `${formatTime(row.plannedStartAt)} - ${formatTime(row.plannedEndAt)}`
+                              : '—'}
+                          </TableCell>
+                          <TableCell className="text-center text-xs font-bold text-sky-700 dark:text-sky-400">
+                            {duration} Jam
+                          </TableCell>
+                          <TableCell className="text-xs max-w-[240px] truncate" title={lineSummary}>
+                            {lineSummary}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge
+                              className={cn(
+                                'text-[10px] font-bold px-2 py-0.5 rounded-full border-0',
+                                (row.status || '').toLowerCase() === 'approved' && 'bg-emerald-100 text-emerald-800',
+                                (row.status || '').toLowerCase() === 'submitted' && 'bg-amber-100 text-amber-800',
+                                (row.status || '').toLowerCase() === 'draft' && 'bg-slate-100 text-slate-700',
+                                ((row.status || '').toLowerCase() === 'rejected' || (row.status || '').toLowerCase() === 'cancelled') && 'bg-rose-100 text-rose-800'
+                              )}
+                            >
+                              {row.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setPreviewSplTarget(row)
+                                setIsSplPreviewOpen(true)
+                              }}
+                              className="h-7 px-2 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white"
+                            >
+                              <Eye className="size-3.5 mr-1 text-sky-600" />
+                              Detail
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Footer Summary Bar */}
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
+              <div>Total Rekapitulasi: {summaryFilteredRows.length} Dokumen SPL</div>
+              <div className="text-sky-700 dark:text-sky-300 text-sm font-extrabold">
+                Total Jam Lembur: {summaryStats.totalHours} Jam
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── BATCH MULTI-DOCUMENT PREVIEW & APPROVAL MODAL (SPL) ── */}
       <Dialog open={isBatchReviewOpen && Boolean(currentBatchDoc)} onOpenChange={(open) => !open && setIsBatchReviewOpen(false)}>

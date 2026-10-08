@@ -321,8 +321,14 @@ export const ATTENDANCE_PDF_OPTIONS: Array<{
     description: 'Tabel Rekapitulasi Tunjangan Khusus / Lokasi (TU)',
   },
   {
-    id: 'payable_site_allowance',
+    id: 'overtime_record',
     number: 5,
+    label: 'OVERTIME RECORD',
+    description: 'Summary Overtime Record per orang (Lembar rincian lembur karyawan)',
+  },
+  {
+    id: 'payable_site_allowance',
+    number: 6,
     label: 'payable site allowance',
     description: 'Lembar rincian tunjangan site per karyawan',
   },
@@ -1674,6 +1680,7 @@ export function SchedulingTimesheetWorkspace({
     'msa_summary',
     'mls_summary',
     'tu_summary',
+    'overtime_record',
     'payable_site_allowance',
   ])
   const [pdfDocTypesPickerOpen, setPdfDocTypesPickerOpen] = useState(false)
