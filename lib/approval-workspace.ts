@@ -1178,7 +1178,7 @@ function enrichApprovalRow(row: ApprovalRecordRow, now: Date): ApprovalQueueItem
     } else if (timeLeft <= 6 * 60 * 60 * 1000 && row.maritalStatusRequestId == null) {
       dueState = 'due_soon'
     } else {
-      dueState = 'open'
+      dueState = 'on_track'
     }
   }
 
@@ -3411,10 +3411,10 @@ export async function getApprovalCenterData(
     const groupKey =
       item.maritalStatusRequestId != null
         ? `marital-status-${item.maritalStatusRequestId}`
-        : item.fiveRReportId != null
-        ? `five-r-${item.fiveRReportId}`
-        : item.repairFormWoId != null
-        ? `repair-wo-${item.repairFormWoId}`
+        : (item as any).fiveRReportId != null
+        ? `five-r-${(item as any).fiveRReportId}`
+        : (item as any).repairFormWoId != null
+        ? `repair-wo-${(item as any).repairFormWoId}`
         : `${normalizeMatchValue(item.requesterEmail)}:${getDateKey(item.startTime)}`
     const notes = buildApprovalComments([item])
     const group = inboxGroupsMap.get(groupKey) ?? {

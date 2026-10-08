@@ -4703,7 +4703,7 @@ async function applyApprovalDecision(params: {
         if (res && !res.success) {
           throw new Error(res.error || 'Gagal menyetujui permohonan status pernikahan.')
         }
-      } else if (params.decision === 'reverted' || params.decision === 'revert' || params.decision === 'needs_revision') {
+      } else if ((params.decision as string) === 'reverted' || (params.decision as string) === 'revert' || (params.decision as string) === 'needs_revision') {
         const res = await revertMaritalStatusStepAction(marReq.id, params.approvalId, params.note)
         if (res && !res.success) {
           throw new Error(res.error || 'Gagal mengembalikan permohonan status pernikahan.')

@@ -7155,9 +7155,9 @@ export async function createDailyActivitySessionAction(input: {
       ? new Date(`${input.workDate}T00:00:00.000Z`)
       : new Date()
 
-    // Check if an approved session already exists for this employee and date
-    const [existingApproved] = await db
-      .select({ id: dailyActivitySessions.id, sessionCode: dailyActivitySessions.sessionCode })
+    // Check if an approved OR submitted (pending) session already exists for this employee and date
+    const [existingActive] = await db
+      .select({ id: dailyActivitySessions.id, sessionCode: dailyActivitySessions.sessionCode, status: dailyActivitySessions.status })
       .from(dailyActivitySessions)
       .where(
         and(
@@ -7166,16 +7166,21 @@ export async function createDailyActivitySessionAction(input: {
           or(
             eq(dailyActivitySessions.status, 'Approved'),
             eq(dailyActivitySessions.status, 'approved'),
-            eq(dailyActivitySessions.status, 'completed')
+            eq(dailyActivitySessions.status, 'completed'),
+            eq(dailyActivitySessions.status, 'submitted'),
           )
         )
       )
       .limit(1)
 
-    if (existingApproved) {
+    if (existingActive) {
+      const statusLabel = ['approved', 'Approved', 'completed'].includes(existingActive.status)
+        ? 'disetujui'
+        : 'sedang menunggu approval'
       return {
         success: false as const,
-        error: `Laporan aktivitas harian untuk tanggal ${input.workDate} sudah pernah diajukan dan disetujui (${existingApproved.sessionCode}).`,
+        error: `Laporan aktivitas harian untuk tanggal ${input.workDate} sudah ${statusLabel} (${existingActive.sessionCode}). Tidak dapat membuat duplikat.`,
+        existingSessionId: existingActive.id,
       }
     }
 

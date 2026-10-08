@@ -3714,7 +3714,7 @@ export function MobileDailyActivityForm({
                       Library activity
                     </span>
                   </div>
-                  <Badge className="border-0 bg-[#eaf4fb] text-[10px] font-black tracking-[0.12em] text-[#003f78] uppercase">
+                  <Badge suppressHydrationWarning className="border-0 bg-[#eaf4fb] text-[10px] font-black tracking-[0.12em] text-[#003f78] uppercase">
                     {selectedLibraryIds.length} dipilih
                   </Badge>
                 </div>
