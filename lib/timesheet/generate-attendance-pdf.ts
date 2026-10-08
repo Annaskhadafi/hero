@@ -571,9 +571,10 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     }
 
     // Col 7: WD
-    const wdCode = day.status === 'standby' ? 'ST' : day.status === 'field_break' ? 'FB' : isOff ? 'OFF' : day.scheduleCode || ''
+    const rawWd = day.status === 'standby' ? 'ST' : day.status === 'field_break' ? 'FB' : day.scheduleCode || ''
+    const wdCode = rawWd === 'OFF' ? '' : rawWd
     drawCell(page, colX[7], y, cols[7], rowH, {
-      text: isOff && !hasManualAttendance ? '' : wdCode,
+      text: wdCode,
       font,
       fontSize: 7,
       align: 'center',
