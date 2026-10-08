@@ -5809,7 +5809,7 @@ export function SchedulingTimesheetWorkspace({
         )
       },
     }).map((day) => {
-      const cell = getAttendanceCell(employee.id, day)
+      const cell = getAttendanceCell(employee.id, day.day)
       const inM = cell.clockIn ? minutesFromTime(cell.clockIn) : null
       const outM = cell.clockOut ? minutesFromTime(cell.clockOut) : null
       const isNightShift =

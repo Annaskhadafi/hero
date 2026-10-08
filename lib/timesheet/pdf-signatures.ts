@@ -36,9 +36,25 @@ export async function embedCustomLogo(
       bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
       isPng = logoUrl.startsWith('data:image/png')
     } else {
-      const response = await fetch(logoUrl)
-      if (!response.ok) return null
-      bytes = new Uint8Array(await response.arrayBuffer())
+      let logoBytes: Uint8Array | null = null
+      if (typeof window === 'undefined' && logoUrl.startsWith('/')) {
+        try {
+          const fs = await import('fs')
+          const path = await import('path')
+          const localPath = path.join(process.cwd(), 'public', logoUrl)
+          if (fs.existsSync(localPath)) {
+            logoBytes = new Uint8Array(fs.readFileSync(localPath))
+          }
+        } catch {
+          // Fallback to fetch
+        }
+      }
+      if (!logoBytes) {
+        const response = await fetch(logoUrl)
+        if (!response.ok) return null
+        logoBytes = new Uint8Array(await response.arrayBuffer())
+      }
+      bytes = logoBytes
       isPng = logoUrl.toLowerCase().includes('.png')
     }
     const image = isPng ? await doc.embedPng(bytes) : await doc.embedJpg(bytes)

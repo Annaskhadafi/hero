@@ -7,7 +7,7 @@ import {
   type PdfSignatureNames,
 } from '@/lib/timesheet/pdf-signatures'
 
-type AttendanceDayData = {
+export type AttendanceDayData = {
   day: number
   dayName: string
   status: string
@@ -282,7 +282,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
   const { width } = page.getSize()
   const logo = await embedLogo(doc)
 
-  const LM = 45
+  const LM = 47
   let y = 790
 
   // === LOGO + HEADER ===
@@ -302,7 +302,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     }
   }
   const title1 = 'PT. CHITRA PARATAMA'
-  const title2 = input.documentTitle || 'SURAT PENGAJUAN LEMBUR'
+  const title2 = input.documentTitle || 'OVERTIME RECORD'
   page.drawText(title1, { x: centerX(width, title1, fontBold, 14), y, font: fontBold, size: 14 })
   y -= 18
   page.drawText(title2, { x: centerX(width, title2, fontBold, 11), y, font: fontBold, size: 11 })
@@ -332,10 +332,9 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
   page.drawText(':', { x: colonX, y, font, size: 9 })
   y -= 22
 
-  // === TABLE ===
+  // === TABLE (11 Columns Authentic Overtime Record) ===
   const rowH = 15
-  // Columns matching Template: [Tanggal (35pt), Hari (55pt), Jam Lembur Mulai (45pt), Jam Lembur Selesai (45pt), Total Lembur (50pt), Yang Dikerjakan (295pt)]
-  const cols = [35, 55, 45, 45, 50, 295]
+  const cols = [26, 44, 34, 34, 58, 135, 34, 34, 35, 24, 43]
   const totalTableW = cols.reduce((s, c) => s + c, 0)
   const tableStartX = (width - totalTableW) / 2
   const colX: number[] = []
@@ -345,57 +344,101 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     cx += w
   }
 
-  // Header (2 rows: Jam Lembur group header + subheaders)
+  // Header (2 sub-rows)
   const hH = 26
   drawCell(page, colX[0], y - hH, cols[0], hH, {
     text: 'Tanggal',
     font: fontBold,
-    fontSize: 7.5,
+    fontSize: 7,
     align: 'center',
   })
   drawCell(page, colX[1], y - hH, cols[1], hH, {
     text: 'Hari',
     font: fontBold,
-    fontSize: 7.5,
+    fontSize: 7,
     align: 'center',
   })
-  // Jam Lembur Header & Subheaders
+
+  // Jam Kerja Header Group
   drawCell(page, colX[2], y - 13, cols[2] + cols[3], 13, {
-    text: 'Jam Lembur',
+    text: 'Jam Kerja',
     font: fontBold,
-    fontSize: 7.5,
+    fontSize: 7,
     align: 'center',
   })
   drawCell(page, colX[2], y - hH, cols[2], 13, {
     text: 'Mulai',
     font: fontBold,
-    fontSize: 7,
+    fontSize: 6.5,
     align: 'center',
   })
   drawCell(page, colX[3], y - hH, cols[3], 13, {
     text: 'Selesai',
     font: fontBold,
+    fontSize: 6.5,
+    align: 'center',
+  })
+
+  // No. SPL & Data Singkat Surat
+  drawCell(page, colX[4], y - hH, cols[4], hH, {
+    text: 'No. SPL',
+    font: fontBold,
     fontSize: 7,
     align: 'center',
   })
-  // Total Lembur
-  drawCell(page, colX[4], y - hH, cols[4], hH, {
-    text: 'Total\nLembur',
-    font: fontBold,
-    fontSize: 7.5,
-    align: 'center',
-  })
-  // Yang Dikerjakan
   drawCell(page, colX[5], y - hH, cols[5], hH, {
-    text: 'Yang Dikerjakan',
+    text: 'Data Singkat Surat',
     font: fontBold,
-    fontSize: 8,
+    fontSize: 7,
     align: 'center',
   })
+
+  // Jam Lembur Header Group
+  drawCell(page, colX[6], y - 13, cols[6] + cols[7], 13, {
+    text: 'Jam Lembur',
+    font: fontBold,
+    fontSize: 7,
+    align: 'center',
+  })
+  drawCell(page, colX[6], y - hH, cols[6], 13, {
+    text: 'Mulai',
+    font: fontBold,
+    fontSize: 6.5,
+    align: 'center',
+  })
+  drawCell(page, colX[7], y - hH, cols[7], 13, {
+    text: 'Selesai',
+    font: fontBold,
+    fontSize: 6.5,
+    align: 'center',
+  })
+
+  // Total Jam, WD, Remarks
+  drawCell(page, colX[8], y - hH, cols[8], hH, {
+    text: 'Total Jam',
+    font: fontBold,
+    fontSize: 6.5,
+    align: 'center',
+  })
+  drawCell(page, colX[9], y - hH, cols[9], hH, {
+    text: 'WD',
+    font: fontBold,
+    fontSize: 7,
+    align: 'center',
+  })
+  drawCell(page, colX[10], y - hH, cols[10], hH, {
+    text: 'Remarks',
+    font: fontBold,
+    fontSize: 7,
+    align: 'center',
+  })
+
   y -= hH
 
   // Rows
   let totalOT = 0
+  const showTotal = input.showTotalOvertime ?? true
+
   for (const day of input.days) {
     y -= rowH
     if (y < 90) break
@@ -467,7 +510,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     drawCell(page, colX[0], y, cols[0], rowH, {
       text: String(day.day),
       font,
-      fontSize: 8,
+      fontSize: 7.5,
       align: 'center',
       bgColor,
       color: dayColor,
@@ -476,78 +519,134 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     drawCell(page, colX[1], y, cols[1], rowH, {
       text: day.dayName,
       font,
-      fontSize: 7.5,
+      fontSize: 7,
       align: 'center',
       bgColor,
       color: dayColor,
     })
 
+    const shouldRenderWorkTimes =
+      !isAbsent &&
+      !day.isHoliday &&
+      Boolean(day.workingTimeFrom !== undefined ? day.workingTimeFrom : day.clockIn) &&
+      !isOff
+    const workFrom = shouldRenderWorkTimes
+      ? String(day.workingTimeFrom !== undefined ? day.workingTimeFrom : day.clockIn ?? '').replace(':', '.')
+      : ''
+    const workTo = shouldRenderWorkTimes
+      ? String(day.workingTimeTo !== undefined ? day.workingTimeTo : day.clockOut ?? '').replace(':', '.')
+      : ''
     const shouldRenderOtTimes =
       hasOvertimeIntervals && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualAttendance)
 
-    // Col 2: Jam Lembur Mulai
+    // Col 2-3: Jam Kerja From & To
     drawCell(page, colX[2], y, cols[2], rowH, {
-      text: shouldRenderOtTimes ? otFrom : '',
-      font,
-      fontSize: 7.5,
+      text: isOff && !hasManualAttendance ? 'OFF' : workFrom,
+      font: isOff && !hasManualAttendance ? fontBold : font,
+      fontSize: 7,
       align: 'center',
       bgColor,
     })
-    // Col 3: Jam Lembur Selesai
     drawCell(page, colX[3], y, cols[3], rowH, {
-      text: shouldRenderOtTimes ? otTo : '',
+      text: workTo,
       font,
-      fontSize: 7.5,
+      fontSize: 7,
       align: 'center',
       bgColor,
     })
 
-    // Col 4: Total Lembur
-    drawCell(page, colX[4], y, cols[4], rowH, {
-      text: ot > 0 ? String(Math.round(ot * 10) / 10) : '',
-      font: fontBold,
-      fontSize: 8,
-      align: 'center',
-      bgColor,
-    })
-
-    // Col 5: Yang Dikerjakan
+    // Col 4: No. SPL
     const splNumStr =
       day.splNumber ||
       (day.splDetails?.map((s) => s.splNumber).filter(Boolean).join(', ')) ||
-      (day.overtime?.splNumbers?.length ? day.overtime.splNumbers.join(', ') : '')
+      (day.overtime?.splNumbers?.length ? day.overtime.splNumbers.join(', ') : '') ||
+      '-'
+    drawCell(page, colX[4], y, cols[4], rowH, {
+      text: splNumStr,
+      font: fontBold,
+      fontSize: 6,
+      align: 'center',
+      wrap: true,
+      bgColor,
+    })
+
+    // Col 5: Data Singkat Surat (Judul SPL)
     const splTitleStr =
       day.splTitle ||
       (day.splDetails?.map((s) => s.title).filter(Boolean).join('; ')) ||
-      ''
-
-    let taskDetail = ''
-    if (splNumStr && splTitleStr) {
-      taskDetail = `[${splNumStr}] ${splTitleStr}`
-    } else if (splNumStr) {
-      taskDetail = `[${splNumStr}]`
-    } else if (splTitleStr) {
-      taskDetail = splTitleStr
-    } else if (day.status === 'standby') {
-      taskDetail = 'STANDBY (ST)'
-    } else if (day.status === 'field_break') {
-      taskDetail = 'FIELD BREAK (FB)'
-    } else if (day.isHoliday && day.holidayName) {
-      taskDetail = `LIBUR: ${day.holidayName}`
-    } else if (day.status === 'sick') {
-      taskDetail = 'SAKIT'
-    } else if (day.status === 'leave') {
-      taskDetail = 'IJIN / CUTI'
-    } else if (isOff) {
-      taskDetail = 'OFF'
-    }
-
+      (day.isHoliday && day.holidayName ? day.holidayName : '') ||
+      '-'
     drawCell(page, colX[5], y, cols[5], rowH, {
-      text: taskDetail,
+      text: splTitleStr,
       font,
-      fontSize: 7,
+      fontSize: 6,
       align: 'left',
       wrap: true,
+      bgColor,
+    })
+
+    // Col 6-7: Jam Lembur From & To
+    drawCell(page, colX[6], y, cols[6], rowH, {
+      text: shouldRenderOtTimes ? otFrom : '',
+      font,
+      fontSize: otFrom.length > 5 ? 5.5 : 7,
+      align: 'center',
+      bgColor,
+    })
+    drawCell(page, colX[7], y, cols[7], rowH, {
+      text: shouldRenderOtTimes ? otTo : '',
+      font,
+      fontSize: otTo.length > 5 ? 5.5 : 7,
+      align: 'center',
+      bgColor,
+    })
+
+    // Col 8: Total Jam
+    if (showTotal) {
+      drawCell(page, colX[8], y, cols[8], rowH, {
+        text: ot > 0 ? String(Math.round(ot * 10) / 10) : '',
+        font: fontBold,
+        fontSize: 7.5,
+        align: 'center',
+        bgColor,
+      })
+    } else {
+      drawCell(page, colX[8], y, cols[8], rowH, { bgColor })
+    }
+
+    // Col 9: WD
+    const wdCode = day.status === 'standby' ? 'ST' : day.status === 'field_break' ? 'FB' : isOff ? 'OFF' : day.scheduleCode || ''
+    drawCell(page, colX[9], y, cols[9], rowH, {
+      text: wdCode,
+      font,
+      fontSize: 6.5,
+      align: 'center',
+      bgColor,
+    })
+
+    // Col 10: Remarks
+    let remark = ''
+    if (day.status === 'standby') remark = 'ST'
+    else if (day.status === 'field_break') remark = 'FB'
+    else if (day.isHoliday && day.holidayName) remark = day.holidayName
+    else if (day.status === 'sick') remark = 'SICK'
+    else if (day.status === 'leave') remark = 'IJIN'
+    else if (day.status === 'absent') remark = 'ALPA'
+
+    const rc =
+      day.status === 'sick'
+        ? rgb(0.7, 0.5, 0)
+        : day.status === 'leave'
+          ? rgb(0, 0.4, 0.7)
+          : day.status === 'absent'
+            ? rgb(0.8, 0, 0)
+            : rgb(0.3, 0.3, 0.3)
+    drawCell(page, colX[10], y, cols[10], rowH, {
+      text: remark,
+      font,
+      fontSize: 5.5,
+      align: 'center',
+      color: rc,
       bgColor,
     })
   }
@@ -555,25 +654,30 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
   // Total Row
   y -= rowH
   const tBg = rgb(0.8, 1, 0.8)
-  const labelWidth = cols[0] + cols[1] + cols[2] + cols[3]
-  drawCell(page, colX[0], y, labelWidth, rowH, {
-    text: 'TOTAL JAM LEMBUR',
+  const tW = cols[0] + cols[1] + cols[2] + cols[3] + cols[4] + cols[5] + cols[6] + cols[7]
+  drawCell(page, colX[0], y, tW, rowH, {
+    text: 'TOTAL',
     font: fontBold,
     fontSize: 8.5,
     align: 'center',
     bgColor: tBg,
   })
-  drawCell(page, colX[4], y, cols[4], rowH, {
-    text: String(Math.round(totalOT * 10) / 10),
-    font: fontBold,
-    fontSize: 9.5,
-    align: 'center',
-    bgColor: tBg,
-    color: rgb(0, 0.5, 0),
-  })
-  drawCell(page, colX[5], y, cols[5], rowH, { bgColor: tBg })
+  if (showTotal) {
+    drawCell(page, colX[8], y, cols[8], rowH, {
+      text: String(Math.round(totalOT * 10) / 10),
+      font: fontBold,
+      fontSize: 9,
+      align: 'center',
+      bgColor: tBg,
+      color: rgb(0, 0.5, 0),
+    })
+  } else {
+    drawCell(page, colX[8], y, cols[8], rowH, { bgColor: tBg })
+  }
+  drawCell(page, colX[9], y, cols[9], rowH, { bgColor: tBg })
+  drawCell(page, colX[10], y, cols[10], rowH, { bgColor: tBg })
 
-  // Signatures & Evidence QR (3 approvals + 1 QR code in bottom-right)
+  // Signatures (3 equal columns across printable width, no QR code)
   y -= 30
   await drawOvertimeRecordSignatures(doc, page, { regular: font, italic: fontItalic, bold: fontBold }, y, input)
 
@@ -595,22 +699,26 @@ async function drawOvertimeRecordSignatures(
     labels = [
       ['Dibuat oleh :', names.externalPreparedBy?.trim() || names.preparedBy || input.employeeName || '-'],
       ['Approved by:', names.externalApprovedBy?.trim() || names.approvedBy || '-'],
-      ['Diketahui oleh:', names.pjoLeader || '-'],
+      ['Approved by:', names.pjoLeader || '-'],
+      ['Diketahui oleh:', names.hrName || '-'],
     ]
   } else {
     labels = [
       ['Dibuat oleh :', names.preparedBy?.trim() || input.employeeName || '-'],
-      ['Approved by:', names.pjoLeader?.trim() || '-'],
-      ['Diketahui oleh:', names.approvedBy?.trim() || names.hrName?.trim() || '-'],
+      ['Approved by:', names.pjoLeader?.trim() || 'Supervisor / Leader'],
+      ['Approved by:', names.approvedBy?.trim() || 'PJO / Manager'],
+      ['Diketahui oleh:', names.hrName?.trim() || 'HC / Admin'],
     ]
   }
 
-  const columnWidth = (width - 80) / 4
-  const lineWidth = columnWidth - 20
+  const LM = 45
+  const printableWidth = width - LM * 2
+  const columnWidth = printableWidth / 4
+  const lineWidth = columnWidth - 18
 
-  // Draw 3 Signature Columns
+  // Draw 4 Equal Signature Columns across page width
   labels.forEach(([label, name], index) => {
-    const x = 40 + index * columnWidth
+    const x = LM + index * columnWidth
     page.drawText(label, { x, y, font: fonts.italic, size: 8, color: rgb(0.3, 0.3, 0.3) })
     page.drawLine({
       start: { x, y: y - 42 },
@@ -626,65 +734,6 @@ async function drawOvertimeRecordSignatures(
       maxWidth: lineWidth,
     })
   })
-
-  // 4th Column: Evidence QR Code in bottom-right
-  const qrColX = 40 + 3 * columnWidth
-  const baseUrl =
-    input.appBaseUrl ||
-    (typeof window !== 'undefined'
-      ? window.location.origin
-      : process.env.NEXT_PUBLIC_APP_URL || 'https://hero.chitraparatama.co.id')
-
-  const splNumbers = (input.days || [])
-    .flatMap((d) => d.overtime?.splNumbers || [])
-    .filter((s) => Boolean(s && s.trim()))
-  const primarySpl = splNumbers[0]
-
-  const empKey = input.employeeId || input.employeeSn || input.employeeName
-  const evidenceUrl =
-    input.evidenceUrl ||
-    (primarySpl
-      ? `${baseUrl}/spl-evidence/${encodeURIComponent(primarySpl)}`
-      : `${baseUrl}/spl-evidence/emp-${encodeURIComponent(empKey)}-${input.period}`)
-
-  try {
-    const qrDataUrl = await QRCode.toDataURL(evidenceUrl, {
-      margin: 1,
-      width: 140,
-      errorCorrectionLevel: 'M',
-    })
-    const qrImage = await doc.embedPng(qrDataUrl)
-
-    const qrSize = 50
-    const qrX = qrColX + (columnWidth - qrSize) / 2
-    const qrY = y - 48
-
-    page.drawImage(qrImage, {
-      x: qrX,
-      y: qrY,
-      width: qrSize,
-      height: qrSize,
-    })
-
-    // Clickable PDF Link Annotation on the QR area (opens in new window/tab)
-    const linkAnnot = doc.context.obj({
-      Type: 'Annot',
-      Subtype: 'Link',
-      Rect: [qrX, qrY, qrX + qrSize, qrY + qrSize],
-      Border: [0, 0, 0],
-      C: [0, 0, 0],
-      A: {
-        Type: 'Action',
-        S: 'URI',
-        URI: PDFString.of(evidenceUrl),
-        NewWindow: true,
-      },
-    })
-    const linkAnnotRef = doc.context.register(linkAnnot)
-    page.node.addAnnot(linkAnnotRef)
-  } catch (err) {
-    console.error('Failed to draw Evidence QR in Overtime Record PDF:', err)
-  }
 }
 
 // ============================================================

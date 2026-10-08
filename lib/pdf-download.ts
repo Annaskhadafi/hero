@@ -219,10 +219,24 @@ export async function generateHtmlAsPdfBlob(
   container.style.left = '-9999px'
   container.style.top = '0'
   container.style.width = `${widthMm}mm`
-  container.style.minHeight = `${heightMm}mm`
-  container.style.height = `${heightMm}mm`
   container.style.zIndex = '-9999'
   container.style.backgroundColor = '#ffffff'
+
+  if (innerHtml.includes('class="pdf-page"') || innerHtml.includes("class='pdf-page'")) {
+    container.innerHTML = innerHtml
+    document.body.appendChild(container)
+    try {
+      const pageEls = Array.from(container.querySelectorAll<HTMLElement>('.pdf-page'))
+      if (pageEls.length > 0) {
+        return await generateMultiPageElementAsPdfBlob(pageEls, { orientation: isLandscape ? 'landscape' : 'portrait' })
+      }
+    } finally {
+      document.body.removeChild(container)
+    }
+  }
+
+  container.style.minHeight = `${heightMm}mm`
+  container.style.height = `${heightMm}mm`
   container.style.overflow = 'hidden'
 
   container.innerHTML = `

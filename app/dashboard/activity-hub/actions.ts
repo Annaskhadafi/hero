@@ -8539,9 +8539,9 @@ export async function batchRevertDailyActivitySessionsAction(sessionIds: number[
 
       if (!recipientEmail && sessionRow?.employeeId) {
         const [empRow] = await db
-          .select({ name: heroEmployees.name, email: heroEmployees.email })
-          .from(heroEmployees)
-          .where(eq(heroEmployees.id, sessionRow.employeeId))
+          .select({ name: employees.name, email: employees.email })
+          .from(employees)
+          .where(eq(employees.id, sessionRow.employeeId))
           .limit(1)
 
         if (empRow) {
