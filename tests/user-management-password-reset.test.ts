@@ -55,4 +55,15 @@ describe('user management password reset', () => {
     expect(changePasswordSection).not.toContain('db.update(account).set')
     expect(changePasswordSection).toContain('upsertCredentialAccount')
   })
+
+  it('restricts non-super-admin password resets to own account only', () => {
+    const source = admin()
+    const changePasswordStart = source.indexOf("payload.intent === 'change-password'")
+    const changePasswordEnd = source.indexOf("return { status: 'success'", changePasswordStart)
+    const changePasswordSection = source.substring(changePasswordStart, changePasswordEnd + 100)
+
+    expect(changePasswordSection).toContain('isSuperAdmin')
+    expect(changePasswordSection).toContain('isSelf')
+    expect(changePasswordSection).toContain('!isSuperAdmin && !isSelf')
+  })
 })

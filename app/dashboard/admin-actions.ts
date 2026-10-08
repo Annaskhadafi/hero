@@ -4673,6 +4673,41 @@ async function applyApprovalDecision(params: {
     })
   }
 
+  // Marital Status Request approval handling
+  if (
+    approval.rawActivityType === 'marital_status' ||
+    approval.rawActivityType === 'marital-status-request' ||
+    approval.rawActivityType === 'Perubahan Status Pernikahan' ||
+    (approval as any).maritalStatusRequestId != null
+  ) {
+    const { approveMaritalStatusStepAction, rejectMaritalStatusStepAction, revertMaritalStatusStepAction } = await import(
+      '@/app/dashboard/central-service/marital-status/actions'
+    )
+    const { maritalStatusRequests } = await import('@/db/schema/marital-status')
+    const [marReq] = await db
+      .select({ id: maritalStatusRequests.id })
+      .from(maritalStatusRequests)
+      .leftJoin(approvals, eq(approvals.maritalStatusRequestId, maritalStatusRequests.id))
+      .where(eq(approvals.id, params.approvalId))
+      .limit(1)
+
+    if (marReq) {
+      if (params.decision === 'approved') {
+        await approveMaritalStatusStepAction(
+          marReq.id,
+          params.approvalId,
+          params.note,
+          resolvedSignatureUrl
+        )
+      } else if (params.decision === 'reverted' || params.decision === 'revert' || params.decision === 'needs_revision') {
+        await revertMaritalStatusStepAction(marReq.id, params.approvalId, params.note)
+      } else {
+        await rejectMaritalStatusStepAction(marReq.id, params.approvalId, params.note)
+      }
+      return true
+    }
+  }
+
 
 
   // Summary APD approval handling
@@ -7900,7 +7935,7 @@ export async function manageSecurityUserAction(
       locationChangeReason: formData.get('locationChangeReason'),
     })
 
-    if (['change-password', 'reset-face', 'ban-user', 'activate-user', 'change-site', 'send-magic-link'].includes(payload.intent) && !isSuperAdminRole(await getCurrentEmployeeAccessRole())) {
+    if (['reset-face', 'ban-user', 'activate-user', 'change-site', 'send-magic-link'].includes(payload.intent) && !isSuperAdminRole(await getCurrentEmployeeAccessRole())) {
       throw new Error('Quick Action hanya tersedia untuk role Super Admin.')
     }
 
@@ -8618,9 +8653,23 @@ export async function manageSecurityUserAction(
     }
 
     if (payload.intent === 'change-password') {
+      const currentRole = await getCurrentEmployeeAccessRole()
+      const actorContext = await getCurrentEmployeeAccessContext().catch(() => null)
+      const isSuperAdmin = isSuperAdminRole(currentRole)
+      const isSelf = Boolean(actorContext && actorContext.employeeId === employee.id)
+
+      if (!isSuperAdmin && !isSelf) {
+        return {
+          status: 'error',
+          message: 'Hanya Super Admin yang diizinkan mereset password pengguna lain. Anda hanya dapat mengganti password akun Anda sendiri.',
+        }
+      }
+
+      const defaultPass = buildDefaultCredentialPassword(employee.employeeSn)
+      const fallbackDefaultPass = defaultPass.length >= 8 ? defaultPass : `Chitra#${employee.employeeSn || '12345'}`
       const newPassword =
         formData.get('useDefaultPassword') === 'true'
-          ? buildDefaultCredentialPassword(employee.employeeSn)
+          ? fallbackDefaultPass
           : payload.newPassword ?? ''
 
       if (newPassword.length < 8) {

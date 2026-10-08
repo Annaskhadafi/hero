@@ -111,6 +111,7 @@ import { FormWoDocumentPreviewDialog, FormWoDocumentView } from '@/components/fo
 import { ApdRequestDetailModal } from '@/components/summary/apd-request-detail-modal'
 import { getFormWoDetailAction } from '@/app/actions/form-wo'
 import { RfrApprovalDialog } from '@/components/admin/rfr-approval-dialog'
+import { MaritalStatusApprovalDialog } from '@/components/admin/marital-status-approval-dialog'
 import { AdminMetricGrid } from '@/components/admin-metric-grid'
 import { AdminPageShell } from '@/components/admin-page-shell'
 import { AdminStatusBadge } from '@/components/admin-status-badge'
@@ -884,6 +885,21 @@ export function InboxTab({
       }
 
       if (nonFormWoItems.length > 0) {
+        const maritalItems = nonFormWoItems
+          .filter(
+            (i: any) =>
+              i.maritalStatusRequestId != null ||
+              i.activityType === 'Perubahan Status Pernikahan' ||
+              i.activityType === 'Permohonan Status Pernikahan' ||
+              i.activityType === 'marital_status' ||
+              i.title?.toLowerCase().includes('status pernikahan')
+          )
+          .sort((a: any, b: any) => {
+            if (a.status === 'pending' && b.status !== 'pending') return -1;
+            if (a.status !== 'pending' && b.status === 'pending') return 1;
+            return (a.level ?? 1) - (b.level ?? 1);
+          });
+        const maritalItem = maritalItems[0];
         const apdItem = nonFormWoItems.find(
           (i: any) =>
             i.activityType?.toLowerCase().includes('request apd') ||
@@ -896,13 +912,16 @@ export function InboxTab({
             i.title?.toLowerCase().includes('summary')
         )
 
+        const isMaritalStatus = Boolean(maritalItem)
         const isApd = Boolean(apdItem)
         const isSummary = apdItem?.activityType === 'Summary APD' || apdItem?.title?.toLowerCase().includes('summary')
         const isMaterial = apdItem?.activityType?.toLowerCase().includes('material') || apdItem?.title?.toLowerCase().includes('material')
         const isTools = apdItem?.activityType?.toLowerCase().includes('tools') || apdItem?.title?.toLowerCase().includes('tools')
         const isJobcard = apdItem?.activityType === 'Jobcard Repair (QC)' || apdItem?.activityType === 'jobcard_qc' || (apdItem?.title || '').toLowerCase().includes('job card') || (apdItem?.title || '').toLowerCase().includes('jobcard')
 
-        const resolvedCategory = isSummary
+        const resolvedCategory = isMaritalStatus
+          ? 'MARITAL_STATUS'
+          : isSummary
           ? 'SUMMARY'
           : isMaterial
           ? 'MATERIAL'
@@ -914,7 +933,9 @@ export function InboxTab({
           ? 'APD'
           : 'GENERAL'
 
-        const resolvedCategoryLabel = isSummary
+        const resolvedCategoryLabel = isMaritalStatus
+          ? 'Perubahan Status Pernikahan'
+          : isSummary
           ? 'Summary Permintaan Barang'
           : isMaterial
           ? 'Permintaan Material'
@@ -926,7 +947,9 @@ export function InboxTab({
           ? 'Permintaan APD'
           : 'Form Activity'
 
-        const resolvedDocNumber = isApd
+        const resolvedDocNumber = isMaritalStatus
+          ? ((maritalItem as any)?.requestNumber || `MS-${(maritalItem as any)?.maritalStatusRequestId || (maritalItem as any)?.approvalId}`)
+          : isApd
           ? (apdItem?.requestNumber ||
               (apdItem?.title?.includes(' - ')
                 ? apdItem.title.split(' - ')[1]
@@ -940,7 +963,9 @@ export function InboxTab({
               `GRP-${g.id}`)
           : `GRP-${g.id}`
 
-        const resolvedTitle = isApd
+        const resolvedTitle = isMaritalStatus
+          ? ((maritalItem as any)?.title || `Permohonan Status Pernikahan - ${(maritalItem as any)?.requestNumber || ''}`)
+          : isApd
           ? (apdItem?.title || `${resolvedCategoryLabel} - ${g.requesterName}`)
           : `${g.requesterName} - ${nonFormWoItems.length} Item Activity`
 
@@ -953,14 +978,16 @@ export function InboxTab({
           employeeName: g.requesterName,
           siteName: g.siteName,
           workDate: g.workDate,
-          stepLabel: isApd && apdItem?.currentStepLabel ? apdItem.currentStepLabel : `${nonFormWoItems.length} Step Pending`,
+          stepLabel: isMaritalStatus ? ((maritalItem as any)?.currentStepLabel || 'Menunggu Approval') : (isApd && apdItem?.currentStepLabel ? apdItem.currentStepLabel : `${nonFormWoItems.length} Step Pending`),
           dueState: g.overdueCount > 0 ? 'overdue' : g.dueSoonCount > 0 ? 'due_soon' : 'open',
           dueAt: nonFormWoItems[0]?.dueAt || new Date(),
           submittedAt: nonFormWoItems[0]?.submittedAt || new Date(),
-          url: isApd ? (isSummary ? `/print/summary/${apdItem?.activityId}` : `/print/apd/${apdItem?.activityId}`) : '#',
-          activityType: isSummary ? 'Summary APD' : (apdItem?.activityType || (isApd ? (isMaterial ? 'Request Material' : isTools ? 'Request Tools' : 'Request APD') : 'Form Activity')),
-          activityId: apdItem?.activityId ?? Number(g.id),
-          approvalId: apdItem?.approvalId || nonFormWoItems[0]?.approvalId,
+          url: isMaritalStatus ? `/print/central-service/marital-status/${(maritalItem as any)?.maritalStatusRequestId || (maritalItem as any)?.activityId || (maritalItem as any)?.approvalId}` : (isApd ? (isSummary ? `/print/summary/${apdItem?.activityId}` : `/print/apd/${apdItem?.activityId}`) : '#'),
+          activityType: isMaritalStatus ? 'Perubahan Status Pernikahan' : (isSummary ? 'Summary APD' : (apdItem?.activityType || (isApd ? (isMaterial ? 'Request Material' : isTools ? 'Request Tools' : 'Request APD') : 'Form Activity'))),
+          activityId: (isMaritalStatus ? (maritalItem as any)?.activityId : (apdItem?.activityId)) ?? Number(g.id),
+          maritalStatusRequestId: (maritalItem as any)?.maritalStatusRequestId || (maritalItem as any)?.id,
+          requestNumber: (maritalItem as any)?.requestNumber || resolvedDocNumber,
+          approvalId: (maritalItem as any)?.approvalId || apdItem?.approvalId || nonFormWoItems[0]?.approvalId,
           approverName: (nonFormWoItems[0] as any)?.approverName || null,
           rawGeneralGroup: {
             ...g,
@@ -2066,7 +2093,7 @@ export function InboxTab({
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-slate-500 font-medium">Batas Waktu:</span>
-                    <span className="font-bold text-slate-700">Due {formatDate(item.dueAt)}</span>
+                    <span className="font-bold text-slate-700">{item.dueState === 'no_sla' ? 'Non SLA' : `Due ${formatDate(item.dueAt)}`}</span>
                   </div>
                 </div>
 
@@ -2340,6 +2367,7 @@ export function InboxTab({
                             item.category === 'MATERIAL' && 'bg-emerald-50 text-emerald-800 border-emerald-200',
                             item.category === 'TOOLS' && 'bg-cyan-50 text-cyan-800 border-cyan-200',
                             item.category === 'SUMMARY' && 'bg-purple-50 text-purple-800 border-purple-200',
+                            item.category === 'MARITAL_STATUS' && 'bg-pink-50 text-pink-700 border-pink-200',
                             item.category === 'GENERAL' && 'bg-slate-100 text-slate-700 border-slate-200'
                           )}
                         >
@@ -2375,7 +2403,9 @@ export function InboxTab({
                     <TableCell className="align-top">
                       <div className="space-y-1">
                         <AdminStatusBadge value={item.dueState} />
-                        <p className="text-muted-foreground text-xs">Due {formatDate(item.dueAt)}</p>
+                        {item.dueState !== 'no_sla' && item.dueState !== 'closed' && (
+                          <p className="text-muted-foreground text-xs">Due {formatDate(item.dueAt)}</p>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="align-top text-right">
@@ -2385,6 +2415,8 @@ export function InboxTab({
                         <FormWoApprovalDialog item={item as any} group={(item as any).rawGeneralGroup || item} />
                       ) : item.category === 'QUALITY_5R' || (item.category === 'GENERAL' && ((item as any).fiveRReport || (item as any).activityType === '5R Audit Report')) ? (
                         <FiveRApprovalDialog item={item as any} group={(item as any).rawGeneralGroup || item} />
+                      ) : item.category === 'MARITAL_STATUS' || (item as any).maritalStatusRequestId || (item as any).activityType === 'marital_status' || (item as any).activityType === 'Permohonan Status Pernikahan' || (item as any).activityType === 'Perubahan Status Pernikahan' ? (
+                        <MaritalStatusApprovalDialog item={item as any} group={(item as any).rawGeneralGroup || item} />
                       ) : (item as any).isReverted ? (
                         <Button
                           size="sm"
@@ -5331,6 +5363,9 @@ export function HistoryTab({
         } else if (mobileCategoryFilter === 'CONTRACT') {
           const isContract = cat === 'CONTRACT_REVIEW' || actType.includes('contract') || title.includes('contract')
           if (!isContract) return false
+        } else if (mobileCategoryFilter === 'MARITAL') {
+          const isMarital = cat === 'MARITAL_STATUS' || actType.includes('pernikahan') || title.includes('pernikahan')
+          if (!isMarital) return false
         }
       }
 
@@ -5991,6 +6026,7 @@ export function HistoryTab({
       { id: 'WO', label: 'Form WO' },
       { id: 'SOP', label: 'SOP / WIN' },
       { id: 'CONTRACT', label: 'Contract' },
+      { id: 'MARITAL', label: 'Status Nikah' },
     ]
 
     const statusOptions = [

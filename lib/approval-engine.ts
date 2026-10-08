@@ -61,6 +61,7 @@ export type ResolvedApprovalStep = {
     | 'apd_admin_cp'
     | 'section_head'
     | 'fallback_manager'
+    | 'direct_select'
     | 'vacant'
   canDelegate: boolean
   slaHours: number
@@ -1572,10 +1573,59 @@ function resolveNodeStep(
   } satisfies ResolvedApprovalStep
 }
 
+async function resolveMaritalStatusApprovalRoute(context: ApprovalContext): Promise<ApprovalRouteResolution> {
+  const steps: ResolvedApprovalStep[] = [
+    {
+      stepOrder: 1,
+      label: 'Step 1: PJO / HSE / Leader',
+      approvalMatrixStepId: null,
+      approverNodeId: null,
+      approverEmployeeId: null,
+      approverName: 'PJO / HSE / Leader',
+      approvalMode: 'single',
+      resolutionSource: 'direct_select',
+      canDelegate: false,
+      slaHours: 0,
+      nodeLabel: 'Step 1: PJO / HSE / Leader',
+      fallbackLabel: 'PJO / HSE / Leader',
+      escalationLabel: null,
+    },
+    {
+      stepOrder: 2,
+      label: 'Step 2: Section Head',
+      approvalMatrixStepId: null,
+      approverNodeId: null,
+      approverEmployeeId: null,
+      approverName: 'Section Head',
+      approvalMode: 'single',
+      resolutionSource: 'direct_select',
+      canDelegate: false,
+      slaHours: 0,
+      nodeLabel: 'Step 2: Section Head',
+      fallbackLabel: 'Section Head',
+      escalationLabel: null,
+    },
+  ]
+
+  return {
+    matrixId: null,
+    matrixName: 'Default Approval Matrix - Marital Status Request',
+    structureId: null,
+    structureName: 'Standard Marital Status Workflow Structure',
+    transactionType: 'marital_status',
+    warnings: [],
+    steps,
+  }
+}
+
 export async function resolveApprovalRouteForActivity(
   input: ResolveApprovalRouteInput
 ): Promise<ApprovalRouteResolution> {
   const context = await getApprovalContext(input)
+
+  if (context.transactionType === 'marital_status' || context.transactionType === 'marital-status-request') {
+    return resolveMaritalStatusApprovalRoute(context)
+  }
 
   if (context.transactionType.startsWith('apd-request')) {
     return resolveApdApprovalRoute(context)

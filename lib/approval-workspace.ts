@@ -40,6 +40,8 @@ import {
 } from '@/db/schema/hero'
 import { apdSummaries } from '@/db/schema/apd-summary'
 import { tireRepairJobcards } from '@/db/schema/tire-repair'
+import { maritalStatusRequests } from '@/db/schema/marital-status'
+import { ensureMaritalStatusRequestSchema } from '@/lib/marital-status-data'
 import { ensurePtwApprovalsExist, syncPtwApproverNames } from '@/app/dashboard/hse/izin-kerja-ptw/actions'
 import type { ApprovalRouteResolution } from '@/lib/approval-engine'
 import { parseApprovalNoteEntries } from '@/lib/approval-notes'
@@ -106,6 +108,7 @@ type ApprovalRecordRow = {
   repairFormWo?: typeof repairFormWo.$inferSelect | null
   signatureUrl?: string | null
   fiveRReport?: typeof fiveRReports.$inferSelect | null
+  maritalStatusRequestId?: number | null
 }
 
 type RawApprovalRecordRow = {
@@ -152,6 +155,7 @@ type RawApprovalRecordRow = {
   repairFormWoId?: number | null
   apdSummaryId?: number | null
   fiveRReportId?: number | null
+  maritalStatusRequestId?: number | null
   photoUrl?: string | null
   signatureUrl?: string | null
 }
@@ -616,6 +620,20 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
     })
   )
 
+  const maritalStatusIds = Array.from(
+    new Set(
+      rawRows.map((row) => row.maritalStatusRequestId).filter((value): value is number => value != null)
+    )
+  )
+  const maritalStatusRows =
+    maritalStatusIds.length === 0
+      ? []
+      : await db
+          .select()
+          .from(maritalStatusRequests)
+          .where(inArray(maritalStatusRequests.id, maritalStatusIds))
+  const maritalStatusMap = new Map(maritalStatusRows.map((row) => [row.id, row]))
+
   const requesterIds = Array.from(
     new Set(
       rawRows
@@ -627,6 +645,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
             (row.apdSummaryId == null ? null : summaryMap.get(row.apdSummaryId)?.generatedByEmployeeId) ??
             (row.fiveRReportId == null ? null : fiveRMap.get(row.fiveRReportId)?.auditorId) ??
             (row.repairFormWoId == null ? null : (repairWoMap.get(row.repairFormWoId)?.createdBy ? Number(repairWoMap.get(row.repairFormWoId)?.createdBy) : null)) ??
+            (row.maritalStatusRequestId == null ? null : maritalStatusMap.get(row.maritalStatusRequestId)?.employeeId) ??
             row.approverEmployeeId
         )
         .filter((value): value is number => value != null && !isNaN(value) && Number.isInteger(value))
@@ -640,7 +659,8 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
             row.activitySiteId ??
             row.submissionSiteId ??
             (row.apdRequestId == null ? null : apdMap.get(row.apdRequestId)?.siteId) ??
-            (row.fiveRReportId == null ? null : fiveRMap.get(row.fiveRReportId)?.siteId)
+            (row.fiveRReportId == null ? null : fiveRMap.get(row.fiveRReportId)?.siteId) ??
+            (row.maritalStatusRequestId == null ? null : maritalStatusMap.get(row.maritalStatusRequestId)?.siteId)
         )
         .filter((value): value is number => value != null)
     )
@@ -777,6 +797,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
     const spl = splId == null ? null : (splMap.get(splId) ?? null)
     const apd = row.apdRequestId == null ? null : (apdMap.get(row.apdRequestId) ?? null)
     const summary = row.apdSummaryId == null ? null : (summaryMap.get(row.apdSummaryId) ?? null)
+    const msReq = row.maritalStatusRequestId == null ? null : (maritalStatusMap.get(row.maritalStatusRequestId) ?? null)
     const plannedItems =
       splId == null ? [] : splItemRows.filter((item) => item.overtimeCommandLetterId === splId)
     const sessionItems =
@@ -819,16 +840,17 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
     )
     const requester =
       requesterMap.get(
-        row.activityEmployeeId ?? row.requesterEmployeeId ?? apd?.employeeId ?? summary?.generatedByEmployeeId ?? -1
+        row.activityEmployeeId ?? row.requesterEmployeeId ?? apd?.employeeId ?? summary?.generatedByEmployeeId ?? msReq?.employeeId ?? -1
       ) ?? null
     const site =
-      siteMap.get(row.activitySiteId ?? row.submissionSiteId ?? apd?.siteId ?? -1) ?? null
+      siteMap.get(row.activitySiteId ?? row.submissionSiteId ?? apd?.siteId ?? msReq?.siteId ?? -1) ?? null
     const rawStart =
       row.startTime ??
       spl?.plannedStartAt ??
       parseSnapshotDate(preview.plannedStartAt) ??
       row.submissionSubmittedAt ??
       apd?.requestDate ??
+      msReq?.requestDate ??
       row.submissionCreatedAt ??
       row.submittedAt
     const effectiveStartTime = rawStart ? new Date(rawStart) : new Date()
@@ -839,6 +861,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       parseSnapshotDate(preview.plannedEndAt) ??
       row.submissionSubmittedAt ??
       apd?.requestDate ??
+      msReq?.requestDate ??
       row.submissionCreatedAt ??
       row.submittedAt
     const effectiveEndTime = rawEnd ? new Date(rawEnd) : new Date()
@@ -847,11 +870,12 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       row.createdAt ??
       row.submissionCreatedAt ??
       apd?.requestDate ??
+      msReq?.requestDate ??
       row.submissionSubmittedAt ??
       row.submittedAt
     const effectiveCreatedAt = rawCreated ? new Date(rawCreated) : new Date()
     const requestId =
-      row.approvalActivityId ?? row.submissionId ?? row.apdRequestId ?? row.apdSummaryId ?? row.approvalId
+      row.approvalActivityId ?? row.submissionId ?? row.apdRequestId ?? row.apdSummaryId ?? row.maritalStatusRequestId ?? row.approvalId
     const titleFromSnapshot =
       typeof preview.title === 'string'
         ? preview.title
@@ -878,28 +902,34 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
     const requestStatus =
       fiveR != null
         ? fiveR.status
-        : (row.activityStatus ?? row.submissionStatus ?? apd?.status ?? 'pending')
+        : msReq != null
+          ? msReq.status
+          : (row.activityStatus ?? row.submissionStatus ?? apd?.status ?? 'pending')
 
     const effectiveActivityType =
-      row.fiveRReportId != null
+      fiveR != null
         ? '5R Audit Report'
-        : row.approvalActivityId != null
-        ? (row.activityType ?? 'Daily Activity')
-        : row.submissionId != null
-          ? (row.templateName ?? 'Workflow')
-          : row.repairFormWoId != null
-            ? 'Work Order'
-            : row.apdSummaryId != null
-              ? 'Summary APD'
-              : row.apdRequestId != null
-                ? `Request ${apd?.requestCategory ?? 'APD'}`
-                : ((row as any).rawActivityType === 'jobcard_qc' ? 'Jobcard Repair (QC)' : ((row as any).rawActivityType ?? 'Workflow'))
+        : row.maritalStatusRequestId != null || msReq != null
+          ? 'Perubahan Status Pernikahan'
+          : row.approvalActivityId != null
+          ? (row.activityType ?? 'Daily Activity')
+          : row.submissionId != null
+            ? (row.templateName ?? 'Workflow')
+            : row.repairFormWoId != null
+              ? 'Work Order'
+              : row.apdSummaryId != null
+                ? 'Summary APD'
+                : row.apdRequestId != null
+                  ? `Request ${apd?.requestCategory ?? 'APD'}`
+                  : ((row as any).rawActivityType === 'jobcard_qc' ? 'Jobcard Repair (QC)' : ((row as any).rawActivityType ?? 'Workflow'))
 
     const currentRepairWo = row.repairFormWoId ? (repairWoMap.get(row.repairFormWoId) ?? null) : null
 
     let title = 'Workflow'
     if (fiveR != null) {
       title = `Laporan 5R: ${fiveR.reportNumber} – ${fiveR.picAreaName}`
+    } else if (msReq != null) {
+      title = `Permohonan Status Pernikahan - ${msReq.requestNumber}`
     } else if (spl?.title) {
       title = spl.title
     } else if (row.repairFormWoId != null) {
@@ -923,6 +953,8 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
     let resolvedRemarks = ''
     if (fiveR != null) {
       resolvedRemarks = `Audit 5R (${fiveR.auditPeriod}) - Skor: ${fiveR.totalScore}/100`
+    } else if (msReq != null) {
+      resolvedRemarks = `Pergantian status dari ${msReq.currentMaritalStatus} ke ${msReq.targetMaritalStatus}. Alasan: ${msReq.reason}`
     } else if (spl?.requestNotes) {
       resolvedRemarks = spl.requestNotes
     } else if (currentRepairWo?.deskripsiPekerjaan) {
@@ -938,6 +970,8 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
     let resolvedDescription = '-'
     if (fiveR != null) {
       resolvedDescription = `Laporan 5R ${fiveR.picAreaName} (Periode ${fiveR.auditPeriod}) - Skor: ${fiveR.totalScore}`
+    } else if (msReq != null) {
+      resolvedDescription = `Pergantian status dari ${msReq.currentMaritalStatus} ke ${msReq.targetMaritalStatus}. Alasan: ${msReq.reason}`
     } else if (spl?.requestNotes) {
       resolvedDescription = spl.requestNotes
     } else if (currentRepairWo?.deskripsiPekerjaan) {
@@ -1000,9 +1034,9 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       approvalId: row.approvalId,
       activityId: requestId,
       submissionId: row.submissionId,
-      requestNumber: fiveR?.reportNumber || spl?.splNumber || row.requestNumber,
+      requestNumber: msReq?.requestNumber || fiveR?.reportNumber || spl?.splNumber || row.requestNumber,
       formName:
-        fiveR ? '5R Audit Report' : ((row as any).rawFormName || row.templateName || (row.approvalActivityId ? 'Daily Activity' : 'Jobcard Repair (QC)')),
+        fiveR ? '5R Audit Report' : msReq ? 'Perubahan Status Pernikahan' : ((row as any).rawFormName || row.templateName || (row.approvalActivityId ? 'Daily Activity' : 'Jobcard Repair (QC)')),
       approvalStepId: row.approvalStepId,
       level: row.level,
       status: fiveR
@@ -1017,6 +1051,12 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
             : row.level < fiveR.currentApprovalLevel
             ? 'approved'
             : 'waiting')
+        : msReq
+        ? (msReq.status === 'rejected'
+            ? 'rejected'
+            : msReq.status === 'approved'
+            ? 'approved'
+            : row.status)
         : row.status,
       approverName: row.approverName,
       approverEmail: (row.approverEmployeeId ? approverEmpMap.get(row.approverEmployeeId)?.email : null) || (row as any).approverEmail || null,
@@ -1033,6 +1073,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       routeSnapshot: row.routeSnapshot,
       decisionNote: row.decisionNote,
       activityCode:
+        msReq?.requestNumber ||
         fiveR?.reportNumber ||
         spl?.splNumber ||
         row.activityCode ||
@@ -1042,7 +1083,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       activityTitle: title,
       unitNumber: resolvedUnitNumber,
       tireCount: (row as any).tireCount || (typeof payload.tireCount === 'number' ? payload.tireCount : parseInt(String(payload.tireCount || 0), 10) || 0),
-      activityStatus: fiveR ? fiveR.status : requestStatus,
+      activityStatus: msReq ? msReq.status : (fiveR ? fiveR.status : requestStatus),
       priority: row.priority || priorityFromSnapshot || 'Normal',
       remarks: resolvedRemarks,
       startTime: effectiveStartTime,
@@ -1056,7 +1097,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       siteName: resolvedSiteName,
       photoUrl: photoUrls[0] || null,
       requestKindLabel:
-        fiveR ? '5R Audit' : spl?.origin === 'employee_request' ? 'Pengajuan' : spl ? 'Perintah' : effectiveActivityType,
+        msReq ? 'Perubahan Status Pernikahan' : fiveR ? '5R Audit' : spl?.origin === 'employee_request' ? 'Pengajuan' : spl ? 'Perintah' : effectiveActivityType,
       description: resolvedDescription,
       dailyActivityStatus:
         sessions.length === 0
@@ -1077,6 +1118,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       repairFormWo: currentRepairWo,
       signatureUrl: row.signatureUrl || null,
       fiveRReport: fiveR,
+      maritalStatusRequestId: row.maritalStatusRequestId,
     } satisfies ApprovalRecordRow
   })
 }
@@ -1094,6 +1136,10 @@ function getSlaHours(row: ApprovalRecordRow, route: ApprovalRouteResolution | nu
 }
 
 function getCurrentStepLabel(row: ApprovalRecordRow, route: ApprovalRouteResolution | null) {
+  if (row.activityType === 'marital_status' || row.maritalStatusRequestId != null || row.formName?.includes('Status Pernikahan')) {
+    return row.level === 1 ? 'Step 1: PJO / HSE / Leader' : 'Step 2: Section Head'
+  }
+
   const steps = Array.isArray(route?.steps) ? route.steps : []
   const matchedStep =
     steps.find(
@@ -1127,12 +1173,12 @@ function enrichApprovalRow(row: ApprovalRecordRow, now: Date): ApprovalQueueItem
 
   let dueState: ApprovalQueueItem['dueState'] = 'closed'
   if (isPending) {
-    if (timeLeft < 0) {
+    if (timeLeft < 0 && row.maritalStatusRequestId == null) {
       dueState = 'overdue'
-    } else if (timeLeft <= 6 * 60 * 60 * 1000) {
+    } else if (timeLeft <= 6 * 60 * 60 * 1000 && row.maritalStatusRequestId == null) {
       dueState = 'due_soon'
     } else {
-      dueState = 'on_track'
+      dueState = 'open'
     }
   }
 
@@ -1377,6 +1423,7 @@ async function fetchApprovalRows(options?: { onlyActivities?: boolean; onlyPendi
       signatureUrl: approvals.signatureUrl,
       apdSummaryId: approvals.apdSummaryId,
       fiveRReportId: approvals.fiveRReportId,
+      maritalStatusRequestId: approvals.maritalStatusRequestId,
       tireJobcardId: approvals.tireJobcardId,
       jobcardSn: tireRepairJobcards.serialNumber,
       jobcardTireSize: tireRepairJobcards.tireSize,
@@ -3223,6 +3270,7 @@ export async function getApprovalCenterData(
 ) {
   try {
     const now = new Date()
+    await safeQuery(() => ensureMaritalStatusRequestSchema(), undefined, "ensureMaritalStatusRequestSchema")
     const currentEmployee = await safeQuery(() => getEmployeeByEmail(email), null, "getEmployeeByEmail")
     const normalizedEmail = normalizeMatchValue(email)
     const employeeEmailNorm = normalizeMatchValue(currentEmployee?.email)
@@ -3354,12 +3402,20 @@ export async function getApprovalCenterData(
         signatureUrl?: string | null
         fiveRReport?: typeof fiveRReports.$inferSelect | null
         fiveRReportId?: number | null
+        maritalStatusRequestId?: number | null
       }>
     }
   >()
 
   for (const item of inboxRows) {
-    const groupKey = `${normalizeMatchValue(item.requesterEmail)}:${getDateKey(item.startTime)}`
+    const groupKey =
+      item.maritalStatusRequestId != null
+        ? `marital-status-${item.maritalStatusRequestId}`
+        : item.fiveRReportId != null
+        ? `five-r-${item.fiveRReportId}`
+        : item.repairFormWoId != null
+        ? `repair-wo-${item.repairFormWoId}`
+        : `${normalizeMatchValue(item.requesterEmail)}:${getDateKey(item.startTime)}`
     const notes = buildApprovalComments([item])
     const group = inboxGroupsMap.get(groupKey) ?? {
       id: groupKey,
@@ -3433,6 +3489,7 @@ export async function getApprovalCenterData(
       signatureUrl: item.signatureUrl ?? null,
       fiveRReport: item.fiveRReport ?? null,
       fiveRReportId: (item as any).fiveRReportId ?? item.fiveRReport?.id ?? null,
+      maritalStatusRequestId: (item as any).maritalStatusRequestId ?? null,
     })
     inboxGroupsMap.set(groupKey, group)
   }
@@ -3508,6 +3565,7 @@ export async function getApprovalCenterData(
         apdRequestId?: number | null
         apdSummaryId?: number | null
         fiveRReportId?: number | null
+        maritalStatusRequestId?: number | null
         signatureUrl?: string | null
         photoUrl?: string | null
         steps: Array<{
@@ -3582,6 +3640,7 @@ export async function getApprovalCenterData(
       apdRequestId: (seed as any).apdRequestId ?? null,
       apdSummaryId: (seed as any).apdSummaryId ?? null,
       fiveRReportId: (seed as any).fiveRReportId ?? seed.fiveRReport?.id ?? null,
+      maritalStatusRequestId: (seed as any).maritalStatusRequestId ?? null,
       signatureUrl: seed.signatureUrl ?? null,
       photoUrl: seed.photoUrl ?? null,
       steps: sortedRows.map((row) => ({
@@ -4492,6 +4551,9 @@ export async function getApprovalCenterData(
       sopWinRequestCount: sopWinRequestInboxItems.length,
       contractReviewCount: contractReviewInboxItems.length,
       rfrCount: rfrInboxItems.length,
+      maritalStatusCount: inboxRows.filter(
+        (item) => item.maritalStatusRequestId != null || item.activityType === 'Perubahan Status Pernikahan'
+      ).length,
       generalActivityCount: inboxRows.length,
     },
     historyMetrics: {

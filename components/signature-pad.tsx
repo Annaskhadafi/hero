@@ -445,32 +445,23 @@ export function SignaturePad({
     <div className={cn('flex flex-col space-y-2 w-full', className)}>
       {/* ── Mode 1: TTD Profil HERO Aktif ── */}
       {isUsingProfileSig && profileSig ? (
-        <div className="relative rounded-2xl border-2 border-emerald-300 bg-emerald-50/50 p-4 transition-all shadow-xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-16 w-28 shrink-0 items-center justify-center rounded-xl border border-emerald-200 bg-white p-2 shadow-xs">
-                <img
-                  src={profileSig}
-                  alt="Tanda Tangan Profil HERO"
-                  className="max-h-12 max-w-full object-contain"
-                />
-              </div>
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-black text-slate-800">
-                    {label || 'Tanda Tangan Digital Profil'}
-                  </span>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-300">
-                    <CheckCircle2 className="h-3 w-3 text-emerald-600" /> TTD Profil HERO Aktif
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-600">
-                  {description || `Otomatis menggunakan tanda tangan akun Anda${employeeName ? ` (${employeeName})` : ''}.`}
-                </p>
-                <p className="text-[10px] text-emerald-700 font-medium">
-                  ✓ Siap dibubuhkan otomatis ke dokumen resmi
-                </p>
-              </div>
+        <div className="rounded-xl border border-emerald-300 bg-emerald-50/50 p-3 shadow-xs space-y-2.5">
+          {/* Header: Status Badge */}
+          <div className="flex items-center justify-between gap-2 border-b border-emerald-200/60 pb-2">
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-900 whitespace-nowrap">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+              <span>TTD Profil HERO Aktif</span>
+            </span>
+          </div>
+
+          {/* Content: Signature Image + Action Button */}
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex h-14 w-28 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-white p-1.5 shadow-2xs">
+              <img
+                src={profileSig}
+                alt="Tanda Tangan Profil HERO"
+                className="max-h-11 max-w-full object-contain"
+              />
             </div>
 
             <Button
@@ -479,9 +470,9 @@ export function SignaturePad({
               size="sm"
               onClick={handleSwitchToManual}
               disabled={disabled}
-              className="h-8 rounded-xl border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 shrink-0 gap-1.5 shadow-2xs"
+              className="h-8 px-3 rounded-lg border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:text-slate-900 shrink-0 gap-1.5 shadow-2xs"
             >
-              <Edit3 className="h-3.5 w-3.5 text-indigo-600" />
+              <Edit3 className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
               <span>Ubah / Gores Manual</span>
             </Button>
           </div>

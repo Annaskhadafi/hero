@@ -6,6 +6,7 @@ import { Suspense } from "react";
 import { NavigationProgressBar } from "@/components/navigation-progress-bar";
 import { GlobalInputAutoSelect } from "@/components/global-input-auto-select";
 import { DomCleanupPatch } from "@/components/dom-cleanup-patch";
+import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -62,6 +63,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <HeroInstallPrompt />
           <GlobalInputAutoSelect />
           {children}
+          <Toaster position="top-center" richColors />
         </ThemeProvider>
       </body>
     </html>

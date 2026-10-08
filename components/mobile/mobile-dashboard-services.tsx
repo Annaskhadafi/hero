@@ -26,6 +26,7 @@ import {
   Wrench,
   Files,
   Users,
+  Heart,
 } from 'lucide-react'
 import {
   IconBook,
@@ -227,6 +228,13 @@ export function MobileDashboardServices({
       resource: 'central-service-assets',
       icon: Package,
       bg: 'bg-indigo-500/10 text-indigo-600',
+    },
+    {
+      title: 'Status Pernikahan',
+      href: '/mobile/central-service/marital-status',
+      resource: 'central_service_marital_status',
+      icon: Heart,
+      bg: 'bg-rose-500/10 text-rose-600',
     },
     {
       title: 'Request RFR',

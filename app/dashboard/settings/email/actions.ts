@@ -7,6 +7,7 @@ import { db } from "@/db";
 import {
   apdNotificationConfig,
   apdSummaryNotificationConfig,
+  maritalStatusNotificationConfig,
   materialToolsNotificationConfig,
   attendanceNotificationConfig,
   formWoNotificationConfig,
@@ -125,6 +126,12 @@ const hseSafetyNotificationSchema = z.object({
 });
 
 const apdSummaryNotificationSchema = z.object({
+  recipientEmails: z.string().trim().default(""),
+  ccEmails: z.string().trim().default(""),
+  isActive: z.preprocess((value) => value === "true" || value === true, z.boolean()),
+});
+
+const maritalStatusNotificationSchema = z.object({
   recipientEmails: z.string().trim().default(""),
   ccEmails: z.string().trim().default(""),
   isActive: z.preprocess((value) => value === "true" || value === true, z.boolean()),
@@ -991,6 +998,58 @@ export async function saveApdSummaryNotificationConfigAction(
       status: "error",
       message:
         error instanceof Error ? error.message : "Gagal menyimpan pengaturan Summary APD.",
+    };
+  }
+}
+
+export async function saveMaritalStatusNotificationConfigAction(
+  _state: EmailSettingsActionState = INITIAL_STATE,
+  formData: FormData,
+): Promise<EmailSettingsActionState> {
+  await ensureHeroGovernanceSeedData();
+
+  const parsed = maritalStatusNotificationSchema.safeParse(Object.fromEntries(formData.entries()));
+
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: parsed.error.issues[0]?.message ?? "Konfigurasi penerima Perubahan Status Pernikahan belum valid.",
+    };
+  }
+
+  try {
+    const [existing] = await db
+      .select({ id: maritalStatusNotificationConfig.id })
+      .from(maritalStatusNotificationConfig)
+      .limit(1);
+
+    const values = {
+      recipientEmails: parsed.data.recipientEmails,
+      ccEmails: parsed.data.ccEmails,
+      isActive: parsed.data.isActive,
+      updatedAt: new Date(),
+    };
+
+    if (existing) {
+      await db
+        .update(maritalStatusNotificationConfig)
+        .set(values)
+        .where(eq(maritalStatusNotificationConfig.id, existing.id));
+    } else {
+      await db.insert(maritalStatusNotificationConfig).values(values);
+    }
+
+    revalidatePath("/dashboard/settings/email");
+
+    return {
+      status: "success",
+      message: "Pengaturan notifikasi Perubahan Status Pernikahan berhasil disimpan.",
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message:
+        error instanceof Error ? error.message : "Gagal menyimpan penerima Perubahan Status Pernikahan.",
     };
   }
 }

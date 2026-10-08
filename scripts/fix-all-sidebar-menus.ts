@@ -93,7 +93,8 @@ const COMPLETE_MENU_DEFINITIONS = [
   // 11. Central Service
   { section: "Central Service", title: "Central Service Overview", url: "/dashboard/central-service", iconName: "database", resource: "central_service", sortOrder: 1, menuArea: "main", groupLabel: "Management" },
   { section: "Central Service", title: "Request Barang", url: "/dashboard/apd", iconName: "shield", resource: "apd-request", sortOrder: 2, menuArea: "main", groupLabel: "Management" },
-  { section: "Central Service", title: "CS Forecast", url: "/dashboard/central-service/forecast", iconName: "trending-up", resource: "cs-forecast", sortOrder: 3, menuArea: "main", groupLabel: "Management" },
+  { section: "Central Service", title: "Pergantian Status Pernikahan", url: "/dashboard/central-service/marital-status", iconName: "heart", resource: "central_service_marital_status", sortOrder: 3, menuArea: "main", groupLabel: "Management" },
+  { section: "Central Service", title: "CS Forecast", url: "/dashboard/central-service/forecast", iconName: "trending-up", resource: "cs-forecast", sortOrder: 4, menuArea: "main", groupLabel: "Management" },
   { section: "Central Service", title: "Re-Fueling LV", url: "/dashboard/central-service/refueling", iconName: "truck", resource: "central_service_refueling", sortOrder: 4, menuArea: "main", groupLabel: "Management" },
   { section: "Central Service", title: "Tire Site Inspection", url: "/dashboard/hse/tire-inspection", iconName: "camera", resource: "hse_tire_inspection", sortOrder: 5, menuArea: "main", groupLabel: "Technical" },
   { section: "Central Service", title: "Master Data APD", url: "/dashboard/central-service/master-apd", iconName: "database", resource: "central_service_master_apd", sortOrder: 6, menuArea: "main", groupLabel: "Technical" },

@@ -25,6 +25,7 @@ import {
   TrendingUp,
   Trophy,
   UserRound,
+  Heart,
   X,
 } from 'lucide-react'
 
@@ -141,6 +142,7 @@ export function MobileAppShell({
     { type: 'link', label: 'Cargo Manifest', href: '/mobile/cargo-manifest', icon: Package, resource: 'cargo_manifest' },
     { type: 'link', label: 'CS Forecast', href: '/mobile/central-service/forecast', icon: TrendingUp, resource: 'cs-forecast' },
     { type: 'link', label: 'CS Assets', href: '/mobile/central-service/assets', icon: Package, resource: 'central-service-assets' },
+    { type: 'link', label: 'Status Pernikahan', href: '/mobile/central-service/marital-status', icon: Heart, resource: 'central_service_marital_status' },
     { type: 'link', label: 'Profile', href: '/mobile/profile', icon: UserRound },
   ]
 

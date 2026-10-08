@@ -36,6 +36,7 @@ export default async function ApprovalPage() {
       sopWinRequestCount: 0,
       contractReviewCount: 0,
       rfrCount: 0,
+      maritalStatusCount: 0,
       generalActivityCount: 0,
     },
     historyMetrics: {

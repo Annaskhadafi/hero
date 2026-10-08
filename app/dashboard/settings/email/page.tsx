@@ -6,6 +6,7 @@ import {
   CalendarClock,
   FileSpreadsheet,
   FileText,
+  HeartHandshake,
   History,
   Mail,
   RadioTower,
@@ -20,6 +21,7 @@ import { EmailDeliveryLogTable } from "@/components/email-delivery-log-table";
 import { HseSafetyNotificationSettingsPanel } from "@/components/hse-safety-notification-settings-panel";
 import { ApdNotificationSettingsPanel } from "@/components/apd-notification-settings-panel";
 import { ApdSummaryNotificationSettingsPanel } from "@/components/apd-summary-notification-settings-panel";
+import { MaritalStatusNotificationSettingsPanel } from "@/components/marital-status-notification-settings-panel";
 import { HumanCapitalNotificationSettingsPanel } from "@/components/human-capital-notification-settings-panel";
 import { AttendanceNotificationSettingsPanel } from "@/components/attendance-notification-settings-panel";
 import { FormWoNotificationSettingsPanel } from "@/components/form-wo-notification-settings-panel";
@@ -56,6 +58,7 @@ import {
   getPwaPushSettingsData,
   getApdNotificationConfigData,
   getApdSummaryNotificationConfigData,
+  getMaritalStatusNotificationConfigData,
   getFormWoNotificationConfigData,
 } from "@/lib/hero-admin";
 
@@ -129,7 +132,7 @@ export default async function EmailSettingsPage() {
     redirect("/dashboard");
   }
 
-  const [logs, notifications, smtpSettings, templates, pwaPushSettings, hseSafetyConfig, apdSummaryConfig, attendanceConfig, humanCapitalConfig, csForecastConfig, apdConfig, formWoConfig, employees, session] = await Promise.all([
+  const [logs, notifications, smtpSettings, templates, pwaPushSettings, hseSafetyConfig, apdSummaryConfig, maritalStatusConfig, attendanceConfig, humanCapitalConfig, csForecastConfig, apdConfig, formWoConfig, employees, session] = await Promise.all([
     getEmailDeliveryLogsData(),
     getNotificationCenterData(),
     getEmailSmtpSettingsData(),
@@ -137,6 +140,7 @@ export default async function EmailSettingsPage() {
     getPwaPushSettingsData(),
     getHseSafetyNotificationConfigData(),
     getApdSummaryNotificationConfigData(),
+    getMaritalStatusNotificationConfigData(),
     getAttendanceNotificationConfigData(),
     getHumanCapitalNotificationConfigData(),
     getCsForecastDailyReportConfigData(),
@@ -204,6 +208,10 @@ export default async function EmailSettingsPage() {
             <FileSpreadsheet className="size-4" />
             Summary APD
           </TabsTrigger>
+          <TabsTrigger value="marital-status">
+            <HeartHandshake className="size-4" />
+            Perubahan Status
+          </TabsTrigger>
           <TabsTrigger value="hc">
             <Users className="size-4" />
             Human Capital
@@ -266,6 +274,10 @@ export default async function EmailSettingsPage() {
 
         <TabsContent value="apd-summary">
           <ApdSummaryNotificationSettingsPanel config={apdSummaryConfig} employees={employees} />
+        </TabsContent>
+
+        <TabsContent value="marital-status">
+          <MaritalStatusNotificationSettingsPanel config={maritalStatusConfig} employees={employees} />
         </TabsContent>
 
         <TabsContent value="hc">

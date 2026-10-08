@@ -44,6 +44,7 @@ import {
   hseSafetyNotificationConfig,
   apdNotificationConfig,
   apdSummaryNotificationConfig,
+  maritalStatusNotificationConfig,
   materialToolsNotificationConfig,
   attendanceNotificationConfig,
   formWoNotificationConfig,
@@ -1454,6 +1455,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     iconName: 'database',
     resource: 'central_service_master_apd',
     sortOrder: 2,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Central Service',
+    groupLabel: 'Management',
+    title: 'Pergantian Status Pernikahan',
+    url: '/dashboard/central-service/marital-status',
+    iconName: 'heart',
+    resource: 'central_service_marital_status',
+    sortOrder: 3,
     isVisible: true,
     openInNewTab: false,
   },
@@ -8153,6 +8166,39 @@ export async function getApdSummaryNotificationConfigData() {
     }
   )
 }
+
+export async function getMaritalStatusNotificationConfigData() {
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "hero_marital_status_notification_config" (
+        "id" serial PRIMARY KEY NOT NULL,
+        "recipient_emails" text DEFAULT '' NOT NULL,
+        "cc_emails" text DEFAULT '' NOT NULL,
+        "is_active" boolean DEFAULT true NOT NULL,
+        "updated_at" timestamp DEFAULT now() NOT NULL
+      )
+    `)
+  } catch {
+    // DDL bypass
+  }
+
+  const [config] = await db
+    .select()
+    .from(maritalStatusNotificationConfig)
+    .orderBy(desc(maritalStatusNotificationConfig.updatedAt))
+    .limit(1)
+
+  return (
+    config ?? {
+      id: 0,
+      recipientEmails: '',
+      ccEmails: '',
+      isActive: true,
+      updatedAt: new Date(),
+    }
+  )
+}
+
 
 export async function getMaterialToolsNotificationConfigData() {
   try {

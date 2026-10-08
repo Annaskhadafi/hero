@@ -87,6 +87,7 @@ const GROUPED_SECTIONS: Record<string, MenuSeed[]> = {
   ],
   "Central Service": [
     { title: "Master Data APD", url: "/dashboard/central-service/master-apd", section: "Central Service", groupLabel: "Management", iconName: "database", resource: "central_service_master_apd", sortOrder: 1 },
+    { title: "Pergantian Status Pernikahan", url: "/dashboard/central-service/marital-status", section: "Central Service", groupLabel: "Management", iconName: "heart", resource: "central_service_marital_status", sortOrder: 2 },
     { title: "WIP Repair", url: "/dashboard/repair-retread/wip-repair", section: "Central Service", groupLabel: "Repair & Retread", iconName: "settings", resource: "wip_repair", sortOrder: 1 },
     { title: "WIP Dashboard", url: "/dashboard/repair-retread/wip-repair/dashboard", section: "Central Service", groupLabel: "Repair & Retread", iconName: "chart-bar", resource: "wip_repair_dashboard", sortOrder: 2 },
     { title: "Master Barang Repair", url: "/dashboard/repair-retread/master-barang-repair", section: "Central Service", groupLabel: "Repair & Retread", iconName: "database", resource: "master_barang_repair", sortOrder: 3 },

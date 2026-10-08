@@ -295,3 +295,6 @@ export * from './helpdesk'
 // APD & Inventory
 export { masterApd } from './apd'
 
+// Marital Status
+export * from './marital-status'
+

@@ -644,6 +644,7 @@ export const approvals = pgTable('hero_approvals', {
   apdSummaryId: integer('apd_summary_id'),
   fiveRReportId: integer('five_r_report_id'),
   tireJobcardId: integer('tire_jobcard_id'),
+  maritalStatusRequestId: integer('marital_status_request_id'),
   approverEmail: text('approver_email'),
   activityType: text('activity_type'),
   requestNumber: text('request_number'),
@@ -2904,6 +2905,15 @@ export const formWoNotificationConfig = pgTable('hero_form_wo_notification_confi
   isActive: boolean('is_active').notNull().default(true),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
+
+export const maritalStatusNotificationConfig = pgTable('hero_marital_status_notification_config', {
+  id: serial('id').primaryKey(),
+  recipientEmails: text('recipient_emails').notNull().default(''),
+  ccEmails: text('cc_emails').notNull().default(''),
+  isActive: boolean('is_active').notNull().default(true),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
 
 export const formWoApprovalSettings = pgTable('hero_form_wo_approval_settings', {
   id: serial('id').primaryKey(),
