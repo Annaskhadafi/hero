@@ -184,7 +184,7 @@ export async function downloadMultiPageElementAsPdf(
   a.download = fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`
   document.body.appendChild(a)
   a.click()
-  document.body.removeChild(a)
+  if (a.parentNode) a.parentNode.removeChild(a)
   URL.revokeObjectURL(url)
 }
 
@@ -200,7 +200,7 @@ export async function downloadElementAsPdf(
   a.download = fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`
   document.body.appendChild(a)
   a.click()
-  document.body.removeChild(a)
+  if (a.parentNode) a.parentNode.removeChild(a)
   URL.revokeObjectURL(url)
 }
 
@@ -240,7 +240,7 @@ export async function generateHtmlAsPdfBlob(
     const target = container.firstElementChild as HTMLElement
     return await generateElementAsPdfBlob(target, { orientation: isLandscape ? 'landscape' : 'portrait' })
   } finally {
-    document.body.removeChild(container)
+    if (container.parentNode) container.parentNode.removeChild(container)
   }
 }
 
@@ -257,7 +257,7 @@ export async function downloadHtmlAsPdf(
   a.download = fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`
   document.body.appendChild(a)
   a.click()
-  document.body.removeChild(a)
+  if (a.parentNode) a.parentNode.removeChild(a)
   URL.revokeObjectURL(url)
 }
 
@@ -277,6 +277,6 @@ export async function downloadFilesAsZip(
   a.download = zipFileName.endsWith('.zip') ? zipFileName : `${zipFileName}.zip`
   document.body.appendChild(a)
   a.click()
-  document.body.removeChild(a)
+  if (a.parentNode) a.parentNode.removeChild(a)
   URL.revokeObjectURL(url)
 }

@@ -328,12 +328,23 @@ export async function submitApdRequest(formData: FormData) {
 
     if (firstStep) {
       // 4. Insert approval tracking
+      const [approverEmailRec] = firstStep?.approverEmployeeId
+        ? await tx
+            .select({ email: employees.email })
+            .from(employees)
+            .where(eq(employees.id, firstStep.approverEmployeeId))
+        : [null]
+
       await tx.insert(approvals).values({
         apdRequestId: request.id,
+        requestNumber,
         level: 1,
         status: 'pending',
         approverName: firstStep?.approverName ?? 'System',
         approverEmployeeId: firstStep?.approverEmployeeId,
+        approverEmail: approverEmailRec?.email ?? null,
+        activityType: 'apd-request',
+        activityTitle: `Permohonan ${requestCategory} - ${requestNumber}`,
         approvalStepId: firstStep?.approvalMatrixStepId,
         resolutionSource: firstStep?.resolutionSource ?? 'system',
         routeSnapshot: JSON.stringify(route),
@@ -342,39 +353,43 @@ export async function submitApdRequest(formData: FormData) {
       })
 
       // 5. Send Email and Bell Notification if there is an approver
-      if (firstStep?.approverEmployeeId) {
-        const [approverEmailRec] = await tx
-          .select({ email: employees.email })
-          .from(employees)
-          .where(eq(employees.id, firstStep.approverEmployeeId))
-        if (approverEmailRec?.email) {
-          if (requestCategory === 'MATERIAL' || requestCategory === 'TOOLS') {
-            sendMaterialToolsRequestSubmittedEmail({
-              employeeName: currentEmployee.name,
-              requestNumber,
-              approverEmail: approverEmailRec.email,
-              approverName: firstStep.approverName,
-              requestType: requestCategory,
-            }).catch(console.error)
+      if (firstStep?.approverEmployeeId && approverEmailRec?.email) {
+        if (requestCategory === 'MATERIAL' || requestCategory === 'TOOLS') {
+          sendMaterialToolsRequestSubmittedEmail({
+            employeeName: currentEmployee.name,
+            requestNumber,
+            approverEmail: approverEmailRec.email,
+            approverName: firstStep.approverName,
+            requestType: requestCategory,
+          }).catch(console.error)
 
-            notifyWorkflowBellRecipients({
-              recipientEmails: [approverEmailRec.email, 'muhammad.akbar@chitraparatama.co.id'],
-              eventType: 'material_tools_request_review',
-              category: 'approval_requests',
-              title: `Review Permintaan ${requestCategory}`,
-              body: `${currentEmployee.name} mengajukan permintaan ${requestCategory} baru (${requestNumber}) yang membutuhkan persetujuan Anda. (CC: Muhammad Taufik Akbar)`,
-              url: `/dashboard/approval`,
-              tagPrefix: 'apd',
-            }).catch(console.error)
-          } else {
-            sendApdRequestSubmittedEmail({
-              employeeName: currentEmployee.name,
-              requestNumber,
-              approverEmail: approverEmailRec.email,
-              approverName: firstStep.approverName,
-              requestType: requestCategory,
-            }).catch(console.error)
-          }
+          notifyWorkflowBellRecipients({
+            recipientEmails: [approverEmailRec.email, 'muhammad.akbar@chitraparatama.co.id'],
+            eventType: 'material_tools_request_review',
+            category: 'approval_requests',
+            title: `Review Permintaan ${requestCategory}`,
+            body: `${currentEmployee.name} mengajukan permintaan ${requestCategory} baru (${requestNumber}) yang membutuhkan persetujuan Anda. (CC: Muhammad Taufik Akbar)`,
+            url: `/dashboard/approval`,
+            tagPrefix: 'apd',
+          }).catch(console.error)
+        } else {
+          sendApdRequestSubmittedEmail({
+            employeeName: currentEmployee.name,
+            requestNumber,
+            approverEmail: approverEmailRec.email,
+            approverName: firstStep.approverName,
+            requestType: requestCategory,
+          }).catch(console.error)
+
+          notifyWorkflowBellRecipients({
+            recipientEmails: [approverEmailRec.email],
+            eventType: 'apd_request_review',
+            category: 'approval_requests',
+            title: `Review Permohonan APD Baru`,
+            body: `${currentEmployee.name} mengajukan permohonan APD (${requestNumber}) yang memerlukan peninjauan dan persetujuan Anda.`,
+            url: `/dashboard/approval`,
+            tagPrefix: 'apd',
+          }).catch(console.error)
         }
       }
     }

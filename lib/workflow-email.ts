@@ -623,7 +623,7 @@ export const ATTENDANCE_SITE_ROUTING_MAP: Record<
   'makassar': { category: 'PJO', approverName: 'Apriyanto', approverEmail: 'apriyanto.lastam@chitraparatama.co.id', approverTitle: 'Head of Service MVC' },
   'palembang': { category: 'PJO', approverName: 'Febrial Hariri', approverEmail: 'febrial.hariri@chitraparatama.co.id', approverTitle: 'Leader Technical Sumatera' },
   'pekanbaru': { category: 'PJO', approverName: 'Febrial Hariri', approverEmail: 'febrial.hariri@chitraparatama.co.id', approverTitle: 'Leader Technical Sumatera' },
-  'ppa bib': { category: 'PJO', approverName: 'Muchamat Nurkolis Majid', approverEmail: 'm.nurkolis@chitraparatama.co.id', approverTitle: 'Technical Engineer' },
+  'ppa bib': { category: 'PJO', approverName: 'Revy Andyaksa Saroni', approverEmail: 'revy.andyaksa@chitraparatama.co.id', approverTitle: 'Technical Engineer' },
   'sangatta': { category: 'PJO', approverName: 'Saipudin', approverEmail: 'saipudin@chitraparatama.co.id', approverTitle: 'HSE Leader' },
   'sebamban': { category: 'PJO', approverName: 'Apriyanto', approverEmail: 'apriyanto.lastam@chitraparatama.co.id', approverTitle: 'Head of Service MVC' },
   'tj. adaro': { category: 'PJO', approverName: 'Tommy Indra Aldiny Rambe', approverEmail: 'tommy.indra@chitraparatama.co.id', approverTitle: 'Technical Leader' },

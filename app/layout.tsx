@@ -42,6 +42,36 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="id" className="notranslate" translate="no" suppressHydrationWarning>
       <head>
         <meta name="google" content="notranslate" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                if (typeof window === 'undefined') return;
+                var origRemoveChild = Node.prototype.removeChild;
+                Node.prototype.removeChild = function(child) {
+                  if (!child) return child;
+                  if (child.parentNode !== this) {
+                    if (child.parentNode) {
+                      return origRemoveChild.call(child.parentNode, child);
+                    }
+                    return child;
+                  }
+                  return origRemoveChild.call(this, child);
+                };
+                var origInsertBefore = Node.prototype.insertBefore;
+                Node.prototype.insertBefore = function(newNode, refNode) {
+                  if (refNode && refNode.parentNode !== this) {
+                    if (refNode.parentNode) {
+                      return origInsertBefore.call(refNode.parentNode, newNode, refNode);
+                    }
+                    return newNode;
+                  }
+                  return origInsertBefore.call(this, newNode, refNode);
+                };
+              })();
+            `,
+          }}
+        />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Manrope:wght@500;600;700&display=swap" rel="stylesheet" />

@@ -74,7 +74,7 @@ async function main() {
     { siteId: 151, empId: 955 },  // Makassar -> Apriyanto (Head of Service MVC)
     { siteId: 134, empId: 96 },   // Palembang -> Febrial Hariri (Leader Technical Sumatera)
     { siteId: 136, empId: 96 },   // Pekanbaru -> Febrial Hariri (Leader Technical Sumatera)
-    { siteId: 149, empId: 1180 }, // PPA BIB -> Muchamat Nurkolis Majid (Technical Engineer)
+    { siteId: 149, empId: 1114 }, // PPA BIB -> Revy Andyaksa Saroni (Technical Engineer)
     { siteId: 127, empId: 1164 }, // Sangatta -> Saipudin (HSE Leader)
     { siteId: 139, empId: 955 },  // Sebamban -> Apriyanto (Head of Service MVC)
     { siteId: 130, empId: 97 },   // Tj. Adaro -> Tommy Indra Aldiny Rambe (Technical Leader)

@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { fetchApdRequestById } from '@/lib/apd-data';
 import { PrintAction } from '@/app/print/jsa/[id]/print-action';
 import { getS3ObjectReadUrl } from '@/lib/s3-storage';
+import { resolveUploadUrl } from '@/lib/resolve-upload-url';
 import { parseApprovalNoteEntries } from '@/lib/approval-notes';
 import { ApdLiveSignatureListener } from '@/components/admin/apd-approval-dialog';
 
@@ -23,17 +24,15 @@ export default async function PrintApdPage({
   const data = await fetchApdRequestById(parseInt(id, 10));
   if (!data) return notFound();
 
-  // Convert S3 keys to presigned URLs for submitter & approver signatures
+  // Convert S3 keys to proxy URLs for submitter & approver signatures
   const submitterSignatureUrl = data.signatureUrl
-    ? await getS3ObjectReadUrl(data.signatureUrl)
+    ? resolveUploadUrl(data.signatureUrl)
     : null;
 
-  const approvalHistory = await Promise.all(
-    (data.approvalHistory ?? []).map(async (step) => ({
-      ...step,
-      signatureUrl: step.signatureUrl ? await getS3ObjectReadUrl(step.signatureUrl) : null,
-    }))
-  );
+  const approvalHistory = (data.approvalHistory ?? []).map((step) => ({
+    ...step,
+    signatureUrl: step.signatureUrl ? resolveUploadUrl(step.signatureUrl) : null,
+  }));
 
   function parsePhotoUrls(raw: string | null | undefined): string[] {
     if (!raw || !raw.trim()) return [];
@@ -46,27 +45,28 @@ export default async function PrintApdPage({
         }
       } catch {}
     }
-    if (trimmed.includes(',')) {
+    if (trimmed.includes('\n')) {
+      return trimmed.split('\n').map((s) => s.trim()).filter((s) => s.length > 0);
+    }
+    if (trimmed.includes(',') && !trimmed.includes('?X-Amz-')) {
       return trimmed.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
     }
     return [trimmed];
   }
 
   // Convert item photo URLs (supporting multiple photos per item)
-  const itemsWithPhotos = await Promise.all(
-    data.items.map(async (item) => {
-      const rawUrls = parsePhotoUrls(item.photoUrl);
-      const photoUrls = (
-        await Promise.all(rawUrls.map((u) => getS3ObjectReadUrl(u)))
-      ).filter(Boolean) as string[];
+  const itemsWithPhotos = data.items.map((item) => {
+    const rawUrls = parsePhotoUrls(item.photoUrl);
+    const photoUrls = rawUrls
+      .map((u) => resolveUploadUrl(u))
+      .filter(Boolean) as string[];
 
-      return {
-        ...item,
-        photoUrls,
-        photoUrl: photoUrls[0] || null,
-      };
-    })
-  );
+    return {
+      ...item,
+      photoUrls,
+      photoUrl: photoUrls[0] || null,
+    };
+  });
 
   const isApd = data.requestCategory === 'APD';
   const isMaterial = data.requestCategory === 'MATERIAL';
@@ -333,7 +333,7 @@ export default async function PrintApdPage({
                 {allEvidencePhotos.map((photo, idx) => (
                   <div key={idx} className="flex flex-col items-center bg-white p-1 rounded border border-gray-300 shadow-xs">
                     <img
-                      src={photo.url}
+                      src={resolveUploadUrl(photo.url)}
                       alt={`Bukti ${photo.itemName}`}
                       className="h-24 w-32 object-cover rounded border border-gray-200"
                     />
