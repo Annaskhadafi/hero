@@ -965,7 +965,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                       <div className="relative">
                         <Search className="absolute left-2.5 top-2.5 size-3.5 text-slate-400" />
                         <Input
-                          placeholder="Cari nama atau NIK..."
+                          placeholder="Cari nama atau SN..."
                           value={teamMemberSearchQuery}
                           onChange={(e) => setTeamMemberSearchQuery(e.target.value)}
                           className="h-8 pl-8 text-xs bg-white"

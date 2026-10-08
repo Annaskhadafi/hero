@@ -227,7 +227,7 @@ export async function exportAttendanceGridToExcel({
   // ── TABLE HEADERS (ROWS 6 & 7) ──
   const topHeaderRow = [
     'No',
-    'SN / NIK',
+    'SN',
     'Nama Karyawan',
     'Section / Bagian',
     'Departemen',
@@ -541,7 +541,7 @@ export async function exportAttendanceGridToExcel({
     if (colNumber === 1) {
       col.width = 6 // No
     } else if (colNumber === 2) {
-      col.width = 13 // SN / NIK
+      col.width = 13 // SN
     } else if (colNumber === 3) {
       col.width = 28 // Nama Karyawan
     } else if (colNumber === 4) {

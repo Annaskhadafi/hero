@@ -48,7 +48,7 @@ export function ReportsClient({
   })
 
   const handleExportCsv = () => {
-    const headers = ['Nama Karyawan', 'NIK', 'Site', 'Kursus', 'Progress', 'Pre-test', 'Post-test', 'Nilai Akhir', 'Status', 'No Sertifikat']
+    const headers = ['Nama Karyawan', 'SN', 'Site', 'Kursus', 'Progress', 'Pre-test', 'Post-test', 'Nilai Akhir', 'Status', 'No Sertifikat']
     const rows = filteredData.map(r => [
       `"${r.employeeName}"`,
       `"${r.employeeSn}"`,
@@ -78,7 +78,7 @@ export function ReportsClient({
           <div className="relative w-full sm:w-80">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <Input 
-              placeholder="Cari nama, NIK, atau kursus..." 
+              placeholder="Cari nama, SN, atau kursus..." 
               className="pl-9 bg-slate-50 border-slate-200"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}

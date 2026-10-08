@@ -749,7 +749,7 @@ export function DailyActivitySubmitForm({
               <div className="relative">
                 <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
                 <Input
-                  placeholder="Cari nama atau NIK..."
+                  placeholder="Cari nama atau SN..."
                   value={memberSearchQuery}
                   onChange={(e) => setMemberSearchQuery(e.target.value)}
                   className="h-8 pl-8 text-xs"

@@ -231,7 +231,7 @@ export function ChitraLearningProgressTable({ rows }: ChitraLearningProgressTabl
                 <div className="space-y-1">
                   <div className="flex items-center gap-1.5 font-medium text-slate-800">
                     <User className="size-3.5 text-slate-400" />
-                    <span>NIK: <strong className="font-semibold text-slate-900">{selectedRow.employeeSn || '-'}</strong></span>
+                    <span>SN: <strong className="font-semibold text-slate-900">{selectedRow.employeeSn || '-'}</strong></span>
                   </div>
                   {selectedRow.department && (
                     <div className="flex items-center gap-1.5 text-slate-600">

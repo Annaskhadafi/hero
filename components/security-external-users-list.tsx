@@ -31,7 +31,7 @@ export function isExternalUserLocation(user: SecurityUserRecord): boolean {
 function exportExternalUsersCsv(data: SecurityUserRecord[]) {
   const headers = [
     'Nama',
-    'SN / NIK',
+    'SN',
     'Lokasi Site',
     'Departemen',
     'Seksi',

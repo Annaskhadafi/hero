@@ -65,6 +65,12 @@ function parsePhotoPreviews(photoUrl?: string | null): string[] {
   return [photoUrl].filter(Boolean);
 }
 
+function isSafetyShoesItem(itemType?: string): boolean {
+  if (!itemType) return false;
+  const lower = itemType.trim().toLowerCase();
+  return lower.includes("sepatu") || lower.includes("shoes") || lower.includes("boot");
+}
+
 export function ApdRequestForm({
   employeeName,
   employeeSn,
@@ -335,7 +341,7 @@ export function ApdRequestForm({
               <p className="font-semibold text-slate-900 truncate">{employeeName}</p>
             </div>
             <div>
-              <p className="text-[11px] text-slate-500">NIK / SN</p>
+              <p className="text-[11px] text-slate-500">SN Karyawan</p>
               <p className="font-semibold text-slate-900">{employeeSn}</p>
             </div>
             <div>
@@ -434,7 +440,15 @@ export function ApdRequestForm({
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold text-slate-700">{requestMode === "apd" ? "Jenis APD" : `Barang / ${requestMode === "tools" ? "Tools" : "Material"}`}</Label>
                     {requestMode === "apd" ? (
-                      <Select value={item.itemType} onValueChange={(val) => updateItem(item.id, "itemType", val)}>
+                      <Select
+                        value={item.itemType}
+                        onValueChange={(val) => {
+                          updateItem(item.id, "itemType", val);
+                          if (!isSafetyShoesItem(val)) {
+                            updateItem(item.id, "notes", "");
+                          }
+                        }}
+                      >
                         <SelectTrigger className="h-10 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm text-slate-800 shadow-2xs focus:ring-1 focus:ring-blue-500"><SelectValue placeholder="Pilih Jenis APD..." /></SelectTrigger>
                         <SelectContent>
                           {(itemOptions.APD && itemOptions.APD.length > 0 ? itemOptions.APD : APD_ITEMS).map((opt) => (
@@ -486,58 +500,63 @@ export function ApdRequestForm({
                     </div>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">{requestMode === "apd" ? "Ukuran APD" : "Keterangan/Ukuran"}</Label>
-                    {requestMode === "apd" ? (
-                      <div className="space-y-2">
-                        <Select
-                          value={
-                            APD_SIZE_OPTIONS.includes(item.notes as any)
-                              ? item.notes
-                              : item.notes ? "custom" : ""
-                          }
-                          onValueChange={(val) => {
-                            if (val === "custom") {
-                              updateItem(
-                                item.id,
-                                "notes",
-                                item.notes && !APD_SIZE_OPTIONS.includes(item.notes as any) ? item.notes : "Custom"
-                              );
-                            } else {
-                              updateItem(item.id, "notes", val);
+                  {requestMode === "apd" ? (
+                    isSafetyShoesItem(item.itemType) && (
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold text-slate-700">Ukuran Sepatu</Label>
+                        <div className="space-y-2">
+                          <Select
+                            value={
+                              APD_SIZE_OPTIONS.includes(item.notes as any)
+                                ? item.notes
+                                : item.notes ? "custom" : ""
                             }
-                          }}
-                        >
-                          <SelectTrigger className="h-10 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm text-slate-800 shadow-2xs focus:ring-1 focus:ring-blue-500">
-                            <SelectValue placeholder="Pilih Ukuran APD..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {APD_SIZE_OPTIONS.map((sizeOpt) => (
-                              <SelectItem key={sizeOpt} value={sizeOpt}>
-                                {sizeOpt}
-                              </SelectItem>
-                            ))}
-                            <SelectItem value="custom">Lainnya (Tulis Manual)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        {(!APD_SIZE_OPTIONS.includes(item.notes as any) && item.notes !== "") && (
-                          <Input
-                            placeholder="Tulis ukuran / keterangan manual..."
-                            value={item.notes === "Custom" ? "" : item.notes}
-                            className="h-10 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm text-slate-800 shadow-2xs focus:ring-1 focus:ring-blue-500"
-                            onChange={(e) => updateItem(item.id, "notes", e.target.value)}
-                          />
-                        )}
+                            onValueChange={(val) => {
+                              if (val === "custom") {
+                                updateItem(
+                                  item.id,
+                                  "notes",
+                                  item.notes && !APD_SIZE_OPTIONS.includes(item.notes as any) ? item.notes : "Custom"
+                                );
+                              } else {
+                                updateItem(item.id, "notes", val);
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="h-10 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm text-slate-800 shadow-2xs focus:ring-1 focus:ring-blue-500">
+                              <SelectValue placeholder="Pilih Ukuran Sepatu..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {APD_SIZE_OPTIONS.map((sizeOpt) => (
+                                <SelectItem key={sizeOpt} value={sizeOpt}>
+                                  {sizeOpt}
+                                </SelectItem>
+                              ))}
+                              <SelectItem value="custom">Lainnya (Tulis Manual)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {(!APD_SIZE_OPTIONS.includes(item.notes as any) && item.notes !== "") && (
+                            <Input
+                              placeholder="Tulis ukuran sepatu manual..."
+                              value={item.notes === "Custom" ? "" : item.notes}
+                              className="h-10 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm text-slate-800 shadow-2xs focus:ring-1 focus:ring-blue-500"
+                              onChange={(e) => updateItem(item.id, "notes", e.target.value)}
+                            />
+                          )}
+                        </div>
                       </div>
-                    ) : (
+                    )
+                  ) : (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-slate-700">Keterangan/Ukuran</Label>
                       <Input 
                         placeholder="Mis: Ukuran 42 / Keterangan" 
                         value={item.notes} 
                         className="h-10 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm text-slate-800 shadow-2xs focus:ring-1 focus:ring-blue-500"
                         onChange={(e) => updateItem(item.id, "notes", e.target.value)} 
                       />
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
 
                 {item.requestType === "pergantian" && (
@@ -689,7 +708,7 @@ export function ApdRequestForm({
                     employees={approverOptions || []}
                     value={approver1Id}
                     onValueChange={(val) => setApprover1Id(val)}
-                    placeholder="Pilih Atasan Langsung (Nama / NIK)..."
+                    placeholder="Pilih Atasan Langsung (Nama / SN)..."
                     showLabel={false}
                   />
                   <p className="text-[11px] text-slate-500">
@@ -708,7 +727,7 @@ export function ApdRequestForm({
                     employees={approverOptions || []}
                     value={approver2Id}
                     onValueChange={(val) => setApprover2Id(val)}
-                    placeholder="Pilih Section Head / Penyetuju (Nama / NIK)..."
+                    placeholder="Pilih Section Head / Penyetuju (Nama / SN)..."
                     showLabel={false}
                   />
                   <p className="text-[11px] text-slate-500">
@@ -720,10 +739,14 @@ export function ApdRequestForm({
           )}
 
           <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-slate-700">Remarks (Opsional)</Label>
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-semibold text-slate-700">Remarks (Opsional)</Label>
+              <span className="text-[11px] font-medium text-slate-400">{notes.length}/150</span>
+            </div>
             <Textarea 
-              placeholder="Tuliskan remarks / catatan jika ada..." 
+              placeholder="Tuliskan remarks / catatan jika ada (maks. 150 karakter)..." 
               value={notes} 
+              maxLength={150}
               onChange={(e) => setNotes(e.target.value)} 
               rows={3} 
               className="rounded-xl border border-gray-200 bg-white text-xs sm:text-sm text-slate-800 shadow-2xs focus:ring-1 focus:ring-blue-500"

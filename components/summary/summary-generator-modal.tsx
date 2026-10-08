@@ -896,10 +896,11 @@ export function SummaryGeneratorModal({
                         <td className="py-3 px-3">
                           <Input
                             value={remarksMap[req.requestId] ?? ''}
+                            maxLength={150}
                             onChange={(e) =>
                               setRemarksMap((prev) => ({ ...prev, [req.requestId]: e.target.value }))
                             }
-                            placeholder="Tulis keterangan untuk karyawan ini..."
+                            placeholder="Tulis keterangan (maks. 150 karakter)..."
                             className="h-8 text-xs px-2.5 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 focus:border-blue-500"
                           />
                         </td>

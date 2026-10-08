@@ -376,6 +376,9 @@ export function InboxTab({
   const [isBatchActionRunning, setIsBatchActionRunning] = useState(false)
   const [processedBatchIds, setProcessedBatchIds] = useState<Set<string>>(new Set())
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
+  const [isApdModalOpen, setIsApdModalOpen] = useState(false)
+  const [apdModalRequestId, setApdModalRequestId] = useState<number | null>(null)
+  const [isApdSummary, setIsApdSummary] = useState(false)
 
   // Reset pan and zoom when active document changes or modal opens
   useEffect(() => {
@@ -1115,6 +1118,11 @@ export function InboxTab({
             '*'
           )
         }
+      }
+      if (e.data && e.data.type === 'openApdDocument') {
+        setApdModalRequestId(e.data.requestId)
+        setIsApdSummary(false)
+        setIsApdModalOpen(true)
       }
     }
     window.addEventListener('message', handleIframeMsg)
@@ -4694,6 +4702,13 @@ export function InboxTab({
             currentCanDownload={(currentBatchDoc.rawSopWinRequest as any).canDownload ?? true}
           />
         )}
+
+        <ApdRequestDetailModal
+          isOpen={isApdModalOpen}
+          onClose={() => setIsApdModalOpen(false)}
+          requestId={apdModalRequestId}
+          isSummary={isApdSummary}
+        />
     </>
   )
 }

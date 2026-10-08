@@ -28,10 +28,20 @@ export default async function PrintSummaryPage({
     return trimmed;
   };
 
-  const grouped: Record<string, { name: string; sn: string; site: string; remarks: string; items: Record<string, any> }> = {};
+  const grouped: Record<string, { name: string; sn: string; site: string; remarks: string; apdRequestId?: number | null; items: Record<string, any> }> = {};
   for (const item of data.items) {
     if (!grouped[item.employeeName]) {
-      grouped[item.employeeName] = { name: item.employeeName, sn: item.employeeSn, site: formatSiteName(item.siteName), remarks: item.remarks || '', items: {} };
+      grouped[item.employeeName] = { 
+        name: item.employeeName, 
+        sn: item.employeeSn, 
+        site: formatSiteName(item.siteName), 
+        remarks: item.remarks || '', 
+        apdRequestId: item.apdRequestId || null,
+        items: {} 
+      };
+    }
+    if (item.apdRequestId && !grouped[item.employeeName].apdRequestId) {
+      grouped[item.employeeName].apdRequestId = item.apdRequestId;
     }
     if (item.remarks && !grouped[item.employeeName].remarks) {
       grouped[item.employeeName].remarks = item.remarks;
@@ -66,15 +76,29 @@ export default async function PrintSummaryPage({
   const deptHead = data.approvals.find(a => a.level === 2);
   const sites = [...new Set(emps.map(e => e.site))];
 
-  const th: React.CSSProperties = { border: '1px solid #000', padding: '3px 2px', fontSize: '7pt', background: '#f2f4f7', textAlign: 'center', fontWeight: 'bold', lineHeight: '1.15' };
-  const td: React.CSSProperties = { border: '1px solid #000', padding: '3px 2px', fontSize: '7pt', textAlign: 'center', lineHeight: '1.2' };
-  const tdL: React.CSSProperties = { ...td, textAlign: 'left', paddingLeft: '4px' };
-  const thVert: React.CSSProperties = { ...th, fontSize: '5.8pt', padding: '2px 0px', whiteSpace: 'nowrap', overflow: 'hidden', height: '90px' };
+  const empCount = emps.length;
+  const isDense = empCount > 9;
+  const isUltraDense = empCount > 15;
+
+  const thFontSize = isUltraDense ? '5.8pt' : isDense ? '6.2pt' : '7pt';
+  const tdFontSize = isUltraDense ? '5.5pt' : isDense ? '6pt' : '7pt';
+  const itemHeaderFontSize = isUltraDense ? '4.8pt' : isDense ? '5.2pt' : '5.5pt';
+  const padV = isUltraDense ? '1px' : isDense ? '1.5px' : '3px';
+  const padH = isUltraDense ? '1.5px' : isDense ? '2px' : '2px';
+  const remarksFontSize = isUltraDense ? '5.2pt' : isDense ? '5.8pt' : '6.5pt';
+
+  const sigContainerHeight = isUltraDense ? '32px' : isDense ? '38px' : '44px';
+  const sigImgHeight = isUltraDense ? '28px' : isDense ? '34px' : '40px';
+
+  const th: React.CSSProperties = { border: '1px solid #000', paddingTop: padV, paddingBottom: padV, paddingLeft: padH, paddingRight: padH, fontSize: thFontSize, background: '#f2f4f7', textAlign: 'center', fontWeight: 'bold', lineHeight: '1.1' };
+  const td: React.CSSProperties = { border: '1px solid #000', paddingTop: padV, paddingBottom: padV, paddingLeft: padH, paddingRight: padH, fontSize: tdFontSize, textAlign: 'center', lineHeight: '1.1' };
+  const tdL: React.CSSProperties = { ...td, textAlign: 'left', paddingLeft: '3px' };
+  const thItem: React.CSSProperties = { ...th, fontSize: itemHeaderFontSize, paddingTop: '1px', paddingBottom: '1px', paddingLeft: '1px', paddingRight: '1px', lineHeight: '1.05', wordBreak: 'break-word', whiteSpace: 'normal', verticalAlign: 'middle' };
 
   const fmtDate = (d: Date) => new Date(d).toLocaleString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-  // Standard total rows: 10 rows to fill the page nicely without spilling
-  const targetTotalRows = 10;
+  // Standard total rows: 10 rows if <= 9 items; exact count if > 9 items to fit single page
+  const targetTotalRows = isDense ? empCount : 10;
   const displayLimit = Math.max(emps.length, targetTotalRows);
   const emptyRowCount = Math.max(0, targetTotalRows - emps.length);
 
@@ -82,18 +106,21 @@ export default async function PrintSummaryPage({
     <div className="print-page-wrapper" style={{ 
       fontFamily: 'Arial, sans-serif', 
       fontSize: '8pt', 
-      padding: isEmbed ? '7mm 9mm' : '0', 
+      padding: isEmbed ? '4mm 6mm' : '0', 
       margin: '0',
       overflow: 'hidden',
       background: '#fff',
       boxSizing: 'border-box',
       width: '100%',
       minHeight: isEmbed ? '210mm' : undefined,
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'space-between',
     }}>
       <style>{`
         @page { 
-          size: A4 landscape; 
-          margin: 6mm 8mm; 
+          size: landscape; 
+          margin: 4mm 6mm; 
         }
         @media print {
           html, body { 
@@ -111,7 +138,11 @@ export default async function PrintSummaryPage({
             break-inside: avoid !important;
             break-after: avoid !important;
             overflow: hidden !important;
-            max-height: 194mm !important;
+            max-height: 198mm !important;
+            height: 100% !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: space-between !important;
           }
         }
       `}</style>
@@ -145,14 +176,13 @@ export default async function PrintSummaryPage({
             <th style={{ ...th, width: '38px' }} rowSpan={2}>SN</th>
             <th style={{ ...th, width: '70px' }} rowSpan={2}>Site</th>
             {dynamicQtyCols.map(c => (
-              <th key={c} style={thVert} rowSpan={2}>
-                <div style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', margin: 'auto', maxHeight: '86px', fontSize: '5.8pt', whiteSpace: 'nowrap', lineHeight: '1' }}>
-                  {c}
-                </div>
+              <th key={c} style={thItem} rowSpan={2}>
+                {c}
               </th>
             ))}
             <th style={th} colSpan={2}>{SAFETY_SHOES_COL}</th>
-            <th style={{ ...th, width: '70px' }} rowSpan={2}>Remarks</th>
+            <th style={{ ...th, width: '65px' }} rowSpan={2}>Remarks</th>
+            <th style={{ ...th, width: '60px' }} className="print:hidden" rowSpan={2}>Dokumen</th>
           </tr>
           <tr>
             <th style={{ ...th, width: '22px' }}>QTY</th>
@@ -171,7 +201,51 @@ export default async function PrintSummaryPage({
               ))}
               <td style={td}>{e.items['Safety Shoes'] || ''}</td>
               <td style={td}>{e.items['Safety Shoes Size'] || ''}</td>
-              <td style={{ ...tdL, fontSize: '6pt', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'normal', wordBreak: 'break-word' }}>{e.remarks || '—'}</td>
+              <td style={{ ...tdL, fontSize: remarksFontSize, padding: '1px 2px', lineHeight: '1.1' }} title={e.remarks}>
+                <div style={{
+                  maxHeight: isUltraDense ? '22px' : isDense ? '28px' : '36px',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  display: '-webkit-box',
+                  WebkitLineClamp: isUltraDense ? 2 : isDense ? 3 : 4,
+                  WebkitBoxOrient: 'vertical',
+                  wordBreak: 'break-word',
+                }}>
+                  {e.remarks || '—'}
+                </div>
+              </td>
+              <td style={{ ...td, padding: '1px' }} className="print:hidden">
+                {e.apdRequestId ? (
+                  <a
+                    href={`/print/apd/${e.apdRequestId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-apd-request-id={e.apdRequestId}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '2px',
+                      fontSize: '8px',
+                      fontWeight: 'bold',
+                      color: '#1d4ed8',
+                      backgroundColor: '#eff6ff',
+                      border: '1px solid #bfdbfe',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      textDecoration: 'none',
+                      cursor: 'pointer',
+                      width: '100%',
+                      boxSizing: 'border-box',
+                    }}
+                    title="Lihat Dokumen Request Karyawan"
+                  >
+                    Dokumen
+                  </a>
+                ) : (
+                  <span style={{ color: '#94a3b8', fontSize: '8px' }}>—</span>
+                )}
+              </td>
             </tr>
           ))}
           {Array.from({ length: emptyRowCount }).map((_, i) => (
@@ -180,6 +254,7 @@ export default async function PrintSummaryPage({
               {Array.from({ length: dynamicQtyCols.length + 6 }).map((_, j) => (
                 <td key={j} style={td}></td>
               ))}
+              <td style={td} className="print:hidden"></td>
             </tr>
           ))}
           <tr style={{ background: '#e5e7eb', fontWeight: 'bold', height: '19px' }}>
@@ -190,6 +265,7 @@ export default async function PrintSummaryPage({
             <td style={td}>{totals['Safety Shoes'] || ''}</td>
             <td style={td}>—</td>
             <td style={td}>—</td>
+            <td style={td} className="print:hidden">—</td>
           </tr>
         </tbody>
       </table>
@@ -221,13 +297,13 @@ export default async function PrintSummaryPage({
         };
 
         return (
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${colCount}, 1fr)`, gap: '12px', textAlign: 'center', marginTop: '6px' }}>
+          <div suppressHydrationWarning style={{ display: 'grid', gridTemplateColumns: `repeat(${colCount}, 1fr)`, gap: '8px', textAlign: 'center', marginTop: isUltraDense ? '2px' : isDense ? '4px' : '6px', flexShrink: 0 }}>
             {/* Diajukan Oleh */}
-            <div>
-              <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '3px' }}>Diajukan Oleh,</div>
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '3px', height: '44px' }}>
+            <div suppressHydrationWarning>
+              <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Diajukan Oleh,</div>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2px', height: sigContainerHeight }}>
                 <div style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px' }}>
-                  {data.submitterSignatureUrl && <img src={data.submitterSignatureUrl} alt="TTD" style={{ maxHeight: '40px', maxWidth: '120px' }} />}
+                  {data.submitterSignatureUrl && <img src={data.submitterSignatureUrl} alt="TTD" style={{ maxHeight: sigImgHeight, maxWidth: '120px' }} />}
                 </div>
               </div>
               <div style={{ fontSize: '7.5pt', fontWeight: 'bold' }}>{data.generatedByName}</div>
@@ -255,9 +331,9 @@ export default async function PrintSummaryPage({
                     : `${appr.approverJobTitle || 'Section Head'}${appr.approverSectionName ? ` (${appr.approverSectionName})` : ` (${data.sectionName})`}`;
                 })();
                 return (
-                  <div key={appr.id || idx}>
-                    <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '3px' }}>Diperiksa Oleh,</div>
-                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '3px', height: '44px' }}>
+                  <div key={appr.id || idx} suppressHydrationWarning>
+                    <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Diperiksa Oleh,</div>
+                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2px', height: sigContainerHeight }}>
                       <div
                         id={`approver-cell-${idx + 1}`}
                         data-approver-id={appr.approverEmployeeId}
@@ -265,9 +341,10 @@ export default async function PrintSummaryPage({
                         data-approver-title={roleDisplay}
                         data-level={appr.level}
                         data-resolved={appr.signatureUrl ? 'true' : 'false'}
+                        suppressHydrationWarning
                         style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px', position: 'relative' }}
                       >
-                        {appr.signatureUrl && <img src={appr.signatureUrl} alt="TTD" style={{ maxHeight: '40px', maxWidth: '120px' }} />}
+                        {appr.signatureUrl && <img src={appr.signatureUrl} alt="TTD" style={{ maxHeight: sigImgHeight, maxWidth: '120px' }} />}
                       </div>
                     </div>
                     <div style={{ fontSize: '7.5pt', fontWeight: 'bold' }}>{appr.approverName || '.............'}</div>
@@ -283,8 +360,8 @@ export default async function PrintSummaryPage({
               })
             ) : (
               <div>
-                <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '3px' }}>Diperiksa Oleh,</div>
-                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '3px', height: '44px' }}>
+                <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Diperiksa Oleh,</div>
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2px', height: sigContainerHeight }}>
                   <div style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px' }}></div>
                 </div>
                 <div style={{ fontSize: '7.5pt', fontWeight: 'bold' }}>.............</div>
@@ -293,9 +370,9 @@ export default async function PrintSummaryPage({
             )}
 
             {/* Disetujui Oleh (Department Head) */}
-            <div>
-              <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '3px' }}>Disetujui Oleh,</div>
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '3px', height: '44px' }}>
+            <div suppressHydrationWarning>
+              <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Disetujui Oleh,</div>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2px', height: sigContainerHeight }}>
                 <div
                   id="approver-cell-dept"
                   data-approver-id={deptHead?.approverEmployeeId}
@@ -303,9 +380,10 @@ export default async function PrintSummaryPage({
                   data-approver-title={deptHead?.approverJobTitle}
                   data-level={2}
                   data-resolved={deptHead?.signatureUrl ? 'true' : 'false'}
+                  suppressHydrationWarning
                   style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px', position: 'relative' }}
                 >
-                  {deptHead?.signatureUrl && <img src={deptHead.signatureUrl} alt="TTD" style={{ maxHeight: '40px', maxWidth: '120px' }} />}
+                  {deptHead?.signatureUrl && <img src={deptHead.signatureUrl} alt="TTD" style={{ maxHeight: sigImgHeight, maxWidth: '120px' }} />}
                 </div>
               </div>
               <div style={{ fontSize: '7.5pt', fontWeight: 'bold' }}>{deptHead?.approverName || '.............'}</div>
@@ -321,7 +399,19 @@ export default async function PrintSummaryPage({
         );
       })()}
 
-      <script dangerouslySetInnerHTML={{__html: `
+      <script async dangerouslySetInnerHTML={{__html: `
+        document.addEventListener('click', function(e) {
+          const target = e.target;
+          const link = target ? target.closest('a[data-apd-request-id]') : null;
+          if (link) {
+            const reqId = link.getAttribute('data-apd-request-id');
+            if (reqId && window.parent && window.parent !== window) {
+              e.preventDefault();
+              window.parent.postMessage({ type: 'openApdDocument', requestId: Number(reqId) }, '*');
+            }
+          }
+        });
+
         window.addEventListener('message', function(event) {
           if (event.data && event.data.type === 'previewSignature') {
             const dataUrl = event.data.dataUrl;
@@ -387,13 +477,15 @@ export default async function PrintSummaryPage({
             }
 
             if (targetCell) {
-              const img = document.createElement('img');
-              img.src = dataUrl;
-              img.alt = 'Live Preview';
-              img.className = 'live-preview-sig';
-              img.style.maxHeight = '40px';
-              img.style.maxWidth = '120px';
-              targetCell.appendChild(img);
+              setTimeout(function() {
+                const img = document.createElement('img');
+                img.src = dataUrl;
+                img.alt = 'Live Preview';
+                img.className = 'live-preview-sig';
+                img.style.maxHeight = '40px';
+                img.style.maxWidth = '120px';
+                targetCell.appendChild(img);
+              }, 0);
             }
           }
         });

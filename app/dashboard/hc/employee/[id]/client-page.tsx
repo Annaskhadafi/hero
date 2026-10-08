@@ -397,7 +397,7 @@ export function EmployeeProfileClientPage({
                 </div>
                 <p className="text-white/70 mt-1 font-medium">{emp.jobTitle || "Posisi belum ditentukan"} • {emp.departmentName || "HC"}</p>
                 <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 mt-3 text-sm text-white/50 print:text-white/70">
-                  <span>NIK: <strong>{emp.employeeId}</strong></span>
+                  <span>SN: <strong>{emp.employeeId}</strong></span>
                   <span>•</span>
                   <span>Bergabung: <strong>{formatDate(emp.joinDate)}</strong></span>
                   <span>•</span>

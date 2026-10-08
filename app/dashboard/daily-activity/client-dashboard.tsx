@@ -3033,7 +3033,7 @@ export function DailyActivityClientDashboard({
             <AlertDialogDescription className="text-xs text-slate-600 leading-relaxed">
               Apakah Anda yakin ingin menghapus data aktivitas harian untuk{' '}
               <span className="font-semibold text-slate-900">{deletingEmployee?.name}</span>{' '}
-              (NIK: <span className="font-mono">{deletingEmployee?.employeeId}</span>) pada tanggal{' '}
+              (SN: <span className="font-mono">{deletingEmployee?.employeeId}</span>) pada tanggal{' '}
               <span className="font-medium text-slate-800">{deletingEmployee?.workDate}</span>?
               <br />
               <span className="text-rose-600 font-medium block mt-1">

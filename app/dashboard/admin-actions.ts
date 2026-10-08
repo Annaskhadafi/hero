@@ -7922,7 +7922,7 @@ export async function manageSecurityUserAction(
       }
 
       if (!employeeSn) {
-        return { status: 'error', message: 'SN/NIK dari SAP wajib diisi.' }
+        return { status: 'error', message: 'SN dari SAP wajib diisi.' }
       }
 
       if (password.length < 8) {
@@ -8003,7 +8003,7 @@ export async function manageSecurityUserAction(
       if (isDuplicate && !overwriteExisting) {
         return {
           status: 'duplicate_found',
-          message: `SN/NIK '${employeeSn}' atau Email '${email}' sudah terdaftar atas nama (${duplicateName}). Apakah Anda ingin menggantikan (replace/overwrite) data lama dengan data baru ini?`,
+          message: `SN '${employeeSn}' atau Email '${email}' sudah terdaftar atas nama (${duplicateName}). Apakah Anda ingin menggantikan (replace/overwrite) data lama dengan data baru ini?`,
           duplicateDetails: {
             name: duplicateName,
             employeeSn,

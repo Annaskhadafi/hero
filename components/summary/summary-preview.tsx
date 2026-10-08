@@ -163,7 +163,16 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
   const employees = Object.values(groupedByEmployee);
   const sites = [...new Set(employees.map(e => e.site))];
 
-  const allCols = [...QTY_ONLY_COLUMNS, SAFETY_SHOES_COL];
+  const dynamicQtyCols = Array.from(
+    new Set([
+      ...QTY_ONLY_COLUMNS,
+      ...data.items
+        .map((i) => i.itemName)
+        .filter((name) => name !== 'Safety Shoes' && name !== 'Safety Shoes Size'),
+    ])
+  );
+
+  const allCols = [...dynamicQtyCols, SAFETY_SHOES_COL];
   const totals: Record<string, number> = {};
   for (const col of allCols) {
     totals[col] = employees.reduce((s, e) => s + (Number(e.items[col]) || 0), 0);
@@ -218,15 +227,29 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
     }
   };
 
-  const th: React.CSSProperties = { border: '1px solid #000', padding: '3px 2px', fontSize: '7pt', background: '#f2f4f7', textAlign: 'center', fontWeight: 'bold', lineHeight: '1.15' };
-  const td: React.CSSProperties = { border: '1px solid #000', padding: '3px 2px', fontSize: '7pt', textAlign: 'center', lineHeight: '1.2' };
-  const tdL: React.CSSProperties = { ...td, textAlign: 'left', paddingLeft: '4px' };
-  const thVert: React.CSSProperties = { ...th, fontSize: '5.8pt', padding: '2px 0px', whiteSpace: 'nowrap', overflow: 'hidden', height: '90px' };
+  const empCount = employees.length;
+  const isDense = empCount > 9;
+  const isUltraDense = empCount > 15;
+
+  const thFontSize = isUltraDense ? '5.8pt' : isDense ? '6.2pt' : '7pt';
+  const tdFontSize = isUltraDense ? '5.5pt' : isDense ? '6pt' : '7pt';
+  const itemHeaderFontSize = isUltraDense ? '4.8pt' : isDense ? '5.2pt' : '5.5pt';
+  const padV = isUltraDense ? '1px' : isDense ? '1.5px' : '3px';
+  const padH = isUltraDense ? '1.5px' : isDense ? '2px' : '2px';
+  const remarksFontSize = isUltraDense ? '5.2pt' : isDense ? '5.8pt' : '6.5pt';
+
+  const sigContainerHeight = isUltraDense ? '32px' : isDense ? '38px' : '44px';
+  const sigImgHeight = isUltraDense ? '28px' : isDense ? '34px' : '40px';
+
+  const th: React.CSSProperties = { border: '1px solid #000', paddingTop: padV, paddingBottom: padV, paddingLeft: padH, paddingRight: padH, fontSize: thFontSize, background: '#f2f4f7', textAlign: 'center', fontWeight: 'bold', lineHeight: '1.1' };
+  const td: React.CSSProperties = { border: '1px solid #000', paddingTop: padV, paddingBottom: padV, paddingLeft: padH, paddingRight: padH, fontSize: tdFontSize, textAlign: 'center', lineHeight: '1.1' };
+  const tdL: React.CSSProperties = { ...td, textAlign: 'left', paddingLeft: '3px' };
+  const thItem: React.CSSProperties = { ...th, fontSize: itemHeaderFontSize, paddingTop: '1px', paddingBottom: '1px', paddingLeft: '1px', paddingRight: '1px', lineHeight: '1.05', wordBreak: 'break-word', whiteSpace: 'normal', verticalAlign: 'middle' };
 
   const fmtDate = (d: Date) => new Date(d).toLocaleString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-  // Standard total rows: 10 rows
-  const targetTotalRows = 10;
+  // Standard total rows: 10 rows if <= 9 items; exact count if > 9 items to fit single page
+  const targetTotalRows = isDense ? empCount : 10;
   const displayLimit = Math.max(employees.length, targetTotalRows);
   const emptyRowCount = Math.max(0, targetTotalRows - employees.length);
 
@@ -275,11 +298,9 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
             <th style={{ ...th, width: '105px' }} rowSpan={2}>Nama Karyawan</th>
             <th style={{ ...th, width: '38px' }} rowSpan={2}>SN</th>
             <th style={{ ...th, width: '70px' }} rowSpan={2}>Site</th>
-            {QTY_ONLY_COLUMNS.map(c => (
-              <th key={c} style={thVert} rowSpan={2}>
-                <div style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', margin: 'auto', maxHeight: '86px', fontSize: '5.8pt', whiteSpace: 'nowrap', lineHeight: '1' }}>
-                  {c}
-                </div>
+            {dynamicQtyCols.map(c => (
+              <th key={c} style={thItem} rowSpan={2}>
+                {c}
               </th>
             ))}
             <th style={th} colSpan={2}>{SAFETY_SHOES_COL}</th>
@@ -298,12 +319,24 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
               <td style={{ ...tdL, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</td>
               <td style={td}>{e.sn}</td>
               <td style={{ ...td, fontSize: '6pt', lineHeight: '1.1', overflow: 'hidden', whiteSpace: 'normal', wordBreak: 'break-word', padding: '1px 2px' }}>{e.site}</td>
-              {QTY_ONLY_COLUMNS.map(c => (
+              {dynamicQtyCols.map(c => (
                 <td key={c} style={td}>{e.items[c] || ''}</td>
               ))}
               <td style={td}>{e.items['Safety Shoes'] || ''}</td>
               <td style={td}>{e.items['Safety Shoes Size'] || ''}</td>
-              <td style={{ ...tdL, fontSize: '6pt', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'normal', wordBreak: 'break-word' }}>{e.remarks || '—'}</td>
+              <td style={{ ...tdL, fontSize: remarksFontSize, padding: '1px 2px', lineHeight: '1.1' }} title={e.remarks}>
+                <div style={{
+                  maxHeight: isUltraDense ? '22px' : isDense ? '28px' : '36px',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  display: '-webkit-box',
+                  WebkitLineClamp: isUltraDense ? 2 : isDense ? 3 : 4,
+                  WebkitBoxOrient: 'vertical',
+                  wordBreak: 'break-word',
+                }}>
+                  {e.remarks || '—'}
+                </div>
+              </td>
               <td style={{ ...td, padding: '1px' }} className="print:hidden">
                 {e.apdRequestId ? (
                   <button
@@ -324,7 +357,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
           {Array.from({ length: emptyRowCount }).map((_, i) => (
             <tr key={`e${i}`} style={{ height: '18px' }}>
               <td style={td}>{employees.length + i + 1}</td>
-              {Array.from({ length: QTY_ONLY_COLUMNS.length + 6 }).map((_, j) => (
+              {Array.from({ length: dynamicQtyCols.length + 6 }).map((_, j) => (
                 <td key={j} style={td}></td>
               ))}
               <td style={td} className="print:hidden"></td>
@@ -332,7 +365,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
           ))}
           <tr style={{ background: '#e5e7eb', fontWeight: 'bold', height: '19px' }}>
             <td style={td} colSpan={4}>Total Qty</td>
-            {QTY_ONLY_COLUMNS.map(c => (
+            {dynamicQtyCols.map(c => (
               <td key={c} style={td}>{totals[c] || ''}</td>
             ))}
             <td style={td}>{totals['Safety Shoes'] || ''}</td>
@@ -370,13 +403,13 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
         };
 
         return (
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${colCount}, 1fr)`, gap: '12px', textAlign: 'center', marginTop: '6px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${colCount}, 1fr)`, gap: '8px', textAlign: 'center', marginTop: isUltraDense ? '2px' : isDense ? '4px' : '6px', flexShrink: 0 }}>
             {/* Diajukan Oleh */}
             <div>
-              <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '3px' }}>Diajukan Oleh,</div>
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '3px', height: '44px' }}>
+              <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Diajukan Oleh,</div>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2px', height: sigContainerHeight }}>
                 <div style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px' }}>
-                  {data.submitterSignatureUrl && <img src={data.submitterSignatureUrl} alt="TTD" style={{ maxHeight: '40px', maxWidth: '120px' }} />}
+                  {data.submitterSignatureUrl && <img src={data.submitterSignatureUrl} alt="TTD" style={{ maxHeight: sigImgHeight, maxWidth: '120px' }} />}
                 </div>
               </div>
               <div style={{ fontSize: '7.5pt', fontWeight: 'bold' }}>{data.generatedByName}</div>
@@ -405,10 +438,10 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
                 })();
                 return (
                   <div key={appr.id || idx}>
-                    <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '3px' }}>Diperiksa Oleh,</div>
-                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '3px', height: '44px' }}>
+                    <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Diperiksa Oleh,</div>
+                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2px', height: sigContainerHeight }}>
                       <div style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px' }}>
-                        {appr.signatureUrl && <img src={appr.signatureUrl} alt="TTD" style={{ maxHeight: '40px', maxWidth: '120px' }} />}
+                        {appr.signatureUrl && <img src={appr.signatureUrl} alt="TTD" style={{ maxHeight: sigImgHeight, maxWidth: '120px' }} />}
                       </div>
                     </div>
                     <div style={{ fontSize: '7.5pt', fontWeight: 'bold' }}>{appr.approverName || '.............'}</div>
@@ -424,8 +457,8 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
               })
             ) : (
               <div>
-                <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '3px' }}>Diperiksa Oleh,</div>
-                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '3px', height: '44px' }}>
+                <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Diperiksa Oleh,</div>
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2px', height: sigContainerHeight }}>
                   <div style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px' }}></div>
                 </div>
                 <div style={{ fontSize: '7.5pt', fontWeight: 'bold' }}>.............</div>
@@ -435,10 +468,10 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
 
             {/* Disetujui Oleh (Department Head) */}
             <div>
-              <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '3px' }}>Disetujui Oleh,</div>
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '3px', height: '44px' }}>
+              <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Disetujui Oleh,</div>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2px', height: sigContainerHeight }}>
                 <div style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px' }}>
-                  {deptHead?.signatureUrl && <img src={deptHead.signatureUrl} alt="TTD" style={{ maxHeight: '40px', maxWidth: '120px' }} />}
+                  {deptHead?.signatureUrl && <img src={deptHead.signatureUrl} alt="TTD" style={{ maxHeight: sigImgHeight, maxWidth: '120px' }} />}
                 </div>
               </div>
               <div style={{ fontSize: '7.5pt', fontWeight: 'bold' }}>{deptHead?.approverName || '.............'}</div>

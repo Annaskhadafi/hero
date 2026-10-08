@@ -1619,13 +1619,136 @@ export async function getSitesForMap() {
   }
 }
 
-export async function bulkDeleteAttendancePermissionRequests(ids: number[]) {
-  if (!ids.length) return { success: false, error: 'Tidak ada data dipilih.' }
+export async function bulkDeleteAttendancePermissionRequests(ids: (string | number)[]) {
+  if (!ids || !ids.length) return { success: false, error: 'Tidak ada data dipilih.' }
 
   await ensureSchedulingTimesheetTables()
 
-  await db.delete(attendancePermissionRequests).where(inArray(attendancePermissionRequests.id, ids))
+  const requestIds: number[] = []
+  const overrideIds: number[] = []
+
+  for (const rawId of ids) {
+    if (typeof rawId === 'string') {
+      if (rawId.startsWith('req-')) {
+        const reqNum = Number(rawId.slice(4))
+        if (reqNum > 0) requestIds.push(reqNum)
+      } else if (rawId.startsWith('ovr-')) {
+        const ovrNum = Number(rawId.slice(4))
+        if (ovrNum > 0) overrideIds.push(ovrNum)
+      } else {
+        const num = Number(rawId)
+        if (num > 0) {
+          requestIds.push(num)
+          overrideIds.push(num)
+        }
+      }
+    } else if (typeof rawId === 'number' && rawId > 0) {
+      requestIds.push(rawId)
+      overrideIds.push(rawId)
+    }
+  }
+
+  let deletedCount = 0
+
+  // 1. Process requests
+  if (requestIds.length > 0) {
+    const reqRecords = await db
+      .select({
+        id: attendancePermissionRequests.id,
+        employeeId: attendancePermissionRequests.employeeId,
+        startDate: attendancePermissionRequests.startDate,
+        endDate: attendancePermissionRequests.endDate,
+        permissionType: attendancePermissionRequests.permissionType,
+        approvalSubmissionId: attendancePermissionRequests.approvalSubmissionId,
+      })
+      .from(attendancePermissionRequests)
+      .where(inArray(attendancePermissionRequests.id, requestIds))
+
+    if (reqRecords.length > 0) {
+      const validReqIds = reqRecords.map((r) => r.id)
+      await db
+        .delete(attendancePermissionRequests)
+        .where(inArray(attendancePermissionRequests.id, validReqIds))
+
+      deletedCount += validReqIds.length
+
+      const submissionIds = reqRecords
+        .map((r) => r.approvalSubmissionId)
+        .filter((id): id is number => Boolean(id))
+
+      if (submissionIds.length > 0) {
+        await db
+          .delete(formSubmissions)
+          .where(inArray(formSubmissions.id, submissionIds))
+          .catch(() => {})
+      }
+
+      for (const req of reqRecords) {
+        const days =
+          req.permissionType === 'sick'
+            ? dateRangeDays(String(req.startDate), String(req.endDate))
+            : [String(req.startDate)]
+
+        for (const reqDay of days) {
+          const period = periodFromDate(reqDay)
+          const day = dayNumberFromDate(reqDay)
+          if (!period || !day) continue
+
+          await db
+            .delete(timesheetAttendanceRealOverrides)
+            .where(
+              and(
+                eq(timesheetAttendanceRealOverrides.employeeId, req.employeeId),
+                eq(timesheetAttendanceRealOverrides.period, period),
+                eq(timesheetAttendanceRealOverrides.day, day),
+                sql`${timesheetAttendanceRealOverrides.note} ilike 'Izin %'`
+              )
+            )
+        }
+      }
+    }
+  }
+
+  // 2. Process overrides
+  if (overrideIds.length > 0) {
+    const overrideRecords = await db
+      .select({
+        id: timesheetAttendanceRealOverrides.id,
+        employeeId: timesheetAttendanceRealOverrides.employeeId,
+        period: timesheetAttendanceRealOverrides.period,
+        day: timesheetAttendanceRealOverrides.day,
+      })
+      .from(timesheetAttendanceRealOverrides)
+      .where(inArray(timesheetAttendanceRealOverrides.id, overrideIds))
+
+    if (overrideRecords.length > 0) {
+      const validOvrIds = overrideRecords.map((r) => r.id)
+
+      await db
+        .delete(timesheetAttendanceRealOverrides)
+        .where(inArray(timesheetAttendanceRealOverrides.id, validOvrIds))
+
+      deletedCount += validOvrIds.length
+
+      for (const ovr of overrideRecords) {
+        const dateStr = `${ovr.period}-${String(ovr.day).padStart(2, '0')}`
+        await db
+          .delete(attendancePermissionRequests)
+          .where(
+            and(
+              eq(attendancePermissionRequests.employeeId, ovr.employeeId),
+              lte(attendancePermissionRequests.startDate, dateStr),
+              gte(attendancePermissionRequests.endDate, dateStr)
+            )
+          )
+      }
+    }
+  }
 
   revalidatePath('/dashboard/hc/permission')
-  return { success: true, message: `${ids.length} data izin berhasil dihapus.` }
+  revalidatePath('/dashboard/scheduling-timesheet/permission')
+  revalidatePath('/mobile/attendance/permission')
+  revalidatePath('/mobile/attendance')
+
+  return { success: true, message: `Data izin berhasil dihapus.` }
 }

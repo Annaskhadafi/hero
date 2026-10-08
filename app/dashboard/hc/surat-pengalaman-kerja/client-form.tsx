@@ -304,7 +304,7 @@ export function SuratPengalamanKerjaClient({
                   setEmployeeSearch(e.target.value)
                   setSelectedEmpId('')
                 }}
-                placeholder="Ketik nama, NIK, jabatan, section..."
+                placeholder="Ketik nama, SN, jabatan, section..."
                 className="bg-white"
               />
               <div className="mt-2 max-h-64 overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm">

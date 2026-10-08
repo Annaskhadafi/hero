@@ -304,7 +304,7 @@ export function SuratPerubahanStatusClient({
                   setEmployeeSearch(e.target.value)
                   setSelectedEmpId('')
                 }}
-                placeholder="Ketik nama, NIK, jabatan, section..."
+                placeholder="Ketik nama, SN, jabatan, section..."
               />
               <div className="mt-2 max-h-64 overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm">
                 {visibleEmployeeResults.length > 0 ? (
