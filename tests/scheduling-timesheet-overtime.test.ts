@@ -5,6 +5,7 @@ import {
   classifyOvertimePolicyDay,
   normalizeSiteOvertimeConfig,
   overtimeRuleTotalHours,
+  validateSiteOvertimeConfig,
 } from '@/lib/timesheet/overtime-policy'
 
 const activeConfig = normalizeSiteOvertimeConfig({
@@ -296,6 +297,50 @@ describe('scheduling timesheet overtime policy', () => {
     })
     expect(pdfWithEvidenceUrl).toBeInstanceOf(Uint8Array)
     expect(pdfWithEvidenceUrl.length).toBeGreaterThan(1000)
+  })
+
+  it('allows optional empty overtime intervals in site setup and validation', () => {
+    const configWithEmpty = normalizeSiteOvertimeConfig({
+      enabled: true,
+      hariBiasa: {
+        dayShift: [
+          { start: '06:00', end: '08:00' },
+          { start: '', end: '' },
+        ],
+        nightShift: [
+          { start: '', end: '' },
+          { start: '', end: '' },
+        ],
+      },
+    })
+
+    expect(configWithEmpty.hariBiasa.dayShift[1]).toEqual({ start: '', end: '' })
+    expect(configWithEmpty.hariBiasa.nightShift[0]).toEqual({ start: '', end: '' })
+    expect(validateSiteOvertimeConfig(configWithEmpty)).toEqual([])
+
+    const result = calculateConfiguredOvertime({
+      config: configWithEmpty,
+      dayKey: 'hariBiasa',
+      shiftCode: 'DS',
+      workDate: '2026-07-01',
+      clockIn: '06:00',
+      clockOut: '18:00',
+    })
+    expect(result.totalHours).toBe(2)
+    expect(result.intervals.map((i) => `${i.start}-${i.end}`)).toEqual(['06:00-08:00'])
+
+    const incompleteConfig = normalizeSiteOvertimeConfig({
+      enabled: true,
+      hariBiasa: {
+        dayShift: [
+          { start: '06:00', end: '' },
+          { start: '', end: '' },
+        ],
+      },
+    })
+    const errors = validateSiteOvertimeConfig(incompleteConfig)
+    expect(errors.length).toBeGreaterThan(0)
+    expect(errors[0]).toContain('jam mulai/selesai yang tidak lengkap')
   })
 })
 

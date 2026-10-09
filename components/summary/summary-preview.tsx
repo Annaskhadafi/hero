@@ -40,6 +40,7 @@ type SummaryData = {
     name: string;
     hasSize?: boolean;
     isQtyOnly?: boolean;
+    isShoe?: boolean;
   }>;
   items: Array<{
     employeeName: string;

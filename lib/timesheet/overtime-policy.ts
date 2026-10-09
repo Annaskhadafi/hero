@@ -165,14 +165,17 @@ export function overtimeRuleTotalHours(rule: OvertimeDayRule, shift: OvertimeShi
 }
 
 function normalizeIntervals(value: unknown, fallback: OvertimeInterval[]) {
-  if (!Array.isArray(value) || value.length !== 2) return fallback.map((item) => ({ ...item }))
+  if (!Array.isArray(value)) return fallback.map((item) => ({ ...item }))
   const intervals = value.map((item) => {
     const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {}
-    return { start: String(row.start ?? ''), end: String(row.end ?? '') }
+    const startStr = typeof row.start === 'string' ? row.start.trim() : ''
+    const endStr = typeof row.end === 'string' ? row.end.trim() : ''
+    return { start: startStr, end: endStr }
   })
-  return intervals.every((item) => intervalMinutes(item) > 0)
-    ? intervals
-    : fallback.map((item) => ({ ...item }))
+  while (intervals.length < 2) {
+    intervals.push({ start: '', end: '' })
+  }
+  return intervals.slice(0, 2)
 }
 
 function normalizeShiftKeys(rule: OvertimeDayRule): OvertimeDayRule {
@@ -218,14 +221,21 @@ export function validateSiteOvertimeConfig(config: SiteOvertimeConfig) {
     for (const shiftKey of ['dayShift', 'nightShift'] as const) {
       const intervals = dayRule[shiftKey]
       if (!intervals || !Array.isArray(intervals)) continue
-      if (intervals.length !== 2) errors.push(`${dayKey}.${shiftKey} wajib memiliki 2 sesi.`)
+
       for (const interval of intervals) {
-        if (intervalMinutes(interval) <= 0)
+        const hasStart = Boolean(interval?.start && interval.start.trim() !== '')
+        const hasEnd = Boolean(interval?.end && interval.end.trim() !== '')
+        if ((hasStart && !hasEnd) || (!hasStart && hasEnd)) {
+          errors.push(`${dayKey}.${shiftKey} memiliki jam mulai/selesai yang tidak lengkap.`)
+        } else if (hasStart && hasEnd && intervalMinutes(interval) <= 0) {
           errors.push(`${dayKey}.${shiftKey} memiliki rentang jam tidak valid.`)
+        }
       }
+
       const expanded = intervals
         .map(toBaseMinuteInterval)
         .filter((item): item is MinuteInterval => item != null)
+
       for (let left = 0; left < expanded.length; left += 1) {
         for (let right = left + 1; right < expanded.length; right += 1) {
           const a = expanded[left]
