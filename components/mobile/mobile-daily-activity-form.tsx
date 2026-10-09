@@ -889,7 +889,7 @@ export function MobileDailyActivityForm({
     if (rawItems && rawItems.length > 0) {
       const ids: string[] = []
       for (const item of rawItems) {
-        const idStr = String(item.libraryActivityId || '')
+        const idStr = String(item.libraryActivityId || item.id || '')
         if (idStr) {
           ids.push(idStr)
         }
@@ -906,14 +906,23 @@ export function MobileDailyActivityForm({
     if (initialDraft?.selfInputActivities && initialDraft.selfInputActivities.length > 0) {
       return Object.fromEntries(
         initialDraft.selfInputActivities.map((item, index) => {
-          const previewUrls =
+          const rawList =
             item.previewUrls && item.previewUrls.length > 0
               ? item.previewUrls
-              : item.photoUrl
-                ? [item.photoUrl]
-                : item.photo?.dataUrl
-                  ? [item.photo.dataUrl]
-                  : []
+              : item.photoUrls && item.photoUrls.length > 0
+                ? item.photoUrls
+                : item.photoUrl
+                  ? [item.photoUrl]
+                  : item.photo?.dataUrl
+                    ? [item.photo.dataUrl]
+                    : []
+          const previewUrls = Array.from(
+            new Set(
+              rawList.filter(
+                (u: string) => typeof u === 'string' && u.trim().length > 0 && !u.startsWith('blob:')
+              )
+            )
+          )
           const photoName =
             item.photoName ||
             (previewUrls.length > 0 ? `${previewUrls.length} foto terlampir` : '')
@@ -959,7 +968,7 @@ export function MobileDailyActivityForm({
     if (rawItems && rawItems.length > 0) {
       const entries: Record<string, SelfInputEntryState> = {}
       for (const item of rawItems) {
-        const idStr = String(item.libraryActivityId || '')
+        const idStr = String(item.libraryActivityId || item.id || '')
         if (idStr) {
           const startVal = item.startedAt
             ? typeof item.startedAt === 'string' && item.startedAt.includes(':') && !item.startedAt.includes('T')
@@ -2009,16 +2018,19 @@ export function MobileDailyActivityForm({
       return (itLibId && itLibId === rawId) || (itId && itId === rawId)
     })
     const sessionPhotos = matchingSessionItem ? extractItemPhotos(matchingSessionItem) : []
-    const validPassedUrls = (previewUrls || []).filter((u) => u && !u.startsWith('blob:'))
-    const validSingleUrls = photoPreviewUrls.filter((u) => u && !u.startsWith('blob:'))
-    const effectivePreviewUrls =
-      validPassedUrls.length > 0
-        ? validPassedUrls
-        : sessionPhotos.length > 0
-          ? sessionPhotos
-          : targetId === 'single' && validSingleUrls.length > 0
-            ? validSingleUrls
-            : []
+    const validPassedUrls = Array.from(new Set((previewUrls || []).filter((u) => u && !u.startsWith('blob:'))))
+    const validSingleUrls = Array.from(new Set(photoPreviewUrls.filter((u) => u && !u.startsWith('blob:'))))
+    const effectivePreviewUrls = Array.from(
+      new Set(
+        validPassedUrls.length > 0
+          ? validPassedUrls
+          : sessionPhotos.length > 0
+            ? sessionPhotos
+            : targetId === 'single' && validSingleUrls.length > 0
+              ? validSingleUrls
+              : []
+      )
+    )
     const effectivePhotoName =
       currentPhotoName ||
       (effectivePreviewUrls.length > 0
@@ -2166,19 +2178,22 @@ export function MobileDailyActivityForm({
           draft.selfInputActivities.map((item, index) => {
             const photosPayloads = item.photos || (item.photo ? [item.photo] : [])
             const photoDataUrls = photosPayloads.map((p) => p.dataUrl).filter(Boolean)
-            const validRawUrls = [
-              ...(item.previewUrls || []),
-              ...(item.photoUrls || []),
-              ...(item.photoUrl ? [item.photoUrl] : []),
-            ].filter((u: string) => u && !u.startsWith('blob:'))
-            const previewUrls =
-              validRawUrls.length > 0
-                ? validRawUrls
-                : photoDataUrls.length > 0
-                  ? photoDataUrls
-                  : item.photo?.dataUrl
-                    ? [item.photo.dataUrl]
+            const rawSourceUrls =
+              item.previewUrls && item.previewUrls.length > 0
+                ? item.previewUrls
+                : item.photoUrls && item.photoUrls.length > 0
+                  ? item.photoUrls
+                  : item.photoUrl
+                    ? [item.photoUrl]
                     : []
+            const validRawUrls = Array.from(
+              new Set(
+                [...rawSourceUrls, ...photoDataUrls].filter(
+                  (u: string) => typeof u === 'string' && u.trim().length > 0 && !u.startsWith('blob:')
+                )
+              )
+            )
+            const previewUrls = validRawUrls
             const photoCount = previewUrls.length || (item.photos?.length ?? (item.photo ? 1 : 0))
             const photoName =
               item.photoName ||
@@ -2289,19 +2304,22 @@ export function MobileDailyActivityForm({
 
             const routePhotos = item.photos || (item.photo ? [item.photo] : [])
             const routeDataUrls = routePhotos.map((p) => p.dataUrl).filter(Boolean)
-            const routeValidUrls = [
-              ...(item.previewUrls || []),
-              ...(item.photoUrls || []),
-              ...(item.photoUrl ? [item.photoUrl] : []),
-            ].filter((u: string) => u && !u.startsWith('blob:'))
-            const itemUrls =
-              routeValidUrls.length > 0
-                ? routeValidUrls
-                : routeDataUrls.length > 0
-                  ? routeDataUrls
-                  : item.photo?.dataUrl
-                    ? [item.photo.dataUrl]
+            const routeSourceUrls =
+              item.previewUrls && item.previewUrls.length > 0
+                ? item.previewUrls
+                : item.photoUrls && item.photoUrls.length > 0
+                  ? item.photoUrls
+                  : item.photoUrl
+                    ? [item.photoUrl]
                     : []
+            const routeValidUrls = Array.from(
+              new Set(
+                [...routeSourceUrls, ...routeDataUrls].filter(
+                  (u: string) => typeof u === 'string' && u.trim().length > 0 && !u.startsWith('blob:')
+                )
+              )
+            )
+            const itemUrls = routeValidUrls
 
             return [
               [
@@ -2608,7 +2626,9 @@ export function MobileDailyActivityForm({
       const entry =
         selfInputEntries[libraryId] ??
         buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
-      const photos = entry.previewUrls || []
+      const photos = Array.from(
+        new Set((entry.previewUrls || []).filter((u: string) => typeof u === 'string' && u.trim().length > 0))
+      )
       return {
         libraryActivityId: libraryId,
         equipmentNo: entry.equipmentNo,
@@ -2619,7 +2639,7 @@ export function MobileDailyActivityForm({
         notes: entry.notes,
         photo: entry.queuedPhotoPayloads?.[0] ?? entry.restoredPhotoPayload ?? null,
         photos: entry.queuedPhotoPayloads ?? (entry.restoredPhotoPayload ? [entry.restoredPhotoPayload] : []),
-        photoUrls: entry.previewUrls ?? [],
+        photoUrls: photos,
         photoName: entry.photoName || (photos.length > 0 ? `${photos.length} foto terlampir` : ''),
         photoUrl: photos[0] || null,
         previewUrls: photos,
@@ -2681,11 +2701,42 @@ export function MobileDailyActivityForm({
   }
 
   const isFirstMountRef = useRef(true)
+  const isDeletedRef = useRef(false)
+
+  useEffect(() => {
+    const handleDraftsChanged = (e: any) => {
+      const deletedKey = e?.detail?.deletedKey
+      if (
+        deletedKey &&
+        (deletedKey === activeDraftKey ||
+          deletedKey === queuedDraftKey ||
+          (deletedKey.startsWith('hero:draft:activity') && activeDraftKey.startsWith('hero:draft:activity')))
+      ) {
+        isDeletedRef.current = true
+        setSelectedLibraryIds([])
+        setSelfInputEntries({})
+        setRouteItemState({})
+        setCustomActivityName('')
+        setCustomActivityDescription('')
+        setNotes('')
+        setEquipmentNo('')
+        setPhotoPreviewUrls([])
+        setQueuedPhotoPayloads([])
+        setRestoredPhotoPayload(null)
+      }
+    }
+    window.addEventListener(ACTIVITY_DRAFTS_CHANGED_EVENT, handleDraftsChanged)
+    return () => window.removeEventListener(ACTIVITY_DRAFTS_CHANGED_EVENT, handleDraftsChanged)
+  }, [activeDraftKey, queuedDraftKey])
 
   useEffect(() => {
     // Prevent wiping active draft on initial mount!
     if (isFirstMountRef.current) {
       isFirstMountRef.current = false
+      return
+    }
+
+    if (isDeletedRef.current) {
       return
     }
 
@@ -2853,7 +2904,8 @@ export function MobileDailyActivityForm({
     }
 
     // 4. Validasi Mode Kamus Aktivitas (Self Input) & Checklist (Wajib 1 library & penjelasan diisi)
-    if (selectedLibraries.length === 0 && !hasCheckedChecklist) {
+    const hasInitialItems = rawItems && rawItems.length > 0
+    if (selectedLibraries.length === 0 && !hasCheckedChecklist && !hasInitialItems) {
       return 'Pilih minimal satu aktivitas dari Kamus Aktivitas sebelum submit.'
     }
 
@@ -2881,7 +2933,7 @@ export function MobileDailyActivityForm({
         }
       }
 
-      if (library.requiresLocationGps && (!geo.latitude || !geo.longitude)) {
+      if (!revisionSessionId && library.requiresLocationGps && (!geo.latitude || !geo.longitude)) {
         return `Validasi GPS wajib aktif untuk aktivitas "${library.activityCode} - ${library.activityName}".`
       }
 
@@ -3160,22 +3212,30 @@ export function MobileDailyActivityForm({
       }
 
       if (itemsToSubmit.length === 0) {
-        if (initialSessionData?.sessionItems && initialSessionData.sessionItems.length > 0) {
-          itemsToSubmit = initialSessionData.sessionItems.map((it: any) => ({
-            id: it.id,
-            label: it.label,
-            group: it.group,
-            libraryActivityId: it.libraryActivityId,
-            unitNumber: it.unitNumber,
-            startedAt: formatSubmitDateTime(it.startedAt, workDate),
-            endedAt: formatSubmitDateTime(it.endedAt, workDate),
-            points: it.points,
-            remark: it.remark,
-            materialUsed: it.materialUsed,
-            tireCount: it.tireCount ?? 0,
-            photoUrl: it.photoUrl,
-            photos: it.photos,
-          }))
+        const fallbackRawItems = (rawItems && rawItems.length > 0)
+          ? rawItems
+          : (initialSessionData?.sessionItems || initialSessionData?.items || [])
+        if (fallbackRawItems && fallbackRawItems.length > 0) {
+          itemsToSubmit = fallbackRawItems.map((it: any) => {
+            const photos = extractItemPhotos(it)
+            return {
+              id: it.id,
+              label: it.label || it.activityName || it.title || it.snapshotLabel || 'Aktivitas',
+              group: it.group || it.groupKey || it.snapshotGroupName || 'Technical',
+              libraryActivityId: it.libraryActivityId,
+              routeItemId: it.routeItemId,
+              overtimeCommandLetterItemId: it.overtimeCommandLetterItemId,
+              unitNumber: it.unitNumber || '-',
+              startedAt: formatSubmitDateTime(it.startedAt || it.startTime, workDate),
+              endedAt: formatSubmitDateTime(it.endedAt || it.endTime, workDate),
+              points: it.points || it.actualPoints || it.pointsAwarded || 5,
+              remark: it.remark || it.remarks || '-',
+              materialUsed: it.materialUsed || '',
+              tireCount: it.tireCount ?? 0,
+              photoUrl: photos[0] || it.photoUrl || null,
+              photos: photos.length > 0 ? photos : (it.photos || []),
+            }
+          })
         } else {
           throw new Error('Mohon pilih minimal 1 aktivitas.')
         }
@@ -3232,7 +3292,7 @@ export function MobileDailyActivityForm({
 
         setSubmitState({
           kind: 'success',
-          message: 'Revisi Daily Activity berhasil disimpan dan diajukan ulang.',
+          message: 'Revisi Daily Activity berhasil disubmit.',
         })
       } else {
         const res = await createDailyActivitySessionAction({
@@ -3271,11 +3331,9 @@ export function MobileDailyActivityForm({
           : null)
 
       if (draftSessionIdToDelete) {
-        try {
-          await deleteServerActivityDraftAction(draftSessionIdToDelete)
-        } catch (err) {
+        deleteServerActivityDraftAction(draftSessionIdToDelete).catch((err) => {
           console.warn('[handleSubmit] deleteServerActivityDraftAction error:', err)
-        }
+        })
       }
 
       removeActivityDraft(activeDraftKey)
@@ -4692,14 +4750,17 @@ export function MobileDailyActivityForm({
             className="h-14 rounded-2xl bg-[#003f78] text-white shadow-[0_14px_30px_rgba(0,63,120,0.22)] font-bold text-xs"
             disabled={isSubmitting || isSavingDraft}
           >
-            <SendHorizontal className="size-4" />
-            {isSubmitting
-              ? revisionSessionId
-                ? 'Menyimpan Revisi...'
-                : 'Submitting...'
-              : revisionSessionId
-                ? 'Simpan & Ajukan Ulang Revisi'
-                : 'Submit Activity'}
+            {isSubmitting ? (
+              <>
+                <Loader2 className="size-4 animate-spin mr-1.5" />
+                <span>{revisionSessionId ? 'SUBMITTING REVISI...' : 'SUBMITTING...'}</span>
+              </>
+            ) : (
+              <>
+                <SendHorizontal className="size-4 mr-1.5" />
+                <span>{revisionSessionId ? 'SUBMIT REVISI' : 'SUBMIT ACTIVITY'}</span>
+              </>
+            )}
           </Button>
         </div>
         <input

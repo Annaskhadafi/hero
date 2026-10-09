@@ -120,10 +120,9 @@ export default async function MobileActivityPage({
   // Parse edit session ID if present
   let editSessionPromise: Promise<any> = Promise.resolve(null);
   if (editSessionId) {
-    const numericId = editSessionId.replace(/[^0-9]/g, "");
-    const sessionIdVal = numericId && !isNaN(Number(numericId)) && Number(numericId) > 0
-      ? Number(numericId)
-      : editSessionId;
+    const trimmedId = editSessionId.trim();
+    const isPureNumeric = /^\d+$/.test(trimmedId);
+    const sessionIdVal = isPureNumeric ? Number(trimmedId) : trimmedId;
     editSessionPromise = safeQuery(
       () => getDailyActivityApprovalData(sessionIdVal, session.user.email),
       null,

@@ -6032,12 +6032,14 @@ export async function saveDailyActivityApprovalForm(payload: {
       }
     }
 
+    const currentStatusLower = (existingSession?.status || '').toLowerCase()
     const isCurrentlyReverted =
-      (existingSession?.status || '').toLowerCase().includes('revert') ||
-      (existingSession?.status || '').toLowerCase().includes('revision')
+      currentStatusLower.includes('revert') ||
+      currentStatusLower.includes('revision') ||
+      currentStatusLower.includes('return')
+    const isDraft = currentStatusLower === 'draft'
 
-    if (isCurrentlyReverted) {
-      // Photo evidence is optional on revision submission
+    if (isCurrentlyReverted || isDraft) {
       sessionUpdates.status = 'submitted'
       sessionUpdates.submittedAt = new Date()
       sessionUpdates.updatedAt = new Date()
@@ -6051,7 +6053,6 @@ export async function saveDailyActivityApprovalForm(payload: {
         .where(eq(dailyActivityApprovals.sessionId, payload.sessionId))
         .orderBy(asc(dailyActivityApprovals.stepOrder))
 
-      // 1. Step 1 (Karyawan Sign) is approved and signed by submitter
       const [sessionEmp] = existingSession?.employeeId
         ? await db
             .select({
@@ -6059,6 +6060,7 @@ export async function saveDailyActivityApprovalForm(payload: {
               name: employees.name,
               email: employees.email,
               signatureDataUrl: employees.signatureDataUrl,
+              siteId: employees.siteId,
             })
             .from(employees)
             .where(eq(employees.id, existingSession.employeeId))
@@ -6067,71 +6069,144 @@ export async function saveDailyActivityApprovalForm(payload: {
 
       const leaderSigDataUrl = payload.leaderSignatureDataUrl || (payload.signatures ? payload.signatures[1] : undefined)
 
-      await db
-        .update(dailyActivityApprovals)
-        .set({
-          status: 'approved',
-          signedAt: now,
-          signatureDataUrl: leaderSigDataUrl || sessionEmp?.signatureDataUrl || null,
-          remarks: '',
-        })
-        .where(
-          and(
-            eq(dailyActivityApprovals.sessionId, payload.sessionId),
-            eq(dailyActivityApprovals.stepOrder, 1)
+      if (existingApprovals.length === 0) {
+        // Initialize approval steps for draft submission if not present
+        const step1Token = randomUUID()
+        const step2Token = randomUUID()
+
+        // Resolve leader
+        let leaderEmpId = payload.leaderEmployeeId
+        let leaderName = payload.leaderName
+        let leaderEmail = payload.leaderEmail || ''
+
+        if (!leaderEmpId && sessionEmp?.siteId) {
+          const [siteHead] = await db
+            .select({ id: employees.id, name: employees.name, email: employees.email })
+            .from(sites)
+            .innerJoin(employees, and(eq(employees.id, sites.headEmployeeId), eq(employees.isActive, true)))
+            .where(eq(sites.id, sessionEmp.siteId))
+            .limit(1)
+          if (siteHead) {
+            leaderEmpId = siteHead.id
+            leaderName = siteHead.name
+            leaderEmail = siteHead.email || ''
+          }
+        }
+
+        const stepsToInsert: any[] = [
+          {
+            sessionId: payload.sessionId,
+            stepOrder: 1,
+            stepLabel: 'Karyawan Sign',
+            approverRole: 'employee',
+            approverEmployeeId: sessionEmp?.id || existingSession.employeeId,
+            approverName: sessionEmp?.name || 'Karyawan',
+            approverEmail: sessionEmp?.email || '',
+            status: 'approved',
+            signatureDataUrl: leaderSigDataUrl || sessionEmp?.signatureDataUrl || null,
+            signedAt: now,
+            remarks: 'Submitted oleh pemohon.',
+            approvalToken: step1Token,
+            createdAt: now,
+          },
+          {
+            sessionId: payload.sessionId,
+            stepOrder: 2,
+            stepLabel: 'Leader / PJO',
+            approverRole: 'leader',
+            approverEmployeeId: leaderEmpId ?? null,
+            approverName: leaderName || 'Leader / PJO Site',
+            approverEmail: leaderEmail,
+            status: 'pending',
+            approvalToken: step2Token,
+            createdAt: now,
+          },
+        ]
+
+        await db.insert(dailyActivityApprovals).values(stepsToInsert)
+
+        if (leaderEmail) {
+          const [siteRow] = existingSession?.siteId
+            ? await db.select({ name: sites.name }).from(sites).where(eq(sites.id, existingSession.siteId)).limit(1)
+            : []
+          void sendDailyActivityStepApprovalEmail({
+            sessionId: payload.sessionId,
+            sessionCode: existingSession?.sessionCode || `ACT-${payload.sessionId}`,
+            employeeName: sessionEmp?.name || 'Karyawan',
+            workDate: existingSession?.workDate,
+            siteName: siteRow?.name || '-',
+            approverName: leaderName || 'Leader',
+            approverEmail: leaderEmail,
+            approvalStep: 'Leader / PJO',
+            approvalToken: step2Token,
+          }).catch((e) => {
+            console.error('Error sending step 2 email on draft submit:', e)
+          })
+        }
+      } else {
+        // 1. Step 1 (Karyawan Sign) is approved and signed by submitter
+        await db
+          .update(dailyActivityApprovals)
+          .set({
+            status: 'approved',
+            signedAt: now,
+            signatureDataUrl: leaderSigDataUrl || sessionEmp?.signatureDataUrl || null,
+            remarks: '',
+          })
+          .where(
+            and(
+              eq(dailyActivityApprovals.sessionId, payload.sessionId),
+              eq(dailyActivityApprovals.stepOrder, 1)
+            )
           )
+
+        // Find the step that was reverted (the approver who requested revision), default to step 2
+        const revertedStep = existingApprovals.find(
+          (s) => (s.status || '').toLowerCase() === 'reverted' || (s.status || '').toLowerCase() === 'needs_revision'
         )
+        const targetStepOrder = revertedStep?.stepOrder && revertedStep.stepOrder > 1 ? revertedStep.stepOrder : 2
 
-      // Find the step that was reverted (the approver who requested revision)
-      const revertedStep = existingApprovals.find(
-        (s) => (s.status || '').toLowerCase() === 'reverted' || (s.status || '').toLowerCase() === 'needs_revision'
-      )
-      const targetStepOrder = revertedStep?.stepOrder && revertedStep.stepOrder > 1 ? revertedStep.stepOrder : 2
-
-      // Any intermediate step (between 1 and targetStepOrder) that was already approved stays approved!
-      // (The approvers who already signed and approved are skipped/loncati)
-      // The target step (the one who reverted) becomes 'pending' for them to review again:
-      await db
-        .update(dailyActivityApprovals)
-        .set({
-          status: 'pending',
-          signatureDataUrl: null,
-          signedAt: null,
-          remarks: '',
-        })
-        .where(
-          and(
-            eq(dailyActivityApprovals.sessionId, payload.sessionId),
-            eq(dailyActivityApprovals.stepOrder, targetStepOrder)
+        // The target step (the one who reverted or step 2) becomes 'pending'
+        await db
+          .update(dailyActivityApprovals)
+          .set({
+            status: 'pending',
+            signatureDataUrl: null,
+            signedAt: null,
+            remarks: '',
+          })
+          .where(
+            and(
+              eq(dailyActivityApprovals.sessionId, payload.sessionId),
+              eq(dailyActivityApprovals.stepOrder, targetStepOrder)
+            )
           )
-        )
 
-      // Reset any steps AFTER targetStepOrder to 'waiting'
-      await db
-        .update(dailyActivityApprovals)
-        .set({
-          status: 'waiting',
-          signatureDataUrl: null,
-          signedAt: null,
-          remarks: '',
-        })
-        .where(
-          and(
-            eq(dailyActivityApprovals.sessionId, payload.sessionId),
-            sql`${dailyActivityApprovals.stepOrder} > ${targetStepOrder}`
+        // Reset any steps AFTER targetStepOrder to 'waiting'
+        await db
+          .update(dailyActivityApprovals)
+          .set({
+            status: 'waiting',
+            signatureDataUrl: null,
+            signedAt: null,
+            remarks: '',
+          })
+          .where(
+            and(
+              eq(dailyActivityApprovals.sessionId, payload.sessionId),
+              sql`${dailyActivityApprovals.stepOrder} > ${targetStepOrder}`
+            )
           )
-        )
 
-      const targetStep = existingApprovals.find((s) => s.stepOrder === targetStepOrder)
+        const targetStep = existingApprovals.find((s) => s.stepOrder === targetStepOrder)
 
-      // Send email notification to targetStep (the person who reverted!)
-      const [siteRow] = existingSession?.siteId
-        ? await db.select({ name: sites.name }).from(sites).where(eq(sites.id, existingSession.siteId)).limit(1)
-        : []
+        // Send email notification to targetStep (the person who will review) without blocking response
+        const [siteRow] = existingSession?.siteId
+          ? await db.select({ name: sites.name }).from(sites).where(eq(sites.id, existingSession.siteId)).limit(1)
+          : []
 
-      if (targetStep?.approverEmail) {
-        try {
-          await sendDailyActivityStepApprovalEmail({
+        if (targetStep?.approverEmail) {
+          void sendDailyActivityStepApprovalEmail({
             sessionId: payload.sessionId,
             sessionCode: existingSession?.sessionCode || `ACT-${payload.sessionId}`,
             employeeName: sessionEmp?.name || 'Karyawan',
@@ -6141,9 +6216,9 @@ export async function saveDailyActivityApprovalForm(payload: {
             approverEmail: targetStep.approverEmail,
             approvalStep: targetStep.stepLabel || 'Approval Step',
             approvalToken: targetStep.approvalToken,
+          }).catch((mailErr) => {
+            console.error('Error sending smart resume daily activity email:', mailErr)
           })
-        } catch (mailErr) {
-          console.error('Error sending smart resume daily activity email:', mailErr)
         }
       }
     }
@@ -6172,6 +6247,32 @@ export async function saveDailyActivityApprovalForm(payload: {
             .where(eq(dailyActivitySessionItems.id, existing.id))
         }
       }
+
+      // Pre-fetch all library and route item IDs in batch to eliminate serial DB round-trips
+      const allLibIds = payload.items
+        .map((i) => Number(i.libraryActivityId))
+        .filter((id) => !isNaN(id) && id > 0)
+      const allRouteIds = payload.items
+        .map((i) => Number(i.routeItemId))
+        .filter((id) => !isNaN(id) && id > 0)
+
+      const [validLibRows, validRouteRows] = await Promise.all([
+        allLibIds.length > 0
+          ? db
+              .select({ id: activityLibraries.id })
+              .from(activityLibraries)
+              .where(inArray(activityLibraries.id, allLibIds))
+          : Promise.resolve([] as Array<{ id: number }>),
+        allRouteIds.length > 0
+          ? db
+              .select({ id: activityRouteItems.id })
+              .from(activityRouteItems)
+              .where(inArray(activityRouteItems.id, allRouteIds))
+          : Promise.resolve([] as Array<{ id: number }>),
+      ])
+
+      const validLibSet = new Set(validLibRows.map((r) => r.id))
+      const validRouteSet = new Set(validRouteRows.map((r) => r.id))
 
       // Update or insert items
       for (let idx = 0; idx < payload.items.length; idx++) {
@@ -6205,31 +6306,11 @@ export async function saveDailyActivityApprovalForm(payload: {
         const cleanedPhotoUrls = Array.from(new Set(rawExtracted))
         const firstPhotoUrl = cleanedPhotoUrls[0] || null
 
-        let safeLibraryActivityId: number | null = null
-        if (item.libraryActivityId && Number(item.libraryActivityId) > 0) {
-          const numLibId = Number(item.libraryActivityId)
-          const [exists] = await db
-            .select({ id: activityLibraries.id })
-            .from(activityLibraries)
-            .where(eq(activityLibraries.id, numLibId))
-            .limit(1)
-          if (exists) {
-            safeLibraryActivityId = numLibId
-          }
-        }
+        const numLibId = item.libraryActivityId ? Number(item.libraryActivityId) : null
+        const safeLibraryActivityId = numLibId && validLibSet.has(numLibId) ? numLibId : null
 
-        let safeRouteItemId: number | null = null
-        if (item.routeItemId && Number(item.routeItemId) > 0) {
-          const numRouteId = Number(item.routeItemId)
-          const [exists] = await db
-            .select({ id: activityRouteItems.id })
-            .from(activityRouteItems)
-            .where(eq(activityRouteItems.id, numRouteId))
-            .limit(1)
-          if (exists) {
-            safeRouteItemId = numRouteId
-          }
-        }
+        const numRouteId = item.routeItemId ? Number(item.routeItemId) : null
+        const safeRouteItemId = numRouteId && validRouteSet.has(numRouteId) ? numRouteId : null
 
         const itemPayloadJson = JSON.stringify({
           unitNumber: item.unitNumber ?? '',
@@ -6507,7 +6588,7 @@ export async function saveDailyActivityApprovalForm(payload: {
                   .where(eq(dailyActivityApprovals.id, nextStep.id))
 
                 if (nextStep.approverEmail) {
-                  await sendDailyActivityStepApprovalEmail({
+                  void sendDailyActivityStepApprovalEmail({
                     sessionId: payload.sessionId,
                     sessionCode: session?.sessionCode || `ACT-${payload.sessionId}`,
                     employeeName: sessionEmployee?.name || 'Karyawan',
@@ -6517,6 +6598,8 @@ export async function saveDailyActivityApprovalForm(payload: {
                     approverEmail: nextStep.approverEmail,
                     approvalStep: nextStep.stepLabel,
                     approvalToken: nextStep.approvalToken,
+                  }).catch(err => {
+                    console.error('[saveDailyActivityApprovalForm] Non-blocking step approval email error:', err)
                   })
                 }
               }
@@ -6543,12 +6626,14 @@ export async function saveDailyActivityApprovalForm(payload: {
                 .where(eq(dailyActivitySessions.id, payload.sessionId))
 
               if (sessionEmployee?.email) {
-                await sendDailyActivityCompletedEmail({
+                void sendDailyActivityCompletedEmail({
                   sessionId: payload.sessionId,
                   sessionCode: session?.sessionCode || `ACT-${payload.sessionId}`,
                   employeeName: sessionEmployee.name || 'Karyawan',
                   employeeEmail: sessionEmployee.email,
                   workDate: session?.workDate,
+                }).catch(err => {
+                  console.error('[saveDailyActivityApprovalForm] Non-blocking completed email error:', err)
                 })
               }
             }
@@ -6557,12 +6642,8 @@ export async function saveDailyActivityApprovalForm(payload: {
       }
     }
 
-    safeRevalidatePath(`/dashboard/activity-hub`)
-    safeRevalidatePath(`/dashboard/activity-hub/document/${payload.sessionId}`)
-    safeRevalidatePath(`/dashboard/activity-hub/document/${payload.sessionId}/approval`)
-    safeRevalidatePath(`/dashboard/activity-hub/approval`)
     safeRevalidatePath(`/mobile/activity`)
-    safeRevalidatePath(`/mobile/activity/document/${payload.sessionId}/approval`)
+    safeRevalidatePath(`/dashboard/activity-hub`)
     safeRevalidatePath(`/dashboard/approval`)
 
     return { success: true as const }
@@ -7155,32 +7236,25 @@ export async function createDailyActivitySessionAction(input: {
       ? new Date(`${input.workDate}T00:00:00.000Z`)
       : new Date()
 
-    // Check if an approved OR submitted (pending) session already exists for this employee and date
-    const [existingActive] = await db
-      .select({ id: dailyActivitySessions.id, sessionCode: dailyActivitySessions.sessionCode, status: dailyActivitySessions.status })
+    // Anti-double-click guard (10 seconds window) to prevent rapid accidental double-submits
+    const tenSecondsAgo = new Date(Date.now() - 10000)
+    const [recentDoubleSubmit] = await db
+      .select({ id: dailyActivitySessions.id, sessionCode: dailyActivitySessions.sessionCode })
       .from(dailyActivitySessions)
       .where(
         and(
           eq(dailyActivitySessions.employeeId, targetEmpId),
           eq(dailyActivitySessions.workDate, parsedWorkDate),
-          or(
-            eq(dailyActivitySessions.status, 'Approved'),
-            eq(dailyActivitySessions.status, 'approved'),
-            eq(dailyActivitySessions.status, 'completed'),
-            eq(dailyActivitySessions.status, 'submitted'),
-          )
+          gte(dailyActivitySessions.createdAt, tenSecondsAgo)
         )
       )
       .limit(1)
 
-    if (existingActive) {
-      const statusLabel = ['approved', 'Approved', 'completed'].includes(existingActive.status)
-        ? 'disetujui'
-        : 'sedang menunggu approval'
+    if (recentDoubleSubmit) {
       return {
         success: false as const,
-        error: `Laporan aktivitas harian untuk tanggal ${input.workDate} sudah ${statusLabel} (${existingActive.sessionCode}). Tidak dapat membuat duplikat.`,
-        existingSessionId: existingActive.id,
+        error: `Laporan aktivitas sedang diproses. Mohon tunggu beberapa saat sebelum mengirim ulang.`,
+        existingSessionId: recentDoubleSubmit.id,
       }
     }
 
@@ -8056,6 +8130,118 @@ export async function deleteServerActivityDraftAction(sessionId: number): Promis
   } catch (err: any) {
     console.error('[deleteServerActivityDraftAction] error:', err)
     return { success: false, error: err.message || 'Gagal menghapus draft.' }
+  }
+}
+
+export async function cloneDailyActivityToDraftAction(sessionId: number): Promise<{
+  success: boolean
+  error?: string
+  payload?: any
+  title?: string
+}> {
+  try {
+    const context = await getAuthenticatedEmployeeContext()
+    const fullData = await getDailyActivityApprovalData(sessionId, context.email)
+    if (!fullData || !fullData.sessionId) {
+      return { success: false, error: 'Dokumen aktivitas tidak ditemukan.' }
+    }
+
+    const session = fullData
+    const sessionItems = fullData.sessionItems || []
+
+    const now = new Date()
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+
+    const formatHourMin = (d: any, defaultVal: string) => {
+      if (!d) return defaultVal
+      try {
+        const parsed = new Date(d)
+        if (!isNaN(parsed.getTime())) {
+          return `${String(parsed.getHours()).padStart(2, '0')}:${String(parsed.getMinutes()).padStart(2, '0')}`
+        }
+      } catch {}
+      return defaultVal
+    }
+
+    const defaultStartTime = `${String(now.getHours()).padStart(2, '0')}:00`
+    const nextHour = (now.getHours() + 1) % 24
+    const defaultEndTime = `${String(nextHour).padStart(2, '0')}:00`
+
+    const selfInputActivities = sessionItems.map((item: any) => {
+      let matUsed = item.materialUsed || ''
+      if (!matUsed && item.snapshotPayload) {
+        try {
+          const parsed = typeof item.snapshotPayload === 'string' ? JSON.parse(item.snapshotPayload) : item.snapshotPayload
+          matUsed = parsed?.materialUsed || ''
+        } catch {}
+      }
+
+      return {
+        libraryActivityId: item.libraryActivityId ? String(item.libraryActivityId) : '',
+        equipmentNo: item.unitNumber || '',
+        startTime: formatHourMin(item.startedAt, defaultStartTime),
+        endTime: formatHourMin(item.endedAt, defaultEndTime),
+        materialUsed: matUsed,
+        tireCount: item.tireCount ? Number(item.tireCount) : 0,
+        notes: item.remark || '',
+        photoName: '',
+        photoUrl: null,
+        photoUrls: [],
+        previewUrls: [],
+        photo: null,
+        photos: [],
+      }
+    })
+
+    const selectedLibraryActivityIds = Array.from(
+      new Set(
+        sessionItems
+          .map((i: any) => (i.libraryActivityId ? String(i.libraryActivityId) : ''))
+          .filter(Boolean)
+      )
+    )
+
+    const title = session.summaryRemark || sessionItems[0]?.label || 'Aktivitas Harian (Salinan)'
+
+    const clonedPayload = {
+      employeeId: context.id,
+      workDate: todayStr,
+      draftTitle: title,
+      sourceMode: session.submissionSource || (selectedLibraryActivityIds.length > 0 ? 'self_input' : 'custom'),
+      assignmentId: '',
+      libraryActivityId: selectedLibraryActivityIds[0] || '',
+      selectedLibraryActivityIds,
+      selfInputActivities,
+      customActivityName: session.submissionSource === 'custom' ? (session.summaryRemark || title) : '',
+      customActivityDescription: '',
+      equipmentNo: sessionItems[0]?.unitNumber || '',
+      startTime: defaultStartTime,
+      endTime: defaultEndTime,
+      materialUsed: sessionItems[0]?.materialUsed || '',
+      notes: session.summaryRemark || '',
+      manualLocation: session.site?.name || '',
+      locationName: session.site?.name || '',
+      gpsLat: '',
+      gpsLng: '',
+      gpsValid: false,
+      boundaryStatus: 'unknown' as const,
+      boundaryMessage: '',
+      photo: null,
+      photos: [],
+      photoUrls: [],
+      photoName: '',
+      teamMemberEmployeeIds: [],
+      serverDraftSessionId: undefined,
+    }
+
+    return {
+      success: true,
+      payload: clonedPayload,
+      title,
+    }
+  } catch (err: any) {
+    console.error('[cloneDailyActivityToDraftAction] error:', err)
+    return { success: false, error: err.message || 'Gagal menyalin aktivitas.' }
   }
 }
 

@@ -26,6 +26,7 @@ import { Input } from '@/components/ui/input'
 import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 import {
   ACTIVITY_DRAFTS_CHANGED_EVENT,
+  ACTIVITY_DRAFT_STORAGE_KEY,
   getActivityDraftIndex,
   readDraft,
   removeActivityDraft,
@@ -66,12 +67,14 @@ interface MobileDailyActivityDraftsProps {
   onSelectLocalDraft: (draftKey: string) => void
   onSelectServerDraft: (sessionId: number) => void
   onDraftCountChange?: (count: number) => void
+  onDraftDeleted?: (item: UnifiedDraftItem) => void
 }
 
 export function MobileDailyActivityDrafts({
   onSelectLocalDraft,
   onSelectServerDraft,
   onDraftCountChange,
+  onDraftDeleted,
 }: MobileDailyActivityDraftsProps) {
   const [localDrafts, setLocalDrafts] = useState<ActivityDraftIndexEntry[]>([])
   const [serverDrafts, setServerDrafts] = useState<any[]>([])
@@ -267,16 +270,48 @@ export function MobileDailyActivityDrafts({
 
     setDeletingId(item.id)
     try {
+      let serverId = item.serverId
       if (item.localKey) {
+        try {
+          const cached = readDraft<ActivitySyncPayload>(item.localKey)
+          if (cached?.serverDraftSessionId) {
+            serverId = cached.serverDraftSessionId
+          }
+        } catch {}
         removeActivityDraft(item.localKey)
-        refreshLocalDrafts()
       }
-      if (item.serverId) {
-        const res = await deleteServerActivityDraftAction(item.serverId)
+
+      if (serverId) {
+        removeActivityDraft(`hero:draft:activity:server-${serverId}`)
+      }
+
+      try {
+        const legacyRaw = window.localStorage.getItem(ACTIVITY_DRAFT_STORAGE_KEY)
+        if (legacyRaw) {
+          const legacy = JSON.parse(legacyRaw)
+          if (
+            item.localKey === ACTIVITY_DRAFT_STORAGE_KEY ||
+            (serverId && legacy?.serverDraftSessionId === serverId) ||
+            (legacy?.draftTitle && item.title && legacy.draftTitle.trim() === item.title.trim())
+          ) {
+            window.localStorage.removeItem(ACTIVITY_DRAFT_STORAGE_KEY)
+          }
+        }
+      } catch {}
+
+      refreshLocalDrafts()
+
+      if (serverId) {
+        const res = await deleteServerActivityDraftAction(serverId)
         if (res.success) {
           fetchServerDrafts()
         }
       }
+
+      if (onDraftDeleted) {
+        onDraftDeleted(item)
+      }
+
       toast.success('Draft berhasil dihapus.')
     } catch (err: any) {
       toast.error(err.message || 'Terjadi kesalahan saat menghapus draft.')

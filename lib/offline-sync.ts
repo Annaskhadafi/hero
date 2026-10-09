@@ -311,9 +311,37 @@ export function removeActivityDraft(key: string) {
   if (typeof window === 'undefined') return
   try {
     window.localStorage.removeItem(key)
-    const next = getActivityDraftIndex().filter((entry) => entry.key !== key)
+    if (key === ACTIVITY_DRAFT_STORAGE_KEY) {
+      window.localStorage.removeItem(ACTIVITY_DRAFT_STORAGE_KEY)
+    }
+
+    let parsed: any[] = []
+    try {
+      const raw = window.localStorage.getItem(ACTIVITY_DRAFT_INDEX_STORAGE_KEY)
+      parsed = raw ? JSON.parse(raw) : []
+    } catch {
+      parsed = []
+    }
+
+    const next = Array.isArray(parsed) ? parsed.filter((entry: any) => entry && entry.key !== key) : []
     window.localStorage.setItem(ACTIVITY_DRAFT_INDEX_STORAGE_KEY, JSON.stringify(next))
-    window.dispatchEvent(new CustomEvent(ACTIVITY_DRAFTS_CHANGED_EVENT))
+
+    // Also check and clean legacy draft if it matches the key or has same id
+    try {
+      const legacyRaw = window.localStorage.getItem(ACTIVITY_DRAFT_STORAGE_KEY)
+      if (legacyRaw) {
+        const legacy = JSON.parse(legacyRaw)
+        if (
+          key === ACTIVITY_DRAFT_STORAGE_KEY ||
+          (legacy?.serverDraftSessionId && key.includes(String(legacy.serverDraftSessionId))) ||
+          next.length === 0
+        ) {
+          window.localStorage.removeItem(ACTIVITY_DRAFT_STORAGE_KEY)
+        }
+      }
+    } catch {}
+
+    window.dispatchEvent(new CustomEvent(ACTIVITY_DRAFTS_CHANGED_EVENT, { detail: { deletedKey: key } }))
   } catch {}
 }
 
