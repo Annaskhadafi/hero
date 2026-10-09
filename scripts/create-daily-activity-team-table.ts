@@ -24,8 +24,21 @@ async function main() {
 
       CREATE INDEX IF NOT EXISTS hero_daily_activity_session_team_members_emp_idx
         ON hero_daily_activity_session_team_members (employee_id);
+
+      CREATE TABLE IF NOT EXISTS hero_daily_activity_session_item_team_members (
+        id SERIAL PRIMARY KEY,
+        item_id INTEGER NOT NULL REFERENCES hero_daily_activity_session_items(id) ON DELETE CASCADE,
+        employee_id INTEGER NOT NULL REFERENCES hero_employees(id) ON DELETE CASCADE,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS hero_daily_activity_session_item_team_members_item_emp_uq
+        ON hero_daily_activity_session_item_team_members (item_id, employee_id);
+
+      CREATE INDEX IF NOT EXISTS hero_daily_activity_session_item_team_members_emp_idx
+        ON hero_daily_activity_session_item_team_members (employee_id);
     `)
-    console.log('  ✓ hero_daily_activity_session_team_members table verified.')
+    console.log('  ✓ hero_daily_activity_session_team_members & hero_daily_activity_session_item_team_members tables verified.')
   } catch (err) {
     console.error('Error creating table:', err)
     process.exit(1)

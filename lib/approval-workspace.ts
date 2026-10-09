@@ -8,6 +8,7 @@ import {
   dailyActivitySessions,
   dailyActivityApprovals,
   dailyActivitySessionTeamMembers,
+  dailyActivitySessionSignoffs,
   approvalAttachments,
   approvalMatrices,
   approvalMatrixSteps,

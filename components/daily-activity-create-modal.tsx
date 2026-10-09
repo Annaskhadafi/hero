@@ -694,21 +694,28 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
           managerName: createForm.managerName || undefined,
           teamMemberEmployeeIds: isTeamLog ? selectedTeamMemberIds : [],
           customerName: createForm.customerName?.trim() || undefined,
-          notes: createForm.customerName ? `Customer: ${createForm.customerName.trim()}` : undefined,
-          items: validItems.map((it) => ({
-            label: it.label,
-            libraryActivityId: it.libraryActivityId ? Number(it.libraryActivityId) : undefined,
-            unitNumber: it.unitNumber,
-            startedAt: it.startedAt || `${createForm.workDate}T${it.startTime || '08:00'}:00`,
-            endedAt: it.endedAt || `${createForm.workDate}T${it.endTime || '08:30'}:00`,
-            duration: it.duration || '60m',
-            points: it.points || 10,
-            remark: it.remark,
-            materialUsed: it.materialUsed,
-            tireCount: it.tireCount ?? ((it as any).requiresTireCount ? 1 : 0),
-            photoUrl: it.photoUrl || (it.photos?.[0] ?? null),
-            photos: it.photos || (it.photoUrl ? [it.photoUrl] : []),
-          })),
+          items: validItems.map((it: any) => {
+            const itemTeamMemberIds = it.itemTeamMemberIds || (isTeamLog ? selectedTeamMemberIds : [])
+            const itemTeamMembers = it.itemTeamMembers || employees
+              .filter((e) => itemTeamMemberIds.includes(e.id))
+              .map((e) => ({ id: e.id, name: e.name, employeeSn: e.employeeId || undefined }))
+            return {
+              label: it.label,
+              libraryActivityId: it.libraryActivityId ? Number(it.libraryActivityId) : undefined,
+              unitNumber: it.unitNumber,
+              startedAt: it.startedAt || `${createForm.workDate}T${it.startTime || '08:00'}:00`,
+              endedAt: it.endedAt || `${createForm.workDate}T${it.endTime || '08:30'}:00`,
+              duration: it.duration || '60m',
+              points: it.points || 10,
+              remark: it.remark,
+              materialUsed: it.materialUsed,
+              tireCount: it.tireCount ?? ((it as any).requiresTireCount ? 1 : 0),
+              photoUrl: it.photoUrl || (it.photos?.[0] ?? null),
+              photos: it.photos || (it.photoUrl ? [it.photoUrl] : []),
+              itemTeamMemberIds,
+              itemTeamMembers,
+            }
+          }),
         })
       )
       if (res.success && res.sessionId) {

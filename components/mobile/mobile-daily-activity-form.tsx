@@ -329,6 +329,8 @@ type RouteItemState = {
   actualPoints: string
   tireCount?: number
   materialUsed?: string
+  itemTeamMemberIds?: number[]
+  itemTeamMembers?: Array<{ id: number; name: string; employeeSn?: string }>
 
   photoFile?: File | null
   photoFiles?: File[]
@@ -345,6 +347,8 @@ type SelfInputEntryState = {
   materialUsed: string
   tireCount?: number
   notes: string
+  itemTeamMemberIds?: number[]
+  itemTeamMembers?: Array<{ id: number; name: string; employeeSn?: string }>
 
   photoFile?: File | null
   photoFiles?: File[]
@@ -780,6 +784,117 @@ function extractItemPhotos(item: any): string[] {
     } catch {}
   }
   return Array.from(new Set(urls.filter((u) => typeof u === 'string' && u.trim().length > 0)))
+}
+
+function ItemTeamPicker({
+  allTeamMembers,
+  sessionTeamIds,
+  isSessionTeamLog,
+  itemTeamMemberIds,
+  onChange,
+}: {
+  allTeamMembers: Array<{ id: number; name: string; employeeSn?: string | null }>
+  sessionTeamIds: number[]
+  isSessionTeamLog: boolean
+  itemTeamMemberIds?: number[]
+  onChange: (selectedIds: number[] | undefined, selectedObjs: Array<{ id: number; name: string; employeeSn?: string }>) => void
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const isCustomized = itemTeamMemberIds !== undefined
+  const effectiveIds = isCustomized ? itemTeamMemberIds : (isSessionTeamLog ? sessionTeamIds : [])
+
+  const selectedMembers = useMemo(() => {
+    return allTeamMembers.filter((m) => effectiveIds.includes(m.id))
+  }, [allTeamMembers, effectiveIds])
+
+  return (
+    <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <UserRound className="size-3.5 text-[#003461] shrink-0" />
+          <span className="text-xs font-bold text-slate-800 truncate">
+            Tim Aktivitas
+          </span>
+          {isCustomized ? (
+            <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-blue-50 text-[#003461] border-blue-200 font-bold">
+              Khusus ({effectiveIds.length})
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-slate-50 text-slate-600 border-slate-200 font-medium">
+              Ikuti Sesi ({effectiveIds.length})
+            </Badge>
+          )}
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => setIsOpen(!isOpen)}
+          className="h-7 px-2 text-xs font-bold text-[#003461] hover:bg-blue-50"
+        >
+          {isOpen ? 'Tutup' : 'Atur Tim'}
+        </Button>
+      </div>
+
+      {selectedMembers.length > 0 && !isOpen && (
+        <p className="text-[11px] text-slate-600 font-medium leading-tight truncate">
+          Kru: {selectedMembers.map((m) => m.name).join(', ')}
+        </p>
+      )}
+
+      {isOpen && (
+        <div className="pt-2 border-t border-slate-100 space-y-2">
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-slate-500 font-medium">Anggota untuk aktivitas ini:</span>
+            {isCustomized && (
+              <button
+                type="button"
+                onClick={() => onChange(undefined, [])}
+                className="text-blue-600 font-bold hover:underline"
+              >
+                Reset ke Tim Sesi
+              </button>
+            )}
+          </div>
+          <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
+            {allTeamMembers.length === 0 ? (
+              <p className="text-xs text-slate-400 italic">Belum ada daftar tim terpilih.</p>
+            ) : (
+              allTeamMembers.map((member) => {
+                const isSelected = effectiveIds.includes(member.id)
+                return (
+                  <label
+                    key={member.id}
+                    className={cn(
+                      "flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer transition-colors",
+                      isSelected ? "bg-blue-50/80 border-blue-200 text-[#003461] font-bold" : "bg-slate-50/50 border-slate-200 text-slate-700"
+                    )}
+                  >
+                    <Checkbox
+                      checked={isSelected}
+                      onCheckedChange={(checked) => {
+                        let nextIds: number[] = []
+                        if (checked) {
+                          nextIds = Array.from(new Set([...effectiveIds, member.id]))
+                        } else {
+                          nextIds = effectiveIds.filter((id) => id !== member.id)
+                        }
+                        const nextObjs = allTeamMembers
+                          .filter((m) => nextIds.includes(m.id))
+                          .map((m) => ({ id: m.id, name: m.name, employeeSn: m.employeeSn || undefined }))
+                        onChange(nextIds, nextObjs)
+                      }}
+                    />
+                    <span className="truncate">{member.name} {member.employeeSn ? `(${member.employeeSn})` : ''}</span>
+                  </label>
+                )
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function MobileDailyActivityForm({
@@ -3164,6 +3279,15 @@ export function MobileDailyActivityForm({
 
               const u = (entry.equipmentNo || '').trim()
 
+              const itemTeamMemberIds = entry.itemTeamMemberIds !== undefined
+                ? entry.itemTeamMemberIds
+                : (isTeamLog ? selectedMemberIds : [])
+              const itemTeamMembers = entry.itemTeamMembers && entry.itemTeamMembers.length > 0
+                ? entry.itemTeamMembers
+                : ((teamMembers && teamMembers.length > 0 ? teamMembers : candidateEmployees) || [])
+                    .filter((m: any) => itemTeamMemberIds.includes(m.id))
+                    .map((m: any) => ({ id: m.id, name: m.name, employeeSn: m.employeeSn }))
+
               return {
                 id: matchingSessionItem?.id,
                 label: `${library.activityCode} - ${library.activityName}`,
@@ -3178,6 +3302,8 @@ export function MobileDailyActivityForm({
                 tireCount: library.requiresTireCount ? (entry.tireCount ?? 0) : (entry.tireCount ?? null),
                 photoUrl: entryEvidence.urls[0] || null,
                 photos: entryEvidence.urls,
+                itemTeamMemberIds,
+                itemTeamMembers,
               }
             })
           )
@@ -3190,6 +3316,10 @@ export function MobileDailyActivityForm({
           photoPreviewUrls
         )
         const matchingCustomItem = initialSessionData?.sessionItems?.find((i: any) => !i.libraryActivityId)
+        const itemTeamMemberIds = isTeamLog ? selectedMemberIds : []
+        const itemTeamMembers = ((teamMembers && teamMembers.length > 0 ? teamMembers : candidateEmployees) || [])
+          .filter((m: any) => itemTeamMemberIds.includes(m.id))
+          .map((m: any) => ({ id: m.id, name: m.name, employeeSn: m.employeeSn }))
 
         itemsToSubmit = [
           {
@@ -3205,6 +3335,8 @@ export function MobileDailyActivityForm({
             materialUsed: materialUsed.trim(),
             photoUrl: customEvidence.urls[0] || null,
             photos: customEvidence.urls,
+            itemTeamMemberIds,
+            itemTeamMembers,
           },
         ]
       } else if (checklistContext && routeSessionItems.length > 0) {
@@ -3219,6 +3351,15 @@ export function MobileDailyActivityForm({
                 state?.restoredPhotoPayload,
                 state?.previewUrls
               )
+              const itemTeamMemberIds = state?.itemTeamMemberIds !== undefined
+                ? state.itemTeamMemberIds
+                : (isTeamLog ? selectedMemberIds : [])
+              const itemTeamMembers = state?.itemTeamMembers && state.itemTeamMembers.length > 0
+                ? state.itemTeamMembers
+                : ((teamMembers && teamMembers.length > 0 ? teamMembers : candidateEmployees) || [])
+                    .filter((m: any) => itemTeamMemberIds.includes(m.id))
+                    .map((m: any) => ({ id: m.id, name: m.name, employeeSn: m.employeeSn }))
+
               return {
                 routeItemId: item.routeItemId,
                 overtimeCommandLetterItemId: item.overtimeCommandLetterItemId,
@@ -3233,6 +3374,8 @@ export function MobileDailyActivityForm({
                 tireCount: item.tireCount ?? 0,
                 photoUrl: evidence.urls[0] || null,
                 photos: evidence.urls,
+                itemTeamMemberIds,
+                itemTeamMembers,
               }
             })
           )
@@ -4109,6 +4252,19 @@ export function MobileDailyActivityForm({
                             className="rounded-2xl border-0 bg-white px-4 py-3 text-sm font-semibold text-[#082033]"
                           />
                         </Label>
+
+                        <ItemTeamPicker
+                          allTeamMembers={(teamMembers && teamMembers.length > 0 ? teamMembers : candidateEmployees) || []}
+                          sessionTeamIds={selectedMemberIds}
+                          isSessionTeamLog={isTeamLog}
+                          itemTeamMemberIds={entry.itemTeamMemberIds}
+                          onChange={(nextIds, nextObjs) => {
+                            updateSelfInputEntry(libraryId, {
+                              itemTeamMemberIds: nextIds,
+                              itemTeamMembers: nextObjs,
+                            })
+                          }}
+                        />
                       </div>
                     </div>
                   )

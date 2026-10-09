@@ -16,6 +16,7 @@ import {
   dailyActivityConfigs,
   dailyActivitySessionItems,
   dailyActivitySessionTeamMembers,
+  dailyActivitySessionItemTeamMembers,
   dailyActivitySessions,
   employees,
   jobAssignments,
@@ -2291,6 +2292,17 @@ export async function getDailyActivityEmployeeData(
               .select({ sessionId: dailyActivitySessionTeamMembers.sessionId })
               .from(dailyActivitySessionTeamMembers)
               .where(eq(dailyActivitySessionTeamMembers.employeeId, employee.id))
+          ),
+          inArray(
+            dailyActivitySessions.id,
+            db
+              .select({ sessionId: dailyActivitySessionItems.sessionId })
+              .from(dailyActivitySessionItems)
+              .innerJoin(
+                dailyActivitySessionItemTeamMembers,
+                eq(dailyActivitySessionItems.id, dailyActivitySessionItemTeamMembers.itemId)
+              )
+              .where(eq(dailyActivitySessionItemTeamMembers.employeeId, employee.id))
           )
         )
       : activityScopePredicate

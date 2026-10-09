@@ -76,6 +76,7 @@ import {
   dailyActivityConfigs,
   dailyActivitySessionItems,
   dailyActivitySessionTeamMembers,
+  dailyActivitySessionItemTeamMembers,
   dailyActivitySessionSignoffs,
   dailyActivitySessions,
   employees,
@@ -4838,6 +4839,27 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
       .orderBy(asc(dailyActivitySessionItems.sortOrder), asc(dailyActivitySessionItems.id))
   )
 
+  const itemIds = itemRows.map((i) => i.id)
+  const itemTeamRows = itemIds.length > 0
+    ? await db
+        .select({
+          itemId: dailyActivitySessionItemTeamMembers.itemId,
+          employeeId: employees.id,
+          name: employees.name,
+          employeeSn: employees.employeeSn,
+        })
+        .from(dailyActivitySessionItemTeamMembers)
+        .innerJoin(employees, eq(dailyActivitySessionItemTeamMembers.employeeId, employees.id))
+        .where(inArray(dailyActivitySessionItemTeamMembers.itemId, itemIds))
+    : []
+
+  const itemTeamMap = new Map<number, Array<{ id: number; name: string; employeeSn?: string }>>()
+  itemTeamRows.forEach((r) => {
+    const list = itemTeamMap.get(r.itemId) || []
+    list.push({ id: r.employeeId, name: r.name, employeeSn: r.employeeSn || undefined })
+    itemTeamMap.set(r.itemId, list)
+  })
+
   const sessionItems = itemRows.map((item) => {
     const durationMinutes =
       item.startedAt && item.endedAt && item.endedAt > item.startedAt
@@ -4887,6 +4909,12 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
     const photoUrl = photoUrls[0] || null
     const photos = photoUrls
 
+    const dbItemTeam = itemTeamMap.get(item.id) || []
+    const payloadItemTeam = parsedPayload?.itemTeamMembers || []
+    const itemTeamMembers = dbItemTeam.length > 0 ? dbItemTeam : payloadItemTeam
+    const itemTeamMemberIds = itemTeamMembers.map((m: any) => Number(m.id)).filter(Boolean)
+    const itemTeamMembersSummary = itemTeamMembers.map((m: any) => m.name).filter(Boolean).join(', ') || parsedPayload?.itemTeamMembersSummary || ''
+
     return {
       id: item.id,
       label: item.snapshotLabel,
@@ -4909,6 +4937,9 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
       snapshotPayload: item.snapshotPayload,
       startedAt: item.startedAt,
       endedAt: item.endedAt,
+      itemTeamMembers,
+      itemTeamMemberIds,
+      itemTeamMembersSummary,
     }
   })
 
@@ -4960,7 +4991,8 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
     .innerJoin(employees, eq(dailyActivitySessionTeamMembers.employeeId, employees.id))
     .where(eq(dailyActivitySessionTeamMembers.sessionId, header.sessionId))
 
-  const isTeamMember = teamMemberRows.some((t) => t.employeeId === currentEmployee.id)
+  const isItemTeamMember = itemTeamRows.some((t) => t.employeeId === currentEmployee.id)
+  const isTeamMember = teamMemberRows.some((t) => t.employeeId === currentEmployee.id) || isItemTeamMember
 
   const rawRemark = header.summaryRemark || ''
   const teamMatch = rawRemark.match(/\[Team:\s*([^\]]+)\]/i)
@@ -7364,6 +7396,12 @@ export async function createDailyActivitySessionAction(input: {
               : new Date(it.endedAt)
             : new Date(parsedWorkDate.getTime() + 9 * 3600000)
 
+          const itemMemberIds: number[] = Array.isArray((it as any).itemTeamMemberIds)
+            ? (it as any).itemTeamMemberIds.map(Number)
+            : []
+          const itemMembers: any[] = Array.isArray((it as any).itemTeamMembers) ? (it as any).itemTeamMembers : []
+          const itemTeamSummary = itemMembers.map((m: any) => m.name).filter(Boolean).join(', ')
+
           return {
             sessionId: created.id,
             snapshotLabel: it.label.trim(),
@@ -7385,6 +7423,9 @@ export async function createDailyActivitySessionAction(input: {
               tireCount: Number(it.tireCount) || 0,
               photoUrl: it.photoUrl || null,
               photos: it.photos || [],
+              itemTeamMemberIds: itemMemberIds,
+              itemTeamMembers: itemMembers,
+              itemTeamMembersSummary: itemTeamSummary,
             }),
             startedAt: startedAtDate,
             endedAt: endedAtDate,
@@ -7392,7 +7433,21 @@ export async function createDailyActivitySessionAction(input: {
         })
 
       if (itemsToInsert.length > 0) {
-        await db.insert(dailyActivitySessionItems).values(itemsToInsert)
+        const inserted = await db.insert(dailyActivitySessionItems).values(itemsToInsert).returning({ id: dailyActivitySessionItems.id })
+        const filteredInputs = input.items.filter((it) => it.label && it.label.trim().length > 0)
+        const itemTeamRows: Array<{ itemId: number; employeeId: number }> = []
+        inserted.forEach((insertedItem, idx) => {
+          const origInput = filteredInputs[idx] as any
+          const mIds: number[] = Array.isArray(origInput?.itemTeamMemberIds)
+            ? origInput.itemTeamMemberIds.map(Number)
+            : []
+          mIds.forEach((mId) => {
+            if (mId) itemTeamRows.push({ itemId: insertedItem.id, employeeId: mId })
+          })
+        })
+        if (itemTeamRows.length > 0) {
+          await db.insert(dailyActivitySessionItemTeamMembers).values(itemTeamRows).onConflictDoNothing()
+        }
       }
     }
 
@@ -7823,30 +7878,56 @@ export async function saveActivityDraftToServerAction(input: {
         // Replace session items
         await db.delete(dailyActivitySessionItems).where(eq(dailyActivitySessionItems.sessionId, existing.id))
 
-        const itemsToInsert = (input.items ?? [])
+        const rawItemsInput = input.items ?? []
+        const itemsToInsert = rawItemsInput
           .filter((it) => it.label?.trim())
-          .map((it, idx) => ({
-            sessionId: existing.id,
-            snapshotLabel: it.label.trim(),
-            snapshotGroupName: it.group || 'Technical',
-            libraryActivityId: it.libraryActivityId ? Number(it.libraryActivityId) : null,
-            unitNumber: it.unitNumber?.trim() || '',
-            remark: it.remark?.trim() || '',
-            actualPoints: Number(it.points) || 0,
-            tireCount: Number(it.tireCount) || 0,
-            isChecked: true,
-            sortOrder: idx + 1,
-            snapshotPayload: JSON.stringify({
-              materialUsed: it.materialUsed || '',
-              photoUrl: it.photoUrl || null,
-              photos: it.photos || [],
-            }),
-            startedAt: it.startedAt ? new Date(it.startedAt) : null,
-            endedAt: it.endedAt ? new Date(it.endedAt) : null,
-          }))
+          .map((it: any, idx) => {
+            const itemMemberIds: number[] = Array.isArray(it.itemTeamMemberIds)
+              ? it.itemTeamMemberIds.map(Number)
+              : []
+            const itemMembers: any[] = Array.isArray(it.itemTeamMembers) ? it.itemTeamMembers : []
+            const itemTeamSummary = itemMembers.map((m: any) => m.name).filter(Boolean).join(', ')
+
+            return {
+              sessionId: existing.id,
+              snapshotLabel: it.label.trim(),
+              snapshotGroupName: it.group || 'Technical',
+              libraryActivityId: it.libraryActivityId ? Number(it.libraryActivityId) : null,
+              unitNumber: it.unitNumber?.trim() || '',
+              remark: it.remark?.trim() || '',
+              actualPoints: Number(it.points) || 0,
+              tireCount: Number(it.tireCount) || 0,
+              isChecked: true,
+              sortOrder: idx + 1,
+              snapshotPayload: JSON.stringify({
+                materialUsed: it.materialUsed || '',
+                photoUrl: it.photoUrl || null,
+                photos: it.photos || [],
+                itemTeamMemberIds: itemMemberIds,
+                itemTeamMembers: itemMembers,
+                itemTeamMembersSummary: itemTeamSummary,
+              }),
+              startedAt: it.startedAt ? new Date(it.startedAt) : null,
+              endedAt: it.endedAt ? new Date(it.endedAt) : null,
+            }
+          })
 
         if (itemsToInsert.length > 0) {
-          await db.insert(dailyActivitySessionItems).values(itemsToInsert)
+          const inserted = await db.insert(dailyActivitySessionItems).values(itemsToInsert).returning({ id: dailyActivitySessionItems.id })
+          const filteredInputs = rawItemsInput.filter((it) => it.label?.trim())
+          const itemTeamRows: Array<{ itemId: number; employeeId: number }> = []
+          inserted.forEach((insertedItem, idx) => {
+            const origInput = filteredInputs[idx] as any
+            const mIds: number[] = Array.isArray(origInput?.itemTeamMemberIds)
+              ? origInput.itemTeamMemberIds.map(Number)
+              : []
+            mIds.forEach((mId) => {
+              if (mId) itemTeamRows.push({ itemId: insertedItem.id, employeeId: mId })
+            })
+          })
+          if (itemTeamRows.length > 0) {
+            await db.insert(dailyActivitySessionItemTeamMembers).values(itemTeamRows).onConflictDoNothing()
+          }
         }
 
         if (input.teamMemberEmployeeIds !== undefined) {
@@ -7892,30 +7973,56 @@ export async function saveActivityDraftToServerAction(input: {
       ).onConflictDoNothing()
     }
 
-    const itemsToInsert = (input.items ?? [])
+    const rawItemsInputNew = input.items ?? []
+    const itemsToInsertNew = rawItemsInputNew
       .filter((it) => it.label?.trim())
-      .map((it, idx) => ({
-        sessionId: created.id,
-        snapshotLabel: it.label.trim(),
-        snapshotGroupName: it.group || 'Technical',
-        libraryActivityId: it.libraryActivityId ? Number(it.libraryActivityId) : null,
-        unitNumber: it.unitNumber?.trim() || '',
-        remark: it.remark?.trim() || '',
-        actualPoints: Number(it.points) || 0,
-        tireCount: Number(it.tireCount) || 0,
-        isChecked: true,
-        sortOrder: idx + 1,
-        snapshotPayload: JSON.stringify({
-          materialUsed: it.materialUsed || '',
-          photoUrl: it.photoUrl || null,
-          photos: it.photos || [],
-        }),
-        startedAt: it.startedAt ? new Date(it.startedAt) : null,
-        endedAt: it.endedAt ? new Date(it.endedAt) : null,
-      }))
+      .map((it: any, idx) => {
+        const itemMemberIds: number[] = Array.isArray(it.itemTeamMemberIds)
+          ? it.itemTeamMemberIds.map(Number)
+          : []
+        const itemMembers: any[] = Array.isArray(it.itemTeamMembers) ? it.itemTeamMembers : []
+        const itemTeamSummary = itemMembers.map((m: any) => m.name).filter(Boolean).join(', ')
 
-    if (itemsToInsert.length > 0) {
-      await db.insert(dailyActivitySessionItems).values(itemsToInsert)
+        return {
+          sessionId: created.id,
+          snapshotLabel: it.label.trim(),
+          snapshotGroupName: it.group || 'Technical',
+          libraryActivityId: it.libraryActivityId ? Number(it.libraryActivityId) : null,
+          unitNumber: it.unitNumber?.trim() || '',
+          remark: it.remark?.trim() || '',
+          actualPoints: Number(it.points) || 0,
+          tireCount: Number(it.tireCount) || 0,
+          isChecked: true,
+          sortOrder: idx + 1,
+          snapshotPayload: JSON.stringify({
+            materialUsed: it.materialUsed || '',
+            photoUrl: it.photoUrl || null,
+            photos: it.photos || [],
+            itemTeamMemberIds: itemMemberIds,
+            itemTeamMembers: itemMembers,
+            itemTeamMembersSummary: itemTeamSummary,
+          }),
+          startedAt: it.startedAt ? new Date(it.startedAt) : null,
+          endedAt: it.endedAt ? new Date(it.endedAt) : null,
+        }
+      })
+
+    if (itemsToInsertNew.length > 0) {
+      const inserted = await db.insert(dailyActivitySessionItems).values(itemsToInsertNew).returning({ id: dailyActivitySessionItems.id })
+      const filteredInputs = rawItemsInputNew.filter((it) => it.label?.trim())
+      const itemTeamRows: Array<{ itemId: number; employeeId: number }> = []
+      inserted.forEach((insertedItem, idx) => {
+        const origInput = filteredInputs[idx] as any
+        const mIds: number[] = Array.isArray(origInput?.itemTeamMemberIds)
+          ? origInput.itemTeamMemberIds.map(Number)
+          : []
+        mIds.forEach((mId) => {
+          if (mId) itemTeamRows.push({ itemId: insertedItem.id, employeeId: mId })
+        })
+      })
+      if (itemTeamRows.length > 0) {
+        await db.insert(dailyActivitySessionItemTeamMembers).values(itemTeamRows).onConflictDoNothing()
+      }
     }
 
     return { success: true, sessionId: created.id }
@@ -7974,6 +8081,24 @@ export async function loadActivityServerDraftAction(
         .where(eq(dailyActivitySessionTeamMembers.sessionId, session.id)),
     ])
 
+    const itemIds = items.map((i) => i.id)
+    const itemTeamRows = itemIds.length > 0
+      ? await db
+          .select({
+            itemId: dailyActivitySessionItemTeamMembers.itemId,
+            employeeId: dailyActivitySessionItemTeamMembers.employeeId,
+          })
+          .from(dailyActivitySessionItemTeamMembers)
+          .where(inArray(dailyActivitySessionItemTeamMembers.itemId, itemIds))
+      : []
+
+    const itemTeamMap = new Map<number, number[]>()
+    itemTeamRows.forEach((r) => {
+      const list = itemTeamMap.get(r.itemId) || []
+      list.push(r.employeeId)
+      itemTeamMap.set(r.itemId, list)
+    })
+
     const isCustom =
       session.submissionSource === 'custom' ||
       (!session.submissionSource && !items.some((it) => it.libraryActivityId) && items.length > 0)
@@ -7997,6 +8122,7 @@ export async function loadActivityServerDraftAction(
         items: items.map((item) => {
           let payload: any = {}
           try { payload = JSON.parse(item.snapshotPayload || '{}') } catch {}
+          const dbItemTeam = itemTeamMap.get(item.id) || []
           return {
             id: item.id,
             label: item.snapshotLabel,
@@ -8011,6 +8137,8 @@ export async function loadActivityServerDraftAction(
             photoUrl: payload.photoUrl ?? null,
             photos: payload.photos ?? [],
             materialUsed: payload.materialUsed ?? '',
+            itemTeamMemberIds: dbItemTeam.length > 0 ? dbItemTeam : (payload.itemTeamMemberIds || []),
+            itemTeamMembers: payload.itemTeamMembers || [],
           }
         }),
       },
@@ -8305,7 +8433,7 @@ export async function cloneDailyActivityToDraftAction(sessionId: number): Promis
       workDate: todayStr,
       draftTitle: title,
       sourceMode: resolvedSourceMode,
-      assignmentId: session.legacyAssignmentId ? String(session.legacyAssignmentId) : '',
+      assignmentId: (session as any).legacyAssignmentId ? String((session as any).legacyAssignmentId) : '',
       libraryActivityId: selectedLibraryActivityIds[0] || '',
       selectedLibraryActivityIds,
       selfInputActivities,

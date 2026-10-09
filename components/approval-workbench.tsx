@@ -5925,15 +5925,25 @@ export function HistoryTab({
                                   <td colSpan={5} className="py-2 text-slate-400 italic text-center">Belum ada item aktivitas.</td>
                                 </tr>
                               ) : (
-                                items.map((it: any, idx: number) => (
-                                  <tr key={it.id || idx}>
-                                    <td className="text-center font-mono">{idx + 1}</td>
-                                    <td className="text-left font-medium text-black">{it.snapshotLabel || it.label || it.activityLabel || it.activityName || 'Aktivitas'}</td>
-                                    <td className="text-center font-mono text-black">{it.duration || (it.actualDurationMinutes ? `${it.actualDurationMinutes}m` : '60m')}</td>
-                                    <td className="text-center font-bold font-mono text-black">{it.points || it.actualPoints || 0} pts</td>
-                                    <td className="text-left text-[7pt] text-slate-600">{it.remark || it.remarks || '—'}</td>
-                                  </tr>
-                                ))
+                                items.map((it: any, idx: number) => {
+                                  const itemTeamSummary = it.itemTeamMembersSummary || (Array.isArray(it.itemTeamMembers) && it.itemTeamMembers.length > 0 ? it.itemTeamMembers.map((m: any) => m.name).join(', ') : null)
+                                  return (
+                                    <tr key={it.id || idx}>
+                                      <td className="text-center font-mono">{idx + 1}</td>
+                                      <td className="text-left font-medium text-black">
+                                        <div>{it.snapshotLabel || it.label || it.activityLabel || it.activityName || 'Aktivitas'}</div>
+                                        {itemTeamSummary ? (
+                                          <div className="text-[7pt] text-[#003461] font-bold mt-0.5">
+                                            Kru: {itemTeamSummary}
+                                          </div>
+                                        ) : null}
+                                      </td>
+                                      <td className="text-center font-mono text-black">{it.duration || (it.actualDurationMinutes ? `${it.actualDurationMinutes}m` : '60m')}</td>
+                                      <td className="text-center font-bold font-mono text-black">{it.points || it.actualPoints || 0} pts</td>
+                                      <td className="text-left text-[7pt] text-slate-600">{it.remark || it.remarks || '—'}</td>
+                                    </tr>
+                                  )
+                                })
                               )}
                             </tbody>
                           </table>
