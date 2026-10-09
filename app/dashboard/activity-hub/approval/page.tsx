@@ -10,6 +10,7 @@ import {
   dailyActivitySessions,
   dailyActivitySessionItems,
   dailyActivitySessionTeamMembers,
+  dailyActivitySessionItemTeamMembers,
   employees,
   masterDepartments,
   masterSections,
@@ -248,20 +249,41 @@ export default async function DailyActivityApprovalListPage() {
         : Promise.resolve([]),
       sessionIds.length > 0
         ? safeQuery(
-            () =>
-              db
-                .select({
-                  sessionId: dailyActivitySessionTeamMembers.sessionId,
-                  employeeId: dailyActivitySessionTeamMembers.employeeId,
-                  employeeName: employees.name,
-                  employeeSn: employees.employeeSn,
-                  department: employees.department,
-                  section: employees.section,
-                  jobTitle: employees.jobTitle,
-                })
-                .from(dailyActivitySessionTeamMembers)
-                .innerJoin(employees, eq(dailyActivitySessionTeamMembers.employeeId, employees.id))
-                .where(inArray(dailyActivitySessionTeamMembers.sessionId, sessionIds)),
+            async () => {
+              const [sessionTms, itemTms] = await Promise.all([
+                db
+                  .select({
+                    sessionId: dailyActivitySessionTeamMembers.sessionId,
+                    employeeId: dailyActivitySessionTeamMembers.employeeId,
+                    employeeName: employees.name,
+                    employeeSn: employees.employeeSn,
+                    department: employees.department,
+                    section: employees.section,
+                    jobTitle: employees.jobTitle,
+                  })
+                  .from(dailyActivitySessionTeamMembers)
+                  .innerJoin(employees, eq(dailyActivitySessionTeamMembers.employeeId, employees.id))
+                  .where(inArray(dailyActivitySessionTeamMembers.sessionId, sessionIds)),
+                db
+                  .select({
+                    sessionId: dailyActivitySessionItems.sessionId,
+                    employeeId: dailyActivitySessionItemTeamMembers.employeeId,
+                    employeeName: employees.name,
+                    employeeSn: employees.employeeSn,
+                    department: employees.department,
+                    section: employees.section,
+                    jobTitle: employees.jobTitle,
+                  })
+                  .from(dailyActivitySessionItemTeamMembers)
+                  .innerJoin(
+                    dailyActivitySessionItems,
+                    eq(dailyActivitySessionItemTeamMembers.itemId, dailyActivitySessionItems.id)
+                  )
+                  .innerJoin(employees, eq(dailyActivitySessionItemTeamMembers.employeeId, employees.id))
+                  .where(inArray(dailyActivitySessionItems.sessionId, sessionIds)),
+              ])
+              return [...sessionTms, ...itemTms]
+            },
             [],
             'fetchAllTeamMembers'
           )

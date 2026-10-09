@@ -8,6 +8,7 @@ import {
   dailyActivitySessions,
   dailyActivitySessionItems,
   dailyActivitySessionTeamMembers,
+  dailyActivitySessionItemTeamMembers,
   employees,
   masterDepartments,
   sites,
@@ -187,6 +188,17 @@ export async function recalculateEwhForEmployee(
               .select({ sessionId: dailyActivitySessionTeamMembers.sessionId })
               .from(dailyActivitySessionTeamMembers)
               .where(eq(dailyActivitySessionTeamMembers.employeeId, employeeId))
+          ),
+          inArray(
+            dailyActivitySessions.id,
+            db
+              .select({ sessionId: dailyActivitySessionItems.sessionId })
+              .from(dailyActivitySessionItems)
+              .innerJoin(
+                dailyActivitySessionItemTeamMembers,
+                eq(dailyActivitySessionItems.id, dailyActivitySessionItemTeamMembers.itemId)
+              )
+              .where(eq(dailyActivitySessionItemTeamMembers.employeeId, employeeId))
           )
         ),
         eq(dailyActivitySessions.siteId, siteId),
@@ -498,9 +510,28 @@ export async function getEwhSummaryAction(
         lte(dailyActivitySessions.workDate, monthEnd)
       )!
     )
+  const periodItemTeamEmpRecords = await db
+    .select({ employeeId: dailyActivitySessionItemTeamMembers.employeeId })
+    .from(dailyActivitySessionItemTeamMembers)
+    .innerJoin(
+      dailyActivitySessionItems,
+      eq(dailyActivitySessionItemTeamMembers.itemId, dailyActivitySessionItems.id)
+    )
+    .innerJoin(
+      dailyActivitySessions,
+      eq(dailyActivitySessionItems.sessionId, dailyActivitySessions.id)
+    )
+    .where(
+      and(
+        parsedSiteId !== null ? eq(dailyActivitySessions.siteId, parsedSiteId) : undefined,
+        gte(dailyActivitySessions.workDate, monthStart),
+        lte(dailyActivitySessions.workDate, monthEnd)
+      )!
+    )
   const activeSessionEmpIdSet = new Set([
     ...periodSessionEmpRecords.map((s) => s.employeeId),
     ...periodTeamEmpRecords.map((t) => t.employeeId),
+    ...periodItemTeamEmpRecords.map((t) => t.employeeId),
   ])
 
   // Focus EWH calculations strictly on Servicemen across all sites & departments
@@ -540,6 +571,17 @@ export async function getEwhSummaryAction(
           .select({ sessionId: dailyActivitySessionTeamMembers.sessionId })
           .from(dailyActivitySessionTeamMembers)
           .where(inArray(dailyActivitySessionTeamMembers.employeeId, targetEmpIds))
+      ),
+      inArray(
+        dailyActivitySessions.id,
+        db
+          .select({ sessionId: dailyActivitySessionItems.sessionId })
+          .from(dailyActivitySessionItems)
+          .innerJoin(
+            dailyActivitySessionItemTeamMembers,
+            eq(dailyActivitySessionItems.id, dailyActivitySessionItemTeamMembers.itemId)
+          )
+          .where(inArray(dailyActivitySessionItemTeamMembers.employeeId, targetEmpIds))
       )
     ),
     gte(dailyActivitySessions.workDate, monthStart),
@@ -656,7 +698,7 @@ export async function getEwhSummaryAction(
   let sessionTeamMembers: Array<{ sessionId: number; employeeId: number }> = []
   if (sessions.length > 0) {
     const sIds = sessions.map((s) => s.id)
-    const [fetchedItems, fetchedTeamMembers] = await Promise.all([
+    const [fetchedItems, fetchedTeamMembers, fetchedItemTeamMembers] = await Promise.all([
       db
         .select({
           sessionId: dailyActivitySessionItems.sessionId,
@@ -672,9 +714,20 @@ export async function getEwhSummaryAction(
         })
         .from(dailyActivitySessionTeamMembers)
         .where(inArray(dailyActivitySessionTeamMembers.sessionId, sIds)),
+      db
+        .select({
+          sessionId: dailyActivitySessionItems.sessionId,
+          employeeId: dailyActivitySessionItemTeamMembers.employeeId,
+        })
+        .from(dailyActivitySessionItemTeamMembers)
+        .innerJoin(
+          dailyActivitySessionItems,
+          eq(dailyActivitySessionItemTeamMembers.itemId, dailyActivitySessionItems.id)
+        )
+        .where(inArray(dailyActivitySessionItems.sessionId, sIds)),
     ])
     sessionItems = fetchedItems
-    sessionTeamMembers = fetchedTeamMembers
+    sessionTeamMembers = [...fetchedTeamMembers, ...fetchedItemTeamMembers]
   }
 
   const sessionTeamMemberMap = new Map<number, Set<number>>()
@@ -1591,9 +1644,26 @@ export async function getEwhSiteMonthlyMatrixAction(
     )
     .where(and(...sessionWhere))
 
+  const allYearItemTeamEmpRecords = await db
+    .select({
+      employeeId: dailyActivitySessionItemTeamMembers.employeeId,
+      sessionId: dailyActivitySessionItems.sessionId,
+    })
+    .from(dailyActivitySessionItemTeamMembers)
+    .innerJoin(
+      dailyActivitySessionItems,
+      eq(dailyActivitySessionItemTeamMembers.itemId, dailyActivitySessionItems.id)
+    )
+    .innerJoin(
+      dailyActivitySessions,
+      eq(dailyActivitySessionItems.sessionId, dailyActivitySessions.id)
+    )
+    .where(and(...sessionWhere))
+
   const activeSessionEmpIdSet = new Set([
     ...allYearSessions.map((s) => s.employeeId),
     ...allYearTeamEmpRecords.map((t) => t.employeeId),
+    ...allYearItemTeamEmpRecords.map((t) => t.employeeId),
   ])
 
   // EWH dashboard is strictly dedicated to Servicemen across all sites & departments
@@ -1603,7 +1673,8 @@ export async function getEwhSiteMonthlyMatrixAction(
   const targetEmployeeIdSet = new Set(targetEmployees.map((e) => e.id))
 
   const sessionTeamMemberMap = new Map<number, Set<number>>()
-  allYearTeamEmpRecords.forEach((tm) => {
+  const allTeamRows = [...allYearTeamEmpRecords, ...allYearItemTeamEmpRecords]
+  allTeamRows.forEach((tm) => {
     let set = sessionTeamMemberMap.get(tm.sessionId)
     if (!set) {
       set = new Set()

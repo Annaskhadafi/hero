@@ -8,6 +8,7 @@ import {
   dailyActivitySessions,
   dailyActivityApprovals,
   dailyActivitySessionTeamMembers,
+  dailyActivitySessionItemTeamMembers,
   dailyActivitySessionSignoffs,
   approvalAttachments,
   approvalMatrices,
@@ -3840,16 +3841,33 @@ export async function getApprovalCenterData(
           "allOtParticipants"
         ),
         safeQuery(
-          () =>
-            db
-              .select({
-                sessionId: dailyActivitySessionTeamMembers.sessionId,
-                employeeId: dailyActivitySessionTeamMembers.employeeId,
-                employeeName: employees.name,
-                employeeEmail: employees.email,
-              })
-              .from(dailyActivitySessionTeamMembers)
-              .leftJoin(employees, eq(dailyActivitySessionTeamMembers.employeeId, employees.id)),
+          async () => {
+            const [sessionMembers, itemMembers] = await Promise.all([
+              db
+                .select({
+                  sessionId: dailyActivitySessionTeamMembers.sessionId,
+                  employeeId: dailyActivitySessionTeamMembers.employeeId,
+                  employeeName: employees.name,
+                  employeeEmail: employees.email,
+                })
+                .from(dailyActivitySessionTeamMembers)
+                .leftJoin(employees, eq(dailyActivitySessionTeamMembers.employeeId, employees.id)),
+              db
+                .select({
+                  sessionId: dailyActivitySessionItems.sessionId,
+                  employeeId: dailyActivitySessionItemTeamMembers.employeeId,
+                  employeeName: employees.name,
+                  employeeEmail: employees.email,
+                })
+                .from(dailyActivitySessionItemTeamMembers)
+                .innerJoin(
+                  dailyActivitySessionItems,
+                  eq(dailyActivitySessionItemTeamMembers.itemId, dailyActivitySessionItems.id)
+                )
+                .leftJoin(employees, eq(dailyActivitySessionItemTeamMembers.employeeId, employees.id)),
+            ])
+            return [...sessionMembers, ...itemMembers]
+          },
           [],
           "allDaTeamMembers"
         ),

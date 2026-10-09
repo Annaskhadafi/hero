@@ -187,13 +187,21 @@ export async function getDailyActivitySessionDocumentData(
     .innerJoin(employees, eq(dailyActivitySessionTeamMembers.employeeId, employees.id))
     .where(eq(dailyActivitySessionTeamMembers.sessionId, sessionId))
 
-  const isTeamMember = teamMemberRows.some((t) => t.employeeId === currentEmployee.id)
+  const isTeamMember =
+    teamMemberRows.some((t) => t.employeeId === currentEmployee.id) ||
+    itemTeamMemberRows.some((t) => t.employeeId === currentEmployee.id)
 
   if (header.employeeId !== currentEmployee.id && !isTeamMember && !canReviewHr && !isApprover && !isAdminOrManager) {
     return null
   }
 
-  let teamMembersSummary = teamMemberRows.map((t) => t.name).join(', ')
+  const allTeamNames = Array.from(
+    new Set([
+      ...teamMemberRows.map((t) => t.name),
+      ...itemTeamMemberRows.map((t) => t.name),
+    ])
+  )
+  let teamMembersSummary = allTeamNames.join(', ')
   if (!teamMembersSummary) {
     const teamMatch = (header.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)
     if (teamMatch && teamMatch[1]) {
@@ -277,7 +285,14 @@ export async function getDailyActivitySessionDocumentData(
         endLabel: item.endedAt
           ? item.endedAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
           : '-',
-        workSummary: [item.snapshotLabel, item.unitNumber, item.remark].filter(Boolean).join(' - '),
+        workSummary: [
+          item.snapshotLabel,
+          item.unitNumber ? `Unit: ${item.unitNumber}` : '',
+          itemTeamMembersSummary ? `[Tim: ${itemTeamMembersSummary}]` : '',
+          item.remark ? `Ket: ${item.remark}` : '',
+        ]
+          .filter(Boolean)
+          .join(' - '),
       }
     })
 
