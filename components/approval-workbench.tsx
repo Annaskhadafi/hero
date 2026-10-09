@@ -1416,13 +1416,30 @@ export function InboxTab({
         toast.success(`Form WO #${currentBatchDoc.documentNumber} berhasil diproses (${action}).`)
       } else if (
         (currentBatchDoc.category === 'GENERAL' ||
+          currentBatchDoc.category === 'DAILY_ACTIVITY' ||
+          currentBatchDoc.category === 'GENERAL_ACTIVITY' ||
           currentBatchDoc.category === 'APD' ||
           currentBatchDoc.category === 'MATERIAL' ||
           currentBatchDoc.category === 'TOOLS' ||
-          currentBatchDoc.category === 'SUMMARY') &&
+          currentBatchDoc.category === 'SUMMARY' ||
+          currentBatchDoc.category === 'JOBCARD') &&
         currentBatchDoc.rawGeneralGroup
       ) {
         const grp = currentBatchDoc.rawGeneralGroup
+        if (action === 'revert') {
+          const dailySessionIds = grp.items
+            .map((i: any) => Number(i.sessionId || i.id || i.activityId))
+            .filter((id: number) => !isNaN(id) && id > 0)
+          if (dailySessionIds.length > 0) {
+            await batchRevertDailyActivitySessionsAction(dailySessionIds, currentRemark || 'Dokumen dikembalikan untuk revisi.')
+          }
+          const splIds = grp.items
+            .map((i: any) => Number(i.splId || i.overtimeCommandLetterId))
+            .filter((id: number) => !isNaN(id) && id > 0)
+          if (splIds.length > 0) {
+            await batchRevertOvertimeRequestsAction(splIds, currentRemark || 'SPL dikembalikan.')
+          }
+        }
         const formData = new FormData()
         for (const it of grp.items) {
           if (it.approvalId) {
@@ -1435,8 +1452,10 @@ export function InboxTab({
         if (signatureDataUrl) {
           formData.append('signatureUrl', signatureDataUrl)
         }
-        await withActionRetry(() => approveApprovalGroupAction(formData))
-        toast.success(`Pengajuan #${currentBatchDoc.documentNumber} berhasil diproses.`)
+        if (formData.getAll('approvalIds').length > 0) {
+          await withActionRetry(() => approveApprovalGroupAction(formData))
+        }
+        toast.success(`Pengajuan #${currentBatchDoc.documentNumber} berhasil diproses (${action === 'revert' ? 'Dikembalikan' : action}).`)
       }
 
       setProcessedBatchIds((prev) => new Set([...prev, docId]))

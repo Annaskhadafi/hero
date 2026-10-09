@@ -5296,7 +5296,22 @@ export function SchedulingTimesheetWorkspace({
   }
 
   function saveAttendanceReal() {
-    saveAttendanceRealWithData(manualAttendance)
+    let targetData = manualAttendance
+    if (Object.keys(targetData).length === 0 && visibleEmployees.length > 0) {
+      const daysCount = daysInMonth(period)
+      const generated: Record<string, ManualAttendanceCell> = {}
+      for (const emp of visibleEmployees) {
+        for (let day = 1; day <= daysCount; day++) {
+          const cell = getAttendanceCell(emp.id, day)
+          if (cell && cell.status && cell.status !== 'empty') {
+            const key = attendanceKey(emp.id, day)
+            generated[key] = cell
+          }
+        }
+      }
+      targetData = generated
+    }
+    saveAttendanceRealWithData(targetData)
   }
 
   function clearImportedAttendance() {
@@ -9718,7 +9733,6 @@ export function SchedulingTimesheetWorkspace({
                         <Button
                           size="sm"
                           disabled={
-                            !isAttendanceDirty ||
                             isSavingAttendance ||
                             siteId === 'all' ||
                             isFinalized

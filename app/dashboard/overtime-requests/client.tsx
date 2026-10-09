@@ -220,10 +220,18 @@ function formatTime(value: Date | string | null | undefined) {
 
 function calculateSplDurationHours(row: OvertimeListingRow): number {
   if (row.plannedStartAt && row.plannedEndAt) {
-    const start = new Date(row.plannedStartAt).getTime()
-    const end = new Date(row.plannedEndAt).getTime()
-    if (!isNaN(start) && !isNaN(end) && end > start) {
-      return Math.round(((end - start) / (1000 * 60 * 60)) * 10) / 10
+    const startObj = new Date(row.plannedStartAt)
+    const endObj = new Date(row.plannedEndAt)
+    if (!isNaN(startObj.getTime()) && !isNaN(endObj.getTime())) {
+      let startMin = startObj.getHours() * 60 + startObj.getMinutes()
+      let endMin = endObj.getHours() * 60 + endObj.getMinutes()
+      if (endMin <= startMin) {
+        endMin += 1440 // Handles overnight shift crossing midnight (e.g. 14:00 to 02:00)
+      }
+      const durationMin = endMin - startMin
+      if (durationMin > 0 && durationMin <= 1440) {
+        return Math.round((durationMin / 60) * 10) / 10
+      }
     }
   }
   if (row.lineItems && row.lineItems.length > 0) {

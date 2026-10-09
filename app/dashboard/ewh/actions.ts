@@ -783,8 +783,17 @@ export async function getEwhSummaryAction(
       let overtimeMinutes = 0
       for (const ot of dayOt) {
         if (ot.plannedStartAt && ot.plannedEndAt) {
-          const diff = (new Date(ot.plannedEndAt).getTime() - new Date(ot.plannedStartAt).getTime()) / 60000
-          if (diff > 0) overtimeMinutes += Math.round(diff)
+          const startObj = new Date(ot.plannedStartAt)
+          const endObj = new Date(ot.plannedEndAt)
+          if (!isNaN(startObj.getTime()) && !isNaN(endObj.getTime())) {
+            let startMin = startObj.getHours() * 60 + startObj.getMinutes()
+            let endMin = endObj.getHours() * 60 + endObj.getMinutes()
+            if (endMin <= startMin) {
+              endMin += 1440 // Overnight shift crossing midnight
+            }
+            const diff = endMin - startMin
+            if (diff > 0 && diff <= 1440) overtimeMinutes += Math.round(diff)
+          }
         }
       }
 
