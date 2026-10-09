@@ -209,9 +209,13 @@ export function normalizeSiteOvertimeConfig(value: unknown): SiteOvertimeConfig 
 
 export function validateSiteOvertimeConfig(config: SiteOvertimeConfig) {
   const errors: string[] = []
+  if (!config || typeof config !== 'object') return errors
   for (const dayKey of ['hariBiasa', 'hariLibur', 'hariKe6', 'hariKe7'] as const) {
+    const dayRule = config[dayKey]
+    if (!dayRule) continue
     for (const shiftKey of ['dayShift', 'nightShift'] as const) {
-      const intervals = config[dayKey][shiftKey]
+      const intervals = dayRule[shiftKey]
+      if (!intervals || !Array.isArray(intervals)) continue
       if (intervals.length !== 2) errors.push(`${dayKey}.${shiftKey} wajib memiliki 2 sesi.`)
       for (const interval of intervals) {
         if (intervalMinutes(interval) <= 0)

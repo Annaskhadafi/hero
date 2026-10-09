@@ -3701,16 +3701,27 @@ export function SchedulingTimesheetWorkspace({
         pdfConfig,
         allowanceVariables,
         overtimeVariables,
-        approvalSections: siteApprovalSections.map((row) => ({
-          sectionId: row.sectionId,
-          departmentId: row.departmentId,
-          matrixId: row.matrixId,
-          ...(approvalApprovers[row.id] ?? {
-            pjoLeaderId: row.pjoLeaderId,
-            sectionHeadId: row.sectionHeadId,
-            departmentHeadId: row.departmentHeadId,
-          }),
-        })),
+        approvalSections: siteApprovalSections
+          .map((row) => {
+            const approverOverrides = approvalApprovers[row.id]
+            const sectionId = Number(row.sectionId)
+            const departmentId = Number(row.departmentId)
+            if (!sectionId || !departmentId || isNaN(sectionId) || isNaN(departmentId) || sectionId <= 0 || departmentId <= 0) {
+              return null
+            }
+            const pjoId = approverOverrides?.pjoLeaderId ?? row.pjoLeaderId
+            const secHeadId = approverOverrides?.sectionHeadId ?? row.sectionHeadId
+            const deptHeadId = approverOverrides?.departmentHeadId ?? row.departmentHeadId
+            return {
+              sectionId,
+              departmentId,
+              matrixId: row.matrixId ? Number(row.matrixId) : null,
+              pjoLeaderId: pjoId ? Number(pjoId) : null,
+              sectionHeadId: secHeadId ? Number(secHeadId) : null,
+              departmentHeadId: deptHeadId ? Number(deptHeadId) : null,
+            }
+          })
+          .filter((item): item is NonNullable<typeof item> => item != null),
       })
       if (!result.ok) throw new Error(result.error || 'Setting site gagal disimpan.')
       setSiteConfigs((current) => ({ ...current, [siteId]: targetConfig }))

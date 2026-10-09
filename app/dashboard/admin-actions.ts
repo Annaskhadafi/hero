@@ -2832,8 +2832,8 @@ export async function clearAttendanceRealOverridesAction(
 }
 
 const overtimeIntervalSchema = z.object({
-  start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
-  end: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  start: z.string().regex(/^([0-1]?\d|2[0-3]):[0-5]\d$/).transform((v) => v.padStart(5, '0')),
+  end: z.string().regex(/^([0-1]?\d|2[0-3]):[0-5]\d$/).transform((v) => v.padStart(5, '0')),
 })
 const overtimeDayRuleSchema = z.object({
   dayShift: z.array(overtimeIntervalSchema).length(2),
@@ -2874,7 +2874,8 @@ const employeeBenefitRuleSchema = z.object({
 })
 const schedulingClockTimeSchema = z
   .string()
-  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Jam masuk wajib memakai format HH:mm')
+  .regex(/^([0-1]?\d|2[0-3]):[0-5]\d$/, 'Jam masuk wajib memakai format HH:mm')
+  .transform((v) => v.padStart(5, '0'))
 const schedulingFieldBreakConfigSchema = z
   .object({
     dayShiftClockIn: schedulingClockTimeSchema.optional(),
@@ -2926,97 +2927,81 @@ const saveSchedulingConfigSchema = z.object({
 export async function saveSchedulingConfigAction(
   input: z.input<typeof saveSchedulingConfigSchema>
 ) {
-  const payload = saveSchedulingConfigSchema.parse(input)
-  await assertSchedulingSiteScope(payload.siteId, 'edit', 'scheduling_timesheet_setup')
-  await ensureSchedulingTimesheetTables()
-  const actorEmail = await getCurrentActorEmail()
-  const savedByUserId = await getCurrentActorUserId(actorEmail)
-  const now = new Date()
-  const resolvedTimezone = payload.timezone
-    ? normalizeIndonesiaTimezone(payload.timezone).code
-    : 'WITA'
+  try {
+    const payload = saveSchedulingConfigSchema.parse(input)
+    await assertSchedulingSiteScope(payload.siteId, 'edit', 'scheduling_timesheet_setup')
+    await ensureSchedulingTimesheetTables()
+    const actorEmail = await getCurrentActorEmail()
+    const savedByUserId = await getCurrentActorUserId(actorEmail)
+    const now = new Date()
+    const resolvedTimezone = payload.timezone
+      ? normalizeIndonesiaTimezone(payload.timezone).code
+      : 'WITA'
 
-  // Validate site exists in sites table
-  const [site] = await db
-    .select({ id: sites.id, name: sites.name })
-    .from(sites)
-    .where(eq(sites.id, payload.siteId))
-    .limit(1)
-  if (!site) return { ok: false, error: 'Site not found' }
+    // Validate site exists in sites table
+    const [site] = await db
+      .select({ id: sites.id, name: sites.name })
+      .from(sites)
+      .where(eq(sites.id, payload.siteId))
+      .limit(1)
+    if (!site) return { ok: false, error: 'Site not found' }
 
-  const sectionIds = [...new Set(payload.approvalSections.map((row) => row.sectionId))]
-  const scopedSections = sectionIds.length
-    ? await db
-        .select({
-          sectionId: employees.sectionId,
-          departmentId: employees.departmentId,
-          sectionName: masterSections.name,
-        })
-        .from(employees)
-        .innerJoin(masterSections, eq(employees.sectionId, masterSections.id))
-        .where(
-          and(
-            eq(employees.siteId, payload.siteId),
-            eq(employees.isActive, true),
-            inArray(employees.sectionId, sectionIds)
+    const sectionIds = [...new Set(payload.approvalSections.map((row) => row.sectionId))]
+    const scopedSections = sectionIds.length
+      ? await db
+          .select({
+            sectionId: employees.sectionId,
+            departmentId: employees.departmentId,
+            sectionName: masterSections.name,
+          })
+          .from(employees)
+          .innerJoin(masterSections, eq(employees.sectionId, masterSections.id))
+          .where(
+            and(
+              eq(employees.siteId, payload.siteId),
+              eq(employees.isActive, true),
+              inArray(employees.sectionId, sectionIds)
+            )
+          )
+      : []
+    const validSectionKeys = new Set(
+      scopedSections.map((row) => `${row.departmentId}:${row.sectionId}`)
+    )
+    const sectionNames = new Map(scopedSections.map((row) => [row.sectionId, row.sectionName]))
+
+    const validApprovalSections = payload.approvalSections.filter((row) =>
+      validSectionKeys.has(`${row.departmentId}:${row.sectionId}`)
+    )
+
+    const approverIds = [
+      ...new Set(
+        validApprovalSections.flatMap((row) =>
+          [row.pjoLeaderId, row.sectionHeadId, row.departmentHeadId].filter(
+            (id): id is number => id != null
           )
         )
-    : []
-  const validSectionKeys = new Set(
-    scopedSections.map((row) => `${row.departmentId}:${row.sectionId}`)
-  )
-  const sectionNames = new Map(scopedSections.map((row) => [row.sectionId, row.sectionName]))
+      ),
+    ]
+    const validApprovers = approverIds.length
+      ? await db
+          .select({ id: employees.id })
+          .from(employees)
+          .where(and(eq(employees.isActive, true), inArray(employees.id, approverIds)))
+      : []
+    const validApproverSet = new Set(validApprovers.map((row) => row.id))
 
-  const validApprovalSections = payload.approvalSections.filter((row) =>
-    validSectionKeys.has(`${row.departmentId}:${row.sectionId}`)
-  )
+    const sanitizedApprovalSections = validApprovalSections.map((row) => ({
+      ...row,
+      pjoLeaderId: row.pjoLeaderId != null && validApproverSet.has(row.pjoLeaderId) ? row.pjoLeaderId : null,
+      sectionHeadId: row.sectionHeadId != null && validApproverSet.has(row.sectionHeadId) ? row.sectionHeadId : null,
+      departmentHeadId: row.departmentHeadId != null && validApproverSet.has(row.departmentHeadId) ? row.departmentHeadId : null,
+    }))
 
-  const approverIds = [
-    ...new Set(
-      validApprovalSections.flatMap((row) =>
-        [row.pjoLeaderId, row.sectionHeadId, row.departmentHeadId].filter(
-          (id): id is number => id != null
-        )
-      )
-    ),
-  ]
-  const validApprovers = approverIds.length
-    ? await db
-        .select({ id: employees.id })
-        .from(employees)
-        .where(and(eq(employees.isActive, true), inArray(employees.id, approverIds)))
-    : []
-  const validApproverSet = new Set(validApprovers.map((row) => row.id))
-
-  const sanitizedApprovalSections = validApprovalSections.map((row) => ({
-    ...row,
-    pjoLeaderId: row.pjoLeaderId != null && validApproverSet.has(row.pjoLeaderId) ? row.pjoLeaderId : null,
-    sectionHeadId: row.sectionHeadId != null && validApproverSet.has(row.sectionHeadId) ? row.sectionHeadId : null,
-    departmentHeadId: row.departmentHeadId != null && validApproverSet.has(row.departmentHeadId) ? row.departmentHeadId : null,
-  }))
-
-  await db.transaction(async (tx) => {
-    await tx
-      .insert(timesheetSchedulingConfigs)
-      .values({
-        siteId: payload.siteId,
-        scheduleType: payload.scheduleType,
-        rosterType: payload.rosterType,
-        msaType: payload.msaType,
-        mealsType: payload.mealsType,
-        overtimeType: payload.overtimeType,
-        timezone: resolvedTimezone,
-        fieldBreakConfig: payload.fieldBreakConfig,
-        allowanceVariables: payload.allowanceVariables,
-        overtimeVariables: payload.overtimeVariables,
-        overtimeConfig: payload.overtimeConfig,
-        pdfConfig: payload.pdfConfig,
-        savedByUserId,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [timesheetSchedulingConfigs.siteId],
-        set: {
+    await db.transaction(async (tx) => {
+      await tx
+        .insert(timesheetSchedulingConfigs)
+        .values({
+          siteId: payload.siteId,
           scheduleType: payload.scheduleType,
           rosterType: payload.rosterType,
           msaType: payload.msaType,
@@ -3030,249 +3015,273 @@ export async function saveSchedulingConfigAction(
           pdfConfig: payload.pdfConfig,
           savedByUserId,
           updatedAt: now,
-        },
-      })
-
-    // Synchronize timezone with hero_sites
-    await tx.update(sites).set({ timezone: resolvedTimezone }).where(eq(sites.id, payload.siteId))
-
-    let structureId: number | null = null
-    const getStructureId = async () => {
-      if (structureId) return structureId
-      const structureName = `Overtime & SPL - ${site.name}`
-      const [existing] = await tx
-        .select({ id: orgChartStructures.id })
-        .from(orgChartStructures)
-        .where(eq(orgChartStructures.name, structureName))
-        .limit(1)
-      if (existing) {
-        structureId = existing.id
-        return structureId
-      }
-      const [created] = await tx
-        .insert(orgChartStructures)
-        .values({
-          name: structureName,
-          scopeType: 'site',
-          scopeValue: site.name,
-          description: 'Approval Overtime dan SPL dari Konfigurasi Site.',
-          isActive: true,
-          createdAt: now,
-          updatedAt: now,
         })
-        .returning({ id: orgChartStructures.id })
-      structureId = created.id
-      return structureId
-    }
+        .onConflictDoUpdate({
+          target: [timesheetSchedulingConfigs.siteId],
+          set: {
+            scheduleType: payload.scheduleType,
+            rosterType: payload.rosterType,
+            msaType: payload.msaType,
+            mealsType: payload.mealsType,
+            overtimeType: payload.overtimeType,
+            timezone: resolvedTimezone,
+            fieldBreakConfig: payload.fieldBreakConfig,
+            allowanceVariables: payload.allowanceVariables,
+            overtimeVariables: payload.overtimeVariables,
+            overtimeConfig: payload.overtimeConfig,
+            pdfConfig: payload.pdfConfig,
+            savedByUserId,
+            updatedAt: now,
+          },
+        })
 
-    for (const row of sanitizedApprovalSections) {
-      const sectionName = sectionNames.get(row.sectionId) ?? `Section ${row.sectionId}`
-      const matrixConfigs = [
-        {
-          transactionType: 'overtime_request',
-          activityType: 'overtime_command_letter',
-          name: `Overtime & SPL - ${site.name} - ${sectionName}`,
-        },
-        {
-          transactionType: 'activity',
-          activityType: '',
-          name: `Daily Activity - ${site.name} - ${sectionName}`,
-        },
-        {
-          transactionType: 'apd-request',
-          activityType: '',
-          name: `Request Barang / APD - ${site.name} - ${sectionName}`,
-        },
-      ] as const
-      const existingMatrices = await tx
-        .select({ id: approvalMatrices.id, transactionType: approvalMatrices.transactionType })
-        .from(approvalMatrices)
-        .where(
-          and(
-            inArray(
-              approvalMatrices.transactionType,
-              matrixConfigs.map((config) => config.transactionType)
-            ),
-            eq(approvalMatrices.siteId, payload.siteId),
-            eq(approvalMatrices.sectionId, row.sectionId)
-          )
-        )
-      const existingOvertimeMatrix = existingMatrices.find(
-        (matrix) => matrix.transactionType === 'overtime_request'
-      )
-      const overtimeMatrixId =
-        row.matrixId != null && row.matrixId === existingOvertimeMatrix?.id
-          ? row.matrixId
-          : (existingOvertimeMatrix?.id ?? null)
-      const roles = [
-        { key: 'pjo', label: 'PJO Leader', stepOrder: 1, employeeId: row.pjoLeaderId },
-        { key: 'section-head', label: 'Section Head', stepOrder: 2, employeeId: row.sectionHeadId },
-        { key: 'dept-head', label: 'Dept Head', stepOrder: 3, employeeId: row.departmentHeadId },
-      ] as const
-      if (roles.every((role) => role.employeeId == null)) {
-        if (existingMatrices.length > 0) {
-          await tx
-            .update(approvalMatrices)
-            .set({ isActive: false, updatedAt: now })
-            .where(
-              inArray(
-                approvalMatrices.id,
-                existingMatrices.map((matrix) => matrix.id)
-              )
-            )
-        }
-        continue
-      }
+      // Synchronize timezone with hero_sites
+      await tx.update(sites).set({ timezone: resolvedTimezone }).where(eq(sites.id, payload.siteId))
 
-      const activeStructureId = await getStructureId()
-      const nodes: Array<{
-        id: number
-        label: string
-        stepOrder: number
-        employeeId: number | null
-      }> = []
-      for (const role of roles) {
-        const nodeCode = `overtime-spl:${payload.siteId}:${row.sectionId}:${role.key}`
-        const [existingNode] = await tx
-          .select({ id: orgChartNodes.id })
-          .from(orgChartNodes)
-          .where(
-            and(
-              eq(orgChartNodes.structureId, activeStructureId),
-              eq(orgChartNodes.nodeCode, nodeCode)
-            )
-          )
+      let structureId: number | null = null
+      const getStructureId = async () => {
+        if (structureId) return structureId
+        const structureName = `Overtime & SPL - ${site.name}`
+        const [existing] = await tx
+          .select({ id: orgChartStructures.id })
+          .from(orgChartStructures)
+          .where(eq(orgChartStructures.name, structureName))
           .limit(1)
-        const node = existingNode
-          ? (
-              await tx
-                .update(orgChartNodes)
-                .set({
-                  employeeId: role.employeeId,
-                  approvalRole: role.label,
-                  canApprove: true,
-                  isActive: true,
-                  updatedAt: now,
-                })
-                .where(eq(orgChartNodes.id, existingNode.id))
-                .returning({ id: orgChartNodes.id })
-            )[0]
-          : (
-              await tx
-                .insert(orgChartNodes)
-                .values({
-                  structureId: activeStructureId,
-                  employeeId: role.employeeId,
-                  nodeCode,
-                  nodeType: 'employee',
-                  approvalRole: role.label,
-                  canApprove: true,
-                  label: `${role.label} - ${sectionName}`,
-                  sortOrder: role.stepOrder,
-                  isActive: true,
-                  createdAt: now,
-                  updatedAt: now,
-                })
-                .returning({ id: orgChartNodes.id })
-            )[0]
-        await tx.delete(orgNodeAssignments).where(eq(orgNodeAssignments.nodeId, node.id))
-        if (role.employeeId) {
-          await tx.insert(orgNodeAssignments).values({
-            nodeId: node.id,
-            employeeId: role.employeeId,
-            assignmentType: 'primary',
-            notes: 'Synced from Scheduling Timesheet Site Configuration.',
-            effectiveFrom: now,
+        if (existing) {
+          structureId = existing.id
+          return structureId
+        }
+        const [created] = await tx
+          .insert(orgChartStructures)
+          .values({
+            name: structureName,
+            scopeType: 'site',
+            scopeValue: site.name,
+            description: 'Approval Overtime dan SPL dari Konfigurasi Site.',
             isActive: true,
             createdAt: now,
             updatedAt: now,
           })
-        }
-        nodes.push({ ...role, id: node.id })
+          .returning({ id: orgChartStructures.id })
+        structureId = created.id
+        return structureId
       }
 
-      const activeNodes = nodes.filter((node) => node.employeeId != null)
-      for (const config of matrixConfigs) {
-        const existingMatrixId =
-          config.transactionType === 'overtime_request'
-            ? overtimeMatrixId
-            : (existingMatrices.find((matrix) => matrix.transactionType === config.transactionType)
-                ?.id ?? null)
-        const matrixValues = {
-          name: config.name,
-          structureId: activeStructureId,
-          transactionType: config.transactionType,
-          siteId: payload.siteId,
-          departmentId: row.departmentId,
-          sectionId: row.sectionId,
-          activityType: config.activityType,
-          priority: 'any',
-          minOvertimeMinutes: 0,
-          description:
-            'Synced from Scheduling Timesheet Site Configuration for Daily Activity, Overtime/SPL, and Request Barang/APD.',
-          isActive: true,
-          updatedAt: now,
+      for (const row of sanitizedApprovalSections) {
+        const sectionName = sectionNames.get(row.sectionId) ?? `Section ${row.sectionId}`
+        const matrixConfigs = [
+          {
+            transactionType: 'overtime_request',
+            activityType: 'overtime_command_letter',
+            name: `Overtime & SPL - ${site.name} - ${sectionName}`,
+          },
+          {
+            transactionType: 'activity',
+            activityType: '',
+            name: `Daily Activity - ${site.name} - ${sectionName}`,
+          },
+          {
+            transactionType: 'apd-request',
+            activityType: '',
+            name: `Request Barang / APD - ${site.name} - ${sectionName}`,
+          },
+        ] as const
+        const existingMatrices = await tx
+          .select({ id: approvalMatrices.id, transactionType: approvalMatrices.transactionType })
+          .from(approvalMatrices)
+          .where(
+            and(
+              inArray(
+                approvalMatrices.transactionType,
+                matrixConfigs.map((config) => config.transactionType)
+              ),
+              eq(approvalMatrices.siteId, payload.siteId),
+              eq(approvalMatrices.sectionId, row.sectionId)
+            )
+          )
+        const existingOvertimeMatrix = existingMatrices.find(
+          (matrix) => matrix.transactionType === 'overtime_request'
+        )
+        const overtimeMatrixId =
+          row.matrixId != null && row.matrixId === existingOvertimeMatrix?.id
+            ? row.matrixId
+            : (existingOvertimeMatrix?.id ?? null)
+        const roles = [
+          { key: 'pjo', label: 'PJO Leader', stepOrder: 1, employeeId: row.pjoLeaderId },
+          { key: 'section-head', label: 'Section Head', stepOrder: 2, employeeId: row.sectionHeadId },
+          { key: 'dept-head', label: 'Dept Head', stepOrder: 3, employeeId: row.departmentHeadId },
+        ] as const
+        if (roles.every((role) => role.employeeId == null)) {
+          if (existingMatrices.length > 0) {
+            await tx
+              .update(approvalMatrices)
+              .set({ isActive: false, updatedAt: now })
+              .where(
+                inArray(
+                  approvalMatrices.id,
+                  existingMatrices.map((matrix) => matrix.id)
+                )
+              )
+          }
+          continue
         }
-        const savedMatrixId = existingMatrixId
-          ? (
-              await tx
-                .update(approvalMatrices)
-                .set(matrixValues)
-                .where(eq(approvalMatrices.id, existingMatrixId))
-                .returning({ id: approvalMatrices.id })
-            )[0].id
-          : (
-              await tx
-                .insert(approvalMatrices)
-                .values({ ...matrixValues, effectiveFrom: now, createdAt: now })
-                .returning({ id: approvalMatrices.id })
-            )[0].id
 
-        await tx.delete(approvalMatrixSteps).where(eq(approvalMatrixSteps.matrixId, savedMatrixId))
-        if (activeNodes.length > 0) {
-          await tx.insert(approvalMatrixSteps).values(
-            activeNodes.map((node) => ({
-              matrixId: savedMatrixId,
-              stepOrder: node.stepOrder,
-              label: node.label,
+        const activeStructureId = await getStructureId()
+        const nodes: Array<{
+          id: number
+          label: string
+          stepOrder: number
+          employeeId: number | null
+        }> = []
+        for (const role of roles) {
+          const nodeCode = `overtime-spl:${payload.siteId}:${row.sectionId}:${role.key}`
+          const [existingNode] = await tx
+            .select({ id: orgChartNodes.id })
+            .from(orgChartNodes)
+            .where(
+              and(
+                eq(orgChartNodes.structureId, activeStructureId),
+                eq(orgChartNodes.nodeCode, nodeCode)
+              )
+            )
+            .limit(1)
+          const node = existingNode
+            ? (
+                await tx
+                  .update(orgChartNodes)
+                  .set({
+                    employeeId: role.employeeId,
+                    approvalRole: role.label,
+                    canApprove: true,
+                    isActive: true,
+                    updatedAt: now,
+                  })
+                  .where(eq(orgChartNodes.id, existingNode.id))
+                  .returning({ id: orgChartNodes.id })
+              )[0]
+            : (
+                await tx
+                  .insert(orgChartNodes)
+                  .values({
+                    structureId: activeStructureId,
+                    employeeId: role.employeeId,
+                    nodeCode,
+                    nodeType: 'employee',
+                    approvalRole: role.label,
+                    canApprove: true,
+                    label: `${role.label} - ${sectionName}`,
+                    sortOrder: role.stepOrder,
+                    isActive: true,
+                    createdAt: now,
+                    updatedAt: now,
+                  })
+                  .returning({ id: orgChartNodes.id })
+              )[0]
+          await tx.delete(orgNodeAssignments).where(eq(orgNodeAssignments.nodeId, node.id))
+          if (role.employeeId) {
+            await tx.insert(orgNodeAssignments).values({
               nodeId: node.id,
-              approvalMode: 'sequential',
-              slaHours: 24,
-              canDelegate: true,
-              isRequired: true,
+              employeeId: role.employeeId,
+              assignmentType: 'primary',
+              notes: 'Synced from Scheduling Timesheet Site Configuration.',
+              effectiveFrom: now,
+              isActive: true,
               createdAt: now,
               updatedAt: now,
-            }))
-          )
+            })
+          }
+          nodes.push({ ...role, id: node.id })
+        }
+
+        const activeNodes = nodes.filter((node) => node.employeeId != null)
+        for (const config of matrixConfigs) {
+          const existingMatrixId =
+            config.transactionType === 'overtime_request'
+              ? overtimeMatrixId
+              : (existingMatrices.find((matrix) => matrix.transactionType === config.transactionType)
+                  ?.id ?? null)
+          const matrixValues = {
+            name: config.name,
+            structureId: activeStructureId,
+            transactionType: config.transactionType,
+            siteId: payload.siteId,
+            departmentId: row.departmentId,
+            sectionId: row.sectionId,
+            activityType: config.activityType,
+            priority: 'any',
+            minOvertimeMinutes: 0,
+            description:
+              'Synced from Scheduling Timesheet Site Configuration for Daily Activity, Overtime/SPL, and Request Barang/APD.',
+            isActive: true,
+            updatedAt: now,
+          }
+          const savedMatrixId = existingMatrixId
+            ? (
+                await tx
+                  .update(approvalMatrices)
+                  .set(matrixValues)
+                  .where(eq(approvalMatrices.id, existingMatrixId))
+                  .returning({ id: approvalMatrices.id })
+              )[0].id
+            : (
+                await tx
+                  .insert(approvalMatrices)
+                  .values({ ...matrixValues, effectiveFrom: now, createdAt: now })
+                  .returning({ id: approvalMatrices.id })
+              )[0].id
+
+          await tx.delete(approvalMatrixSteps).where(eq(approvalMatrixSteps.matrixId, savedMatrixId))
+          if (activeNodes.length > 0) {
+            await tx.insert(approvalMatrixSteps).values(
+              activeNodes.map((node) => ({
+                matrixId: savedMatrixId,
+                stepOrder: node.stepOrder,
+                label: node.label,
+                nodeId: node.id,
+                approvalMode: 'sequential',
+                slaHours: 24,
+                canDelegate: true,
+                isRequired: true,
+                createdAt: now,
+                updatedAt: now,
+              }))
+            )
+          }
         }
       }
+    })
+
+    await logAuditEvent({
+      actorEmail,
+      action: 'timesheet.config_saved',
+      entityType: 'timesheet_scheduling_config',
+      entityLabel: String(payload.siteId),
+      description: 'Saved scheduling timesheet configuration.',
+    })
+
+    // Automatically re-evaluate and sync timesheet attendance under the configured timezone
+    try {
+      await resyncSiteAttendanceToTimesheet(payload.siteId)
+    } catch (error) {
+      console.error(
+        `[saveSchedulingConfig] Auto-resync attendance warning for site=${payload.siteId}:`,
+        error
+      )
     }
-  })
 
-  await logAuditEvent({
-    actorEmail,
-    action: 'timesheet.config_saved',
-    entityType: 'timesheet_scheduling_config',
-    entityLabel: String(payload.siteId),
-    description: 'Saved scheduling timesheet configuration.',
-  })
-
-  // Automatically re-evaluate and sync timesheet attendance under the configured timezone
-  try {
-    await resyncSiteAttendanceToTimesheet(payload.siteId)
+    revalidatePath('/dashboard/scheduling-timesheet')
+    revalidatePath('/dashboard/scheduling-timesheet/setup')
+    revalidatePath('/dashboard/master-data')
+    revalidatePath('/dashboard/attendance')
+    revalidatePath('/dashboard/attendance/records')
+    return { ok: true }
   } catch (error) {
-    console.error(
-      `[saveSchedulingConfig] Auto-resync attendance warning for site=${payload.siteId}:`,
-      error
-    )
+    console.error('[saveSchedulingConfigAction] Error saving config:', error)
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : 'Konfigurasi roster / site gagal disimpan.',
+    }
   }
-
-  revalidatePath('/dashboard/scheduling-timesheet')
-  revalidatePath('/dashboard/scheduling-timesheet/setup')
-  revalidatePath('/dashboard/master-data')
-  revalidatePath('/dashboard/attendance')
-  revalidatePath('/dashboard/attendance/records')
-  return { ok: true }
 }
 
 export async function resyncSiteAttendanceAction(siteId: number, period?: string) {
