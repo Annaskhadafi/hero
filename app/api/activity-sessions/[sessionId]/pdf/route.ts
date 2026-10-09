@@ -528,6 +528,7 @@ async function drawWorkTable(
     if (item.unitNumber && item.unitNumber !== '-' && !item.snapshotLabel?.includes(item.unitNumber)) details.push(item.unitNumber)
     if ((item as any).tireCount && Number((item as any).tireCount) > 0) details.push(`${(item as any).tireCount} Tire`)
     if ((item as any).materialUsed) details.push(`Mat: ${(item as any).materialUsed}`)
+    if ((item as any).itemTeamMembersSummary) details.push(`Tim: ${(item as any).itemTeamMembersSummary}`)
     const actLabel = [item.snapshotLabel || item.workSummary || "-", details.join(" • ")].filter(Boolean).join(" - ");
     const activityLines = splitText(actLabel, 38);
     let actY = rowTopY - 11;
@@ -569,6 +570,9 @@ async function drawWorkTable(
     let remarkText = (item.remark?.trim() || (item as any).remarks?.trim() || item.workSummary?.match(/Remark:\s*([^,\-]+)/i)?.[1]?.trim() || "-");
     if (item.unitNumber && item.unitNumber !== '-' && !remarkText.includes(item.unitNumber)) {
       remarkText = remarkText === '-' ? `Unit: ${item.unitNumber}` : `[Unit: ${item.unitNumber}] ${remarkText}`;
+    }
+    if ((item as any).itemTeamMembersSummary && !remarkText.includes((item as any).itemTeamMembersSummary)) {
+      remarkText = remarkText === '-' ? `[Tim: ${(item as any).itemTeamMembersSummary}]` : `[Tim: ${(item as any).itemTeamMembersSummary}] ${remarkText}`;
     }
     const remarkLines = splitText(remarkText, 30);
     let remY = rowTopY - 11;

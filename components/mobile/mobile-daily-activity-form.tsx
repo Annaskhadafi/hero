@@ -1730,19 +1730,59 @@ export function MobileDailyActivityForm({
     return () => clearInterval(timer)
   }, [libraryPickerOpen, isPdfOpen, memberPickerOpen])
 
+  const allTeamMembersPool = useMemo(() => {
+    const map = new Map<number, any>()
+    if (teamMembers && teamMembers.length > 0) {
+      teamMembers.forEach((m: any) => {
+        if (m && m.id) map.set(m.id, m)
+      })
+    }
+    if (candidateEmployees && candidateEmployees.length > 0) {
+      candidateEmployees.forEach((m: any) => {
+        if (m && m.id && !map.has(m.id)) {
+          map.set(m.id, {
+            id: m.id,
+            name: m.name,
+            employeeSn: m.employeeSn || m.employeeId || null,
+            role: m.position || m.role || 'Staff',
+            department: m.department || '',
+            siteId: m.siteId || null,
+            siteName: m.siteName || '',
+            section: m.section || '',
+          })
+        }
+      })
+    }
+    if (allEmployees && allEmployees.length > 0) {
+      allEmployees.forEach((m: any) => {
+        if (m && m.id && !map.has(m.id)) {
+          map.set(m.id, {
+            id: m.id,
+            name: m.name,
+            employeeSn: m.employeeSn || m.employeeId || null,
+            role: m.position || m.role || 'Staff',
+            department: m.department || '',
+            section: m.section || '',
+          })
+        }
+      })
+    }
+    return Array.from(map.values())
+  }, [teamMembers, candidateEmployees, allEmployees])
+
   const filteredTeamMembers = useMemo(() => {
     const q = memberSearch.trim().toLowerCase()
-    const pool = (teamMembers || []).filter((m) => m.id !== employeeId)
+    const pool = allTeamMembersPool.filter((m) => m.id !== employeeId)
     if (!q) return pool
     return pool.filter(
       (m) =>
-        m.name.toLowerCase().includes(q) ||
+        (m.name || '').toLowerCase().includes(q) ||
         (m.employeeSn && m.employeeSn.toLowerCase().includes(q)) ||
         (m.role && m.role.toLowerCase().includes(q)) ||
         (m.section && m.section.toLowerCase().includes(q)) ||
         (m.siteName && m.siteName.toLowerCase().includes(q))
     )
-  }, [teamMembers, memberSearch, employeeId])
+  }, [allTeamMembersPool, memberSearch, employeeId])
 
   const safeAvailableLibrary = useMemo(() => {
     const list = [...(availableLibrary || [])]
@@ -3740,7 +3780,7 @@ export function MobileDailyActivityForm({
           </div>
         </section>
 
-        {teamMembers && teamMembers.length > 0 ? (
+        {allTeamMembersPool && allTeamMembersPool.length > 0 ? (
           <section className="space-y-3 rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
@@ -3866,7 +3906,7 @@ export function MobileDailyActivityForm({
                 {selectedMemberIds.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 pt-1">
                     {selectedMemberIds.map((id) => {
-                      const member = teamMembers.find((m) => m.id === id)
+                      const member = allTeamMembersPool.find((m) => m.id === id)
                       if (!member) return null
                       return (
                         <Badge
@@ -4254,7 +4294,7 @@ export function MobileDailyActivityForm({
                         </Label>
 
                         <ItemTeamPicker
-                          allTeamMembers={(teamMembers && teamMembers.length > 0 ? teamMembers : candidateEmployees) || []}
+                          allTeamMembers={allTeamMembersPool}
                           sessionTeamIds={selectedMemberIds}
                           isSessionTeamLog={isTeamLog}
                           itemTeamMemberIds={entry.itemTeamMemberIds}
@@ -5183,7 +5223,7 @@ export function MobileDailyActivityForm({
 
                 const fallbackTeamMatch = (initialSessionData?.summaryRemark || initialSessionData?.notes || '').match(/\[Team:\s*([^\]]+)\]/i)
                 const teamSummary = (isTeamLog && selectedMemberIds.length > 0)
-                  ? teamMembers?.filter((m) => selectedMemberIds.includes(m.id)).map((m) => m.name).join(', ') || initialTeamNames || (fallbackTeamMatch ? fallbackTeamMatch[1].trim() : '')
+                  ? allTeamMembersPool.filter((m) => selectedMemberIds.includes(m.id)).map((m) => m.name).join(', ') || initialTeamNames || (fallbackTeamMatch ? fallbackTeamMatch[1].trim() : '')
                   : (initialTeamNames || (fallbackTeamMatch ? fallbackTeamMatch[1].trim() : ''))
 
                 const isSplDoc = Boolean(initialSessionData?.splId || initialSessionData?.splNumber)

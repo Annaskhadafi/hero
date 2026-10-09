@@ -49,6 +49,7 @@ const COMPLETE_MENU_DEFINITIONS = [
   { section: "Human Capital", title: "Surat", url: "/dashboard/hc/surat", iconName: "file-word", resource: "hc_surat", sortOrder: 5, menuArea: "main", groupLabel: "HR Operational" },
   { section: "Human Capital", title: "Izin Sakit & Terlambat", url: "/dashboard/hc/permission", iconName: "shield-alert", resource: "hc_attendance_permission", sortOrder: 6, menuArea: "main", groupLabel: "HR Operational" },
   { section: "Human Capital", title: "Contract Review", url: "/dashboard/hc/contract-review", iconName: "file-signature", resource: "hc_contract_review", sortOrder: 7, menuArea: "main", groupLabel: "HR Operational" },
+  { section: "Human Capital", title: "Perubahan Rute", url: "/dashboard/hc/flight-route-change", iconName: "plane-takeoff", resource: "hc_flight_route_change", sortOrder: 8, menuArea: "main", groupLabel: "HR Operational" },
   { section: "Human Capital", title: "Disciplinary", url: "/dashboard/hc/disciplinary", iconName: "shield-alert", resource: "hc_disciplinary", sortOrder: 8, menuArea: "main", groupLabel: "HR Operational" },
   { section: "Human Capital", title: "Org Structure V2", url: "/dashboard/hc/org-chart-v2", iconName: "list-details", resource: "hc_org_chart_v2", sortOrder: 9, menuArea: "main", groupLabel: "HR Operational" },
   { section: "Human Capital", title: "Recruitment", url: "/dashboard/hc/recruitment", iconName: "users", resource: "hc_recruitment", sortOrder: 10, menuArea: "main", groupLabel: "Recruitment Management" },

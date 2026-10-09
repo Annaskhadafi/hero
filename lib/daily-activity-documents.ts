@@ -3,6 +3,7 @@ import { db } from '@/db'
 import {
   dailyActivityApprovals,
   dailyActivitySessionItems,
+  dailyActivitySessionItemTeamMembers,
   dailyActivitySessionSignoffs,
   dailyActivitySessionTeamMembers,
   dailyActivitySessions,
@@ -98,7 +99,7 @@ export async function getDailyActivitySessionDocumentData(
 
 
 
-  const [itemRows, approvalsRows, signoff] = await Promise.all([
+  const [itemRows, approvalsRows, signoff, itemTeamMemberRows] = await Promise.all([
     db
       .select({
         id: dailyActivitySessionItems.id,
@@ -141,6 +142,19 @@ export async function getDailyActivitySessionDocumentData(
       .where(eq(dailyActivitySessionSignoffs.sessionId, sessionId))
       .limit(1)
       .then((rows) => rows[0] ?? null),
+    db
+      .select({
+        itemId: dailyActivitySessionItemTeamMembers.itemId,
+        employeeId: employees.id,
+        name: employees.name,
+      })
+      .from(dailyActivitySessionItemTeamMembers)
+      .innerJoin(employees, eq(dailyActivitySessionItemTeamMembers.employeeId, employees.id))
+      .innerJoin(
+        dailyActivitySessionItems,
+        eq(dailyActivitySessionItemTeamMembers.itemId, dailyActivitySessionItems.id)
+      )
+      .where(eq(dailyActivitySessionItems.sessionId, sessionId)),
   ])
 
   const isApprover = approvalsRows.some(
@@ -193,6 +207,15 @@ export async function getDailyActivitySessionDocumentData(
     }
   }
 
+  const itemTeamMap = new Map<number, string[]>()
+  if (Array.isArray(itemTeamMemberRows)) {
+    itemTeamMemberRows.forEach((r) => {
+      const list = itemTeamMap.get(r.itemId) || []
+      list.push(r.name)
+      itemTeamMap.set(r.itemId, list)
+    })
+  }
+
   const checkedItems = itemRows
     .filter((item) => item.isChecked)
     .map((item) => {
@@ -223,11 +246,23 @@ export async function getDailyActivitySessionDocumentData(
       const tireCount = Number(parsedPayload?.tireCount ?? (parsedPayload?.requiresTireCount ? 1 : 0)) || 0
       const materialUsed = String(parsedPayload?.materialUsed ?? '').trim()
 
+      const dbItemTeam = itemTeamMap.get(item.id) || []
+      const payloadItemTeam =
+        Array.isArray(parsedPayload?.itemTeamMembers) && parsedPayload.itemTeamMembers.length > 0
+          ? parsedPayload.itemTeamMembers.map((m: any) => m.name || m.employeeName).filter(Boolean)
+          : parsedPayload?.itemTeamMembersSummary
+          ? parsedPayload.itemTeamMembersSummary.split(',').map((s: string) => s.trim()).filter(Boolean)
+          : []
+
+      const combinedItemTeam = Array.from(new Set([...dbItemTeam, ...payloadItemTeam]))
+      const itemTeamMembersSummary = combinedItemTeam.length > 0 ? combinedItemTeam.join(', ') : null
+
       return {
         ...item,
         photoUrl,
         tireCount,
         materialUsed,
+        itemTeamMembersSummary,
         durationMinutes,
         durationLabel: formatDurationLabel(durationMinutes),
         dayLabel: header.workDate.toLocaleDateString('id-ID', { weekday: 'long' }),

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { desc, eq, asc, and, inArray } from "drizzle-orm";
+import { desc, eq, asc, and, inArray, ne, sql } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -163,21 +163,25 @@ export default async function MobileActivityPage({
             department: employees.department,
             siteId: employees.siteId,
             sectionId: employees.sectionId,
+            section: employees.section,
+            employeeSn: employees.employeeSn,
             employeeId: employees.employeeSn,
             jobTitle: employees.jobTitle,
+            siteName: sites.name,
           })
           .from(employees)
+          .leftJoin(sites, eq(employees.siteId, sites.id))
+          .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
           .where(
             and(
               eq(employees.isActive, true),
-              data.employee.siteId && data.employee.sectionId
-                ? and(eq(employees.siteId, data.employee.siteId), eq(employees.sectionId, data.employee.sectionId))
-                : data.employee.siteId
-                  ? eq(employees.siteId, data.employee.siteId)
-                  : undefined
+              ne(employees.id, data.employee.id)
             )
           )
-          .orderBy(asc(employees.name)),
+          .orderBy(
+            sql`CASE WHEN ${employees.siteId} = ${data.employee.siteId || 0} THEN 0 ELSE 1 END`,
+            asc(employees.name)
+          ),
       [],
       "teamMembers"
     ),

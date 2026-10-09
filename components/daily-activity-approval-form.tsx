@@ -1077,11 +1077,12 @@ export function DailyActivityApprovalForm({
                 <td className="text-center align-middle">{idx + 1}</td>
                 <td className="align-middle">
                   <div className="font-semibold">{item.label}</div>
-                  {(item.unitNumber || item.tireCount != null || item.materialUsed) && (
+                  {(item.unitNumber || item.tireCount != null || item.materialUsed || (item as any).itemTeamMembersSummary) && (
                     <div className="text-[7pt] text-slate-600 flex flex-wrap gap-x-2 mt-0.5">
                       {item.unitNumber ? <span>Unit: <strong>{item.unitNumber}</strong></span> : null}
                       {item.tireCount != null ? <span>Tire: <strong>{item.tireCount}</strong></span> : null}
                       {item.materialUsed ? <span>Mat: <strong>{item.materialUsed}</strong></span> : null}
+                      {(item as any).itemTeamMembersSummary ? <span>Tim: <strong className="text-blue-700">{(item as any).itemTeamMembersSummary}</strong></span> : null}
                     </div>
                   )}
                 </td>
