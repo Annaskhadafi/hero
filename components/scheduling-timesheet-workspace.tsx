@@ -5681,6 +5681,13 @@ export function SchedulingTimesheetWorkspace({
       : ''
     const cfgHr = cfg.hrName?.trim() || ''
 
+    const sectionApproval = siteApprovalSections.find((s) => {
+      const sName = (s.sectionName || '').toLowerCase()
+      return normSection && (sName.includes(normSection) || normSection.includes(sName))
+    })
+    const sectionPjo = sectionApproval?.pjoLeaderName?.trim() || ''
+    const sectionApprovedBy = sectionApproval?.departmentHeadName?.trim() || ''
+
     if (
       normSection.includes('hse') ||
       normSection.includes('safety') ||
@@ -5690,8 +5697,8 @@ export function SchedulingTimesheetWorkspace({
       return {
         ...baseSignatures,
         preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy || fathurrahman,
-        pjoLeader: cfgPjo || andiSafari,
-        approvedBy: cfgApprovedBy || rendra,
+        pjoLeader: cfgPjo || sectionPjo || andiSafari,
+        approvedBy: cfgApprovedBy || sectionApprovedBy || rendra,
         hrName: cfgHr || kesuma,
       }
     }
@@ -5700,8 +5707,8 @@ export function SchedulingTimesheetWorkspace({
       return {
         ...baseSignatures,
         preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy || arjun,
-        pjoLeader: cfgPjo || ary,
-        approvedBy: cfgApprovedBy || romy,
+        pjoLeader: cfgPjo || sectionPjo || ary,
+        approvedBy: cfgApprovedBy || sectionApprovedBy || romy,
         hrName: cfgHr || kesuma,
       }
     }
@@ -5711,8 +5718,8 @@ export function SchedulingTimesheetWorkspace({
       return {
         ...baseSignatures,
         preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy || fauzan,
-        pjoLeader: cfgPjo || defaultPjo,
-        approvedBy: cfgApprovedBy || romy,
+        pjoLeader: cfgPjo || sectionPjo || defaultPjo,
+        approvedBy: cfgApprovedBy || sectionApprovedBy || romy,
         hrName: cfgHr || kesuma,
       }
     }
@@ -5721,8 +5728,8 @@ export function SchedulingTimesheetWorkspace({
       return {
         ...baseSignatures,
         preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy,
-        pjoLeader: cfgPjo || abian,
-        approvedBy: cfgApprovedBy || romy,
+        pjoLeader: cfgPjo || sectionPjo || abian,
+        approvedBy: cfgApprovedBy || sectionApprovedBy || romy,
         hrName: cfgHr || kesuma,
       }
     }
@@ -5730,8 +5737,8 @@ export function SchedulingTimesheetWorkspace({
     return {
       ...baseSignatures,
       preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy,
-      pjoLeader: cfgPjo || baseSignatures.pjoLeader,
-      approvedBy: cfgApprovedBy || baseSignatures.approvedBy,
+      pjoLeader: cfgPjo || sectionPjo || baseSignatures.pjoLeader,
+      approvedBy: cfgApprovedBy || sectionApprovedBy || baseSignatures.approvedBy,
       hrName: cfgHr || baseSignatures.hrName,
     }
   }

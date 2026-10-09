@@ -82,30 +82,39 @@ export function RouteFolderTree({
           .map((group) => {
             const matchingItems = (group.items || [])
               .map((item) => {
-                const lib = item.libraryActivityId != null ? availableLibraryMap.get(String(item.libraryActivityId)) : null
-                const numId = item.libraryActivityId ?? (-item.id)
-                const fallbackOpt = availableLibraryMap.get(String(numId))
-                if (fallbackOpt) return fallbackOpt
+                const compoundId = `${group.id}_${item.libraryActivityId ?? item.id}`
+                const lib = availableLibraryMap.get(compoundId) ?? (item.libraryActivityId != null ? availableLibraryMap.get(String(item.libraryActivityId)) : null)
+                if (lib) {
+                  return {
+                    ...lib,
+                    id: compoundId as any,
+                    groupName: group.groupName,
+                    libraryActivityId: item.libraryActivityId ?? lib.libraryActivityId ?? null,
+                  }
+                }
 
+                const numId = item.libraryActivityId ?? (-item.id)
                 const opt: LibraryOption = {
-                  id: numId,
-                  activityCode: item.itemCode || item.libraryCode || lib?.activityCode || 'CUSTOM',
-                  activityName: item.itemLabel || item.libraryName || lib?.activityName || 'Aktivitas',
-                  basePoints: Number(item.pointOverride ?? item.libraryPoints ?? lib?.basePoints) || 5,
-                  requiresPhoto: item.requiresPhoto ?? lib?.requiresPhoto ?? false,
-                  requiresEquipmentNo: item.requiresUnit ?? lib?.requiresEquipmentNo ?? false,
-                  requiresDuration: item.requiresTime ?? lib?.requiresDuration ?? true,
-                  requiresLocationGps: item.requiresLocationGps ?? lib?.requiresLocationGps ?? false,
-                  requiresMaterialUsed: item.requiresMaterialUsed ?? lib?.requiresMaterialUsed ?? false,
-                  requiresTireCount: item.requiresTireCount ?? lib?.requiresTireCount ?? false,
-                  maxDailyCount: lib?.maxDailyCount ?? 99,
-                  maxPointsPerDay: lib?.maxPointsPerDay ?? 999,
-                  departmentId: lib?.departmentId ?? null,
-                  sectionId: lib?.sectionId ?? null,
-                  isSelfInput: lib?.isSelfInput ?? true,
-                  isAssignable: lib?.isAssignable ?? true,
-                  approvalRequired: lib?.approvalRequired ?? true,
-                  autoApproveIfGpsValid: lib?.autoApproveIfGpsValid ?? false,
+                  id: compoundId as any,
+                  libraryActivityId: item.libraryActivityId ?? null,
+                  groupName: group.groupName,
+                  activityCode: item.itemCode || item.libraryCode || 'CUSTOM',
+                  activityName: item.itemLabel || item.libraryName || 'Aktivitas',
+                  basePoints: Number(item.pointOverride ?? item.libraryPoints) || 5,
+                  requiresPhoto: item.requiresPhoto ?? false,
+                  requiresEquipmentNo: item.requiresUnit ?? false,
+                  requiresDuration: item.requiresTime ?? true,
+                  requiresLocationGps: item.requiresLocationGps ?? false,
+                  requiresMaterialUsed: item.requiresMaterialUsed ?? false,
+                  requiresTireCount: item.requiresTireCount ?? false,
+                  maxDailyCount: 99,
+                  maxPointsPerDay: 999,
+                  departmentId: null,
+                  sectionId: null,
+                  isSelfInput: true,
+                  isAssignable: true,
+                  approvalRequired: true,
+                  autoApproveIfGpsValid: false,
                 }
                 return opt
               })
@@ -114,7 +123,8 @@ export function RouteFolderTree({
                 if (!normalizedSearch) return true
                 return (
                   lib.activityCode.toLowerCase().replace(/[^a-z0-9]/g, '').includes(normalizedSearch) ||
-                  lib.activityName.toLowerCase().replace(/[^a-z0-9]/g, '').includes(normalizedSearch)
+                  lib.activityName.toLowerCase().replace(/[^a-z0-9]/g, '').includes(normalizedSearch) ||
+                  (lib.groupName || '').toLowerCase().replace(/[^a-z0-9]/g, '').includes(normalizedSearch)
                 )
               })
             return { ...group, matchingItems }

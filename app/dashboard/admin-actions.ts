@@ -2836,7 +2836,8 @@ const overtimeClockTimeSchema = z
   .string()
   .transform((v) => {
     const clean = v.trim().slice(0, 5)
-    return /^([0-1]?\d|2[0-3]):[0-5]\d$/.test(clean) ? clean.padStart(5, '0') : '00:00'
+    if (!clean || clean === '--:--') return ''
+    return /^([0-1]?\d|2[0-3]):[0-5]\d$/.test(clean) ? clean.padStart(5, '0') : ''
   })
 
 const overtimeIntervalSchema = z.object({

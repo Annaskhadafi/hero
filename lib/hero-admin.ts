@@ -5671,9 +5671,38 @@ export async function ensureHeroGovernanceSeedData() {
     await db
       .update(navbarMenuItems)
       .set({
-        isVisible: false,
+        section: 'Roster & Timesheet',
+        title: 'Attendance',
+        url: '/dashboard/scheduling-timesheet/attendance',
+        iconName: 'checklist',
+        sortOrder: 6,
+        isVisible: true,
       })
-      .where(eq(navbarMenuItems.url, '/dashboard/repair-retread/jobcard'))
+      .where(
+        or(
+          eq(navbarMenuItems.resource, 'scheduling_timesheet_attendance'),
+          eq(navbarMenuItems.url, '/dashboard/scheduling-timesheet/attendance')
+        )
+      )
+
+    const attMenuItems = await db
+      .select()
+      .from(navbarMenuItems)
+      .where(
+        or(
+          eq(navbarMenuItems.resource, 'scheduling_timesheet_attendance'),
+          eq(navbarMenuItems.url, '/dashboard/scheduling-timesheet/attendance')
+        )
+      )
+
+    if (attMenuItems.length > 0) {
+      for (const item of attMenuItems) {
+        await db
+          .update(roleMenuPermissions)
+          .set({ canView: true, canEdit: true })
+          .where(eq(roleMenuPermissions.menuItemId, item.id))
+      }
+    }
 
     const csMenuItems = await db
       .select()
@@ -5691,6 +5720,43 @@ export async function ensureHeroGovernanceSeedData() {
         .update(roleMenuPermissions)
         .set({ canView: true, canEdit: true })
         .where(eq(roleMenuPermissions.menuItemId, csMenuId))
+    }
+
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HSE',
+        groupLabel: 'Safety Tools & Compliance',
+        title: 'Summary APD',
+        url: '/dashboard/summary',
+        iconName: 'file-text',
+        sortOrder: 11,
+        isVisible: true,
+      })
+      .where(
+        or(
+          eq(navbarMenuItems.resource, 'hse_summary_apd'),
+          eq(navbarMenuItems.url, '/dashboard/summary')
+        )
+      )
+
+    const summaryApdMenuItems = await db
+      .select()
+      .from(navbarMenuItems)
+      .where(
+        or(
+          eq(navbarMenuItems.resource, 'hse_summary_apd'),
+          eq(navbarMenuItems.url, '/dashboard/summary')
+        )
+      )
+
+    if (summaryApdMenuItems.length > 0) {
+      for (const item of summaryApdMenuItems) {
+        await db
+          .update(roleMenuPermissions)
+          .set({ canView: true, canEdit: true })
+          .where(eq(roleMenuPermissions.menuItemId, item.id))
+      }
     }
 
     const currentMenuItems = await db

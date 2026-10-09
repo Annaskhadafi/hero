@@ -115,7 +115,9 @@ type AssignmentOption = {
 }
 
 export type LibraryOption = {
-  id: number
+  id: number | string
+  libraryActivityId?: number | null
+  groupName?: string
   activityCode: string
   activityName: string
   basePoints: number
@@ -1847,11 +1849,13 @@ export function MobileDailyActivityForm({
       for (const folder of availableRouteFolders) {
         for (const group of folder.groups || []) {
           for (const item of group.items || []) {
-            const idStr = String(item.libraryActivityId ?? `route-item-${item.id}`)
-            const numId = item.libraryActivityId ?? (-item.id)
-            if (!existingIds.has(idStr) && !existingIds.has(String(numId))) {
+            const compoundId = `${group.id}_${item.libraryActivityId ?? item.id}`
+            const realLibId = item.libraryActivityId ?? (-item.id)
+            if (!existingIds.has(compoundId)) {
               list.push({
-                id: numId as any,
+                id: compoundId as any,
+                libraryActivityId: realLibId,
+                groupName: group.groupName,
                 activityCode: item.itemCode || item.libraryCode || 'CUSTOM',
                 activityName: item.itemLabel || item.libraryName || 'Aktivitas',
                 basePoints: Number(item.pointOverride ?? item.libraryPoints) || 5,
@@ -1870,15 +1874,14 @@ export function MobileDailyActivityForm({
                 approvalRequired: true,
                 autoApproveIfGpsValid: false,
               })
-              existingIds.add(idStr)
-              existingIds.add(String(numId))
+              existingIds.add(compoundId)
+            }
           }
         }
       }
     }
-  }
 
-  if (initialDraft?.selfInputActivities && initialDraft.selfInputActivities.length > 0) {
+    if (initialDraft?.selfInputActivities && initialDraft.selfInputActivities.length > 0) {
       for (const item of initialDraft.selfInputActivities) {
         const idStr = String(item.libraryActivityId || '')
         if (idStr && !existingIds.has(idStr)) {
@@ -2830,11 +2833,16 @@ export function MobileDailyActivityForm({
       const entry =
         selfInputEntries[libraryId] ??
         buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
+      const libOpt = availableLibraryMap.get(libraryId)
+      const realLibId = libOpt?.libraryActivityId ?? (typeof libOpt?.id === 'number' ? libOpt.id : Number(String(libraryId).split('_').pop()) || null)
+      const groupName = libOpt?.groupName || (entry as any).snapshotGroupName || ''
       const photos = Array.from(
         new Set((entry.previewUrls || []).filter((u: string) => typeof u === 'string' && u.trim().length > 0))
       )
       return {
-        libraryActivityId: libraryId,
+        libraryActivityId: realLibId != null ? String(realLibId) : String(libraryId),
+        group: groupName,
+        snapshotGroupName: groupName,
         equipmentNo: entry.equipmentNo,
         startTime: entry.startTime,
         endTime: entry.endTime,
@@ -2991,14 +2999,15 @@ export function MobileDailyActivityForm({
       if (!employeeId || !workDate || isSubmitting) return
       try {
         const itemsSnapshot = selectedLibraries.length > 0
-          ? selectedLibraries.map((lib) => {
-              const entry = selfInputEntries[`${lib.id}`]
-              const pUrls = entry?.previewUrls || []
-              const u = (entry?.equipmentNo || '').trim()
-              return {
-                label: `${lib.activityCode} - ${lib.activityName}`,
-                group: lib.activityCode || 'Technical',
-                libraryActivityId: lib.id,
+            ? selectedLibraries.map((lib) => {
+                const entry = selfInputEntries[`${lib.id}`]
+                const pUrls = entry?.previewUrls || []
+                const u = (entry?.equipmentNo || '').trim()
+                const realLibId = typeof lib.libraryActivityId === 'number' ? lib.libraryActivityId : (typeof lib.id === 'number' ? lib.id : Number(String(lib.id).split('_').pop()) || null)
+                return {
+                  label: `${lib.activityCode} - ${lib.activityName}`,
+                  group: lib.groupName || lib.activityCode || 'Technical',
+                  libraryActivityId: realLibId,
                 unitNumber: u,
                 startedAt: entry?.startTime || defaultStartTime,
                 endedAt: entry?.endTime || defaultEndTime,
@@ -4924,10 +4933,11 @@ export function MobileDailyActivityForm({
                       ? selectedLibraries.map((lib) => {
                           const entry = selfInputEntries[`${lib.id}`]
                           const u = (entry?.equipmentNo || '').trim()
+                          const realLibId = typeof lib.libraryActivityId === 'number' ? lib.libraryActivityId : (typeof lib.id === 'number' ? lib.id : Number(String(lib.id).split('_').pop()) || null)
                           return {
                             label: `${lib.activityCode} - ${lib.activityName}`,
-                            group: lib.activityCode || 'Technical',
-                            libraryActivityId: lib.id,
+                            group: lib.groupName || lib.activityCode || 'Technical',
+                            libraryActivityId: realLibId,
                             unitNumber: u,
                             startedAt: entry?.startTime || defaultStartTime,
                             endedAt: entry?.endTime || defaultEndTime,
