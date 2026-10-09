@@ -170,7 +170,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
   const sites = [...new Set(employees.map(e => e.site))];
 
   const masterList = data.masterCatalog && data.masterCatalog.length > 0
-    ? data.masterCatalog.map(m => ({ name: m.name, hasSize: !!m.isShoe || !!m.hasSize }))
+    ? data.masterCatalog.map(m => ({ name: m.name, hasSize: !!(m as any).isShoe || !!m.hasSize }))
     : undefined;
 
   const dynamicQtyCols = masterList

@@ -35,9 +35,52 @@ export function MaritalStatusApprovalDialog({ item }: { item: any; group?: any }
   const sigCanvas = useRef<SignatureCanvas>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [note, setNote] = useState('');
+  const [decisionChoice, setDecisionChoice] = useState<'approved' | 'rejected'>('approved');
   const [profileSig, setProfileSig] = useState<string | null>(null);
   const [isUsingProfileSig, setIsUsingProfileSig] = useState(true);
   const throttleTimer = useRef<NodeJS.Timeout | null>(null);
+
+  const handleChoiceToggle = (choice: 'approved' | 'rejected') => {
+    setDecisionChoice(choice);
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage({ type: 'previewDecision', decision: choice }, '*');
+    }
+  };
+
+  const handleNoteChange = (val: string) => {
+    setNote(val);
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage({ type: 'previewNote', note: val }, '*');
+    }
+  };
+
+  const sendLiveSignature = () => {
+    const dataUrl = isUsingProfileSig && profileSig
+      ? profileSig
+      : sigCanvas.current && !sigCanvas.current.isEmpty()
+      ? sigCanvas.current.getTrimmedCanvas().toDataURL('image/png')
+      : '';
+
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage({ type: 'previewSignature', dataUrl, level: item.level || 2 }, '*');
+    }
+  };
+
+  const syncIframePreview = () => {
+    const doSync = () => {
+      sendLiveSignature();
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage({ type: 'previewDecision', decision: decisionChoice }, '*');
+        iframeRef.current.contentWindow.postMessage({ type: 'previewNote', note }, '*');
+      }
+    };
+
+    doSync();
+    setTimeout(doSync, 100);
+    setTimeout(doSync, 300);
+    setTimeout(doSync, 600);
+    setTimeout(doSync, 1200);
+  };
 
   const reqId =
     item.maritalStatusRequestId ||
@@ -58,32 +101,29 @@ export function MaritalStatusApprovalDialog({ item }: { item: any; group?: any }
   };
 
   useEffect(() => {
+    const handleWindowMessage = (e: MessageEvent) => {
+      if (e.data && e.data.type === 'maritalPrintReady') {
+        syncIframePreview();
+      }
+    };
+    window.addEventListener('message', handleWindowMessage);
+    return () => window.removeEventListener('message', handleWindowMessage);
+  }, [decisionChoice, note, profileSig, isUsingProfileSig]);
+
+  useEffect(() => {
     if (open) {
       getUserSignatureAction().then((res) => {
         if (res.success && res.signatureDataUrl) {
           setProfileSig(res.signatureDataUrl);
           setIsUsingProfileSig(true);
-          if (iframeRef.current?.contentWindow) {
-            iframeRef.current.contentWindow.postMessage({ type: 'previewSignature', dataUrl: res.signatureDataUrl }, '*');
-          }
+          syncIframePreview();
         } else {
           setIsUsingProfileSig(false);
+          syncIframePreview();
         }
       }).catch(() => {});
     }
   }, [open]);
-
-  const sendLiveSignature = () => {
-    const dataUrl = isUsingProfileSig && profileSig
-      ? profileSig
-      : sigCanvas.current && !sigCanvas.current.isEmpty()
-      ? sigCanvas.current.getTrimmedCanvas().toDataURL('image/png')
-      : '';
-
-    if (iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.postMessage({ type: 'previewSignature', dataUrl }, '*');
-    }
-  };
 
   const handleStroke = () => {
     if (isUsingProfileSig) setIsUsingProfileSig(false);
@@ -112,7 +152,7 @@ export function MaritalStatusApprovalDialog({ item }: { item: any; group?: any }
     setIsUsingProfileSig(false);
 
     if (iframeRef.current && iframeRef.current.contentWindow) {
-      iframeRef.current.contentWindow.postMessage({ type: 'previewSignature', dataUrl: '' }, '*');
+      iframeRef.current.contentWindow.postMessage({ type: 'previewSignature', dataUrl: '', level: item.level || 2 }, '*');
     }
   };
 
@@ -121,7 +161,7 @@ export function MaritalStatusApprovalDialog({ item }: { item: any; group?: any }
     setIsUsingProfileSig(true);
     sigCanvas.current?.clear();
     if (iframeRef.current && iframeRef.current.contentWindow) {
-      iframeRef.current.contentWindow.postMessage({ type: 'previewSignature', dataUrl: profileSig }, '*');
+      iframeRef.current.contentWindow.postMessage({ type: 'previewSignature', dataUrl: profileSig, level: item.level || 2 }, '*');
     }
     toast.success("Menggunakan tanda tangan profil HERO.");
   };
@@ -158,9 +198,24 @@ export function MaritalStatusApprovalDialog({ item }: { item: any; group?: any }
           return;
         }
 
-        const res = await fetch(signatureUrlToUse);
-        const blob = await res.blob();
-        formData.append('signatureFile', blob, 'approver_signature.png');
+        if (signatureUrlToUse.startsWith('data:')) {
+          try {
+            const split = signatureUrlToUse.split(',');
+            const byteString = atob(split[1]);
+            const mimeString = split[0].split(':')[1].split(';')[0];
+            const ab = new ArrayBuffer(byteString.length);
+            const ia = new Uint8Array(ab);
+            for (let i = 0; i < byteString.length; i++) {
+              ia[i] = byteString.charCodeAt(i);
+            }
+            const blob = new Blob([ab], { type: mimeString });
+            formData.append('signatureFile', blob, 'approver_signature.png');
+          } catch (e) {
+            formData.append('signatureUrl', signatureUrlToUse);
+          }
+        } else {
+          formData.append('signatureUrl', signatureUrlToUse);
+        }
       }
 
       await reviewApprovalAction(formData);
@@ -234,7 +289,7 @@ export function MaritalStatusApprovalDialog({ item }: { item: any; group?: any }
               <iframe
                 ref={iframeRef}
                 src={printUrl}
-                onLoad={sendLiveSignature}
+                onLoad={syncIframePreview}
                 className="w-full flex-1 min-h-[200px] bg-white border-0"
                 title="Preview Dokumen Status Pernikahan"
               />
@@ -259,36 +314,67 @@ export function MaritalStatusApprovalDialog({ item }: { item: any; group?: any }
               </div>
             </div>
 
-            {/* Card 2: Tanda Tangan Approver */}
+            {/* Card 2: Keputusan Atasan Langsung */}
             <div className="rounded-xl border border-slate-200/80 bg-white p-3.5 space-y-2 shadow-2xs">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="size-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 border border-indigo-100">
-                    <PenTool className="size-4" />
+              <p className="font-bold text-slate-800 text-xs">Keputusan Atasan Langsung</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleChoiceToggle('approved')}
+                  className={cn(
+                    "flex items-center justify-center gap-2 p-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer",
+                    decisionChoice === 'approved'
+                      ? "border-emerald-500 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-500/20 shadow-xs"
+                      : "border-slate-200 bg-slate-50/60 text-slate-600 hover:bg-slate-100"
+                  )}
+                >
+                  <span className={cn(
+                    "size-4 rounded-full border flex items-center justify-center text-[10px]",
+                    decisionChoice === 'approved' ? "border-emerald-600 bg-emerald-600 text-white font-extrabold" : "border-slate-400 bg-white"
+                  )}>
+                    {decisionChoice === 'approved' ? '✓' : ''}
+                  </span>
+                  <span>MENYETUJUI</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleChoiceToggle('rejected')}
+                  className={cn(
+                    "flex items-center justify-center gap-2 p-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer",
+                    decisionChoice === 'rejected'
+                      ? "border-rose-500 bg-rose-50 text-rose-800 ring-2 ring-rose-500/20 shadow-xs"
+                      : "border-slate-200 bg-slate-50/60 text-slate-600 hover:bg-slate-100"
+                  )}
+                >
+                  <span className={cn(
+                    "size-4 rounded-full border flex items-center justify-center text-[10px]",
+                    decisionChoice === 'rejected' ? "border-rose-600 bg-rose-600 text-white font-extrabold" : "border-slate-400 bg-white"
+                  )}>
+                    {decisionChoice === 'rejected' ? '✓' : ''}
+                  </span>
+                  <span>TIDAK MENYETUJUI</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Card 3: Tanda Tangan Approver */}
+            <div className="rounded-xl border border-slate-200/80 bg-white p-3.5 space-y-2.5 shadow-2xs">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="size-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 border border-indigo-100">
+                    <PenTool className="size-3.5" />
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold text-slate-800">Tanda Tangan Approver</p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      {hasSignature ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                          <CheckCircle2 className="size-3 text-emerald-600" /> TTD Aktif
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
-                          <Clock className="size-3 text-amber-600" /> Belum Ada TTD
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                  <p className="text-xs font-bold text-slate-800">Tanda Tangan Approver</p>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 shrink-0">
                   {profileSig && (
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
                       onClick={useProfileSignature}
-                      className="h-8 text-xs font-bold border-indigo-200 bg-indigo-50/60 hover:bg-indigo-100/80 text-indigo-700 rounded-xl cursor-pointer gap-1"
+                      className="h-7 text-[11px] px-2.5 font-bold border-indigo-200 bg-indigo-50/60 hover:bg-indigo-100/80 text-indigo-700 rounded-lg cursor-pointer gap-1"
                     >
                       <PenTool className="size-3" /> UBAH TTD
                     </Button>
@@ -298,11 +384,25 @@ export function MaritalStatusApprovalDialog({ item }: { item: any; group?: any }
                     variant="ghost"
                     size="sm"
                     onClick={clearSignature}
-                    className="h-8 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl cursor-pointer"
+                    className="h-7 w-7 p-0 text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer flex items-center justify-center"
+                    title="Hapus Tanda Tangan"
                   >
-                    <RefreshCw className="size-3" />
+                    <RefreshCw className="size-3.5" />
                   </Button>
                 </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                <span className="text-[11px] text-slate-500 font-medium">Status TTD:</span>
+                {hasSignature ? (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                    <CheckCircle2 className="size-3 text-emerald-600" /> TTD Aktif
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                    <Clock className="size-3 text-amber-600" /> Belum Ada TTD
+                  </span>
+                )}
               </div>
 
               {isUsingProfileSig && profileSig ? (
@@ -325,7 +425,7 @@ export function MaritalStatusApprovalDialog({ item }: { item: any; group?: any }
               )}
             </div>
 
-            {/* Card 3: Catatan Approval */}
+            {/* Card 4: Catatan Approval */}
             <div className="rounded-xl border border-slate-200 p-3.5 bg-white space-y-1.5 shadow-2xs">
               <div className="flex items-center justify-between">
                 <p className="font-bold text-slate-800 text-xs">Catatan Approval</p>
@@ -333,7 +433,7 @@ export function MaritalStatusApprovalDialog({ item }: { item: any; group?: any }
               <Textarea
                 placeholder="Mohon cantumkan rincian revisi atau catatan approval di sini..."
                 value={note}
-                onChange={(e) => setNote(e.target.value)}
+                onChange={(e) => handleNoteChange(e.target.value)}
                 className="text-xs min-h-[80px] resize-none rounded-xl bg-slate-50/50 border-slate-200 focus:bg-white"
               />
             </div>
@@ -344,36 +444,73 @@ export function MaritalStatusApprovalDialog({ item }: { item: any; group?: any }
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                   AKSI DOKUMEN INI (1 / 1)
                 </p>
-                <Button
-                  type="button"
-                  onClick={() => handleDecision('approved')}
-                  disabled={isSubmitting}
-                  className="w-full h-11 bg-[#003461] hover:bg-[#00284d] text-white font-bold text-xs rounded-xl shadow-xs gap-2 cursor-pointer"
-                >
-                  <CheckCircle2 className="size-4" /> APPROVE
-                </Button>
+                {decisionChoice === 'approved' ? (
+                  <>
+                    <Button
+                      type="button"
+                      onClick={() => handleDecision('approved')}
+                      disabled={isSubmitting}
+                      className="w-full h-11 bg-[#003461] hover:bg-[#00284d] text-white font-bold text-xs rounded-xl shadow-xs gap-2 cursor-pointer"
+                    >
+                      <CheckCircle2 className="size-4" /> APPROVE (MENYETUJUI)
+                    </Button>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => handleDecision('reverted')}
-                    disabled={isSubmitting}
-                    className="h-9 border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs rounded-xl gap-1.5 cursor-pointer"
-                  >
-                    <RotateCcw className="size-3.5 text-slate-500" /> REVERT
-                  </Button>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => handleDecision('reverted')}
+                        disabled={isSubmitting}
+                        className="h-9 border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs rounded-xl gap-1.5 cursor-pointer"
+                      >
+                        <RotateCcw className="size-3.5 text-slate-500" /> REVERT
+                      </Button>
 
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => handleDecision('rejected')}
-                    disabled={isSubmitting}
-                    className="h-9 border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs rounded-xl gap-1.5 cursor-pointer"
-                  >
-                    <XCircle className="size-3.5 text-slate-500" /> REJECT
-                  </Button>
-                </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => handleDecision('rejected')}
+                        disabled={isSubmitting}
+                        className="h-9 border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs rounded-xl gap-1.5 cursor-pointer"
+                      >
+                        <XCircle className="size-3.5 text-slate-500" /> REJECT
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      type="button"
+                      onClick={() => handleDecision('rejected')}
+                      disabled={isSubmitting}
+                      className="w-full h-11 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-xs gap-2 cursor-pointer"
+                    >
+                      <XCircle className="size-4" /> REJECT (TIDAK MENYETUJUI)
+                    </Button>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => handleDecision('reverted')}
+                        disabled={isSubmitting}
+                        className="h-9 border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs rounded-xl gap-1.5 cursor-pointer"
+                      >
+                        <RotateCcw className="size-3.5 text-slate-500" /> REVERT
+                      </Button>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => handleDecision('approved')}
+                        disabled={isSubmitting}
+                        className="h-9 border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs rounded-xl gap-1.5 cursor-pointer"
+                      >
+                        <CheckCircle2 className="size-3.5 text-emerald-600" /> APPROVE
+                      </Button>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* TUTUP REVIEWER BUTTON */}

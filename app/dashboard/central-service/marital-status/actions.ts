@@ -221,11 +221,20 @@ export async function approveMaritalStatusStepAction(
       return { success: false, error: 'User tidak terautentikasi.' };
     }
 
-    const [targetStep] = await db
+    let [targetStep] = await db
       .select()
       .from(approvals)
       .where(and(eq(approvals.id, stepId), eq(approvals.maritalStatusRequestId, requestId)))
       .limit(1);
+
+    if (!targetStep) {
+      const [byStepId] = await db
+        .select()
+        .from(approvals)
+        .where(eq(approvals.id, stepId))
+        .limit(1);
+      targetStep = byStepId;
+    }
 
     if (!targetStep) {
       return { success: false, error: 'Langkah persetujuan tidak ditemukan.' };

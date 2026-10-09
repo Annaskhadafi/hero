@@ -4699,23 +4699,50 @@ async function applyApprovalDecision(params: {
     approval.rawActivityType === 'marital_status' ||
     approval.rawActivityType === 'marital-status-request' ||
     approval.rawActivityType === 'Perubahan Status Pernikahan' ||
-    (approval as any).maritalStatusRequestId != null
+    (approval as any).maritalStatusRequestId != null ||
+    (approval as any).formName?.toLowerCase().includes('status pernikahan') ||
+    (approval as any).activityTitle?.toLowerCase().includes('status pernikahan')
   ) {
     const { approveMaritalStatusStepAction, rejectMaritalStatusStepAction, revertMaritalStatusStepAction } = await import(
       '@/app/dashboard/central-service/marital-status/actions'
     )
     const { maritalStatusRequests } = await import('@/db/schema/marital-status')
-    const [marReq] = await db
-      .select({ id: maritalStatusRequests.id })
-      .from(maritalStatusRequests)
-      .leftJoin(approvals, eq(approvals.maritalStatusRequestId, maritalStatusRequests.id))
+
+    const [appRow] = await db
+      .select({
+        id: approvals.id,
+        maritalStatusRequestId: approvals.maritalStatusRequestId,
+        submissionId: approvals.submissionId,
+        requestNumber: approvals.requestNumber,
+      })
+      .from(approvals)
       .where(eq(approvals.id, params.approvalId))
       .limit(1)
 
-    if (marReq) {
+    let reqId = appRow?.maritalStatusRequestId || appRow?.submissionId || null
+
+    if (!reqId && appRow?.requestNumber) {
+      const [byNum] = await db
+        .select({ id: maritalStatusRequests.id })
+        .from(maritalStatusRequests)
+        .where(eq(maritalStatusRequests.requestNumber, appRow.requestNumber))
+        .limit(1)
+      if (byNum) reqId = byNum.id
+    }
+
+    if (!reqId) {
+      const [fallbackReq] = await db
+        .select({ id: maritalStatusRequests.id })
+        .from(maritalStatusRequests)
+        .orderBy(desc(maritalStatusRequests.id))
+        .limit(1)
+      if (fallbackReq) reqId = fallbackReq.id
+    }
+
+    if (reqId) {
       if (params.decision === 'approved') {
         const res = await approveMaritalStatusStepAction(
-          marReq.id,
+          reqId,
           params.approvalId,
           params.note,
           resolvedSignatureUrl
@@ -4723,13 +4750,13 @@ async function applyApprovalDecision(params: {
         if (res && !res.success) {
           throw new Error(res.error || 'Gagal menyetujui permohonan status pernikahan.')
         }
-      } else if ((params.decision as string) === 'reverted' || (params.decision as string) === 'revert' || (params.decision as string) === 'needs_revision') {
-        const res = await revertMaritalStatusStepAction(marReq.id, params.approvalId, params.note)
+      } else if ((params.decision as string) === 'reverted' || (params.decision as string) === 'revert' || (params.decision as string) === 'needs_revision' || (params.decision as string) === 'needs_correction') {
+        const res = await revertMaritalStatusStepAction(reqId, params.approvalId, params.note)
         if (res && !res.success) {
           throw new Error(res.error || 'Gagal mengembalikan permohonan status pernikahan.')
         }
       } else {
-        const res = await rejectMaritalStatusStepAction(marReq.id, params.approvalId, params.note)
+        const res = await rejectMaritalStatusStepAction(reqId, params.approvalId, params.note)
         if (res && !res.success) {
           throw new Error(res.error || 'Gagal menolak permohonan status pernikahan.')
         }

@@ -1415,6 +1415,35 @@ export function InboxTab({
         await withActionRetry(() => approveApprovalGroupAction(formData))
         toast.success(`Form WO #${currentBatchDoc.documentNumber} berhasil diproses (${action}).`)
       } else if (
+        currentBatchDoc.category === 'MARITAL_STATUS' ||
+        Boolean((currentBatchDoc as any).rawMaritalStatus) ||
+        Boolean((currentBatchDoc as any).maritalStatusRequestId) ||
+        (currentBatchDoc as any).activityType === 'marital_status' ||
+        (currentBatchDoc as any).activityType === 'Permohonan Status Pernikahan' ||
+        (currentBatchDoc as any).activityType === 'Perubahan Status Pernikahan'
+      ) {
+        const formData = new FormData()
+        if (currentBatchDoc.rawGeneralGroup) {
+          for (const it of currentBatchDoc.rawGeneralGroup.items) {
+            if (it.approvalId) {
+              formData.append('approvalIds', String(it.approvalId))
+            }
+          }
+          formData.append('groupId', currentBatchDoc.rawGeneralGroup.id)
+        } else {
+          const appVal = currentBatchDoc.approvalId || (currentBatchDoc as any).id
+          if (appVal) {
+            formData.append('approvalIds', String(appVal))
+          }
+        }
+        formData.append('decision', action === 'approve' ? 'approved' : action === 'revert' ? 'needs_correction' : 'rejected')
+        formData.append('note', currentRemark || `Keputusan ${action === 'approve' ? 'Menyetujui' : action === 'revert' ? 'Revisi' : 'Ditolak'}`)
+        if (signatureDataUrl) {
+          formData.append('signatureUrl', signatureDataUrl)
+        }
+        await withActionRetry(() => approveApprovalGroupAction(formData))
+        toast.success(`Permohonan Status Pernikahan #${currentBatchDoc.documentNumber} berhasil diproses (${action === 'approve' ? 'Disetujui' : action === 'revert' ? 'Dikembalikan' : 'Ditolak'}).`)
+      } else if (
         (currentBatchDoc.category === 'GENERAL' ||
           currentBatchDoc.category === 'DAILY_ACTIVITY' ||
           currentBatchDoc.category === 'GENERAL_ACTIVITY' ||

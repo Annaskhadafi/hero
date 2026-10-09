@@ -119,9 +119,24 @@ export function ApdApprovalDialog({ item, group }: { item: any; group: any }) {
           return
         }
         
-        const res = await fetch(signatureUrlToUse)
-        const blob = await res.blob()
-        formData.append('signatureFile', blob, 'approver_signature.png')
+        if (signatureUrlToUse.startsWith('data:')) {
+          try {
+            const split = signatureUrlToUse.split(',')
+            const byteString = atob(split[1])
+            const mimeString = split[0].split(':')[1].split(';')[0]
+            const ab = new ArrayBuffer(byteString.length)
+            const ia = new Uint8Array(ab)
+            for (let i = 0; i < byteString.length; i++) {
+              ia[i] = byteString.charCodeAt(i)
+            }
+            const blob = new Blob([ab], { type: mimeString })
+            formData.append('signatureFile', blob, 'approver_signature.png')
+          } catch (e) {
+            formData.append('signatureUrl', signatureUrlToUse)
+          }
+        } else {
+          formData.append('signatureUrl', signatureUrlToUse)
+        }
       }
 
       await reviewApprovalAction(formData)

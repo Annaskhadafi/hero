@@ -184,65 +184,107 @@ export default async function EmailSettingsPage() {
       </div>
 
       <Tabs defaultValue="smtp" className="space-y-4">
-        <TabsList className="flex w-full flex-wrap justify-start">
-          <TabsTrigger value="smtp">
-            <Server className="size-4" />
-            SMTP
+        <TabsList className="h-auto w-full inline-flex items-center justify-start gap-1 overflow-x-auto p-1.5 rounded-2xl bg-slate-100/90 border border-slate-200/80 shadow-2xs scrollbar-none">
+          <TabsTrigger
+            value="smtp"
+            className="shrink-0 gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-xs cursor-pointer"
+          >
+            <Server className="size-3.5" />
+            <span>SMTP</span>
           </TabsTrigger>
-          <TabsTrigger value="templates">
-            <FileText className="size-4" />
-            Template
-            <Badge className="ml-1 rounded-full border-0 bg-muted text-muted-foreground">
+          <TabsTrigger
+            value="templates"
+            className="shrink-0 gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-xs cursor-pointer"
+          >
+            <FileText className="size-3.5" />
+            <span>Template</span>
+            <Badge className="ml-1 h-5 px-1.5 rounded-full border-0 bg-slate-200/80 text-[10px] font-bold text-slate-700">
               {templates.length}
             </Badge>
           </TabsTrigger>
-          <TabsTrigger value="form-wo">
-            <Wrench className="size-4" />
-            Form WO Approval
+          <TabsTrigger
+            value="form-wo"
+            className="shrink-0 gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-xs cursor-pointer"
+          >
+            <Wrench className="size-3.5" />
+            <span>Form WO Approval</span>
           </TabsTrigger>
-          <TabsTrigger value="hse">
-            <ShieldAlert className="size-4" />
-            HSE Safety
+          <TabsTrigger
+            value="hse"
+            className="shrink-0 gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-xs cursor-pointer"
+          >
+            <ShieldAlert className="size-3.5" />
+            <span>HSE Safety</span>
           </TabsTrigger>
-          <TabsTrigger value="apd-summary">
-            <FileSpreadsheet className="size-4" />
-            Summary APD
+          <TabsTrigger
+            value="apd-summary"
+            className="shrink-0 gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-xs cursor-pointer"
+          >
+            <FileSpreadsheet className="size-3.5" />
+            <span>Summary APD</span>
           </TabsTrigger>
-          <TabsTrigger value="marital-status">
-            <HeartHandshake className="size-4" />
-            Perubahan Status
+          <TabsTrigger
+            value="marital-status"
+            className="shrink-0 gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-xs cursor-pointer"
+          >
+            <HeartHandshake className="size-3.5" />
+            <span>Perubahan Status</span>
           </TabsTrigger>
-          <TabsTrigger value="hc">
-            <Users className="size-4" />
-            Human Capital
+          <TabsTrigger
+            value="hc"
+            className="shrink-0 gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-xs cursor-pointer"
+          >
+            <Users className="size-3.5" />
+            <span>Human Capital</span>
           </TabsTrigger>
-          <TabsTrigger value="attendance">
-            <CalendarClock className="size-4" />
-            Izin Absensi
+          <TabsTrigger
+            value="attendance"
+            className="shrink-0 gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-xs cursor-pointer"
+          >
+            <CalendarClock className="size-3.5" />
+            <span>Izin Absensi</span>
           </TabsTrigger>
-          <TabsTrigger value="apd">
-            <Users className="size-4" />
-            APD & CS
+          <TabsTrigger
+            value="apd"
+            className="shrink-0 gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-xs cursor-pointer"
+          >
+            <Users className="size-3.5" />
+            <span>APD & CS</span>
           </TabsTrigger>
-          <TabsTrigger value="mine-permit">
-            <Users className="size-4" />
-            Mine Permit
+          <TabsTrigger
+            value="mine-permit"
+            className="shrink-0 gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-xs cursor-pointer"
+          >
+            <Users className="size-3.5" />
+            <span>Mine Permit</span>
           </TabsTrigger>
-          <TabsTrigger value="cs-forecast">
-            <BarChart3 className="size-4" />
-            CS Forecast
+          <TabsTrigger
+            value="cs-forecast"
+            className="shrink-0 gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-xs cursor-pointer"
+          >
+            <BarChart3 className="size-3.5" />
+            <span>CS Forecast</span>
           </TabsTrigger>
-          <TabsTrigger value="bell">
-            <Bell className="size-4" />
-            Bell
+          <TabsTrigger
+            value="bell"
+            className="shrink-0 gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-xs cursor-pointer"
+          >
+            <Bell className="size-3.5" />
+            <span>Bell</span>
           </TabsTrigger>
-          <TabsTrigger value="pwa">
-            <Smartphone className="size-4" />
-            PWA Push
+          <TabsTrigger
+            value="pwa"
+            className="shrink-0 gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-xs cursor-pointer"
+          >
+            <Smartphone className="size-3.5" />
+            <span>PWA Push</span>
           </TabsTrigger>
-          <TabsTrigger value="logs">
-            <History className="size-4" />
-            Logs
+          <TabsTrigger
+            value="logs"
+            className="shrink-0 gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-xs cursor-pointer"
+          >
+            <History className="size-3.5" />
+            <span>Logs</span>
           </TabsTrigger>
         </TabsList>
 

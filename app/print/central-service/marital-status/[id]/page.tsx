@@ -4,6 +4,7 @@ import { fetchMaritalStatusRequestById } from '@/lib/marital-status-data';
 import { formatMaritalStatus } from '@/lib/marital-status-constants';
 import { PrintAction } from '@/app/print/jsa/[id]/print-action';
 import { getS3ObjectReadUrl } from '@/lib/s3-storage';
+import { MaritalStatusPrintListener } from './print-listener';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -232,7 +233,7 @@ export default async function PrintMaritalStatusPage({
             <div className="space-y-4">
               <div>
                 <span className="font-semibold">Catatan :</span>
-                <div className="mt-1 border-b border-black py-1 font-medium italic text-black min-h-[22px]">
+                <div id="preview-catatan-atasan" className="mt-1 border-b border-black py-1 font-medium italic text-black min-h-[22px]">
                   {level2Approval?.decisionNote || '-'}
                 </div>
                 <div className="border-b border-black h-5"></div>
@@ -242,39 +243,40 @@ export default async function PrintMaritalStatusPage({
                 <span className="font-semibold block mb-1">Menyetujui / Tidak Menyetujui Permohonan Ini :</span>
                 <div className="flex items-center gap-6 mt-1.5 text-[9.5pt] font-semibold">
                   <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center justify-center w-4 h-4 border border-black text-[10pt] leading-none font-bold bg-white">
-                      {data.status === 'approved' ? '✓' : ''}
+                    <span id="box-menyetujui" className="inline-flex items-center justify-center w-4 h-4 border border-black text-[10pt] leading-none font-bold bg-white">
+                      {level2Approval?.status === 'approved' || data.status === 'approved' ? '✓' : ''}
                     </span>
                     <span>MENYETUJUI</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center justify-center w-4 h-4 border border-black text-[10pt] leading-none font-bold bg-white">
-                      {data.status === 'rejected' ? '✓' : ''}
+                    <span id="box-tidak-menyetujui" className="inline-flex items-center justify-center w-4 h-4 border border-black text-[10pt] leading-none font-bold bg-white">
+                      {level2Approval?.status === 'rejected' || level2Approval?.status === 'reverted' || data.status === 'rejected' ? '✓' : ''}
                     </span>
                     <span>TIDAK MENYETUJUI</span>
                   </div>
                 </div>
-                {data.status === 'pending_approval' && (
-                  <div className="text-[8.5pt] text-black italic mt-1 font-medium">
-                    (Dalam Proses Persetujuan)
-                  </div>
-                )}
+                <div
+                  id="status-proses-text"
+                  className={`text-[8.5pt] text-black italic mt-1 font-medium ${(level2Approval?.status || data.status !== 'pending_approval') ? 'hidden' : ''}`}
+                >
+                  (Dalam Proses Persetujuan)
+                </div>
               </div>
             </div>
 
             {/* Right Column: Stacked Signature Box for Atasan Langsung */}
             <div className="flex flex-col items-center justify-between text-center min-h-[145px] border border-black rounded p-2.5 bg-white">
-              <div className="text-[8.5pt] font-semibold text-black min-h-[18px]">
+              <div id="preview-atasan-date" className="text-[8.5pt] font-semibold text-black min-h-[18px]">
                 {level2DateFormatted}
               </div>
               <div className="font-semibold text-black text-[9pt] mt-1">
                 Atasan Langsung,
               </div>
-              <div className="h-[50px] flex items-center justify-center my-1">
+              <div id="atasan-sig-container" className="h-[50px] flex items-center justify-center my-1">
                 {level2Approval?.status === 'approved' && level2Approval?.signatureUrl ? (
-                  <img src={level2Approval.signatureUrl} alt="Signature Atasan" className="max-h-[48px] object-contain" />
+                  <img id="preview-atasan-sig" src={level2Approval.signatureUrl} alt="Signature Atasan" className="max-h-[48px] object-contain" />
                 ) : (
-                  <div className="text-black text-[8pt] italic">(Belum TTD)</div>
+                  <div id="preview-atasan-sig-placeholder" className="text-black text-[8pt] italic">(Belum TTD)</div>
                 )}
               </div>
               <div className="border-t border-black w-full font-bold pt-0.5 text-[9pt]">
@@ -293,6 +295,10 @@ export default async function PrintMaritalStatusPage({
           <span className="font-mono font-semibold">F.CS.MS-01.00|1</span>
         </div>
       </div>
+
+      <MaritalStatusPrintListener
+        hasExistingSignature={Boolean(level2Approval?.status === 'approved' && level2Approval?.signatureUrl)}
+      />
     </div>
   );
 }
