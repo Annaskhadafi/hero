@@ -1,17 +1,22 @@
 export const MARITAL_STATUS_OPTIONS = [
-  "Belum Menikah (TK)",
-  "Menikah (K/0)",
-  "Menikah Anak 1 (K/1)",
-  "Menikah Anak 2 (K/2)",
-  "Menikah Anak 3 (K/3)",
+  "Single On Site",
+  "Married On Site",
 ] as const;
 
 export type MaritalStatusOption = (typeof MARITAL_STATUS_OPTIONS)[number];
 
 export function formatMaritalStatus(status?: string | null): string {
   if (!status || status === 'none' || status === 'Belum Diisi' || status.trim() === '') {
-    return 'Belum Menikah (TK)';
+    return 'Single On Site';
   }
-  return status;
+  if (status === 'Married On Site' || status === 'Single On Site') {
+    return status;
+  }
+  // Fallback map standard marital statuses if legacy data exists
+  if (status.toLowerCase().includes('menikah') && !status.toLowerCase().includes('belum')) {
+    return 'Married On Site';
+  }
+  return 'Single On Site';
 }
+
 

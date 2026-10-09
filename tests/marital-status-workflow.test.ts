@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { describe, it, expect } from 'vitest';
 
 describe('Marital Status Request Workflow Integration', () => {
   it('registers marital status schema and exports canonical constants', () => {
@@ -8,11 +9,8 @@ describe('Marital Status Request Workflow Integration', () => {
       'utf8'
     );
     expect(constantsSource).toContain('MARITAL_STATUS_OPTIONS');
-    expect(constantsSource).toContain('Belum Menikah (TK)');
-    expect(constantsSource).toContain('Menikah (K/0)');
-    expect(constantsSource).toContain('Menikah Anak 1 (K/1)');
-    expect(constantsSource).toContain('Menikah Anak 2 (K/2)');
-    expect(constantsSource).toContain('Menikah Anak 3 (K/3)');
+    expect(constantsSource).toContain('Single On Site');
+    expect(constantsSource).toContain('Married On Site');
 
     const dataSource = fs.readFileSync(
       path.join(process.cwd(), 'lib/marital-status-data.ts'),
@@ -88,7 +86,7 @@ describe('Marital Status Request Workflow Integration', () => {
       'utf8'
     );
     expect(dialogSource).toContain('MaritalStatusApprovalDialog');
-    expect(dialogSource).toContain('Dokumen Resmi F.CS.MS-01.00|1');
+    expect(dialogSource).toContain('Dokumen Resmi F.HR.STD.001 00');
 
     const workbenchSource = fs.readFileSync(
       path.join(process.cwd(), 'components/approval-workbench.tsx'),

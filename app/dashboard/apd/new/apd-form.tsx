@@ -17,6 +17,7 @@ import { getUserSignatureAction, saveUserSignatureAction } from "@/app/actions/u
 import { FiveRCameraModal } from "@/components/five-r/five-r-camera-modal";
 import { SearchableEmployeeSelect } from "@/components/searchable-employee-select";
 import { type ApdRequestCategory, APD_ITEMS, APD_SIZE_OPTIONS, type ApproverOption } from "@/lib/apd-status";
+import { type ApdMasterItemDetail } from "@/lib/apd-data";
 
 type ApdItemInput = {
   id: string;
@@ -35,6 +36,7 @@ interface ApdRequestFormProps {
   departmentName: string | null;
   sectionName: string | null;
   itemOptions: Record<string, string[]>;
+  masterApdDetails?: ApdMasterItemDetail[];
   approverOptions?: ApproverOption[];
   sectionOptions?: Array<{ id: number; name: string }>;
   canSelectTargetSection?: boolean;
@@ -79,6 +81,7 @@ export function ApdRequestForm({
   departmentName,
   sectionName,
   itemOptions,
+  masterApdDetails = [],
   approverOptions,
   sectionOptions = [],
   canSelectTargetSection = false,
@@ -96,6 +99,24 @@ export function ApdRequestForm({
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [requestMode, setRequestMode] = useState<"apd" | "tools" | "material">(defaultMode);
+
+  const getItemSizeConfig = (itemType: string) => {
+    if (!itemType) return { hasSize: false, sizeOptions: [] as string[] };
+    const matchedMaster = masterApdDetails.find(
+      (m) => m.name.trim().toLowerCase() === itemType.trim().toLowerCase()
+    );
+    if (matchedMaster && matchedMaster.hasSize && matchedMaster.sizeOptions && matchedMaster.sizeOptions.length > 0) {
+      return { hasSize: true, sizeOptions: matchedMaster.sizeOptions };
+    }
+    if (isSafetyShoesItem(itemType) || matchedMaster?.hasSize) {
+      const defaultOpts = (APD_SIZE_OPTIONS as unknown as string[]);
+      return {
+        hasSize: true,
+        sizeOptions: matchedMaster?.sizeOptions && matchedMaster.sizeOptions.length > 0 ? matchedMaster.sizeOptions : defaultOpts,
+      };
+    }
+    return { hasSize: false, sizeOptions: [] as string[] };
+  };
   const [requestedFor, setRequestedFor] = useState<"self" | "service" | "repair">((initialRequestedFor as any) || "self");
   const [targetSectionId, setTargetSectionId] = useState<string>(initialTargetSectionId ? String(initialTargetSectionId) : "");
   const [notes, setNotes] = useState(initialNotes);
@@ -558,51 +579,72 @@ export function ApdRequestForm({
                   </div>
 
                   {requestMode === "apd" ? (
-                    isSafetyShoesItem(item.itemType) && (
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold text-slate-700">Ukuran Sepatu</Label>
-                        <div className="space-y-2">
-                          <Select
-                            value={
-                              APD_SIZE_OPTIONS.includes(item.notes as any)
-                                ? item.notes
-                                : item.notes ? "custom" : ""
-                            }
-                            onValueChange={(val) => {
-                              if (val === "custom") {
-                                updateItem(
-                                  item.id,
-                                  "notes",
-                                  item.notes && !APD_SIZE_OPTIONS.includes(item.notes as any) ? item.notes : "Custom"
-                                );
-                              } else {
-                                updateItem(item.id, "notes", val);
-                              }
-                            }}
-                          >
-                            <SelectTrigger className="h-10 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm text-slate-800 shadow-2xs focus:ring-1 focus:ring-blue-500">
-                              <SelectValue placeholder="Pilih Ukuran Sepatu..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {APD_SIZE_OPTIONS.map((sizeOpt) => (
-                                <SelectItem key={sizeOpt} value={sizeOpt}>
-                                  {sizeOpt}
-                                </SelectItem>
-                              ))}
-                              <SelectItem value="custom">Lainnya (Tulis Manual)</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          {(!APD_SIZE_OPTIONS.includes(item.notes as any) && item.notes !== "") && (
+                    (() => {
+                      const { hasSize, sizeOptions } = getItemSizeConfig(item.itemType);
+                      if (!hasSize && !isSafetyShoesItem(item.itemType)) {
+                        return (
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-semibold text-slate-700">Keterangan / Catatan (Opsional)</Label>
                             <Input
-                              placeholder="Tulis ukuran sepatu manual..."
-                              value={item.notes === "Custom" ? "" : item.notes}
+                              placeholder="Mis: Keterangan tambahan barang"
+                              value={item.notes}
                               className="h-10 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm text-slate-800 shadow-2xs focus:ring-1 focus:ring-blue-500"
                               onChange={(e) => updateItem(item.id, "notes", e.target.value)}
                             />
-                          )}
+                          </div>
+                        );
+                      }
+                      const availableSizes = sizeOptions.length > 0 ? sizeOptions : (APD_SIZE_OPTIONS as unknown as string[]);
+                      const isCustomValue = Boolean(item.notes) && !availableSizes.includes(item.notes);
+
+                      return (
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold text-slate-700">
+                            {isSafetyShoesItem(item.itemType) ? "Ukuran Sepatu" : "Pilihan Ukuran (Size)"}
+                          </Label>
+                          <div className="space-y-2">
+                            <Select
+                              value={
+                                availableSizes.includes(item.notes)
+                                  ? item.notes
+                                  : item.notes ? "custom" : ""
+                              }
+                              onValueChange={(val) => {
+                                if (val === "custom") {
+                                  updateItem(
+                                    item.id,
+                                    "notes",
+                                    item.notes && !availableSizes.includes(item.notes) ? item.notes : "Custom"
+                                  );
+                                } else {
+                                  updateItem(item.id, "notes", val);
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="h-10 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm text-slate-800 shadow-2xs focus:ring-1 focus:ring-blue-500">
+                                <SelectValue placeholder={`Pilih ${isSafetyShoesItem(item.itemType) ? "Ukuran Sepatu" : "Ukuran"}...`} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {availableSizes.map((sizeOpt) => (
+                                  <SelectItem key={sizeOpt} value={sizeOpt}>
+                                    {sizeOpt}
+                                  </SelectItem>
+                                ))}
+                                <SelectItem value="custom">Lainnya (Tulis Manual)</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            {isCustomValue && (
+                              <Input
+                                placeholder="Tulis ukuran manual..."
+                                value={item.notes === "Custom" ? "" : item.notes}
+                                className="h-10 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm text-slate-800 shadow-2xs focus:ring-1 focus:ring-blue-500"
+                                onChange={(e) => updateItem(item.id, "notes", e.target.value)}
+                              />
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    )
+                      );
+                    })()
                   ) : (
                     <div className="space-y-1.5">
                       <Label className="text-xs font-semibold text-slate-700">Keterangan/Ukuran</Label>

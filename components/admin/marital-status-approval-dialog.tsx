@@ -272,7 +272,7 @@ export function MaritalStatusApprovalDialog({ item }: { item: any; group?: any }
           {/* Document Preview (Left) */}
           <div className="rounded-lg border bg-card overflow-hidden shadow-xs flex flex-col min-h-0" style={{ height: isMobile ? (showDoc ? '40vh' : 'auto') : undefined }}>
             <div className="bg-muted px-3 py-1.5 border-b font-medium text-xs text-muted-foreground flex justify-between items-center shrink-0">
-              <span>Dokumen Resmi F.CS.MS-01.00|1</span>
+              <span>Dokumen Resmi F.HR.STD.001 00</span>
               <div className="flex items-center gap-2">
                 <Button
                   type="button"
@@ -314,9 +314,9 @@ export function MaritalStatusApprovalDialog({ item }: { item: any; group?: any }
               </div>
             </div>
 
-            {/* Card 2: Keputusan Atasan Langsung */}
+            {/* Card 2: Keputusan Approver */}
             <div className="rounded-xl border border-slate-200/80 bg-white p-3.5 space-y-2 shadow-2xs">
-              <p className="font-bold text-slate-800 text-xs">Keputusan Atasan Langsung</p>
+              <p className="font-bold text-slate-800 text-xs">Keputusan {item.level === 3 ? 'Human Resources' : item.level === 1 ? 'PJO / HSE / Leader' : 'Atasan Langsung'}</p>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"

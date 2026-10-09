@@ -27,9 +27,9 @@ test('ApprovalWorkbench maps MARITAL_STATUS category and dialog correctly', asyn
   assert.match(workbench, /dueState: g\.overdueCount > 0 \? 'overdue'/)
 })
 
-test('Marital status action advances Level 2 to pending upon Level 1 approval and supports revert', async () => {
+test('Marital status action advances next level step to pending upon approval and supports revert', async () => {
   const actions = await read('app/dashboard/central-service/marital-status/actions.ts')
-  assert.match(actions, /level2Step\.status === 'waiting'/)
+  assert.match(actions, /nextWaitingStep\.status === 'waiting'/)
   assert.match(actions, /status: 'pending'/)
   assert.match(actions, /revertMaritalStatusStepAction/)
   assert.match(actions, /revalidateMaritalStatusPaths/)
@@ -50,8 +50,9 @@ test('AdminStatusBadge supports no_sla (Non SLA)', async () => {
   assert.match(badge, /no_sla: "Non SLA"/)
 })
 
-test('Approval Engine defines Step 1 (PJO / HSE / Leader) and Step 2 (Section Head) for Marital Status', async () => {
+test('Approval Engine defines Step 1 (PJO / HSE / Leader), Step 2 (Section Head), and Step 3 (Human Resources) for Marital Status', async () => {
   const engine = await read('lib/approval-engine.ts')
   assert.match(engine, /Step 1: PJO \/ HSE \/ Leader/)
   assert.match(engine, /Step 2: Section Head/)
+  assert.match(engine, /Step 3: Human Resources/)
 })

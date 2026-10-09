@@ -21,6 +21,7 @@ export interface SubmitMaritalStatusInput {
   reason: string;
   approver1Id: number;
   approver2Id: number;
+  approver3Id?: number;
   signatureUrl?: string;
   notes?: string;
   siteId?: number;
@@ -74,6 +75,16 @@ export async function submitMaritalStatusRequestAction(input: SubmitMaritalStatu
       .from(employees)
       .where(eq(employees.id, input.approver2Id))
       .limit(1);
+
+    const app3Profile = input.approver3Id
+      ? (
+          await db
+            .select({ name: employees.name, email: employees.email })
+            .from(employees)
+            .where(eq(employees.id, input.approver3Id))
+            .limit(1)
+        )[0]
+      : null;
 
     if (!app1Profile || !app2Profile) {
       return { success: false, error: 'Data pemeriksa / atasan yang dipilih tidak ditemukan.' };
@@ -143,7 +154,7 @@ export async function submitMaritalStatusRequestAction(input: SubmitMaritalStatu
       routeSnapshot,
     });
 
-    // Level 2: Menyetujui (Section Head)
+    // Level 2: Menyetujui (Section Head / Atasan Langsung)
     await db.insert(approvals).values({
       maritalStatusRequestId: newRequest.id,
       activityType: 'marital_status',
@@ -160,6 +171,26 @@ export async function submitMaritalStatusRequestAction(input: SubmitMaritalStatu
       resolutionSource: 'direct_select',
       routeSnapshot,
     });
+
+    // Level 3: Menyetujui (Human Resources) - if provided
+    if (input.approver3Id && app3Profile) {
+      await db.insert(approvals).values({
+        maritalStatusRequestId: newRequest.id,
+        activityType: 'marital_status',
+        requestNumber,
+        activityTitle: `Permohonan Status Pernikahan: ${newRequest.requestNumber}`,
+        formName: 'Permohonan Perubahan Status Pernikahan',
+        createdBy: currentEmployee.id,
+        level: 3,
+        approverName: app3Profile.name,
+        approverEmployeeId: input.approver3Id,
+        approverEmail: app3Profile.email,
+        status: 'waiting',
+        submittedAt: new Date(),
+        resolutionSource: 'direct_select',
+        routeSnapshot,
+      });
+    }
 
     // Send Notification Bell & Email to Level 1 Approver
     try {
@@ -250,7 +281,7 @@ export async function approveMaritalStatusStepAction(
       .set({
         status: 'approved',
         reviewedAt: new Date(),
-        decisionNote: decisionNote?.trim() || 'Disetujui',
+        decisionNote: decisionNote?.trim() || '',
         ...(signatureUrl && { signatureUrl }),
       })
       .where(eq(approvals.id, stepId));
@@ -262,8 +293,9 @@ export async function approveMaritalStatusStepAction(
       .where(eq(approvals.maritalStatusRequestId, requestId))
       .orderBy(approvals.level);
 
-    const level2Step = allSteps.find((s) => s.level === 2);
-    const isLevel1 = targetStep.level === 1;
+    const nextWaitingStep = allSteps.find(
+      (s) => s.level > targetStep.level && (s.status === 'waiting' || s.status === 'pending')
+    );
 
     const [request] = await db
       .select()
@@ -273,30 +305,31 @@ export async function approveMaritalStatusStepAction(
 
     if (!request) return { success: false, error: 'Permohonan tidak ditemukan.' };
 
-    if (isLevel1 && level2Step && level2Step.approverEmployeeId) {
-      if (level2Step.status === 'waiting') {
+    if (nextWaitingStep && nextWaitingStep.approverEmployeeId) {
+      if (nextWaitingStep.status === 'waiting') {
         await db
           .update(approvals)
           .set({ status: 'pending', submittedAt: new Date() })
-          .where(eq(approvals.id, level2Step.id));
+          .where(eq(approvals.id, nextWaitingStep.id));
       }
-      // Notify Level 2 Approver (Section Head)
+      // Notify Next Level Approver (Section Head or HR)
       try {
-        if (level2Step.approverEmail) {
+        if (nextWaitingStep.approverEmail) {
+          const roleTitle = nextWaitingStep.level === 3 ? 'Human Resources' : 'Atasan Langsung';
           await createNotificationEventForEmployee({
-            employeeId: level2Step.approverEmployeeId,
+            employeeId: nextWaitingStep.approverEmployeeId,
             eventType: 'marital_status_approval_requested',
             category: 'approval_requests',
             title: 'Persetujuan Perubahan Status Pernikahan',
-            body: `Permohonan ${request.requestNumber} telah diketahuinya dan memerlukan persetujuan Anda.`,
+            body: `Permohonan ${request.requestNumber} memerlukan persetujuan ${roleTitle}.`,
             url: `/dashboard/approval`,
           });
           await notifyWorkflowBellRecipients({
-            recipientEmails: [level2Step.approverEmail],
+            recipientEmails: [nextWaitingStep.approverEmail],
             eventType: 'marital_status_approval_requested',
             category: 'approval_requests',
             title: 'Persetujuan Perubahan Status Pernikahan',
-            body: `Permohonan ${request.requestNumber} memerlukan persetujuan Atasan Langsung.`,
+            body: `Permohonan ${request.requestNumber} memerlukan persetujuan ${roleTitle}.`,
             url: `/dashboard/approval`,
           });
 
@@ -307,19 +340,19 @@ export async function approveMaritalStatusStepAction(
             .where(eq(employees.id, request.employeeId))
             .limit(1);
 
-          await sendMaritalStatusApprovalRequestedEmail(level2Step.approverEmail, {
+          await sendMaritalStatusApprovalRequestedEmail(nextWaitingStep.approverEmail, {
             requestNumber: request.requestNumber,
             employeeName: subEmp?.name || 'Karyawan',
             employeeSn: subEmp?.employeeSn || '-',
             currentMaritalStatus: request.currentMaritalStatus,
             targetMaritalStatus: request.targetMaritalStatus,
             reason: request.reason,
-            approverName: level2Step.approverName,
-            approvalLevel: 2,
+            approverName: nextWaitingStep.approverName,
+            approvalLevel: nextWaitingStep.level,
           });
         }
       } catch (e) {
-        console.warn('Notification to Level 2 failed:', e);
+        console.warn(`Notification to Level ${nextWaitingStep.level} failed:`, e);
       }
     } else {
       // All steps completed -> Approved

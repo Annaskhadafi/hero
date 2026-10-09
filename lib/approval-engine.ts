@@ -1605,6 +1605,21 @@ async function resolveMaritalStatusApprovalRoute(context: ApprovalContext): Prom
       fallbackLabel: 'Section Head',
       escalationLabel: null,
     },
+    {
+      stepOrder: 3,
+      label: 'Step 3: Human Resources',
+      approvalMatrixStepId: null,
+      approverNodeId: null,
+      approverEmployeeId: null,
+      approverName: 'Human Resources',
+      approvalMode: 'single',
+      resolutionSource: 'direct_select',
+      canDelegate: false,
+      slaHours: 0,
+      nodeLabel: 'Step 3: Human Resources',
+      fallbackLabel: 'Human Resources',
+      escalationLabel: null,
+    },
   ]
 
   return {

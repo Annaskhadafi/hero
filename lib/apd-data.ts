@@ -171,6 +171,44 @@ export async function fetchApdRequestById(id: number) {
   return { ...request, items, approvalHistory: resolvedHistory };
 }
 
+export type ApdMasterItemDetail = {
+  id: number;
+  code: string;
+  name: string;
+  category: string;
+  unit: string;
+  hasSize: boolean;
+  sizeOptions: string[];
+};
+
+export async function fetchApdMasterDetails(category?: ApdRequestCategory): Promise<ApdMasterItemDetail[]> {
+  await ensureApdRequestSchema();
+  const rows = await db
+    .select({
+      id: masterApd.id,
+      code: masterApd.code,
+      name: masterApd.name,
+      category: masterApd.category,
+      unit: masterApd.unit,
+      hasSize: masterApd.hasSize,
+      sizeOptions: masterApd.sizeOptions,
+    })
+    .from(masterApd)
+    .where(eq(masterApd.isActive, true))
+    .orderBy(asc(masterApd.code));
+
+  const mapped = rows.map((r) => ({
+    ...r,
+    sizeOptions: Array.isArray(r.sizeOptions) ? r.sizeOptions.filter((s): s is string => typeof s === 'string' && Boolean(s.trim())) : [],
+  }));
+
+  if (category) {
+    return mapped.filter((r) => r.category.toUpperCase() === category.toUpperCase());
+  }
+
+  return mapped;
+}
+
 export async function fetchApdItemOptions(category: ApdRequestCategory) {
   await ensureApdRequestSchema();
   

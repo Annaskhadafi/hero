@@ -6,7 +6,7 @@ import { employees, masterDepartments, masterSections } from "@/db/schema/hero";
 import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { isSuperAdminRole } from "@/lib/hero-access";
-import { fetchApdItemOptions, fetchApdRequestById, fetchApproverOptions, fetchMasterSections } from "@/lib/apd-data";
+import { fetchApdItemOptions, fetchApdMasterDetails, fetchApdRequestById, fetchApproverOptions, fetchMasterSections } from "@/lib/apd-data";
 
 export default async function NewApdRequestPage(props: {
   searchParams: Promise<{ category?: string; edit?: string; id?: string }>;
@@ -43,10 +43,11 @@ export default async function NewApdRequestPage(props: {
 
   if (!employeeProfile) return notFound();
 
-  const [apdOptions, toolsOptions, materialOptions, approverOptions, sectionOptions] = await Promise.all([
+  const [apdOptions, toolsOptions, materialOptions, masterApdDetails, approverOptions, sectionOptions] = await Promise.all([
     fetchApdItemOptions("APD"),
     fetchApdItemOptions("TOOLS"),
     fetchApdItemOptions("MATERIAL"),
+    fetchApdMasterDetails(),
     fetchApproverOptions(),
     fetchMasterSections(),
   ]);
@@ -97,6 +98,7 @@ export default async function NewApdRequestPage(props: {
           departmentName={employeeProfile.departmentName}
           sectionName={employeeProfile.sectionName}
           itemOptions={{ APD: apdOptions, TOOLS: toolsOptions, MATERIAL: materialOptions }}
+          masterApdDetails={masterApdDetails}
           approverOptions={approverOptions}
           sectionOptions={sectionOptions}
           canSelectTargetSection={canSelectTargetSection}

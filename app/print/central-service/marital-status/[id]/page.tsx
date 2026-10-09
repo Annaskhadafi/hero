@@ -1,13 +1,32 @@
 import React from 'react';
-import { notFound } from 'next/navigation';
 import { fetchMaritalStatusRequestById } from '@/lib/marital-status-data';
 import { formatMaritalStatus } from '@/lib/marital-status-constants';
 import { PrintAction } from '@/app/print/jsa/[id]/print-action';
 import { getS3ObjectReadUrl } from '@/lib/s3-storage';
 import { MaritalStatusPrintListener } from './print-listener';
+import { getCurrentEmployee } from '@/lib/get-current-employee';
+import { db } from '@/db';
+import { employees, masterDepartments, masterSections, sites } from '@/db/schema';
+import { eq } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+function formatDisplayNote(note?: string | null): string {
+  if (!note) return '-';
+  const trimmed = note.trim();
+  if (!trimmed) return '-';
+  const lower = trimmed.toLowerCase().replace(/\.$/, '');
+  if (
+    lower === 'disetujui' ||
+    lower === 'pengajuan disetujui' ||
+    lower === 'approve' ||
+    lower === 'approve all via inbox'
+  ) {
+    return '-';
+  }
+  return trimmed;
+}
 
 export default async function PrintMaritalStatusPage({
   params,
@@ -20,11 +39,82 @@ export default async function PrintMaritalStatusPage({
   const id = resolvedParams?.id || '';
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const isEmbed = resolvedSearchParams?.embed === '1' || resolvedSearchParams?.embed === 'true';
-  
+
   const reqId = parseInt(id, 10);
   let data: Awaited<ReturnType<typeof fetchMaritalStatusRequestById>> = null;
 
-  if (!isNaN(reqId) && reqId > 0) {
+  if (id === 'draft') {
+    let empName = 'Draft Karyawan';
+    let empSn = '—';
+    let empJobTitle = '—';
+    let deptName = 'Central Services';
+    let secName = 'Service Operation';
+    let siteName = '—';
+    let currentMaritalStatus = 'Single On Site';
+    let submitterSigUrl: string | null = null;
+
+    try {
+      const currentEmployee = await getCurrentEmployee();
+      if (currentEmployee) {
+        const [empProfile] = await db
+          .select({
+            id: employees.id,
+            name: employees.name,
+            employeeSn: employees.employeeSn,
+            jobTitle: employees.jobTitle,
+            maritalStatus: employees.maritalStatus,
+            departmentName: masterDepartments.name,
+            sectionName: masterSections.name,
+            siteName: sites.name,
+            signatureDataUrl: employees.signatureDataUrl,
+          })
+          .from(employees)
+          .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+          .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+          .leftJoin(sites, eq(employees.siteId, sites.id))
+          .where(eq(employees.id, currentEmployee.id))
+          .limit(1);
+
+        if (empProfile) {
+          if (empProfile.name) empName = empProfile.name;
+          if (empProfile.employeeSn) empSn = empProfile.employeeSn;
+          if (empProfile.jobTitle) empJobTitle = empProfile.jobTitle;
+          if (empProfile.departmentName) deptName = empProfile.departmentName;
+          if (empProfile.sectionName) secName = empProfile.sectionName;
+          if (empProfile.siteName) siteName = empProfile.siteName;
+          if (empProfile.maritalStatus) currentMaritalStatus = empProfile.maritalStatus;
+          if (empProfile.signatureDataUrl) submitterSigUrl = empProfile.signatureDataUrl;
+        }
+      }
+    } catch (err) {
+      console.error('[PrintMaritalStatusPage] Error loading draft employee session:', err);
+    }
+
+    data = {
+      id: 0,
+      requestNumber: 'MAR-DRAFT',
+      employeeId: 0,
+      employeeName: empName,
+      employeeSn: empSn,
+      employeeJobTitle: empJobTitle,
+      departmentName: deptName,
+      sectionName: secName,
+      siteName: siteName,
+      currentMaritalStatus: currentMaritalStatus,
+      targetMaritalStatus: 'Married On Site',
+      reason: '',
+      requestDate: new Date(),
+      status: 'draft',
+      signatureUrl: submitterSigUrl,
+      approver1Id: 0,
+      approver2Id: 0,
+      approver3Id: 0,
+      approver1Name: 'PJO / HSE / Leader',
+      approver2Name: 'Atasan Langsung',
+      approver3Name: 'Human Resources',
+      approvalHistory: [],
+    } as any;
+  } else if (!isNaN(reqId) && reqId > 0) {
     try {
       data = await fetchMaritalStatusRequestById(reqId);
     } catch (err) {
@@ -55,22 +145,31 @@ export default async function PrintMaritalStatusPage({
 
   const level1Approval = approvalHistory.find((h) => h.level === 1);
   const level2Approval = approvalHistory.find((h) => h.level === 2);
+  const level3Approval = approvalHistory.find((h) => h.level === 3);
 
   const reqDateFormatted = data.requestDate
     ? new Date(data.requestDate).toLocaleDateString('id-ID', {
         day: 'numeric',
         month: 'short',
-        year: 'numeric',
+        year: '2-digit',
       })
     : '-';
 
   const level2DateFormatted =
     level2Approval?.status === 'approved' && level2Approval?.reviewedAt
       ? new Date(level2Approval.reviewedAt).toLocaleDateString('id-ID', {
-          weekday: 'long',
           day: 'numeric',
-          month: 'long',
-          year: 'numeric',
+          month: 'short',
+          year: '2-digit',
+        })
+      : '';
+
+  const level3DateFormatted =
+    level3Approval?.status === 'approved' && level3Approval?.reviewedAt
+      ? new Date(level3Approval.reviewedAt).toLocaleDateString('id-ID', {
+          day: 'numeric',
+          month: 'short',
+          year: '2-digit',
         })
       : '';
 
@@ -78,7 +177,7 @@ export default async function PrintMaritalStatusPage({
     <div
       className={
         isEmbed
-          ? 'bg-white w-[210mm] h-[297mm] p-0 m-0 overflow-hidden flex justify-center'
+          ? 'bg-white w-full h-full min-h-screen p-0 m-0 overflow-hidden flex justify-center items-start'
           : 'bg-gray-100 min-h-screen py-4 print:py-0 print:bg-white flex justify-center overflow-x-auto'
       }
     >
@@ -86,6 +185,20 @@ export default async function PrintMaritalStatusPage({
       <style
         dangerouslySetInnerHTML={{
           __html: `
+        ${
+          isEmbed
+            ? `
+          html, body {
+            overflow: hidden !important;
+            width: 100% !important;
+            height: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background-color: #ffffff !important;
+          }
+        `
+            : ''
+        }
         @media print {
           @page {
             size: A4 portrait;
@@ -111,7 +224,8 @@ export default async function PrintMaritalStatusPage({
             page-break-inside: avoid !important;
             break-after: avoid !important;
             break-inside: avoid !important;
-            padding: 12mm 14mm 12mm 14mm !important;
+            padding: 10mm 12mm 10mm 12mm !important;
+            transform: none !important;
           }
         }
       `,
@@ -119,7 +233,7 @@ export default async function PrintMaritalStatusPage({
       />
 
       <div
-        className="pdf-wrapper relative bg-white shadow-xl print:shadow-none w-[210mm] min-h-[297mm] text-[9.5pt] font-sans mx-auto flex flex-col justify-start box-border overflow-hidden p-8"
+        className="pdf-wrapper relative bg-white shadow-xl print:shadow-none w-[210mm] min-h-[297mm] text-[9.5pt] font-sans mx-auto flex flex-col box-border overflow-hidden p-6 shrink-0"
         style={{ fontFamily: 'Arial, sans-serif' }}
       >
         {/* Header Logo & Date */}
@@ -127,178 +241,278 @@ export default async function PrintMaritalStatusPage({
           <div>
             <img src="/cp_logo-removebg-preview.png" alt="Chitra Paratama" className="h-10 w-auto" />
           </div>
-          <div className="text-right text-[9pt] font-semibold text-black">
-            Tanggal : <span className="underline">{reqDateFormatted}</span>
+          <div className="text-right text-[9.5pt] font-medium text-black">
+            Tanggal : <span className="border-b border-black px-4 font-semibold">{reqDateFormatted}</span>
           </div>
         </div>
 
-        {/* Form Title Banner */}
-        <div className="bg-black text-white text-center py-1.5 px-3 font-bold text-[10.5pt] tracking-wide uppercase mb-4">
-          PERMOHONAN PERUBAHAN STATUS PERNIKAHAN DI LOKASI
-        </div>
-
-        {/* Employee Details Section */}
-        <div className="space-y-1.5 mb-4 text-[9.5pt] text-black">
-          <div className="text-black italic mb-1">Yang bertanda tangan di bawah ini</div>
-          
-          <div className="grid grid-cols-[140px_1fr_120px_1fr] gap-x-2 items-center">
-            <span className="font-medium">Nama</span>
-            <span className="border-b border-black font-semibold">: {data.employeeName}</span>
-            <span className="font-semibold text-right">S.N :</span>
-            <span className="border-b border-black font-semibold text-center">{data.employeeSn}</span>
-          </div>
-
-          <div className="grid grid-cols-[140px_1fr] gap-x-2 items-center">
-            <span className="font-medium">Jabatan</span>
-            <span className="border-b border-black">: {data.employeeJobTitle || '-'}</span>
-          </div>
-
-          <div className="grid grid-cols-[140px_1fr] gap-x-2 items-center">
-            <span className="font-medium">Dept./Section</span>
-            <span className="border-b border-black">: {data.departmentName || 'Central Services'} / {data.sectionName || 'Service Operation'}</span>
-          </div>
-
-          <div className="grid grid-cols-[140px_1fr] gap-x-2 items-center">
-            <span className="font-medium">Lokasi Bekerja</span>
-            <span className="border-b border-black">: {data.siteName || '-'}</span>
-          </div>
-
-          <div className="grid grid-cols-[140px_1fr] gap-x-2 items-center">
-            <span className="font-medium">Status Pernikahan</span>
-            <span className="border-b border-black font-semibold">: {formatMaritalStatus(data.currentMaritalStatus)}</span>
-          </div>
-        </div>
-
-        {/* Request & Reason Section */}
-        <div className="space-y-2 mb-6 text-[9.5pt] text-black">
-          <div className="grid grid-cols-[380px_1fr] gap-x-2 items-center">
-            <span>Dengan Ini Mengajukan Permohonan Pergantian Status Pernikahan Menjadi</span>
-            <span className="border-b-2 border-black font-bold text-center text-[10pt] uppercase">: {data.targetMaritalStatus}</span>
-          </div>
-
-          <div className="mt-2">
-            <div>Alasan Saya Mengajukan Perubahan Status Ini :</div>
-            <div className="mt-1 border-b border-black py-1 font-medium italic min-h-[24px]">
-              {data.reason || '-'}
+        {/* Outer Form Container Box with Double Border */}
+        <div className="border-[3px] border-double border-black p-4 flex-1 flex flex-col justify-between">
+          <div>
+            {/* Form Title Banner */}
+            <div className="bg-black text-white text-center py-1 px-3 font-bold text-[10pt] tracking-wider uppercase mb-3 -mx-4 -mt-4">
+              PERMOHONAN PERUBAHAN STATUS PERNIKAHAN DI LOKASI
             </div>
-            <div className="border-b border-black h-6"></div>
-            <div className="border-b border-black h-6"></div>
-          </div>
-        </div>
 
-        {/* Top Signatures Block (Mengetahui & Diajukan Oleh) */}
-        <div className="grid grid-cols-2 gap-8 text-center mb-6 text-black">
-          {/* Mengetahui (PJO / HSE / Leader) */}
-          <div className="flex flex-col items-center justify-between h-[120px]">
-            <div className="font-semibold text-black">Mengetahui,</div>
-            <div className="h-[60px] flex items-center justify-center">
-              {level1Approval?.status === 'approved' && level1Approval?.signatureUrl ? (
-                <img src={level1Approval.signatureUrl} alt="Signature PJO/HSE/Leader" className="max-h-[55px] object-contain" />
-              ) : (
-                <div className="text-black text-[8pt] italic">(Belum TTD)</div>
-              )}
-            </div>
-            <div className="border-t border-black w-48 font-bold pt-0.5 text-[9pt]">
-              {level1Approval?.approverName || 'PJO / HSE / Leader'}
-            </div>
-          </div>
+            {/* Employee Details Section */}
+            <div className="space-y-1.5 mb-4 text-[9.5pt] text-black">
+              <div className="text-black mb-1 font-normal">Yang bertanda tangan di bawah ini</div>
 
-          {/* Diajukan Oleh (Karyawan) */}
-          <div className="flex flex-col items-center justify-between h-[120px]">
-            <div className="font-semibold text-black">Diajukan Oleh,</div>
-            <div className="h-[60px] flex items-center justify-center">
-              {submitterSignatureUrl ? (
-                <img src={submitterSignatureUrl} alt="Signature Karyawan" className="max-h-[55px] object-contain" />
-              ) : (
-                <div className="text-black text-[8pt] italic">(Tanda Tangan)</div>
-              )}
-            </div>
-            <div className="border-t border-black w-48 font-bold pt-0.5 text-[9pt]">
-              {data.employeeName}
-            </div>
-          </div>
-        </div>
+              <div className="grid grid-cols-[140px_1fr_60px_160px] gap-x-1 items-center">
+                <span>Nama</span>
+                <span id="preview-emp-name" className="border-b border-black font-semibold">: {data.employeeName}</span>
+                <span className="font-normal text-right">S.N</span>
+                <span id="preview-emp-sn" className="border-b border-black font-semibold text-center">{data.employeeSn}</span>
+              </div>
 
-        {/* Separator Line */}
-        <div className="border-t-2 border-dashed border-black my-4 text-center relative">
-          <span className="bg-white px-3 font-bold text-[8.5pt] tracking-widest text-black absolute -top-3 left-1/2 -translate-x-1/2">
-            DIISI OLEH ATASAN LANGSUNG
-          </span>
-        </div>
+              <div className="grid grid-cols-[140px_1fr] gap-x-1 items-center">
+                <span>Jabatan</span>
+                <span id="preview-emp-job" className="border-b border-black font-medium">: {data.employeeJobTitle || '-'}</span>
+              </div>
 
-        {/* Direct Manager Approval Section */}
-        <div className="space-y-3 mt-4 text-[9.5pt] text-black">
-          <div className="grid grid-cols-[1fr_220px] gap-6 items-start">
-            {/* Left Column: Catatan & Checkbox Options */}
-            <div className="space-y-4">
-              <div>
-                <span className="font-semibold">Catatan :</span>
-                <div id="preview-catatan-atasan" className="mt-1 border-b border-black py-1 font-medium italic text-black min-h-[22px]">
-                  {level2Approval?.decisionNote || '-'}
+              <div className="grid grid-cols-[140px_1fr] gap-x-1 items-center">
+                <span>Dept/Section</span>
+                <span id="preview-emp-dept-sec" className="border-b border-black font-medium">: {data.departmentName || 'Central Services'}/{data.sectionName || 'Service Operation'}</span>
+              </div>
+
+              <div className="grid grid-cols-[140px_1fr] gap-x-1 items-center">
+                <span>Lokasi Bekerja</span>
+                <span id="preview-emp-site" className="border-b border-black font-medium">: {data.siteName || '-'}</span>
+              </div>
+
+              <div className="grid grid-cols-[140px_1fr] gap-x-1 items-center">
+                <span>Status Pernikahan</span>
+                <span id="preview-current-status" className="border-b border-black font-semibold">: {formatMaritalStatus(data.currentMaritalStatus)}</span>
+              </div>
+            </div>
+
+            {/* Request & Reason Section */}
+            <div className="space-y-2 mb-4 text-[9.5pt] text-black">
+              <div className="grid grid-cols-[390px_1fr] gap-x-1 items-center">
+                <span>Dengan Ini Mengajukan Permohonan Pergantian Status Pernikahan Menjadi</span>
+                <span id="preview-target-status" className="border-b border-black font-semibold text-center">: {data.targetMaritalStatus}</span>
+              </div>
+
+              <div className="mt-2 space-y-1">
+                <div className="flex items-end">
+                  <span>Alasan Saya Mengajukan Perubahan Status Ini</span>
+                  <span className="ml-8 pr-1">:</span>
+                </div>
+                <div id="preview-reason" className="border-b border-black min-h-[22px] pb-0.5 font-medium">
+                  {data.reason || '-'}
                 </div>
                 <div className="border-b border-black h-5"></div>
+                <div className="border-b border-black h-5"></div>
+              </div>
+            </div>
+
+            {/* Top Signatures Block (Mengetahui & Diajukan Oleh) */}
+            <div className="grid grid-cols-2 gap-4 my-4 text-[9pt] text-black">
+              {/* Left: Mengetahui */}
+              <div className="flex flex-col items-center text-center">
+                <div className="font-semibold whitespace-nowrap mb-1">Mengetahui,</div>
+                <div id="mengetahui-sig-container" className="h-[50px] flex items-end justify-center pb-1 min-w-[180px]">
+                  {level1Approval?.status === 'approved' && level1Approval?.signatureUrl ? (
+                    <img src={level1Approval.signatureUrl} alt="Signature PJO/HSE/Leader" className="max-h-[45px] object-contain" />
+                  ) : (
+                    <div className="text-black text-[8pt] italic">(Belum TTD)</div>
+                  )}
+                </div>
+                <div id="preview-approver1-name" className="border-b border-black w-full min-w-[180px] max-w-[220px] text-center font-semibold text-[9pt] pb-0.5">
+                  {level1Approval?.approverName || (data as any).approver1Name || 'PJO / HSE / Leader'}
+                </div>
+                <div id="preview-approver1-job" className="text-[8.5pt] text-center mt-0.5">
+                  {level1Approval?.approverJobTitle || (data as any).approver1Job || 'PJO / HSE / Leader'}
+                </div>
               </div>
 
-              <div>
-                <span className="font-semibold block mb-1">Menyetujui / Tidak Menyetujui Permohonan Ini :</span>
-                <div className="flex items-center gap-6 mt-1.5 text-[9.5pt] font-semibold">
-                  <div className="flex items-center gap-2">
-                    <span id="box-menyetujui" className="inline-flex items-center justify-center w-4 h-4 border border-black text-[10pt] leading-none font-bold bg-white">
-                      {level2Approval?.status === 'approved' || data.status === 'approved' ? '✓' : ''}
-                    </span>
-                    <span>MENYETUJUI</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span id="box-tidak-menyetujui" className="inline-flex items-center justify-center w-4 h-4 border border-black text-[10pt] leading-none font-bold bg-white">
-                      {level2Approval?.status === 'rejected' || level2Approval?.status === 'reverted' || data.status === 'rejected' ? '✓' : ''}
-                    </span>
-                    <span>TIDAK MENYETUJUI</span>
-                  </div>
+              {/* Right: Diajukan Oleh */}
+              <div className="flex flex-col items-center text-center">
+                <div className="font-semibold whitespace-nowrap mb-1">Diajukan Oleh,</div>
+                <div id="preview-submitter-sig" className="h-[50px] flex items-end justify-center pb-1 min-w-[180px]">
+                  {submitterSignatureUrl ? (
+                    <img src={submitterSignatureUrl} alt="Signature Karyawan" className="max-h-[45px] object-contain" />
+                  ) : (
+                    <div className="text-black text-[8pt] italic">(Tanda Tangan)</div>
+                  )}
                 </div>
-                <div
-                  id="status-proses-text"
-                  className={`text-[8.5pt] text-black italic mt-1 font-medium ${(level2Approval?.status || data.status !== 'pending_approval') ? 'hidden' : ''}`}
-                >
-                  (Dalam Proses Persetujuan)
+                <div className="border-b border-black w-full min-w-[180px] max-w-[220px] text-center font-semibold text-[9pt] pb-0.5">
+                  {data.employeeName}
+                </div>
+                <div id="preview-submitter-job" className="text-[8.5pt] text-center mt-0.5">
+                  {data.employeeJobTitle || 'Karyawan'}
                 </div>
               </div>
             </div>
 
-            {/* Right Column: Stacked Signature Box for Atasan Langsung */}
-            <div className="flex flex-col items-center justify-between text-center min-h-[145px] border border-black rounded p-2.5 bg-white">
-              <div id="preview-atasan-date" className="text-[8.5pt] font-semibold text-black min-h-[18px]">
-                {level2DateFormatted}
+            {/* Separator 1: DIISI OLEH ATASAN LANGSUNG */}
+            <div className="flex items-center gap-3 my-3 -mx-4">
+              <div className="flex-1 border-t border-dashed border-black"></div>
+              <span className="font-bold text-[8.5pt] text-black uppercase tracking-wider whitespace-nowrap">
+                DIISI OLEH ATASAN LANGSUNG
+              </span>
+              <div className="flex-1 border-t border-dashed border-black"></div>
+            </div>
+
+            {/* Section 1: Atasan Langsung (2-Column Stamp Layout) */}
+            <div className="grid grid-cols-[1fr_240px] gap-4 text-[9.5pt] text-black items-start mb-4">
+              {/* Left Column: Catatan & Decision Checkboxes */}
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <div className="font-bold text-black mb-0.5">Catatan :</div>
+                  <div className="border-b border-black min-h-[22px] pb-0.5">
+                    <span id="preview-catatan-atasan" className="font-medium italic text-black">
+                      {formatDisplayNote(level2Approval?.decisionNote) !== '-' ? formatDisplayNote(level2Approval?.decisionNote) : ''}
+                    </span>
+                  </div>
+                  <div className="border-b border-black h-5"></div>
+                  <div className="border-b border-black h-5"></div>
+                </div>
+
+                <div className="space-y-2 pt-1">
+                  <div className="font-bold text-black">Menyetujui / Tidak Menyetujui Permohonan Ini :</div>
+
+                  <div className="flex items-center gap-6 text-[9.5pt] pt-1">
+                    <div className="flex items-center gap-2">
+                      <span
+                        id="preview-atasan-check-approved"
+                        className="w-4 h-4 border border-black inline-flex items-center justify-center text-[10px] font-bold"
+                      >
+                        {level2Approval?.status === 'approved' ? '✓' : ''}
+                      </span>
+                      <span className="font-bold">MENYETUJUI</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span
+                        id="preview-atasan-check-rejected"
+                        className="w-4 h-4 border border-black inline-flex items-center justify-center text-[10px] font-bold"
+                      >
+                        {level2Approval?.status === 'rejected' ? '✓' : ''}
+                      </span>
+                      <span className="font-bold">TIDAK MENYETUJUI</span>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="font-semibold text-black text-[9pt] mt-1">
-                Atasan Langsung,
+
+              {/* Right Column: Approval Stamp Card Box */}
+              <div className="border border-slate-300 rounded-lg p-3 flex flex-col items-center justify-between text-center bg-white min-h-[145px]">
+                <div id="preview-atasan-date" className="text-[8.5pt] font-semibold text-black">
+                  {level2DateFormatted || '—'}
+                </div>
+                <div className="text-[8.5pt] font-bold text-black">Atasan Langsung</div>
+
+                <div id="atasan-sig-container" className="h-[45px] flex items-center justify-center my-1">
+                  {level2Approval?.status === 'approved' && level2Approval?.signatureUrl ? (
+                    <img id="preview-atasan-sig" src={level2Approval.signatureUrl} alt="TTD Atasan" className="max-h-[40px] object-contain" />
+                  ) : (
+                    <div className="text-[8pt] text-slate-400 italic">(Belum TTD)</div>
+                  )}
+                </div>
+
+                <div className="w-full border-t border-slate-200 my-1"></div>
+                <div id="preview-atasan-name" className="text-[8.5pt] font-bold text-slate-900 leading-tight">
+                  {level2Approval?.approverName || (data as any).approver2Name || '—'}
+                </div>
+                <div id="preview-atasan-job" className="text-[7.5pt] text-slate-600 leading-tight">
+                  {level2Approval?.approverJobTitle || (data as any).approver2Job || 'Atasan Langsung'}
+                </div>
               </div>
-              <div id="atasan-sig-container" className="h-[50px] flex items-center justify-center my-1">
-                {level2Approval?.status === 'approved' && level2Approval?.signatureUrl ? (
-                  <img id="preview-atasan-sig" src={level2Approval.signatureUrl} alt="Signature Atasan" className="max-h-[48px] object-contain" />
-                ) : (
-                  <div id="preview-atasan-sig-placeholder" className="text-black text-[8pt] italic">(Belum TTD)</div>
-                )}
+            </div>
+
+            {/* Separator 2: DIISI OLEH HUMAN RESOURCES */}
+            <div className="flex items-center gap-3 my-3 -mx-4">
+              <div className="flex-1 border-t border-dashed border-black"></div>
+              <span className="font-bold text-[8.5pt] text-black uppercase tracking-wider whitespace-nowrap">
+                DIISI OLEH HUMAN RESOURCES
+              </span>
+              <div className="flex-1 border-t border-dashed border-black"></div>
+            </div>
+
+            {/* Section 2: Human Resources (2-Column Stamp Layout) */}
+            <div className="grid grid-cols-[1fr_240px] gap-4 text-[9.5pt] text-black items-start">
+              {/* Left Column: Catatan & Decision Checkboxes */}
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <div className="font-bold text-black mb-0.5">Catatan :</div>
+                  <div className="border-b border-black min-h-[22px] pb-0.5">
+                    <span id="preview-catatan-hr" className="font-medium italic text-black">
+                      {formatDisplayNote(level3Approval?.decisionNote) !== '-' ? formatDisplayNote(level3Approval?.decisionNote) : ''}
+                    </span>
+                  </div>
+                  <div className="border-b border-black h-5"></div>
+                  <div className="border-b border-black h-5"></div>
+                </div>
+
+                <div className="space-y-2 pt-1">
+                  <div className="font-bold text-black">Menyetujui / Tidak Menyetujui Permohonan Ini :</div>
+
+                  <div className="flex items-center gap-6 text-[9.5pt] pt-1">
+                    <div className="flex items-center gap-2">
+                      <span
+                        id="preview-hr-check-approved"
+                        className="w-4 h-4 border border-black inline-flex items-center justify-center text-[10px] font-bold"
+                      >
+                        {level3Approval?.status === 'approved' ? '✓' : ''}
+                      </span>
+                      <span className="font-bold">MENYETUJUI</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span
+                        id="preview-hr-check-rejected"
+                        className="w-4 h-4 border border-black inline-flex items-center justify-center text-[10px] font-bold"
+                      >
+                        {level3Approval?.status === 'rejected' ? '✓' : ''}
+                      </span>
+                      <span className="font-bold">TIDAK MENYETUJUI</span>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="border-t border-black w-full font-bold pt-0.5 text-[9pt]">
-                {level2Approval?.approverName || '_______________________'}
-              </div>
-              <div className="text-[8pt] text-black">
-                {level2Approval?.approverJobTitle || 'Section Head / Manager'}
+
+              {/* Right Column: Approval Stamp Card Box */}
+              <div className="border border-slate-300 rounded-lg p-3 flex flex-col items-center justify-between text-center bg-white min-h-[145px]">
+                <div id="preview-hr-date" className="text-[8.5pt] font-semibold text-black">
+                  {level3DateFormatted || '—'}
+                </div>
+                <div className="text-[8.5pt] font-bold text-black">Human Resources</div>
+
+                <div id="hr-sig-container" className="h-[45px] flex items-center justify-center my-1">
+                  {level3Approval?.status === 'approved' && level3Approval?.signatureUrl ? (
+                    <img id="preview-hr-sig" src={level3Approval.signatureUrl} alt="TTD HR" className="max-h-[40px] object-contain" />
+                  ) : (
+                    <div className="text-[8pt] text-slate-400 italic">(Belum TTD)</div>
+                  )}
+                </div>
+
+                <div className="w-full border-t border-slate-200 my-1"></div>
+                <div id="preview-hr-name" className="text-[8.5pt] font-bold text-slate-900 leading-tight">
+                  {level3Approval?.approverName || (data as any).approver3Name || '—'}
+                </div>
+                <div id="preview-hr-job" className="text-[7.5pt] text-slate-600 leading-tight">
+                  {level3Approval?.approverJobTitle || (data as any).approver3Job || 'Human Resources'}
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Footer Document Note */}
-        <div className="mt-auto pt-6 flex justify-between items-center text-black text-[7pt]">
-          <span>Dokumen dicetak otomatis via HERO System</span>
-          <span className="font-mono font-semibold">F.CS.MS-01.00|1</span>
+        {/* Footer Document Code Outside Outer Box */}
+        <div className="pt-2 flex justify-end items-center text-black text-[8.5pt]">
+          <span className="font-bold tracking-tight">F.HR.STD.001 00</span>
         </div>
       </div>
 
       <MaritalStatusPrintListener
-        hasExistingSignature={Boolean(level2Approval?.status === 'approved' && level2Approval?.signatureUrl)}
+        isEmbed={isEmbed}
+        hasExistingSignature={Boolean(
+          (level2Approval?.status === 'approved' && level2Approval?.signatureUrl) ||
+          (level3Approval?.status === 'approved' && level3Approval?.signatureUrl)
+        )}
       />
     </div>
   );
 }
+

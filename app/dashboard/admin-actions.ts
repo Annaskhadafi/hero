@@ -4573,7 +4573,7 @@ async function applyApprovalDecision(params: {
       ? 'Pengajuan ditolak oleh approver.'
       : params.decision === 'needs_correction'
         ? 'Pengajuan dikembalikan untuk revisi.'
-        : 'Pengajuan disetujui.')
+        : '')
 
   const [approval] = await db
     .select({
@@ -6946,7 +6946,7 @@ export async function reviewApprovalAction(formData: FormData) {
       ? 'Pengajuan dikembalikan untuk revisi (Revert).'
       : decision === 'rejected'
         ? 'Pengajuan ditolak oleh approver (Reject).'
-        : 'Disetujui.')
+        : '')
 
   const payload = reviewApprovalSchema.parse({
     approvalId: formData.get('approvalId'),
