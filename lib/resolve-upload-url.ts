@@ -131,6 +131,10 @@ export function resolveUploadUrl(
   if (!url) return "";
   let trimmed = url.trim();
 
+  if (trimmed.startsWith("data:") || trimmed.startsWith("blob:")) {
+    return trimmed;
+  }
+
   // Strip known hosts (localhost, 127.0.0.1, hero.chitraparatama.com, or configured BETTER_AUTH_URL host)
   // to ensure relative path resolution works on whatever host the user is currently accessing!
   trimmed = trimmed

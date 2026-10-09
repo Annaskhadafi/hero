@@ -70,9 +70,8 @@ describe("HSE APD Requested For Feature", () => {
     assert.ok(formContent.includes('onClick={() => setRequestedFor("repair")}'), "apd-form.tsx must support Repair selection");
   });
 
-  test("Print PDF renders Diajukan Untuk row", () => {
+  test("Print PDF does not render Diajukan Untuk row", () => {
     const printContent = fs.readFileSync(path.resolve("app/print/apd/[id]/page.tsx"), "utf8");
-    assert.ok(printContent.includes("getRequestedForLabel"), "Print page must import getRequestedForLabel");
-    assert.ok(printContent.includes("Diajukan Untuk"), "Print page must render Diajukan Untuk row");
+    assert.ok(!printContent.includes('<span className="w-32 font-semibold">Diajukan Untuk</span>'), "Print page must not render Diajukan Untuk row");
   });
 });

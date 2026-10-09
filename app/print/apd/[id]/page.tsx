@@ -7,6 +7,7 @@ import { getS3ObjectReadUrl } from '@/lib/s3-storage';
 import { resolveUploadUrl } from '@/lib/resolve-upload-url';
 import { parseApprovalNoteEntries } from '@/lib/approval-notes';
 import { ApdLiveSignatureListener } from '@/components/admin/apd-approval-dialog';
+import { ApdEvidencePhotos } from '@/components/print/apd-evidence-photos';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -256,10 +257,6 @@ export default async function PrintApdPage({
               <span className="w-32 font-semibold">Lokasi Site</span>
               <span>: {data.siteName || '-'}</span>
             </div>
-            <div className="flex items-start col-span-2">
-              <span className="w-32 font-semibold">Diajukan Untuk</span>
-              <span className="font-semibold text-blue-900">: {getRequestedForLabel(data.requestedFor)}</span>
-            </div>
             <div className="flex items-start col-span-2 mt-0.5">
               <span className="w-32 font-semibold">Alasan Permintaan</span>
               <span className="flex-1">: {data.notes || '-'}</span>
@@ -323,32 +320,7 @@ export default async function PrintApdPage({
           </table>
 
           {/* Lampiran Foto Bukti Fisik (Barang Rusak / Pergantian) */}
-          {allEvidencePhotos.length > 0 && (
-            <div className="mt-1 mb-2 p-2 border border-gray-400 rounded bg-gray-50/80">
-              <div className="text-[7.5pt] font-bold text-gray-800 mb-1.5 flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <span>Lampiran Foto Bukti Fisik (Barang Rusak / Pergantian)</span>
-                </span>
-                <span className="text-[6.5pt] font-normal text-gray-500">
-                  Total {allEvidencePhotos.length} foto terlampir
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-3 items-start">
-                {allEvidencePhotos.map((photo, idx) => (
-                  <div key={idx} className="flex flex-col items-center bg-white p-1 rounded border border-gray-300 shadow-xs">
-                    <img
-                      src={resolveUploadUrl(photo.url)}
-                      alt={`Bukti ${photo.itemName}`}
-                      className="h-24 w-32 object-cover rounded border border-gray-200"
-                    />
-                    <span className="text-[7pt] font-semibold text-gray-800 mt-1 max-w-[128px] truncate text-center">
-                      {photo.itemName} {photo.totalItemPhotos > 1 ? `(#${photo.index})` : ''}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          <ApdEvidencePhotos photos={allEvidencePhotos} />
 
           {/* Notes */}
           <div className="mt-1 mb-2">
