@@ -277,6 +277,17 @@ export function RouteFolderTree({
                                     >
                                       {item.activityCode}
                                     </span>
+                                    {item.groupName ? (
+                                      <span
+                                        className={
+                                          isSelected
+                                            ? 'rounded-md bg-white/20 px-1.5 py-0.5 text-[9px] font-bold text-white'
+                                            : 'rounded-md bg-[#eaf4fb] px-1.5 py-0.5 text-[9px] font-bold text-[#003f78]'
+                                        }
+                                      >
+                                        Group: {item.groupName}
+                                      </span>
+                                    ) : null}
                                     {item.basePoints > 0 ? (
                                       <span
                                         className={
@@ -382,6 +393,17 @@ export function RouteFolderTree({
                       >
                         {item.activityCode}
                       </span>
+                      {item.groupName ? (
+                        <span
+                          className={
+                            isSelected
+                              ? 'rounded-md bg-white/20 px-1.5 py-0.5 text-[9px] font-bold text-white'
+                              : 'rounded-md bg-[#eaf4fb] px-1.5 py-0.5 text-[9px] font-bold text-[#003f78]'
+                          }
+                        >
+                          Group: {item.groupName}
+                        </span>
+                      ) : null}
                       {item.basePoints > 0 ? (
                         <span
                           className={

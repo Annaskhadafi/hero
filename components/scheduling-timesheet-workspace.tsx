@@ -5688,26 +5688,60 @@ export function SchedulingTimesheetWorkspace({
     const sectionPjo = sectionApproval?.pjoLeaderName?.trim() || ''
     const sectionApprovedBy = sectionApproval?.departmentHeadName?.trim() || ''
 
+    const isKnownServicePjo = (val?: string) => {
+      if (!val) return false
+      const v = val.trim().toLowerCase()
+      return v.includes('junaidi') || v.includes('apriyanto')
+    }
+
+    const isKnownRepairPjo = (val?: string) => {
+      if (!val) return false
+      const v = val.trim().toLowerCase()
+      return v.includes('ary maulana') || v.includes('ary')
+    }
+
+    const isKnownHsePjo = (val?: string) => {
+      if (!val) return false
+      const v = val.trim().toLowerCase()
+      return v.includes('andi safari')
+    }
+
+    const isKnownTechPjo = (val?: string) => {
+      if (!val) return false
+      const v = val.trim().toLowerCase()
+      return v.includes('abian')
+    }
+
     if (
       normSection.includes('hse') ||
       normSection.includes('safety') ||
       normSection.includes('k3') ||
       normSection.includes('lingkungan')
     ) {
+      const hsePjo =
+        sectionPjo ||
+        (cfgPjo && !isKnownServicePjo(cfgPjo) && !isKnownRepairPjo(cfgPjo) ? cfgPjo : '') ||
+        andiSafari
       return {
         ...baseSignatures,
         preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy || fathurrahman,
-        pjoLeader: cfgPjo || sectionPjo || andiSafari,
+        pjoLeader: hsePjo,
         approvedBy: cfgApprovedBy || sectionApprovedBy || rendra,
         hrName: cfgHr || kesuma,
       }
     }
 
     if (normSection.includes('repair') || normSection.includes('retread')) {
+      const repairPjo =
+        sectionPjo ||
+        (cfgPjo && !isKnownServicePjo(cfgPjo) && !isKnownHsePjo(cfgPjo) && !isKnownTechPjo(cfgPjo)
+          ? cfgPjo
+          : '') ||
+        ary
       return {
         ...baseSignatures,
         preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy || arjun,
-        pjoLeader: cfgPjo || sectionPjo || ary,
+        pjoLeader: repairPjo,
         approvedBy: cfgApprovedBy || sectionApprovedBy || romy,
         hrName: cfgHr || kesuma,
       }
@@ -5715,20 +5749,32 @@ export function SchedulingTimesheetWorkspace({
 
     if (normSection.includes('service') || normSection.includes('servis')) {
       const defaultPjo = isCkSite ? apriyanto : junaidi
+      const servicePjo =
+        sectionPjo ||
+        (cfgPjo && !isKnownRepairPjo(cfgPjo) && !isKnownHsePjo(cfgPjo) && !isKnownTechPjo(cfgPjo)
+          ? cfgPjo
+          : '') ||
+        defaultPjo
       return {
         ...baseSignatures,
         preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy || fauzan,
-        pjoLeader: cfgPjo || sectionPjo || defaultPjo,
+        pjoLeader: servicePjo,
         approvedBy: cfgApprovedBy || sectionApprovedBy || romy,
         hrName: cfgHr || kesuma,
       }
     }
 
     if (normSection.includes('tech') || normSection.includes('teknis')) {
+      const techPjo =
+        sectionPjo ||
+        (cfgPjo && !isKnownServicePjo(cfgPjo) && !isKnownRepairPjo(cfgPjo) && !isKnownHsePjo(cfgPjo)
+          ? cfgPjo
+          : '') ||
+        abian
       return {
         ...baseSignatures,
         preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy,
-        pjoLeader: cfgPjo || sectionPjo || abian,
+        pjoLeader: techPjo,
         approvedBy: cfgApprovedBy || sectionApprovedBy || romy,
         hrName: cfgHr || kesuma,
       }

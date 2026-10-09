@@ -286,7 +286,9 @@ export async function getDailyActivitySessionDocumentData(
           ? item.endedAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
           : '-',
         workSummary: [
-          item.snapshotLabel,
+          item.snapshotGroupName && !item.snapshotLabel?.includes(`[${item.snapshotGroupName}]`)
+            ? `[${item.snapshotGroupName}] ${item.snapshotLabel}`
+            : item.snapshotLabel,
           item.unitNumber ? `Unit: ${item.unitNumber}` : '',
           itemTeamMembersSummary ? `[Tim: ${itemTeamMembersSummary}]` : '',
           item.remark ? `Ket: ${item.remark}` : '',

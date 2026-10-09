@@ -45,7 +45,7 @@ import {
 import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
 import { eq, and, gte, lte, desc, sql, asc, inArray } from 'drizzle-orm'
-import { endOfDay, startOfDay, subHours } from 'date-fns'
+import { endOfDay, startOfDay, subHours, subDays } from 'date-fns'
 import { addMonths, format, getDaysInMonth } from 'date-fns'
 import { getTimezoneDateParts } from '@/lib/indonesia-timezone'
 
@@ -1278,11 +1278,11 @@ export async function getTodayAttendanceLogs() {
     return { success: false, employee, logs: [] }
   }
 
-  const attendanceWindow = getAttendanceQueryWindow()
+  // Fetch up to 180 days of historical attendance logs so historical date filters work in Records table
+  const historyStart = subDays(new Date(), 180)
 
   const conditions = [
-    gte(attendanceRecords.eventTime, attendanceWindow.start),
-    lte(attendanceRecords.eventTime, attendanceWindow.end),
+    gte(attendanceRecords.eventTime, historyStart),
   ]
 
   // Apply data scope: global = all records, site = site only, own = self only
@@ -1318,6 +1318,7 @@ export async function getTodayAttendanceLogs() {
     .leftJoin(sites, eq(attendanceRecords.siteId, sites.id))
     .where(and(...conditions))
     .orderBy(desc(attendanceRecords.eventTime))
+    .limit(1000)
 
   const logsWithPhotoPreview = await Promise.all(
     logs.map(async (log) => ({

@@ -2887,7 +2887,14 @@ export function InboxTab({
                                         return (
                                           <tr key={it.id || idx}>
                                             <td className="text-center align-middle">{idx + 1}</td>
-                                            <td className="align-middle">{it.label || it.snapshotLabel || 'Aktivitas'}</td>
+                                            <td className="align-middle">
+                                              {it.snapshotGroupName || it.group ? (
+                                                <span className="font-semibold text-sky-800 bg-sky-50 px-1.5 py-0.5 rounded text-[10px] mr-1.5 border border-sky-200">
+                                                  {it.snapshotGroupName || it.group}
+                                                </span>
+                                              ) : null}
+                                              {it.label || it.snapshotLabel || 'Aktivitas'}
+                                            </td>
                                             <td className="text-center align-middle">{it.duration || '-'}</td>
                                             <td className="text-center font-bold align-middle">{it.points || it.actualPoints || 0}</td>
                                             <td className="text-left text-[7.5pt] align-middle">{it.remark || it.remarks || '-'}</td>
@@ -5960,7 +5967,14 @@ export function HistoryTab({
                                     <tr key={it.id || idx}>
                                       <td className="text-center font-mono">{idx + 1}</td>
                                       <td className="text-left font-medium text-black">
-                                        <div>{it.snapshotLabel || it.label || it.activityLabel || it.activityName || 'Aktivitas'}</div>
+                                        <div>
+                                          {it.snapshotGroupName || it.group ? (
+                                            <span className="inline-block font-bold text-sky-900 bg-sky-100/80 border border-sky-300 rounded px-1.5 py-0.5 text-[9px] mr-1.5 mb-0.5">
+                                              {it.snapshotGroupName || it.group}
+                                            </span>
+                                          ) : null}
+                                          {it.snapshotLabel || it.label || it.activityLabel || it.activityName || 'Aktivitas'}
+                                        </div>
                                         {itemTeamSummary ? (
                                           <div className="text-[7pt] text-[#003461] font-bold mt-0.5">
                                             Kru: {itemTeamSummary}

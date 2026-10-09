@@ -524,12 +524,15 @@ async function drawWorkTable(
     cellX += columns[0].width;
 
     // Col 1: Aktivitas
+    const groupName = ((item as any).snapshotGroupName || (item as any).group || '').trim()
     const details = []
     if (item.unitNumber && item.unitNumber !== '-' && !item.snapshotLabel?.includes(item.unitNumber)) details.push(item.unitNumber)
     if ((item as any).tireCount && Number((item as any).tireCount) > 0) details.push(`${(item as any).tireCount} Tire`)
     if ((item as any).materialUsed) details.push(`Mat: ${(item as any).materialUsed}`)
     if ((item as any).itemTeamMembersSummary) details.push(`Tim: ${(item as any).itemTeamMembersSummary}`)
-    const actLabel = [item.snapshotLabel || item.workSummary || "-", details.join(" • ")].filter(Boolean).join(" - ");
+    const baseLabel = item.snapshotLabel || item.workSummary || "-"
+    const labelWithGroup = groupName && !baseLabel.includes(`[${groupName}]`) ? `[${groupName}] ${baseLabel}` : baseLabel
+    const actLabel = [labelWithGroup, details.join(" • ")].filter(Boolean).join(" - ");
     const activityLines = splitText(actLabel, 38);
     let actY = rowTopY - 11;
     for (const line of activityLines.slice(0, 2)) {
@@ -1048,7 +1051,10 @@ async function drawEvidencePhotoPages(
       });
 
       const itemNumber = pageIdx * 4 + itemIdx + 1;
-      const itemTitle = `#${itemNumber} ${item.snapshotLabel || item.workSummary || "Aktivitas"}`;
+      const groupName = ((item as any).snapshotGroupName || (item as any).group || '').trim();
+      const rawTitle = item.snapshotLabel || item.workSummary || "Aktivitas";
+      const fullTitle = groupName && !rawTitle.includes(`[${groupName}]`) ? `[${groupName}] ${rawTitle}` : rawTitle;
+      const itemTitle = `#${itemNumber} ${fullTitle}`;
       page.drawText(itemTitle.slice(0, 42), {
         x: cardX + 6,
         y: cardY - 15,

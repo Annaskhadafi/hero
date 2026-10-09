@@ -4047,7 +4047,7 @@ export function MobileDailyActivityForm({
                         onClick={() => toggleLibrarySelection(`${item.id}`)}
                         className="inline-flex items-center gap-2 rounded-full bg-[#f6fbff] px-3 py-2 text-[11px] font-black tracking-[0.08em] text-[#003f78] uppercase shadow-[inset_0_0_0_1px_rgba(0,52,97,0.05)]"
                       >
-                        <span>{item.activityCode}</span>
+                        <span>{item.activityCode}{item.groupName ? ` (${item.groupName})` : ''}</span>
                         <X className="size-3.5" />
                       </button>
                     ))}
@@ -4168,7 +4168,7 @@ export function MobileDailyActivityForm({
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
-                            #{index + 1} • {library.activityCode}
+                            #{index + 1} • {library.activityCode} {library.groupName ? `• Group: ${library.groupName}` : ''}
                           </p>
                           <p className="mt-1 text-sm font-black text-[#082033]">
                             {library.activityName}
