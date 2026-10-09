@@ -221,44 +221,64 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
       </div>
 
       {/* KPI Header Cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-xl border border-border/70 bg-white p-4 shadow-sm">
-          <div className="text-xs font-medium text-slate-500">Total Section Terdata</div>
-          <div className="mt-1 text-2xl font-bold text-slate-900">{totalSections}</div>
+      <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-4">
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-2xs transition-all hover:shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-500">Total Section Terdata</span>
+            <div className="flex size-8 items-center justify-center rounded-xl bg-blue-50 text-blue-600 border border-blue-100/80">
+              <ShieldCheck className="size-4" />
+            </div>
+          </div>
+          <div className="mt-2.5 font-display text-2xl font-bold tracking-tight text-slate-900">{totalSections}</div>
           <div className="mt-1 text-[11px] text-slate-400">Seluruh area operasional</div>
         </div>
 
-        <div className="rounded-xl border border-border/70 bg-white p-4 shadow-sm">
-          <div className="text-xs font-medium text-slate-500">Total Request Approved</div>
-          <div className="mt-1 text-2xl font-bold text-emerald-700">{totalApprovedRequests}</div>
-          <div className="mt-1 text-[11px] text-emerald-600 font-medium">Permintaan siap diproses</div>
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-2xs transition-all hover:shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-500">Total Request Approved</span>
+            <div className="flex size-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100/80">
+              <CheckCircle2 className="size-4" />
+            </div>
+          </div>
+          <div className="mt-2.5 font-display text-2xl font-bold tracking-tight text-emerald-700">{totalApprovedRequests}</div>
+          <div className="mt-1 text-[11px] font-medium text-emerald-600">Permintaan siap diproses</div>
         </div>
 
-        <div className="rounded-xl border border-border/70 bg-white p-4 shadow-sm">
-          <div className="text-xs font-medium text-slate-500">Menunggu Approval</div>
-          <div className="mt-1 text-2xl font-bold text-amber-600">{pendingCount}</div>
-          <div className="mt-1 text-[11px] text-amber-700 font-medium">Verifikasi Dept Head</div>
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-2xs transition-all hover:shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-500">Menunggu Approval</span>
+            <div className="flex size-8 items-center justify-center rounded-xl bg-amber-50 text-amber-600 border border-amber-100/80">
+              <Clock className="size-4" />
+            </div>
+          </div>
+          <div className="mt-2.5 font-display text-2xl font-bold tracking-tight text-amber-600">{pendingCount}</div>
+          <div className="mt-1 text-[11px] font-medium text-amber-700">Verifikasi Dept Head</div>
         </div>
 
-        <div className="rounded-xl border border-border/70 bg-white p-4 shadow-sm">
-          <div className="text-xs font-medium text-slate-500">Disetujui (Approved)</div>
-          <div className="mt-1 text-2xl font-bold text-blue-600">{approvedCount}</div>
-          <div className="mt-1 text-[11px] text-blue-700 font-medium">Siap proses vendor</div>
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-2xs transition-all hover:shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-500">Disetujui (Approved)</span>
+            <div className="flex size-8 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100/80">
+              <Sparkles className="size-4" />
+            </div>
+          </div>
+          <div className="mt-2.5 font-display text-2xl font-bold tracking-tight text-indigo-600">{approvedCount}</div>
+          <div className="mt-1 text-[11px] font-medium text-indigo-700">Siap proses vendor</div>
         </div>
       </div>
 
       {/* Command Bar & Filters */}
-      <div className="rounded-xl border border-border/70 bg-white p-3 shadow-sm">
+      <div className="rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-2xs">
         <div className="flex flex-wrap items-center justify-between gap-2.5">
           <div className="flex flex-wrap items-center gap-2">
             {/* Search Input */}
             <div className="relative w-64">
-              <Search className="absolute left-2.5 top-2.5 size-3.5 text-slate-400" />
+              <Search className="absolute left-3 top-2.5 size-3.5 text-slate-400" />
               <Input
                 placeholder="Cari section atau kode..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="h-8 pl-8 text-xs bg-slate-50/70"
+                className="h-8.5 pl-8.5 text-xs bg-slate-50/70 border-slate-200 rounded-xl focus:bg-white transition-all"
               />
             </div>
 
@@ -266,7 +286,7 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
             <select
               value={selectedSite}
               onChange={(e) => setSelectedSite(e.target.value as any)}
-              className="h-8 rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-400"
+              className="h-8.5 rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-xs font-medium text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#003461]/20 transition-all cursor-pointer"
             >
               <option value="all">Semua Target Site</option>
               <option value="GABUNGAN">Gabungan Site</option>
@@ -277,7 +297,7 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
             <select
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value as any)}
-              className="h-8 rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-400"
+              className="h-8.5 rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-xs font-medium text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#003461]/20 transition-all cursor-pointer"
             >
               <option value="all">Semua Status Summary</option>
               <option value="uncreated">Belum Dibuat</option>
@@ -295,7 +315,7 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
                   setSelectedSite('all');
                   setSelectedStatus('all');
                 }}
-                className="h-8 text-xs text-slate-500 hover:text-slate-900"
+                className="h-8.5 text-xs text-slate-500 hover:text-slate-900 rounded-xl"
               >
                 Reset Filter
               </Button>
@@ -309,20 +329,20 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
       </div>
 
       {/* Main Table */}
-      <div className="overflow-hidden rounded-xl border border-border/70 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-2xs">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="border-b border-border/70 bg-slate-50/90 text-slate-700">
+            <thead className="border-b border-slate-200 bg-slate-50/90 text-slate-700">
               <tr>
-                <th className="w-12 px-3.5 py-3 text-center font-semibold">No.</th>
-                <th className="px-4 py-3 font-semibold">Section</th>
-                <th className="px-4 py-3 font-semibold">Target Site</th>
-                <th className="px-4 py-3 text-center font-semibold">Approved Request</th>
-                <th className="px-4 py-3 font-semibold">Status Summary</th>
-                <th className="px-4 py-3 text-center font-semibold">Aksi</th>
+                <th className="w-12 px-3.5 py-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-600">No.</th>
+                <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-600">Section</th>
+                <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-600">Target Site</th>
+                <th className="px-4 py-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-600">Approved Request</th>
+                <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-600">Status Summary</th>
+                <th className="px-4 py-3 text-center text-[11px] font-bold uppercase tracking-wider text-slate-600">Aksi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border/50 text-slate-700">
+            <tbody className="divide-y divide-slate-100 text-slate-700">
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-12 text-center text-slate-400">
@@ -343,17 +363,17 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
                       key={section.summaryId ? `sum-${section.summaryId}` : `uncreated-${section.id}-${section.targetSite}`}
                       className="transition-colors hover:bg-slate-50/70"
                     >
-                      <td className="px-3.5 py-3 text-center font-medium text-slate-500">{idx + 1}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-3.5 py-3.5 text-center font-medium text-slate-400">{idx + 1}</td>
+                      <td className="px-4 py-3.5">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <div className="font-semibold text-slate-900">{section.name}</div>
+                          <div className="font-bold text-slate-900">{section.name}</div>
                           {section.summaryNumber && (
-                            <span className="font-mono text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                            <span className="font-mono text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200/80">
                               {section.summaryNumber}
                             </span>
                           )}
                           {!section.summaryStatus && (
-                            <span className="text-[10px] font-medium text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                            <span className="text-[10px] font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/80">
                               Permohonan Baru
                             </span>
                           )}
@@ -362,35 +382,35 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
                           <div className="text-[10px] text-slate-400 font-mono mt-0.5">Kode: {section.code}</div>
                         )}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3.5">
                         <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border ${
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
                             isVale
-                              ? 'bg-orange-50 text-orange-800 border-orange-200'
-                              : 'bg-slate-100 text-slate-800 border-slate-200'
+                              ? 'bg-orange-50 text-orange-800 border-orange-200/80'
+                              : 'bg-slate-100 text-slate-800 border-slate-200/80'
                           }`}
                         >
                           {isVale ? 'Vale' : 'Gabungan Site'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-center">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                      <td className="px-4 py-3.5 text-center">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200/80">
                           {section.approvedCount} request
                         </span>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3.5">
                         {getStatusBadge(section.summaryStatus)}
                       </td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-4 py-3.5 text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           {/* Generate button if no summary created yet */}
                           {section.approvedCount > 0 && !section.summaryStatus && (
                             <Button
                               size="sm"
                               onClick={() => setGeneratorModalSection(section)}
-                              className="h-7 px-2.5 text-xs bg-blue-600 text-white hover:bg-blue-700 shadow-xs cursor-pointer gap-1 font-semibold"
+                              className="h-7.5 px-3 text-xs bg-[#003461] text-white hover:bg-[#00274a] rounded-xl shadow-2xs cursor-pointer gap-1.5 font-bold"
                             >
-                              <Sparkles className="size-3.5" />
+                              <Sparkles className="size-3.5 text-amber-300" />
                               Buat Summary
                             </Button>
                           )}
@@ -401,7 +421,7 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
                               variant="outline"
                               size="sm"
                               onClick={() => router.push(`/dashboard/summary?preview=${section.summaryId}`)}
-                              className="h-7 px-2.5 text-xs border-slate-200 bg-white hover:bg-slate-100 text-slate-700 shadow-xs cursor-pointer gap-1 font-medium"
+                              className="h-7.5 px-2.5 text-xs border-slate-200 bg-white hover:bg-slate-50 text-slate-700 rounded-xl shadow-2xs cursor-pointer gap-1.5 font-semibold"
                             >
                               <Eye className="size-3.5 text-slate-500" />
                               Lihat
@@ -415,13 +435,13 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
                               size="sm"
                               onClick={() => handleDeleteDraft(section.summaryId!)}
                               disabled={deletingId === section.summaryId}
-                              className="h-7 px-2 text-xs border-rose-200 text-rose-600 hover:bg-rose-50 shadow-xs cursor-pointer gap-1 font-medium"
+                              className="h-7.5 px-2.5 text-xs border-rose-200 text-rose-600 hover:bg-rose-50 rounded-xl shadow-2xs cursor-pointer gap-1.5 font-semibold"
                               title="Hapus Summary"
                             >
                               {deletingId === section.summaryId ? (
-                                <Loader2 className="size-3 animate-spin" />
+                                <Loader2 className="size-3.5 animate-spin" />
                               ) : (
-                                <Trash2 className="size-3" />
+                                <Trash2 className="size-3.5" />
                               )}
                               Hapus
                             </Button>
@@ -434,7 +454,7 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
                               size="sm"
                               onClick={() => handlePrintInPlace(section.summaryId!)}
                               disabled={isPrinting}
-                              className="h-7 px-2.5 text-xs border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 shadow-xs cursor-pointer gap-1 font-medium"
+                              className="h-7.5 px-2.5 text-xs border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl shadow-2xs cursor-pointer gap-1.5 font-semibold"
                             >
                               {isPrinting ? (
                                 <Loader2 className="size-3.5 animate-spin" />

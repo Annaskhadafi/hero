@@ -36,6 +36,7 @@ export const apdRequests = pgTable('hero_apd_requests', {
 export const apdRequestItems = pgTable('hero_apd_request_items', {
   id: serial('id').primaryKey(),
   requestId: integer('request_id').notNull().references(() => apdRequests.id, { onDelete: 'cascade' }),
+  masterApdId: integer('master_apd_id').references(() => masterApd.id, { onDelete: 'set null' }),
   itemType: text('item_type').notNull(),
   requestType: text('request_type').notNull(), // 'baru' or 'pergantian'
   photoUrl: text('photo_url'),

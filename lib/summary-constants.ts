@@ -14,7 +14,7 @@ export const QTY_ONLY_COLUMNS = [
   'Tali Kacamata',
   'Chin Strap',
   'Dalaman Helm',
-  'Kaos Tangan Dotting',
+  'Sarung Tangan Dotting',
   'Safety Goggles',
   'Apron',
   'Face Shield Helmet',
@@ -23,6 +23,30 @@ export const QTY_ONLY_COLUMNS = [
 
 export const APD_ITEM_COLUMNS = [...QTY_ONLY_COLUMNS, SAFETY_SHOES_COL];
 export const APD_COLUMNS = APD_ITEM_COLUMNS;
+
+export function buildDynamicApdColumns(masterItems?: Array<{ name: string; isQtyOnly?: boolean; hasSize?: boolean }>): {
+  qtyOnlyCols: string[];
+  allCols: string[];
+} {
+  if (!masterItems || masterItems.length === 0) {
+    return {
+      qtyOnlyCols: QTY_ONLY_COLUMNS,
+      allCols: APD_ITEM_COLUMNS,
+    };
+  }
+
+  const qtyOnlyCols = masterItems
+    .filter((item) => item.name !== SAFETY_SHOES_COL && !item.hasSize)
+    .map((item) => item.name);
+
+  const sizedCols = masterItems
+    .filter((item) => item.name === SAFETY_SHOES_COL || item.hasSize)
+    .map((item) => item.name);
+
+  const allCols = [...qtyOnlyCols, ...sizedCols];
+
+  return { qtyOnlyCols, allCols };
+}
 
 export type PendingSummaryRequestItem = {
   id: number;

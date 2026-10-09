@@ -43,7 +43,7 @@ export const APD_ITEMS = [
   "Tali Kacamata",
   "Chin Strap",
   "Dalaman Helm",
-  "Kaos Tangan Dotting",
+  "Sarung Tangan Dotting",
   "Safety Goggles",
   "Apron",
   "Face Shield Helmet",

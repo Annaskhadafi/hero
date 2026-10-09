@@ -1387,12 +1387,24 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HSE',
-    groupLabel: 'Summary',
+    groupLabel: 'Safety Tools & Compliance',
     title: 'Summary APD',
     url: '/dashboard/summary',
     iconName: 'file-text',
     resource: 'hse_summary_apd',
     sortOrder: 11,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'HSE',
+    groupLabel: 'Safety Tools & Compliance',
+    title: 'Master Data APD',
+    url: '/dashboard/central-service/master-apd',
+    iconName: 'database',
+    resource: 'central_service_master_apd',
+    sortOrder: 12,
     isVisible: true,
     openInNewTab: false,
   },
@@ -1467,18 +1479,6 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     iconName: 'shield',
     resource: 'apd-request',
     sortOrder: 1,
-    isVisible: true,
-    openInNewTab: false,
-  },
-  {
-    menuArea: 'main',
-    section: 'Central Service',
-    groupLabel: 'Management',
-    title: 'Master Data APD',
-    url: '/dashboard/central-service/master-apd',
-    iconName: 'database',
-    resource: 'central_service_master_apd',
-    sortOrder: 2,
     isVisible: true,
     openInNewTab: false,
   },
@@ -5638,6 +5638,15 @@ export async function ensureHeroGovernanceSeedData() {
         sortOrder: 2,
       })
       .where(eq(navbarMenuItems.resource, 'sop-win'))
+
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HSE',
+        groupLabel: 'Safety Tools & Compliance',
+        sortOrder: 12,
+      })
+      .where(eq(navbarMenuItems.resource, 'central_service_master_apd'))
 
     await db
       .delete(navbarMenuItems)

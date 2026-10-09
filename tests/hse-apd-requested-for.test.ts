@@ -62,10 +62,10 @@ describe("HSE APD Requested For Feature", () => {
     );
   });
 
-  test("Web and Mobile APD forms render Diajukan Untuk options", () => {
+  test("Web and Mobile APD forms render Kategori Peruntukan APD options", () => {
     const formContent = fs.readFileSync(path.resolve("app/dashboard/apd/new/apd-form.tsx"), "utf8");
     assert.ok(formContent.includes("isHseUser"), "apd-form.tsx must support isHseUser prop");
-    assert.ok(formContent.includes("Diajukan Untuk"), "apd-form.tsx must render Diajukan Untuk label");
+    assert.ok(formContent.includes("Kategori Peruntukan APD"), "apd-form.tsx must render Kategori Peruntukan APD label");
     assert.ok(formContent.includes('onClick={() => setRequestedFor("service")}'), "apd-form.tsx must support Service selection");
     assert.ok(formContent.includes('onClick={() => setRequestedFor("repair")}'), "apd-form.tsx must support Repair selection");
   });

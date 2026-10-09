@@ -24,7 +24,7 @@ describe('APD Photo URL Resolution & Print Page Integration', () => {
     );
 
     expect(printPageSource).toContain("import { resolveUploadUrl } from '@/lib/resolve-upload-url'");
-    expect(printPageSource).toContain('src={resolveUploadUrl(photo.url)}');
-    expect(printPageSource).toContain('!trimmed.includes(\'?X-Amz-\')');
+    expect(printPageSource).toContain('resolveUploadUrl(u)');
+    expect(printPageSource).toContain("!trimmed.includes('?X-Amz-')");
   });
 });

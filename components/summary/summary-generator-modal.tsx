@@ -71,7 +71,7 @@ const COMMON_APD_ITEMS = [
   'Safety Glasses',
   'Safety Goggles',
   'Sarung Tangan Ansel',
-  'Kaos Tangan Dotting',
+  'Sarung Tangan Dotting',
   'Masker',
   'Ear Plug',
   'Padlock Merah',

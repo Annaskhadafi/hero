@@ -85,7 +85,8 @@ const COMPLETE_MENU_DEFINITIONS = [
   { section: "HSE", title: "JSA", url: "/dashboard/hse/jsa", iconName: "checklist", resource: "hse_jsa", sortOrder: 10, menuArea: "main", groupLabel: "Safety Tools & Compliance" },
   { section: "HSE", title: "Safety Induction", url: "/dashboard/safety-induction", iconName: "checklist", resource: "safety_induction", sortOrder: 11, menuArea: "main", groupLabel: "Safety Tools & Compliance" },
   { section: "HSE", title: "Summary APD", url: "/dashboard/summary", iconName: "file-text", resource: "hse_summary_apd", sortOrder: 12, menuArea: "main", groupLabel: "Safety Tools & Compliance" },
-  { section: "HSE", title: "Incident Report", url: "/dashboard/hse/incident-report", iconName: "alert-triangle", resource: "hse_incident_report", sortOrder: 13, menuArea: "main", groupLabel: "Incident Management" },
+  { section: "HSE", title: "Master Data APD", url: "/dashboard/central-service/master-apd", iconName: "database", resource: "central_service_master_apd", sortOrder: 13, menuArea: "main", groupLabel: "Safety Tools & Compliance" },
+  { section: "HSE", title: "Incident Report", url: "/dashboard/hse/incident-report", iconName: "alert-triangle", resource: "hse_incident_report", sortOrder: 14, menuArea: "main", groupLabel: "Incident Management" },
 
   // 10. Quality & CPI
   { section: "Quality & CPI", title: "Audit 5R", url: "/dashboard/quality/5r", iconName: "sparkles", resource: "five_r_report", sortOrder: 1, menuArea: "main", groupLabel: "Quality & Continuous Improvement" },
@@ -98,8 +99,7 @@ const COMPLETE_MENU_DEFINITIONS = [
   { section: "Central Service", title: "CS Forecast", url: "/dashboard/central-service/forecast", iconName: "trending-up", resource: "cs-forecast", sortOrder: 4, menuArea: "main", groupLabel: "Management" },
   { section: "Central Service", title: "Re-Fueling LV", url: "/dashboard/central-service/refueling", iconName: "truck", resource: "central_service_refueling", sortOrder: 4, menuArea: "main", groupLabel: "Management" },
   { section: "Central Service", title: "Tire Site Inspection", url: "/dashboard/hse/tire-inspection", iconName: "camera", resource: "hse_tire_inspection", sortOrder: 5, menuArea: "main", groupLabel: "Technical" },
-  { section: "Central Service", title: "Master Data APD", url: "/dashboard/central-service/master-apd", iconName: "database", resource: "central_service_master_apd", sortOrder: 6, menuArea: "main", groupLabel: "Technical" },
-  { section: "Central Service", title: "Asset Management", url: "/dashboard/central-service/assets", iconName: "database", resource: "central_service_assets", sortOrder: 7, menuArea: "main", groupLabel: "Technical" },
+  { section: "Central Service", title: "Asset Management", url: "/dashboard/central-service/assets", iconName: "database", resource: "central_service_assets", sortOrder: 6, menuArea: "main", groupLabel: "Technical" },
   { section: "Central Service", title: "SAP Asset Inventory", url: "/dashboard/central-service/sap-assets", iconName: "database", resource: "central_service_sap_assets", sortOrder: 8, menuArea: "main", groupLabel: "Technical" },
   { section: "Central Service", title: "WIP Repair", url: "/dashboard/repair-retread/wip-repair", iconName: "settings", resource: "wip_repair", sortOrder: 9, menuArea: "main", groupLabel: "Repair & Retread" },
   { section: "Central Service", title: "WIP Dashboard", url: "/dashboard/repair-retread/wip-repair/dashboard", iconName: "chart-bar", resource: "wip_repair_dashboard", sortOrder: 10, menuArea: "main", groupLabel: "Repair & Retread" },

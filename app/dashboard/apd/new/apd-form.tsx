@@ -365,10 +365,10 @@ export function ApdRequestForm({
           {isHseUser && (
             <div className="mt-3.5 pt-3 border-t border-slate-200/60">
               <Label className="text-xs font-semibold text-slate-700 block mb-1">
-                Diajukan Untuk <span className="text-rose-500">*</span>
+                Kategori Peruntukan APD <span className="text-rose-500">*</span>
               </Label>
               <p className="text-[11px] text-slate-500 mb-2">
-                Pilih tujuan pengajuan APD untuk menentukan Summary APD pesanan barang.
+                Pilih kelompok peruntukan untuk mengarahkan barang ke Rekap Summary APD yang sesuai.
               </p>
               <div className="grid grid-cols-3 gap-2">
                 <button
@@ -380,7 +380,7 @@ export function ApdRequestForm({
                       : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 font-medium"
                   }`}
                 >
-                  <span>Diri sendiri</span>
+                  <span>Internal HSE</span>
                 </button>
                 <button
                   type="button"
@@ -391,7 +391,7 @@ export function ApdRequestForm({
                       : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 font-medium"
                   }`}
                 >
-                  <span>Service</span>
+                  <span>Manpower Service</span>
                 </button>
                 <button
                   type="button"
@@ -402,13 +402,13 @@ export function ApdRequestForm({
                       : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 font-medium"
                   }`}
                 >
-                  <span>Repair</span>
+                  <span>Manpower Repair</span>
                 </button>
               </div>
               <p className="text-[11px] text-slate-500 mt-2 font-medium">
-                {requestedFor === "self" && "Diajukan untuk penggunaan HSE pengaju. Barang akan masuk ke Summary APD standar HSE."}
-                {requestedFor === "service" && "Diajukan untuk kebutuhan Manpower Service. Barang pesanan akan masuk ke Summary Service."}
-                {requestedFor === "repair" && "Diajukan untuk kebutuhan Manpower Repair. Barang pesanan akan masuk ke Summary Repair."}
+                {requestedFor === "self" && "Pengajuan untuk tim Internal HSE. Pesanan akan dikelompokkan ke Summary APD HSE."}
+                {requestedFor === "service" && "Pengajuan untuk operasional Manpower Service. Pesanan akan dikelompokkan ke Summary APD Service."}
+                {requestedFor === "repair" && "Pengajuan untuk operasional Manpower Repair. Pesanan akan dikelompokkan ke Summary APD Repair."}
               </p>
             </div>
           )}

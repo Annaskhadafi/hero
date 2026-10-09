@@ -35,7 +35,7 @@ const DEFAULT_MASTER_APD_ITEMS: Array<{
   { code: 'APD-005', name: 'Safety Glasses', category: 'APD', unit: 'Pcs', hasSize: false, sizeOptions: [] },
   { code: 'APD-006', name: 'Safety Goggles', category: 'APD', unit: 'Pcs', hasSize: false, sizeOptions: [] },
   { code: 'APD-007', name: 'Sarung Tangan Ansel', category: 'APD', unit: 'Pasang', hasSize: false, sizeOptions: [] },
-  { code: 'APD-008', name: 'Kaos Tangan Dotting', category: 'APD', unit: 'Pasang', hasSize: false, sizeOptions: [] },
+  { code: 'APD-008', name: 'Sarung Tangan Dotting', category: 'APD', unit: 'Pasang', hasSize: false, sizeOptions: [] },
   { code: 'APD-009', name: 'Masker', category: 'APD', unit: 'Box', hasSize: false, sizeOptions: [] },
   { code: 'APD-010', name: 'Ear Plug', category: 'APD', unit: 'Pcs', hasSize: false, sizeOptions: [] },
   { code: 'APD-011', name: 'Padlock Merah', category: 'APD', unit: 'Pcs', hasSize: false, sizeOptions: [] },
@@ -51,6 +51,13 @@ const DEFAULT_MASTER_APD_ITEMS: Array<{
 
 export async function getMasterApdListAction(category?: string, activeOnly: boolean = false) {
   try {
+    // Auto-fix legacy APD-008 item name in DB if needed
+    try {
+      await db.update(masterApd)
+        .set({ name: 'Sarung Tangan Dotting' })
+        .where(eq(masterApd.code, 'APD-008'));
+    } catch {}
+
     let items = await db.select().from(masterApd).orderBy(asc(masterApd.code));
 
     // Auto-seed if empty

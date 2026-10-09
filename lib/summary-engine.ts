@@ -1,5 +1,6 @@
 import { db } from '@/db';
 import { approvals as heroApprovals, apdRequests, apdRequestItems, employees, sites, masterSections, masterDepartments, approvalMatrices, approvalMatrixSteps, orgChartNodes, employeeAssets } from '@/db/schema/hero';
+import { masterApd } from '@/db/schema/apd';
 import { apdSummaries, apdSummaryItems, apdSummaryApprovals } from '@/db/schema/apd-summary';
 import { eq, and, asc, desc, sql, inArray, ilike } from 'drizzle-orm';
 import { sendWorkflowEmail, getAppUrl } from '@/lib/workflow-email';
@@ -36,7 +37,12 @@ export async function ensureSummarySchema() {
   try {
     await db.execute(sql`
       ALTER TABLE hero_apd_summary_items
-      ADD COLUMN IF NOT EXISTS remarks text NOT NULL DEFAULT ''
+      ADD COLUMN IF NOT EXISTS remarks text NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS master_apd_id integer;
+    `);
+    await db.execute(sql`
+      ALTER TABLE hero_apd_request_items
+      ADD COLUMN IF NOT EXISTS master_apd_id integer;
     `);
     await db.execute(sql`
       UPDATE hero_apd_summary_items
@@ -82,9 +88,10 @@ const ITEM_NAME_MAP: Record<string, string> = {
   'Kaos Tangan Ansel': 'Sarung Tangan Ansel',
   'Hand Glove (Kabel)': 'Sarung Tangan Ansel',
   'Hand Glove (Cable)': 'Sarung Tangan Ansel',
-  'Kaos Tangan Dotting': 'Kaos Tangan Dotting',
-  'Hand Glove (Knit)': 'Kaos Tangan Dotting',
-  'Hand Glove (Cotton)': 'Kaos Tangan Dotting',
+  'Sarung Tangan Dotting': 'Sarung Tangan Dotting',
+  'Kaos Tangan Dotting': 'Sarung Tangan Dotting',
+  'Hand Glove (Knit)': 'Sarung Tangan Dotting',
+  'Hand Glove (Cotton)': 'Sarung Tangan Dotting',
   // Lockout / Tagout & Tools
   'Padlock Merah': 'Padlock Merah',
   'Padlock Kuning': 'Padlock Kuning',
@@ -1500,6 +1507,26 @@ export async function getSummaryDetails(summaryId: number) {
     .where(eq(apdSummaryItems.summaryId, summaryId))
     .orderBy(asc(apdSummaryItems.employeeName));
 
+  const masterCatalog = await db.select().from(masterApd).where(eq(masterApd.isActive, true)).orderBy(asc(masterApd.code));
+  const masterById = new Map(masterCatalog.map(m => [m.id, m]));
+  const masterByName = new Map(masterCatalog.map(m => [m.name.toLowerCase(), m]));
+
+  const normalizedItems = items.map((item) => {
+    let currentName = item.itemName;
+    if (item.masterApdId && masterById.has(item.masterApdId)) {
+      currentName = masterById.get(item.masterApdId)!.name;
+    } else {
+      const canonical = mapItemToColumn(item.itemName);
+      if (canonical && masterByName.has(canonical.toLowerCase())) {
+        currentName = masterByName.get(canonical.toLowerCase())!.name;
+      }
+    }
+    return {
+      ...item,
+      itemName: currentName,
+    };
+  });
+
   const actualApprovals = await db.select({
     id: apdSummaryApprovals.id,
     level: apdSummaryApprovals.level,
@@ -1616,7 +1643,8 @@ export async function getSummaryDetails(summaryId: number) {
     generatedByName: summary.generatedByName || 'Staff',
     generatedByJobTitle: summary.generatedByJobTitle || '',
     departmentName: department?.name || '',
-    items,
+    items: normalizedItems,
+    masterCatalog: masterCatalog.map((m) => ({ name: m.name, hasSize: m.hasSize, isQtyOnly: m.isQtyOnly })),
     approvals: enrichedApprovals.length > 0 ? enrichedApprovals : actualApprovals,
   };
 }

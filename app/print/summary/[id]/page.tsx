@@ -1,5 +1,5 @@
 import { getSummaryDetails } from '@/lib/summary-engine';
-import { QTY_ONLY_COLUMNS, SAFETY_SHOES_COL } from '@/lib/summary-constants';
+import { QTY_ONLY_COLUMNS, SAFETY_SHOES_COL, buildDynamicApdColumns } from '@/lib/summary-constants';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -58,14 +58,27 @@ export default async function PrintSummaryPage({
   }
   const emps = Object.values(grouped);
 
-  const dynamicQtyCols = Array.from(
-    new Set([
-      ...QTY_ONLY_COLUMNS,
-      ...data.items
-        .map((i) => i.itemName)
-        .filter((name) => name !== 'Safety Shoes' && name !== 'Safety Shoes Size'),
-    ])
-  );
+  const masterList = data.masterCatalog && data.masterCatalog.length > 0
+    ? data.masterCatalog.map(m => ({ name: m.name, hasSize: !!m.hasSize }))
+    : undefined;
+
+  const dynamicQtyCols = masterList
+    ? Array.from(
+        new Set([
+          ...buildDynamicApdColumns(masterList).qtyOnlyCols,
+          ...data.items
+            .map((i) => i.itemName)
+            .filter((name) => name !== 'Safety Shoes' && name !== 'Safety Shoes Size'),
+        ])
+      )
+    : Array.from(
+        new Set([
+          ...QTY_ONLY_COLUMNS,
+          ...data.items
+            .map((i) => i.itemName)
+            .filter((name) => name !== 'Safety Shoes' && name !== 'Safety Shoes Size'),
+        ])
+      );
 
   const allCols = [...dynamicQtyCols, SAFETY_SHOES_COL];
   const totals: Record<string, number> = {};
@@ -77,15 +90,17 @@ export default async function PrintSummaryPage({
   const sites = [...new Set(emps.map(e => e.site))];
 
   const empCount = emps.length;
+  const colCount = dynamicQtyCols.length;
   const isDense = empCount > 9;
   const isUltraDense = empCount > 15;
+  const isWideTable = colCount > 20;
 
-  const thFontSize = isUltraDense ? '5.8pt' : isDense ? '6.2pt' : '7pt';
-  const tdFontSize = isUltraDense ? '5.5pt' : isDense ? '6pt' : '7pt';
-  const itemHeaderFontSize = isUltraDense ? '4.8pt' : isDense ? '5.2pt' : '5.5pt';
+  const thFontSize = isWideTable ? '5.2pt' : isUltraDense ? '5.8pt' : isDense ? '6.2pt' : '7pt';
+  const tdFontSize = isWideTable ? '5pt' : isUltraDense ? '5.5pt' : isDense ? '6pt' : '7pt';
+  const itemHeaderFontSize = isWideTable ? '4.2pt' : isUltraDense ? '4.8pt' : isDense ? '5.2pt' : '5.5pt';
   const padV = isUltraDense ? '1px' : isDense ? '1.5px' : '3px';
-  const padH = isUltraDense ? '1.5px' : isDense ? '2px' : '2px';
-  const remarksFontSize = isUltraDense ? '5.2pt' : isDense ? '5.8pt' : '6.5pt';
+  const padH = isWideTable ? '0.5px' : isUltraDense ? '1.5px' : isDense ? '2px' : '2px';
+  const remarksFontSize = isWideTable ? '4.8pt' : isUltraDense ? '5.2pt' : isDense ? '5.8pt' : '6.5pt';
 
   const sigContainerHeight = isUltraDense ? '32px' : isDense ? '38px' : '44px';
   const sigImgHeight = isUltraDense ? '28px' : isDense ? '34px' : '40px';

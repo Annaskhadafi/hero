@@ -1,7 +1,7 @@
 import { integer, pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core';
 import { employees, sites } from './hero';
 import { masterSections } from './hero';
-import { apdRequests } from './apd';
+import { apdRequests, masterApd } from './apd';
 
 // Summary header
 export const apdSummaries = pgTable('hero_apd_summaries', {
@@ -23,6 +23,7 @@ export const apdSummaryItems = pgTable('hero_apd_summary_items', {
   id: serial('id').primaryKey(),
   summaryId: integer('summary_id').notNull().references(() => apdSummaries.id, { onDelete: 'cascade' }),
   apdRequestId: integer('apd_request_id').notNull().references(() => apdRequests.id, { onDelete: 'cascade' }),
+  masterApdId: integer('master_apd_id').references(() => masterApd.id, { onDelete: 'set null' }),
   employeeId: integer('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
   employeeName: text('employee_name').notNull(),
   employeeSn: text('employee_sn').notNull().default(''),
