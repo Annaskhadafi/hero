@@ -856,7 +856,9 @@ export function MobileDailyActivityForm({
   )
   const [sourceMode, setSourceMode] = useState<'assigned' | 'self_input' | 'custom'>(() => {
     if (initialDraft?.sourceMode) {
-      return initialDraft.sourceMode
+      if (initialDraft.sourceMode === 'assigned' || initialDraft.sourceMode === 'self_input' || initialDraft.sourceMode === 'custom') {
+        return initialDraft.sourceMode
+      }
     }
     if (initialDraft?.customActivityName) {
       return 'custom'
@@ -866,6 +868,9 @@ export function MobileDailyActivityForm({
       (initialDraft?.selfInputActivities && initialDraft.selfInputActivities.length > 0)
     ) {
       return 'self_input'
+    }
+    if (initialDraft?.routeSessionItems && initialDraft.routeSessionItems.length > 0) {
+      return 'assigned'
     }
     if (rawSession?.submissionSource === 'custom' || rawSession?.submissionSource === 'assigned' || rawSession?.submissionSource === 'self_input') {
       return rawSession.submissionSource
@@ -2164,7 +2169,14 @@ export function MobileDailyActivityForm({
       draft.sourceMode === 'self_input' ||
       draft.sourceMode === 'custom'
         ? draft.sourceMode
-        : 'self_input'
+        : draft.customActivityName
+          ? 'custom'
+          : (draft.selectedLibraryActivityIds && draft.selectedLibraryActivityIds.length > 0) ||
+            (draft.selfInputActivities && draft.selfInputActivities.length > 0)
+            ? 'self_input'
+            : (draft.routeSessionItems && draft.routeSessionItems.length > 0)
+              ? 'assigned'
+              : 'self_input'
     const restoredSelectedLibraryIds =
       Array.isArray(draft.selectedLibraryActivityIds) && draft.selectedLibraryActivityIds.length > 0
         ? draft.selectedLibraryActivityIds.map(String)
@@ -2352,6 +2364,23 @@ export function MobileDailyActivityForm({
     if (Array.isArray(draft.teamMemberEmployeeIds) && draft.teamMemberEmployeeIds.length > 0) {
       setSelectedMemberIds(draft.teamMemberEmployeeIds)
       setIsTeamLog(true)
+    }
+
+    if (draft.leaderEmployeeId) {
+      setLeaderEmployeeId(String(draft.leaderEmployeeId))
+    }
+    if (draft.superiorEmployeeId) {
+      setSuperiorEmployeeId(String(draft.superiorEmployeeId))
+    }
+    if (Array.isArray(draft.additionalApprovers) && draft.additionalApprovers.length > 0) {
+      setAdditionalApprovers(
+        draft.additionalApprovers.map((a, idx) => ({
+          id: a.id || `extra-${idx}`,
+          employeeId: a.employeeId ? String(a.employeeId) : '',
+          role: a.role || 'additional_approver',
+          stepLabel: a.stepLabel || `Approver Tambahan (Tahap ${idx + 3})`,
+        }))
+      )
     }
 
     if (draft.serverDraftSessionId) {
@@ -3299,6 +3328,7 @@ export function MobileDailyActivityForm({
           employeeId,
           workDate,
           shiftCode,
+          submissionSource: sourceMode,
           siteId: site?.id,
           customerName: customerName ? customerName.trim() : undefined,
           notes: notes.trim(),

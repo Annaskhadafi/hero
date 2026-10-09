@@ -7065,6 +7065,7 @@ export async function createDailyActivitySessionAction(input: {
   employeeId: number
   workDate: string
   shiftCode: string
+  submissionSource?: 'assigned' | 'self_input' | 'custom' | null
   siteId?: number | null
   customerName?: string | null
   notes?: string | null
@@ -7287,6 +7288,14 @@ export async function createDailyActivitySessionAction(input: {
         : `[Team: ${otherTeamNames}]`
     }
 
+    const resolvedSubmissionSource =
+      input.submissionSource ||
+      (input.items && input.items.some((it) => it.routeItemId || it.overtimeCommandLetterItemId)
+        ? 'route'
+        : input.items && input.items.some((it) => it.libraryActivityId)
+          ? 'self_input'
+          : 'custom')
+
     const [created] = await db
       .insert(dailyActivitySessions)
       .values({
@@ -7299,6 +7308,7 @@ export async function createDailyActivitySessionAction(input: {
         sectionId: validSecId,
         positionId: validPosId,
         status: 'submitted',
+        submissionSource: resolvedSubmissionSource,
         summaryRemark: finalSummary,
         submittedAt: new Date(),
       })
@@ -8167,7 +8177,44 @@ export async function cloneDailyActivityToDraftAction(sessionId: number): Promis
     const nextHour = (now.getHours() + 1) % 24
     const defaultEndTime = `${String(nextHour).padStart(2, '0')}:00`
 
-    const selfInputActivities = sessionItems.map((item: any) => {
+    const hasLibrary = sessionItems.some((it: any) => Boolean(it.libraryActivityId))
+    const hasRoute = Boolean(
+      session.routeTemplateId ||
+      session.overtimeCommandLetterId ||
+      sessionItems.some((it: any) => Boolean(it.routeItemId || it.overtimeCommandLetterItemId))
+    )
+
+    let resolvedSourceMode: 'assigned' | 'self_input' | 'custom' = 'self_input'
+    if (session.submissionSource === 'custom') {
+      resolvedSourceMode = 'custom'
+    } else if (session.submissionSource === 'self_input') {
+      resolvedSourceMode = 'self_input'
+    } else if (session.submissionSource === 'assigned' || session.submissionSource === 'route' || session.submissionSource === 'spl_route') {
+      if (hasRoute) {
+        resolvedSourceMode = 'assigned'
+      } else if (hasLibrary) {
+        resolvedSourceMode = 'self_input'
+      } else {
+        resolvedSourceMode = 'custom'
+      }
+    } else if (hasRoute) {
+      resolvedSourceMode = 'assigned'
+    } else if (hasLibrary) {
+      resolvedSourceMode = 'self_input'
+    } else {
+      resolvedSourceMode = 'custom'
+    }
+
+    const customItem = sessionItems.find((it: any) => !it.libraryActivityId && !it.routeItemId) || sessionItems[0]
+    const customItemPhotos = customItem?.photoUrls || (customItem?.photoUrl ? [customItem.photoUrl] : [])
+    const title = session.summaryRemark || sessionItems[0]?.label || sessionItems[0]?.snapshotLabel || 'Aktivitas Harian (Salinan)'
+    const customName = customItem?.snapshotLabel || customItem?.label || session.summaryRemark || title
+    const customDesc = customItem?.remark && customItem.remark !== '-' ? customItem.remark : ''
+    const customEquip = customItem?.unitNumber && customItem.unitNumber !== '-' ? customItem.unitNumber : ''
+    const customStartTime = customItem?.startedAt ? formatHourMin(customItem.startedAt, defaultStartTime) : defaultStartTime
+    const customEndTime = customItem?.endedAt ? formatHourMin(customItem.endedAt, defaultEndTime) : defaultEndTime
+
+    const selfInputActivities = sessionItems.map((item: any, idx: number) => {
       let matUsed = item.materialUsed || ''
       if (!matUsed && item.snapshotPayload) {
         try {
@@ -8175,19 +8222,22 @@ export async function cloneDailyActivityToDraftAction(sessionId: number): Promis
           matUsed = parsed?.materialUsed || ''
         } catch {}
       }
+      const itemPhotos = item.photoUrls || (item.photoUrl ? [item.photoUrl] : [])
+      const itemStart = formatHourMin(item.startedAt, defaultStartTime)
+      const itemEnd = formatHourMin(item.endedAt, defaultEndTime)
 
       return {
         libraryActivityId: item.libraryActivityId ? String(item.libraryActivityId) : '',
-        equipmentNo: item.unitNumber || '',
-        startTime: formatHourMin(item.startedAt, defaultStartTime),
-        endTime: formatHourMin(item.endedAt, defaultEndTime),
+        equipmentNo: item.unitNumber && item.unitNumber !== '-' ? item.unitNumber : '',
+        startTime: `${todayStr}T${itemStart}`,
+        endTime: `${todayStr}T${itemEnd}`,
         materialUsed: matUsed,
         tireCount: item.tireCount ? Number(item.tireCount) : 0,
-        notes: item.remark || '',
-        photoName: '',
-        photoUrl: null,
-        photoUrls: [],
-        previewUrls: [],
+        notes: item.remark && item.remark !== '-' ? item.remark : '',
+        photoName: itemPhotos.length > 0 ? `${itemPhotos.length} foto terlampir` : '',
+        photoUrl: itemPhotos[0] || null,
+        photoUrls: itemPhotos,
+        previewUrls: itemPhotos,
         photo: null,
         photos: [],
       }
@@ -8201,24 +8251,76 @@ export async function cloneDailyActivityToDraftAction(sessionId: number): Promis
       )
     )
 
-    const title = session.summaryRemark || sessionItems[0]?.label || 'Aktivitas Harian (Salinan)'
+    const routeSessionItems = sessionItems.map((item: any, idx: number) => {
+      const itemPhotos = item.photoUrls || (item.photoUrl ? [item.photoUrl] : [])
+      const itemStart = formatHourMin(item.startedAt, defaultStartTime)
+      const itemEnd = formatHourMin(item.endedAt, defaultEndTime)
+
+      return {
+        routeItemId: item.routeItemId ? Number(item.routeItemId) : null,
+        overtimeCommandLetterItemId: item.overtimeCommandLetterItemId ? Number(item.overtimeCommandLetterItemId) : null,
+        libraryActivityId: item.libraryActivityId ? Number(item.libraryActivityId) : null,
+        snapshotLabel: item.snapshotLabel || item.label || '',
+        snapshotGroupName: item.snapshotGroupName || item.group || 'Checklist',
+        snapshotPayload: item.snapshotPayload ? (typeof item.snapshotPayload === 'string' ? JSON.parse(item.snapshotPayload || '{}') : item.snapshotPayload) : {},
+        unitNumber: item.unitNumber && item.unitNumber !== '-' ? item.unitNumber : '',
+        remark: item.remark && item.remark !== '-' ? item.remark : '',
+        startedAt: `${todayStr}T${itemStart}`,
+        endedAt: `${todayStr}T${itemEnd}`,
+        isChecked: Boolean(item.isChecked ?? true),
+        actualPoints: Number(item.actualPoints || item.points || 5),
+        tireCount: item.tireCount ? Number(item.tireCount) : 0,
+        materialUsed: item.materialUsed || '',
+        sortOrder: item.sortOrder || idx + 1,
+        photoUrls: itemPhotos,
+        previewUrls: itemPhotos,
+      }
+    })
+
+    const leaderApproval = (session.approvals || []).find(
+      (a: any) =>
+        a.stepOrder === 1 ||
+        a.approverRole === 'pjo' ||
+        a.approverRole === 'leader' ||
+        (a.stepLabel || '').toLowerCase().includes('leader') ||
+        (a.stepLabel || '').toLowerCase().includes('pjo')
+    )
+    const superiorApproval = (session.approvals || []).find(
+      (a: any) =>
+        a.stepOrder === 2 ||
+        a.approverRole === 'superior' ||
+        (a.stepLabel || '').toLowerCase().includes('superior')
+    )
+    const additionalApprovals = (session.approvals || []).filter(
+      (a: any) =>
+        a.stepOrder > 2 &&
+        a.approverEmployeeId &&
+        a.approverEmployeeId !== leaderApproval?.approverEmployeeId &&
+        a.approverEmployeeId !== superiorApproval?.approverEmployeeId
+    )
+    const teamMemberEmployeeIds = (session.teamMembers || []).map((t: any) => t.employeeId)
 
     const clonedPayload = {
       employeeId: context.id,
       workDate: todayStr,
       draftTitle: title,
-      sourceMode: session.submissionSource || (selectedLibraryActivityIds.length > 0 ? 'self_input' : 'custom'),
-      assignmentId: '',
+      sourceMode: resolvedSourceMode,
+      assignmentId: session.legacyAssignmentId ? String(session.legacyAssignmentId) : '',
       libraryActivityId: selectedLibraryActivityIds[0] || '',
       selectedLibraryActivityIds,
       selfInputActivities,
-      customActivityName: session.submissionSource === 'custom' ? (session.summaryRemark || title) : '',
-      customActivityDescription: '',
-      equipmentNo: sessionItems[0]?.unitNumber || '',
-      startTime: defaultStartTime,
-      endTime: defaultEndTime,
-      materialUsed: sessionItems[0]?.materialUsed || '',
-      notes: session.summaryRemark || '',
+      routeTemplateId: session.routeTemplateId ? String(session.routeTemplateId) : '',
+      overtimeCommandLetterId: session.overtimeCommandLetterId ? String(session.overtimeCommandLetterId) : '',
+      routeShiftCode: session.shiftCode || 'ALL',
+      routeSummaryRemark: session.summaryRemark || '',
+      routeSessionItems,
+      customActivityName: customName,
+      customActivityDescription: customDesc,
+      equipmentNo: resolvedSourceMode === 'custom' ? customEquip : (sessionItems[0]?.unitNumber && sessionItems[0].unitNumber !== '-' ? sessionItems[0].unitNumber : ''),
+      startTime: `${todayStr}T${resolvedSourceMode === 'custom' ? customStartTime : formatHourMin(sessionItems[0]?.startedAt, defaultStartTime)}`,
+      endTime: `${todayStr}T${resolvedSourceMode === 'custom' ? customEndTime : formatHourMin(sessionItems[0]?.endedAt, defaultEndTime)}`,
+      materialUsed: resolvedSourceMode === 'custom' ? (customItem?.materialUsed || '') : (sessionItems[0]?.materialUsed || ''),
+      notes: session.summaryRemark && session.summaryRemark !== '-' ? session.summaryRemark : (customDesc || ''),
       manualLocation: session.site?.name || '',
       locationName: session.site?.name || '',
       gpsLat: '',
@@ -8228,9 +8330,19 @@ export async function cloneDailyActivityToDraftAction(sessionId: number): Promis
       boundaryMessage: '',
       photo: null,
       photos: [],
-      photoUrls: [],
-      photoName: '',
-      teamMemberEmployeeIds: [],
+      photoUrls: resolvedSourceMode === 'custom' ? customItemPhotos : (sessionItems[0]?.photoUrls || (sessionItems[0]?.photoUrl ? [sessionItems[0].photoUrl] : [])),
+      photoName: (resolvedSourceMode === 'custom' ? customItemPhotos.length : (sessionItems[0]?.photoUrls?.length || 0)) > 0 ? `${resolvedSourceMode === 'custom' ? customItemPhotos.length : sessionItems[0]?.photoUrls?.length} foto terlampir` : '',
+      leaderEmployeeId: leaderApproval?.approverEmployeeId ? String(leaderApproval.approverEmployeeId) : undefined,
+      leaderName: leaderApproval?.approverName || undefined,
+      superiorEmployeeId: superiorApproval?.approverEmployeeId ? String(superiorApproval.approverEmployeeId) : undefined,
+      superiorName: superiorApproval?.approverName || undefined,
+      additionalApprovers: additionalApprovals.map((a: any, idx: number) => ({
+        id: `clone-extra-${a.id || idx}`,
+        employeeId: String(a.approverEmployeeId),
+        role: a.approverRole || 'additional_approver',
+        stepLabel: a.stepLabel || `Approver Tambahan (Tahap ${a.stepOrder || idx + 3})`,
+      })),
+      teamMemberEmployeeIds,
       serverDraftSessionId: undefined,
     }
 

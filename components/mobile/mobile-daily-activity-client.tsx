@@ -621,25 +621,32 @@ export function MobileDailyActivityClient({
         </TabsList>
 
         <TabsContent value="apply">
-          <MobileDailyActivityForm
-            key={`form-${formInstanceId}-${editSessionData?.sessionId || editSessionData?.id || (editSessionData?.session ? (editSessionData.session.sessionId || editSessionData.session.id) : '')}-${selectedDraftKey || draftQuery || 'form'}`}
-            initialDraftKey={selectedDraftKey || draftQuery || undefined}
-            employeeId={data.employee.id}
-            employee={data.employee}
-            hierarchy={hierarchy}
-            assignments={data.assignments || []}
-            availableLibrary={data.availableLibrary || []}
-            defaultStartTime={dateTimeLocalValue(new Date())}
-            defaultEndTime={dateTimeLocalValue(new Date(Date.now() + 3600000))}
-            routeChecklist={data.routeChecklist}
-            availableRouteFolders={data.availableRouteFolders || []}
-            standaloneOvertimeChecklist={data.standaloneOvertimeChecklist}
-            site={data.site}
-            teamMembers={teamMembers}
-            revisionSessionId={editSessionData?.sessionId || editSessionData?.id || editSessionData?.data?.sessionId || editSessionData?.data?.id || editSessionData?.session?.sessionId || editSessionData?.session?.id || undefined}
-            initialSessionData={editSessionData?.data || editSessionData?.session || editSessionData}
-            onOpenDraftTab={() => handleTabChange('draft')}
-          />
+          {isMounted ? (
+            <MobileDailyActivityForm
+              key={`form-${formInstanceId}-${editSessionData?.sessionId || editSessionData?.id || (editSessionData?.session ? (editSessionData.session.sessionId || editSessionData.session.id) : '')}-${selectedDraftKey || draftQuery || 'form'}`}
+              initialDraftKey={selectedDraftKey || draftQuery || undefined}
+              employeeId={data.employee.id}
+              employee={data.employee}
+              hierarchy={hierarchy}
+              assignments={data.assignments || []}
+              availableLibrary={data.availableLibrary || []}
+              defaultStartTime={dateTimeLocalValue(new Date())}
+              defaultEndTime={dateTimeLocalValue(new Date(Date.now() + 3600000))}
+              routeChecklist={data.routeChecklist}
+              availableRouteFolders={data.availableRouteFolders || []}
+              standaloneOvertimeChecklist={data.standaloneOvertimeChecklist}
+              site={data.site}
+              teamMembers={teamMembers}
+              revisionSessionId={editSessionData?.sessionId || editSessionData?.id || editSessionData?.data?.sessionId || editSessionData?.data?.id || editSessionData?.session?.sessionId || editSessionData?.session?.id || undefined}
+              initialSessionData={editSessionData?.data || editSessionData?.session || editSessionData}
+              onOpenDraftTab={() => handleTabChange('draft')}
+            />
+          ) : (
+            <div className="flex min-h-[300px] flex-col items-center justify-center gap-2 rounded-2xl bg-white p-6 shadow-xs text-slate-400">
+              <Loader2 className="size-6 animate-spin text-[#003461]" />
+              <span className="text-xs font-semibold text-slate-500">Menyiapkan formulir aktivitas...</span>
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="draft" className="mt-4 space-y-4">

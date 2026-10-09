@@ -1,5 +1,5 @@
 import { cache } from 'react'
-import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, lte, notInArray, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, lte, ne, notInArray, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import Fuse from 'fuse.js'
 import { db } from '@/db'
@@ -903,6 +903,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     iconName: 'mail',
     resource: 'notification_center',
     sortOrder: 4,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Approval',
+    groupLabel: 'Monitoring & Control',
+    title: 'Approval Monitor',
+    url: '/dashboard/approval-monitor',
+    iconName: 'activity',
+    resource: 'approval_monitor',
+    sortOrder: 5,
     isVisible: true,
     openInNewTab: false,
   },
@@ -4601,6 +4613,29 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
     }
   }
 
+  // Approval Inbox: STRICTLY 'own' scope for all roles (including Super Admin)
+  if (resource === 'approval_inbox') {
+    return {
+      canView: true,
+      canEdit: true,
+      canDelete: false,
+      canSelectAll: false,
+      dataScope: 'own' as const,
+    }
+  }
+
+  // Approval Monitor: Dedicated to Super Admin by default
+  if (resource === 'approval_monitor') {
+    const isSuperAdmin = roleName === 'Super Admin'
+    return {
+      canView: isSuperAdmin,
+      canEdit: isSuperAdmin,
+      canDelete: isSuperAdmin,
+      canSelectAll: isSuperAdmin,
+      dataScope: 'global' as const,
+    }
+  }
+
   // Always permit core resources for all roles
   if (
     [
@@ -4608,7 +4643,6 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
       'scheduling_timesheet_attendance',
       'tire_service',
       'overtime_requests',
-      'approval_inbox',
     ].includes(resource)
   ) {
     return {
@@ -5899,6 +5933,20 @@ export async function syncMenuPermissionsMatrix(): Promise<{
   if (missingRoleMenuPermissions.length > 0) {
     await db.insert(roleMenuPermissions).values(missingRoleMenuPermissions)
     insertedPermissions = missingRoleMenuPermissions.length
+  }
+
+  // 3. Ensure approval_inbox has 'own' scope across all existing role permissions
+  const inboxMenuItem = menuItemsForRole.find((m) => m.resource === 'approval_inbox')
+  if (inboxMenuItem) {
+    await db
+      .update(roleMenuPermissions)
+      .set({ dataScope: 'own' })
+      .where(
+        and(
+          eq(roleMenuPermissions.menuItemId, inboxMenuItem.id),
+          ne(roleMenuPermissions.dataScope, 'own')
+        )
+      )
   }
 
   return { insertedMenus, insertedPermissions }
