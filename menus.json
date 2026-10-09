@@ -375,6 +375,11 @@
     "resource": "rfr"
   },
   {
+    "title": "Perubahan Rute Penerbangan",
+    "url": "/dashboard/hc/flight-route-change",
+    "resource": "hc_flight_route_change"
+  },
+  {
     "title": "Schedule v2",
     "url": "/dashboard/scheduling-timesheet/schedule-v2",
     "resource": "scheduling_timesheet_schedule_v2"

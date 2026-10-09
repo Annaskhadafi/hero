@@ -19,6 +19,7 @@ import {
   checkEmployeeOffDayStatus,
   normalizeSiteAttendanceClockConfig,
   resolveConfiguredShiftClockIn,
+  resolveNightShiftCheckoutContext,
 } from '@/lib/timesheet/attendance-punctuality'
 import {
   getSiteAttendanceClockConfig,
@@ -761,9 +762,17 @@ export async function submitAttendance(formData: FormData) {
     }
 
     const eventTime = new Date()
+    const nightShiftContext = await resolveNightShiftCheckoutContext({
+      employeeId: employee.id,
+      siteId: employee.siteId,
+      eventTime,
+      eventType,
+    })
+    const evalDate = nightShiftContext.effectiveDate
+
     const siteConfig = await getSiteAttendanceClockConfig(employee.siteId)
     const offDayCheck = checkEmployeeOffDayStatus({
-      eventTime,
+      eventTime: evalDate,
       role: employee.role || employee.jobTitle,
       scheduleType: siteConfig.scheduleType,
       rosterType: siteConfig.rosterType,

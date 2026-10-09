@@ -652,6 +652,12 @@ function getLegacySectionHeadConfig(
   if (normalized.includes('other')) {
     return settings.approvalMatrix.sectionHeads.serviceOthers
   }
+  if (normalized.includes('technical') || normalized.includes('te')) {
+    return {
+      name: 'Muhammad Abian Husain',
+      email: 'abian.husain@chitraparatama.co.id',
+    }
+  }
 
   return {
     name: settings.approvalMatrix.managerName,
@@ -789,6 +795,7 @@ async function buildContractReviewApprovals(review: typeof hcEmployeeContractRev
       siteId: employees.siteId,
       departmentId: employees.departmentId,
       sectionId: employees.sectionId,
+      jobTitle: employees.jobTitle,
       directManagerId: employees.directManagerId,
       workLocation: employees.workLocation,
     })
@@ -873,22 +880,48 @@ async function buildContractReviewApprovals(review: typeof hcEmployeeContractRev
       const matched = pjoCandidates.find((c) => isPjoOrTechnical(c.jobTitle))
       if (matched) siteHead = matched
     }
-    if (siteHead && siteHead.id) {
+    if (siteHead && siteHead.id && siteHead.id !== userEmployee.id) {
       firstApprover = {
         id: siteHead.id,
         name: siteHead.name,
         email: siteHead.email,
         jobTitle: siteHead.jobTitle || '',
       }
-    } else if (userEmployee.directManagerId) {
+    } else if (userEmployee.directManagerId && userEmployee.directManagerId !== userEmployee.id) {
       const directMgr = await getUserById(userEmployee.directManagerId)
-      if (directMgr?.email && directMgr.id) {
+      if (directMgr?.email && directMgr.id && directMgr.id !== userEmployee.id) {
         firstApprover = {
           id: directMgr.id,
           name: directMgr.name,
           email: directMgr.email,
           jobTitle: directMgr.jobTitle || '',
         }
+      }
+    }
+  }
+
+  // Ensure Technical or PJO contract reviews (or when the PJO himself is reviewed) route directly to Abian (Muhammad Abian Husain)
+  const abianUser = await getUserByName('Muhammad Abian Husain', 'abian.husain@chitraparatama.co.id')
+  const isTechnicalOrPjo =
+    section.toLowerCase().includes('technical') ||
+    section.toLowerCase().includes('te') ||
+    isPjoOrTechnical(userEmployee.jobTitle || '') ||
+    userEmployee.sectionId === 37 ||
+    (siteRow?.headEmployeeId != null && siteRow.headEmployeeId === userEmployee.id)
+
+  if (
+    isTechnicalOrPjo ||
+    firstApprover.id === userEmployee.id ||
+    firstApprover.name === userEmployee.name ||
+    !firstApprover.id ||
+    !firstApprover.email
+  ) {
+    if (abianUser?.id && abianUser.id !== userEmployee.id) {
+      firstApprover = {
+        id: abianUser.id,
+        name: abianUser.name,
+        email: abianUser.email,
+        jobTitle: abianUser.jobTitle || 'Technical Leader',
       }
     }
   }
@@ -1342,17 +1375,20 @@ async function resolveApproverForEmployee(emp: {
     }
   }
 
+  const validSiteHead = siteHead && siteHead.id !== emp.id ? siteHead : null
+  const validDirectManager = directManager && directManager.id !== emp.id ? directManager : null
+
   // Determine Primary Recipient:
   // - If at site (non-HO):
-  //   1st preference: PJO / Lokasi Head (Master Data Sites)
-  //   2nd preference: Direct Manager (Struktur Organisasi)
+  //   1st preference: PJO / Lokasi Head (Master Data Sites) - IF NOT THE EMPLOYEE THEMSELVES
+  //   2nd preference: Direct Manager (Struktur Organisasi) - IF NOT THE EMPLOYEE THEMSELVES
   //   3rd preference: Section Head (Master Data Sections)
   // - If at HO / Office:
   //   1st preference: Direct Manager (Struktur Organisasi)
   //   2nd preference: Section Head (Master Data Sections)
   let primaryApprover = isHo
-    ? (directManager?.email ? directManager : sectionHead)
-    : (siteHead?.email ? siteHead : directManager?.email ? directManager : sectionHead)
+    ? (validDirectManager?.email ? validDirectManager : sectionHead)
+    : (validSiteHead?.email ? validSiteHead : validDirectManager?.email ? validDirectManager : sectionHead)
 
   // Fallback to department head or HR if primary has no valid email
   if (!primaryApprover?.email) {
@@ -1360,10 +1396,10 @@ async function resolveApproverForEmployee(emp: {
   }
 
   let approverRoleTitle = 'Approver'
-  if (siteHead && primaryApprover?.id === siteHead.id) {
+  if (validSiteHead && primaryApprover?.id === validSiteHead.id) {
     approverRoleTitle = `PJO / Lokasi Head (${siteName || 'Site'})`
-  } else if (directManager && primaryApprover?.id === directManager.id) {
-    approverRoleTitle = `Atasan Langsung (${directManager.name})`
+  } else if (validDirectManager && primaryApprover?.id === validDirectManager.id) {
+    approverRoleTitle = `Atasan Langsung (${validDirectManager.name})`
   } else if (sectionHead && primaryApprover?.id === sectionHead.id) {
     approverRoleTitle = `Section Head (${emp.sectionName || 'Section'})`
   } else if (departmentHead && primaryApprover?.id === departmentHead.id) {

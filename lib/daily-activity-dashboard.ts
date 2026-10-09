@@ -922,12 +922,27 @@ export async function getDailyActivityDashboardData(
   for (const ev of attendanceEventsRes) {
     if (!ev.employeeId || !ev.eventTime) continue
     const evTime = new Date(ev.eventTime)
-    const evDateStr = evTime.toISOString().split('T')[0]
+    let evDateStr = evTime.toISOString().split('T')[0]
+    const evType = (ev.eventType || '').toLowerCase()
+
+    // If morning checkout (< 12:00) without check-in on same day, check if it belongs to previous day's night shift
+    if (evType.includes('out') && evTime.getHours() < 12) {
+      const hasTodayIn = attendanceEventsRes.some(
+        (other) =>
+          other.employeeId === ev.employeeId &&
+          (other.eventType || '').toLowerCase().includes('in') &&
+          new Date(other.eventTime).toISOString().split('T')[0] === evDateStr
+      )
+      if (!hasTodayIn) {
+        const prevDayDate = new Date(evTime.getTime() - 24 * 60 * 60 * 1000)
+        evDateStr = prevDayDate.toISOString().split('T')[0]
+      }
+    }
+
     const dateKey = `${ev.employeeId}-${evDateStr}`
 
     const curr = attendanceByEmployee.get(ev.employeeId) || { checkIn: null, checkOut: null }
     const currDate = attendanceByEmpAndDate.get(dateKey) || { checkIn: null, checkOut: null }
-    const evType = (ev.eventType || '').toLowerCase()
 
     if (evType.includes('in')) {
       if (!curr.checkIn || evTime < curr.checkIn) {
@@ -948,7 +963,16 @@ export async function getDailyActivityDashboardData(
     attendanceByEmpAndDate.set(dateKey, currDate)
   }
 
-  const realHadirAttendance = Number(attendanceCountRes[0]?.uniqueEmployees || 0)
+  const activeEmployeesOnTargetDate = Array.from(attendanceByEmpAndDate.keys()).filter((key) => {
+    const parts = key.split('-')
+    const dateStr = `${parts[1]}-${parts[2]}-${parts[3]}`
+    return dateStr === targetDateStr
+  }).length
+
+  const realHadirAttendance =
+    activeEmployeesOnTargetDate > 0
+      ? activeEmployeesOnTargetDate
+      : Number(attendanceCountRes[0]?.uniqueEmployees || 0)
   const hadirCount = realHadirAttendance > 0 ? realHadirAttendance : effectiveSessions.length
 
   // 5. Calculate Real KPIs

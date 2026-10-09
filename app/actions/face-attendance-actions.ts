@@ -4,7 +4,7 @@ import { db } from '@/db'
 import { attendanceRecords, employees } from '@/db/schema/hero'
 import { getCurrentEmployee } from '@/lib/get-current-employee'
 import { rarayVerifyFace, rarayRecognizeFace, rarayCheckAntiSpoofUniFaceV2 } from '@/lib/raray-vision/client'
-import { checkEmployeeOffDayStatus } from '@/lib/timesheet/attendance-punctuality'
+import { checkEmployeeOffDayStatus, resolveNightShiftCheckoutContext } from '@/lib/timesheet/attendance-punctuality'
 import {
   getSiteAttendanceClockConfig,
   resolveSiteAttendancePunctuality,
@@ -42,10 +42,18 @@ export async function verifyAndSubmitFaceAttendanceAction(params: FaceAttendance
     const targetSiteId = currentEmp.siteId || 1
     const eventTime = new Date()
 
+    const nightShiftContext = await resolveNightShiftCheckoutContext({
+      employeeId: currentEmp.id,
+      siteId: targetSiteId,
+      eventTime,
+      eventType,
+    })
+    const evalDate = nightShiftContext.effectiveDate
+
     // Off-day policy check: Non-staff can record on off-days, staff is blocked by default
     const siteConfig = await getSiteAttendanceClockConfig(targetSiteId)
     const offDayCheck = checkEmployeeOffDayStatus({
-      eventTime,
+      eventTime: evalDate,
       role: currentEmp.role || currentEmp.jobTitle,
       scheduleType: siteConfig.scheduleType,
       rosterType: siteConfig.rosterType,

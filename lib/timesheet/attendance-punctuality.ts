@@ -1,3 +1,6 @@
+import { and, desc, eq, gte, lte } from 'drizzle-orm'
+import { db } from '@/db'
+import { attendanceRecords } from '@/db/schema/hero'
 import {
   IndonesiaTimezoneCode,
   getTimezoneDateParts,
@@ -445,3 +448,76 @@ export function checkEmployeeOffDayStatus(input: {
       : null,
   }
 }
+
+export async function resolveNightShiftCheckoutContext(input: {
+  employeeId: number
+  siteId?: number
+  eventTime: Date
+  eventType: string
+}) {
+  const eventType = input.eventType || ''
+  const isCheckOut =
+    eventType === 'checked-out' ||
+    eventType.toLowerCase().includes('out') ||
+    eventType.toLowerCase().includes('pulang') ||
+    eventType.toLowerCase().includes('checkout')
+
+  if (!isCheckOut) {
+    return { isNightShiftCheckout: false, effectiveDate: input.eventTime }
+  }
+
+  // Check local time hour (00:00 - 12:00 morning window)
+  const localHour = input.eventTime.getHours()
+  if (localHour >= 12) {
+    return { isNightShiftCheckout: false, effectiveDate: input.eventTime }
+  }
+
+  // Look for an unclosed night check-in in the past 24 hours
+  const past24h = new Date(input.eventTime.getTime() - 24 * 60 * 60 * 1000)
+
+  const recentPunches = await db
+    .select({
+      id: attendanceRecords.id,
+      eventType: attendanceRecords.eventType,
+      eventTime: attendanceRecords.eventTime,
+    })
+    .from(attendanceRecords)
+    .where(
+      and(
+        eq(attendanceRecords.employeeId, input.employeeId),
+        gte(attendanceRecords.eventTime, past24h),
+        lte(attendanceRecords.eventTime, input.eventTime)
+      )
+    )
+    .orderBy(desc(attendanceRecords.eventTime))
+
+  const lastCheckIn = recentPunches.find(
+    (p) =>
+      p.eventType === 'checked-in' ||
+      (!p.eventType.toLowerCase().includes('out') &&
+        !p.eventType.toLowerCase().includes('pulang') &&
+        !p.eventType.toLowerCase().includes('checkout'))
+  )
+
+  if (!lastCheckIn) {
+    return { isNightShiftCheckout: false, effectiveDate: input.eventTime }
+  }
+
+  const checkInHour = lastCheckIn.eventTime.getHours()
+  const isNightCheckIn = checkInHour >= 15 || checkInHour < 5
+
+  const checkInDateStr = lastCheckIn.eventTime.toISOString().slice(0, 10)
+  const checkOutDateStr = input.eventTime.toISOString().slice(0, 10)
+
+  if (isNightCheckIn && checkInDateStr !== checkOutDateStr) {
+    return {
+      isNightShiftCheckout: true,
+      shiftDate: lastCheckIn.eventTime,
+      checkInRecord: lastCheckIn,
+      effectiveDate: lastCheckIn.eventTime, // Evaluates against Monday's Night Shift
+    }
+  }
+
+  return { isNightShiftCheckout: false, effectiveDate: input.eventTime }
+}
+

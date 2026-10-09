@@ -4519,4 +4519,69 @@ export const sopWinRequestApprovals = pgTable(
   })
 )
 
+// ─── HC Permohonan Perubahan Rute Penerbangan (Flight Route Change Request) ───
+
+export const hcFlightRouteChangeRequests = pgTable('hero_hc_flight_route_change_requests', {
+  id: serial('id').primaryKey(),
+  requestNumber: text('request_number').notNull().unique(),
+  employeeId: integer('employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  employeeSn: text('employee_sn').notNull().default(''),
+  requestorName: text('requestor_name').notNull(),
+  jobTitle: text('job_title').notNull().default(''),
+  sectionName: text('section_name').notNull().default(''),
+  departmentName: text('department_name').notNull().default(''),
+  siteId: integer('site_id').references(() => sites.id, { onDelete: 'set null' }),
+  siteName: text('site_name').notNull().default(''),
+  originLocation: text('origin_location').notNull().default('Jambi'),
+  requestDate: date('request_date').notNull(),
+  pohLocation: text('poh_location').notNull().default('Balikpapan'),
+  clauseAccepted: boolean('clause_accepted').notNull().default(true),
+  currentStepOrder: integer('current_step_order').notNull().default(1),
+  status: text('status').notNull().default('draft'), // draft, in_progress, approved, rejected
+  rejectionReason: text('rejection_reason').notNull().default(''),
+  notes: text('notes').notNull().default(''),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const hcFlightRouteChangeItems = pgTable('hero_hc_flight_route_change_items', {
+  id: serial('id').primaryKey(),
+  requestId: integer('request_id')
+    .notNull()
+    .references(() => hcFlightRouteChangeRequests.id, { onDelete: 'cascade' }),
+  flightDate: date('flight_date').notNull(),
+  flightRoute: text('flight_route').notNull(),
+  remark: text('remark').notNull().default('Offsite/ FB'),
+  sortOrder: integer('sort_order').notNull().default(1),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
+export const hcFlightRouteChangeApprovals = pgTable(
+  'hero_hc_flight_route_change_approvals',
+  {
+    id: serial('id').primaryKey(),
+    requestId: integer('request_id')
+      .notNull()
+      .references(() => hcFlightRouteChangeRequests.id, { onDelete: 'cascade' }),
+    stepOrder: integer('step_order').notNull(), // 1..5
+    stepKey: text('step_key').notNull(), // applicant, pjo, supervisor, hr_ga_leader, manager
+    roleLabel: text('role_label').notNull(),
+    approverTitle: text('approver_title').notNull().default(''),
+    approverEmployeeId: integer('approver_employee_id').references(() => employees.id, { onDelete: 'set null' }),
+    approverName: text('approver_name').notNull().default(''),
+    approverEmail: text('approver_email').notNull().default(''),
+    status: text('status').notNull().default('pending'), // 'pending', 'waiting', 'approved', 'rejected'
+    signatureDataUrl: text('signature_data_url'),
+    remarks: text('remarks').notNull().default(''),
+    signedAt: timestamp('signed_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    flightRouteReqStepUnique: uniqueIndex(
+      'hero_hc_flight_route_change_approvals_step_uq'
+    ).on(table.requestId, table.stepOrder),
+  })
+)
+
 

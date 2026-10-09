@@ -12,7 +12,7 @@ import {
   sites,
 } from '@/db/schema/hero'
 import { getSiteAttendanceClockConfig } from '@/lib/timesheet/site-attendance-punctuality'
-import { checkEmployeeOffDayStatus } from '@/lib/timesheet/attendance-punctuality'
+import { checkEmployeeOffDayStatus, resolveNightShiftCheckoutContext } from '@/lib/timesheet/attendance-punctuality'
 import { getOvertimeWorkflowSettings } from '@/app/dashboard/overtime-requests/actions'
 import { sendOvertimeStepApprovalEmail } from '@/lib/activity-overtime-workflow-email'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
@@ -58,9 +58,17 @@ export async function checkAndAutoGenerateSplOnCheckout(params: {
     const effectiveSiteId = siteId || emp.siteId || 1
     const siteConfig = await getSiteAttendanceClockConfig(effectiveSiteId)
 
-    // Check off-day status
-    const offDayCheck = checkEmployeeOffDayStatus({
+    const nightShiftContext = await resolveNightShiftCheckoutContext({
+      employeeId,
+      siteId: effectiveSiteId,
       eventTime,
+      eventType: 'checked-out',
+    })
+    const evalDate = nightShiftContext.effectiveDate
+
+    // Check off-day status against the effective shift date
+    const offDayCheck = checkEmployeeOffDayStatus({
+      eventTime: evalDate,
       role: emp.role || emp.jobTitle,
       scheduleType: siteConfig.scheduleType,
       rosterType: siteConfig.rosterType,
@@ -68,9 +76,11 @@ export async function checkAndAutoGenerateSplOnCheckout(params: {
     })
 
     // Calculate shift end time
-    const isNight = ['ns', 'night', 'malam', 'shift malam', '2', 's2'].includes(
-      String(shiftCode).toLowerCase().trim()
-    )
+    const isNight =
+      nightShiftContext.isNightShiftCheckout ||
+      ['ns', 'night', 'malam', 'shift malam', '2', 's2'].includes(
+        String(shiftCode).toLowerCase().trim()
+      )
 
     // Standard shift end time
     // Day shift standard end: 17:00 (or 9 hours after clock in)
