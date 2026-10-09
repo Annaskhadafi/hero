@@ -210,6 +210,8 @@ export function normalizeSiteOvertimeConfig(value: unknown): SiteOvertimeConfig 
 export function validateSiteOvertimeConfig(config: SiteOvertimeConfig) {
   const errors: string[] = []
   if (!config || typeof config !== 'object') return errors
+  if (!config.enabled) return errors
+
   for (const dayKey of ['hariBiasa', 'hariLibur', 'hariKe6', 'hariKe7'] as const) {
     const dayRule = config[dayKey]
     if (!dayRule) continue

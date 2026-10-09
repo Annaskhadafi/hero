@@ -179,6 +179,7 @@ import {
 import { ensureSchedulingTimesheetTables } from '@/lib/timesheet/scheduling-infrastructure'
 import {
   validateSiteOvertimeConfig,
+  normalizeSiteOvertimeConfig,
   type SiteOvertimeConfig,
 } from '@/lib/timesheet/overtime-policy'
 import {
@@ -2831,34 +2832,44 @@ export async function clearAttendanceRealOverridesAction(
   return { ok: true }
 }
 
+const overtimeClockTimeSchema = z
+  .string()
+  .transform((v) => {
+    const clean = v.trim().slice(0, 5)
+    return /^([0-1]?\d|2[0-3]):[0-5]\d$/.test(clean) ? clean.padStart(5, '0') : '00:00'
+  })
+
 const overtimeIntervalSchema = z.object({
-  start: z.string().regex(/^([0-1]?\d|2[0-3]):[0-5]\d$/).transform((v) => v.padStart(5, '0')),
-  end: z.string().regex(/^([0-1]?\d|2[0-3]):[0-5]\d$/).transform((v) => v.padStart(5, '0')),
+  start: overtimeClockTimeSchema,
+  end: overtimeClockTimeSchema,
 })
 const overtimeDayRuleSchema = z.object({
   dayShift: z.array(overtimeIntervalSchema).length(2),
   nightShift: z.array(overtimeIntervalSchema).length(2),
 })
 const siteOvertimeConfigSchema = z
-  .object({
-    enabled: z.boolean(),
-    mode: z.enum(['template', 'realtime']).optional().default('template'),
-    splPolicy: z.object({
+  .preprocess(
+    (val) => normalizeSiteOvertimeConfig(val),
+    z.object({
       enabled: z.boolean(),
-      allowBreak: z.boolean(),
-      allowOffDay: z.boolean(),
-      allowAfterMandatoryOt: z.boolean(),
-      dayShiftBreak: overtimeIntervalSchema,
-      nightShiftBreak: overtimeIntervalSchema,
-      submissionGraceDays: z.number().int().min(0).max(14),
-      minimumMinutes: z.number().int().min(15).max(720),
-      replacementOffMaxDays: z.number().int().min(1).max(90),
-    }),
-    hariBiasa: overtimeDayRuleSchema,
-    hariLibur: overtimeDayRuleSchema,
-    hariKe6: overtimeDayRuleSchema,
-    hariKe7: overtimeDayRuleSchema.optional(),
-  })
+      mode: z.enum(['template', 'realtime']).optional().default('template'),
+      splPolicy: z.object({
+        enabled: z.boolean(),
+        allowBreak: z.boolean(),
+        allowOffDay: z.boolean(),
+        allowAfterMandatoryOt: z.boolean(),
+        dayShiftBreak: overtimeIntervalSchema,
+        nightShiftBreak: overtimeIntervalSchema,
+        submissionGraceDays: z.number().int().min(0).max(14),
+        minimumMinutes: z.number().int().min(15).max(720),
+        replacementOffMaxDays: z.number().int().min(1).max(90),
+      }),
+      hariBiasa: overtimeDayRuleSchema,
+      hariLibur: overtimeDayRuleSchema,
+      hariKe6: overtimeDayRuleSchema,
+      hariKe7: overtimeDayRuleSchema.optional(),
+    })
+  )
   .superRefine((value, context) => {
     for (const message of validateSiteOvertimeConfig(value as SiteOvertimeConfig)) {
       context.addIssue({ code: z.ZodIssueCode.custom, message })

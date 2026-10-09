@@ -800,12 +800,25 @@ function ItemTeamPicker({
   onChange: (selectedIds: number[] | undefined, selectedObjs: Array<{ id: number; name: string; employeeSn?: string }>) => void
 }) {
   const [isOpen, setIsOpen] = useState(false)
+
   const isCustomized = itemTeamMemberIds !== undefined
-  const effectiveIds = isCustomized ? itemTeamMemberIds : (isSessionTeamLog ? sessionTeamIds : [])
+  const effectiveIds = isCustomized ? itemTeamMemberIds : sessionTeamIds
+
+  // Session team members selected in top form
+  const sessionTeamMembers = useMemo(() => {
+    return allTeamMembers.filter((m) => sessionTeamIds.includes(m.id))
+  }, [allTeamMembers, sessionTeamIds])
+
+  // Candidate pool: strictly sessionTeamMembers selected at top form
+  const candidatePool = sessionTeamMembers
 
   const selectedMembers = useMemo(() => {
     return allTeamMembers.filter((m) => effectiveIds.includes(m.id))
   }, [allTeamMembers, effectiveIds])
+
+  if (!isSessionTeamLog) {
+    return null
+  }
 
   return (
     <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 space-y-2">
@@ -816,11 +829,11 @@ function ItemTeamPicker({
             Tim Aktivitas
           </span>
           {isCustomized ? (
-            <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-blue-50 text-[#003461] border-blue-200 font-bold">
+            <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-blue-50 text-[#003461] border-blue-200 font-bold whitespace-nowrap shrink-0">
               Khusus ({effectiveIds.length})
             </Badge>
           ) : (
-            <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-slate-50 text-slate-600 border-slate-200 font-medium">
+            <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-slate-50 text-slate-600 border-slate-200 font-medium whitespace-nowrap shrink-0">
               Ikuti Sesi ({effectiveIds.length})
             </Badge>
           )}
@@ -838,14 +851,18 @@ function ItemTeamPicker({
 
       {selectedMembers.length > 0 && !isOpen && (
         <p className="text-[11px] text-slate-600 font-medium leading-tight truncate">
-          Kru: {selectedMembers.map((m) => m.name).join(', ')}
+          {isCustomized
+            ? `Kru Khusus (${selectedMembers.length}): ${selectedMembers.map((m) => m.name).join(', ')}`
+            : `Mengikuti tim sesi (${selectedMembers.length} anggota)`}
         </p>
       )}
 
       {isOpen && (
         <div className="pt-2 border-t border-slate-100 space-y-2">
           <div className="flex items-center justify-between text-[11px]">
-            <span className="text-slate-500 font-medium">Anggota untuk aktivitas ini:</span>
+            <span className="text-slate-500 font-medium">
+              Pilih dari tim terpilih di atas ({sessionTeamMembers.length} orang):
+            </span>
             {isCustomized && (
               <button
                 type="button"
@@ -856,11 +873,14 @@ function ItemTeamPicker({
               </button>
             )}
           </div>
+
           <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
-            {allTeamMembers.length === 0 ? (
-              <p className="text-xs text-slate-400 italic">Belum ada daftar tim terpilih.</p>
+            {candidatePool.length === 0 ? (
+              <p className="text-xs text-amber-600 font-medium py-1">
+                Belum ada anggota tim yang dipilih di section &lsquo;Team Logging&rsquo; di atas. Silakan pilih anggota tim di bagian atas terlebih dahulu.
+              </p>
             ) : (
-              allTeamMembers.map((member) => {
+              candidatePool.map((member) => {
                 const isSelected = effectiveIds.includes(member.id)
                 return (
                   <label
@@ -4538,6 +4558,19 @@ export function MobileDailyActivityForm({
                                   />
                                 </Label>
                               ) : null}
+
+                              <ItemTeamPicker
+                                allTeamMembers={allTeamMembersPool}
+                                sessionTeamIds={selectedMemberIds}
+                                isSessionTeamLog={isTeamLog}
+                                itemTeamMemberIds={itemState.itemTeamMemberIds}
+                                onChange={(nextIds, nextObjs) => {
+                                  updateRouteItem(item.id, {
+                                    itemTeamMemberIds: nextIds,
+                                    itemTeamMembers: nextObjs,
+                                  })
+                                }}
+                              />
                             </div>
                           ) : null}
                         </div>

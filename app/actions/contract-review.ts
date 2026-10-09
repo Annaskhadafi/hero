@@ -965,7 +965,26 @@ export async function ensureContractReviewApprovals(reviewId: number) {
     .where(eq(hcContractReviewApprovals.reviewId, reviewId))
     .orderBy(asc(hcContractReviewApprovals.stepOrder))
 
-  if (existingApprovals.length > 0) return existingApprovals
+  if (existingApprovals.length > 0) {
+    const step1 = existingApprovals.find((a) => a.stepOrder === 1 && a.status === 'pending')
+    if (step1 && step1.approverEmployeeId === review.employeeId) {
+      const abianUser = await getUserByName('Muhammad Abian Husain', 'abian.husain@chitraparatama.co.id')
+      if (abianUser?.id && abianUser.id !== review.employeeId) {
+        await db
+          .update(hcContractReviewApprovals)
+          .set({
+            approverEmployeeId: abianUser.id,
+            approverName: abianUser.name,
+            approverEmail: abianUser.email,
+          })
+          .where(eq(hcContractReviewApprovals.id, step1.id))
+        step1.approverEmployeeId = abianUser.id
+        step1.approverName = abianUser.name
+        step1.approverEmail = abianUser.email
+      }
+    }
+    return existingApprovals
+  }
 
   const approvalSteps = await buildContractReviewApprovals(review)
   if (approvalSteps.length === 0) return []
