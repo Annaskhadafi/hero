@@ -2448,6 +2448,70 @@ Segera lakukan tindakan perpanjangan atau penggantian aset sebelum masa berlaku 
     },
   },
   {
+    name: 'HSE OSM Finding Alert',
+    templateCode: 'hse_osm_finding_alert',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hse',
+    ccEmail: 'hse.cp@chitraparatama.co.id',
+    subject: '[HERO OSM] Temuan Baru Lapangan: {{findingNumber}} - {{classificationName}} ({{locationArea}})',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:620px;margin:0 auto;background:#f8fafc;padding:20px">
+<div style="background:linear-gradient(135deg,#0f766e,#0d9488);padding:20px 24px;border-radius:8px 8px 0 0">
+  <table cellpadding="0" cellspacing="0" width="100%"><tr>
+    <td><h1 style="color:#fff;font-size:18px;margin:0;font-weight:700">HERO HSE — On the Spot Monitoring</h1>
+    <p style="color:#ccfbf1;font-size:11px;margin:3px 0 0;text-transform:uppercase;letter-spacing:1px">Laporan Temuan Lapangan KPC Standard</p></td>
+  </tr></table>
+</div>
+<div style="background:#fff;padding:24px;border-radius:0 0 8px 8px;border:1px solid #e2e8f0;border-top:0">
+  <p style="color:#1e293b;font-size:14px;line-height:1.6;margin:0 0 12px">Telah dicatat laporan temuan lapangan (OSM) baru yang memerlukan perhatian dan tindak lanjut perbaikan:</p>
+  <table cellpadding="0" cellspacing="0" style="width:100%;margin-bottom:16px">
+    <tr><td style="padding:6px 0;color:#64748b;font-size:13px;width:140px">Nomor Tiket:</td><td style="padding:6px 0;color:#0f172a;font-size:13px;font-weight:600">{{findingNumber}}</td></tr>
+    <tr><td style="padding:6px 0;color:#64748b;font-size:13px">Sesi OSM:</td><td style="padding:6px 0;color:#0f172a;font-size:13px">{{sessionNumber}}</td></tr>
+    <tr><td style="padding:6px 0;color:#64748b;font-size:13px">Lokasi / Area:</td><td style="padding:6px 0;color:#0f172a;font-size:13px">{{locationArea}}</td></tr>
+    <tr><td style="padding:6px 0;color:#64748b;font-size:13px">Fokus Area:</td><td style="padding:6px 0;color:#0f172a;font-size:13px">{{focusItemName}}</td></tr>
+    <tr><td style="padding:6px 0;color:#64748b;font-size:13px">Klasifikasi:</td><td style="padding:6px 0;color:#0f172a;font-size:13px;font-weight:600">{{classificationName}}</td></tr>
+    <tr><td style="padding:6px 0;color:#64748b;font-size:13px">Tingkat Risiko:</td><td style="padding:6px 0;color:#b91c1c;font-size:13px;font-weight:700">{{riskLevel}}</td></tr>
+    <tr><td style="padding:6px 0;color:#64748b;font-size:13px">Inisiator Tim:</td><td style="padding:6px 0;color:#0f172a;font-size:13px">{{leadEmployeeName}} ({{leadBadgeNumber}})</td></tr>
+  </table>
+  <div style="background:#f1f5f9;padding:12px 16px;border-radius:6px;margin-bottom:16px">
+    <p style="margin:0;font-size:12px;color:#475569;font-weight:600">Uraian Temuan Masalah:</p>
+    <p style="margin:4px 0 0;font-size:13px;color:#1e293b;line-height:1.5">{{description}}</p>
+  </div>
+  <p style="color:#64748b;font-size:12px;margin:0 0 16px">Mohon tim kerja atau PIC terkait segera melakukan tindakan korektif dan mengunggah bukti perbaikan di aplikasi HERO.</p>
+  <div style="text-align:center;margin:20px 0">
+    <a href="{{viewLink}}" style="background:#0d9488;color:#fff;padding:10px 24px;text-decoration:none;font-size:13px;font-weight:600;border-radius:6px;display:inline-block">Buka Detail Sesi OSM</a>
+  </div>
+</div>
+</div>`,
+    textContent: `HERO HSE — On the Spot Monitoring
+Laporan Temuan Baru: {{findingNumber}}
+
+Sesi OSM: {{sessionNumber}}
+Lokasi: {{locationArea}}
+Fokus Area: {{focusItemName}}
+Klasifikasi: {{classificationName}}
+Tingkat Risiko: {{riskLevel}}
+Inisiator: {{leadEmployeeName}} ({{leadBadgeNumber}})
+
+Uraian: {{description}}
+
+Mohon segera ditindaklanjuti di aplikasi HERO: {{viewLink}}`,
+    description: 'Pemberitahuan email temuan bahaya/kondisi baru OSM ke tim HSE dan PIC terkait.',
+    variables: ['findingNumber', 'sessionNumber', 'locationArea', 'focusItemName', 'classificationName', 'riskLevel', 'leadEmployeeName', 'leadBadgeNumber', 'description', 'viewLink'],
+    sampleValues: {
+      findingNumber: 'OSM-TKT-202610-0001',
+      sessionNumber: 'OSM-SES-202610-0001',
+      locationArea: 'Workshop Bay 3',
+      focusItemName: 'Fatality Prevention',
+      classificationName: 'Vehicle & Mobile Equipment Pneumatic & Hand Tools',
+      riskLevel: 'HIGH',
+      leadEmployeeName: 'Muhammad Ikbal Isisa',
+      leadBadgeNumber: '2108847',
+      description: 'Selang kompresor udara bertekanan tinggi mengalami retak pada klem fitting dan belum terpasang whip check safety.',
+      viewLink: 'https://hero.chitraparatama.com/dashboard/hse/osm',
+    },
+  },
+  {
     name: 'HC Employee Created',
     templateCode: 'hc_employee_created',
     templateType: 'Notification',

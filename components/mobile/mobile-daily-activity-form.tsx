@@ -1846,25 +1846,58 @@ export function MobileDailyActivityForm({
       }
     }
     if (availableRouteFolders && availableRouteFolders.length > 0) {
+      const baseLibraryLookup = new Map<string, (typeof availableLibrary)[number]>()
+      for (const lib of availableLibrary || []) {
+        baseLibraryLookup.set(String(lib.id), lib)
+        if (lib.activityCode) baseLibraryLookup.set(lib.activityCode.trim().toLowerCase(), lib)
+      }
+
       for (const folder of availableRouteFolders) {
         for (const group of folder.groups || []) {
           for (const item of group.items || []) {
             const compoundId = `${group.id}_${item.libraryActivityId ?? item.id}`
             const realLibId = item.libraryActivityId ?? (-item.id)
             if (!existingIds.has(compoundId)) {
+              const baseLib = item.libraryActivityId
+                ? baseLibraryLookup.get(String(item.libraryActivityId))
+                : (item.itemCode || item.libraryCode ? baseLibraryLookup.get(String(item.itemCode || item.libraryCode).trim().toLowerCase()) : null)
+
+              const reqEquip = Boolean(
+                item.requiresUnit ||
+                (item as any).requiresEquipmentNo ||
+                baseLib?.requiresEquipmentNo
+              )
+              const reqPhoto = Boolean(
+                item.requiresPhoto ||
+                baseLib?.requiresPhoto
+              )
+              const reqDuration = item.requiresTime ?? baseLib?.requiresDuration ?? true
+              const reqMaterial = Boolean(
+                item.requiresMaterialUsed ||
+                baseLib?.requiresMaterialUsed
+              )
+              const reqGps = Boolean(
+                item.requiresLocationGps ||
+                baseLib?.requiresLocationGps
+              )
+              const reqTire = Boolean(
+                item.requiresTireCount ||
+                baseLib?.requiresTireCount
+              )
+
               list.push({
                 id: compoundId as any,
                 libraryActivityId: realLibId,
                 groupName: group.groupName,
-                activityCode: item.itemCode || item.libraryCode || 'CUSTOM',
-                activityName: item.itemLabel || item.libraryName || 'Aktivitas',
-                basePoints: Number(item.pointOverride ?? item.libraryPoints) || 5,
-                requiresPhoto: Boolean(item.requiresPhoto),
-                requiresEquipmentNo: Boolean(item.requiresUnit),
-                requiresDuration: item.requiresTime ?? true,
-                requiresMaterialUsed: Boolean(item.requiresMaterialUsed),
-                requiresLocationGps: Boolean(item.requiresLocationGps),
-                requiresTireCount: Boolean(item.requiresTireCount),
+                activityCode: item.itemCode || item.libraryCode || baseLib?.activityCode || 'CUSTOM',
+                activityName: item.itemLabel || item.libraryName || baseLib?.activityName || 'Aktivitas',
+                basePoints: Number(item.pointOverride ?? item.libraryPoints ?? baseLib?.basePoints) || 5,
+                requiresPhoto: reqPhoto,
+                requiresEquipmentNo: reqEquip,
+                requiresDuration: reqDuration,
+                requiresMaterialUsed: reqMaterial,
+                requiresLocationGps: reqGps,
+                requiresTireCount: reqTire,
                 maxDailyCount: 99,
                 maxPointsPerDay: 999,
                 departmentId: null,
@@ -3342,9 +3375,11 @@ export function MobileDailyActivityForm({
               const validLibraryId =
                 matchingSessionItem?.libraryActivityId
                   ? Number(matchingSessionItem.libraryActivityId)
-                  : availableLibrary.some((lib) => String(lib.id) === libraryId)
-                    ? Number(library.id)
-                    : null
+                  : typeof library.libraryActivityId === 'number' && library.libraryActivityId > 0
+                    ? library.libraryActivityId
+                    : availableLibrary.some((lib) => String(lib.id) === libraryId)
+                      ? Number(library.id)
+                      : Number(String(library.id).split('_').pop()) || null
 
               const u = (entry.equipmentNo || '').trim()
 

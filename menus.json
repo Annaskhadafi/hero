@@ -235,6 +235,11 @@
     "resource": "hse_jsa"
   },
   {
+    "title": "On Spot Monitoring (OSM)",
+    "url": "/dashboard/hse/osm",
+    "resource": "hse_osm"
+  },
+  {
     "title": "Field Break Schedule",
     "url": "/dashboard/scheduling-timesheet/field-break",
     "resource": "scheduling_timesheet_field_break"

@@ -35,6 +35,7 @@ const ALLOWED_UPLOAD_PREFIXES = new Set([
   "face-attendance-v2",
   "contract-review-attachment",
   "public-career-cv",
+  "hse-osm",
 ])
 
 function getContentType(fileName: string) {
@@ -288,6 +289,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
       `lms-covers/${fileName}`,
       `chitralearning/${fileName}`,
       `contract-review-attachment/${fileName}`,
+      `hse-osm/${fileName}`,
     ]
 
     for (const key of candidateS3Keys) {

@@ -70,7 +70,8 @@ function getObjectKeyFromUrl(objectUrl: string) {
       cleanPath.startsWith("face-attendance/") ||
       cleanPath.startsWith("face-attendance-v2/") ||
       cleanPath.startsWith("contract-review-attachment/") ||
-      cleanPath.startsWith("public-career-cv/")
+      cleanPath.startsWith("public-career-cv/") ||
+      cleanPath.startsWith("hse-osm/")
     ) {
       return cleanPath;
     }

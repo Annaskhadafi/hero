@@ -162,6 +162,7 @@ const hseFieldActions = [
 ];
 
 const hseAdminFeatures = [
+  { title: "On Spot Monitoring (OSM)", href: "/mobile/hse/osm", icon: HardHat, meta: "Inspeksi KPC, geotagging & temuan" },
   { title: "Observasi & Emergency", href: "/mobile/hse/observasi-emergency", icon: AlertTriangle, meta: "Catat observasi & insiden lengkap" },
   { title: "Incident Report", href: "/mobile/hse/incident-report", icon: AlertTriangle, meta: "Investigasi & laporan" },
   { title: "Corrective Action", href: "/mobile/hse/corrective-action", icon: CheckCircle2, meta: "Follow-up & close-out" },

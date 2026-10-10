@@ -90,6 +90,8 @@ export function RouteFolderTree({
                     id: compoundId as any,
                     groupName: group.groupName,
                     libraryActivityId: item.libraryActivityId ?? lib.libraryActivityId ?? null,
+                    requiresEquipmentNo: Boolean(lib.requiresEquipmentNo || (item as any).requiresEquipmentNo || item.requiresUnit),
+                    requiresPhoto: Boolean(lib.requiresPhoto || item.requiresPhoto),
                   }
                 }
 
@@ -101,8 +103,8 @@ export function RouteFolderTree({
                   activityCode: item.itemCode || item.libraryCode || 'CUSTOM',
                   activityName: item.itemLabel || item.libraryName || 'Aktivitas',
                   basePoints: Number(item.pointOverride ?? item.libraryPoints) || 5,
-                  requiresPhoto: item.requiresPhoto ?? false,
-                  requiresEquipmentNo: item.requiresUnit ?? false,
+                  requiresPhoto: Boolean(item.requiresPhoto),
+                  requiresEquipmentNo: Boolean((item as any).requiresEquipmentNo ?? item.requiresUnit ?? false),
                   requiresDuration: item.requiresTime ?? true,
                   requiresLocationGps: item.requiresLocationGps ?? false,
                   requiresMaterialUsed: item.requiresMaterialUsed ?? false,

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Navigation, MapPin, ExternalLink, RefreshCw, AlertCircle, ShieldCheck } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { OsmMiniMap } from "@/components/ui/osm-mini-map";
 
 type GpsLocationPreviewCardProps = {
   needsGps: boolean;
@@ -85,45 +86,14 @@ export function GpsLocationPreviewCard({
         </div>
       </div>
 
-      {/* Visual Map Preview */}
+      {/* Visual Map Preview (Leaflet native, no iframe blocking) */}
       {hasCoords ? (
-        <div className="relative overflow-hidden rounded-[1.1rem] border border-gray-200 bg-[#eaf4fb] h-48 shadow-inner group">
-          {!showIframeError ? (
-            <iframe
-              title="GPS Location Map Preview"
-              src={osmEmbedUrl}
-              className="h-full w-full border-0 pointer-events-auto"
-              onError={() => setShowIframeError(true)}
-              loading="lazy"
-            />
-          ) : (
-            <div className="flex h-full w-full flex-col items-center justify-center p-4 text-center bg-[#f0f7fc]">
-              <MapPin className="size-8 text-[#003f78] mb-1 animate-bounce" />
-              <p className="text-xs font-bold text-[#082033]">{locationName || siteName || "Koordinat Lokasi"}</p>
-              <p className="text-[11px] font-mono text-[#486275] mt-0.5">{latitude}, {longitude}</p>
-            </div>
-          )}
-
-          {/* Floating Badge Top-Right */}
-          <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5 rounded-full bg-white/90 backdrop-blur-md px-3 py-1 text-[10px] font-black tracking-wider text-[#082033] shadow-md border border-white/50">
-            <span className="relative flex size-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full size-2 bg-emerald-500"></span>
-            </span>
-            <span className="font-mono">{latitude?.slice(0, 8)}, {longitude?.slice(0, 8)}</span>
-          </div>
-
-          {/* Floating Action Button Bottom-Right */}
-          <a
-            href={googleMapsUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="absolute bottom-2 right-2 z-10 flex items-center gap-1.5 rounded-xl bg-[#003f78] px-3 py-1.5 text-[11px] font-bold text-white shadow-lg hover:bg-[#002f5a] active:scale-95 transition"
-          >
-            <ExternalLink className="size-3.5" />
-            <span>Buka Google Maps</span>
-          </a>
-        </div>
+        <OsmMiniMap
+          latitude={latNum}
+          longitude={lngNum}
+          accuracy={accuracy}
+          className="h-48"
+        />
       ) : (
         /* Waiting / Skeleton Radar Map Container */
         <div className="flex h-36 w-full flex-col items-center justify-center rounded-[1.1rem] border border-dashed border-sky-200 bg-[#f6fbff] p-4 text-center">
