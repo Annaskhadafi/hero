@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getHseOsmSessionById } from "@/app/actions/hse-osm";
 import { resolveUploadUrl } from "@/lib/resolve-upload-url";
 import { HSE_OSM_RISK_CONFIG, HSE_OSM_STATUS_CONFIG, type HseOsmRiskLevel, type HseOsmFindingStatus } from "@/lib/hse-osm-constants";
+import { OsmPrintAction } from "./print-button";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -28,47 +29,62 @@ export default async function PrintHseOsmPage({
       : null;
 
   return (
-    <div className="pdf-wrapper">
+    <>
+      <OsmPrintAction googleMapsUrl={googleMapsUrl} />
+      <div
+        className="pdf-wrapper"
+        style={{
+          backgroundImage: "url('/ChitraParatama_Stationery_Letterhead_jkt.jpg')",
+          backgroundSize: "100% 100%",
+          backgroundRepeat: "no-repeat",
+        }}
+      >
       <style>{`
         @page {
           size: A4 portrait;
-          margin: 10mm 10mm 10mm 10mm;
+          margin: 0;
         }
         @media print {
-          body {
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
             background: #fff !important;
-            font-size: 8.5pt;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
-          .no-print {
-            display: none !important;
-          }
-          .page-break {
-            page-break-before: always;
+          .pdf-wrapper {
+            box-shadow: none !important;
+            margin: 0 !important;
+            width: 210mm !important;
+            min-height: 297mm !important;
+            background-image: url('/ChitraParatama_Stationery_Letterhead_jkt.jpg') !important;
+            background-size: 100% 100% !important;
+            background-repeat: no-repeat !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            page-break-after: avoid !important;
           }
         }
         body {
           font-family: Arial, Helvetica, sans-serif;
           color: #0f172a;
           line-height: 1.35;
-          background-color: #f1f5f9;
+          background-color: #525659;
+          margin: 0;
+          padding: 24px 0;
         }
         .pdf-wrapper {
-          max-width: 210mm;
-          margin: 0 auto;
-          background: #fff;
-          padding: 10mm 12mm;
+          width: 210mm;
           min-height: 297mm;
+          margin: 0 auto;
+          background-color: #fff;
+          background-image: url('/ChitraParatama_Stationery_Letterhead_jkt.jpg');
+          background-size: 100% 100%;
+          background-repeat: no-repeat;
+          padding: 38mm 18mm 32mm 18mm;
           box-sizing: border-box;
-          box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-        }
-        @media print {
-          .pdf-wrapper {
-            box-shadow: none;
-            padding: 0;
-            max-width: 100%;
-          }
+          box-shadow: 0 6px 24px rgba(0,0,0,0.25);
+          position: relative;
         }
         table {
           width: 100%;
@@ -86,114 +102,14 @@ export default async function PrintHseOsmPage({
         }
       `}</style>
 
-      {/* Floating Action Header (Screen Only) */}
-      <div
-        className="no-print"
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: "16px",
-          padding: "10px 16px",
-          background: "#022744",
-          borderRadius: "8px",
-          color: "#fff",
-        }}
-      >
-        <div style={{ fontSize: "10pt", fontWeight: "bold", display: "flex", alignItems: "center", gap: "8px" }}>
-          <span>Laporan On the Spot Monitoring:</span>
-          <span style={{ fontFamily: "monospace", color: "#38bdf8" }}>{s.sessionNumber}</span>
+      {/* Header Judul Dokumen (Kop & Logo sudah tertera pada background A4 letterhead) */}
+      <div style={{ textAlign: "center", marginBottom: "14px" }}>
+        <h1 style={{ fontSize: "12.5pt", fontWeight: "bold", textTransform: "uppercase", letterSpacing: "0.5px", color: "#000", margin: "0 0 3px 0" }}>
+          LAPORAN ON THE SPOT MONITORING (OSM)
+        </h1>
+        <div style={{ fontSize: "8pt", color: "#475569", fontWeight: "bold", letterSpacing: "0.5px" }}>
+          HEALTH, SAFETY &amp; ENVIRONMENT (HSE) • SISTEM PEMANTAUAN K3 OPERASIONAL
         </div>
-        <div style={{ display: "flex", gap: "8px" }}>
-          {googleMapsUrl && (
-            <a
-              href={googleMapsUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-                padding: "6px 14px",
-                background: "#0284c7",
-                color: "#fff",
-                borderRadius: "6px",
-                textDecoration: "none",
-                fontWeight: "bold",
-                fontSize: "8.5pt",
-              }}
-            >
-              🗺️ Buka Peta (Google Maps)
-            </a>
-          )}
-          <button
-            // @ts-ignore
-            id="print-btn"
-            style={{
-              padding: "6px 16px",
-              background: "#10b981",
-              color: "#fff",
-              border: "none",
-              borderRadius: "6px",
-              cursor: "pointer",
-              fontWeight: "bold",
-              fontSize: "8.5pt",
-            }}
-          >
-            🖨️ Cetak / Simpan PDF (Ctrl+P)
-          </button>
-        </div>
-      </div>
-
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `
-            document.addEventListener('DOMContentLoaded', function() {
-              var btn = document.getElementById('print-btn');
-              if (btn) btn.onclick = function() { window.print(); };
-            });
-          `,
-        }}
-      />
-
-      {/* Header Dokumen Resmi (Format Seragam Daily Activity HERO) */}
-      <div style={{ borderBottom: "2px solid #022744", paddingBottom: "6px", marginBottom: "10px" }}>
-        <table style={{ border: "none", width: "100%" }}>
-          <tbody>
-            <tr>
-              <td style={{ border: "none", width: "25%", verticalAlign: "middle" }}>
-                <div style={{ fontSize: "14pt", fontWeight: "900", color: "#003461", letterSpacing: "1px" }}>
-                  HERO
-                </div>
-                <div style={{ fontSize: "8pt", color: "#0284c7", fontWeight: "bold", letterSpacing: "1.5px" }}>
-                  CHITRA PARATAMA
-                </div>
-              </td>
-              <td style={{ border: "none", width: "52%", textAlign: "center", verticalAlign: "middle" }}>
-                <div style={{ fontSize: "11.5pt", fontWeight: "bold", textTransform: "uppercase", color: "#022744", letterSpacing: "0.5px" }}>
-                  LAPORAN ON THE SPOT MONITORING (OSM)
-                </div>
-                <div style={{ fontSize: "8pt", fontWeight: "bold", color: "#475569" }}>
-                  PT CHITRA PARATAMA • HEALTH, SAFETY & ENVIRONMENT (HSE)
-                </div>
-                <div style={{ fontSize: "7pt", color: "#64748b" }}>
-                  Sistem Pemantauan Lapangan K3 Operasional Pertambangan
-                </div>
-              </td>
-              <td style={{ border: "none", width: "23%", textAlign: "right", verticalAlign: "middle" }}>
-                <div style={{ fontSize: "7.5pt", fontWeight: "bold", color: "#64748b" }}>
-                  No. Dokumen:
-                </div>
-                <div style={{ fontSize: "8.5pt", fontFamily: "monospace", fontWeight: "bold", color: "#0284c7" }}>
-                  {s.sessionNumber}
-                </div>
-                <div style={{ fontSize: "7pt", color: "#94a3b8", marginTop: "2px" }}>
-                  Status: <strong>{s.status}</strong>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
       </div>
 
       {/* Section 1: Details & Monitoring Profile (4 Columns Table matching Daily Activity DAR format) */}
@@ -207,34 +123,40 @@ export default async function PrintHseOsmPage({
           <tr>
             <td style={{ width: "22%", fontWeight: "bold", backgroundColor: "#f8fafc" }}>Kode Sesi Dokumen</td>
             <td style={{ width: "28%", fontFamily: "monospace", fontWeight: "bold", color: "#0369a1" }}>{s.sessionNumber}</td>
-            <td style={{ width: "22%", fontWeight: "bold", backgroundColor: "#f8fafc" }}>Tanggal &amp; Waktu</td>
-            <td style={{ width: "28%" }}>{s.inspectionDate} • {s.inspectionTime} WITA</td>
+            <td style={{ width: "22%", fontWeight: "bold", backgroundColor: "#f8fafc" }}>Status Dokumen</td>
+            <td style={{ width: "28%" }}>
+              <strong style={{ color: s.status === "CLOSED" ? "#047857" : s.status === "IN_PROGRESS" ? "#d97706" : "#b91c1c" }}>
+                {s.status}
+              </strong>
+            </td>
           </tr>
           <tr>
+            <td style={{ fontWeight: "bold", backgroundColor: "#f8fafc" }}>Tanggal &amp; Waktu</td>
+            <td>{s.inspectionDate} • {s.inspectionTime} WITA</td>
             <td style={{ fontWeight: "bold", backgroundColor: "#f8fafc" }}>Customer / Site</td>
             <td><strong>{s.siteName || "Head Office / Central"}</strong></td>
+          </tr>
+          <tr>
             <td style={{ fontWeight: "bold", backgroundColor: "#f8fafc" }}>Fokus Monitoring</td>
             <td><strong style={{ color: "#d97706" }}>{s.focusItemName}</strong></td>
-          </tr>
-          <tr>
             <td style={{ fontWeight: "bold", backgroundColor: "#f8fafc" }}>Area Lokasi</td>
             <td><strong>{s.locationArea}</strong></td>
+          </tr>
+          <tr>
             <td style={{ fontWeight: "bold", backgroundColor: "#f8fafc" }}>Detail Lokasi Spesifik</td>
             <td>{s.locationDetail || "—"}</td>
-          </tr>
-          <tr>
             <td style={{ fontWeight: "bold", backgroundColor: "#f8fafc" }}>Inisiator / Leader</td>
             <td>{s.leadEmployeeName} ({s.leadBadgeNumber})</td>
-            <td style={{ fontWeight: "bold", backgroundColor: "#f8fafc" }}>Departemen / Posisi</td>
-            <td>{[s.leadDepartment, s.leadRole].filter(Boolean).join(" • ") || "HSE Operation"}</td>
           </tr>
           <tr>
+            <td style={{ fontWeight: "bold", backgroundColor: "#f8fafc" }}>Departemen / Jabatan</td>
+            <td>{[s.leadDepartment, s.leadRole].filter(Boolean).join(" • ") || "HSE Operation"}</td>
             <td style={{ fontWeight: "bold", backgroundColor: "#f8fafc" }}>Koordinat GPS Presisi</td>
-            <td colSpan={3}>
+            <td>
               {s.latitude && s.longitude ? (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "4px" }}>
                   <span style={{ fontFamily: "monospace", fontWeight: "bold" }}>
-                    📍 {s.latitude}, {s.longitude} {s.gpsAccuracy ? `(± ${s.gpsAccuracy})` : ""}
+                    📍 {s.latitude}, {s.longitude}
                   </span>
                   {googleMapsUrl && (
                     <a
@@ -248,12 +170,12 @@ export default async function PrintHseOsmPage({
                         fontSize: "7.5pt",
                       }}
                     >
-                      Buka di Google Maps ↗
+                      Buka Google Maps ↗
                     </a>
                   )}
                 </div>
               ) : (
-                <span style={{ color: "#94a3b8", fontStyle: "italic" }}>Koordinat GPS tidak terekam</span>
+                <span style={{ color: "#94a3b8", fontStyle: "italic" }}>Koordinat tidak terekam</span>
               )}
             </td>
           </tr>
@@ -511,5 +433,6 @@ export default async function PrintHseOsmPage({
         <span>Dokumen Kontrol Keselamatan Tambang Standard</span>
       </div>
     </div>
+    </>
   );
 }

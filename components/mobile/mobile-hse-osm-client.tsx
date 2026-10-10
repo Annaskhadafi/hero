@@ -13,6 +13,7 @@ import {
   Clock,
   Compass,
   Crosshair,
+  Download,
   ExternalLink,
   Eye,
   FileText,
@@ -1922,10 +1923,11 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
             asChild
             variant="outline"
             size="sm"
-            className="text-xs h-8 gap-1 rounded-full px-3"
+            className="text-xs h-8 gap-1.5 rounded-full px-3 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100"
           >
             <Link href={`/print/hse/osm/${s.id}`} target="_blank">
-              PDF
+              <Download className="size-3.5" />
+              Download PDF
             </Link>
           </Button>
         </div>

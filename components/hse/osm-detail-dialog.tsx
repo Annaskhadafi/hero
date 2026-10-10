@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Clock,
   Compass,
+  Download,
   ExternalLink,
   FileText,
   HardHat,
@@ -110,11 +111,11 @@ export function OsmDetailDialog({
                   asChild
                   variant="outline"
                   size="sm"
-                  className="bg-slate-800 border-slate-700 hover:bg-slate-700 text-slate-200 text-xs h-8 gap-1.5"
+                  className="bg-emerald-950/40 border-emerald-700/60 hover:bg-emerald-900/50 text-emerald-300 text-xs h-8 gap-1.5"
                 >
                   <Link href={`/print/hse/osm/${id}`} target="_blank">
-                    <Printer className="size-3.5" />
-                    Cetak PDF Resmi
+                    <Download className="size-3.5" />
+                    Download / Cetak PDF
                   </Link>
                 </Button>
                 <Button
