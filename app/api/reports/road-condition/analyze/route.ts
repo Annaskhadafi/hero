@@ -66,17 +66,29 @@ function validatePayload(input: unknown): RoadConditionAnalyzePayload {
     pointName: readString(body.pointName, 'Nama point'),
     category: category.key,
     photos: photos.map((photo, index) => {
-      const mimeType = readString(photo?.mimeType, `Mime foto ${index + 1}`)
-      const dataUrl = readString(photo?.dataUrl, `Data foto ${index + 1}`)
+      const rawMimeType = typeof photo?.mimeType === 'string' ? photo.mimeType.trim().toLowerCase() : ''
+      const rawDataUrl = readString(photo?.dataUrl, `Data foto ${index + 1}`)
+
+      // Detect MIME from dataUrl or rawMimeType
+      const dataUrlMatch = rawDataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,/i)
+      const detectedMime = dataUrlMatch ? dataUrlMatch[1].toLowerCase() : (rawMimeType || 'image/jpeg')
+      const mimeType = detectedMime === 'image/jpg' ? 'image/jpeg' : detectedMime
 
       if (!mimeType.startsWith('image/')) {
         throw new Error(`Foto ${index + 1} harus bertipe image.`)
       }
-      if (!dataUrl.startsWith(`data:${mimeType};base64,`)) {
+
+      // Normalisasi format base64
+      const dataUrl = rawDataUrl.startsWith('data:')
+        ? rawDataUrl
+        : `data:${mimeType};base64,${rawDataUrl}`
+
+      if (!dataUrl.startsWith('data:image/') || !dataUrl.includes(';base64,')) {
         throw new Error(`Foto ${index + 1} harus berupa data URL base64.`)
       }
-      if (dataUrl.length > 8_000_000) {
-        throw new Error(`Foto ${index + 1} terlalu besar. Maksimal sekitar 5MB.`)
+
+      if (dataUrl.length > 20_000_000) {
+        throw new Error(`Foto ${index + 1} terlalu besar. Maksimal sekitar 15MB.`)
       }
 
       return {
@@ -118,15 +130,31 @@ function normalizeAiResult(
   rawResult: Partial<RoadConditionAiResult>
 ): RoadConditionAiResult {
   const category = getRoadConditionCategory(categoryKey)!
-  const assessmentById = new Map(
-    (Array.isArray(rawResult.assessments) ? rawResult.assessments : []).map((item) => [
-      String(item?.criterionId ?? ''),
-      item,
-    ])
-  )
+  const rawAssessments = Array.isArray(rawResult.assessments) ? rawResult.assessments : []
 
-  const assessments = category.criteria.map((criterion) => {
-    const item = assessmentById.get(criterion.id)
+  // Create lookup maps by criterionId (exact and sanitized) as well as index
+  const assessmentMap = new Map<string, Partial<RoadConditionAiAssessment>>()
+  rawAssessments.forEach((item, index) => {
+    if (!item) return
+    const rawId = String(item.criterionId ?? '').trim().toLowerCase()
+    if (rawId) {
+      assessmentMap.set(rawId, item)
+      assessmentMap.set(rawId.replace(/[-_\s]+/g, ''), item)
+    }
+    assessmentMap.set(`__idx_${index}`, item)
+  })
+
+  const assessments = category.criteria.map((criterion, index) => {
+    const cleanId = criterion.id.toLowerCase()
+    const cleanNormalized = cleanId.replace(/[-_\s]+/g, '')
+    const cleanTitle = criterion.title.toLowerCase().replace(/[-_\s]+/g, '')
+
+    const item =
+      assessmentMap.get(cleanId) ||
+      assessmentMap.get(cleanNormalized) ||
+      assessmentMap.get(cleanTitle) ||
+      assessmentMap.get(`__idx_${index}`)
+
     const score = clampScore(item?.score)
     const defaultDescription = `${criterion.title}: ${criterion.ratings[score as 1 | 2 | 3 | 4 | 5]}`
 
@@ -152,7 +180,7 @@ function normalizeAiResult(
     summary:
       typeof rawResult.summary === 'string' && rawResult.summary.trim()
         ? rawResult.summary.trim()
-        : 'Analisis selesai. Detail temuan tersedia pada tabel parameter.',
+        : 'Analisis selesai. Detail temuan visual tersedia pada tabel parameter di bawah.',
     overallScore: clampScore(rawResult.overallScore ?? averageScore),
     assessments,
     photoCaptions: Array.isArray(rawResult.photoCaptions) ? rawResult.photoCaptions : [],
@@ -167,7 +195,15 @@ async function callRoadConditionAi(payload: RoadConditionAnalyzePayload) {
     throw new Error('API key AI vision belum dikonfigurasi. Set OPENAI_API_KEY, INSPECTION_AI_API_KEY, atau OLLAMA_API_KEY.')
   }
 
-  const userText = `Analisis road condition tambang.
+  const expectedCriteriaList = category.criteria
+    .map((c) => `- "${c.id}" (${c.title}): ${c.prompt}`)
+    .join('\n')
+
+  const criteriaJsonExample = category.criteria
+    .map((c) => `    { "criterionId": "${c.id}", "score": 3, "description": "Deskripsi temuan visual untuk ${c.title}...", "recommendation": "Tindakan rekomendasi untuk ${c.title}..." }`)
+    .join(',\n')
+
+  const userText = `Analisis kondisi jalan tambang (road condition) dan risiko kerusakan BAN berdasarkan 3 foto yang dilampirkan.
 Site: ${payload.siteName}
 Customer: ${payload.customerName}
 Inspector: ${payload.inspectorName}
@@ -175,33 +211,49 @@ Tanggal: ${payload.reportDate}
 Kategori: ${category.reportLabel}
 Nama point/segment: ${payload.pointName}
 
-Gunakan 3 foto angle berbeda sebagai bukti visual. Caption user:
+Caption foto dari inspector:
 ${payload.photos.map((photo, index) => `${index + 1}. ${photo.angle}: ${photo.caption || '-'}`).join('\n')}
 
-Rubric penilaian kategori ini:
+Daftar parameter rubric penilaian yang WAJIB dievaluasi:
+${expectedCriteriaList}
+
+Rubric detail skala skor (1-5):
 ${buildRoadConditionRubricPrompt(payload.category)}
 
-Output hanya JSON valid:
+Instruksi penting:
+1. Amati ketiga foto visual dengan teliti sesuai kategori ${category.reportLabel}.
+2. Berikan evaluasi untuk SETIAP parameter di atas secara lengkap.
+3. Nilai skor 1 (sangat buruk/kritis bagi ban) sampai 5 (sangat baik/ideal).
+4. Buat caption visual singkat untuk masing-masing foto (Angle 1, Angle 2, Angle 3).
+
+Output WAJIB berupa JSON valid persis dengan struktur berikut:
 {
-  "summary": "ringkasan 1-2 kalimat",
-  "overallScore": 1,
+  "summary": "Ringkasan kondisi visual keseluruhan point ini dalam 1-2 kalimat spesifik terhadap temuan pada foto",
+  "overallScore": 3,
   "assessments": [
-    { "criterionId": "id_parameter", "score": 1, "description": "deskripsi kondisi visual", "recommendation": "rekomendasi tindakan" }
+${criteriaJsonExample}
   ],
   "photoCaptions": [
-    { "angle": "Angle 1", "caption": "caption visual singkat" }
+    { "angle": "Angle 1", "caption": "deskripsi visual singkat angle 1" },
+    { "angle": "Angle 2", "caption": "deskripsi visual singkat angle 2" },
+    { "angle": "Angle 3", "caption": "deskripsi visual singkat angle 3" }
   ]
 }
 
-Wajib isi satu assessment untuk setiap parameter rubric. Score 1 paling buruk, 5 paling baik.`
+Score 1 paling buruk, 5 paling baik.`
 
   const content: Array<
     | { type: 'text'; text: string }
-    | { type: 'image_url'; image_url: { url: string } }
+    | { type: 'image_url'; image_url: { url: string; detail?: 'auto' | 'low' | 'high' } }
   > = [{ type: 'text', text: userText }]
 
   payload.photos.forEach((photo) => {
-    content.push({ type: 'image_url', image_url: { url: photo.dataUrl } })
+    content.push({
+      type: 'image_url',
+      image_url: {
+        url: photo.dataUrl,
+      },
+    })
   })
 
   const controller = new AbortController()
@@ -223,11 +275,11 @@ Wajib isi satu assessment untuk setiap parameter rubric. Score 1 paling buruk, 5
           {
             role: 'system',
             content:
-              'Anda adalah evaluator road condition tambang untuk risiko kerusakan BAN. Jawab dalam Bahasa Indonesia profesional. Jangan mengarang di luar bukti visual. Return hanya JSON valid.',
+              'Anda adalah auditor & evaluator ahli kondisi jalan tambang (road condition) dan dampaknya terhadap keausan/kerusakan ban (tyre hazard). Amati ketiga foto yang dilampirkan dengan teliti. Berikan penilaian skor (1-5) objektif, deskripsi kondisi visual spesifik yang tampak pada foto, dan rekomendasi perbaikan untuk setiap parameter rubric. Jawab dalam Bahasa Indonesia profesional. Return HANYA format JSON valid.',
           },
           { role: 'user', content },
         ],
-        max_tokens: 2600,
+        max_tokens: 3000,
         temperature: 0.1,
         stream: false,
       }),

@@ -181,13 +181,71 @@ function revokePhotos(photos: PhotoSlot[]) {
   })
 }
 
-function fileToDataUrl(file: File) {
+async function fileToDataUrl(file: File): Promise<string> {
+  // If in browser and image, resize via canvas to prevent memory issues & huge base64 payloads
+  if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+    try {
+      const isImg = !file.type || file.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|heif|gif)$/i.test(file.name)
+      if (isImg) {
+        const objectUrl = URL.createObjectURL(file)
+        try {
+          const img = new Image()
+          await new Promise<void>((resolve, reject) => {
+            img.onload = () => resolve()
+            img.onerror = () => reject(new Error('Format foto tidak dapat diproses browser.'))
+            img.src = objectUrl
+          })
+
+          const maxDimension = 1280
+          let { width, height } = img
+          if (width > maxDimension || height > maxDimension) {
+            if (width > height) {
+              height = Math.round((height * maxDimension) / width)
+              width = maxDimension
+            } else {
+              width = Math.round((width * maxDimension) / height)
+              height = maxDimension
+            }
+          }
+
+          const canvas = document.createElement('canvas')
+          canvas.width = Math.max(1, width)
+          canvas.height = Math.max(1, height)
+          const ctx = canvas.getContext('2d')
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height)
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+            if (dataUrl && dataUrl.startsWith('data:image/jpeg')) {
+              return dataUrl
+            }
+          }
+        } finally {
+          URL.revokeObjectURL(objectUrl)
+        }
+      }
+    } catch {
+      // Fallback to FileReader below
+    }
+  }
+
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(String(reader.result ?? ''))
     reader.onerror = () => reject(new Error('Gagal membaca file foto.'))
     reader.readAsDataURL(file)
   })
+}
+
+async function urlToDataUrl(url: string): Promise<string> {
+  if (isImageDataUrl(url)) return url
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return url
+    const blob = await res.blob()
+    return await fileToDataUrl(new File([blob], 'photo.jpg', { type: blob.type || 'image/jpeg' }))
+  } catch {
+    return url
+  }
 }
 
 function formatReportDate(value: string) {
@@ -259,16 +317,18 @@ function getDraftPointLabel(draft: CategoryDraft, fallbackIndex: number) {
 }
 
 function isImageDataUrl(value: string) {
-  return value.startsWith('data:image/')
+  return typeof value === 'string' && value.startsWith('data:image/')
 }
 
 function getDataUrlMimeType(value: string) {
-  return value.match(/^data:([^;]+);base64,/)?.[1] || 'image/png'
+  return value.match(/^data:([^;]+);base64,/)?.[1] || 'image/jpeg'
 }
 
 function getPhotoImageUrl(photo: Pick<PhotoSlot, 'previewUrl' | 'dataUrl'>) {
   if (isImageDataUrl(photo.dataUrl)) return photo.dataUrl
   if (isImageDataUrl(photo.previewUrl)) return photo.previewUrl
+  if (typeof photo.dataUrl === 'string' && photo.dataUrl.trim()) return photo.dataUrl.trim()
+  if (typeof photo.previewUrl === 'string' && photo.previewUrl.trim()) return photo.previewUrl.trim()
   return ''
 }
 
@@ -305,13 +365,13 @@ function createDraftsFromHistoryData(data: SavedRoadConditionReportData) {
     const savedPhotos = Array.isArray(draft.photos) ? draft.photos : []
     const photos: PhotoSlot[] = initialPhotos().map((photo, photoIndex) => {
       const savedPhoto = savedPhotos[photoIndex] ?? savedPhotos.find((item) => item.angle === photo.angle)
-      const dataUrl = savedPhoto?.dataUrl && isImageDataUrl(savedPhoto.dataUrl) ? savedPhoto.dataUrl : ''
+      const photoUrl = typeof savedPhoto?.dataUrl === 'string' ? savedPhoto.dataUrl.trim() : ''
 
       return {
         angle: savedPhoto?.angle || photo.angle,
         file: null,
-        previewUrl: dataUrl,
-        dataUrl,
+        previewUrl: photoUrl,
+        dataUrl: photoUrl,
         caption: savedPhoto?.caption || '',
       }
     })
@@ -481,13 +541,14 @@ export function RoadConditionAnalysisClient({
       return
     }
 
-    if (!file.type.startsWith('image/')) {
-      toast.error('File harus berupa gambar.')
+    const isImage = !file.type || file.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|heif|gif)$/i.test(file.name)
+    if (!isImage) {
+      toast.error('File harus berupa gambar (JPG, PNG, WebP).')
       return
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Ukuran foto maksimal 5MB.')
+    if (file.size > 25 * 1024 * 1024) {
+      toast.error('Ukuran foto terlalu besar. Maksimal 25MB.')
       return
     }
 
@@ -604,11 +665,14 @@ export function RoadConditionAnalysisClient({
     try {
       const photoPayload = await Promise.all(
         draft.photos.map(async (photo) => {
-          const dataUrl = photo.file ? await fileToDataUrl(photo.file) : getPhotoImageUrl(photo)
+          let dataUrl = photo.file ? await fileToDataUrl(photo.file) : getPhotoImageUrl(photo)
+          if (dataUrl && !isImageDataUrl(dataUrl) && (dataUrl.startsWith('http') || dataUrl.startsWith('/'))) {
+            dataUrl = await urlToDataUrl(dataUrl)
+          }
           return {
             angle: photo.angle,
             caption: photo.caption,
-            mimeType: photo.file?.type || getDataUrlMimeType(dataUrl),
+            mimeType: getDataUrlMimeType(dataUrl),
             dataUrl,
           }
         })
