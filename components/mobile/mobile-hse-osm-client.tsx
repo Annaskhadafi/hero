@@ -158,6 +158,7 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
   const [rejectionReasonText, setRejectionReasonText] = useState("");
   const [actionMode, setActionMode] = useState<"action" | "close" | "reject" | null>(null);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
+  const [showDetailMap, setShowDetailMap] = useState(false);
 
   // Inspector profile info from session
   const actor = initialData?.actor;
@@ -1944,12 +1945,55 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
             <p>
               <strong>Area:</strong> {s.locationArea}
             </p>
-            {s.latitude && (
-              <p className="font-mono text-[11px] text-muted-foreground flex items-center gap-1">
-                <MapPin className="size-3 text-red-500" />
-                {s.latitude}, {s.longitude}
+            {s.locationDetail ? (
+              <p>
+                <strong>Detail Lokasi:</strong> {s.locationDetail}
               </p>
-            )}
+            ) : null}
+            {s.latitude && s.longitude ? (
+              <div className="space-y-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800">
+                <p className="font-mono text-[11px] text-muted-foreground flex items-center gap-1">
+                  <MapPin className="size-3 text-red-500 shrink-0" />
+                  <span>{s.latitude}, {s.longitude}</span>
+                  {s.gpsAccuracy ? (
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
+                      ({s.gpsAccuracy})
+                    </span>
+                  ) : null}
+                </p>
+
+                <div className="flex items-center gap-2 pt-0.5">
+                  <a
+                    href={`https://www.google.com/maps?q=${s.latitude},${s.longitude}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-700 bg-blue-50 dark:bg-blue-950/60 px-2.5 py-1 rounded-lg border border-blue-200 dark:border-blue-800 active:scale-95 transition"
+                  >
+                    <ExternalLink className="size-3" />
+                    Buka di Google Maps
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setShowDetailMap((prev) => !prev)}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 active:scale-95 transition cursor-pointer"
+                  >
+                    <MapPin className="size-3 text-red-500" />
+                    {showDetailMap ? "Tutup Peta" : "Lihat Peta"}
+                  </button>
+                </div>
+
+                {showDetailMap && (
+                  <div className="pt-2 animate-in fade-in duration-200">
+                    <OsmMiniMap
+                      latitude={Number(s.latitude)}
+                      longitude={Number(s.longitude)}
+                      accuracy={s.gpsAccuracy || undefined}
+                      className="h-44 rounded-xl border shadow-xs"
+                    />
+                  </div>
+                )}
+              </div>
+            ) : null}
           </div>
 
           {/* Findings List */}
@@ -1985,49 +2029,68 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                     </p>
                   </div>
 
-                  {/* Photos */}
+                  {/* Photos Before (Temuan Awal) */}
                   {f.photoUrls && f.photoUrls.length > 0 && (
-                    <div className="grid grid-cols-3 gap-2">
-                      {f.photoUrls.map((pUrl: string, pIdx: number) => (
-                        <div
-                          key={pIdx}
-                          onClick={() => setSelectedPhotoModal(resolveClientUploadUrl(pUrl))}
-                          className="aspect-video rounded-lg border overflow-hidden bg-slate-950 cursor-pointer"
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={resolveClientUploadUrl(pUrl)}
-                            alt="Foto Temuan"
-                            className="size-full object-cover"
-                          />
-                        </div>
-                      ))}
+                    <div className="space-y-1.5 pt-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                        <span className="size-1.5 rounded-full bg-rose-500" />
+                        Foto Kondisi Temuan (Before)
+                      </span>
+                      <div className="grid grid-cols-3 gap-2">
+                        {f.photoUrls.map((pUrl: string, pIdx: number) => (
+                          <div
+                            key={pIdx}
+                            onClick={() => setSelectedPhotoModal(resolveClientUploadUrl(pUrl))}
+                            className="aspect-video rounded-lg border overflow-hidden bg-slate-950 cursor-pointer shadow-2xs hover:opacity-90 transition"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={resolveClientUploadUrl(pUrl)}
+                              alt="Foto Temuan (Before)"
+                              className="size-full object-cover"
+                            />
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
 
-                  {/* Corrective Action (if available) */}
+                  {/* Corrective Action / After (if available) */}
                   {f.actionTaken && (
-                    <div className="p-3 rounded-lg bg-amber-50/50 dark:bg-amber-950/20 border text-xs space-y-1">
-                      <span className="font-bold text-amber-900 dark:text-amber-300 block">
-                        Tindakan Perbaikan:
-                      </span>
-                      <p className="text-foreground">{f.actionTaken}</p>
+                    <div className="p-3 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/50 text-xs space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1">
+                          <span className="size-1.5 rounded-full bg-emerald-500" />
+                          Tindakan Perbaikan (After):
+                        </span>
+                        {f.actionSubmittedBy && (
+                          <span className="text-[10px] text-emerald-700/80 dark:text-emerald-400">
+                            Oleh: {f.actionSubmittedBy}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-foreground leading-relaxed">{f.actionTaken}</p>
                       {f.actionPhotoUrls && f.actionPhotoUrls.length > 0 && (
-                        <div className="flex gap-2 pt-1">
-                          {f.actionPhotoUrls.map((apUrl: string, apIdx: number) => (
-                            <div
-                              key={apIdx}
-                              onClick={() => setSelectedPhotoModal(resolveClientUploadUrl(apUrl))}
-                              className="size-14 rounded-lg border overflow-hidden bg-slate-950 cursor-pointer"
-                            >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={resolveClientUploadUrl(apUrl)}
-                                alt="Foto Bukti"
-                                className="size-full object-cover"
-                              />
-                            </div>
-                          ))}
+                        <div className="space-y-1 pt-1">
+                          <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 block">
+                            Bukti Selesai Perbaikan:
+                          </span>
+                          <div className="flex flex-wrap gap-2">
+                            {f.actionPhotoUrls.map((apUrl: string, apIdx: number) => (
+                              <div
+                                key={apIdx}
+                                onClick={() => setSelectedPhotoModal(resolveClientUploadUrl(apUrl))}
+                                className="size-16 rounded-lg border border-emerald-300 dark:border-emerald-700 overflow-hidden bg-slate-950 cursor-pointer shadow-xs hover:opacity-90 transition"
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={resolveClientUploadUrl(apUrl)}
+                                  alt="Foto Bukti (After)"
+                                  className="size-full object-cover"
+                                />
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>

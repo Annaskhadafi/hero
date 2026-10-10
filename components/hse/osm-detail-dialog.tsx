@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Clock,
   Compass,
+  ExternalLink,
   FileText,
   HardHat,
   Image as ImageIcon,
@@ -57,6 +58,7 @@ export function OsmDetailDialog({
     inspectionDate,
     inspectionTime,
     locationArea,
+    locationDetail,
     latitude,
     longitude,
     gpsAccuracy,
@@ -145,6 +147,11 @@ export function OsmDetailDialog({
               <div>
                 <span className="text-muted-foreground font-medium block">Area Lokasi Kerja</span>
                 <span className="font-semibold text-foreground mt-0.5 block">{locationArea}</span>
+                {locationDetail ? (
+                  <span className="text-[11px] text-muted-foreground block truncate">
+                    Detail: {locationDetail}
+                  </span>
+                ) : null}
               </div>
               <div>
                 <span className="text-muted-foreground font-medium block">Fokus Area</span>
@@ -154,9 +161,22 @@ export function OsmDetailDialog({
               </div>
               <div className="col-span-2">
                 <span className="text-muted-foreground font-medium block">Koordinat Geotagging GPS</span>
-                <span className="font-mono text-muted-foreground mt-0.5 block">
-                  {latitude && longitude ? `${latitude}, ${longitude} (${gpsAccuracy || "GPS"})` : "Tidak terekam"}
-                </span>
+                <div className="flex items-center justify-between mt-0.5">
+                  <span className="font-mono text-muted-foreground">
+                    {latitude && longitude ? `${latitude}, ${longitude} (${gpsAccuracy || "GPS"})` : "Tidak terekam"}
+                  </span>
+                  {latitude && longitude && (
+                    <a
+                      href={`https://www.google.com/maps?q=${latitude},${longitude}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:text-blue-700 font-bold text-[11px] inline-flex items-center gap-1 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800"
+                    >
+                      <ExternalLink className="size-3" />
+                      Buka Google Maps
+                    </a>
+                  )}
+                </div>
               </div>
               <div className="col-span-2">
                 <span className="text-muted-foreground font-medium block">Inisiator Pemantauan</span>
