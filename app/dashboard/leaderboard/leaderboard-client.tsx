@@ -28,6 +28,9 @@ import {
   XCircle,
   HelpCircle,
   FileSpreadsheet,
+  Store,
+  MapPin,
+  Download,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -55,6 +58,9 @@ import {
   type EmployeeGamificationDetail,
 } from "./actions"
 import { LevelConfigPanel, BadgeConfigPanel } from "@/components/gamification-config-panels"
+import { RewardStoreTab } from "./reward-store-tab"
+import { SiteAnalyticsTab } from "./site-analytics-tab"
+import type { RewardItemData, RedemptionRecordData } from "@/app/actions/reward-store"
 
 export type LeaderboardRow = {
   id: number
@@ -68,6 +74,8 @@ export type LeaderboardRow = {
   penaltyPoints: number
   trend: string
   needsReview: boolean
+  siteId?: number | null
+  siteName?: string | null
 }
 
 type TimelineItem = {
@@ -142,13 +150,41 @@ interface LeaderboardClientProps {
       points: number
       penalties: number
     }>
+    sitePerformance?: Array<{
+      siteId: number | null
+      siteName: string
+      employees: number
+      totalPoints: number
+      periodPoints: number
+      penalties: number
+      averagePoints: number
+    }>
     unifiedTimeline: TimelineItem[]
   }
   disputes: DisputeItem[]
   allLevels: LevelItem[]
   allBadges: BadgeItem[]
   employeeOptions: EmployeeOption[]
+  siteOptions?: Array<{ id: number; name: string }>
+  departmentOptions?: Array<{ id: number; name: string }>
+  sectionOptions?: Array<{ id: number; name: string }>
+  rewardData?: {
+    currentEmployee: {
+      id: number
+      name: string
+      employeeSn: string | null
+      totalPoints: number
+      siteId: number | null
+      siteName: string | null
+      role: string
+      hasClaimedThisYear: boolean
+    } | null
+    catalog: RewardItemData[]
+    myRedemptions: RedemptionRecordData[]
+  }
+  allRedemptions?: RedemptionRecordData[]
   canManage: boolean
+  canReviewClaims?: boolean
 }
 
 function formatPoints(val: number) {
@@ -163,14 +199,22 @@ export function LeaderboardClient({
   allLevels,
   allBadges,
   employeeOptions,
+  siteOptions = [],
+  departmentOptions = [],
+  sectionOptions = [],
+  rewardData,
+  allRedemptions = [],
   canManage,
+  canReviewClaims = false,
 }: LeaderboardClientProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
-  // Filters & Search
+  // Tab & Filters
+  const [activeTab, setActiveTab] = useState("leaderboard")
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedDept, setSelectedDept] = useState("all")
+  const [selectedSite, setSelectedSite] = useState("all")
   const [selectedLevel, setSelectedLevel] = useState("all")
   const [selectedSignal, setSelectedSignal] = useState<"all" | "up" | "down" | "review">("all")
   const [sortBy, setSortBy] = useState<"rank" | "points" | "month" | "penalty">("rank")
@@ -205,6 +249,15 @@ export function LeaderboardClient({
     return ["all", ...list]
   }, [allLevels])
 
+  const siteFilterOptions = useMemo(() => {
+    const fromRows = initialLeaderboard
+      .map((r) => r.siteName)
+      .filter((s): s is string => Boolean(s && s.trim()))
+    const fromMaster = siteOptions.map((s) => s.name)
+    const combined = Array.from(new Set([...fromRows, ...fromMaster])).sort()
+    return ["all", ...combined]
+  }, [initialLeaderboard, siteOptions])
+
   // Filtered & Sorted Leaderboard
   const filteredLeaderboard = useMemo(() => {
     const q = searchQuery.toLowerCase().trim()
@@ -214,15 +267,19 @@ export function LeaderboardClient({
           !q ||
           row.name.toLowerCase().includes(q) ||
           (row.role && row.role.toLowerCase().includes(q)) ||
-          (row.department && row.department.toLowerCase().includes(q))
+          (row.department && row.department.toLowerCase().includes(q)) ||
+          (row.siteName && row.siteName.toLowerCase().includes(q))
         const matchesDept = selectedDept === "all" || row.department === selectedDept
+        const matchesSite =
+          selectedSite === "all" ||
+          (row.siteName || "Head Office / Non-Site") === selectedSite
         const matchesLvl = selectedLevel === "all" || row.levelName === selectedLevel
         let matchesSignal = true
         if (selectedSignal === "up") matchesSignal = row.trend === "Naik"
         if (selectedSignal === "down") matchesSignal = row.trend === "Turun" || row.periodPoints < 0
         if (selectedSignal === "review") matchesSignal = row.needsReview
 
-        return matchesQuery && matchesDept && matchesLvl && matchesSignal
+        return matchesQuery && matchesDept && matchesSite && matchesLvl && matchesSignal
       })
       .sort((a, b) => {
         if (sortBy === "points") return b.totalPoints - a.totalPoints
@@ -230,7 +287,7 @@ export function LeaderboardClient({
         if (sortBy === "penalty") return b.penaltyPoints - a.penaltyPoints
         return a.rank - b.rank
       })
-  }, [initialLeaderboard, searchQuery, selectedDept, selectedLevel, selectedSignal, sortBy])
+  }, [initialLeaderboard, searchQuery, selectedDept, selectedSite, selectedLevel, selectedSignal, sortBy])
 
   // Paginated rows
   const totalPages = Math.ceil(filteredLeaderboard.length / pageSize) || 1
@@ -238,6 +295,59 @@ export function LeaderboardClient({
     const start = (currentPage - 1) * pageSize
     return filteredLeaderboard.slice(start, start + pageSize)
   }, [filteredLeaderboard, currentPage, pageSize])
+
+  // Export filtered leaderboard to CSV
+  const handleExportLeaderboardCSV = () => {
+    if (!filteredLeaderboard || filteredLeaderboard.length === 0) {
+      toast.error("Tidak ada data leaderboard untuk diekspor")
+      return
+    }
+
+    const headers = [
+      "Peringkat",
+      "Nama Karyawan",
+      "Jabatan / Role",
+      "Site",
+      "Departemen",
+      "Level",
+      "Total Poin Akumulasi",
+      "Poin Bulan Ini",
+      "Total Penalti",
+      "Tren",
+      "Perlu Review",
+    ]
+
+    const csvRows = [headers.join(",")]
+
+    for (const r of filteredLeaderboard) {
+      const row = [
+        r.rank,
+        `"${(r.name || "").replace(/"/g, '""')}"`,
+        `"${(r.role || "").replace(/"/g, '""')}"`,
+        `"${(r.siteName || "Head Office / Non-Site").replace(/"/g, '""')}"`,
+        `"${(r.department || "-").replace(/"/g, '""')}"`,
+        `"${(r.levelName || "Bronze").replace(/"/g, '""')}"`,
+        r.totalPoints,
+        r.periodPoints,
+        r.penaltyPoints,
+        `"${r.trend}"`,
+        r.needsReview ? "Ya" : "Tidak",
+      ]
+      csvRows.push(row.join(","))
+    }
+
+    const csvContent = "\uFEFF" + csvRows.join("\n")
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = `leaderboard-poin-hero-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    toast.success("File CSV Leaderboard berhasil diunduh!")
+  }
 
   // Top 3 Podium
   const top1 = initialLeaderboard[0] || null
@@ -550,11 +660,17 @@ export function LeaderboardClient({
       </div>
 
       {/* Main Tabs Navigation */}
-      <Tabs defaultValue="leaderboard" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <div className="flex flex-col gap-3 border-b border-border/60 pb-2 sm:flex-row sm:items-center sm:justify-between">
           <TabsList className="h-10 bg-muted/60 p-1">
             <TabsTrigger value="leaderboard" className="gap-1.5 text-xs font-medium">
               <Trophy className="size-3.5" /> Peringkat Karyawan
+            </TabsTrigger>
+            <TabsTrigger value="site-analytics" className="gap-1.5 text-xs font-medium">
+              <MapPin className="size-3.5" /> Poin di Site
+            </TabsTrigger>
+            <TabsTrigger value="reward-store" className="gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400 font-bold">
+              <Store className="size-3.5" /> Toko Hadiah
             </TabsTrigger>
             <TabsTrigger value="timeline" className="gap-1.5 text-xs font-medium">
               <Clock className="size-3.5" /> Timeline Aktivitas
@@ -604,6 +720,24 @@ export function LeaderboardClient({
                   .map((dept) => (
                     <option key={dept} value={dept}>
                       {dept}
+                    </option>
+                  ))}
+              </select>
+
+              <select
+                value={selectedSite}
+                onChange={(e) => {
+                  setSelectedSite(e.target.value)
+                  setCurrentPage(1)
+                }}
+                className="h-9 rounded-xl border border-input bg-background px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="all">Semua Site (Nasional)</option>
+                {siteFilterOptions
+                  .filter((s) => s !== "all")
+                  .map((site) => (
+                    <option key={site} value={site}>
+                      {site}
                     </option>
                   ))}
               </select>
@@ -702,6 +836,16 @@ export function LeaderboardClient({
                   Reset
                 </Button>
               )}
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportLeaderboardCSV}
+                className="h-9 gap-1.5 rounded-xl px-3 text-xs font-medium text-foreground hover:bg-muted ml-auto sm:ml-0"
+              >
+                <Download className="size-3.5 text-muted-foreground" />
+                <span>Export CSV ({filteredLeaderboard.length})</span>
+              </Button>
             </div>
           </div>
 
@@ -772,7 +916,15 @@ export function LeaderboardClient({
                               </div>
                               <div className="min-w-0">
                                 <div className="truncate font-semibold text-foreground">{row.name}</div>
-                                <div className="truncate text-[10px] text-muted-foreground">{row.role || "-"}</div>
+                                <div className="flex items-center gap-1.5 truncate text-[10px] text-muted-foreground">
+                                  <span>{row.role || "-"}</span>
+                                  {row.siteName && (
+                                    <>
+                                      <span>•</span>
+                                      <span className="font-medium text-primary/80">{row.siteName}</span>
+                                    </>
+                                  )}
+                                </div>
                               </div>
                             </button>
                           </td>
@@ -1120,6 +1272,34 @@ export function LeaderboardClient({
               )}
             </div>
           </div>
+        </TabsContent>
+
+        {/* TAB: SITE ANALYTICS */}
+        <TabsContent value="site-analytics" className="space-y-4 pt-1">
+          <SiteAnalyticsTab
+            sitePerformance={analytics.sitePerformance || []}
+            leaderboard={initialLeaderboard}
+            onSelectSiteFilter={(siteName) => {
+              setSelectedSite(siteName)
+              setActiveTab("leaderboard")
+              toast.info(`Menampilkan peringkat untuk site: ${siteName}`)
+            }}
+          />
+        </TabsContent>
+
+        {/* TAB: REWARD STORE */}
+        <TabsContent value="reward-store" className="space-y-4 pt-1">
+          <RewardStoreTab
+            catalog={rewardData?.catalog || []}
+            myRedemptions={rewardData?.myRedemptions || []}
+            allRedemptions={allRedemptions}
+            currentEmployee={rewardData?.currentEmployee || null}
+            canManage={canManage}
+            canReviewClaims={canReviewClaims}
+            siteOptions={siteOptions}
+            departmentOptions={departmentOptions}
+            sectionOptions={sectionOptions}
+          />
         </TabsContent>
 
         {/* TAB 4: SETTINGS (Level & Badge Configuration) */}

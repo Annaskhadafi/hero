@@ -61,6 +61,7 @@ import {
   IconStar,
   IconTag,
   IconShoppingCart,
+  IconGift,
 } from "@tabler/icons-react"
 
 import { useSidebarLayoutMode, buildModernSidebarGroups } from "@/lib/sidebar-mode"
@@ -142,6 +143,7 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   star: IconStar,
   tag: IconTag,
   "shopping-cart": IconShoppingCart,
+  gift: IconGift,
 }
 
 type SidebarMenuItem = {

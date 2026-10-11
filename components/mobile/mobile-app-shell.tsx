@@ -26,6 +26,7 @@ import {
   Trophy,
   UserRound,
   Heart,
+  Store,
   X,
 } from 'lucide-react'
 
@@ -138,6 +139,7 @@ export function MobileAppShell({
     { type: 'link', label: 'Training', href: '/mobile/training', icon: ShieldAlert, resource: 'hc_training_enhanced' },
     { type: 'link', label: 'Wellness', href: '/mobile/wellness', icon: Dumbbell, resource: 'hc_mcu_wellness' },
     { type: 'link', label: 'Leaderboard', href: '/mobile/gamification', icon: Trophy, resource: 'point_setting' },
+    { type: 'link', label: 'Toko Hadiah Poin', href: '/mobile/reward-store', icon: Store, resource: 'point_setting' },
     { type: 'link', label: 'Executive', href: '/mobile/executive', icon: BarChart3, resource: 'ewh_dashboard' },
     { type: 'link', label: 'Cargo Manifest', href: '/mobile/cargo-manifest', icon: Package, resource: 'cargo_manifest' },
     { type: 'link', label: 'CS Forecast', href: '/mobile/central-service/forecast', icon: TrendingUp, resource: 'cs-forecast' },

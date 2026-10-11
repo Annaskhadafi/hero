@@ -4584,4 +4584,48 @@ export const hcFlightRouteChangeApprovals = pgTable(
   })
 )
 
+export const rewardItems = pgTable('hero_reward_items', {
+  id: serial('id').primaryKey(),
+  code: text('code').notNull().unique(),
+  name: text('name').notNull(),
+  description: text('description').notNull().default(''),
+  category: text('category').notNull().default('merchandise'),
+  imageUrl: text('image_url').notNull().default(''),
+  pointsRequired: integer('points_required').notNull(),
+  stockQuantity: integer('stock_quantity').notNull().default(0),
+  tierEligibility: text('tier_eligibility').notNull().default('all'), // 'all' | 'top_10' | 'top_site' | 'year_end_only'
+  eligibleSiteIds: jsonb('eligible_site_ids').$type<number[]>().default([]),
+  eligibleDepartmentIds: jsonb('eligible_department_ids').$type<number[]>().default([]),
+  eligibleSectionIds: jsonb('eligible_section_ids').$type<number[]>().default([]),
+  isYearEndBazaar: boolean('is_year_end_bazaar').notNull().default(false),
+  isActive: boolean('is_active').notNull().default(true),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const rewardRedemptions = pgTable('hero_reward_redemptions', {
+  id: serial('id').primaryKey(),
+  redemptionNumber: text('redemption_number').notNull().unique(),
+  employeeId: integer('employee_id')
+    .notNull()
+    .references(() => employees.id, { onDelete: 'cascade' }),
+  rewardItemId: integer('reward_item_id')
+    .notNull()
+    .references(() => rewardItems.id, { onDelete: 'restrict' }),
+  siteId: integer('site_id').references(() => sites.id, { onDelete: 'set null' }),
+  pointsSpent: integer('points_spent').notNull(),
+  status: text('status').notNull().default('pending'), // 'pending' | 'approved' | 'rejected' | 'delivered' | 'cancelled'
+  requestNote: text('request_note').notNull().default(''),
+  approvedByEmployeeId: integer('approved_by_employee_id').references(() => employees.id, {
+    onDelete: 'set null',
+  }),
+  approvalNotes: text('approval_notes').notNull().default(''),
+  deliveryStatus: text('delivery_status').notNull().default('pending'), // 'pending' | 'shipped_to_site' | 'ready_at_site' | 'received'
+  trackingOrReceiptInfo: text('tracking_or_receipt_info').notNull().default(''),
+  isYearEndClaim: boolean('is_year_end_claim').notNull().default(false),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
 

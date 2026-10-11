@@ -36,6 +36,7 @@ const ALLOWED_UPLOAD_PREFIXES = new Set([
   "contract-review-attachment",
   "public-career-cv",
   "hse-osm",
+  "reward-store",
 ])
 
 function getContentType(fileName: string) {
@@ -206,7 +207,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
     path[0] === "lms-materials" ||
     path[0] === "chitralearning" ||
     path[0] === "public-career-cv" ||
-    path[0] === "contract-review-attachment"
+    path[0] === "contract-review-attachment" ||
+    path[0] === "reward-store"
 
   const isSensitive = !isRootUpload && !isPublicPrefix
   if (isSensitive) {

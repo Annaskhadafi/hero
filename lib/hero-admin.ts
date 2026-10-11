@@ -1843,6 +1843,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   },
   {
     menuArea: 'main',
+    section: 'Human Capital',
+    groupLabel: 'Point System',
+    title: 'Toko Hadiah Poin',
+    url: '/dashboard/reward-store',
+    iconName: 'gift',
+    resource: 'reward_store',
+    sortOrder: 18,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
     section: 'Laporan',
     title: 'Security Overview',
     url: '/dashboard/security',
@@ -6243,8 +6255,11 @@ export async function getPointsPageData() {
       department: employees.department,
       levelName: employees.levelName,
       totalPoints: employees.totalPoints,
+      siteId: employees.siteId,
+      siteName: sites.name,
     })
     .from(employees)
+    .leftJoin(sites, eq(employees.siteId, sites.id))
     .orderBy(desc(employees.totalPoints))
 
   const recentPointEvents = await db
@@ -6403,6 +6418,33 @@ export async function getPointsAnalyticsPageData() {
   }
   const departmentPerformance = [...departmentMap.values()].sort((a, b) => b.points - a.points)
 
+  const siteMap = new Map<
+    string,
+    { siteId: number | null; siteName: string; employees: number; totalPoints: number; periodPoints: number; penalties: number }
+  >()
+  for (const employee of leaderboard) {
+    const sName = employee.siteName || 'Head Office / Non-Site'
+    const current = siteMap.get(sName) ?? {
+      siteId: employee.siteId,
+      siteName: sName,
+      employees: 0,
+      totalPoints: 0,
+      periodPoints: 0,
+      penalties: 0,
+    }
+    current.employees += 1
+    current.totalPoints += employee.totalPoints
+    current.periodPoints += employee.periodPoints
+    current.penalties += employee.penaltyPoints
+    siteMap.set(sName, current)
+  }
+  const sitePerformance = [...siteMap.values()]
+    .map(s => ({
+      ...s,
+      averagePoints: s.employees > 0 ? Math.round(s.totalPoints / s.employees) : 0,
+    }))
+    .sort((a, b) => b.totalPoints - a.totalPoints)
+
   const unifiedTimeline = [
     ...base.recentPointEvents.map((event) => ({
       id: `point-${event.id}`,
@@ -6469,6 +6511,7 @@ export async function getPointsAnalyticsPageData() {
       topImprover,
       biggestDrop,
       departmentPerformance,
+      sitePerformance,
       unifiedTimeline,
       hrManualHistory,
       hrWorkflow: [
@@ -6801,7 +6844,7 @@ export async function getOperationalCrudOptions() {
   await ensureHeroSeedData()
   await ensureMasterCategoryTables()
 
-  const [employeeRows, siteRows, categoryOptions] = await Promise.all([
+  const [employeeRows, siteRows, categoryOptions, departmentRows, sectionRows] = await Promise.all([
     db
       .select({
         id: employees.id,
@@ -6824,12 +6867,30 @@ export async function getOperationalCrudOptions() {
       .where(eq(sites.isActive, true))
       .orderBy(asc(sites.name)),
     getActiveMasterCategoryOptionMap(),
+    db
+      .select({
+        id: masterDepartments.id,
+        name: masterDepartments.name,
+      })
+      .from(masterDepartments)
+      .where(eq(masterDepartments.isActive, true))
+      .orderBy(asc(masterDepartments.name)),
+    db
+      .select({
+        id: masterSections.id,
+        name: masterSections.name,
+      })
+      .from(masterSections)
+      .where(eq(masterSections.isActive, true))
+      .orderBy(asc(masterSections.name)),
   ])
 
   return {
     employees: employeeRows,
     sites: siteRows,
     categoryOptions,
+    departments: departmentRows,
+    sections: sectionRows,
   }
 }
 

@@ -27,6 +27,7 @@ import {
   Files,
   Users,
   Heart,
+  Store,
 } from 'lucide-react'
 import {
   IconBook,
@@ -283,6 +284,12 @@ export function MobileDashboardServices({
       resource: 'point_setting',
       icon: Trophy,
       bg: 'bg-yellow-500/10 text-yellow-600',
+    },
+    {
+      title: 'Toko Hadiah',
+      href: '/mobile/reward-store',
+      icon: Store,
+      bg: 'bg-amber-500/10 text-amber-600',
     },
     ...(isHR
       ? [
