@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth-client";
+import { resolveUploadUrl } from "@/lib/resolve-upload-url";
 
 export default function ForgotPasswordPage() {
     const [email, setEmail] = useState("");
@@ -55,14 +56,16 @@ export default function ForgotPasswordPage() {
                     </div>
 
                     <div className="mb-8 flex flex-col items-center pt-8">
-                        <Image
-                            src="/logo-hero.png"
-                            alt="HERO Logo"
-                            width={160}
-                            height={160}
-                            className="h-28 w-28 object-contain"
-                            priority
-                        />
+                        <div className="rounded-2xl bg-white px-4 py-2 shadow-lg">
+                            <Image
+                                src={resolveUploadUrl("/logo-hero.png?v=hero-cat-20261012")}
+                                alt="HERO Logo"
+                                width={2172}
+                                height={724}
+                                className="h-auto w-36 object-contain"
+                                priority
+                            />
+                        </div>
                         <p className="mt-3 text-center text-[10px] font-medium uppercase tracking-[0.2em] text-slate-500">
                             Hub for Employee Reporting & Operations
                         </p>

@@ -27,8 +27,8 @@ self.addEventListener("push", (event) => {
   const title = payload.title || "HERO";
   const options = {
     body: payload.body || "Notifikasi baru masuk.",
-    icon: payload.icon || "/icon-192.png",
-    badge: payload.badge || "/icon-192.png",
+    icon: payload.icon || "/icon-192.png?v=hero-cat-20261012",
+    badge: payload.badge || "/icon-192.png?v=hero-cat-20261012",
     tag: payload.tag || "hero-notification",
     data: payload.data || { url: "/mobile/notifications" },
   };

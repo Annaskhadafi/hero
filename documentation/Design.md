@@ -4,6 +4,16 @@
 
 This document defines the shared visual language for HERO desktop and mobile. The current desktop direction is a clean operational workspace inspired by the usability of `one-chitra`: bright surfaces, light structure, compact table tooling, and low-noise CRUD screens. Mobile keeps its dedicated app-shell behavior and should not be redesigned by desktop shell changes.
 
+## HERO Brand and Sign-in Landing
+
+- HERO uses the supplied cat mascot and wordmark from `public/Hero Logo`; keep PT Chitra corporate and MAESTRO identities separate.
+- The sign-in landing follows the approved employee portal reference: pale blue canvas, horizontal HERO wordmark, a blue illustrated story panel, and a white login panel.
+- Use the supplied `bg hero.png` illustration with live HTML text and form controls. The complete reference image is a design reference, not a replacement for the interactive page.
+- Landing accents use `#0753e7`, with dark navy text and light blue input borders. This palette is scoped to the landing; operational workspace tokens retain their existing values.
+- Desktop uses a spacious split panel; phones stack a compact illustration above the same login form. Preserve email/SN, password, remember me, recovery, Face Biometric, Magic Link, status messages, and post-login routing.
+- Navbar/sidebar branding shows only the centered horizontal wordmark on a sky-to-blue gradient with subtle circle and wave accents, without a workspace subtitle. Compact app icons, PWA, favicon, and installation prompts use the supplied mascot icon. Keep the area behind dark wordmarks light enough for contrast.
+- Hide the landing story summary on mobile so it does not overlap the illustration.
+
 ## Creative Principles
 
 1. Keep desktop bright, clean, and calm.

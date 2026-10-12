@@ -39,6 +39,11 @@ const nextConfig: NextConfig = {
     ],
   },
   images: {
+    localPatterns: [
+      { pathname: '/**', search: '' },
+      { pathname: '/logo-hero.png', search: '?v=hero-cat-20261012' },
+      { pathname: '/icon-192.png', search: '?v=hero-cat-20261012' },
+    ],
     remotePatterns: [
       {
         protocol: 'https',

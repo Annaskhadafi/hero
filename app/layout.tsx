@@ -28,10 +28,13 @@ export const metadata: Metadata = {
     "Hub for Employee Reporting & Operations",
   applicationName: "HERO",
   icons: {
-    apple: "/apple-touch-icon.png",
+    apple: "/apple-touch-icon.png?v=hero-cat-20261012",
     icon: [
-      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/favicon-16x16.png?v=hero-cat-20261012", sizes: "16x16", type: "image/png" },
+      { url: "/favicon-32x32.png?v=hero-cat-20261012", sizes: "32x32", type: "image/png" },
+      { url: "/favicon.ico?v=hero-cat-20261012", sizes: "any", type: "image/x-icon" },
+      { url: "/icon-192.png?v=hero-cat-20261012", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png?v=hero-cat-20261012", sizes: "512x512", type: "image/png" },
     ],
   },
   appleWebApp: {

@@ -16,6 +16,7 @@ import { getDashboardRoutePermission } from '@/lib/hero-access'
 import { getRecipientUnreadNotificationCount } from '@/lib/notification-feed'
 import { FaceRegistrationReminderPopup } from '@/components/face-registration-reminder-popup'
 import { FloatingGeniusChatClient } from '@/components/hero-genius/floating-genius-chat-client'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 
 import '@/app/dashboard/theme.css'
 
@@ -85,7 +86,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         user={{
           name: employeeDisplay?.name || session.user.name || 'User',
           email: employeeDisplay?.email || session.user.email,
-          avatar: session.user.image || '/logo.png',
+          avatar: resolveUploadUrl(session.user.image || '/icon-192.png?v=hero-cat-20261012'),
           unreadNotifications,
         }}
         navMain={sidebarData.navMain}

@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState, type ReactNode } from 'react'
 import {
@@ -43,6 +44,7 @@ import { mobileActivityDrawerItem } from '@/lib/activity-navigation'
 import { isMobileHrefAllowed, type MobileAllowedLink } from '@/lib/mobile-access'
 import { useMobilePermissions } from '@/components/mobile/permission-provider'
 import { cn } from '@/lib/utils'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 
 type NotificationCountResponse = {
   count: number
@@ -344,13 +346,16 @@ export function MobileAppShell({
                 >
                   <SheetHeader className="bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(233,246,253,0.88))] px-5 py-5 text-left shadow-[0_14px_30px_rgba(8,32,51,0.08)]">
                     <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-[10px] font-black tracking-[0.26em] text-[#486275] uppercase">
-                          HERO Mobile
-                        </p>
-                        <SheetTitle className="mt-1 text-xl font-black tracking-tight text-[#082033]">
-                          {userName}
-                        </SheetTitle>
+                      <div className="flex items-center gap-3">
+                        <Image src={resolveUploadUrl('/icon-192.png?v=hero-cat-20261012')} alt="HERO" width={36} height={36} className="size-9 rounded-lg bg-white object-contain" />
+                        <div>
+                          <p className="text-[10px] font-black tracking-[0.26em] text-[#486275] uppercase">
+                            HERO Mobile
+                          </p>
+                          <SheetTitle className="mt-1 text-xl font-black tracking-tight text-[#082033]">
+                            {userName}
+                          </SheetTitle>
+                        </div>
                       </div>
                       <SheetClose asChild>
                         <button

@@ -3,6 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import Image from "next/image"
+import { resolveUploadUrl } from "@/lib/resolve-upload-url"
 import {
   IconBell,
   IconBook,
@@ -494,20 +495,24 @@ export function AppSidebar({
       }}
     >
       <SidebarHeader className="px-3 pb-3 pt-4 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-2">
-        <div className="rounded-2xl border border-sidebar-border/80 bg-white px-3 py-3 shadow-sm group-data-[collapsible=icon]:px-2">
-          <Link href="/dashboard/analytics" aria-label="HERO" className="flex w-full items-center gap-3 group-data-[collapsible=icon]:justify-center">
+        <div className="relative overflow-hidden rounded-2xl border border-blue-300/80 bg-gradient-to-br from-sky-200 via-blue-300 to-blue-500 px-3 py-3 shadow-sm before:pointer-events-none before:absolute before:-right-5 before:-top-7 before:size-24 before:rounded-full before:border-[16px] before:border-white/25 after:pointer-events-none after:absolute after:-bottom-8 after:-left-5 after:h-16 after:w-28 after:-rotate-12 after:rounded-full after:bg-blue-600/20 group-data-[collapsible=icon]:px-2">
+          <Link href="/dashboard/analytics" aria-label="HERO" className="relative z-10 flex w-full items-center justify-center">
             <Image
-              src="/logo-hero.png"
+              src={resolveUploadUrl("/logo-hero.png?v=hero-cat-20261012")}
               alt="HERO"
-              width={132}
-              height={48}
-              className="h-9 w-auto object-contain group-data-[collapsible=icon]:h-auto group-data-[collapsible=icon]:w-8"
+              width={2172}
+              height={724}
+              className="h-9 w-auto object-contain group-data-[collapsible=icon]:hidden"
               priority
             />
-            <div className="min-w-0 group-data-[collapsible=icon]:hidden">
-              <p className="truncate text-sm font-semibold text-sidebar-foreground">HERO</p>
-              <p className="truncate text-xs text-muted-foreground">Operational workspace</p>
-            </div>
+            <Image
+              src={resolveUploadUrl("/icon-192.png?v=hero-cat-20261012")}
+              alt="HERO"
+              width={32}
+              height={32}
+              className="hidden h-8 w-8 rounded-lg object-contain group-data-[collapsible=icon]:block"
+              priority
+            />
           </Link>
         </div>
         <div className="relative mt-2.5 w-full group-data-[collapsible=icon]:hidden">

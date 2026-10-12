@@ -131,8 +131,8 @@ function buildPushPayload(input: PushDispatchInput) {
     title: input.title,
     body: input.body,
     tag: input.tag ?? `${input.category}-${input.employeeId}`,
-    icon: "/icon-192.png",
-    badge: "/icon-192.png",
+    icon: "/icon-192.png?v=hero-cat-20261012",
+    badge: "/icon-192.png?v=hero-cat-20261012",
     data: {
       url: input.url ?? "/mobile/notifications",
       category: input.category,

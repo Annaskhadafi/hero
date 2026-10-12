@@ -13,6 +13,11 @@ export function extractS3ObjectKeyFromUrl(objectUrl: string | null | undefined):
     const hashIdx = trimmed.indexOf("#");
     if (hashIdx !== -1) trimmed = trimmed.substring(0, hashIdx);
 
+    // Bundled HERO branding is served from public, not the activity upload proxy.
+    if (/^\/(?:Hero(?:%20| )Logo\/|(?:logo-hero|icon-(?:192|512|maskable-512)|apple-touch-icon|favicon-(?:16x16|32x32))\.png$)/i.test(trimmed)) {
+      return null;
+    }
+
     const cleanPath = trimmed.replace(/^\/+/, "");
 
     // 1. Direct prefix matches

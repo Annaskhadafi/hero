@@ -1,5 +1,7 @@
 import type { MetadataRoute } from "next";
 
+const asset = (path: string) => `${path}?v=hero-cat-20261012`;
+
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "HERO",
@@ -15,17 +17,17 @@ export default function manifest(): MetadataRoute.Manifest {
     categories: ["business", "productivity"],
     icons: [
       {
-        src: "/icon-192.png",
+        src: asset("/icon-192.png"),
         sizes: "192x192",
         type: "image/png",
       },
       {
-        src: "/icon-512.png",
+        src: asset("/icon-512.png"),
         sizes: "512x512",
         type: "image/png",
       },
       {
-        src: "/icon-maskable-512.png",
+        src: asset("/icon-maskable-512.png"),
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable",
@@ -37,21 +39,21 @@ export default function manifest(): MetadataRoute.Manifest {
         short_name: "Activity",
         description: "Open field activity input",
         url: "/mobile/activity/input",
-        icons: [{ src: "/icon-192.png", sizes: "192x192" }],
+        icons: [{ src: asset("/icon-192.png"), sizes: "192x192" }],
       },
       {
         name: "Mobile Attendance",
         short_name: "Attendance",
         description: "Check-in / check-out with GPS",
         url: "/mobile/attendance",
-        icons: [{ src: "/icon-192.png", sizes: "192x192" }],
+        icons: [{ src: asset("/icon-192.png"), sizes: "192x192" }],
       },
       {
         name: "Emergency Report",
         short_name: "Emergency",
         description: "Report emergency incident quickly",
         url: "/mobile/hse?mode=emergency",
-        icons: [{ src: "/icon-192.png", sizes: "192x192" }],
+        icons: [{ src: asset("/icon-192.png"), sizes: "192x192" }],
       },
     ],
   };

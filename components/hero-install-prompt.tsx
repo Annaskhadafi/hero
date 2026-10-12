@@ -17,6 +17,7 @@ import {
   ShieldCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 
 const DISMISS_COOLDOWN_MS = 24 * 60 * 60 * 1000 // 24 jam cooldown jika user klik 'Nanti Saja'
 const DISMISS_KEY = 'hero:pwa-install-dismissed-at'
@@ -206,7 +207,7 @@ export function HeroInstallPrompt() {
             <div className="flex items-center gap-3">
               <div className="relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white p-1 shadow-lg ring-2 ring-white/20">
                 <Image
-                  src="/icon-192.png"
+                  src={resolveUploadUrl('/icon-192.png?v=hero-cat-20261012')}
                   alt="HERO App Icon"
                   width={48}
                   height={48}
