@@ -1214,8 +1214,7 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
       lessonId
         ? and(
             eq(chitraLearningQuizQuestions.courseId, courseId),
-            eq(chitraLearningQuizQuestions.lessonId, lessonId),
-            eq(chitraLearningQuizQuestions.testPhase, phase)
+            eq(chitraLearningQuizQuestions.lessonId, lessonId)
           )
         : and(eq(chitraLearningQuizQuestions.courseId, courseId), eq(chitraLearningQuizQuestions.testPhase, phase))
     );
@@ -1271,6 +1270,17 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
         : score;
     passed = finalScore >= course.passingScore;
 
+    const allCourseLessons = await db
+      .select({ id: chitraLearningLessons.id })
+      .from(chitraLearningLessons)
+      .where(eq(chitraLearningLessons.courseId, courseId))
+      .orderBy(asc(chitraLearningLessons.sectionOrder), asc(chitraLearningLessons.sortOrder), asc(chitraLearningLessons.id));
+    const isLastLesson = !lessonId || (allCourseLessons.length > 0 && allCourseLessons[allCourseLessons.length - 1].id === lessonId);
+    const calculatedLessonProgress = lessonId ? await getLessonProgress(courseId, lessonId) : 100;
+    const newProgress = isLastLesson
+      ? (passed ? 100 : Math.max(enrollment.progress, 80))
+      : Math.max(enrollment.progress, calculatedLessonProgress);
+
     await db
       .update(chitraLearningEnrollments)
       .set({
@@ -1279,8 +1289,8 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
         score: finalScore,
         finalScore,
         isPassed: passed,
-        status: passed ? "passed" : "failed",
-        progress: passed ? 100 : Math.max(enrollment.progress, 80),
+        status: isLastLesson ? (passed ? "passed" : "failed") : (enrollment.progress >= 100 ? "passed" : "in_progress"),
+        progress: newProgress,
         lastLessonId: lessonId || enrollment.lastLessonId,
         completedAt: passed ? new Date() : null,
         updatedAt: new Date(),

@@ -73,6 +73,7 @@ export default async function MobileLessonPlayerPage({
   const employeeRows = await db.select().from(employees).where(eq(employees.email, session.user.email)).limit(1)
   const currentEmployee = employeeRows[0] ?? null
 
+  let currentEnrollment: any = null;
   let enrollmentProgress = 10;
   let pretestStatus = 'not_started';
   if (currentEmployee) {
@@ -86,6 +87,7 @@ export default async function MobileLessonPlayerPage({
       redirect(`/mobile/chitralearning/courses/${slug}`)
     }
     
+    currentEnrollment = enrollment;
     enrollmentProgress = Math.max(enrollment.progress, 10);
     pretestStatus = enrollment.pretestStatus || 'not_started';
 
@@ -106,17 +108,14 @@ export default async function MobileLessonPlayerPage({
 
   // Lock mechanism: calculate unlocked index based on progress & pretest status
   const pretestIndex = lessons.findIndex(l => l.lessonType === 'pretest');
-  const completedLessonsCount = Math.round((enrollmentProgress / 100) * lessons.length);
-  
-  let unlockedCount = completedLessonsCount;
-  // If pretest has been completed, at least unlock the lesson immediately after pretest without any score threshold
-  if (pretestStatus === 'completed' && pretestIndex >= 0) {
-    unlockedCount = Math.max(unlockedCount, pretestIndex + 1);
-  }
+  const hasPretest = pretestIndex >= 0;
+  const isPretestCompleted = pretestStatus === 'completed';
 
-  const maxUnlockedIndex = enrollmentProgress === 100 
-    ? lessons.length - 1 
-    : Math.min(lessons.length - 1, Math.max(0, unlockedCount));
+  // All lessons are unlocked if there is no pretest or pretest has been completed.
+  // If pretest is still pending, only the pretest is unlocked.
+  const maxUnlockedIndex = (!hasPretest || isPretestCompleted)
+    ? lessons.length - 1
+    : pretestIndex;
 
   // Active lesson
   let activeLessonId = resolvedSearch?.lessonId ? parseInt(resolvedSearch.lessonId, 10) : lessons[0].id
@@ -130,13 +129,14 @@ export default async function MobileLessonPlayerPage({
   }
 
   const prevLesson = activeLessonIndex > 0 ? lessons[activeLessonIndex - 1] : null
-  const nextLesson = activeLessonIndex >= 0 && (activeLessonIndex + 1 <= maxUnlockedIndex) ? lessons[activeLessonIndex + 1] : null
-  const isNextLocked = activeLessonIndex >= maxUnlockedIndex;
+  const nextLesson = activeLessonIndex >= 0 && activeLessonIndex + 1 < lessons.length ? lessons[activeLessonIndex + 1] : null
+  const isNextLocked = hasPretest && !isPretestCompleted && (activeLessonIndex >= pretestIndex);
   
   const activeLessonType = activeLesson.lessonType
+  const activeTestPhase = activeLessonType === 'pretest' ? 'pretest' : 'posttest'
 
   const prevHref = prevLesson ? `/mobile/chitralearning/learn/${slug}?lessonId=${prevLesson.id}` : null
-  const nextHref = (activeLessonIndex + 1 < lessons.length) ? `/mobile/chitralearning/learn/${slug}?lessonId=${lessons[activeLessonIndex + 1].id}` : null
+  const nextHref = (nextLesson && !isNextLocked) ? `/mobile/chitralearning/learn/${slug}?lessonId=${nextLesson.id}` : null
 
   // Quiz questions
   const quizRows = ['quiz', 'pretest', 'posttest'].includes(activeLessonType)
@@ -168,6 +168,7 @@ export default async function MobileLessonPlayerPage({
         eq(chitraLearningAuditLogs.employeeId, currentEmployee.id),
         eq(chitraLearningAuditLogs.courseId, course.id),
         eq(chitraLearningAuditLogs.action, 'quiz_submitted'),
+        sql`CAST(after_value->>'lessonId' AS INTEGER) = ${activeLesson.id}`
       ))
     attemptCount = Number(auditRows[0]?.count ?? 0)
   }
@@ -320,7 +321,7 @@ export default async function MobileLessonPlayerPage({
         {activeLessonType === 'video' && (
           <div>
             <ChitraLearningVideoPlayer
-              enrollmentId={0}
+              enrollmentId={currentEnrollment?.id || 0}
               courseId={course.id}
               lessonId={activeLesson.id}
               videoUrl={(activeLesson as any).videoUrl || ''}
@@ -352,7 +353,7 @@ export default async function MobileLessonPlayerPage({
             <LmsQuizPlayer
               courseId={course.id}
               lessonId={activeLesson.id}
-              testPhase={activeLessonType as 'pretest' | 'posttest'}
+              testPhase={activeTestPhase}
               questions={quizQuestions}
               nextLessonHref={nextHref}
               courseHref={`/mobile/chitralearning/courses/${slug}`}
@@ -485,22 +486,21 @@ export default async function MobileLessonPlayerPage({
           ) : (
             <div className="flex-1" />
           )}
-          {nextHref && !isNextLocked && (
+          {nextHref && !isNextLocked ? (
             <Link
               href={nextHref}
               className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#003461] text-xs font-black text-white shadow-[0_4px_14px_rgba(0,52,97,0.3)] active:scale-95 transition-transform"
             >
               Selanjutnya <ChevronRight className="size-4" />
             </Link>
-          )}
-          {(!nextHref || isNextLocked) && !isQuizType && (
+          ) : !isQuizType ? (
             <Link
               href={`/mobile/chitralearning/courses/${slug}`}
               className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-500 text-xs font-black text-white active:scale-95 transition-transform"
             >
               Selesai 🎉
             </Link>
-          )}
+          ) : null}
         </div>
       )}
     </div>
