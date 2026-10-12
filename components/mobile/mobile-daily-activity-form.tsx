@@ -520,9 +520,7 @@ function EquipmentMultiUnitInput({
   placeholder = 'Nomor unit / equipment (contoh: DT-451)',
   className,
 }: EquipmentMultiUnitInputProps) {
-  const [inputValue, setInputValue] = useState('')
-
-  // Units list parsed from value
+  // Units list parsed in real time from value
   const units = useMemo(() => {
     if (!value) return []
     return value
@@ -531,62 +529,27 @@ function EquipmentMultiUnitInput({
       .filter(Boolean)
   }, [value])
 
-  const commitUnits = (rawToAdd: string) => {
-    const rawParts = rawToAdd
-      .split(/[,;\n\r]+/)
-      .map((u) => u.trim().toUpperCase())
-      .filter(Boolean)
-    if (rawParts.length === 0) return
-
-    const existingUpper = new Set(units.map((u) => u.toUpperCase()))
-    const nextUnits = [...units]
-    for (const part of rawParts) {
-      if (!existingUpper.has(part)) {
-        existingUpper.add(part)
-        nextUnits.push(part)
-      }
-    }
-    onChange(nextUnits.join(', '))
-    setInputValue('')
-  }
-
   const removeUnit = (unitToRemove: string) => {
     const remaining = units.filter((u) => u.toUpperCase() !== unitToRemove.toUpperCase())
     onChange(remaining.join(', '))
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' || e.key === ',') {
+    if (e.key === 'Enter') {
       e.preventDefault()
-      commitUnits(inputValue)
-    } else if (e.key === 'Backspace' && !inputValue && units.length > 0) {
-      removeUnit(units[units.length - 1])
-    }
-  }
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value
-    if (val.includes(',') || val.includes('\n') || val.includes(';')) {
-      commitUnits(val)
-    } else {
-      setInputValue(val)
-    }
-  }
-
-  const handleBlur = () => {
-    if (inputValue.trim()) {
-      commitUnits(inputValue)
+      if (value && !value.trim().endsWith(',')) {
+        onChange(value.trim() + ', ')
+      }
     }
   }
 
   return (
     <div className="space-y-2">
       <Input
-        value={inputValue}
-        onChange={handleChange}
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
-        onBlur={handleBlur}
-        placeholder={units.length === 0 ? placeholder : 'Ketik nomor unit lain lalu koma / Enter...'}
+        placeholder={units.length === 0 ? placeholder : 'Ketik nomor unit lain (pisahkan dengan koma)...'}
         className={cn(
           'h-12 rounded-2xl border-0 bg-white px-4 text-sm font-semibold text-[#082033]',
           className
@@ -619,7 +582,7 @@ function EquipmentMultiUnitInput({
       )}
 
       <p className="text-[11px] text-slate-500 font-medium leading-relaxed pl-1">
-        💡 <span className="font-semibold text-slate-700">Pemisah Unit:</span> Ketik <kbd className="px-1 py-0.2 bg-slate-200 text-slate-800 rounded font-mono text-[10px]">koma (,)</kbd> atau <kbd className="px-1 py-0.2 bg-slate-200 text-slate-800 rounded font-mono text-[10px]">Enter</kbd> untuk menambahkan unit berikutnya jika mengerjakan lebih dari 1 unit.
+        💡 <span className="font-semibold text-slate-700">Pemisah Unit:</span> Pisahkan dengan <kbd className="px-1 py-0.2 bg-slate-200 text-slate-800 rounded font-mono text-[10px]">koma (,)</kbd> jika mengerjakan lebih dari 1 unit (contoh: DT-451, DT-452).
       </p>
     </div>
   )
@@ -1047,7 +1010,7 @@ export function MobileDailyActivityForm({
   const [selfInputEntries, setSelfInputEntries] = useState<Record<string, SelfInputEntryState>>(() => {
     if (initialDraft?.selfInputActivities && initialDraft.selfInputActivities.length > 0) {
       return Object.fromEntries(
-        initialDraft.selfInputActivities.map((item, index) => {
+        initialDraft.selfInputActivities.flatMap((item, index) => {
           const rawList =
             item.previewUrls && item.previewUrls.length > 0
               ? item.previewUrls
@@ -1069,25 +1032,33 @@ export function MobileDailyActivityForm({
             item.photoName ||
             (previewUrls.length > 0 ? `${previewUrls.length} foto terlampir` : '')
 
-          return [
-            String(item.libraryActivityId),
-            {
-              equipmentNo: item.equipmentNo ?? '',
-              startTime:
-                item.startTime ||
-                buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime).startTime,
-              endTime:
-                item.endTime ||
-                buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime).endTime,
-              materialUsed: item.materialUsed ?? '',
-              tireCount: item.tireCount ?? 0,
-              notes: item.notes ?? '',
-              photoFiles: [],
-              photoName,
-              previewUrls,
-              restoredPhotoPayload: item.photo ?? null,
-            },
-          ]
+          const entryData = {
+            equipmentNo: item.equipmentNo ?? '',
+            startTime:
+              item.startTime ||
+              buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime).startTime,
+            endTime:
+              item.endTime ||
+              buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime).endTime,
+            materialUsed: item.materialUsed ?? '',
+            tireCount: item.tireCount ?? 0,
+            notes: item.notes ?? '',
+            photoFiles: [],
+            photoName,
+            previewUrls,
+            restoredPhotoPayload: item.photo ?? null,
+          }
+
+          const pairs: Array<[string, SelfInputEntryState]> = [[String(item.libraryActivityId), entryData]]
+          if (Array.isArray(initialDraft.selectedLibraryActivityIds)) {
+            for (const selId of initialDraft.selectedLibraryActivityIds) {
+              const selStr = String(selId)
+              if (selStr.endsWith(`_${item.libraryActivityId}`) || selStr === String(item.libraryActivityId)) {
+                pairs.push([selStr, entryData])
+              }
+            }
+          }
+          return pairs
         })
       )
     }
@@ -2398,7 +2369,7 @@ export function MobileDailyActivityForm({
             : []
     const restoredSelfInputEntries = Array.isArray(draft.selfInputActivities)
       ? Object.fromEntries(
-          draft.selfInputActivities.map((item, index) => {
+          draft.selfInputActivities.flatMap((item, index) => {
             const photosPayloads = item.photos || (item.photo ? [item.photo] : [])
             const photoDataUrls = photosPayloads.map((p) => p.dataUrl).filter(Boolean)
             const rawSourceUrls =
@@ -2422,28 +2393,36 @@ export function MobileDailyActivityForm({
               item.photoName ||
               (photoCount > 0 ? `${photoCount} foto terlampir` : item.photo?.name || '')
 
-            return [
-              String(item.libraryActivityId),
-              {
-                equipmentNo: item.equipmentNo ?? '',
-                startTime:
-                  item.startTime ||
-                  buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime).startTime,
-                endTime:
-                  item.endTime ||
-                  buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime).endTime,
-                materialUsed: item.materialUsed ?? '',
-                tireCount: item.tireCount ?? 0,
-                notes: item.notes ?? '',
-                photoFiles: [],
-                photoName,
-                previewUrls,
-                photo: item.photo ?? null,
-                photos: item.photos ?? (item.photo ? [item.photo] : []),
-                restoredPhotoPayload: item.photo ?? item.photos?.[0] ?? null,
-                queuedPhotoPayloads: item.photos ?? (item.photo ? [item.photo] : []),
-              },
-            ]
+            const entryData = {
+              equipmentNo: item.equipmentNo ?? '',
+              startTime:
+                item.startTime ||
+                buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime).startTime,
+              endTime:
+                item.endTime ||
+                buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime).endTime,
+              materialUsed: item.materialUsed ?? '',
+              tireCount: item.tireCount ?? 0,
+              notes: item.notes ?? '',
+              photoFiles: [],
+              photoName,
+              previewUrls,
+              photo: item.photo ?? null,
+              photos: item.photos ?? (item.photo ? [item.photo] : []),
+              restoredPhotoPayload: item.photo ?? item.photos?.[0] ?? null,
+              queuedPhotoPayloads: item.photos ?? (item.photo ? [item.photo] : []),
+            }
+
+            const pairs: Array<[string, SelfInputEntryState]> = [[String(item.libraryActivityId), entryData]]
+            if (Array.isArray(draft.selectedLibraryActivityIds)) {
+              for (const selId of draft.selectedLibraryActivityIds) {
+                const selStr = String(selId)
+                if (selStr.endsWith(`_${item.libraryActivityId}`) || selStr === String(item.libraryActivityId)) {
+                  pairs.push([selStr, entryData])
+                }
+              }
+            }
+            return pairs
           })
         )
       : draft.libraryActivityId
@@ -2731,19 +2710,61 @@ export function MobileDailyActivityForm({
     }))
   }
 
+  function resolveSelfInputEntry(
+    library: { id: number | string; libraryActivityId?: number | null },
+    index: number
+  ): SelfInputEntryState {
+    const rawId = `${library.id}`
+    if (selfInputEntries[rawId]) return selfInputEntries[rawId]
+
+    if (library.libraryActivityId != null) {
+      const libActId = `${library.libraryActivityId}`
+      if (selfInputEntries[libActId]) return selfInputEntries[libActId]
+    }
+
+    if (rawId.includes('_')) {
+      const parts = rawId.split('_')
+      const lastPart = parts[parts.length - 1]
+      if (lastPart && selfInputEntries[lastPart]) return selfInputEntries[lastPart]
+    }
+
+    for (const [key, val] of Object.entries(selfInputEntries)) {
+      if (key === rawId) return val
+      if (library.libraryActivityId != null && key === `${library.libraryActivityId}`) return val
+      if (rawId.includes('_') && rawId.endsWith(`_${key}`)) return val
+      if (key.includes('_') && key.endsWith(`_${rawId}`)) return val
+    }
+
+    const entriesList = Object.values(selfInputEntries)
+    if (selectedLibraries.length === 1 && entriesList.length === 1) {
+      return entriesList[0]
+    }
+    if (entriesList[index]?.equipmentNo || entriesList[index]?.notes || entriesList[index]?.previewUrls?.length) {
+      return entriesList[index]
+    }
+
+    return buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
+  }
+
   function updateSelfInputEntry(libraryId: string, nextValue: Partial<SelfInputEntryState>) {
-    setSelfInputEntries((current) => ({
-      ...current,
-      [libraryId]: {
-        ...(current[libraryId] ??
-          buildDefaultSelfInputEntry(
-            selectedLibraryIds.indexOf(libraryId),
-            defaultStartTime,
-            defaultEndTime
-          )),
-        ...nextValue,
-      },
-    }))
+    setSelfInputEntries((current) => {
+      const libOpt = availableLibraryMap.get(libraryId)
+      const realLibId = libOpt?.libraryActivityId ?? (typeof libOpt?.id === 'number' ? libOpt.id : Number(String(libraryId).split('_').pop()) || null)
+      const existing =
+        current[libraryId] ??
+        (realLibId != null ? current[`${realLibId}`] : undefined) ??
+        buildDefaultSelfInputEntry(
+          selectedLibraryIds.indexOf(libraryId),
+          defaultStartTime,
+          defaultEndTime
+        )
+      const updated = { ...existing, ...nextValue }
+      const nextMap = { ...current, [libraryId]: updated }
+      if (realLibId != null && String(realLibId) !== libraryId) {
+        nextMap[`${realLibId}`] = updated
+      }
+      return nextMap
+    })
   }
 
   function toggleLibrarySelection(libraryId: string) {
@@ -2863,10 +2884,8 @@ export function MobileDailyActivityForm({
     libraryActivityId: selectedLibraryIds[0] ?? '',
     selectedLibraryActivityIds: selectedLibraryIds,
     selfInputActivities: selectedLibraryIds.map((libraryId, index) => {
-      const entry =
-        selfInputEntries[libraryId] ??
-        buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
       const libOpt = availableLibraryMap.get(libraryId)
+      const entry = resolveSelfInputEntry(libOpt || { id: libraryId }, index)
       const realLibId = libOpt?.libraryActivityId ?? (typeof libOpt?.id === 'number' ? libOpt.id : Number(String(libraryId).split('_').pop()) || null)
       const groupName = libOpt?.groupName || (entry as any).snapshotGroupName || ''
       const photos = Array.from(
@@ -2951,11 +2970,11 @@ export function MobileDailyActivityForm({
   useEffect(() => {
     const handleDraftsChanged = (e: any) => {
       const deletedKey = e?.detail?.deletedKey
+      // ONLY reset if the deleted key is explicitly this active draft, and NOT during internal migration/re-saving
       if (
         deletedKey &&
-        (deletedKey === activeDraftKey ||
-          deletedKey === queuedDraftKey ||
-          (deletedKey.startsWith('hero:draft:activity') && activeDraftKey.startsWith('hero:draft:activity')))
+        deletedKey !== ACTIVITY_DRAFT_STORAGE_KEY &&
+        (deletedKey === activeDraftKey || (queuedDraftKey && deletedKey === queuedDraftKey))
       ) {
         isDeletedRef.current = true
         setSelectedLibraryIds([])
@@ -3032,8 +3051,8 @@ export function MobileDailyActivityForm({
       if (!employeeId || !workDate || isSubmitting) return
       try {
         const itemsSnapshot = selectedLibraries.length > 0
-            ? selectedLibraries.map((lib) => {
-                const entry = selfInputEntries[`${lib.id}`]
+            ? selectedLibraries.map((lib, idx) => {
+                const entry = resolveSelfInputEntry(lib, idx)
                 const pUrls = entry?.previewUrls || []
                 const u = (entry?.equipmentNo || '').trim()
                 const realLibId = typeof lib.libraryActivityId === 'number' ? lib.libraryActivityId : (typeof lib.id === 'number' ? lib.id : Number(String(lib.id).split('_').pop()) || null)
@@ -3156,10 +3175,7 @@ export function MobileDailyActivityForm({
     }
 
     for (const [index, library] of (selectedLibraries || []).entries()) {
-      const libraryId = `${library.id}`
-      const entry =
-        selfInputEntries[libraryId] ??
-        buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
+      const entry = resolveSelfInputEntry(library, index)
 
       if (library.requiresEquipmentNo && !entry.equipmentNo?.trim()) {
         return `Nomor Equipment / Unit wajib diisi untuk "${library.activityCode} - ${library.activityName}".`
@@ -3198,10 +3214,7 @@ export function MobileDailyActivityForm({
     // Validasi rentang waktu bentrok antar aktivitas
     const ranges: Array<{ code: string; start: Date; end: Date }> = []
     for (const [index, library] of (selectedLibraries || []).entries()) {
-      const libraryId = `${library.id}`
-      const entry =
-        selfInputEntries[libraryId] ??
-        buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
+      const entry = resolveSelfInputEntry(library, index)
 
       if (entry.startTime && entry.endTime) {
         const start = new Date(entry.startTime)
@@ -3281,9 +3294,7 @@ export function MobileDailyActivityForm({
     return Promise.all(
       selectedLibraries.map(async (library, index) => {
         const libraryId = `${library.id}`
-        const entry =
-          selfInputEntries[libraryId] ??
-          buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
+        const entry = resolveSelfInputEntry(library, index)
         const matchingSessionItem = initialSessionData?.sessionItems?.find(
           (it: any) => String(it.libraryActivityId) === libraryId || String(it.id) === libraryId
         )
@@ -3353,9 +3364,7 @@ export function MobileDailyActivityForm({
           await Promise.all(
             selectedLibraries.map(async (library, index) => {
               const libraryId = `${library.id}`
-              const entry =
-                selfInputEntries[libraryId] ??
-                buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
+              const entry = resolveSelfInputEntry(library, index)
               const matchingSessionItem = initialSessionData?.sessionItems?.find(
                 (it: any) => String(it.libraryActivityId) === libraryId || String(it.id) === libraryId
               )
@@ -4187,9 +4196,7 @@ export function MobileDailyActivityForm({
               <div className="space-y-3">
                 {selectedLibraries.map((library, index) => {
                   const libraryId = `${library.id}`
-                  const entry =
-                    selfInputEntries[libraryId] ??
-                    buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
+                  const entry = resolveSelfInputEntry(library, index)
                   const requirementBadges = [
                     library.requiresEquipmentNo ? 'Equipment' : null,
                     library.requiresDuration !== false ? 'Waktu' : null,
@@ -4895,6 +4902,7 @@ export function MobileDailyActivityForm({
             disabled={isSubmitting || isSavingDraft}
             onClick={async () => {
               setIsSavingDraft(true)
+              isDeletedRef.current = false
 
               try {
                 // 1. Construct complete draft payload immediately from current form state
@@ -4906,9 +4914,7 @@ export function MobileDailyActivityForm({
                   photoName,
                   serverDraftSessionId: serverDraftSessionId || undefined,
                   selfInputActivities: selectedLibraries.map((lib, index) => {
-                    const entry =
-                      selfInputEntries[`${lib.id}`] ??
-                      buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
+                    const entry = resolveSelfInputEntry(lib, index)
                     const photos = entry.previewUrls || []
                     return {
                       libraryActivityId: `${lib.id}`,
@@ -4949,7 +4955,9 @@ export function MobileDailyActivityForm({
                   if (draftKey !== ACTIVITY_DRAFT_STORAGE_KEY) {
                     saveActivityDraftIndexEntry(draftKey, completeDraftPayload, serverDraftSessionId || undefined)
                     if (activeDraftKey === ACTIVITY_DRAFT_STORAGE_KEY) {
-                      removeActivityDraft(ACTIVITY_DRAFT_STORAGE_KEY)
+                      try {
+                        window.localStorage.removeItem(ACTIVITY_DRAFT_STORAGE_KEY)
+                      } catch {}
                     }
                     setActiveDraftKey(draftKey)
                   }
@@ -4965,8 +4973,8 @@ export function MobileDailyActivityForm({
                 void (async () => {
                   try {
                     const itemsSnapshot = selectedLibraries.length > 0
-                      ? selectedLibraries.map((lib) => {
-                          const entry = selfInputEntries[`${lib.id}`]
+                      ? selectedLibraries.map((lib, idx) => {
+                          const entry = resolveSelfInputEntry(lib, idx)
                           const u = (entry?.equipmentNo || '').trim()
                           const realLibId = typeof lib.libraryActivityId === 'number' ? lib.libraryActivityId : (typeof lib.id === 'number' ? lib.id : Number(String(lib.id).split('_').pop()) || null)
                           return {
