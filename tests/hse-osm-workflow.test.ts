@@ -147,7 +147,22 @@ test("HSE OSM Workflow: Session & Finding Lifecycle Integration", async (t) => {
     assert.equal(clientUrl, "/api/uploads/hse-osm/test-photo.jpg");
   });
 
-  await t.test("8. Clean up test records", async () => {
+  await t.test("8. Add Standard / Close finding: auto status CLOSED and auto verified", async () => {
+    assert.ok(createdSessionId, "Created session ID must exist");
+    const stdRes = await createHseOsmFinding(createdSessionId, {
+      classificationName: "Vehicle & Mobile Equipment Pneumatic & Hand Tools",
+      description: "Penempatan Tools telah sesuai / Good Condition",
+      condition: "STANDARD",
+      riskLevel: "LOW",
+    });
+
+    assert.equal(stdRes.success, true);
+    assert.equal(stdRes.data?.status, "CLOSED", "Standard finding must have CLOSED status directly");
+    assert.ok(stdRes.data?.verifiedAt, "Standard finding must be verified automatically");
+    assert.ok(stdRes.data?.actionTaken?.includes("Standard / Close"), "Action taken must reflect standard condition");
+  });
+
+  await t.test("9. Clean up test records", async () => {
     if (createdSessionId) {
       await deleteHseOsmSession(createdSessionId);
       // Verify soft deletion

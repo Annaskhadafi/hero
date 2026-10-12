@@ -22,7 +22,7 @@ import {
 } from '@/db/schema/hse-osm'
 import { auth } from '@/lib/auth'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
-import type { HseOsmFindingStatus, HseOsmRiskLevel } from '@/lib/hse-osm-constants'
+import type { HseOsmFindingStatus, HseOsmRiskLevel, HseOsmFindingCondition } from '@/lib/hse-osm-constants'
 
 export type OsmTeamMemberInput = {
   employeeId?: number | null
@@ -41,6 +41,8 @@ export type OsmFindingInput = {
   description: string
   photoUrls?: string[]
   riskLevel?: HseOsmRiskLevel
+  status?: HseOsmFindingStatus
+  condition?: HseOsmFindingCondition
   actionRequired?: string
   actionTaken?: string
   actionPhotoUrls?: string[]
@@ -522,6 +524,10 @@ export async function createHseOsmSession(input: CreateOsmSessionInput) {
     if (input.findings && input.findings.length > 0) {
       for (const finding of input.findings) {
         const findingNumber = await generateFindingNumber()
+        const isStandard = finding.condition === 'STANDARD' || finding.status === 'CLOSED'
+        const findingStatus: HseOsmFindingStatus = isStandard ? 'CLOSED' : (finding.status || 'OPEN')
+        const now = new Date()
+
         await db.insert(heroHseOsmFindings).values({
           sessionId: newSession.id,
           findingNumber,
@@ -532,11 +538,23 @@ export async function createHseOsmSession(input: CreateOsmSessionInput) {
           description: finding.description,
           photoUrls: finding.photoUrls || [],
           riskLevel: finding.riskLevel || 'MEDIUM',
-          status: 'OPEN',
-          actionRequired: finding.actionRequired || '',
-          actionTaken: finding.actionTaken || '',
+          status: findingStatus,
+          actionRequired: isStandard
+            ? (finding.actionRequired || 'Good Condition / Sesuai Standar Keselamatan')
+            : (finding.actionRequired || ''),
+          actionTaken: isStandard
+            ? (finding.actionTaken || 'Kondisi telah diperiksa dan dipastikan sesuai standar keselamatan (Standard / Close).')
+            : (finding.actionTaken || ''),
           actionPhotoUrls: finding.actionPhotoUrls || [],
-          dueDate: finding.dueDate || null,
+          actionSubmittedAt: isStandard ? now : null,
+          actionSubmittedBy: isStandard
+            ? (actor?.sessionUser?.name || actor?.employee?.name || input.leadEmployeeName || 'Inspector Lead')
+            : null,
+          verifiedAt: isStandard ? now : null,
+          verifiedBy: isStandard
+            ? (actor?.sessionUser?.name || actor?.employee?.name || input.leadEmployeeName || 'Inspector Lead')
+            : null,
+          dueDate: isStandard ? null : (finding.dueDate || null),
         })
       }
     }
@@ -572,7 +590,10 @@ export async function createHseOsmFinding(
     description: string
     photoUrls?: string[]
     riskLevel?: HseOsmRiskLevel
+    status?: HseOsmFindingStatus
+    condition?: HseOsmFindingCondition
     actionRequired?: string
+    actionTaken?: string
     dueDate?: string
   }
 ) {
@@ -593,6 +614,10 @@ export async function createHseOsmFinding(
     const currentDate = now.toISOString().split('T')[0]
     const currentTime = now.toTimeString().slice(0, 5)
 
+    const isStandard = input.condition === 'STANDARD' || input.status === 'CLOSED'
+    const findingStatus: HseOsmFindingStatus = isStandard ? 'CLOSED' : (input.status || 'OPEN')
+    const actionBy = actor?.sessionUser?.name || actor?.employee?.name || session.leadEmployeeName || 'Inspector'
+
     const [newFinding] = await db
       .insert(heroHseOsmFindings)
       .values({
@@ -605,9 +630,18 @@ export async function createHseOsmFinding(
         description: input.description,
         photoUrls: input.photoUrls || [],
         riskLevel: input.riskLevel || 'MEDIUM',
-        status: 'OPEN',
-        actionRequired: input.actionRequired || '',
-        dueDate: input.dueDate || null,
+        status: findingStatus,
+        actionRequired: isStandard
+          ? (input.actionRequired?.trim() || 'Good Condition / Sesuai Standar Keselamatan')
+          : (input.actionRequired || ''),
+        actionTaken: isStandard
+          ? (input.actionTaken?.trim() || 'Kondisi telah diperiksa dan dipastikan sesuai standar keselamatan (Standard / Close).')
+          : '',
+        actionSubmittedAt: isStandard ? now : null,
+        actionSubmittedBy: isStandard ? actionBy : null,
+        verifiedAt: isStandard ? now : null,
+        verifiedBy: isStandard ? actionBy : null,
+        dueDate: isStandard ? null : (input.dueDate || null),
       })
       .returning()
 
@@ -617,8 +651,8 @@ export async function createHseOsmFinding(
         recipientEmails: [actor.sessionUser.email],
         eventType: 'HSE_OSM_FINDING_RECORDED',
         category: 'hse_alerts',
-        title: 'Temuan Baru OSM Tercatat',
-        body: `Tiket ${findingNumber} (${input.classificationName}) dicatat pada sesi ${session.sessionNumber}.`,
+        title: isStandard ? 'Temuan Sesuai Standar OSM Tercatat' : 'Temuan Baru OSM Tercatat',
+        body: `Tiket ${findingNumber} (${input.classificationName} - ${isStandard ? 'Standard / Close' : 'Substandard / Open'}) dicatat pada sesi ${session.sessionNumber}.`,
         url: `/dashboard/hse/osm`,
       }).catch(() => null)
     }

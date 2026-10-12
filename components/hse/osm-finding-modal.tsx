@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Camera, Image as ImageIcon, Loader2, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, Camera, CheckCircle2, Image as ImageIcon, Loader2, Plus, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { createHseOsmFinding } from "@/app/actions/hse-osm";
 import { uploadFile } from "@/app/actions/upload";
 import { resolveClientUploadUrl } from "@/lib/client-upload-url";
-import { HSE_OSM_DEFAULT_CLASSIFICATIONS, type HseOsmRiskLevel } from "@/lib/hse-osm-constants";
+import { HSE_OSM_DEFAULT_CLASSIFICATIONS, type HseOsmRiskLevel, type HseOsmFindingCondition } from "@/lib/hse-osm-constants";
 
 type OsmFindingModalProps = {
   isOpen: boolean;
@@ -33,6 +33,7 @@ export function OsmFindingModal({
   const categoryOptions =
     classifications.length > 0 ? classifications : HSE_OSM_DEFAULT_CLASSIFICATIONS;
 
+  const [condition, setCondition] = useState<HseOsmFindingCondition>("SUBSTANDARD");
   const [classificationId, setClassificationId] = useState<number | undefined>(
     classifications[0]?.id
   );
@@ -98,6 +99,8 @@ export function OsmFindingModal({
     setIsSubmitting(true);
     setError(null);
 
+    const isStandard = condition === "STANDARD";
+
     try {
       const res = await createHseOsmFinding(sessionId, {
         classificationId,
@@ -105,8 +108,15 @@ export function OsmFindingModal({
         description: description.trim(),
         photoUrls: uploadedPhotos,
         riskLevel,
-        actionRequired: actionRequired.trim(),
-        dueDate: dueDate || undefined,
+        status: isStandard ? "CLOSED" : "OPEN",
+        condition,
+        actionRequired: isStandard
+          ? (actionRequired.trim() || "Good Condition / Sesuai Standar Keselamatan")
+          : actionRequired.trim(),
+        actionTaken: isStandard
+          ? "Kondisi telah diperiksa dan dipastikan sesuai standar keselamatan (Standard / Close)."
+          : undefined,
+        dueDate: isStandard ? undefined : (dueDate || undefined),
       });
 
       if (!res.success) {
@@ -116,6 +126,7 @@ export function OsmFindingModal({
       onSuccess();
       onClose();
       // Reset form
+      setCondition("SUBSTANDARD");
       setDescription("");
       setUploadedPhotos([]);
       setActionRequired("");
@@ -141,6 +152,61 @@ export function OsmFindingModal({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 py-2 text-sm">
+          {/* 1. Pilihan Kondisi Temuan: Substandard / Open vs Standard / Close */}
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold flex items-center justify-between">
+              <span>Kondisi Temuan Lapangan <span className="text-red-500">*</span></span>
+              <span className="text-[11px] text-muted-foreground font-normal">Pilih status kondisi</span>
+            </Label>
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => setCondition("SUBSTANDARD")}
+                className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all ${
+                  condition === "SUBSTANDARD"
+                    ? "bg-red-50 border-red-500 dark:bg-red-950/40 dark:border-red-600 ring-2 ring-red-500/20 shadow-xs"
+                    : "bg-background border-border hover:bg-muted/50"
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <AlertTriangle className={`size-4 shrink-0 ${condition === "SUBSTANDARD" ? "text-red-600" : "text-muted-foreground"}`} />
+                  <span className={`text-xs font-bold ${condition === "SUBSTANDARD" ? "text-red-700 dark:text-red-300" : "text-foreground"}`}>
+                    Substandard / Open
+                  </span>
+                </div>
+                <span className="text-[11px] text-muted-foreground leading-snug">
+                  Kondisi di bawah standar / tidak aman, butuh tindakan perbaikan
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCondition("STANDARD")}
+                className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all ${
+                  condition === "STANDARD"
+                    ? "bg-emerald-50 border-emerald-500 dark:bg-emerald-950/40 dark:border-emerald-600 ring-2 ring-emerald-500/20 shadow-xs"
+                    : "bg-background border-border hover:bg-muted/50"
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <CheckCircle2 className={`size-4 shrink-0 ${condition === "STANDARD" ? "text-emerald-600" : "text-muted-foreground"}`} />
+                  <span className={`text-xs font-bold ${condition === "STANDARD" ? "text-emerald-700 dark:text-emerald-300" : "text-foreground"}`}>
+                    Standard / Close
+                  </span>
+                </div>
+                <span className="text-[11px] text-muted-foreground leading-snug">
+                  Kondisi baik & sesuai standar (Good Condition, langsung tuntas)
+                </span>
+              </button>
+            </div>
+            {condition === "STANDARD" && (
+              <p className="text-xs text-emerald-700 dark:text-emerald-400 bg-emerald-50/70 dark:bg-emerald-950/30 p-2.5 rounded-lg border border-emerald-200 dark:border-emerald-900 flex items-center gap-2">
+                <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />
+                Temuan ini langsung berstatus <strong>Standard / Close</strong> tanpa perlu tindak lanjut perbaikan lapangan.
+              </p>
+            )}
+          </div>
+
           {/* Classification */}
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold">
@@ -185,15 +251,24 @@ export function OsmFindingModal({
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Target Selesai (Due Date)</Label>
-              <Input
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="text-xs"
-              />
-            </div>
+            {condition === "SUBSTANDARD" ? (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Target Selesai (Due Date)</Label>
+                <Input
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  className="text-xs"
+                />
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Status Tiket</Label>
+                <div className="h-9 rounded-md border bg-muted/40 px-3 flex items-center text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                  Selesai (Close)
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Description */}
@@ -204,7 +279,11 @@ export function OsmFindingModal({
             <Textarea
               id="findingDesc"
               rows={4}
-              placeholder="Jelaskan kondisi bahaya / tindakan tidak aman yang ditemukan di lapangan..."
+              placeholder={
+                condition === "STANDARD"
+                  ? "Jelaskan kondisi baik / kesesuaian standar yang dipantau (misal: Penempatan Tools telah sesuai / Good Condition)..."
+                  : "Jelaskan kondisi bahaya / tindakan tidak aman yang ditemukan di lapangan..."
+              }
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="resize-none text-xs"
@@ -215,11 +294,15 @@ export function OsmFindingModal({
           {/* Action Required */}
           <div className="space-y-1.5">
             <Label htmlFor="actionReq" className="text-xs font-semibold">
-              Rekomendasi Tindakan Perbaikan
+              Rekomendasi Tindakan Perbaikan {condition === "STANDARD" ? "(Opsional)" : ""}
             </Label>
             <Input
               id="actionReq"
-              placeholder="Contoh: Pasang barricade, lengkapi whip check, ganti APD..."
+              placeholder={
+                condition === "STANDARD"
+                  ? "Opsional: Sesuai Standar Keselamatan"
+                  : "Contoh: Pasang barricade, lengkapi whip check, ganti APD..."
+              }
               value={actionRequired}
               onChange={(e) => setActionRequired(e.target.value)}
               className="text-xs"

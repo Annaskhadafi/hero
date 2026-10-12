@@ -96,16 +96,43 @@ export const HSE_OSM_DEFAULT_CLASSIFICATIONS = [
 
 export type HseOsmFindingStatus = "OPEN" | "PROCESSED" | "CLOSED" | "REJECTED";
 export type HseOsmRiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+export type HseOsmFindingCondition = "SUBSTANDARD" | "STANDARD";
+
+export const HSE_OSM_FINDING_CONDITIONS: Array<{
+  value: HseOsmFindingCondition;
+  status: HseOsmFindingStatus;
+  label: string;
+  shortLabel: string;
+  badgeClass: string;
+  description: string;
+}> = [
+  {
+    value: "SUBSTANDARD",
+    status: "OPEN",
+    label: "Substandard / Open",
+    shortLabel: "Substandard",
+    badgeClass: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900/50",
+    description: "Kondisi tidak aman / di bawah standar, butuh perbaikan di lapangan",
+  },
+  {
+    value: "STANDARD",
+    status: "CLOSED",
+    label: "Standard / Close",
+    shortLabel: "Standard",
+    badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900/50",
+    description: "Kondisi baik & sesuai standar keselamatan (Good condition), langsung tuntas",
+  },
+];
 
 export const HSE_OSM_STATUS_CONFIG: Record<
   HseOsmFindingStatus,
   { label: string; badgeClass: string; dotClass: string; description: string }
 > = {
   OPEN: {
-    label: "Open",
+    label: "Substandard / Open",
     badgeClass: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900/50",
     dotClass: "bg-red-500",
-    description: "Temuan baru tercatat, menunggu perbaikan di lapangan",
+    description: "Temuan kondisi tidak standar, memerlukan perbaikan di lapangan",
   },
   PROCESSED: {
     label: "Processed",
@@ -114,10 +141,10 @@ export const HSE_OSM_STATUS_CONFIG: Record<
     description: "Tindakan perbaikan telah diserahkan, menunggu verifikasi HSE/Leader",
   },
   CLOSED: {
-    label: "Closed",
+    label: "Standard / Close",
     badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900/50",
     dotClass: "bg-emerald-500",
-    description: "Temuan telah tuntas diperbaiki dan diverifikasi",
+    description: "Kondisi sesuai standar atau telah tuntas diperbaiki",
   },
   REJECTED: {
     label: "Rejected",

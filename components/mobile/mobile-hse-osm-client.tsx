@@ -62,10 +62,12 @@ import { resolveClientUploadUrl } from "@/lib/client-upload-url";
 import {
   HSE_OSM_DEFAULT_CLASSIFICATIONS,
   HSE_OSM_DEFAULT_FOCUS_ITEMS,
+  HSE_OSM_FINDING_CONDITIONS,
   HSE_OSM_LAST_SYNC_KEY,
   HSE_OSM_OFFLINE_STORAGE_KEY,
   HSE_OSM_RISK_CONFIG,
   HSE_OSM_STATUS_CONFIG,
+  type HseOsmFindingCondition,
   type HseOsmFindingStatus,
   type HseOsmRiskLevel,
 } from "@/lib/hse-osm-constants";
@@ -143,6 +145,7 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
   const [wizardClassification, setWizardClassification] = useState<string>(
     HSE_OSM_DEFAULT_CLASSIFICATIONS[0].name
   );
+  const [wizardFindingCondition, setWizardFindingCondition] = useState<HseOsmFindingCondition>("SUBSTANDARD");
   const [wizardFindingDesc, setWizardFindingDesc] = useState("");
   const [wizardRiskLevel, setWizardRiskLevel] = useState<HseOsmRiskLevel>("MEDIUM");
   const [wizardActionReq, setWizardActionReq] = useState("");
@@ -150,6 +153,21 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [wizardError, setWizardError] = useState<string | null>(null);
   const [isSubmittingWizard, setIsSubmittingWizard] = useState(false);
+
+  // State for Add Finding to existing OSM session in mobile
+  const [isAddFindingModalOpen, setIsAddFindingModalOpen] = useState(false);
+  const [newFindingCondition, setNewFindingCondition] = useState<HseOsmFindingCondition>("SUBSTANDARD");
+  const [newFindingClassification, setNewFindingClassification] = useState<string>(
+    HSE_OSM_DEFAULT_CLASSIFICATIONS[0].name
+  );
+  const [newFindingRiskLevel, setNewFindingRiskLevel] = useState<HseOsmRiskLevel>("MEDIUM");
+  const [newFindingDesc, setNewFindingDesc] = useState("");
+  const [newFindingActionReq, setNewFindingActionReq] = useState("");
+  const [newFindingDueDate, setNewFindingDueDate] = useState("");
+  const [newFindingPhotos, setNewFindingPhotos] = useState<string[]>([]);
+  const [isUploadingNewFindingPhoto, setIsUploadingNewFindingPhoto] = useState(false);
+  const [isSubmittingNewFinding, setIsSubmittingNewFinding] = useState(false);
+  const [newFindingError, setNewFindingError] = useState<string | null>(null);
 
   // Active action/verification modal state in mobile
   const [selectedPhotoModal, setSelectedPhotoModal] = useState<string | null>(null);
@@ -411,17 +429,31 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
   }
 
   // Photo upload handler
-  async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>, target: "wizard" | "action") {
+  async function handlePhotoUpload(
+    e: React.ChangeEvent<HTMLInputElement>,
+    target: "wizard" | "action" | "new_finding"
+  ) {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const currentPhotos = target === "wizard" ? wizardPhotos : actionPhotos;
+    const currentPhotos =
+      target === "wizard"
+        ? wizardPhotos
+        : target === "new_finding"
+        ? newFindingPhotos
+        : actionPhotos;
+
     if (currentPhotos.length + files.length > 3) {
       alert("Maksimal 3 foto temuan.");
       return;
     }
 
-    setIsUploadingPhoto(true);
+    if (target === "new_finding") {
+      setIsUploadingNewFindingPhoto(true);
+    } else {
+      setIsUploadingPhoto(true);
+    }
+
     try {
       const newUrls: string[] = [];
       for (let i = 0; i < files.length; i++) {
@@ -440,6 +472,8 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
 
       if (target === "wizard") {
         setWizardPhotos((prev) => [...prev, ...newUrls]);
+      } else if (target === "new_finding") {
+        setNewFindingPhotos((prev) => [...prev, ...newUrls]);
       } else {
         setActionPhotos((prev) => [...prev, ...newUrls]);
       }
@@ -447,6 +481,7 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
       alert(err?.message || "Gagal mengunggah foto.");
     } finally {
       setIsUploadingPhoto(false);
+      setIsUploadingNewFindingPhoto(false);
       e.target.value = "";
     }
   }
@@ -469,6 +504,8 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
     setIsSubmittingWizard(true);
     setWizardError(null);
 
+    const isStandard = wizardFindingCondition === "STANDARD";
+
     const findingsPayload = wizardFindingDesc.trim()
       ? [
           {
@@ -476,7 +513,14 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
             description: wizardFindingDesc.trim(),
             photoUrls: wizardPhotos,
             riskLevel: wizardRiskLevel,
-            actionRequired: wizardActionReq.trim(),
+            status: isStandard ? ("CLOSED" as const) : ("OPEN" as const),
+            condition: wizardFindingCondition,
+            actionRequired: isStandard
+              ? (wizardActionReq.trim() || "Good Condition / Sesuai Standar Keselamatan")
+              : wizardActionReq.trim(),
+            actionTaken: isStandard
+              ? "Kondisi telah diperiksa dan dipastikan sesuai standar keselamatan (Standard / Close)."
+              : "",
           },
         ]
       : [];
@@ -528,6 +572,61 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
       setWizardError(err?.message || "Terjadi kesalahan saat submit.");
     } finally {
       setIsSubmittingWizard(false);
+    }
+  }
+
+  // Handle create new finding on existing OSM session in mobile
+  async function handleCreateNewFinding(sessionId: number) {
+    if (!newFindingDesc.trim()) {
+      setNewFindingError("Uraian deskripsi temuan wajib diisi.");
+      return;
+    }
+
+    setIsSubmittingNewFinding(true);
+    setNewFindingError(null);
+
+    const isStandard = newFindingCondition === "STANDARD";
+
+    try {
+      const res = await createHseOsmFinding(sessionId, {
+        classificationName: newFindingClassification,
+        description: newFindingDesc.trim(),
+        photoUrls: newFindingPhotos,
+        riskLevel: newFindingRiskLevel,
+        status: isStandard ? "CLOSED" : "OPEN",
+        condition: newFindingCondition,
+        actionRequired: isStandard
+          ? (newFindingActionReq.trim() || "Good Condition / Sesuai Standar Keselamatan")
+          : newFindingActionReq.trim(),
+        actionTaken: isStandard
+          ? "Kondisi telah diperiksa dan dipastikan sesuai standar keselamatan (Standard / Close)."
+          : undefined,
+        dueDate: isStandard ? undefined : (newFindingDueDate || undefined),
+      });
+
+      if (!res.success) {
+        throw new Error(res.error || "Gagal menyimpan temuan baru.");
+      }
+
+      alert("Temuan baru berhasil ditambahkan pada sesi OSM ini!");
+      setIsAddFindingModalOpen(false);
+
+      // Reset form
+      setNewFindingCondition("SUBSTANDARD");
+      setNewFindingClassification(HSE_OSM_DEFAULT_CLASSIFICATIONS[0].name);
+      setNewFindingDesc("");
+      setNewFindingRiskLevel("MEDIUM");
+      setNewFindingActionReq("");
+      setNewFindingDueDate("");
+      setNewFindingPhotos([]);
+
+      // Refresh current session detail & session list
+      await handleOpenDetail(sessionId);
+      await loadSessions();
+    } catch (err: any) {
+      setNewFindingError(err?.message || "Terjadi kesalahan saat menyimpan temuan.");
+    } finally {
+      setIsSubmittingNewFinding(false);
     }
   }
 
@@ -1528,6 +1627,61 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                   </Select>
                 </div>
 
+                {/* Pilihan Status Kondisi Temuan (Substandard / Open vs Standard / Close) */}
+                <div className="space-y-1.5 pt-1">
+                  <Label className="text-[11px] font-bold text-foreground flex items-center justify-between">
+                    <span>Kondisi Temuan Lapangan <span className="text-red-500">*</span></span>
+                    <span className="text-[10px] text-muted-foreground font-normal">Pilih status kondisi</span>
+                  </Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setWizardFindingCondition("SUBSTANDARD")}
+                      className={`p-2.5 rounded-xl border text-left flex flex-col justify-between transition-all ${
+                        wizardFindingCondition === "SUBSTANDARD"
+                          ? "bg-red-50 border-red-500 dark:bg-red-950/40 dark:border-red-600 ring-2 ring-red-500/20 shadow-xs"
+                          : "bg-background border-border hover:bg-muted/50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <AlertTriangle className={`size-3.5 shrink-0 ${wizardFindingCondition === "SUBSTANDARD" ? "text-red-600" : "text-muted-foreground"}`} />
+                        <span className={`text-xs font-bold leading-tight ${wizardFindingCondition === "SUBSTANDARD" ? "text-red-700 dark:text-red-300" : "text-foreground"}`}>
+                          Substandard / Open
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground line-clamp-2">
+                        Kondisi tidak aman / di bawah standar, perlu perbaikan
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setWizardFindingCondition("STANDARD")}
+                      className={`p-2.5 rounded-xl border text-left flex flex-col justify-between transition-all ${
+                        wizardFindingCondition === "STANDARD"
+                          ? "bg-emerald-50 border-emerald-500 dark:bg-emerald-950/40 dark:border-emerald-600 ring-2 ring-emerald-500/20 shadow-xs"
+                          : "bg-background border-border hover:bg-muted/50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <CheckCircle2 className={`size-3.5 shrink-0 ${wizardFindingCondition === "STANDARD" ? "text-emerald-600" : "text-muted-foreground"}`} />
+                        <span className={`text-xs font-bold leading-tight ${wizardFindingCondition === "STANDARD" ? "text-emerald-700 dark:text-emerald-300" : "text-foreground"}`}>
+                          Standard / Close
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground line-clamp-2">
+                        Kondisi sesuai standar / Good Condition, langsung tuntas
+                      </span>
+                    </button>
+                  </div>
+                  {wizardFindingCondition === "STANDARD" && (
+                    <p className="text-[10px] text-emerald-700 dark:text-emerald-400 bg-emerald-50/60 dark:bg-emerald-950/30 p-2 rounded-lg border border-emerald-200 dark:border-emerald-900 flex items-center gap-1.5">
+                      <CheckCircle2 className="size-3.5 shrink-0 text-emerald-600" />
+                      Temuan ini langsung berstatus <strong>Standard / Close</strong> tanpa perlu tindakan perbaikan lanjutan.
+                    </p>
+                  )}
+                </div>
+
                 {/* Risk Level */}
                 <div className="space-y-1">
                   <Label className="text-[11px] font-semibold text-muted-foreground">Tingkat Risiko</Label>
@@ -1562,7 +1716,11 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                   </Label>
                   <Textarea
                     rows={4}
-                    placeholder="Input paragraf deskripsi masalah atau temuan kondisi tidak aman..."
+                    placeholder={
+                      wizardFindingCondition === "STANDARD"
+                        ? "Jelaskan kondisi baik / pemenuhan standar keselamatan yang dipantau (misal: Penempatan Tools telah sesuai / Good Condition)..."
+                        : "Input paragraf deskripsi masalah atau temuan kondisi tidak aman..."
+                    }
                     value={wizardFindingDesc}
                     onChange={(e) => setWizardFindingDesc(e.target.value)}
                     className="text-xs resize-none"
@@ -1623,10 +1781,14 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                 {/* Rekomendasi Tindakan */}
                 <div className="space-y-1">
                   <Label className="text-[11px] font-semibold text-muted-foreground">
-                    Rekomendasi Tindakan Perbaikan
+                    Rekomendasi Tindakan Perbaikan {wizardFindingCondition === "STANDARD" ? "(Opsional)" : ""}
                   </Label>
                   <Input
-                    placeholder="Tindakan yang perlu diambil..."
+                    placeholder={
+                      wizardFindingCondition === "STANDARD"
+                        ? "Opsional: Sesuai Standar Keselamatan"
+                        : "Tindakan yang perlu diambil..."
+                    }
                     value={wizardActionReq}
                     onChange={(e) => setWizardActionReq(e.target.value)}
                     className="text-xs h-9"
@@ -1904,32 +2066,52 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20">
         {/* Navigation Bar */}
-        <div className="bg-white dark:bg-slate-900 border-b p-4 flex items-center justify-between sticky top-0 z-20">
-          <div className="flex items-center gap-2">
+        <div className="bg-white dark:bg-slate-900 border-b p-3.5 flex items-center justify-between sticky top-0 z-20 shadow-xs">
+          <div className="flex items-center gap-2 min-w-0">
             <Button
               variant="ghost"
               size="icon"
               onClick={() => setCurrentView("monitoring_list")}
-              className="size-8 -ml-1 text-muted-foreground"
+              className="size-8 -ml-1 text-muted-foreground shrink-0"
             >
               <ArrowLeft className="size-4" />
             </Button>
-            <div>
-              <h1 className="text-sm font-bold text-foreground leading-tight">{s.sessionNumber}</h1>
-              <p className="text-[11px] text-muted-foreground">{s.locationArea}</p>
+            <div className="min-w-0">
+              <h1 className="text-sm font-bold text-foreground leading-tight truncate">{s.sessionNumber}</h1>
+              <p className="text-[11px] text-muted-foreground truncate">{s.locationArea}</p>
             </div>
           </div>
-          <Button
-            asChild
-            variant="outline"
-            size="sm"
-            className="text-xs h-8 gap-1.5 rounded-full px-3 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100"
-          >
-            <Link href={`/print/hse/osm/${s.id}`} target="_blank">
-              <Download className="size-3.5" />
-              Download PDF
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              size="sm"
+              onClick={() => {
+                setNewFindingCondition("SUBSTANDARD");
+                setNewFindingClassification(HSE_OSM_DEFAULT_CLASSIFICATIONS[0].name);
+                setNewFindingDesc("");
+                setNewFindingRiskLevel("MEDIUM");
+                setNewFindingActionReq("");
+                setNewFindingDueDate("");
+                setNewFindingPhotos([]);
+                setNewFindingError(null);
+                setIsAddFindingModalOpen(true);
+              }}
+              className="text-xs h-8 gap-1.5 rounded-full px-3 bg-amber-600 hover:bg-amber-700 text-white font-bold shadow-xs active:scale-95 transition"
+            >
+              <Plus className="size-3.5" />
+              <span>+ Temuan</span>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className="text-xs h-8 gap-1 rounded-full px-2.5 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100"
+            >
+              <Link href={`/print/hse/osm/${s.id}`} target="_blank">
+                <Download className="size-3.5" />
+                <span className="hidden xs:inline">PDF</span>
+              </Link>
+            </Button>
+          </div>
         </div>
 
         <div className="p-4 space-y-4">
@@ -2000,9 +2182,54 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
 
           {/* Findings List */}
           <div className="space-y-3">
-            <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Daftar Temuan ({s.findings?.length || 0})
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <AlertTriangle className="size-3.5 text-amber-600" />
+                Daftar Temuan ({s.findings?.length || 0})
+              </div>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setNewFindingCondition("SUBSTANDARD");
+                  setNewFindingClassification(HSE_OSM_DEFAULT_CLASSIFICATIONS[0].name);
+                  setNewFindingDesc("");
+                  setNewFindingRiskLevel("MEDIUM");
+                  setNewFindingActionReq("");
+                  setNewFindingDueDate("");
+                  setNewFindingPhotos([]);
+                  setNewFindingError(null);
+                  setIsAddFindingModalOpen(true);
+                }}
+                className="bg-amber-600 hover:bg-amber-700 text-white text-xs h-7 px-2.5 rounded-lg font-bold gap-1 shadow-xs active:scale-95 transition"
+              >
+                <Plus className="size-3" />
+                Tambah Temuan
+              </Button>
             </div>
+
+            {(!s.findings || s.findings.length === 0) && (
+              <div className="p-6 rounded-xl border border-dashed text-center text-xs text-muted-foreground space-y-3 bg-white dark:bg-slate-900">
+                <p>Belum ada tiket temuan lapangan yang dicatat pada sesi OSM ini.</p>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setNewFindingCondition("SUBSTANDARD");
+                    setNewFindingClassification(HSE_OSM_DEFAULT_CLASSIFICATIONS[0].name);
+                    setNewFindingDesc("");
+                    setNewFindingRiskLevel("MEDIUM");
+                    setNewFindingActionReq("");
+                    setNewFindingDueDate("");
+                    setNewFindingPhotos([]);
+                    setNewFindingError(null);
+                    setIsAddFindingModalOpen(true);
+                  }}
+                  className="bg-amber-600 hover:bg-amber-700 text-white text-xs h-8 px-3 rounded-lg font-bold gap-1"
+                >
+                  <Plus className="size-3.5" />
+                  Tambah Temuan Pertama
+                </Button>
+              </div>
+            )}
 
             {s.findings?.map((f: any) => {
               const statusCfg =
@@ -2101,7 +2328,11 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                   {/* Footer status & Action buttons */}
                   <div className="flex items-center justify-between pt-2 border-t">
                     <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${statusCfg.badgeClass}`}>
-                      <span className={`size-1.5 rounded-full ${statusCfg.dotClass}`} />
+                      {f.status === "CLOSED" ? (
+                        <CheckCircle2 className="size-3 text-emerald-600" />
+                      ) : (
+                        <span className={`size-1.5 rounded-full ${statusCfg.dotClass}`} />
+                      )}
                       {statusCfg.label}
                     </span>
 
@@ -2151,6 +2382,282 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
             })}
           </div>
         </div>
+
+        {/* Modal Bottom Sheet: Tambah Temuan Baru pada Sesi OSM Ini */}
+        {isAddFindingModalOpen && (
+          <div className="fixed inset-0 bg-black/60 z-50 flex flex-col justify-end sm:justify-center sm:items-center p-0 sm:p-4 animate-in fade-in duration-200">
+            <div
+              className="fixed inset-0 -z-10"
+              onClick={() => {
+                if (!isSubmittingNewFinding) setIsAddFindingModalOpen(false);
+              }}
+            />
+            <div className="bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl max-h-[92vh] h-[90vh] w-full sm:max-w-md flex flex-col shadow-2xl overflow-hidden border">
+              {/* Header Modal */}
+              <div className="p-3.5 border-b flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
+                <div className="flex items-center gap-2.5">
+                  <div className="size-8 rounded-full bg-amber-100 dark:bg-amber-950 flex items-center justify-center text-amber-600 dark:text-amber-400">
+                    <Plus className="size-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold text-foreground">Tambah Temuan Baru</h2>
+                    <p className="text-[11px] text-muted-foreground truncate">
+                      Sesi: <span className="font-semibold text-foreground">{s.sessionNumber}</span> • {s.locationArea}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-8"
+                  onClick={() => setIsAddFindingModalOpen(false)}
+                  disabled={isSubmittingNewFinding}
+                >
+                  <X className="size-4" />
+                </Button>
+              </div>
+
+              {/* Form Content Scrollable */}
+              <div className="p-4 overflow-y-auto space-y-3.5 text-xs flex-1">
+                {/* 1. Kondisi Temuan: Substandard / Open vs Standard / Close */}
+                <div className="space-y-1.5">
+                  <Label className="text-[11px] font-bold text-foreground flex items-center justify-between">
+                    <span>Kondisi Temuan Lapangan <span className="text-red-500">*</span></span>
+                    <span className="text-[10px] text-muted-foreground font-normal">Pilih status kondisi</span>
+                  </Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setNewFindingCondition("SUBSTANDARD")}
+                      className={`p-2.5 rounded-xl border text-left flex flex-col justify-between transition-all ${
+                        newFindingCondition === "SUBSTANDARD"
+                          ? "bg-red-50 border-red-500 dark:bg-red-950/40 dark:border-red-600 ring-2 ring-red-500/20 shadow-xs"
+                          : "bg-background border-border hover:bg-muted/50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <AlertTriangle className={`size-3.5 shrink-0 ${newFindingCondition === "SUBSTANDARD" ? "text-red-600" : "text-muted-foreground"}`} />
+                        <span className={`text-xs font-bold leading-tight ${newFindingCondition === "SUBSTANDARD" ? "text-red-700 dark:text-red-300" : "text-foreground"}`}>
+                          Substandard / Open
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground line-clamp-2">
+                        Kondisi tidak aman / di bawah standar, perlu perbaikan
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setNewFindingCondition("STANDARD")}
+                      className={`p-2.5 rounded-xl border text-left flex flex-col justify-between transition-all ${
+                        newFindingCondition === "STANDARD"
+                          ? "bg-emerald-50 border-emerald-500 dark:bg-emerald-950/40 dark:border-emerald-600 ring-2 ring-emerald-500/20 shadow-xs"
+                          : "bg-background border-border hover:bg-muted/50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <CheckCircle2 className={`size-3.5 shrink-0 ${newFindingCondition === "STANDARD" ? "text-emerald-600" : "text-muted-foreground"}`} />
+                        <span className={`text-xs font-bold leading-tight ${newFindingCondition === "STANDARD" ? "text-emerald-700 dark:text-emerald-300" : "text-foreground"}`}>
+                          Standard / Close
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground line-clamp-2">
+                        Kondisi sesuai standar / Good Condition, langsung tuntas
+                      </span>
+                    </button>
+                  </div>
+                  {newFindingCondition === "STANDARD" && (
+                    <p className="text-[10px] text-emerald-700 dark:text-emerald-400 bg-emerald-50/60 dark:bg-emerald-950/30 p-2 rounded-lg border border-emerald-200 dark:border-emerald-900 flex items-center gap-1.5">
+                      <CheckCircle2 className="size-3.5 shrink-0 text-emerald-600" />
+                      Temuan ini langsung berstatus <strong>Standard / Close</strong> tanpa perlu tindakan perbaikan lanjutan.
+                    </p>
+                  )}
+                </div>
+
+                {/* 2. Tipe Klasifikasi */}
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-semibold text-muted-foreground">
+                    Tipe Klasifikasi (10 Kategori Standar KPC) <span className="text-red-500">*</span>
+                  </Label>
+                  <Select value={newFindingClassification} onValueChange={setNewFindingClassification}>
+                    <SelectTrigger className="text-xs h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      {HSE_OSM_DEFAULT_CLASSIFICATIONS.map((c, idx) => (
+                        <SelectItem key={idx} value={c.name} className="text-xs">
+                          {idx + 1}. {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* 3. Tingkat Risiko & Due Date */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-semibold text-muted-foreground">Tingkat Risiko</Label>
+                    <Select
+                      value={newFindingRiskLevel}
+                      onValueChange={(val) => setNewFindingRiskLevel(val as HseOsmRiskLevel)}
+                    >
+                      <SelectTrigger className="text-xs h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="LOW" className="text-xs">Low Risk</SelectItem>
+                        <SelectItem value="MEDIUM" className="text-xs">Medium Risk</SelectItem>
+                        <SelectItem value="HIGH" className="text-xs">High Risk</SelectItem>
+                        <SelectItem value="CRITICAL" className="text-xs">Critical Risk</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {newFindingCondition === "SUBSTANDARD" ? (
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-semibold text-muted-foreground">Target Selesai (Due Date)</Label>
+                      <Input
+                        type="date"
+                        value={newFindingDueDate}
+                        onChange={(e) => setNewFindingDueDate(e.target.value)}
+                        className="text-xs h-9"
+                      />
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-semibold text-muted-foreground">Status Verifikasi</Label>
+                      <div className="h-9 rounded-md border bg-muted/40 px-3 flex items-center text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold">
+                        Selesai (Close)
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. Deskripsi Masalah / Kondisi */}
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-semibold text-muted-foreground">
+                    Uraian Teks / Deskripsi Temuan <span className="text-red-500">*</span>
+                  </Label>
+                  <Textarea
+                    rows={4}
+                    placeholder={
+                      newFindingCondition === "STANDARD"
+                        ? "Jelaskan kondisi baik / pemenuhan standar keselamatan yang dipantau (misal: Penempatan Tools telah sesuai / Good Condition)..."
+                        : "Input paragraf deskripsi masalah atau kondisi tidak aman yang ditemukan..."
+                    }
+                    value={newFindingDesc}
+                    onChange={(e) => setNewFindingDesc(e.target.value)}
+                    className="text-xs resize-none"
+                    required
+                  />
+                </div>
+
+                {/* 5. Modul Kamera (Maks. 3 Foto) */}
+                <div className="space-y-1.5">
+                  <Label className="text-[11px] font-semibold text-muted-foreground">
+                    Modul Kamera (Batas Unggah 3 File Foto)
+                  </Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {newFindingPhotos.map((url, idx) => (
+                      <div
+                        key={idx}
+                        className="relative aspect-video rounded-lg border overflow-hidden bg-slate-950"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={resolveClientUploadUrl(url)}
+                          alt={`Foto ${idx + 1}`}
+                          className="size-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setNewFindingPhotos((prev) => prev.filter((_, i) => i !== idx))}
+                          className="absolute top-1 right-1 size-5 rounded-full bg-red-600 text-white flex items-center justify-center shadow"
+                        >
+                          <Trash2 className="size-3" />
+                        </button>
+                      </div>
+                    ))}
+
+                    {newFindingPhotos.length < 3 && (
+                      <label className="border-2 border-dashed rounded-lg aspect-video flex flex-col items-center justify-center cursor-pointer hover:border-amber-500 hover:bg-amber-50/20 transition-colors">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="hidden"
+                          onChange={(e) => handlePhotoUpload(e, "new_finding")}
+                          disabled={isUploadingNewFindingPhoto}
+                        />
+                        {isUploadingNewFindingPhoto ? (
+                          <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                        ) : (
+                          <>
+                            <Camera className="size-5 text-muted-foreground mb-0.5" />
+                            <span className="text-[10px] text-muted-foreground font-medium">Foto</span>
+                          </>
+                        )}
+                      </label>
+                    )}
+                  </div>
+                </div>
+
+                {/* 6. Rekomendasi Tindakan Perbaikan */}
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-semibold text-muted-foreground">
+                    Rekomendasi Tindakan Perbaikan {newFindingCondition === "STANDARD" ? "(Opsional)" : ""}
+                  </Label>
+                  <Input
+                    placeholder={
+                      newFindingCondition === "STANDARD"
+                        ? "Opsional: Sesuai Standar Keselamatan"
+                        : "Tindakan perbaikan yang direkomendasikan..."
+                    }
+                    value={newFindingActionReq}
+                    onChange={(e) => setNewFindingActionReq(e.target.value)}
+                    className="text-xs h-9"
+                  />
+                </div>
+
+                {/* Error Banner */}
+                {newFindingError && (
+                  <div className="rounded-lg bg-red-50 p-2.5 text-xs text-red-700 dark:bg-red-950/30 dark:text-red-300">
+                    {newFindingError}
+                  </div>
+                )}
+              </div>
+
+              {/* Sticky Footer: Action Buttons */}
+              <div className="p-3 border-t bg-white dark:bg-slate-900 sticky bottom-0 z-10 flex gap-2 shadow-lg">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsAddFindingModalOpen(false)}
+                  disabled={isSubmittingNewFinding}
+                  className="flex-1 text-xs h-10"
+                >
+                  Batal
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => handleCreateNewFinding(s.id)}
+                  disabled={isSubmittingNewFinding || isUploadingNewFindingPhoto}
+                  className="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs h-10 gap-1.5 shadow-md"
+                >
+                  {isSubmittingNewFinding ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" /> Menyimpan...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="size-4" /> Simpan Temuan
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Action Dialog Modal for Mobile */}
         {actionMode && actionFinding && (
