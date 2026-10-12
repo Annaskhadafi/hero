@@ -55,8 +55,14 @@ import {
   Users,
   Eye,
   CheckCircle2,
+  Send,
+  MessageSquare,
 } from 'lucide-react'
-import { createFormAction, deleteFormAction } from '@/app/dashboard/form-studio/actions'
+import {
+  createFormAction,
+  deleteFormAction,
+  broadcastWhatsAppFormAction,
+} from '@/app/dashboard/form-studio/actions'
 import { getFormBaseUrl } from '@/lib/form-config'
 
 export function FormStudioClient({
@@ -74,6 +80,13 @@ export function FormStudioClient({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null)
 
+  // Broadcast WhatsApp state
+  const [isBroadcastOpen, setIsBroadcastOpen] = useState(false)
+  const [broadcastForm, setBroadcastForm] = useState<any | null>(null)
+  const [broadcastPhones, setBroadcastPhones] = useState('')
+  const [broadcastCustomMessage, setBroadcastCustomMessage] = useState('')
+  const [isBroadcasting, setIsBroadcasting] = useState(false)
+
   const baseUrl = getFormBaseUrl()
 
   const totalForms = customForms.length
@@ -81,6 +94,49 @@ export function FormStudioClient({
   const totalSubmissions = customForms.reduce((acc, f) => acc + (f.completionCount || 0), 0)
   const avgCompletionRate =
     totalViews > 0 ? Math.round((totalSubmissions / totalViews) * 100) : 0
+
+  function openBroadcastDialog(form: any) {
+    setBroadcastForm(form)
+    const publicUrl = `${baseUrl}/f/${form.slug}`
+    setBroadcastCustomMessage(
+      `Halo Rekan/Bapak/Ibu,\n\nMohon kesediaannya untuk meluangkan waktu sejenak mengisi formulir/kuesioner resmi PT Chitra Paratama berikut:\n\n📋 *${form.name}*\n${form.description ? `_${form.description}_\n` : ''}\n🔗 *Link Pengisian:* ${publicUrl}\n\nMasukan Anda sangat berharga bagi peningkatan mutu dan layanan kami.\nTerima kasih! 🙏`
+    )
+    setIsBroadcastOpen(true)
+  }
+
+  async function handleSendBroadcast(e: React.FormEvent) {
+    e.preventDefault()
+    if (!broadcastForm) return
+
+    const phones = broadcastPhones
+      .split(/[\n,;]+/)
+      .map((p) => p.trim())
+      .filter(Boolean)
+
+    if (phones.length === 0) {
+      alert('Silakan masukkan minimal satu nomor WhatsApp tujuan.')
+      return
+    }
+
+    setIsBroadcasting(true)
+    try {
+      const res = await broadcastWhatsAppFormAction({
+        formId: broadcastForm.id,
+        phoneNumbers: phones,
+        customMessage: broadcastCustomMessage,
+      })
+
+      if (res.success) {
+        alert(`Berhasil memproses broadcast WhatsApp ke ${res.sentCount} nomor tujuan!`)
+        setIsBroadcastOpen(false)
+        setBroadcastPhones('')
+      } else {
+        alert(res.error || 'Gagal mengirim broadcast WhatsApp.')
+      }
+    } finally {
+      setIsBroadcasting(false)
+    }
+  }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
@@ -311,6 +367,16 @@ export function FormStudioClient({
                               </Button>
                             </Link>
 
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openBroadcastDialog(form)}
+                              className="gap-1.5 h-8 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800"
+                            >
+                              <MessageSquare className="h-3.5 w-3.5 text-emerald-600" />
+                              Broadcast WA
+                            </Button>
+
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
@@ -318,6 +384,10 @@ export function FormStudioClient({
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => openBroadcastDialog(form)}>
+                                  <MessageSquare className="h-4 w-4 mr-2 text-emerald-600" />
+                                  Broadcast WhatsApp
+                                </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => handleCopyLink(form.slug)}>
                                   {copiedSlug === form.slug ? (
                                     <>
@@ -358,6 +428,89 @@ export function FormStudioClient({
           )}
         </CardContent>
       </Card>
+
+      {/* DIALOG BROADCAST WHATSAPP */}
+      <Dialog open={isBroadcastOpen} onOpenChange={setIsBroadcastOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <form onSubmit={handleSendBroadcast}>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400">
+                <MessageSquare className="h-5 w-5" />
+                Broadcast Link Kuesioner via WhatsApp
+              </DialogTitle>
+              <DialogDescription>
+                Kirim pesan ajakan pengisian form langsung ke nomor WhatsApp responden, pelanggan, atau karyawan.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="grid gap-4 py-4">
+              <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-lg border text-xs space-y-1">
+                <div className="font-semibold text-slate-800 dark:text-slate-200">
+                  Formulir Target:
+                </div>
+                <div className="text-blue-600 font-medium truncate">
+                  {broadcastForm?.name}
+                </div>
+                <div className="text-[11px] text-slate-400 font-mono">
+                  {baseUrl}/f/{broadcastForm?.slug}
+                </div>
+              </div>
+
+              <div className="grid gap-1.5">
+                <Label htmlFor="phones" className="text-xs font-semibold">
+                  Nomor WhatsApp Responden (Dukungan Banyak Nomor)
+                </Label>
+                <Textarea
+                  id="phones"
+                  placeholder={`Contoh:\n081234567890\n082198765432\n+6281355554444`}
+                  value={broadcastPhones}
+                  onChange={(e) => setBroadcastPhones(e.target.value)}
+                  rows={4}
+                  className="font-mono text-xs"
+                  required
+                />
+                <span className="text-[11px] text-slate-400">
+                  Pisahkan dengan baris baru (Enter), koma (,), atau titik koma (;).
+                </span>
+              </div>
+
+              <div className="grid gap-1.5">
+                <Label htmlFor="waMessage" className="text-xs font-semibold">
+                  Pesan Template WhatsApp
+                </Label>
+                <Textarea
+                  id="waMessage"
+                  value={broadcastCustomMessage}
+                  onChange={(e) => setBroadcastCustomMessage(e.target.value)}
+                  rows={5}
+                  className="text-xs font-sans"
+                />
+                <span className="text-[11px] text-slate-400">
+                  Format teks tebal (*kata*) dan miring (_kata_) didukung.
+                </span>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsBroadcastOpen(false)}
+              >
+                Batal
+              </Button>
+              <Button
+                type="submit"
+                disabled={isBroadcasting}
+                className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+              >
+                <Send className="h-4 w-4" />
+                {isBroadcasting ? 'Mengirim...' : 'Kirim Broadcast'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </AdminPageShell>
   )
 }

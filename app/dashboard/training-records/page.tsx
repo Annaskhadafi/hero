@@ -176,6 +176,7 @@ export default async function TrainingRecordsPage({
     return matchesSite && matchesEmployee && matchesDepartment && matchesSection;
   });
 
+  const lmsUniqueEmployees = new Set(filteredLmsRows.map((row) => row.employeeId)).size;
   const lmsPassed = filteredLmsRows.filter((row) => row.status === "passed").length;
   const lmsInProgress = filteredLmsRows.filter((row) => row.progress > 0 && row.progress < 100).length;
   const lmsNotStarted = filteredLmsRows.filter((row) => !row.progress).length;
@@ -539,7 +540,7 @@ export default async function TrainingRecordsPage({
         <TabsContent value="chitra-learning" className="space-y-6 outline-none">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             {[
-              { label: "Total Peserta", value: lmsRows.length, icon: UserCheck, color: "text-blue-600", bg: "bg-blue-50" },
+              { label: "Total Peserta", value: lmsUniqueEmployees, icon: UserCheck, color: "text-blue-600", bg: "bg-blue-50" },
               { label: "Lulus", value: lmsPassed, icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50" },
               { label: "Sedang Berjalan", value: lmsInProgress, icon: Clock3, color: "text-amber-600", bg: "bg-amber-50" },
               { label: "Belum Lulus", value: lmsFailed, icon: XCircle, color: "text-rose-600", bg: "bg-rose-50" },
@@ -589,7 +590,7 @@ export default async function TrainingRecordsPage({
                 Hasil dan Progress Peserta
               </CardTitle>
               <CardDescription>
-                Data langsung dari enrollment Chitra Learning, termasuk site penempatan, skor evaluasi, batas kelulusan, dan detail progres.
+                Ringkasan progres pelatihan per karyawan dari Chitra Learning. Klik &quot;Detail&quot; untuk melihat rincian setiap materi, skor evaluasi, dan sertifikat.
               </CardDescription>
             </CardHeader>
             <CardContent>

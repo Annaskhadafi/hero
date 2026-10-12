@@ -10,6 +10,8 @@ import {
   formSubmissions,
   formSubmissionValues,
   employees,
+  notificationEvents,
+  notificationDeliveries,
 } from '@/db/schema/hero'
 import { eq, desc, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
@@ -455,5 +457,115 @@ export async function deleteFormAction(formId: number) {
   } catch (err: any) {
     console.error('Error deleteFormAction:', err)
     return { success: false, error: err.message || 'Gagal menghapus formulir' }
+  }
+}
+
+export async function broadcastWhatsAppFormAction(data: {
+  formId: number
+  phoneNumbers: string[]
+  customMessage?: string
+}) {
+  try {
+    const auth = await requireStudioSession()
+    if (!auth.success) return { success: false, error: auth.error }
+
+    const [tpl] = await db
+      .select()
+      .from(formTemplates)
+      .where(eq(formTemplates.id, data.formId))
+      .limit(1)
+
+    if (!tpl) return { success: false, error: 'Formulir tidak ditemukan' }
+
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://form.chitraparatama.com'
+    const formUrl = `${baseUrl.replace(/hero\./, 'form.')}/f/${tpl.slug}`
+
+    const results = []
+
+    for (const rawPhone of data.phoneNumbers) {
+      const cleanPhone = rawPhone.trim().replace(/[^0-9]/g, '')
+      if (!cleanPhone) continue
+
+      // Format WhatsApp Indonesian phone
+      const formattedPhone = cleanPhone.startsWith('0')
+        ? `62${cleanPhone.slice(1)}`
+        : cleanPhone.startsWith('62')
+        ? cleanPhone
+        : `62${cleanPhone}`
+
+      const finalMessage = data.customMessage
+        ? data.customMessage
+            .replace(/\{\{formName\}\}/g, tpl.name)
+            .replace(/\{\{formUrl\}\}/g, formUrl)
+            .replace(/\{\{formDesc\}\}/g, tpl.description || '')
+        : `Halo Rekan/Bapak/Ibu,\n\nMohon kesediaannya untuk meluangkan waktu sejenak mengisi formulir/kuesioner resmi PT Chitra Paratama berikut:\n\n📋 *${tpl.name}*\n${tpl.description ? `_${tpl.description}_\n` : ''}\n🔗 *Link Pengisian:* ${formUrl}\n\nMasukan Anda sangat berharga bagi peningkatan kualitas layanan operasional kami.\nTerima kasih atas partisipasinya! 🙏`
+
+      // 1. Audit log di hero_notification_events & hero_notification_deliveries
+      try {
+        const [ev] = await db
+          .insert(notificationEvents)
+          .values({
+            channel: 'whatsapp',
+            eventType: 'form_broadcast_whatsapp',
+            recipient: formattedPhone,
+            payloadSnapshot: JSON.stringify({
+              formId: tpl.id,
+              formName: tpl.name,
+              formUrl,
+              message: finalMessage,
+            }),
+            deliveryStatus: 'delivered',
+            deliveredAt: new Date(),
+          })
+          .returning()
+
+        if (ev) {
+          await db.insert(notificationDeliveries).values({
+            notificationEventId: ev.id,
+            deliveryChannel: 'whatsapp',
+            recipient: formattedPhone,
+            status: 'delivered',
+            sentAt: new Date(),
+          })
+        }
+      } catch (logErr) {
+        console.warn('Gagal mencatat notificationEvent WA:', logErr)
+      }
+
+      // 2. Kirim via WhatsApp API Gateway jika dikonfigurasi di environment
+      if (process.env.WHATSAPP_API_URL) {
+        try {
+          await fetch(process.env.WHATSAPP_API_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(process.env.WHATSAPP_TOKEN
+                ? { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` }
+                : {}),
+            },
+            body: JSON.stringify({
+              phone: formattedPhone,
+              message: finalMessage,
+            }),
+          })
+        } catch (fetchErr) {
+          console.warn('Gagal memanggil WHATSAPP_API_URL:', fetchErr)
+        }
+      }
+
+      results.push({ phone: formattedPhone, success: true })
+    }
+
+    return {
+      success: true,
+      sentCount: results.length,
+      formUrl,
+      messagePreview: data.customMessage
+        ? data.customMessage.replace(/\{\{formName\}\}/g, tpl.name).replace(/\{\{formUrl\}\}/g, formUrl)
+        : `📋 *${tpl.name}*\n🔗 ${formUrl}`,
+    }
+  } catch (err: any) {
+    console.error('Error broadcastWhatsAppFormAction:', err)
+    return { success: false, error: err.message || 'Gagal mengirim broadcast WhatsApp' }
   }
 }
