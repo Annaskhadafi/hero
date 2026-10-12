@@ -473,6 +473,59 @@ Silakan tinjau lampiran PDF RFR pada email ini dan lakukan tanda tangan digital 
   },
 
   {
+    name: 'RFR Submission Confirmation (To Requestor)',
+    templateCode: 'rfr_submission_confirmation',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'requester',
+    ccEmail: '',
+    subject: '[RFR Terkirim] Konfirmasi Pengajuan: {{rfrNumber}} - {{positionTitle}}',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:640px;margin:0 auto;background:#f8fafc;padding:20px">
+<div style="background:linear-gradient(135deg,#003461,#005b96);padding:24px;border-radius:10px 10px 0 0">
+  <h1 style="color:#ffffff;font-size:20px;margin:0;font-weight:700">PT CHITRA PARATAMA</h1>
+  <p style="color:#bfdbfe;font-size:12px;margin:4px 0 0;text-transform:uppercase;letter-spacing:1px">Konfirmasi Pengajuan RFR</p>
+</div>
+<div style="background:#ffffff;padding:28px 24px;border-radius:0 0 10px 10px;border:1px solid #e2e8f0;border-top:0">
+  <p style="color:#1e293b;font-size:14px;line-height:1.6;margin:0 0 16px">Yth. <strong>{{requestorName}}</strong>,</p>
+  <p style="color:#334155;font-size:14px;line-height:1.6;margin:0 0 20px">
+    Permohonan Rekrutmen (Request For Recruitment) Anda dengan nomor <strong>{{rfrNumber}}</strong> telah berhasil diajukan dan sedang diproses verifikasi persetujuan di sistem HERO.
+  </p>
+
+  <div style="background:#f1f5f9;border-left:4px solid #003461;padding:16px;border-radius:6px;margin:0 0 24px">
+    <table style="width:100%;font-size:13px;color:#334155;border-collapse:collapse">
+      <tr><td width="140" style="color:#64748b;padding:4px 0">No. RFR:</td><td style="font-weight:600;color:#0f172a;padding:4px 0">{{rfrNumber}}</td></tr>
+      <tr><td style="color:#64748b;padding:4px 0">Posisi:</td><td style="font-weight:600;color:#0f172a;padding:4px 0">{{positionTitle}} ({{numberOfPersons}} Orang)</td></tr>
+      <tr><td style="color:#64748b;padding:4px 0">Departemen:</td><td style="font-weight:600;color:#0f172a;padding:4px 0">{{sectionDepartment}}</td></tr>
+      <tr><td style="color:#64748b;padding:4px 0">Approver Aktif:</td><td style="font-weight:600;color:#0f172a;padding:4px 0">{{nextApproverName}} ({{nextApprovalStep}})</td></tr>
+    </table>
+  </div>
+
+  <div style="text-align:center;margin:28px 0">
+    <a href="{{detailUrl}}" style="background:#003461;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:12px 28px;border-radius:8px;display:inline-block">Pantau Status RFR</a>
+  </div>
+
+  <p style="color:#64748b;font-size:12px;margin:24px 0 0;line-height:1.5">
+    Salinan dokumen resmi permohonan RFR terlampir dalam format PDF pada email ini.<br>
+    Email ini dibuat secara otomatis oleh Human Capital HERO System.
+  </p>
+</div>
+</div>`,
+    textContent: `Yth. {{requestorName}},\n\nPermohonan RFR {{rfrNumber}} ({{positionTitle}}) telah berhasil diajukan.\nApprover aktif: {{nextApproverName}} ({{nextApprovalStep}}).\nLink pantau status: {{detailUrl}}\n\nPT Chitra Paratama`,
+    description: 'Konfirmasi bukti pengajuan RFR yang dikirimkan ke pemohon (requestor) beserta lampiran salinan PDF.',
+    variables: ['requestorName', 'rfrNumber', 'positionTitle', 'numberOfPersons', 'sectionDepartment', 'nextApproverName', 'nextApprovalStep', 'detailUrl'],
+    sampleValues: {
+      requestorName: 'Apriyanto',
+      rfrNumber: 'RFR-2026-0019',
+      positionTitle: 'Serviceman',
+      numberOfPersons: '20',
+      sectionDepartment: 'Service Operation',
+      nextApproverName: 'Adila Tri Arizona',
+      nextApprovalStep: 'HC Verification',
+      detailUrl: 'https://hero.chitraparatama.com/dashboard/hc/rfr',
+    },
+  },
+
+  {
     name: 'RFR Completed & Lowongan Generated',
     templateCode: 'rfr_completed_notification',
     templateType: 'Notification',

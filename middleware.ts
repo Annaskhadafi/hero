@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { isMaestroHost } from '@/lib/maestro-config'
+import { isFormHost } from '@/lib/form-config'
 
 const MAESTRO_SESSION_COOKIE = 'maestro_session_token'
 
@@ -52,10 +53,34 @@ export function middleware(request: NextRequest) {
   const forwardedHost = request.headers.get('x-forwarded-host')?.split(',')[0]?.trim()
   const requestHost = forwardedHost || request.headers.get('host') || url.host
   const isMaestro = isMaestroHost(requestHost)
+  const isForm = isFormHost(requestHost)
 
   const requestHeaders = new Headers(request.headers)
   requestHeaders.set('x-hero-dashboard-path', `${pathname}${url.search}`)
   requestHeaders.set('x-maestro-request', isMaestro ? '1' : '0')
+  requestHeaders.set('x-form-request', isForm ? '1' : '0')
+
+  // FORM RESPONDENT PORTAL ROUTING (form.chitraparatama.com / form.localhost:3000)
+  if (isForm) {
+    // If requesting root /, rewrite to form welcome / directory
+    if (pathname === '/') {
+      url.pathname = '/form'
+      return NextResponse.rewrite(url, { request: { headers: requestHeaders } })
+    }
+
+    // Direct slug at root /my-survey -> rewrite to /form/f/my-survey
+    // or /f/my-survey -> rewrite to /form/f/my-survey
+    if (!pathname.startsWith('/form') && !pathname.startsWith('/api')) {
+      if (pathname.startsWith('/f/')) {
+        url.pathname = `/form${pathname}`
+      } else {
+        url.pathname = `/form/f${pathname}`
+      }
+      return NextResponse.rewrite(url, { request: { headers: requestHeaders } })
+    }
+
+    return NextResponse.next({ request: { headers: requestHeaders } })
+  }
 
   // MAESTRO PORTAL ROUTING
   if (isMaestro) {

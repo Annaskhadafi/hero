@@ -17,6 +17,7 @@ import {
   Users,
   Pencil,
   Trash2,
+  Mail,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { AdminPageShell } from '@/components/admin-page-shell'
@@ -41,7 +42,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { getRfrDetail, deleteRfrRequest } from '@/app/actions/rfr'
+import { getRfrDetail, deleteRfrRequest, resendRfrApprovalNotification } from '@/app/actions/rfr'
 import { RfrDocumentPreview } from '@/components/rfr-document-preview'
 
 type RfrItem = {
@@ -151,6 +152,25 @@ export function RfrClientPage({ initialData, total, page, totalPages }: RfrClien
   const pendingCount = initialData.filter((r) => r.status === 'in_progress' && r.currentStepOrder > 1).length
   const approvedCount = initialData.filter((r) => r.status === 'approved').length
   const rejectedCount = initialData.filter((r) => r.status === 'rejected' || (r.status === 'in_progress' && r.currentStepOrder === 1)).length
+
+  const [isResendingEmail, setIsResendingEmail] = useState(false)
+
+  const handleResendEmail = async () => {
+    if (!previewDetail?.rfr?.id) return
+    setIsResendingEmail(true)
+    try {
+      const res = await resendRfrApprovalNotification(previewDetail.rfr.id)
+      if (res.success) {
+        toast.success(res.message || 'Email notifikasi RFR berhasil dikirim ulang!')
+      } else {
+        toast.error(res.error || 'Gagal mengirim ulang email notifikasi.')
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Terjadi kesalahan sistem saat kirim email.')
+    } finally {
+      setIsResendingEmail(false)
+    }
+  }
 
   const handlePrint = () => {
     if (previewDetail?.rfr?.id) {
@@ -388,6 +408,18 @@ export function RfrClientPage({ initialData, total, page, totalPages }: RfrClien
                     <span>Lihat Lowongan Kerja</span>
                   </Button>
                 </Link>
+              )}
+              {previewDetail?.rfr?.status === 'in_progress' && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleResendEmail}
+                  disabled={isResendingEmail}
+                  className="h-8 border-sky-300 bg-sky-50 hover:bg-sky-100 text-sky-800 font-semibold text-xs gap-1.5 rounded-lg"
+                >
+                  <Mail className="w-3.5 h-3.5 text-sky-700" />
+                  <span>{isResendingEmail ? 'Mengirim...' : 'Kirim Ulang Email'}</span>
+                </Button>
               )}
               <Button variant="outline" size="sm" onClick={handlePrint} className="h-8 rounded-lg border-slate-300 font-semibold text-xs gap-1.5">
                 <Printer className="w-3.5 h-3.5" />

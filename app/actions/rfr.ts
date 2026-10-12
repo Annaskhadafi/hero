@@ -466,34 +466,40 @@ async function sendRfrApprovalEmail(params: {
   const baseUrl = await getBaseUrl()
   const approvalLink = `${baseUrl}/review/rfr/${params.approvalToken}`
 
-  // Build PDF Attachment
-  const pdfBuffer = await generateRfrPdf({
-    rfrNumber: params.rfr.rfrNumber,
-    requestDate: params.rfr.requestDate,
-    joinDateEstimation: params.rfr.joinDateEstimation,
-    requestorName: params.rfr.requestorName,
-    sectionDepartment: params.rfr.sectionDepartment,
-    receivedByHr: params.rfr.receivedByHr,
-    positionTitle: params.rfr.positionTitle,
-    numberOfPersons: params.rfr.numberOfPersons,
-    briefJobDescription: params.rfr.briefJobDescription,
-    level: params.rfr.level,
-    reasonForRequest: params.rfr.reasonForRequest,
-    mppStatus: params.rfr.mppStatus,
-    reasonsIfNonBudgeted: params.rfr.reasonsIfNonBudgeted,
-    employmentStatus: params.rfr.employmentStatus,
-    contractDurationMonths: params.rfr.contractDurationMonths,
-    attachmentMpp: params.rfr.attachmentMpp,
-    attachmentJd: params.rfr.attachmentJd,
-    sexPreference: params.rfr.sexPreference,
-    agePreference: params.rfr.agePreference,
-    educationDegree: params.rfr.educationDegree,
-    educationBackground: params.rfr.educationBackground,
-    yearsOfExperience: params.rfr.yearsOfExperience,
-    fieldOfJobExperience: params.rfr.fieldOfJobExperience,
-    functionalCompetencies: params.rfr.functionalCompetencies,
-    approvals: params.approvals,
-  })
+  // Build PDF Attachment safely inside try-catch so PDF generator issue never breaks email delivery
+  let pdfBuffer: Buffer | null = null
+  try {
+    const rawPdf = await generateRfrPdf({
+      rfrNumber: params.rfr.rfrNumber,
+      requestDate: params.rfr.requestDate ? (typeof params.rfr.requestDate === 'object' ? params.rfr.requestDate.toISOString().slice(0, 10) : String(params.rfr.requestDate).slice(0, 10)) : '',
+      joinDateEstimation: params.rfr.joinDateEstimation ? (typeof params.rfr.joinDateEstimation === 'object' ? params.rfr.joinDateEstimation.toISOString().slice(0, 10) : String(params.rfr.joinDateEstimation).slice(0, 10)) : '',
+      requestorName: params.rfr.requestorName,
+      sectionDepartment: params.rfr.sectionDepartment,
+      receivedByHr: params.rfr.receivedByHr,
+      positionTitle: params.rfr.positionTitle,
+      numberOfPersons: params.rfr.numberOfPersons || 1,
+      briefJobDescription: params.rfr.briefJobDescription,
+      level: params.rfr.level,
+      reasonForRequest: params.rfr.reasonForRequest,
+      mppStatus: params.rfr.mppStatus,
+      reasonsIfNonBudgeted: params.rfr.reasonsIfNonBudgeted,
+      employmentStatus: params.rfr.employmentStatus,
+      contractDurationMonths: params.rfr.contractDurationMonths,
+      attachmentMpp: params.rfr.attachmentMpp,
+      attachmentJd: params.rfr.attachmentJd,
+      sexPreference: params.rfr.sexPreference,
+      agePreference: params.rfr.agePreference,
+      educationDegree: params.rfr.educationDegree,
+      educationBackground: params.rfr.educationBackground,
+      yearsOfExperience: params.rfr.yearsOfExperience,
+      fieldOfJobExperience: params.rfr.fieldOfJobExperience,
+      functionalCompetencies: params.rfr.functionalCompetencies,
+      approvals: params.approvals,
+    })
+    pdfBuffer = rawPdf
+  } catch (pdfErr) {
+    console.error('[RFR] Failed to generate PDF for approval email, continuing without attachment:', pdfErr)
+  }
 
   try {
     const hcPolicyCc = await getHumanCapitalPolicyCcRecipients()
@@ -509,7 +515,7 @@ async function sendRfrApprovalEmail(params: {
         sectionDepartment: params.rfr.sectionDepartment,
         positionTitle: params.rfr.positionTitle,
         numberOfPersons: String(params.rfr.numberOfPersons),
-        joinDateEstimation: params.rfr.joinDateEstimation,
+        joinDateEstimation: params.rfr.joinDateEstimation ? (typeof params.rfr.joinDateEstimation === 'object' ? params.rfr.joinDateEstimation.toISOString().slice(0, 10) : String(params.rfr.joinDateEstimation).slice(0, 10)) : '',
         approvalLink,
       },
       fallbackSubject: params.isResubmit
@@ -528,17 +534,112 @@ async function sendRfrApprovalEmail(params: {
         html: resolvedTemplate.html,
         templateCode: 'rfr_approver_notification',
         templateName: `RFR Approval #${params.rfr.rfrNumber}`,
-        attachments: [
-          {
-            filename: `${params.rfr.rfrNumber}_Request_For_Recruitment.pdf`,
-            content: pdfBuffer,
-            contentType: 'application/pdf',
-          },
-        ],
+        attachments: pdfBuffer
+          ? [
+              {
+                filename: `${params.rfr.rfrNumber}_Request_For_Recruitment.pdf`,
+                content: pdfBuffer,
+                contentType: 'application/pdf',
+              },
+            ]
+          : [],
       })
     }
   } catch (error) {
     console.error('[RFR] Email send failed:', error)
+  }
+}
+
+async function sendRfrSubmissionEmailToRequestor(params: {
+  to: string
+  requestorName: string
+  rfr: any
+  approvals: any[]
+  nextApproverName: string
+  nextApprovalStep: string
+}) {
+  const smtpSettings = await getSmtpSettings()
+  if (!smtpSettings || !params.to || !params.to.trim()) {
+    return
+  }
+
+  const baseUrl = await getBaseUrl()
+  const detailUrl = `${baseUrl}/dashboard/hc/rfr`
+
+  let pdfBuffer: Buffer | null = null
+  try {
+    const rawPdf = await generateRfrPdf({
+      rfrNumber: params.rfr.rfrNumber,
+      requestDate: params.rfr.requestDate ? (typeof params.rfr.requestDate === 'object' ? params.rfr.requestDate.toISOString().slice(0, 10) : String(params.rfr.requestDate).slice(0, 10)) : '',
+      joinDateEstimation: params.rfr.joinDateEstimation ? (typeof params.rfr.joinDateEstimation === 'object' ? params.rfr.joinDateEstimation.toISOString().slice(0, 10) : String(params.rfr.joinDateEstimation).slice(0, 10)) : '',
+      requestorName: params.rfr.requestorName,
+      sectionDepartment: params.rfr.sectionDepartment,
+      receivedByHr: params.rfr.receivedByHr,
+      positionTitle: params.rfr.positionTitle,
+      numberOfPersons: params.rfr.numberOfPersons || 1,
+      briefJobDescription: params.rfr.briefJobDescription || '',
+      level: params.rfr.level || 'staff',
+      reasonForRequest: params.rfr.reasonForRequest || 'new_headcount',
+      mppStatus: params.rfr.mppStatus || 'budgeted',
+      reasonsIfNonBudgeted: params.rfr.reasonsIfNonBudgeted || '',
+      employmentStatus: params.rfr.employmentStatus || 'contract',
+      contractDurationMonths: params.rfr.contractDurationMonths,
+      attachmentMpp: params.rfr.attachmentMpp,
+      attachmentJd: params.rfr.attachmentJd,
+      sexPreference: params.rfr.sexPreference || 'any',
+      agePreference: params.rfr.agePreference || 'any',
+      educationDegree: params.rfr.educationDegree || 'any',
+      educationBackground: Array.isArray(params.rfr.educationBackground) ? params.rfr.educationBackground : [],
+      yearsOfExperience: params.rfr.yearsOfExperience || 'any',
+      fieldOfJobExperience: params.rfr.fieldOfJobExperience || '',
+      functionalCompetencies: Array.isArray(params.rfr.functionalCompetencies) ? params.rfr.functionalCompetencies : [],
+      approvals: params.approvals,
+    })
+    pdfBuffer = rawPdf
+  } catch (err) {
+    console.error('[RFR] Failed to generate PDF for submission confirmation email:', err)
+  }
+
+  try {
+    const hcPolicyCc = await getHumanCapitalPolicyCcRecipients()
+    const resolvedTemplate = await resolveWorkflowTemplateContent({
+      templateCode: 'rfr_submission_confirmation',
+      cc: hcPolicyCc,
+      variables: {
+        requestorName: params.requestorName,
+        rfrNumber: params.rfr.rfrNumber,
+        positionTitle: params.rfr.positionTitle,
+        numberOfPersons: String(params.rfr.numberOfPersons || 1),
+        sectionDepartment: params.rfr.sectionDepartment,
+        nextApproverName: params.nextApproverName,
+        nextApprovalStep: params.nextApprovalStep,
+        detailUrl,
+      },
+      fallbackSubject: `[RFR Terkirim] Konfirmasi Pengajuan: ${params.rfr.rfrNumber} - ${params.rfr.positionTitle}`,
+      fallbackHtml: `<p>Yth. <strong>${params.requestorName}</strong>,</p><p>Permohonan Rekrutmen (RFR) dengan nomor <strong>${params.rfr.rfrNumber}</strong> untuk posisi <strong>${params.rfr.positionTitle}</strong> (${params.rfr.numberOfPersons || 1} orang) telah <strong>berhasil diajukan</strong> ke dalam sistem HERO.</p><p>Permohonan saat ini sedang menunggu verifikasi/persetujuan dari <strong>${params.nextApproverName}</strong> pada tahap <strong>${params.nextApprovalStep}</strong>.</p><p><a href="${detailUrl}">Pantau Status RFR di Dashboard</a></p><p>Salinan dokumen lengkap RFR terlampir dalam format PDF.</p>`,
+      fallbackText: `Yth. ${params.requestorName},\n\nPermohonan RFR ${params.rfr.rfrNumber} (${params.rfr.positionTitle}) telah berhasil diajukan dan sedang menunggu verifikasi dari ${params.nextApproverName} (${params.nextApprovalStep}).\n\nLink: ${detailUrl}`,
+    })
+
+    await sendEmailViaSmtp(smtpSettings, {
+      to: params.to.trim(),
+      cc: resolvedTemplate.ccList,
+      subject: resolvedTemplate.subject,
+      text: resolvedTemplate.text,
+      html: resolvedTemplate.html,
+      templateCode: 'rfr_submission_confirmation',
+      templateName: `RFR Konfirmasi Submission #${params.rfr.rfrNumber}`,
+      attachments: pdfBuffer
+        ? [
+            {
+              filename: `${params.rfr.rfrNumber}_Request_For_Recruitment.pdf`,
+              content: pdfBuffer,
+              contentType: 'application/pdf',
+            },
+          ]
+        : [],
+    })
+  } catch (error) {
+    console.error('[RFR] Submission confirmation email send failed:', error)
   }
 }
 
@@ -907,7 +1008,20 @@ export async function createRfrRequest(data: {
         rfr,
         approvals: insertedApprovals,
         approvalToken: firstPendingStep.approvalToken,
+        additionalCc: requestorEmail ? [requestorEmail] : [],
       })
+
+      // Send confirmation email directly to the requestor so they always receive official proof of RFR submission
+      if (requestorEmail) {
+        await sendRfrSubmissionEmailToRequestor({
+          to: requestorEmail,
+          requestorName: requestorInfo?.name || data.requestorName,
+          rfr,
+          approvals: insertedApprovals,
+          nextApproverName: firstPendingStep.approverName,
+          nextApprovalStep: firstPendingStep.roleLabel,
+        })
+      }
 
       // Bell notification to first pending step approver
       if (firstPendingStep.approverEmail) {
@@ -919,6 +1033,21 @@ export async function createRfrRequest(data: {
           title: `RFR Baru: ${rfrNumber}`,
           body: `${data.requestorName} mengajukan RFR untuk posisi ${data.positionTitle} (${data.numberOfPersons} orang). Menunggu verifikasi Anda di tahap ${firstPendingStep.roleLabel}.`,
           url: `${baseUrl}/review/rfr/${firstPendingStep.approvalToken}`,
+          tagPrefix: 'rfr',
+          metadata: { rfrNumber, positionTitle: data.positionTitle, sectionDepartment: data.sectionDepartment },
+        })
+      }
+
+      // Bell notification to requestor
+      if (requestorEmail) {
+        const baseUrl = await getBaseUrl()
+        notifyWorkflowBellRecipients({
+          recipientEmails: [requestorEmail],
+          eventType: 'rfr_submission_confirmation',
+          category: 'approval_requests',
+          title: `RFR ${rfrNumber} Diajukan`,
+          body: `Permohonan RFR untuk ${data.positionTitle} (${data.numberOfPersons} orang) telah berhasil diajukan dan sedang menunggu verifikasi dari ${firstPendingStep.approverName}.`,
+          url: `${baseUrl}/dashboard/hc/rfr`,
           tagPrefix: 'rfr',
           metadata: { rfrNumber, positionTitle: data.positionTitle, sectionDepartment: data.sectionDepartment },
         })
@@ -1640,6 +1769,81 @@ export async function deleteRfrRequest(id: number) {
   } catch (err: any) {
     console.error('Error deleting RFR request:', err)
     return { success: false, error: err?.message || 'Gagal menghapus dokumen RFR.' }
+  }
+}
+
+export async function resendRfrApprovalNotification(rfrId: number) {
+  try {
+    const detail = await getRfrDetail(rfrId)
+    if (!detail || !detail.rfr) {
+      return { success: false, error: 'Dokumen RFR tidak ditemukan.' }
+    }
+
+    const { rfr, approvals } = detail
+    if (rfr.status === 'approved') {
+      return { success: false, error: 'Dokumen RFR ini sudah selesai disetujui sepenuhnya.' }
+    }
+    if (rfr.status === 'rejected') {
+      return { success: false, error: 'Dokumen RFR ini berstatus ditolak.' }
+    }
+
+    const currentStepOrder = rfr.currentStepOrder
+    const pendingStep =
+      approvals.find((a) => a.stepOrder === currentStepOrder && a.status === 'pending') ||
+      approvals.find((a) => a.status === 'pending')
+
+    if (!pendingStep) {
+      return { success: false, error: 'Tidak ada langkah persetujuan yang sedang pending.' }
+    }
+
+    // Resolve requestor email from DB
+    let requestorEmail = ''
+    if (rfr.requestorEmployeeId) {
+      const [emp] = await db
+        .select({ email: employees.email })
+        .from(employees)
+        .where(eq(employees.id, rfr.requestorEmployeeId))
+        .limit(1)
+      requestorEmail = emp?.email || ''
+    }
+    if (!requestorEmail && rfr.requestorName) {
+      const [emp] = await db
+        .select({ email: employees.email })
+        .from(employees)
+        .where(eq(sql`lower(trim(${employees.name}))`, rfr.requestorName.trim().toLowerCase()))
+        .limit(1)
+      requestorEmail = emp?.email || ''
+    }
+
+    const totalSteps = approvals.length
+    await sendRfrApprovalEmail({
+      to: pendingStep.approverEmail,
+      approverName: pendingStep.approverName,
+      approvalStep: `${pendingStep.roleLabel} (Langkah ${pendingStep.stepOrder}/${totalSteps})`,
+      rfr,
+      approvals,
+      approvalToken: pendingStep.approvalToken,
+      additionalCc: requestorEmail ? [requestorEmail] : [],
+    })
+
+    if (requestorEmail) {
+      await sendRfrSubmissionEmailToRequestor({
+        to: requestorEmail,
+        requestorName: rfr.requestorName,
+        rfr,
+        approvals,
+        nextApproverName: pendingStep.approverName,
+        nextApprovalStep: pendingStep.roleLabel,
+      })
+    }
+
+    return {
+      success: true,
+      message: `Email notifikasi RFR berhasil dikirim ulang ke ${pendingStep.approverName} (${pendingStep.approverEmail})${requestorEmail ? ` dan CC ke pemohon (${requestorEmail})` : ''}.`,
+    }
+  } catch (error: any) {
+    console.error('[RFR] Resend email failed:', error)
+    return { success: false, error: error.message || 'Gagal mengirim ulang email notifikasi.' }
   }
 }
 

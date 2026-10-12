@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { CheckCircle2, Paperclip, FileText, Download, ExternalLink } from 'lucide-react'
+import { resolveClientUploadUrl } from '@/lib/client-upload-url'
 
 type RfrDocumentPreviewProps = {
   rfr: any
@@ -224,48 +225,98 @@ export function RfrDocumentPreview({
           {/* Uploaded File Previews (Images, PDFs, Documents) */}
           {Array.isArray(rfr.uploadedAttachmentUrls) && rfr.uploadedAttachmentUrls.length > 0 ? (
             <div className="space-y-4">
-              {rfr.uploadedAttachmentUrls.map((url: string, idx: number) => {
-                const cleanUrl = url.trim()
+              {rfr.uploadedAttachmentUrls.map((rawUrl: string, idx: number) => {
+                const cleanUrl = (rawUrl || '').trim()
+                const resolvedUrl = resolveClientUploadUrl(cleanUrl)
                 const filename = cleanUrl.split('/').pop() || `Lampiran_${idx + 1}`
                 const isPdf = cleanUrl.toLowerCase().endsWith('.pdf') || cleanUrl.toLowerCase().includes('.pdf')
                 const isImage = /\.(jpg|jpeg|png|webp|gif|svg)($|\?)/i.test(cleanUrl) || cleanUrl.startsWith('data:image')
 
+                const handleOpenInNewTab = (e: React.MouseEvent) => {
+                  e.preventDefault()
+                  if (typeof window !== 'undefined') {
+                    window.open(resolvedUrl, '_blank', 'noopener,noreferrer')
+                  }
+                }
+
                 return (
                   <div key={idx} className="border border-slate-300 rounded-lg p-3 bg-slate-50 text-slate-900 space-y-2">
-                    <div className="flex items-center justify-between text-xs font-semibold border-b pb-2 border-slate-200">
-                      <span className="flex items-center gap-2 truncate max-w-lg">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold border-b pb-2 border-slate-200">
+                      <span className="flex items-center gap-2 truncate max-w-md">
                         <FileText className="w-4 h-4 text-blue-600 shrink-0" />
-                        Lampiran {idx + 1}: {filename}
+                        <span className="truncate">Lampiran {idx + 1}: {filename}</span>
                       </span>
-                      <a
-                        href={cleanUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline text-xs font-semibold"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" /> Buka Fullscreen
-                      </a>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleOpenInNewTab}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border border-slate-300 text-blue-700 hover:bg-blue-50 rounded text-xs font-semibold shadow-sm transition-colors cursor-pointer"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" /> Buka di Tab Baru
+                        </button>
+                        <a
+                          href={resolvedUrl}
+                          download={filename}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-semibold shadow-sm transition-colors"
+                        >
+                          <Download className="w-3.5 h-3.5" /> Unduh
+                        </a>
+                      </div>
                     </div>
 
                     {/* Image Preview */}
                     {isImage && (
                       <div className="rounded border bg-black/5 p-2 flex justify-center max-h-[500px] overflow-hidden">
                         <img
-                          src={cleanUrl}
+                          src={resolvedUrl}
                           alt={filename}
                           className="max-h-[480px] max-w-full object-contain rounded shadow-sm"
                         />
                       </div>
                     )}
 
-                    {/* PDF Embedded View */}
+                    {/* PDF Embedded View with Robust Fallback */}
                     {isPdf && (
-                      <div className="rounded border bg-white h-[500px] overflow-hidden shadow-inner">
-                        <iframe
-                          src={cleanUrl}
-                          className="w-full h-full border-0"
-                          title={`Preview ${filename}`}
-                        />
+                      <div className="space-y-2">
+                        <div className="rounded border bg-white h-[520px] overflow-hidden shadow-inner relative">
+                          <object
+                            data={resolvedUrl}
+                            type="application/pdf"
+                            className="w-full h-full"
+                          >
+                            <iframe
+                              src={resolvedUrl}
+                              className="w-full h-full border-0"
+                              title={`Preview ${filename}`}
+                            >
+                              <div className="p-6 text-center space-y-3 bg-slate-50 h-full flex flex-col items-center justify-center">
+                                <FileText className="w-12 h-12 text-slate-400 mx-auto" />
+                                <p className="text-xs text-slate-600 max-w-sm">
+                                  Pratinjau PDF tidak didukung otomatis oleh browser pada perangkat ini. Silakan buka dokumen di tab baru atau unduh langsung.
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={handleOpenInNewTab}
+                                  className="px-4 py-2 bg-blue-600 text-white rounded text-xs font-bold hover:bg-blue-700"
+                                >
+                                  Buka Dokumen PDF
+                                </button>
+                              </div>
+                            </iframe>
+                          </object>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-slate-500 bg-slate-100/80 px-2.5 py-1.5 rounded border border-slate-200">
+                          <span>Dokumen PDF: {filename}</span>
+                          <button
+                            type="button"
+                            onClick={handleOpenInNewTab}
+                            className="text-blue-600 hover:text-blue-800 font-semibold underline flex items-center gap-1"
+                          >
+                            <ExternalLink className="w-3 h-3" /> Jika pratinjau tidak muncul, klik di sini untuk membuka PDF
+                          </button>
+                        </div>
                       </div>
                     )}
 
@@ -274,7 +325,8 @@ export function RfrDocumentPreview({
                       <div className="p-3 bg-white rounded border flex items-center justify-between">
                         <span className="text-xs text-slate-700 truncate">{filename}</span>
                         <a
-                          href={cleanUrl}
+                          href={resolvedUrl}
+                          download={filename}
                           target="_blank"
                           rel="noreferrer"
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded text-xs font-semibold hover:bg-blue-700 transition-colors"

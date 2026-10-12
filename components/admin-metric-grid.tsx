@@ -43,6 +43,7 @@ function getMetricIcon(label?: string, meta?: string) {
 
 export function AdminMetricGrid({
   items = [],
+  metrics,
   mode = "default",
 }: {
   items?: {
@@ -50,9 +51,22 @@ export function AdminMetricGrid({
     value: string;
     meta: string;
   }[];
+  metrics?: {
+    label: string;
+    value: string | number;
+    detail?: string;
+  }[];
   mode?: "default" | "compact";
 }) {
-  const safeItems = Array.isArray(items) ? items : [];
+  const safeItems = Array.isArray(metrics) && metrics.length > 0
+    ? metrics.map((m) => ({
+        label: m.label,
+        value: String(m.value),
+        meta: m.detail || '',
+      }))
+    : Array.isArray(items)
+    ? items
+    : [];
 
   if (mode === "compact") {
     return (

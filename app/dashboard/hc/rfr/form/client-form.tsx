@@ -262,7 +262,7 @@ export function RfrClientForm({
         formData.append('file', file)
         const res = await uploadFile(formData)
         if (res.success) {
-          targetUrl = res.readableUrl || res.url
+          targetUrl = res.readableUrl || res.url || null
         } else {
           throw new Error(res.error || 'Gagal mengunggah file')
         }

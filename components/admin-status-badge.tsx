@@ -71,7 +71,8 @@ const toneMap: Record<string, string> = {
   before_due: "bg-amber-100 text-amber-900",
 };
 
-function normalize(value: string) {
+function normalize(value?: string | null) {
+  if (!value) return "";
   return value.toLowerCase().replaceAll(" ", "_");
 }
 
@@ -146,13 +147,26 @@ const labelMap: Record<string, string> = {
   before_due: "Sebelum jatuh tempo",
 };
 
-export function AdminStatusBadge({ value }: { value: string }) {
-  const key = normalize(value);
+export function AdminStatusBadge({
+  value,
+  status,
+  customLabels,
+}: {
+  value?: string | null;
+  status?: string | null;
+  customLabels?: Record<string, string>;
+}) {
+  const actualValue = value ?? status ?? "";
+  const key = normalize(actualValue);
   const className = toneMap[key] ?? "bg-slate-100 text-slate-800";
+  const displayLabel =
+    customLabels?.[key] ??
+    labelMap[key] ??
+    (actualValue ? actualValue.replaceAll("_", " ") : "-");
 
   return (
     <Badge className={`rounded-full border-0 px-3 py-1 font-medium ${className}`}>
-      {labelMap[key] ?? value.replaceAll("_", " ")}
+      {displayLabel}
     </Badge>
   );
 }
