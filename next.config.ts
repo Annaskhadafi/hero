@@ -107,6 +107,33 @@ const nextConfig: NextConfig = {
         ],
       },
       {
+        source: '/manifest.webmanifest',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'no-cache, must-revalidate',
+          },
+        ],
+      },
+      {
+        source: '/sw.js',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'no-cache, must-revalidate',
+          },
+        ],
+      },
+      {
+        source: '/pwa/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+      {
         source: '/models/:path*',
         headers: [
           {
