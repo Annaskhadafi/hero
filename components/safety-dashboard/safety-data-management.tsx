@@ -55,6 +55,7 @@ import type { getSafetyDashboardData } from "@/lib/safety-dashboard/queries"
 import { cn } from "@/lib/utils"
 import { deleteAllSiteManHoursAction } from "@/app/dashboard/safety/actions"
 import { useRouter } from "next/navigation"
+import { MonthlySummaryTabContent } from "@/components/safety-dashboard/monthly-summary-tab-content"
 
 type SafetyData = Awaited<ReturnType<typeof getSafetyDashboardData>>
 
@@ -442,19 +443,7 @@ export function SafetyDataManagement({ data }: { data: SafetyData }) {
       </TabsContent>
 
       <TabsContent value="monthly-summary">
-        <CollapsibleTabDashboard title="Monthly Summary Overview">
-          <MonthlySummaryDashboard data={data} />
-        </CollapsibleTabDashboard>
-        <AdminTableCard
-          title="Incident monthly summary"
-          description="Form, import, export, dan CRUD rekap incident bulanan."
-          columns={["Month", "Fatality", "LDI", "RWDI", "MTC", "FA", "PD", "NR", "ENV", "Total", "Action"]}
-          dateFilter
-          access={data.access}
-          actions={<CreateMonthlySummaryButton access={data.access} options={data.filterOptions} />}
-          rows={data.monthlySummaries.map((row) => [formatDate(row.month), row.fatality, row.lostDayInjury, row.restrictedWorkDayInjury, row.medicalTreatmentCase, row.firstAid, row.propertyDamage, row.nearMissReport, row.environmental, row.totalEvents, <MonthlySummaryRowActions key={`${row.id}-actions`} row={row} access={data.access} options={data.filterOptions} />])}
-          rowAttributes={data.monthlySummaries.map((row) => ({ "data-date-value": `${row.month}` }))}
-        />
+        <MonthlySummaryTabContent data={data} />
       </TabsContent>
 
       <TabsContent value="certifications">

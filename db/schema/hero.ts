@@ -935,6 +935,37 @@ export const safetyIncidentSummaryMonthly = pgTable('hero_safety_incident_summar
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
+export const safetySiteMonthlySummary = pgTable('hero_safety_site_monthly_summary', {
+  id: serial('id').primaryKey(),
+  siteId: integer('site_id').notNull().references(() => sites.id, { onDelete: 'cascade' }),
+  month: date('month').notNull(),
+
+  // Lagging K3
+  nearmiss: integer('nearmiss').notNull().default(0),
+  propertyDamage: integer('property_damage').notNull().default(0),
+  firstAid: integer('first_aid').notNull().default(0),
+  medicalTreatment: integer('medical_treatment').notNull().default(0),
+  environmental: integer('environmental').notNull().default(0),
+  majorInjury: integer('major_injury').notNull().default(0),
+  fatality: integer('fatality').notNull().default(0),
+
+  // Lagging Health
+  safetyManHours: decimal('safety_man_hours', { precision: 14, scale: 2 }).notNull().default('0'),
+  totalManpower: integer('total_manpower').notNull().default(0),
+  sickEmployeesCount: integer('sick_employees_count').notNull().default(0),
+  lostDaysCount: integer('lost_days_count').notNull().default(0),
+  sickLettersCount: integer('sick_letters_count').notNull().default(0),
+  occupationalDiseasesCount: integer('occupational_diseases_count').notNull().default(0),
+
+  // Catatan & Target
+  incidentNotes: text('incident_notes').notNull().default('Nihil'),
+
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => ({
+  unqSiteMonth: uniqueIndex('hero_safety_site_monthly_summary_site_month_idx').on(t.siteId, t.month),
+}))
+
 export const safetyIncidentReports = pgTable('hero_safety_incident_reports', {
   id: serial('id').primaryKey(),
   workerName: text('worker_name').notNull().default(''),
