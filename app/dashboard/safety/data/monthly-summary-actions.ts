@@ -302,7 +302,7 @@ export async function deleteSiteMonthlySummaryAction(id: number) {
   }
 }
 
-export const SITE_GEO_COORDINATES_PRESET: Record<string, { lat: string; lng: string }> = {
+const SITE_GEO_COORDINATES_PRESET: Record<string, { lat: string; lng: string }> = {
   'PKA Musi Rawas': { lat: '-3.2000', lng: '103.0500' },
   'CDE - Bengkulu': { lat: '-3.4500', lng: '102.5200' },
   'Sebamban': { lat: '-3.6000', lng: '115.6300' },
