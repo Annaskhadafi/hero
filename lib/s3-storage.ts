@@ -221,9 +221,9 @@ export async function uploadProfilePhotoToS3(file: File) {
         Bucket: serverEnv.s3BucketName,
         Key: key,
         Body: buffer,
+        ContentLength: buffer.length,
         ContentType: contentType,
         CacheControl: "public, max-age=31536000, immutable",
-        ACL: "public-read",
       }),
     );
   } catch (aclError: any) {
@@ -233,6 +233,7 @@ export async function uploadProfilePhotoToS3(file: File) {
           Bucket: serverEnv.s3BucketName,
           Key: key,
           Body: buffer,
+          ContentLength: buffer.length,
           ContentType: contentType,
           CacheControl: "public, max-age=31536000, immutable",
         }),
@@ -263,27 +264,28 @@ export async function uploadAnyFileToS3(file: File, prefixOverride?: string, abo
         Bucket: serverEnv.s3BucketName,
         Key: key,
         Body: buffer,
+        ContentLength: buffer.length,
         ContentType: contentType,
         CacheControl: "public, max-age=31536000, immutable",
-        ACL: "public-read",
       }),
       { abortSignal },
     );
-  } catch (aclError: any) {
-    // If bucket owner enforced disables ACLs, retry without ACL
-    if (aclError?.name === "AccessControlListNotSupported" || String(aclError?.message || "").includes("ACL")) {
+  } catch (putError: any) {
+    // If standard put failed, retry once with fallback
+    if (putError?.name === "AccessControlListNotSupported" || String(putError?.message || "").includes("ACL") || putError?.name !== "AbortError") {
       await client.send(
         new PutObjectCommand({
           Bucket: serverEnv.s3BucketName,
           Key: key,
           Body: buffer,
+          ContentLength: buffer.length,
           ContentType: contentType,
           CacheControl: "public, max-age=31536000, immutable",
         }),
         { abortSignal },
       );
     } else {
-      throw aclError;
+      throw putError;
     }
   }
 
@@ -329,6 +331,7 @@ export async function uploadBufferToS3(
       Bucket: serverEnv.s3BucketName,
       Key: key,
       Body: buffer,
+      ContentLength: buffer.length,
       ContentType: contentType,
       CacheControl: "private, max-age=86400",
     }),

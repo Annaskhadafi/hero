@@ -7,6 +7,9 @@ import {
   masterDepartments,
   masterSections,
   sites,
+  activityRouteGroups,
+  activityRouteItems,
+  activityLibraries,
 } from '@/db/schema/hero'
 import { and, desc, eq, ilike, inArray, isNull, or, sql } from 'drizzle-orm'
 
@@ -32,6 +35,9 @@ export interface UtilitiesActivityBar {
   totalQuantity: number
   totalDurationHours: number
   percentage: number
+  groupName?: string | null
+  unitCount: number
+  unitNumbers: string[]
 }
 
 export interface UtilitiesDailyTrend {
@@ -409,6 +415,9 @@ export async function getUtilitiesDashboardData(
     id: number
     sessionId: number
     snapshotLabel: string
+    snapshotGroupName: string | null
+    routeGroupName?: string | null
+    libraryCategory?: string | null
     unitNumber: string | null
     tireCount: number | null
     snapshotPayload: string | null
@@ -422,6 +431,9 @@ export async function getUtilitiesDashboardData(
         id: dailyActivitySessionItems.id,
         sessionId: dailyActivitySessionItems.sessionId,
         snapshotLabel: dailyActivitySessionItems.snapshotLabel,
+        snapshotGroupName: dailyActivitySessionItems.snapshotGroupName,
+        routeGroupName: activityRouteGroups.groupName,
+        libraryCategory: activityLibraries.category,
         unitNumber: dailyActivitySessionItems.unitNumber,
         tireCount: dailyActivitySessionItems.tireCount,
         snapshotPayload: dailyActivitySessionItems.snapshotPayload,
@@ -429,6 +441,9 @@ export async function getUtilitiesDashboardData(
         endedAt: dailyActivitySessionItems.endedAt,
       })
       .from(dailyActivitySessionItems)
+      .leftJoin(activityRouteItems, eq(dailyActivitySessionItems.routeItemId, activityRouteItems.id))
+      .leftJoin(activityRouteGroups, eq(activityRouteItems.routeGroupId, activityRouteGroups.id))
+      .leftJoin(activityLibraries, eq(dailyActivitySessionItems.libraryActivityId, activityLibraries.id))
       .where(inArray(dailyActivitySessionItems.sessionId, sessionIds))
   }
 
@@ -445,7 +460,15 @@ export async function getUtilitiesDashboardData(
   const uniqueTechnicians = new Set<number>()
   const activeDates = new Set<string>()
 
-  const activityTotalsMap = new Map<string, { qty: number; durationHours: number }>()
+  const activityTotalsMap = new Map<
+    string,
+    {
+      qty: number
+      durationHours: number
+      groups: Set<string>
+      units: Set<string>
+    }
+  >()
   const dailyTotalsMap = new Map<string, { qty: number; durationHours: number; techs: Set<number> }>()
   const techTotalsMap = new Map<number, {
     info: { employeeId: number; name: string; sn: string; jobTitle: string }
@@ -488,10 +511,27 @@ export async function getUtilitiesDashboardData(
       uniqueUnits.add(cleanUnit)
     }
 
+    const itemGroup =
+      (item.snapshotGroupName || '').trim() ||
+      (item.routeGroupName || '').trim() ||
+      (item.libraryCategory || '').trim() ||
+      ''
+
     // 1. Activity Bar Chart Accumulation
-    const currAct = activityTotalsMap.get(label) || { qty: 0, durationHours: 0 }
+    const currAct = activityTotalsMap.get(label) || {
+      qty: 0,
+      durationHours: 0,
+      groups: new Set<string>(),
+      units: new Set<string>(),
+    }
     currAct.qty += qty
     currAct.durationHours = Math.round((currAct.durationHours + durHours) * 10) / 10
+    if (itemGroup) {
+      currAct.groups.add(itemGroup)
+    }
+    if (cleanUnit && cleanUnit !== '-' && cleanUnit !== 'NONE') {
+      currAct.units.add(cleanUnit)
+    }
     activityTotalsMap.set(label, currAct)
 
     // 2. Daily Trend Accumulation
@@ -550,12 +590,19 @@ export async function getUtilitiesDashboardData(
   const activityColumns = sortedActivities.map(([label]) => label)
 
   // 7. Format Activity Bars for Chart
-  const activityBars: UtilitiesActivityBar[] = sortedActivities.map(([label, val]) => ({
-    activityLabel: label,
-    totalQuantity: val.qty,
-    totalDurationHours: val.durationHours,
-    percentage: totalOutput > 0 ? Math.round((val.qty / totalOutput) * 100) : 0,
-  }))
+  const activityBars: UtilitiesActivityBar[] = sortedActivities.map(([label, val]) => {
+    const groupList = Array.from(val.groups).filter(Boolean)
+    const unitList = Array.from(val.units).sort()
+    return {
+      activityLabel: label,
+      totalQuantity: val.qty,
+      totalDurationHours: val.durationHours,
+      percentage: totalOutput > 0 ? Math.round((val.qty / totalOutput) * 100) : 0,
+      groupName: groupList.length > 0 ? groupList.join(', ') : null,
+      unitCount: unitList.length,
+      unitNumbers: unitList,
+    }
+  })
 
   // 8. Format Daily Trends (in chronological order)
   // Ensure every day in date range is included for a smooth chart

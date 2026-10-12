@@ -488,10 +488,18 @@ export function UtilitiesClientDashboard({
                     if (active && payload && payload.length) {
                       const p = payload[0].payload as (typeof initialData.activityBars)[0]
                       return (
-                        <div className="bg-slate-900/95 backdrop-blur-md text-white rounded-xl p-3.5 text-xs shadow-xl border border-slate-700 min-w-[200px]">
+                        <div className="bg-slate-900/95 backdrop-blur-md text-white rounded-xl p-3.5 text-xs shadow-xl border border-slate-700 min-w-[220px] max-w-[280px]">
                           <div className="font-bold text-sky-300 pb-1.5 border-b border-slate-700 leading-tight">
                             {p.activityLabel}
                           </div>
+                          {p.groupName && (
+                            <div className="mt-2 px-2 py-1 rounded-md bg-sky-950/60 border border-sky-800/50 flex items-center justify-between gap-2 text-[11px]">
+                              <span className="text-slate-400">Group:</span>
+                              <span className="font-semibold text-sky-300 text-right truncate">
+                                {p.groupName}
+                              </span>
+                            </div>
+                          )}
                           <div className="mt-2 space-y-1.5 font-sans">
                             <div className="flex justify-between items-center">
                               <span className="text-slate-400">Total Output / Vol:</span>
@@ -499,6 +507,25 @@ export function UtilitiesClientDashboard({
                                 {p.totalQuantity} Ban/Satuan
                               </span>
                             </div>
+                            {p.unitCount > 0 && (
+                              <div className="pt-1 border-t border-slate-800/80 space-y-0.5">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-slate-400">Total Unit:</span>
+                                  <span className="font-mono font-bold text-amber-300">
+                                    {p.unitCount} Unit
+                                  </span>
+                                </div>
+                                <div
+                                  className="text-[10px] text-slate-400 font-mono text-right truncate"
+                                  title={(p.unitNumbers || []).join(', ')}
+                                >
+                                  ({(p.unitNumbers || []).slice(0, 4).join(', ')}
+                                  {(p.unitNumbers || []).length > 4
+                                    ? `, +${(p.unitNumbers || []).length - 4}`
+                                    : ''})
+                                </div>
+                              </div>
+                            )}
                             <div className="flex justify-between items-center">
                               <span className="text-slate-400">Total Durasi:</span>
                               <span className="font-mono font-semibold text-emerald-400">

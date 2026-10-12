@@ -126,9 +126,9 @@ export async function uploadFile(formData: FormData) {
         const result =
           uploadTarget === "attendance"
             ? await uploadAttendancePhotoToS3(fileToUpload)
-            : await uploadAnyFileToS3(fileToUpload);
+            : await uploadAnyFileToS3(fileToUpload, undefined, AbortSignal.timeout(30_000));
         const proxyUrl = `/api/uploads/${result.key}`;
-        return { success: true, url: proxyUrl, readableUrl: proxyUrl };
+        return { success: true, url: proxyUrl, readableUrl: proxyUrl, fileName: fileToUpload.name, fileSize: fileToUpload.size };
       } catch (s3Error) {
         console.warn("S3 Upload failed, falling back to local storage:", s3Error);
       }
@@ -147,7 +147,7 @@ export async function uploadFile(formData: FormData) {
     await writeFile(filePath, buffer);
 
     const publicUrl = `/api/uploads/${uniqueName}`;
-    return { success: true, url: publicUrl, readableUrl: publicUrl };
+    return { success: true, url: publicUrl, readableUrl: publicUrl, fileName: fileToUpload.name, fileSize: fileToUpload.size };
   } catch (error: any) {
     console.error("Upload error:", error);
     return { success: false, error: error?.message || "Failed to upload file to Object Storage" };
