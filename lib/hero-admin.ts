@@ -8814,6 +8814,7 @@ export const getSidebarDataForUser = cache(async function getSidebarDataForUser(
           .map((item) => ({
             ...item,
             url: item.isIframe ? `/dashboard/iframe/${item.id}` : item.url,
+            openInNewTab: item.isIframe ? false : item.openInNewTab,
           }))
       )
 

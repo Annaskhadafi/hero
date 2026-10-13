@@ -1246,7 +1246,7 @@ export async function manageActivityLibraryAction(formData: FormData) {
         ? [payload.siteId]
         : []
 
-  const siteId = siteIds.includes(-1) ? null : (siteIds[0] ?? null)
+  const siteId = siteIds.includes(-1) ? -1 : (siteIds[0] ?? null)
 
   const departmentIds =
     payload.departmentIds.length > 0
@@ -1320,7 +1320,7 @@ export async function manageActivityLibraryAction(formData: FormData) {
     await db.update(activityLibraries).set(values).where(eq(activityLibraries.id, libraryActivityId))
   }
 
-  if (libraryActivityId) {
+  if (libraryActivityId && payload.isGroupActivity) {
     const existingItems = await db
       .select({ id: activityRouteItems.id, routeGroupId: activityRouteItems.routeGroupId })
       .from(activityRouteItems)
@@ -1355,7 +1355,7 @@ export async function manageActivityLibraryAction(formData: FormData) {
       )
     }
 
-    if (payload.isGroupActivity && payload.childActivityIds.length > 0) {
+    if (payload.childActivityIds.length > 0) {
       const groupName = `Group: ${payload.activityName}`
       const searchCodes = Array.from(
         new Set([`GRP-${payload.activityCode}`, existingLib ? `GRP-${existingLib.activityCode}` : null].filter(Boolean))
@@ -1375,9 +1375,12 @@ export async function manageActivityLibraryAction(formData: FormData) {
         )
         .limit(1)
 
-      const templateSiteId = siteIds.length === 1 && !siteIds.includes(-1) ? siteIds[0] : null
+      const isNonGlobal = siteIds.includes(-1)
+      const templateSiteId = siteIds.length === 1 && !siteIds.includes(-1) ? siteIds[0] : (isNonGlobal ? -1 : null)
       const templateDeptId = departmentIds.length === 1 ? departmentIds[0] : null
       const templateSecId = sectionIds.length === 1 ? sectionIds[0] : null
+      const templateIsActive = payload.isActive && !isNonGlobal
+      const templateMobileEnabled = !isNonGlobal
 
       let autoTemplateId = existingTemplates[0]?.id
       if (!autoTemplateId) {
@@ -1385,8 +1388,8 @@ export async function manageActivityLibraryAction(formData: FormData) {
           routeCode: `GRP-${payload.activityCode}`,
           routeName: groupName,
           description: `Auto-generated group for ${payload.activityName}`,
-          isActive: true,
-          mobileEnabled: true,
+          isActive: templateIsActive,
+          mobileEnabled: templateMobileEnabled,
           siteId: templateSiteId,
           departmentId: templateDeptId,
           sectionId: templateSecId,
@@ -1398,8 +1401,8 @@ export async function manageActivityLibraryAction(formData: FormData) {
         await db.update(activityRouteTemplates).set({
           routeCode: `GRP-${payload.activityCode}`,
           routeName: groupName,
-          isActive: true,
-          mobileEnabled: true,
+          isActive: templateIsActive,
+          mobileEnabled: templateMobileEnabled,
           siteId: templateSiteId,
           departmentId: templateDeptId,
           sectionId: templateSecId,
@@ -3728,7 +3731,15 @@ export async function updateDailyActivityConfigAction(input: FormData | {
   const configValue = rawData.configValue !== undefined && rawData.configValue !== null ? String(rawData.configValue).trim() : existingConfig.configValue
   const valueType = rawData.valueType ? String(rawData.valueType) : existingConfig.valueType
   const description = rawData.description !== undefined && rawData.description !== null ? String(rawData.description).trim() : existingConfig.description
-  const siteId = rawData.siteId !== undefined && rawData.siteId !== null && rawData.siteId !== '' ? Number(rawData.siteId) : existingConfig.siteId
+  let siteId: number | null
+  if (rawData.siteId === undefined) {
+    siteId = existingConfig.siteId
+  } else if (rawData.siteId === null || rawData.siteId === '' || rawData.siteId === 'global' || rawData.siteId === 'all' || rawData.siteId === 'null') {
+    siteId = null
+  } else {
+    const num = Number(rawData.siteId)
+    siteId = isNaN(num) || num <= 0 ? null : num
+  }
   const isActive = rawData.isActive !== undefined ? Boolean(rawData.isActive) : existingConfig.isActive
 
   await db

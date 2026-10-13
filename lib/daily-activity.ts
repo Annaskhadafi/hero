@@ -1383,6 +1383,10 @@ async function ensureDailyActivityTables() {
 
   await db.execute(sql`
     alter table hero_activity_libraries add column if not exists site_id integer references hero_sites(id) on delete set null;
+    alter table hero_activity_libraries add column if not exists site_ids jsonb default '[]'::jsonb;
+    alter table hero_activity_libraries add column if not exists department_ids jsonb default '[]'::jsonb;
+    alter table hero_activity_libraries add column if not exists section_ids jsonb default '[]'::jsonb;
+    alter table hero_activity_libraries add column if not exists requires_tire_count boolean not null default false;
   `)
 
   await db.execute(sql`

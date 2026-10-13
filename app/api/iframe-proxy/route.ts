@@ -95,11 +95,8 @@ export async function GET(req: NextRequest) {
       </head>
       <body>
         <div class="card">
-          <h2>Gagal Memuat Lewat Proxy</h2>
-          <p>Sistem tidak dapat mengambil konten dari alamat <code>${encodeURIComponent(targetUrl)}</code>: ${error.message || "Koneksi terputus"}</p>
-          <a href="${targetUrl}" target="_blank" rel="noopener noreferrer" class="btn">
-            Buka Langsung di Tab Baru &rarr;
-          </a>
+          <h2>Gagal Memuat Konten</h2>
+          <p>Sistem tidak dapat memuat konten halaman terproteksi ini: ${error.message || "Koneksi ke server tujuan terputus"}.</p>
         </div>
       </body>
       </html>

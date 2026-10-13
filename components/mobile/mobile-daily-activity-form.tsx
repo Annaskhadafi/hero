@@ -1835,11 +1835,18 @@ export function MobileDailyActivityForm({
                 ? baseLibraryLookup.get(String(item.libraryActivityId))
                 : (item.itemCode || item.libraryCode ? baseLibraryLookup.get(String(item.itemCode || item.libraryCode).trim().toLowerCase()) : null)
 
+              // Abaikan jika aktivitas terhubung ke library tetapi tidak ada di baseLibraryLookup
+              // (karena berstatus Non-Global [-1] atau di luar scope karyawan)
+              if (item.libraryActivityId != null && !baseLib) {
+                continue
+              }
+
               // Abaikan jika aktivitas bertanda Non-Global (-1)
               if (
                 (baseLib?.siteIds && baseLib.siteIds.includes(-1)) ||
                 baseLib?.siteId === -1 ||
-                (item as any)?.siteIds?.includes(-1)
+                (item as any)?.siteIds?.includes(-1) ||
+                (item as any)?.siteId === -1
               ) {
                 continue
               }
@@ -1988,8 +1995,20 @@ export function MobileDailyActivityForm({
           }
         }
 
-        // Note: Do NOT add item.libraryActivityId to groupedLibraryIdSet.
-        // Individual child activities must remain selectable and counted in the library.
+        // Child activities already part of a group should not appear in standalone list
+        for (const item of group.items || []) {
+          if (item.libraryActivityId != null) {
+            groupedLibraryIdSet.add(String(item.libraryActivityId))
+          }
+          const itemCode = (item.itemCode || item.libraryCode || '').trim().toLowerCase()
+          if (itemCode) {
+            for (const lib of availableLibraryMap.values()) {
+              if ((lib.activityCode || '').trim().toLowerCase() === itemCode) {
+                groupedLibraryIdSet.add(String(lib.id))
+              }
+            }
+          }
+        }
       }
     }
 
@@ -2010,7 +2029,17 @@ export function MobileDailyActivityForm({
     }
 
     const standaloneMatchingCount = Array.from(availableLibraryMap.values())
-      .filter((lib) => !groupedLibraryIdSet.has(String(lib.id)))
+      .filter((lib) => {
+        const idStr = String(lib.id)
+        const libActIdStr = lib.libraryActivityId != null ? String(lib.libraryActivityId) : ''
+        if (groupedLibraryIdSet.has(idStr) || (libActIdStr && groupedLibraryIdSet.has(libActIdStr))) {
+          return false
+        }
+        if (idStr.includes('_')) {
+          return false
+        }
+        return true
+      })
       .filter((lib) => {
         if (!normalizedSearch) return true
         const nCode = (lib.activityCode || '').toLowerCase().replace(/[^a-z0-9]/g, '')

@@ -66,9 +66,20 @@ export function RouteFolderTree({
           }
         }
 
-        // Note: Do NOT add item.libraryActivityId to groupedLibraryIdSet.
-        // Individual child activities (e.g. SVC.SEM-014) are real work activities
-        // and must remain selectable from the library list.
+        // Child activities already part of a group should not appear in standalone list
+        for (const item of group.items || []) {
+          if (item.libraryActivityId != null) {
+            set.add(String(item.libraryActivityId))
+          }
+          const itemCode = (item.itemCode || item.libraryCode || '').trim().toLowerCase()
+          if (itemCode) {
+            for (const lib of availableLibraryMap.values()) {
+              if ((lib.activityCode || '').trim().toLowerCase() === itemCode) {
+                set.add(String(lib.id))
+              }
+            }
+          }
+        }
       }
     }
     return set
@@ -85,6 +96,9 @@ export function RouteFolderTree({
                 const compoundId = `${group.id}_${item.libraryActivityId ?? item.id}`
                 const lib = availableLibraryMap.get(compoundId) ?? (item.libraryActivityId != null ? availableLibraryMap.get(String(item.libraryActivityId)) : null)
                 if (lib) {
+                  if ((lib as any)?.siteIds?.includes(-1) || (lib as any)?.siteId === -1) {
+                    return null
+                  }
                   return {
                     ...lib,
                     id: compoundId as any,
@@ -145,7 +159,17 @@ export function RouteFolderTree({
   // 3. Calculate standalone / ungrouped libraries
   const standaloneLibraries = useMemo(() => {
     return Array.from(availableLibraryMap.values())
-      .filter((lib) => !groupedLibraryIdSet.has(String(lib.id)))
+      .filter((lib) => {
+        const idStr = String(lib.id)
+        const libActIdStr = lib.libraryActivityId != null ? String(lib.libraryActivityId) : ''
+        if (groupedLibraryIdSet.has(idStr) || (libActIdStr && groupedLibraryIdSet.has(libActIdStr))) {
+          return false
+        }
+        if (idStr.includes('_')) {
+          return false
+        }
+        return true
+      })
       .filter((lib) => {
         if (!normalizedSearch) return true
         return (

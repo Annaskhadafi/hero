@@ -2,17 +2,13 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import {
-  ExternalLink,
   RefreshCw,
   Maximize2,
   Minimize2,
   Globe,
   Shield,
   ShieldAlert,
-  Copy,
-  Check,
   Sparkles,
-  Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -35,7 +31,6 @@ export function IframeViewerClient({ title, url }: IframeViewerClientProps) {
 
   // Mode: "direct" (URL asli / embed optimal) atau "proxy" (lewat server proxy HERO)
   const [useProxy, setUseProxy] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -57,7 +52,6 @@ export function IframeViewerClient({ title, url }: IframeViewerClientProps) {
   useEffect(() => {
     setIsLoading(true);
     const timer = setTimeout(() => {
-      // Jika setelah 4 detik masih loading atau jika menggunakan direct mode pada link berisiko
       if (!useProxy) {
         setShowHelperBanner(true);
       }
@@ -92,12 +86,6 @@ export function IframeViewerClient({ title, url }: IframeViewerClientProps) {
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
 
-  const handleCopyUrl = () => {
-    navigator.clipboard.writeText(url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   const handleReload = () => {
     setIsLoading(true);
     setReloadKey((prev) => prev + 1);
@@ -111,7 +99,7 @@ export function IframeViewerClient({ title, url }: IframeViewerClientProps) {
       >
         {/* Top Control Bar */}
         <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 z-10 shrink-0 shadow-xs">
-          {/* Sisi Kiri: Judul dan URL */}
+          {/* Sisi Kiri: Judul & Status (URL disembunyikan secara rahasia) */}
           <div className="flex items-center gap-3 min-w-0">
             <div className="size-8 rounded-lg bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900 flex items-center justify-center shrink-0 text-blue-600 dark:text-blue-400">
               <Globe className="size-4" />
@@ -144,22 +132,13 @@ export function IframeViewerClient({ title, url }: IframeViewerClientProps) {
                 )}
               </div>
 
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
-                <span className="truncate max-w-[260px] sm:max-w-[420px] font-mono">
-                  {url}
-                </span>
-                <button
-                  onClick={handleCopyUrl}
-                  className="hover:text-slate-800 dark:hover:text-slate-200 p-0.5 rounded transition-colors"
-                  title="Salin URL"
-                >
-                  {copied ? <Check className="size-3 text-emerald-600" /> : <Copy className="size-3" />}
-                </button>
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                <span>Portal Layanan Internal Terintegrasi</span>
               </div>
             </div>
           </div>
 
-          {/* Sisi Kanan: Action Buttons & Mode Switcher */}
+          {/* Sisi Kanan: Action Buttons & Mode Switcher (Tanpa tombol Tab Baru) */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {/* Mode Switcher: Direct vs Bypass Proxy */}
             <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs">
@@ -204,24 +183,6 @@ export function IframeViewerClient({ title, url }: IframeViewerClientProps) {
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Muat Ulang Halaman</TooltipContent>
-            </Tooltip>
-
-            {/* Buka di Tab Baru */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  asChild
-                  className="h-8 px-2.5 rounded-lg text-slate-700 dark:text-slate-300 text-xs font-medium gap-1.5 hover:bg-slate-100 dark:hover:bg-slate-800"
-                >
-                  <a href={url} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="size-3.5 text-blue-600" />
-                    <span className="hidden sm:inline">Buka Tab Baru</span>
-                  </a>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Buka tautan langsung di tab browser baru</TooltipContent>
             </Tooltip>
 
             {/* Layar Penuh */}
@@ -270,15 +231,15 @@ export function IframeViewerClient({ title, url }: IframeViewerClientProps) {
 
         {/* Helper Banner Jika Terindikasi Diblokir oleh Situs Luar (X-Frame-Options) */}
         {showHelperBanner && !useProxy && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 max-w-xl w-[92%] bg-slate-900/95 text-white backdrop-blur-md p-3.5 rounded-2xl shadow-2xl border border-slate-700/80 z-20 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 max-w-lg w-[92%] bg-slate-900/95 text-white backdrop-blur-md p-3.5 rounded-2xl shadow-2xl border border-slate-700/80 z-20 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs animate-in fade-in slide-in-from-bottom-2 duration-300">
             <div className="flex items-start gap-2.5 text-slate-300">
               <ShieldAlert className="size-4 text-amber-400 shrink-0 mt-0.5" />
               <div>
                 <p className="font-semibold text-white">
-                  Tautan tidak muncul atau "Menolak untuk terhubung"?
+                  Konten belum muncul atau dibatasi?
                 </p>
                 <p className="text-[11px] text-slate-300 mt-0.5">
-                  Situs eksternal ini membatasi iframe. Aktifkan Bypass Proxy atau buka di Tab Baru.
+                  Situs eksternal ini membatasi frame langsung. Silakan aktifkan mode Bypass Proxy.
                 </p>
               </div>
             </div>
@@ -296,21 +257,10 @@ export function IframeViewerClient({ title, url }: IframeViewerClientProps) {
                 <Shield className="size-3 mr-1" />
                 Aktifkan Proxy
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                asChild
-                className="h-7 text-xs text-slate-200 border-slate-700 hover:bg-slate-800 px-2.5"
-              >
-                <a href={url} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="size-3 mr-1" />
-                  Tab Baru
-                </a>
-              </Button>
               <button
                 type="button"
                 onClick={() => setShowHelperBanner(false)}
-                className="text-slate-400 hover:text-white text-xs px-1 py-0.5 ml-1"
+                className="text-slate-400 hover:text-white text-xs px-2 py-0.5 ml-1"
                 title="Tutup pesan"
               >
                 ✕
