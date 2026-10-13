@@ -2643,7 +2643,35 @@ async function getOvertimeInboxItems(
       },
     ]
     const participants = participantsMap.get(row.splId) || []
-    const lineItems = lineItemsMap.get(row.splId) || []
+    const rawLineItems = lineItemsMap.get(row.splId) || []
+    const lineItems = rawLineItems.map((l) => {
+      let meta: any = {}
+      try {
+        if (l.lineDescription && l.lineDescription.startsWith('{')) {
+          meta = JSON.parse(l.lineDescription)
+        }
+      } catch {}
+      return {
+        ...l,
+        code: meta.code,
+        name: meta.name || l.lineLabel,
+        unitNumber: meta.unitNumber || null,
+        tireCount: meta.tireCount ?? null,
+        materialUsed: meta.materialUsed || null,
+        startTime: meta.startTime || null,
+        endTime: meta.endTime || null,
+        duration: meta.duration || null,
+        remark: meta.remark || (!l.lineDescription?.startsWith('{') ? l.lineDescription : null),
+        photoUrl: meta.photoUrl || meta.photos?.[0] || null,
+        photos: Array.isArray(meta.photos) ? meta.photos : meta.photoUrl ? [meta.photoUrl] : [],
+      }
+    })
+    const headerPhotoMatch = (row.requestNotes || '').match(/\[Foto Bukti SPL\]:\s*(\S+)/i)
+    const headerPhoto = headerPhotoMatch ? headerPhotoMatch[1].trim() : null
+    const allEvidencePhotos = Array.from(new Set([
+      ...(headerPhoto ? [headerPhoto] : []),
+      ...lineItems.flatMap((l) => (Array.isArray(l.photos) ? l.photos : l.photoUrl ? [l.photoUrl] : [])),
+    ].filter(Boolean)))
     const isReverted = row.stepStatus === 'reverted' || (row.splStatus || '').toLowerCase() === 'reverted'
 
     return {
@@ -2671,6 +2699,8 @@ async function getOvertimeInboxItems(
       dueState: getContractReviewDueState(dueAt, new Date()),
       url: `/review/overtime/${row.approvalToken}`,
       requestNotes: row.requestNotes || '',
+      photoUrl: headerPhoto || allEvidencePhotos[0] || null,
+      photos: allEvidencePhotos,
       approvals,
       participants,
       lineItems,
@@ -3547,6 +3577,11 @@ export async function getApprovalCenterData(
         maritalStatusRequestId?: number | null
         signatureUrl?: string | null
         photoUrl?: string | null
+        photos?: string[] | null
+        splId?: number | string | null
+        overtimeId?: number | string | null
+        documentId?: number | string | null
+        workers?: any[] | null
         steps: Array<{
           approvalId: number | string
           approverName: string
@@ -4218,16 +4253,6 @@ export async function getApprovalCenterData(
         teamRole: 'Pemohon',
         teamPartner: otherParticipantNames.length > 0 ? otherParticipantNames.join(', ') : null,
       })
-      for (const p of participants) {
-        if (p.employeeName && p.employeeName.toLowerCase().trim() !== (ot.requesterName || '').toLowerCase().trim()) {
-          targets.push({
-            employeeName: p.employeeName,
-            employeeId: p.employeeId,
-            teamRole: 'Anggota Tim',
-            teamPartner: ot.requesterName || 'Pemohon Utama',
-          })
-        }
-      }
     } else if (isUserCreator) {
       targets.push({
         employeeName: ot.requesterName || 'Pemohon',
@@ -4271,7 +4296,10 @@ export async function getApprovalCenterData(
       else group.pendingCount += 1
 
       group.items.push({
-        activityId: `overtime-${ot.id}-${target.employeeId || target.employeeName}`,
+        activityId: `overtime-${ot.id}${target.teamRole === 'Anggota Tim' ? `-${target.employeeId || target.employeeName}` : ''}`,
+        splId: ot.id,
+        overtimeId: ot.id,
+        documentId: ot.id,
         title: `Surat Perintah Lembur (SPL) - ${ot.splNumber}${target.teamRole === 'Anggota Tim' ? ` • ${target.employeeName}` : ''}`,
         activityType: 'Surat Lembur (SPL)',
         unitNumber: ot.splNumber,
@@ -4291,6 +4319,7 @@ export async function getApprovalCenterData(
         teamPartner: target.teamPartner,
         employeeName: target.employeeName,
         employeeId: target.employeeId,
+        workers: participants,
         steps: splSteps.map((st) => ({
           approvalId: st.id,
           approverName: st.approverName || 'Approver',

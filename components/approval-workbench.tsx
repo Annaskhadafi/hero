@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import QRCode from 'qrcode'
 import {
+  Camera,
   Check,
   CheckCheck,
   CheckCircle2,
@@ -42,6 +43,8 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { DailyActivityEvidenceModal } from '@/components/daily-activity-evidence-modal'
+import { OvertimeEvidenceModal } from '@/components/overtime-evidence-modal'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 import { SplEvidenceQrBox } from '@/components/overtime-document-qr'
 import { SopWinAccessSettingsModal } from '@/components/sop-win/sop-win-access-settings-modal'
 import { getDepartmentSignatories, getDepartmentWorkflowSteps } from '@/components/sop-win/sop-win-approval-workspace'
@@ -481,6 +484,11 @@ export function InboxTab({
 
   // Document Preview Scaling & Zoom State (Matching Mobile Daily Activity approval)
   const [previewZoom, setPreviewZoom] = useState<number>(1.0)
+
+  // Overtime Evidence & Photos
+  const [isSplEvidenceModalOpen, setIsSplEvidenceModalOpen] = useState(false)
+  const [splEvidenceTargetId, setSplEvidenceTargetId] = useState<number | string | null>(null)
+  const [selectedPreviewImage, setSelectedPreviewImage] = useState<string | null>(null)
 
   useEffect(() => {
     async function loadSig() {
@@ -3105,6 +3113,71 @@ export function InboxTab({
                             </tbody>
                           </table>
 
+                          {/* Evidence Photos Box */}
+                          {(() => {
+                            const splObj = currentBatchDoc.rawOvertime as any
+                            const rawNotes = splObj.requestNotes || splObj.notes || ''
+                            const headerPhotoMatch = rawNotes.match(/\[Foto Bukti SPL\]:\s*(\S+)/i)
+                            const headerPhoto = headerPhotoMatch ? headerPhotoMatch[1] : (splObj.photoUrl || null)
+                            const lineItems = splObj.lineItems || []
+                            const allPhotos: string[] = Array.from(new Set([
+                              ...(headerPhoto ? [headerPhoto] : []),
+                              ...((Array.isArray(splObj.photos) ? splObj.photos : []) as string[]),
+                              ...lineItems.flatMap((it: any) => {
+                                let meta: any = {}
+                                try {
+                                  if (it.lineDescription && it.lineDescription.startsWith('{')) meta = JSON.parse(it.lineDescription)
+                                } catch {}
+                                return Array.isArray(it.photos) ? it.photos : it.photoUrl ? [it.photoUrl] : (meta.photos || (meta.photoUrl ? [meta.photoUrl] : []))
+                              }),
+                            ].filter(Boolean)))
+
+                            if (allPhotos.length === 0) return null
+
+                            return (
+                              <div className="mb-3 p-2.5 rounded-xl border border-blue-200 bg-blue-50/50">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center gap-1.5 text-xs font-bold text-[#003461]">
+                                    <Camera className="size-3.5" />
+                                    <span>Foto Bukti SPL ({allPhotos.length} Lampiran)</span>
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setSplEvidenceTargetId(splObj.splId || splObj.id || currentBatchDoc.id)
+                                      setIsSplEvidenceModalOpen(true)
+                                    }}
+                                    className="h-7 text-[11px] font-bold rounded-lg border-blue-300 text-[#003461] hover:bg-blue-100 flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Eye className="size-3" />
+                                    Buka Galeri Bukti Full
+                                  </Button>
+                                </div>
+                                <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                                  {allPhotos.map((pUrl, pIdx) => (
+                                    <div
+                                      key={pIdx}
+                                      onClick={() => setSelectedPreviewImage(resolveUploadUrl(pUrl))}
+                                      className="relative shrink-0 w-20 h-20 rounded-lg overflow-hidden border border-slate-300 bg-black/5 hover:border-[#003461] cursor-pointer group shadow-xs transition"
+                                      title="Klik untuk memperbesar"
+                                    >
+                                      <img
+                                        src={resolveUploadUrl(pUrl)}
+                                        alt={`Bukti ${pIdx + 1}`}
+                                        className="w-full h-full object-cover group-hover:scale-105 transition duration-200"
+                                      />
+                                      <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                                        <ZoomIn className="size-4 text-white drop-shadow-md" />
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )
+                          })()}
+
                           {/* Section 2: Workers */}
                           {(() => {
                             const participants = (currentBatchDoc.rawOvertime as any).participants || []
@@ -3152,28 +3225,54 @@ export function InboxTab({
                                 <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 text-[8pt]">
                                   <thead>
                                     <tr className="bg-slate-50 text-center font-bold">
-                                      <th className="w-[8%]">#</th>
-                                      <th className="text-left w-[40%]">Activity</th>
-                                      <th className="w-[18%]">Target</th>
-                                      <th className="w-[14%]">Minutes</th>
-                                      <th className="w-[20%]">Points</th>
+                                      <th className="w-[6%]">#</th>
+                                      <th className="text-left w-[36%]">Activity</th>
+                                      <th className="w-[16%]">Target</th>
+                                      <th className="w-[12%]">Minutes</th>
+                                      <th className="w-[12%]">Points</th>
+                                      <th className="w-[18%]">Foto Bukti</th>
                                     </tr>
                                   </thead>
                                   <tbody>
                                     {lineItems.length === 0 ? (
                                       <tr>
-                                        <td colSpan={5} className="text-center text-slate-400 py-2">Belum ada rincian tugas lembur.</td>
+                                        <td colSpan={6} className="text-center text-slate-400 py-2">Belum ada rincian tugas lembur.</td>
                                       </tr>
                                     ) : (
-                                      lineItems.map((item: any, idx: number) => (
-                                        <tr key={idx}>
-                                          <td className="text-center">{idx + 1}</td>
-                                          <td className="font-medium">{item.lineLabel}</td>
-                                          <td className="text-center">{item.targetUnit || '—'}</td>
-                                          <td className="text-center">{item.estimatedMinutes} m</td>
-                                          <td className="text-center font-bold">{item.plannedPoints} pts</td>
-                                        </tr>
-                                      ))
+                                      lineItems.map((item: any, idx: number) => {
+                                        let meta: any = {}
+                                        try {
+                                          if (item.lineDescription && item.lineDescription.startsWith('{')) {
+                                            meta = JSON.parse(item.lineDescription)
+                                          }
+                                        } catch {}
+                                        const itemPhoto = item.photoUrl || meta.photoUrl || (Array.isArray(item.photos) ? item.photos[0] : (meta.photos?.[0] || null))
+
+                                        return (
+                                          <tr key={idx}>
+                                            <td className="text-center">{idx + 1}</td>
+                                            <td className="font-medium">{item.lineLabel}</td>
+                                            <td className="text-center">{item.targetUnit || '—'}</td>
+                                            <td className="text-center">{item.estimatedMinutes} m</td>
+                                            <td className="text-center font-bold">{item.plannedPoints} pts</td>
+                                            <td className="text-center p-1">
+                                              {itemPhoto ? (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setSelectedPreviewImage(resolveUploadUrl(itemPhoto))}
+                                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-blue-200 bg-blue-50 text-[7pt] font-semibold text-[#003461] hover:bg-blue-100 transition cursor-pointer"
+                                                  title="Lihat foto lampiran"
+                                                >
+                                                  <img src={resolveUploadUrl(itemPhoto)} className="size-4 rounded object-cover" />
+                                                  <span>Lihat Foto</span>
+                                                </button>
+                                              ) : (
+                                                <span className="text-[7pt] text-slate-400 italic">—</span>
+                                              )}
+                                            </td>
+                                          </tr>
+                                        )
+                                      })
                                     )}
                                   </tbody>
                                 </table>
@@ -4849,6 +4948,27 @@ export function InboxTab({
           requestId={apdModalRequestId}
           isSummary={isApdSummary}
         />
+
+        <OvertimeEvidenceModal
+          isOpen={isSplEvidenceModalOpen}
+          onClose={() => setIsSplEvidenceModalOpen(false)}
+          splId={splEvidenceTargetId}
+        />
+
+        {/* Quick Lightbox Dialog */}
+        <Dialog open={Boolean(selectedPreviewImage)} onOpenChange={(open) => !open && setSelectedPreviewImage(null)}>
+          <DialogContent className="max-w-3xl p-2 bg-black/95 border-0 rounded-2xl flex flex-col items-center justify-center">
+            {selectedPreviewImage && (
+              <div className="relative max-h-[82vh] max-w-full flex items-center justify-center p-2">
+                <img
+                  src={selectedPreviewImage}
+                  alt="Foto Bukti SPL"
+                  className="max-h-[78vh] max-w-full object-contain rounded-lg shadow-xl"
+                />
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
     </>
   )
 }
@@ -4871,7 +4991,8 @@ function getHistoryItemLinks(item: any) {
     title.includes('spl') ||
     unitNumber.includes('spl')
   ) {
-    rawId = actId.replace('overtime-', '').replace(/[^0-9]/g, '')
+    const splId = (item as any).splId || (item as any).overtimeId || (item as any).documentId
+    rawId = splId ? String(splId) : actId.replace(/^overtime-/, '').split('-')[0]
     viewUrl = `/mobile/overtime`
     downloadUrl = null
   } else if (
@@ -4966,6 +5087,11 @@ export function HistoryTab({
   const [isApdModalOpen, setIsApdModalOpen] = useState(false)
   const [apdModalRequestId, setApdModalRequestId] = useState<number | null>(null)
   const [isApdSummary, setIsApdSummary] = useState(false)
+
+  // Overtime Evidence & Photos
+  const [isSplEvidenceModalOpen, setIsSplEvidenceModalOpen] = useState(false)
+  const [splEvidenceTargetId, setSplEvidenceTargetId] = useState<number | string | null>(null)
+  const [selectedPreviewImage, setSelectedPreviewImage] = useState<string | null>(null)
 
   const [previewZoom, setPreviewZoom] = useState(1.0)
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
@@ -5124,7 +5250,11 @@ export function HistoryTab({
     }
 
     if (isSpl) {
-      const rawId = actId.replace('overtime-', '').replace(/[^0-9]/g, '')
+      let rawId = (item as any).splId || (item as any).overtimeId || (item as any).documentId
+      if (!rawId) {
+        const cleaned = actId.replace(/^overtime-/, '')
+        rawId = cleaned.split('-')[0]
+      }
       if (!rawId) return
       setIsHistoryModalOpen(true)
       setIsLoadingHistoryDoc(true)
@@ -5145,6 +5275,7 @@ export function HistoryTab({
       } finally {
         setIsLoadingHistoryDoc(false)
       }
+      return
     } else if (isDaily) {
       const itemSessionId = (item as any)?.sessionId || (item as any)?.rawDaily?.sessionId || (item as any)?.session?.id || (item as any)?.id
       const itemSessionCode = (item as any)?.sessionCode || (item as any)?.rawDaily?.sessionCode || (item as any)?.session?.sessionCode || item.unitNumber
@@ -5312,7 +5443,11 @@ export function HistoryTab({
     }
 
     if (isSpl) {
-      const rawId = actId.replace('overtime-', '').replace(/[^0-9]/g, '')
+      let rawId = (item as any).splId || (item as any).overtimeId || (item as any).documentId
+      if (!rawId) {
+        const cleaned = actId.replace(/^overtime-/, '')
+        rawId = cleaned.split('-')[0]
+      }
       if (!rawId) return
       toast.loading('Menyiapkan file PDF SPL...', { id: 'pdf-spl-dl' })
       try {
@@ -5706,6 +5841,69 @@ export function HistoryTab({
                             </tbody>
                           </table>
 
+                          {/* Evidence Photos Box */}
+                          {(() => {
+                            const rawNotes = doc.requestNotes || (doc as any).notes || ''
+                            const headerPhotoMatch = rawNotes.match(/\[Foto Bukti SPL\]:\s*(\S+)/i)
+                            const headerPhoto = headerPhotoMatch ? headerPhotoMatch[1] : (doc.photoUrl || (selectedHistoryDoc as any).photoUrl || null)
+                            const allPhotos: string[] = Array.from(new Set([
+                              ...(headerPhoto ? [headerPhoto] : []),
+                              ...((Array.isArray((selectedHistoryDoc as any).photos) ? (selectedHistoryDoc as any).photos : []) as string[]),
+                              ...lineItems.flatMap((it: any) => {
+                                let meta: any = {}
+                                try {
+                                  if (it.lineDescription && it.lineDescription.startsWith('{')) meta = JSON.parse(it.lineDescription)
+                                } catch {}
+                                return Array.isArray(it.photos) ? it.photos : it.photoUrl ? [it.photoUrl] : (meta.photos || (meta.photoUrl ? [meta.photoUrl] : []))
+                              }),
+                            ].filter(Boolean)))
+
+                            if (allPhotos.length === 0) return null
+
+                            return (
+                              <div className="mb-3 p-2.5 rounded-xl border border-blue-200 bg-blue-50/50">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center gap-1.5 text-xs font-bold text-[#003461]">
+                                    <Camera className="size-3.5" />
+                                    <span>Foto Bukti SPL ({allPhotos.length} Lampiran)</span>
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setSplEvidenceTargetId(doc.id || doc.documentId || (selectedHistoryDoc as any).documentId)
+                                      setIsSplEvidenceModalOpen(true)
+                                    }}
+                                    className="h-7 text-[11px] font-bold rounded-lg border-blue-300 text-[#003461] hover:bg-blue-100 flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Eye className="size-3" />
+                                    Buka Galeri Bukti Full
+                                  </Button>
+                                </div>
+                                <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                                  {allPhotos.map((pUrl, pIdx) => (
+                                    <div
+                                      key={pIdx}
+                                      onClick={() => setSelectedPreviewImage(resolveUploadUrl(pUrl))}
+                                      className="relative shrink-0 w-20 h-20 rounded-lg overflow-hidden border border-slate-300 bg-black/5 hover:border-[#003461] cursor-pointer group shadow-xs transition"
+                                      title="Klik untuk memperbesar"
+                                    >
+                                      <img
+                                        src={resolveUploadUrl(pUrl)}
+                                        alt={`Bukti ${pIdx + 1}`}
+                                        className="w-full h-full object-cover group-hover:scale-105 transition duration-200"
+                                      />
+                                      <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                                        <ZoomIn className="size-4 text-white drop-shadow-md" />
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )
+                          })()}
+
                           <div className="font-bold mb-1 text-[8pt] text-black">
                             A. Workers ({participants.length} Orang)
                           </div>
@@ -5744,28 +5942,54 @@ export function HistoryTab({
                           <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[7.5pt] sm:text-[8pt]">
                             <thead>
                               <tr className="bg-slate-50 text-center font-bold text-black">
-                                <th className="w-[8%]">#</th>
-                                <th className="text-left w-[44%]">Line Label / Task</th>
-                                <th className="w-[20%]">Target Unit</th>
-                                <th className="w-[14%]">Est. Min</th>
-                                <th className="w-[14%]">Points</th>
+                                <th className="w-[6%]">#</th>
+                                <th className="text-left w-[36%]">Line Label / Task</th>
+                                <th className="w-[16%]">Target Unit</th>
+                                <th className="w-[12%]">Est. Min</th>
+                                <th className="w-[12%]">Points</th>
+                                <th className="w-[18%]">Foto Bukti</th>
                               </tr>
                             </thead>
                             <tbody>
                               {lineItems.length === 0 ? (
                                 <tr>
-                                  <td colSpan={5} className="py-2 text-slate-400 italic text-center">Belum ada rincian aktivitas.</td>
+                                  <td colSpan={6} className="py-2 text-slate-400 italic text-center">Belum ada rincian aktivitas.</td>
                                 </tr>
                               ) : (
-                                lineItems.map((it: any, idx: number) => (
-                                  <tr key={idx}>
-                                    <td className="text-center">{idx + 1}</td>
-                                    <td className="font-medium text-black">{it.lineLabel}</td>
-                                    <td className="text-center text-black">{it.targetUnit || '—'}</td>
-                                    <td className="text-center text-black">{it.estimatedMinutes || 0}m</td>
-                                    <td className="text-center font-bold text-black">{it.plannedPoints || 0}</td>
-                                  </tr>
-                                ))
+                                lineItems.map((it: any, idx: number) => {
+                                  let meta: any = {}
+                                  try {
+                                    if (it.lineDescription && it.lineDescription.startsWith('{')) {
+                                      meta = JSON.parse(it.lineDescription)
+                                    }
+                                  } catch {}
+                                  const itemPhoto = it.photoUrl || meta.photoUrl || (Array.isArray(it.photos) ? it.photos[0] : (meta.photos?.[0] || null))
+
+                                  return (
+                                    <tr key={idx}>
+                                      <td className="text-center">{idx + 1}</td>
+                                      <td className="font-medium text-black">{it.lineLabel}</td>
+                                      <td className="text-center text-black">{it.targetUnit || '—'}</td>
+                                      <td className="text-center text-black">{it.estimatedMinutes || 0}m</td>
+                                      <td className="text-center font-bold text-black">{it.plannedPoints || 0}</td>
+                                      <td className="text-center p-1">
+                                        {itemPhoto ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => setSelectedPreviewImage(resolveUploadUrl(itemPhoto))}
+                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-blue-200 bg-blue-50 text-[7pt] font-semibold text-[#003461] hover:bg-blue-100 transition cursor-pointer"
+                                            title="Lihat foto lampiran"
+                                          >
+                                            <img src={resolveUploadUrl(itemPhoto)} className="size-4 rounded object-cover" />
+                                            <span>Lihat Foto</span>
+                                          </button>
+                                        ) : (
+                                          <span className="text-[7pt] text-slate-400 italic">—</span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  )
+                                })
                               )}
                             </tbody>
                           </table>
@@ -6399,6 +6623,27 @@ export function HistoryTab({
           requestId={apdModalRequestId}
           isSummary={isApdSummary}
         />
+
+        <OvertimeEvidenceModal
+          isOpen={isSplEvidenceModalOpen}
+          onClose={() => setIsSplEvidenceModalOpen(false)}
+          splId={splEvidenceTargetId}
+        />
+
+        {/* Quick Lightbox Dialog */}
+        <Dialog open={Boolean(selectedPreviewImage)} onOpenChange={(open) => !open && setSelectedPreviewImage(null)}>
+          <DialogContent className="max-w-3xl p-2 bg-black/95 border-0 rounded-2xl flex flex-col items-center justify-center">
+            {selectedPreviewImage && (
+              <div className="relative max-h-[82vh] max-w-full flex items-center justify-center p-2">
+                <img
+                  src={selectedPreviewImage}
+                  alt="Foto Bukti SPL"
+                  className="max-h-[78vh] max-w-full object-contain rounded-lg shadow-xl"
+                />
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     )
   }
@@ -6602,6 +6847,27 @@ export function HistoryTab({
         requestId={apdModalRequestId}
         isSummary={isApdSummary}
       />
+
+      <OvertimeEvidenceModal
+        isOpen={isSplEvidenceModalOpen}
+        onClose={() => setIsSplEvidenceModalOpen(false)}
+        splId={splEvidenceTargetId}
+      />
+
+      {/* Quick Lightbox Dialog */}
+      <Dialog open={Boolean(selectedPreviewImage)} onOpenChange={(open) => !open && setSelectedPreviewImage(null)}>
+        <DialogContent className="max-w-3xl p-2 bg-black/95 border-0 rounded-2xl flex flex-col items-center justify-center">
+          {selectedPreviewImage && (
+            <div className="relative max-h-[82vh] max-w-full flex items-center justify-center p-2">
+              <img
+                src={selectedPreviewImage}
+                alt="Foto Bukti SPL"
+                className="max-h-[78vh] max-w-full object-contain rounded-lg shadow-xl"
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

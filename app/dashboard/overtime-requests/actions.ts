@@ -109,6 +109,8 @@ type OvertimeApprovalData = {
   participants: Participant[]
   lineItems: LineItem[]
   approvals: ApprovalStep[]
+  photoUrl?: string | null
+  photos?: string[]
   permissions: {
     canApprove: boolean
     canEdit: boolean
@@ -382,6 +384,22 @@ export async function getOvertimeApprovalData(documentId: number | string): Prom
     (a) => a.status === 'pending' && (a.approverEmployeeId === currentEmployee?.id || ['Super Admin', 'Site Admin', 'HC Manager'].includes(currentEmployee?.accessRole ?? ''))
   )
 
+  const headerPhotoMatch = (document.requestNotes || '').match(/\[Foto Bukti SPL\]:\s*(\S+)/i)
+  const headerPhoto = headerPhotoMatch ? headerPhotoMatch[1].trim() : null
+  const lineItemPhotos = lineItemRows.flatMap((l) => {
+    let meta: any = {}
+    try {
+      if (l.lineDescription && l.lineDescription.startsWith('{')) {
+        meta = JSON.parse(l.lineDescription)
+      }
+    } catch {}
+    return Array.isArray(meta.photos) ? meta.photos : meta.photoUrl ? [meta.photoUrl] : []
+  })
+  const allEvidencePhotos = Array.from(new Set([
+    ...(headerPhoto ? [headerPhoto] : []),
+    ...lineItemPhotos,
+  ].filter(Boolean)))
+
   return {
     documentId: document.id,
     splNumber: document.splNumber,
@@ -393,6 +411,8 @@ export async function getOvertimeApprovalData(documentId: number | string): Prom
     requestNotes: document.requestNotes,
     executionNotes: document.executionNotes,
     origin: document.origin,
+    photoUrl: headerPhoto || allEvidencePhotos[0] || null,
+    photos: allEvidencePhotos,
     requestedByEmployeeId: document.requestedByEmployeeId,
     requesterName: requester?.name ?? '',
     requesterDepartment: requester?.department ?? '',
