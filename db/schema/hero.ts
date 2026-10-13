@@ -1241,6 +1241,7 @@ export const chitraLearningEnrollments = pgTable(
     finalScore: integer('final_score'),
     isPassed: boolean('is_passed').notNull().default(false),
     dueAt: timestamp('due_at'),
+    cooldownUntil: timestamp('cooldown_until'),
     lastLessonId: integer('last_lesson_id').references(() => chitraLearningLessons.id, {
       onDelete: 'set null',
     }),

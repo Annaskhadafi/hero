@@ -8,7 +8,7 @@ import {
   employees,
 } from '@/db/schema/hero'
 import { eq, asc } from 'drizzle-orm'
-import { getInternalLmsWorkspaceData } from '@/lib/chitralearning-lms'
+import { getInternalLmsWorkspaceData, formatIndonesianDate } from '@/lib/chitralearning-lms'
 import {
   ArrowLeft,
   Award,
@@ -96,6 +96,12 @@ export default async function MobileCourseDetailPage({ params }: { params: Promi
   const isRejected = enrollment?.approvalStatus === 'rejected'
   const isCompleted = !!certificate || (enrollment?.status === 'passed')
   const progress = isCompleted ? 100 : (enrollment?.progress ?? 0)
+
+  const isFailed = enrollment?.status === 'failed'
+  const isCooldown = isFailed && Boolean(
+    enrollment?.cooldownUntil && new Date().getTime() < new Date(enrollment.cooldownUntil).getTime()
+  )
+  const canReEnroll = isFailed && !isCooldown
 
   const totalLessons = lessons.length
   const totalDuration = lessons.reduce((s, l) => s + l.durationMinutes, 0)
@@ -301,7 +307,16 @@ export default async function MobileCourseDetailPage({ params }: { params: Promi
             ✕ Pengajuan ditolak
           </div>
         )}
-        {isEnrolled && isApproved && continueHref && !isCompleted && (
+        {isEnrolled && isApproved && isFailed && isCooldown && (
+          <div className="flex h-14 w-full items-center justify-center gap-2 rounded-[1rem] bg-rose-50 border border-rose-200 px-4 text-xs font-black text-rose-700 shadow-sm text-center">
+            <Lock className="size-4 shrink-0 text-rose-600" />
+            <span>Tidak Lulus · Terkunci s/d {formatIndonesianDate(enrollment?.cooldownUntil)}</span>
+          </div>
+        )}
+        {isEnrolled && isApproved && isFailed && canReEnroll && (
+          <MobileEnrollButton courseId={course.id} slug={course.slug} isReEnroll={true} />
+        )}
+        {isEnrolled && isApproved && continueHref && !isCompleted && !isFailed && (
           <Link
             href={continueHref}
             className="flex h-14 w-full items-center justify-center gap-2 rounded-[1rem] bg-[#003461] text-sm font-black text-white shadow-[0_8px_24px_rgba(0,52,97,0.25)] active:scale-[0.98] transition-transform"

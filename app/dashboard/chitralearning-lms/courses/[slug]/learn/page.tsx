@@ -78,7 +78,11 @@ export default async function LmsCoursePlayerPage({
       redirect(`/dashboard/chitralearning-lms/courses/${course.slug}`)
     }
 
-    if (existingEnrollment.status !== 'passed') {
+    const isFailedCooldown = existingEnrollment.status === 'failed' && Boolean(
+      existingEnrollment.cooldownUntil && new Date().getTime() < new Date(existingEnrollment.cooldownUntil).getTime()
+    );
+
+    if (existingEnrollment.status !== 'passed' && !isFailedCooldown) {
       await db
         .update(chitraLearningEnrollments)
         .set({
@@ -156,7 +160,7 @@ export default async function LmsCoursePlayerPage({
   }))
   
   let attemptCount = 0;
-  let effectiveMaxRetakes = course.maxRetakes ?? -1;
+  let effectiveMaxRetakes = activeTestPhase === 'posttest' ? 2 : (course.maxRetakes ?? -1);
   if (['quiz', 'pretest', 'posttest'].includes(activeLessonType)) {
     const auditRows = await db
       .select({ count: sql<number>`count(*)` })
@@ -282,6 +286,9 @@ export default async function LmsCoursePlayerPage({
                   randomizeOptions={(activeLesson as any).quizSettings?.randomizeOptions}
                   attemptCount={attemptCount}
                   maxRetakes={effectiveMaxRetakes}
+                  passingScore={course.passingScore}
+                  isLockedCooldown={isFailedCooldown}
+                  cooldownUntil={existingEnrollment?.cooldownUntil}
                 />
               </div>
             ) : (

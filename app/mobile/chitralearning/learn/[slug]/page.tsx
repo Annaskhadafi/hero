@@ -91,8 +91,12 @@ export default async function MobileLessonPlayerPage({
     enrollmentProgress = Math.max(enrollment.progress, 10);
     pretestStatus = enrollment.pretestStatus || 'not_started';
 
-    // Update status to in_progress
-    if (enrollment.status !== 'passed') {
+    // Update status to in_progress only if not passed and not in failed cooldown
+    const isFailedCooldown = enrollment.status === 'failed' && Boolean(
+      enrollment.cooldownUntil && new Date().getTime() < new Date(enrollment.cooldownUntil).getTime()
+    );
+
+    if (enrollment.status !== 'passed' && !isFailedCooldown) {
       await db
         .update(chitraLearningEnrollments)
         .set({
@@ -160,6 +164,7 @@ export default async function MobileLessonPlayerPage({
   }))
 
   let attemptCount = 0
+  let effectiveMaxRetakes = activeTestPhase === 'posttest' ? 2 : (course.maxRetakes ?? -1)
   if (['quiz', 'pretest', 'posttest'].includes(activeLessonType) && currentEmployee) {
     const auditRows = await db
       .select({ count: sql<number>`count(*)` })
@@ -171,6 +176,12 @@ export default async function MobileLessonPlayerPage({
         sql`CAST(after_value->>'lessonId' AS INTEGER) = ${activeLesson.id}`
       ))
     attemptCount = Number(auditRows[0]?.count ?? 0)
+
+    // Per-lesson quizSettings override
+    const qs = (activeLesson as any).quizSettings as Record<string, any> | null;
+    if (qs?.limitAttempts && typeof qs.maxAttempts === 'number' && qs.maxAttempts > 0) {
+      effectiveMaxRetakes = qs.maxAttempts - 1;
+    }
   }
 
   // File URL resolution
@@ -359,7 +370,10 @@ export default async function MobileLessonPlayerPage({
               courseHref={`/mobile/chitralearning/courses/${slug}`}
               randomizeOptions={(activeLesson as any).quizSettings?.randomizeOptions}
               attemptCount={attemptCount}
-              maxRetakes={course.maxRetakes ?? -1}
+              maxRetakes={effectiveMaxRetakes}
+              passingScore={course.passingScore}
+              isLockedCooldown={isFailedCooldown}
+              cooldownUntil={currentEnrollment?.cooldownUntil}
             />
           </div>
         )}

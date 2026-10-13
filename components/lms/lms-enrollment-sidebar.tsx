@@ -3,11 +3,12 @@
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
-import { Clock, BookOpen, Award, CheckCircle2, Share2, PenSquare, Timer, Play, RotateCcw } from 'lucide-react'
+import { Clock, BookOpen, Award, CheckCircle2, Share2, PenSquare, Timer, Play, RotateCcw, Lock } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useState, useTransition } from 'react'
 import { requestInternalLmsEnrollmentAction } from '@/app/dashboard/chitralearning-lms/actions'
 import { toast } from 'sonner'
+import { formatIndonesianDate } from '@/lib/chitralearning-lms'
 
 interface LmsEnrollmentSidebarProps {
   courseId: number
@@ -15,6 +16,8 @@ interface LmsEnrollmentSidebarProps {
   isAdmin: boolean
   isEnrolled: boolean
   approvalStatus?: string | null
+  enrollmentStatus?: string | null
+  cooldownUntil?: Date | string | null
   progress: number
   estimatedMinutes: number
   lessonCount: number
@@ -117,6 +120,8 @@ export function LmsEnrollmentSidebar({
   isAdmin,
   isEnrolled,
   approvalStatus,
+  enrollmentStatus,
+  cooldownUntil,
   progress,
   estimatedMinutes,
   lessonCount,
@@ -126,6 +131,11 @@ export function LmsEnrollmentSidebar({
   enrollmentDate,
 }: LmsEnrollmentSidebarProps) {
   const isCompleted = progress >= 100
+  const isFailed = enrollmentStatus === 'failed'
+  const isCooldown = isFailed && Boolean(
+    cooldownUntil && new Date().getTime() < new Date(cooldownUntil).getTime()
+  )
+  const canReEnroll = isFailed && !isCooldown
   const [isPending, startTransition] = useTransition()
 
   const handleEnroll = () => {
@@ -134,7 +144,9 @@ export function LmsEnrollmentSidebar({
         const formData = new FormData()
         formData.append("courseId", courseId.toString())
         const res = await requestInternalLmsEnrollmentAction(formData)
-        if (res?.autoApproved) {
+        if (res?.reEnrolled) {
+          toast.success("Pendaftaran ulang berhasil! Materi di-reset untuk mengulang dari awal.")
+        } else if (res?.autoApproved) {
           toast.success("Pendaftaran berhasil! Anda langsung terdaftar dalam kursus.")
         } else {
           toast.success("Permintaan pendaftaran berhasil dikirim. Menunggu persetujuan admin/section head.")
@@ -163,21 +175,40 @@ export function LmsEnrollmentSidebar({
                   <Progress value={progress} className="h-2.5 bg-slate-100" />
                 </div>
                 
-                <Button asChild className="w-full h-12 text-base font-semibold shadow-sm" variant={isCompleted ? "outline" : "default"}>
-                  <Link href={`/dashboard/chitralearning-lms/courses/${courseSlug}/learn`}>
-                    {isCompleted ? (
+                {isFailed && isCooldown ? (
+                  <div className="rounded-xl bg-rose-50 border border-rose-200 p-4 text-center">
+                    <Lock className="size-6 text-rose-600 mx-auto mb-2" />
+                    <p className="text-sm font-bold text-rose-900">Batas Percobaan Habis</p>
+                    <p className="text-xs text-rose-700 mt-1 leading-relaxed">
+                      Tidak lulus Post-Test. Terkunci hingga <span className="font-extrabold underline">{formatIndonesianDate(cooldownUntil)}</span>.
+                    </p>
+                  </div>
+                ) : isFailed && canReEnroll ? (
+                  <Button onClick={handleEnroll} disabled={isPending} className="w-full h-12 text-base font-semibold shadow-sm bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white">
+                    {isPending ? "Memproses..." : (
                       <>
                         <RotateCcw className="mr-2 h-5 w-5" />
-                        Ulangi Kursus
-                      </>
-                    ) : (
-                      <>
-                        <Play className="mr-2 h-5 w-5" />
-                        {progress > 0 ? "Lanjutkan Belajar" : "Mulai Belajar"}
+                        Daftar Ulang (Mulai dari Awal)
                       </>
                     )}
-                  </Link>
-                </Button>
+                  </Button>
+                ) : (
+                  <Button asChild className="w-full h-12 text-base font-semibold shadow-sm" variant={isCompleted ? "outline" : "default"}>
+                    <Link href={`/dashboard/chitralearning-lms/courses/${courseSlug}/learn`}>
+                      {isCompleted ? (
+                        <>
+                          <RotateCcw className="mr-2 h-5 w-5" />
+                          Ulangi Kursus
+                        </>
+                      ) : (
+                        <>
+                          <Play className="mr-2 h-5 w-5" />
+                          {progress > 0 ? "Lanjutkan Belajar" : "Mulai Belajar"}
+                        </>
+                      )}
+                    </Link>
+                  </Button>
+                )}
               </div>
             ) : approvalStatus === 'pending' ? (
               <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-center">

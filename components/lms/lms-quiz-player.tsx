@@ -11,9 +11,17 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { CheckCircle2, AlertCircle, RotateCcw } from 'lucide-react'
+import { CheckCircle2, AlertCircle, RotateCcw, Lock, Calendar } from 'lucide-react'
 import { submitInternalLmsQuizAction, submitOnlineAssignmentQuizAction } from '@/app/dashboard/chitralearning-lms/actions'
 import { resolveUploadUrl, replaceS3UrlsInHtml } from '@/lib/resolve-upload-url'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { formatIndonesianDate, getNextMonthFirstDay } from '@/lib/chitralearning-lms'
 
 export interface QuizQuestion {
   id: number
@@ -35,8 +43,11 @@ interface LmsQuizPlayerProps {
   randomizeOptions?: boolean
   attemptCount?: number
   maxRetakes?: number
+  passingScore?: number
+  isLockedCooldown?: boolean
+  cooldownUntil?: Date | string | null
   /** Pass a custom submit action for online assignments. Uses submitInternalLmsQuizAction by default. */
-  submitAction?: (formData: FormData) => Promise<{ success: boolean; score: number; passed: boolean }>
+  submitAction?: (formData: FormData) => Promise<any>
 }
 
 function QuizHtml({ html: rawHtml, className = '' }: { html: string; className?: string }) {
@@ -49,20 +60,76 @@ function QuizHtml({ html: rawHtml, className = '' }: { html: string; className?:
   )
 }
 
-export function LmsQuizPlayer({ courseId, lessonId, testPhase, questions, nextLessonHref, courseHref, randomizeOptions, attemptCount = 0, maxRetakes = -1, submitAction }: LmsQuizPlayerProps) {
+export function LmsQuizPlayer({
+  courseId,
+  lessonId,
+  testPhase,
+  questions,
+  nextLessonHref,
+  courseHref,
+  randomizeOptions,
+  attemptCount = 0,
+  maxRetakes = -1,
+  passingScore = 80,
+  isLockedCooldown = false,
+  cooldownUntil,
+  submitAction,
+}: LmsQuizPlayerProps) {
   const router = useRouter()
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [answers, setAnswers] = useState<Record<number, string>>({})
   const [submitted, setSubmitted] = useState(false)
   const [localAttemptCount, setLocalAttemptCount] = useState(attemptCount)
   const [scoreResult, setScoreResult] = useState<{ score: number; passed: boolean } | null>(null)
+  const [showExhaustedModal, setShowExhaustedModal] = useState(false)
   const [isPending, startTransition] = useTransition()
+
+  const effectiveMaxAttempts = maxRetakes >= 0 ? maxRetakes + 1 : (testPhase === 'posttest' ? 3 : -1)
+  const isAlreadyExhausted = testPhase === 'posttest' && ((effectiveMaxAttempts > 0 && localAttemptCount >= effectiveMaxAttempts) || isLockedCooldown)
+  const activeCooldownDate = cooldownUntil || getNextMonthFirstDay()
+  const formattedCooldownDate = formatIndonesianDate(activeCooldownDate)
 
   useEffect(() => {
     setCurrentQuestionIndex(0)
     setAnswers({})
     setSubmitted(false)
   }, [lessonId])
+
+  if (isAlreadyExhausted && !submitted) {
+    return (
+      <Card className="w-full max-w-2xl mx-auto border-rose-100 bg-rose-50/20 shadow-sm">
+        <CardContent className="p-6 sm:p-10 text-center flex flex-col items-center">
+          <div className="size-16 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mb-4">
+            <Lock className="size-8" />
+          </div>
+          <h3 className="text-xl sm:text-2xl font-black font-heading text-slate-900 mb-2">
+            Batas Percobaan Post-Test Habis
+          </h3>
+          <p className="text-slate-600 text-sm max-w-md mb-4 leading-relaxed">
+            Anda telah melakukan {localAttemptCount} kali percobaan Post-Test pada materi ini dan belum mencapai nilai kelulusan minimum ({passingScore}%).
+          </p>
+
+          <div className="w-full max-w-md rounded-xl bg-amber-50 border border-amber-200 p-4 text-left mb-6">
+            <p className="text-xs font-bold text-amber-900 flex items-center gap-1.5 mb-1">
+              <Calendar className="size-4 shrink-0 text-amber-600" />
+              Akses Bulan Berikutnya
+            </p>
+            <p className="text-xs text-amber-800 leading-relaxed">
+              Materi ini terkunci untuk bulan berjalan. Anda dapat mengakses dan mendaftar ulang kembali mulai tanggal <span className="font-extrabold text-amber-950 underline">{formattedCooldownDate}</span> untuk mengulang materi dari awal.
+            </p>
+          </div>
+
+          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row justify-center">
+            {courseHref && (
+              <Button asChild className="bg-[#003461] hover:bg-[#002447] text-white font-bold h-11 px-6 rounded-xl">
+                <Link href={courseHref}>Kembali ke Informasi Kursus</Link>
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
 
   if (questions.length === 0) {
     return (
@@ -105,13 +172,31 @@ export function LmsQuizPlayer({ courseId, lessonId, testPhase, questions, nextLe
       const action = submitAction ?? submitInternalLmsQuizAction
 
       startTransition(async () => {
-        const res = await action(formData)
-        if (res && res.success) {
-          setScoreResult({ score: res.score, passed: res.passed })
+        try {
+          const res = await action(formData)
+          const nextAttempt = localAttemptCount + 1
+          setLocalAttemptCount(nextAttempt)
+
+          if (res && res.success) {
+            setScoreResult({ score: res.score, passed: res.passed })
+            if (!res.passed && testPhase === 'posttest' && (res.maxAttemptsReached || (effectiveMaxAttempts > 0 && nextAttempt >= effectiveMaxAttempts))) {
+              setShowExhaustedModal(true)
+            }
+          } else if (res && !res.success) {
+            setScoreResult({ score: res.score || 0, passed: false })
+            if (testPhase === 'posttest') {
+              setShowExhaustedModal(true)
+            }
+          }
+          router.refresh()
+          setSubmitted(true)
+        } catch (err) {
+          console.error('[LmsQuizPlayer] Submission error:', err)
+          setSubmitted(true)
+          if (testPhase === 'posttest') {
+            setShowExhaustedModal(true)
+          }
         }
-        setLocalAttemptCount(prev => prev + 1)
-        router.refresh()
-        setSubmitted(true)
       })
     } else {
       setCurrentQuestionIndex(prev => prev + 1)
@@ -162,60 +247,119 @@ export function LmsQuizPlayer({ courseId, lessonId, testPhase, questions, nextLe
   if (submitted) {
     const isPretest = testPhase === 'pretest'
     const isSuccessState = isPretest || scoreResult?.passed !== false
+    const isPosttestExhausted = !isPretest && (
+      (effectiveMaxAttempts > 0 && localAttemptCount >= effectiveMaxAttempts && scoreResult?.passed === false) ||
+      isLockedCooldown
+    )
 
     return (
-      <Card className={`w-full max-w-2xl mx-auto border-0 sm:border shadow-none sm:shadow-sm ${!isSuccessState ? 'sm:border-amber-100 bg-amber-50/10' : 'sm:border-emerald-100 bg-emerald-50/50'}`}>
-        <CardContent className="p-6 sm:p-12 text-center flex flex-col items-center">
-          {!isSuccessState ? (
-            <AlertCircle className="h-16 w-16 text-amber-500 mb-4" />
-          ) : (
-            <CheckCircle2 className="h-16 w-16 text-emerald-500 mb-4" />
-          )}
-          <h3 className="text-2xl font-bold font-heading text-slate-900 mb-2">
-            {isPretest ? 'Pre-test Selesai!' : 'Kuis Selesai!'}
-          </h3>
-          <p className="text-slate-600 mb-4">
-            {isPretest
-              ? 'Jawaban Pre-test Anda telah direkam. Silakan lanjutkan ke materi selanjutnya.'
-              : 'Jawaban Anda telah direkam.'}
-          </p>
-          
-          {scoreResult && (
-            <div className={`mt-2 mb-6 px-8 py-4 rounded-xl border ${isSuccessState ? 'bg-emerald-50 border-emerald-100' : 'bg-amber-50 border-amber-200'}`}>
-               <p className="text-sm font-medium text-slate-600 mb-1">Skor Anda:</p>
-               <p className={`text-4xl font-bold ${isSuccessState ? 'text-emerald-600' : 'text-amber-600'}`}>{scoreResult.score}%</p>
-               <p className={`text-sm mt-2 font-medium ${isSuccessState ? 'text-emerald-700' : 'text-amber-700'}`}>
-                 {isPretest ? 'Pre-test Terkirim (Tanpa Syarat Nilai Minimum)' : (scoreResult.passed ? 'Lulus' : 'Belum Lulus')}
-               </p>
-            </div>
-          )}
-          
-          {!isPretest && maxRetakes >= 0 && localAttemptCount >= maxRetakes + 1 && (
-            <p className="text-sm font-medium text-amber-600 mt-2 mb-4 bg-amber-50 px-4 py-2 rounded-lg border border-amber-200">
-              Anda telah mencapai batas maksimal percobaan ({maxRetakes + 1} kali).
-            </p>
-          )}
+      <>
+        {/* Exhausted Modal Pop-up */}
+        <Dialog open={showExhaustedModal} onOpenChange={setShowExhaustedModal}>
+          <DialogContent showCloseButton={false} className="max-w-md p-6 bg-white rounded-2xl border border-rose-100 shadow-2xl">
+            <div className="flex flex-col items-center text-center">
+              <div className="size-16 rounded-full bg-rose-50 flex items-center justify-center text-rose-600 mb-4 ring-8 ring-rose-50/60">
+                <Lock className="size-8" />
+              </div>
+              <DialogHeader className="text-center">
+                <DialogTitle className="text-xl font-black text-[#082033]">
+                  Batas Percobaan Habis — Tidak Lulus
+                </DialogTitle>
+                <DialogDescription className="text-sm text-[#486275] mt-2 leading-relaxed">
+                  Anda telah melakukan percobaan Post-Test sebanyak <span className="font-bold text-slate-800">{effectiveMaxAttempts} kali</span> dan belum mencapai nilai kelulusan minimum ({passingScore}%).
+                </DialogDescription>
+              </DialogHeader>
 
-          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row flex-wrap justify-center mt-2">
-            {!isPretest && (maxRetakes < 0 || localAttemptCount < maxRetakes + 1) && (
-              <Button onClick={handleRetake} variant={scoreResult?.passed ? "outline" : "destructive"}>
-                <RotateCcw className="mr-2 h-4 w-4" />
-                Ulangi Tes
-              </Button>
+              <div className="mt-4 w-full rounded-xl bg-amber-50 border border-amber-200 p-4 text-left">
+                <p className="text-xs font-bold text-amber-900 flex items-center gap-1.5 mb-1">
+                  <Calendar className="size-4 shrink-0 text-amber-600" />
+                  Akses Bulan Berikutnya
+                </p>
+                <p className="text-xs text-amber-800 leading-relaxed">
+                  Materi ini terkunci untuk sisa bulan ini. Anda dapat mengakses dan mendaftar ulang kembali mulai tanggal <span className="font-extrabold text-amber-950 underline">{formattedCooldownDate}</span> untuk mengulang materi dari awal.
+                </p>
+              </div>
+
+              <div className="mt-6 w-full flex flex-col gap-2">
+                {courseHref ? (
+                  <Button asChild className="w-full bg-[#003461] hover:bg-[#002447] text-white font-bold h-11 rounded-xl">
+                    <Link href={courseHref}>Kembali ke Informasi Kursus</Link>
+                  </Button>
+                ) : (
+                  <Button onClick={() => router.back()} className="w-full bg-[#003461] hover:bg-[#002447] text-white font-bold h-11 rounded-xl">
+                    Kembali
+                  </Button>
+                )}
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Card className={`w-full max-w-2xl mx-auto border-0 sm:border shadow-none sm:shadow-sm ${!isSuccessState ? 'sm:border-amber-100 bg-amber-50/10' : 'sm:border-emerald-100 bg-emerald-50/50'}`}>
+          <CardContent className="p-6 sm:p-12 text-center flex flex-col items-center">
+            {!isSuccessState ? (
+              <AlertCircle className="h-16 w-16 text-amber-500 mb-4" />
+            ) : (
+              <CheckCircle2 className="h-16 w-16 text-emerald-500 mb-4" />
             )}
-            {nextLessonHref && (
-              <Button onClick={() => router.push(nextLessonHref)}>
-                Materi Selanjutnya
-              </Button>
+            <h3 className="text-2xl font-bold font-heading text-slate-900 mb-2">
+              {isPretest ? 'Pre-test Selesai!' : 'Kuis Selesai!'}
+            </h3>
+            <p className="text-slate-600 mb-4">
+              {isPretest
+                ? 'Jawaban Pre-test Anda telah direkam. Silakan lanjutkan ke materi selanjutnya.'
+                : 'Jawaban Anda telah direkam.'}
+            </p>
+            
+            {scoreResult && (
+              <div className={`mt-2 mb-6 px-8 py-4 rounded-xl border ${isSuccessState ? 'bg-emerald-50 border-emerald-100' : 'bg-amber-50 border-amber-200'}`}>
+                 <p className="text-sm font-medium text-slate-600 mb-1">Skor Anda:</p>
+                 <p className={`text-4xl font-bold ${isSuccessState ? 'text-emerald-600' : 'text-amber-600'}`}>{scoreResult.score}%</p>
+                 <p className={`text-sm mt-2 font-medium ${isSuccessState ? 'text-emerald-700' : 'text-amber-700'}`}>
+                   {isPretest ? 'Pre-test Terkirim (Tanpa Syarat Nilai Minimum)' : (scoreResult.passed ? 'Lulus' : 'Belum Lulus')}
+                 </p>
+              </div>
             )}
-            {courseHref && (
-              <Button asChild variant="outline">
-                <Link href={courseHref}>Kembali ke Kursus</Link>
-              </Button>
+            
+            {isPosttestExhausted ? (
+              <div className="w-full max-w-md mt-2 mb-6 rounded-xl bg-rose-50 border border-rose-200 p-4 text-left">
+                <p className="text-xs font-bold text-rose-900 flex items-center gap-1.5 mb-1">
+                  <AlertCircle className="size-4 shrink-0 text-rose-600" />
+                  Batas Percobaan Post-Test Tercapai ({effectiveMaxAttempts}x)
+                </p>
+                <p className="text-xs text-rose-800 leading-relaxed">
+                  Anda tidak dapat mengulang Post-Test lagi pada materi ini di bulan ini. Silakan daftar ulang kembali mulai tanggal <span className="font-bold underline">{formattedCooldownDate}</span> untuk mengulang materi dari awal.
+                </p>
+              </div>
+            ) : (
+              !isPretest && effectiveMaxAttempts > 0 && localAttemptCount >= effectiveMaxAttempts && (
+                <p className="text-sm font-medium text-amber-600 mt-2 mb-4 bg-amber-50 px-4 py-2 rounded-lg border border-amber-200">
+                  Anda telah mencapai batas maksimal percobaan ({effectiveMaxAttempts} kali).
+                </p>
+              )
             )}
-          </div>
-        </CardContent>
-      </Card>
+
+            <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row flex-wrap justify-center mt-2">
+              {!isPretest && !isPosttestExhausted && (effectiveMaxAttempts < 0 || localAttemptCount < effectiveMaxAttempts) && (
+                <Button onClick={handleRetake} variant={scoreResult?.passed ? "outline" : "destructive"}>
+                  <RotateCcw className="mr-2 h-4 w-4" />
+                  Ulangi Tes
+                </Button>
+              )}
+              {nextLessonHref && (
+                <Button onClick={() => router.push(nextLessonHref)}>
+                  Materi Selanjutnya
+                </Button>
+              )}
+              {courseHref && (
+                <Button asChild variant="outline">
+                  <Link href={courseHref}>Kembali ke Kursus</Link>
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </>
     )
   }
 

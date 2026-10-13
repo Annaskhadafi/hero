@@ -120,6 +120,7 @@ async function main() {
       add column if not exists posttest_score integer,
       add column if not exists posttest_status text not null default 'not_started',
       add column if not exists due_at timestamp,
+      add column if not exists cooldown_until timestamp,
       add column if not exists last_lesson_id integer references hero_chitralearning_lessons(id) on delete set null,
       add column if not exists last_position_seconds integer not null default 0;
   `);
