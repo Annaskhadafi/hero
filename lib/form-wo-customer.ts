@@ -49,3 +49,17 @@ export function isKpcRecord(record?: {
   )
 }
 
+/**
+ * Helper to identify PT Bumi Suksesindo (BSI) customer or site variations.
+ * Specifically for routing Form WO Team Billing approvals and signatures to Sugeng Wasiat.
+ */
+export function isBumiSuksesindoCustomer(customerOrSite?: string | null): boolean {
+  if (!customerOrSite) return false
+  const c = customerOrSite.toUpperCase().trim()
+  return (
+    c.includes('BUMI SUKSESINDO') ||
+    c.includes('BUMI SUKSES INDO') ||
+    c.includes('SUKSESINDO') ||
+    /\bBSI\b/.test(c)
+  )
+}

@@ -11,6 +11,7 @@ import {
   orgNodeAssignments,
   sites,
 } from '@/db/schema/hero'
+import { isBumiSuksesindoCustomer } from '@/lib/form-wo-customer'
 
 type ApprovalContext = {
   employeeId: number
@@ -568,6 +569,23 @@ async function resolveDynamicApproverForRoleOrSection(options: {
   preferredName?: string
   defaultLabel: string
 }): Promise<{ id: number | null; name: string; label: string }> {
+  // 1. Try preferredName if supplied
+  if (options.preferredName) {
+    const [emp] = await db
+      .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle })
+      .from(employees)
+      .where(and(ilike(employees.name, `%${options.preferredName}%`), eq(employees.isActive, true)))
+      .limit(1)
+
+    if (emp?.id && emp?.name) {
+      return {
+        id: emp.id,
+        name: emp.name,
+        label: options.defaultLabel || emp.jobTitle || 'Team Billing',
+      }
+    }
+  }
+
   // Special case for Team Billing: prioritize active Billing employee (Andika Ferdiansyah)
   const isBilling =
     options.defaultLabel.toLowerCase().includes('billing') ||
@@ -603,23 +621,6 @@ async function resolveDynamicApproverForRoleOrSection(options: {
         id: billingEmp.id,
         name: billingEmp.name,
         label: options.defaultLabel || 'Team Billing',
-      }
-    }
-  }
-
-  // 1. Try preferredName if supplied
-  if (options.preferredName) {
-    const [emp] = await db
-      .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle })
-      .from(employees)
-      .where(and(ilike(employees.name, `%${options.preferredName}%`), eq(employees.isActive, true)))
-      .limit(1)
-
-    if (emp?.id && emp?.name) {
-      return {
-        id: emp.id,
-        name: emp.name,
-        label: emp.jobTitle || options.defaultLabel,
       }
     }
   }
@@ -779,10 +780,13 @@ async function resolveFormWoServiceApprovalRoute(
         defaultLabel: 'Service Operation Others Coord. SPV',
       })
 
+  const isBsi = isBumiSuksesindoCustomer(customerName) || isBumiSuksesindoCustomer(context.siteName)
+
   const billingApprover = await resolveDynamicApproverForRoleOrSection({
     sectionKeywords: ['Billing'],
     nodeKeywords: ['Billing', 'Team Billing', 'Billing Team'],
     roleKeywords: ['Billing', 'Billing Coordinator', 'Billing Staff'],
+    preferredName: isBsi ? 'Sugeng Wasiat' : undefined,
     defaultLabel: 'Team Billing',
   })
 
@@ -856,9 +860,11 @@ async function resolveFormWoServiceApprovalRoute(
 }
 
 async function resolveFormWoRepairRetreadApprovalRoute(
-  context: ApprovalContext
+  context: ApprovalContext,
+  customerName?: string
 ): Promise<ApprovalRouteResolution> {
   const steps: ResolvedApprovalStep[] = []
+  const isBsi = isBumiSuksesindoCustomer(customerName) || isBumiSuksesindoCustomer(context.siteName)
 
   const qcApprover = await resolveDynamicApproverForRoleOrSection({
     sectionKeywords: ['Repair / Retread Operation', 'Repair', 'Retread'],
@@ -880,6 +886,7 @@ async function resolveFormWoRepairRetreadApprovalRoute(
     sectionKeywords: ['Billing'],
     nodeKeywords: ['Billing', 'Team Billing', 'Billing Team'],
     roleKeywords: ['Billing', 'Billing Coordinator', 'Billing Staff'],
+    preferredName: isBsi ? 'Sugeng Wasiat' : undefined,
     defaultLabel: 'Team Billing',
   })
 
@@ -1781,10 +1788,10 @@ export async function resolveApprovalRouteForActivity(
     }
 
     if (context.transactionType === 'form_wo_service_mvc') {
-      return resolveFormWoServiceApprovalRoute(context, 'trakindo')
+      return resolveFormWoServiceApprovalRoute(context, input.customerName || 'trakindo')
     }
     if (context.transactionType === 'form_wo_service_other') {
-      return resolveFormWoServiceApprovalRoute(context, 'other')
+      return resolveFormWoServiceApprovalRoute(context, input.customerName || 'other')
     }
     if (context.transactionType === 'form_wo_service') {
       return resolveFormWoServiceApprovalRoute(context, input.customerName)
@@ -1795,7 +1802,7 @@ export async function resolveApprovalRouteForActivity(
       context.transactionType === 'form_wo_retread' ||
       context.transactionType === 'form_wo_non_repair'
     ) {
-      return resolveFormWoRepairRetreadApprovalRoute(context)
+      return resolveFormWoRepairRetreadApprovalRoute(context, input.customerName)
     }
     if (context.transactionType.startsWith('apd-request')) {
       return resolveApdApprovalRoute(context)
