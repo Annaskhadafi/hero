@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { submitHseOsmAction, verifyHseOsmFinding } from "@/app/actions/hse-osm";
 import { uploadFile } from "@/app/actions/upload";
+import { compressImageFile } from "@/lib/client-image-compression";
 import { resolveClientUploadUrl } from "@/lib/client-upload-url";
 
 type OsmActionModalProps = {
@@ -57,7 +58,13 @@ export function OsmActionModal({
     try {
       const newUrls: string[] = [];
       for (let i = 0; i < files.length; i++) {
-        const file = files[i];
+        const rawFile = files[i];
+        const file = await compressImageFile(rawFile, {
+          maxDimension: 1200,
+          quality: 0.75,
+          mimeType: "image/webp",
+        });
+
         const formData = new FormData();
         formData.append("file", file);
         formData.append("uploadTarget", "hse-osm");

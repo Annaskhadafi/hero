@@ -118,7 +118,7 @@ function getObjectKeyFromUrl(objectUrl: string) {
     }
 
     const knownPrefixMatch = objectPath.match(
-      /(?:^|\/)((?:activity-photos|attendance-photos|profile-photos|upload|uploads|curhat|curhat-attachments|mcu-wellness-results|mcu-referral-letters|mcu-results|offering-letters|sop-win-requests|sop-win|lms-materials|lms-covers|chitralearning|emergency-reports|safety|face-attendance|face-attendance-v2|contract-review-attachment|public-career-cv|reward-store)\/.+)$/i,
+      /(?:^|\/)((?:activity-photos|attendance-photos|profile-photos|upload|uploads|curhat|curhat-attachments|mcu-wellness-results|mcu-referral-letters|mcu-results|offering-letters|sop-win-requests|sop-win|lms-materials|lms-covers|chitralearning|emergency-reports|safety|face-attendance|face-attendance-v2|contract-review-attachment|public-career-cv|hse-osm|reward-store)\/.+)$/i,
     );
 
     if (knownPrefixMatch) {
@@ -382,7 +382,11 @@ export async function getS3ObjectForProxy(objectUrl: string | null) {
     return null;
   }
 
-  const primaryKey = resolveS3ObjectKey(objectUrl);
+  const primaryKey =
+    resolveS3ObjectKey(objectUrl) ||
+    (!objectUrl.includes("://")
+      ? objectUrl.trim().replace(/^\/+/, "").replace(/^api\/uploads\//, "")
+      : null);
   if (!primaryKey) {
     return null;
   }

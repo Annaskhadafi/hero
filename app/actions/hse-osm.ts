@@ -836,3 +836,39 @@ export async function syncHseOsmOfflineBatch(batchPayloads: CreateOsmSessionInpu
     return { success: false, error: error?.message || 'Gagal sinkronisasi data offline OSM' }
   }
 }
+
+export async function updateHseOsmFindingPhotos(
+  findingId: number,
+  photoUrls: string[]
+) {
+  try {
+    const [finding] = await db
+      .select({ id: heroHseOsmFindings.id, sessionId: heroHseOsmFindings.sessionId })
+      .from(heroHseOsmFindings)
+      .where(and(eq(heroHseOsmFindings.id, findingId), isNull(heroHseOsmFindings.deletedAt)))
+      .limit(1)
+
+    if (!finding) {
+      return { success: false, error: 'Temuan tidak ditemukan' }
+    }
+
+    const [updated] = await db
+      .update(heroHseOsmFindings)
+      .set({
+        photoUrls: photoUrls || [],
+        updatedAt: new Date(),
+      })
+      .where(eq(heroHseOsmFindings.id, findingId))
+      .returning()
+
+    safeRevalidatePath('/dashboard/hse/osm')
+    safeRevalidatePath('/mobile/hse/osm')
+    safeRevalidatePath(`/print/hse/osm/${finding.sessionId}`)
+
+    return { success: true, data: updated }
+  } catch (error: any) {
+    console.error('updateHseOsmFindingPhotos error:', error)
+    return { success: false, error: error?.message || 'Gagal memperbarui foto temuan' }
+  }
+}
+

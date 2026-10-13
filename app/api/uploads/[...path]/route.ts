@@ -208,7 +208,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
     path[0] === "chitralearning" ||
     path[0] === "public-career-cv" ||
     path[0] === "contract-review-attachment" ||
-    path[0] === "reward-store"
+    path[0] === "reward-store" ||
+    path[0] === "hse-osm"
 
   const isSensitive = !isRootUpload && !isPublicPrefix
   if (isSensitive) {

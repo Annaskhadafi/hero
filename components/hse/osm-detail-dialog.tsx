@@ -13,6 +13,7 @@ import {
   FileText,
   HardHat,
   Image as ImageIcon,
+  ImageOff,
   MapPin,
   Maximize2,
   Plus,
@@ -314,9 +315,8 @@ export function OsmDetailDialog({
                                     onClick={() => setSelectedPhoto(resolveClientUploadUrl(pUrl))}
                                     className="relative aspect-video rounded-md border overflow-hidden cursor-pointer group bg-slate-950"
                                   >
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img
-                                      src={resolveClientUploadUrl(pUrl)}
+                                    <OsmFindingDetailImage
+                                      url={pUrl}
                                       alt={`Foto temuan ${pIdx + 1}`}
                                       className="size-full object-cover transition-transform group-hover:scale-105"
                                     />
@@ -365,9 +365,8 @@ export function OsmDetailDialog({
                                       onClick={() => setSelectedPhoto(resolveClientUploadUrl(apUrl))}
                                       className="relative size-16 rounded-md border overflow-hidden cursor-pointer group bg-slate-950"
                                     >
-                                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                                      <img
-                                        src={resolveClientUploadUrl(apUrl)}
+                                      <OsmFindingDetailImage
+                                        url={apUrl}
                                         alt={`Bukti perbaikan ${apIdx + 1}`}
                                         className="size-full object-cover transition-transform group-hover:scale-105"
                                       />
@@ -483,5 +482,37 @@ export function OsmDetailDialog({
         </Dialog>
       )}
     </>
+  );
+}
+
+function OsmFindingDetailImage({
+  url,
+  alt,
+  className,
+}: {
+  url: string;
+  alt: string;
+  className?: string;
+}) {
+  const [hasError, setHasError] = useState(false);
+  const resolved = resolveClientUploadUrl(url);
+
+  if (hasError || !resolved) {
+    return (
+      <div className="size-full flex flex-col items-center justify-center p-2 bg-slate-900 text-slate-400 text-center select-none">
+        <ImageOff className="size-4 text-amber-500 mb-1" />
+        <span className="text-[9px] font-bold text-slate-300">Gagal Muat</span>
+      </div>
+    );
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={resolved}
+      alt={alt}
+      onError={() => setHasError(true)}
+      className={className}
+    />
   );
 }

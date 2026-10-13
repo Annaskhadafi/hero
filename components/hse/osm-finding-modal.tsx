@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createHseOsmFinding } from "@/app/actions/hse-osm";
 import { uploadFile } from "@/app/actions/upload";
+import { compressImageFile } from "@/lib/client-image-compression";
 import { resolveClientUploadUrl } from "@/lib/client-upload-url";
 import { HSE_OSM_DEFAULT_CLASSIFICATIONS, type HseOsmRiskLevel, type HseOsmFindingCondition } from "@/lib/hse-osm-constants";
 
@@ -64,7 +65,13 @@ export function OsmFindingModal({
     try {
       const newUrls: string[] = [];
       for (let i = 0; i < files.length; i++) {
-        const file = files[i];
+        const rawFile = files[i];
+        const file = await compressImageFile(rawFile, {
+          maxDimension: 1200,
+          quality: 0.75,
+          mimeType: "image/webp",
+        });
+
         const formData = new FormData();
         formData.append("file", file);
         formData.append("uploadTarget", "hse-osm");

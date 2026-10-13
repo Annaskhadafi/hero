@@ -300,25 +300,29 @@ export default async function PrintHseOsmPage({
                       <td style={{ width: "50%", verticalAlign: "top", padding: "6px", backgroundColor: "#fff" }}>
                         {f.photoUrls && f.photoUrls.length > 0 ? (
                           <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", justifyContent: "center" }}>
-                            {f.photoUrls.map((pUrl: string, pIdx: number) => (
-                              <div key={pIdx} style={{ textAlign: "center" }}>
-                                <img
-                                  src={resolveUploadUrl(pUrl, { absolute: true })}
-                                  alt="Foto Temuan (Before)"
-                                  style={{
-                                    maxWidth: "160px",
-                                    maxHeight: "110px",
-                                    width: "auto",
-                                    height: "auto",
-                                    objectFit: "cover",
-                                    borderRadius: "4px",
-                                    border: "1px solid #cbd5e1",
-                                    display: "block",
-                                  }}
-                                />
-                                <span style={{ fontSize: "6.5pt", color: "#64748b" }}>Foto #{pIdx + 1} (Before)</span>
-                              </div>
-                            ))}
+                            {f.photoUrls.map((pUrl: string, pIdx: number) => {
+                              const resolved = resolveUploadUrl(pUrl, { absolute: true });
+                              const printSrc = resolved ? `${resolved}${resolved.includes("?") ? "&" : "?"}w=600` : "";
+                              return (
+                                <div key={pIdx} style={{ textAlign: "center" }}>
+                                  <img
+                                    src={printSrc}
+                                    alt="Foto Temuan (Before)"
+                                    style={{
+                                      maxWidth: "160px",
+                                      maxHeight: "110px",
+                                      width: "auto",
+                                      height: "auto",
+                                      objectFit: "cover",
+                                      borderRadius: "4px",
+                                      border: "1px solid #cbd5e1",
+                                      display: "block",
+                                    }}
+                                  />
+                                  <span style={{ fontSize: "6.5pt", color: "#64748b" }}>Foto #{pIdx + 1} (Before)</span>
+                                </div>
+                              );
+                            })}
                           </div>
                         ) : (
                           <div style={{ padding: "20px 8px", textAlign: "center", fontSize: "7.5pt", color: "#94a3b8", fontStyle: "italic" }}>
@@ -331,25 +335,29 @@ export default async function PrintHseOsmPage({
                       <td style={{ width: "50%", verticalAlign: "top", padding: "6px", backgroundColor: "#fff" }}>
                         {f.actionPhotoUrls && f.actionPhotoUrls.length > 0 ? (
                           <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", justifyContent: "center" }}>
-                            {f.actionPhotoUrls.map((apUrl: string, apIdx: number) => (
-                              <div key={apIdx} style={{ textAlign: "center" }}>
-                                <img
-                                  src={resolveUploadUrl(apUrl, { absolute: true })}
-                                  alt="Foto Perbaikan (After)"
-                                  style={{
-                                    maxWidth: "160px",
-                                    maxHeight: "110px",
-                                    width: "auto",
-                                    height: "auto",
-                                    objectFit: "cover",
-                                    borderRadius: "4px",
-                                    border: "1px solid #86efac",
-                                    display: "block",
-                                  }}
-                                />
-                                <span style={{ fontSize: "6.5pt", color: "#166534" }}>Foto #{apIdx + 1} (After)</span>
-                              </div>
-                            ))}
+                            {f.actionPhotoUrls.map((apUrl: string, apIdx: number) => {
+                              const resolved = resolveUploadUrl(apUrl, { absolute: true });
+                              const printSrc = resolved ? `${resolved}${resolved.includes("?") ? "&" : "?"}w=600` : "";
+                              return (
+                                <div key={apIdx} style={{ textAlign: "center" }}>
+                                  <img
+                                    src={printSrc}
+                                    alt="Foto Perbaikan (After)"
+                                    style={{
+                                      maxWidth: "160px",
+                                      maxHeight: "110px",
+                                      width: "auto",
+                                      height: "auto",
+                                      objectFit: "cover",
+                                      borderRadius: "4px",
+                                      border: "1px solid #86efac",
+                                      display: "block",
+                                    }}
+                                  />
+                                  <span style={{ fontSize: "6.5pt", color: "#166534" }}>Foto #{apIdx + 1} (After)</span>
+                                </div>
+                              );
+                            })}
                           </div>
                         ) : (
                           <div style={{ padding: "20px 8px", textAlign: "center", fontSize: "7.5pt", color: "#94a3b8", fontStyle: "italic" }}>

@@ -14,11 +14,13 @@ import {
   Compass,
   Crosshair,
   Download,
+  Edit3,
   ExternalLink,
   Eye,
   FileText,
   HardHat,
   Image as ImageIcon,
+  ImageOff,
   Loader2,
   MapPin,
   Maximize2,
@@ -55,9 +57,11 @@ import {
   getHseOsmSessions,
   submitHseOsmAction,
   syncHseOsmOfflineBatch,
+  updateHseOsmFindingPhotos,
   verifyHseOsmFinding,
 } from "@/app/actions/hse-osm";
 import { uploadFile } from "@/app/actions/upload";
+import { compressImageFile } from "@/lib/client-image-compression";
 import { resolveClientUploadUrl } from "@/lib/client-upload-url";
 import {
   HSE_OSM_DEFAULT_CLASSIFICATIONS,
@@ -178,6 +182,12 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
   const [actionMode, setActionMode] = useState<"action" | "close" | "reject" | null>(null);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
   const [showDetailMap, setShowDetailMap] = useState(false);
+
+  // Manage / Replace Finding Photos state in mobile
+  const [managePhotosFinding, setManagePhotosFinding] = useState<any>(null);
+  const [editingFindingPhotos, setEditingFindingPhotos] = useState<string[]>([]);
+  const [isSavingFindingPhotos, setIsSavingFindingPhotos] = useState(false);
+  const [isUploadingEditPhoto, setIsUploadingEditPhoto] = useState(false);
 
   // Inspector profile info from session
   const actor = initialData?.actor;
@@ -457,7 +467,14 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
     try {
       const newUrls: string[] = [];
       for (let i = 0; i < files.length; i++) {
-        const file = files[i];
+        const rawFile = files[i];
+        // Client-side lightweight compression (max 1200px, 0.75 WebP) - reduces 5-15MB phone camera photo to ~100-250KB!
+        const file = await compressImageFile(rawFile, {
+          maxDimension: 1200,
+          quality: 0.75,
+          mimeType: "image/webp",
+        });
+
         const formData = new FormData();
         formData.append("file", file);
         formData.append("uploadTarget", "hse-osm");
@@ -483,6 +500,82 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
       setIsUploadingPhoto(false);
       setIsUploadingNewFindingPhoto(false);
       e.target.value = "";
+    }
+  }
+
+  // Upload handler for managing / replacing existing finding photos
+  async function handleEditPhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    if (editingFindingPhotos.length + files.length > 5) {
+      alert("Maksimal 5 foto temuan.");
+      return;
+    }
+
+    setIsUploadingEditPhoto(true);
+    try {
+      const newUrls: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const rawFile = files[i];
+        const file = await compressImageFile(rawFile, {
+          maxDimension: 1200,
+          quality: 0.75,
+          mimeType: "image/webp",
+        });
+
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("uploadTarget", "hse-osm");
+
+        const res = await uploadFile(formData);
+        if (res.success && res.url) {
+          newUrls.push(res.url);
+        } else {
+          throw new Error(res.error || "Gagal mengunggah foto.");
+        }
+      }
+      setEditingFindingPhotos((prev) => [...prev, ...newUrls]);
+    } catch (err: any) {
+      alert(err?.message || "Gagal mengunggah foto.");
+    } finally {
+      setIsUploadingEditPhoto(false);
+      e.target.value = "";
+    }
+  }
+
+  // Save updated finding photos
+  async function handleSaveFindingPhotos() {
+    if (!managePhotosFinding) return;
+    setIsSavingFindingPhotos(true);
+    try {
+      const res = await updateHseOsmFindingPhotos(
+        managePhotosFinding.id,
+        editingFindingPhotos
+      );
+      if (!res.success) {
+        throw new Error(res.error || "Gagal memperbarui foto temuan.");
+      }
+
+      // Update activeSessionDetail local state immediately
+      setActiveSessionDetail((prev: any) => {
+        if (!prev || !prev.findings) return prev;
+        return {
+          ...prev,
+          findings: prev.findings.map((f: any) =>
+            f.id === managePhotosFinding.id
+              ? { ...f, photoUrls: editingFindingPhotos }
+              : f
+          ),
+        };
+      });
+
+      alert("Foto temuan berhasil diperbarui!");
+      setManagePhotosFinding(null);
+    } catch (err: any) {
+      alert(err?.message || "Gagal menyimpan foto temuan.");
+    } finally {
+      setIsSavingFindingPhotos(false);
     }
   }
 
@@ -2259,30 +2352,63 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                   </div>
 
                   {/* Photos Before (Temuan Awal) */}
-                  {f.photoUrls && f.photoUrls.length > 0 && (
-                    <div className="space-y-1.5 pt-1">
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex items-center justify-between">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 flex items-center gap-1">
                         <span className="size-1.5 rounded-full bg-rose-500" />
                         Foto Kondisi Temuan (Before)
                       </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setManagePhotosFinding(f);
+                          setEditingFindingPhotos([...(f.photoUrls || [])]);
+                        }}
+                        className="h-6 px-2 text-[10px] text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950 font-bold gap-1 rounded"
+                      >
+                        <Edit3 className="size-3" />
+                        Kelola Foto
+                      </Button>
+                    </div>
+
+                    {f.photoUrls && f.photoUrls.length > 0 ? (
                       <div className="grid grid-cols-3 gap-2">
                         {f.photoUrls.map((pUrl: string, pIdx: number) => (
                           <div
                             key={pIdx}
                             onClick={() => setSelectedPhotoModal(resolveClientUploadUrl(pUrl))}
-                            className="aspect-video rounded-lg border overflow-hidden bg-slate-950 cursor-pointer shadow-2xs hover:opacity-90 transition"
+                            className="aspect-video rounded-lg border overflow-hidden bg-slate-950 cursor-pointer shadow-2xs hover:opacity-90 transition relative"
                           >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={resolveClientUploadUrl(pUrl)}
+                            <OsmFindingThumbnail
+                              url={pUrl}
                               alt="Foto Temuan (Before)"
-                              className="size-full object-cover"
                             />
                           </div>
                         ))}
                       </div>
-                    </div>
-                  )}
+                    ) : (
+                      <div className="p-3 rounded-lg border border-dashed border-slate-200 dark:border-slate-800 text-center">
+                        <span className="text-[10px] text-muted-foreground block mb-1">
+                          Belum ada foto temuan awal
+                        </span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setManagePhotosFinding(f);
+                            setEditingFindingPhotos([]);
+                          }}
+                          className="h-6 text-[10px] text-blue-600 font-semibold gap-1"
+                        >
+                          <Camera className="size-3" />
+                          + Tambah Foto
+                        </Button>
+                      </div>
+                    )}
+                  </div>
 
                   {/* Corrective Action / After (if available) */}
                   {f.actionTaken && (
@@ -2309,13 +2435,11 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                               <div
                                 key={apIdx}
                                 onClick={() => setSelectedPhotoModal(resolveClientUploadUrl(apUrl))}
-                                className="size-16 rounded-lg border border-emerald-300 dark:border-emerald-700 overflow-hidden bg-slate-950 cursor-pointer shadow-xs hover:opacity-90 transition"
+                                className="size-16 rounded-lg border border-emerald-300 dark:border-emerald-700 overflow-hidden bg-slate-950 cursor-pointer shadow-xs hover:opacity-90 transition relative"
                               >
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={resolveClientUploadUrl(apUrl)}
+                                <OsmFindingThumbnail
+                                  url={apUrl}
                                   alt="Foto Bukti (After)"
-                                  className="size-full object-cover"
                                 />
                               </div>
                             ))}
@@ -2761,18 +2885,140 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
           </div>
         )}
 
+        {/* Modal Kelola / Ganti Foto Temuan */}
+        {managePhotosFinding && (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-sm w-full p-4 space-y-4 shadow-xl border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150">
+              <div className="flex items-center justify-between border-b pb-2.5">
+                <div>
+                  <span className="text-[10px] font-mono font-bold text-blue-600 dark:text-blue-400">
+                    {managePhotosFinding.findingNumber}
+                  </span>
+                  <h3 className="text-xs font-bold text-foreground">
+                    Kelola Foto Temuan (Before)
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setManagePhotosFinding(null)}
+                  className="size-7 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-muted-foreground"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                <span className="text-[11px] font-semibold text-muted-foreground block">
+                  Daftar Foto ({editingFindingPhotos.length}/5):
+                </span>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {editingFindingPhotos.map((url, idx) => (
+                    <div
+                      key={idx}
+                      className="relative aspect-video rounded-lg border overflow-hidden bg-slate-950 group"
+                    >
+                      <OsmFindingThumbnail url={url} alt={`Foto ${idx + 1}`} />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setEditingFindingPhotos((prev) =>
+                            prev.filter((_, i) => i !== idx)
+                          )
+                        }
+                        className="absolute top-1 right-1 size-5 rounded-full bg-red-600/90 text-white flex items-center justify-center hover:bg-red-700 shadow-xs"
+                        title="Hapus foto ini"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </div>
+                  ))}
+
+                  {editingFindingPhotos.length < 5 && (
+                    <label className="aspect-video rounded-lg border-2 border-dashed border-blue-300 dark:border-blue-800 flex flex-col items-center justify-center gap-1 cursor-pointer bg-blue-50/50 hover:bg-blue-100/50 dark:bg-blue-950/20 text-blue-600 dark:text-blue-400">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="hidden"
+                        onChange={handleEditPhotoUpload}
+                        disabled={isUploadingEditPhoto}
+                      />
+                      {isUploadingEditPhoto ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <>
+                          <Camera className="size-4" />
+                          <span className="text-[9px] font-bold">+ Foto</span>
+                        </>
+                      )}
+                    </label>
+                  )}
+                </div>
+
+                <p className="text-[10px] text-muted-foreground leading-relaxed pt-1">
+                  Foto otomatis dikompres sebelum dikirim untuk menghemat kuota dan mempercepat proses simpan.
+                </p>
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setManagePhotosFinding(null)}
+                  className="flex-1 text-xs h-9"
+                >
+                  Batal
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleSaveFindingPhotos}
+                  disabled={isSavingFindingPhotos || isUploadingEditPhoto}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-xs h-9 font-bold"
+                >
+                  {isSavingFindingPhotos ? (
+                    <span className="flex items-center gap-1.5">
+                      <Loader2 className="size-3.5 animate-spin" /> Menyimpan...
+                    </span>
+                  ) : (
+                    "Simpan Foto"
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Photo Lightbox */}
         {selectedPhotoModal && (
           <div
             onClick={() => setSelectedPhotoModal(null)}
             className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-3"
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={selectedPhotoModal}
-              alt="Preview"
-              className="max-h-[85vh] max-w-full rounded object-contain"
-            />
+            <div className="relative max-h-[85vh] max-w-full flex items-center justify-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={selectedPhotoModal}
+                alt="Preview"
+                className="max-h-[85vh] max-w-full rounded object-contain"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = "none";
+                  const fallback = document.getElementById("lightbox-fallback");
+                  if (fallback) fallback.style.display = "flex";
+                }}
+              />
+              <div
+                id="lightbox-fallback"
+                style={{ display: "none" }}
+                className="flex-col items-center justify-center p-6 bg-slate-900 border border-slate-800 rounded-xl text-center text-slate-300 max-w-xs"
+              >
+                <ImageOff className="size-8 text-amber-500 mb-2" />
+                <span className="text-sm font-bold block">Gagal Memuat Foto</span>
+                <span className="text-xs text-slate-400 mt-1 block">
+                  Berkas foto tidak ditemukan di server atau telah kedaluwarsa.
+                </span>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -2780,4 +3026,29 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
   }
 
   return null;
+}
+
+function OsmFindingThumbnail({ url, alt }: { url: string; alt: string }) {
+  const [hasError, setHasError] = useState(false);
+  const resolved = resolveClientUploadUrl(url);
+
+  if (hasError || !resolved) {
+    return (
+      <div className="size-full flex flex-col items-center justify-center p-1 bg-slate-900 text-slate-400 text-center select-none">
+        <ImageOff className="size-4 text-amber-500 mb-0.5" />
+        <span className="text-[8.5px] font-bold text-slate-300">Gagal Muat</span>
+        <span className="text-[7px] text-slate-500">Klik / Ganti</span>
+      </div>
+    );
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={resolved}
+      alt={alt}
+      onError={() => setHasError(true)}
+      className="size-full object-cover"
+    />
+  );
 }

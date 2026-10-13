@@ -117,8 +117,13 @@ export async function uploadFile(formData: FormData) {
       return { success: false, error: "Document size max 10MB." };
     }
 
-    // Automatically optimize raster images to WebP
-    const fileToUpload = isImage ? await optimizeUploadFile(file) : file;
+    // Automatically optimize raster images to WebP with target-tuned dimensions
+    const fileToUpload = isImage
+      ? await optimizeUploadFile(file, {
+          maxDimension: uploadTarget === "hse-osm" ? 1400 : 1600,
+          quality: 78,
+        })
+      : file;
     const finalFileExt = getCurhatFileExtension(fileToUpload.name, fileToUpload.type);
 
     if (isS3UploadConfigured()) {
@@ -126,7 +131,7 @@ export async function uploadFile(formData: FormData) {
         const result =
           uploadTarget === "attendance"
             ? await uploadAttendancePhotoToS3(fileToUpload)
-            : await uploadAnyFileToS3(fileToUpload, undefined, AbortSignal.timeout(30_000));
+            : await uploadAnyFileToS3(fileToUpload, uploadTarget || undefined, AbortSignal.timeout(45_000));
         const proxyUrl = `/api/uploads/${result.key}`;
         return { success: true, url: proxyUrl, readableUrl: proxyUrl, fileName: fileToUpload.name, fileSize: fileToUpload.size };
       } catch (s3Error) {
@@ -135,7 +140,10 @@ export async function uploadFile(formData: FormData) {
     }
 
     // Local fallback storage when S3 is not configured or failed
-    const uploadDir = join(process.cwd(), "public", "uploads");
+    const subFolder = uploadTarget ? uploadTarget : "";
+    const uploadDir = subFolder
+      ? join(process.cwd(), "public", "uploads", subFolder)
+      : join(process.cwd(), "public", "uploads");
     await mkdir(uploadDir, { recursive: true });
 
     const ext = finalFileExt;
@@ -146,7 +154,7 @@ export async function uploadFile(formData: FormData) {
 
     await writeFile(filePath, buffer);
 
-    const publicUrl = `/api/uploads/${uniqueName}`;
+    const publicUrl = subFolder ? `/api/uploads/${subFolder}/${uniqueName}` : `/api/uploads/${uniqueName}`;
     return { success: true, url: publicUrl, readableUrl: publicUrl, fileName: fileToUpload.name, fileSize: fileToUpload.size };
   } catch (error: any) {
     console.error("Upload error:", error);
