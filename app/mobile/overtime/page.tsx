@@ -3,7 +3,8 @@ import { CheckCheck, History, PlusCircle } from 'lucide-react'
 
 import { db } from '@/db'
 import { activityLibraries, employees, masterDepartments, masterSections, sites } from '@/db/schema/hero'
-import { asc, eq } from 'drizzle-orm'
+import { and, asc, eq } from 'drizzle-orm'
+import { libraryDeptMatches, librarySectionMatches, librarySiteMatches } from '@/lib/daily-activity'
 import { MobileApprovalCenter } from '@/components/mobile/mobile-approval-center'
 import { MobileOvertimeRequestForm } from '@/components/mobile/mobile-overtime-request-form'
 import { MobileSplHistory, type MobileSplHistoryRow } from '@/components/mobile/mobile-spl-history'
@@ -134,7 +135,14 @@ export default async function MobileOvertimePage({
             requiresEquipmentNo: activityLibraries.requiresEquipmentNo,
           })
           .from(activityLibraries)
-          .where(eq(activityLibraries.isActive, true))
+          .where(
+            and(
+              eq(activityLibraries.isActive, true),
+              librarySiteMatches(activityLibraries.siteId, activityLibraries.siteIds, data.lead?.siteId),
+              libraryDeptMatches(activityLibraries.departmentId, activityLibraries.departmentIds, data.lead?.departmentId),
+              librarySectionMatches(activityLibraries.sectionId, activityLibraries.sectionIds, data.lead?.sectionId)
+            )
+          )
           .orderBy(asc(activityLibraries.activityName)),
       [],
       'activityLibraries'

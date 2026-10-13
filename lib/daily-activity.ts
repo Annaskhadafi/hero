@@ -43,26 +43,33 @@ let dailyActivitySeedPromise: Promise<void> | null = null
 
 // Aktivitas library bersifat global (siteIds kosong) atau tersedia untuk site yang
 // terdaftar di kolom siteIds. Jika siteIds berisi -1 (Non Global), maka tidak pernah match ke karyawan manapun (tidak tampil di mobile).
-function librarySiteMatches(siteIdCol: AnyPgColumn, siteIdsCol: AnyPgColumn, employeeSiteId: number | null | undefined) {
+export function librarySiteMatches(siteIdCol: AnyPgColumn, siteIdsCol: AnyPgColumn, employeeSiteId: number | null | undefined) {
+  // Aktivitas yang berstatus Non Global (-1) TIDAK PERNAH match ke karyawan manapun (tidak tampil di mobile)
+  const isNotNonGlobal = and(
+    sql`(${siteIdCol} is null or ${siteIdCol} != -1)`,
+    sql`(${siteIdsCol} is null or not (${siteIdsCol} @> '[-1]'::jsonb))`
+  )
+
+  const isGlobal = and(
+    isNull(siteIdCol),
+    sql`(${siteIdsCol} is null or jsonb_array_length(${siteIdsCol}) = 0)`
+  )
+
   if (employeeSiteId == null) {
-    return and(
-      or(isNull(siteIdCol), sql`${siteIdCol} != -1`),
-      sql`(${siteIdsCol} is null or (jsonb_array_length(${siteIdsCol}) = 0 and not (${siteIdsCol} @> '[-1]'::jsonb)))`
-    )
+    return and(isNotNonGlobal, isGlobal)
   }
-  return or(
-    and(
-      or(isNull(siteIdCol), sql`${siteIdCol} != -1`),
-      sql`(${siteIdsCol} is null or (jsonb_array_length(${siteIdsCol}) = 0 and not (${siteIdsCol} @> '[-1]'::jsonb)))`
-    ),
+
+  const isMatchedSite = or(
     eq(siteIdCol, employeeSiteId),
     sql`${siteIdsCol} @> jsonb_build_array(${employeeSiteId}::integer)`
   )
+
+  return and(isNotNonGlobal, or(isGlobal, isMatchedSite))
 }
 
 // Cocokkan departement: jika departmentId DAN departmentIds sama-sama kosong/null → global (tampilkan).
 // Jika salah satu terisi, cek apakah dept karyawan termasuk di dalamnya.
-function libraryDeptMatches(deptIdCol: AnyPgColumn, deptIdsCol: AnyPgColumn, employeeDeptId: number | null | undefined) {
+export function libraryDeptMatches(deptIdCol: AnyPgColumn, deptIdsCol: AnyPgColumn, employeeDeptId: number | null | undefined) {
   if (employeeDeptId == null) {
     // Karyawan tidak punya departemen → hanya tampilkan yang global (kedua kolom kosong/null)
     return and(
@@ -84,7 +91,7 @@ function libraryDeptMatches(deptIdCol: AnyPgColumn, deptIdsCol: AnyPgColumn, emp
 }
 
 // Cocokkan section: sama dengan dept, mendukung legacy single col + JSONB array.
-function librarySectionMatches(secIdCol: AnyPgColumn, secIdsCol: AnyPgColumn, employeeSecId: number | null | undefined) {
+export function librarySectionMatches(secIdCol: AnyPgColumn, secIdsCol: AnyPgColumn, employeeSecId: number | null | undefined) {
   if (employeeSecId == null) {
     return and(
       isNull(secIdCol),
@@ -843,7 +850,19 @@ async function getMatchedRouteChecklistForEmployee(
       .from(activityRouteItems)
       .leftJoin(activityLibraries, eq(activityRouteItems.libraryActivityId, activityLibraries.id))
       .innerJoin(activityRouteGroups, eq(activityRouteItems.routeGroupId, activityRouteGroups.id))
-      .where(eq(activityRouteGroups.routeTemplateId, matchedRouteTemplate.id))
+      .where(
+        and(
+          eq(activityRouteGroups.routeTemplateId, matchedRouteTemplate.id),
+          or(
+            isNull(activityRouteItems.libraryActivityId),
+            and(
+              eq(activityLibraries.isActive, true),
+              sql`(${activityLibraries.siteId} is null or ${activityLibraries.siteId} != -1)`,
+              sql`(${activityLibraries.siteIds} is null or not (${activityLibraries.siteIds} @> '[-1]'::jsonb))`
+            )
+          )
+        )
+      )
       .orderBy(asc(activityRouteItems.sortOrder), asc(activityRouteItems.id)),
     db
       .select({
@@ -2143,6 +2162,7 @@ async function getAvailableRouteFoldersForEmployee(
       ...template,
       score: getRouteTemplateScore(template, employee, shiftAliases),
     }))
+    .filter((template) => template.score >= 0)
     .sort((left, right) => {
       if (right.score !== left.score) {
         return right.score - left.score
@@ -2197,7 +2217,21 @@ async function getAvailableRouteFoldersForEmployee(
       .from(activityRouteItems)
       .leftJoin(activityLibraries, eq(activityRouteItems.libraryActivityId, activityLibraries.id))
       .innerJoin(activityRouteGroups, eq(activityRouteItems.routeGroupId, activityRouteGroups.id))
-      .where(inArray(activityRouteGroups.routeTemplateId, templateIds))
+      .where(
+        and(
+          inArray(activityRouteGroups.routeTemplateId, templateIds),
+          or(
+            isNull(activityRouteItems.libraryActivityId),
+            and(
+              eq(activityLibraries.isActive, true),
+              sql`(${activityLibraries.siteId} is null or ${activityLibraries.siteId} != -1)`,
+              sql`(${activityLibraries.siteIds} is null or not (${activityLibraries.siteIds} @> '[-1]'::jsonb))`,
+              libraryDeptMatches(activityLibraries.departmentId, activityLibraries.departmentIds, employee.departmentId),
+              librarySectionMatches(activityLibraries.sectionId, activityLibraries.sectionIds, employee.sectionId)
+            )
+          )
+        )
+      )
       .orderBy(asc(activityRouteItems.sortOrder), asc(activityRouteItems.id)),
   ])
 
@@ -2471,7 +2505,10 @@ export async function getDailyActivityEmployeeData(
         .where(
           and(
             eq(activityLibraries.isActive, true),
-            librarySiteMatches(activityLibraries.siteId, activityLibraries.siteIds, employee.siteId)
+            eq(activityLibraries.isSelfInput, true),
+            librarySiteMatches(activityLibraries.siteId, activityLibraries.siteIds, employee.siteId),
+            libraryDeptMatches(activityLibraries.departmentId, activityLibraries.departmentIds, employee.departmentId),
+            librarySectionMatches(activityLibraries.sectionId, activityLibraries.sectionIds, employee.sectionId)
           )
         )
         .orderBy(desc(activityLibraries.basePoints), asc(activityLibraries.activityName)),
@@ -2733,7 +2770,11 @@ export async function getDailyActivityEmployeeData(
         .where(
           and(
             inArray(activityLibraries.id, uniqueRouteLibraryIds),
-            eq(activityLibraries.isActive, true)
+            eq(activityLibraries.isActive, true),
+            sql`(${activityLibraries.siteId} is null or ${activityLibraries.siteId} != -1)`,
+            sql`(${activityLibraries.siteIds} is null or not (${activityLibraries.siteIds} @> '[-1]'::jsonb))`,
+            libraryDeptMatches(activityLibraries.departmentId, activityLibraries.departmentIds, employee.departmentId),
+            librarySectionMatches(activityLibraries.sectionId, activityLibraries.sectionIds, employee.sectionId)
           )
         )
     : []

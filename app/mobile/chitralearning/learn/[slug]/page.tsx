@@ -76,6 +76,7 @@ export default async function MobileLessonPlayerPage({
   let currentEnrollment: any = null;
   let enrollmentProgress = 10;
   let pretestStatus = 'not_started';
+  let isFailedCooldown = false;
   if (currentEmployee) {
     const [enrollment] = await db
       .select()
@@ -92,7 +93,7 @@ export default async function MobileLessonPlayerPage({
     pretestStatus = enrollment.pretestStatus || 'not_started';
 
     // Update status to in_progress only if not passed and not in failed cooldown
-    const isFailedCooldown = enrollment.status === 'failed' && Boolean(
+    isFailedCooldown = enrollment.status === 'failed' && Boolean(
       enrollment.cooldownUntil && new Date().getTime() < new Date(enrollment.cooldownUntil).getTime()
     );
 

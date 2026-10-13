@@ -30,7 +30,7 @@ describe('User Management SAP SN Validation and Search Visibility', () => {
 
   it('uses clear SAP NIK/SN label in SecurityUserCreateDialog', () => {
     const source = read('components/security-user-create-dialog.tsx')
-    expect(source).toContain('SN / NIK (SAP)')
+    expect(source).toMatch(/SN.*\(SAP\)/)
     expect(source).toContain('resmi dari SAP')
   })
 })

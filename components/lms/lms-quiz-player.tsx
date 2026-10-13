@@ -21,7 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { formatIndonesianDate, getNextMonthFirstDay } from '@/lib/chitralearning-lms'
+import { formatIndonesianDate, getNextMonthFirstDay } from '@/lib/chitralearning-lms/date-utils'
 
 export interface QuizQuestion {
   id: number

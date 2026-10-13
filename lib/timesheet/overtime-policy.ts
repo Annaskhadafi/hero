@@ -281,6 +281,21 @@ export function classifyOvertimePolicyDay(params: {
     }
   }
 
+  if (params.rosterType === '6:1') {
+    let workingDays = 0
+    for (let i = 0; i <= params.dayIndex; i++) {
+      const code = params.schedule[i]
+      if (code === 'OFF' || code === 'Libur') {
+        workingDays = 0
+      } else {
+        workingDays++
+      }
+    }
+    if (workingDays > 0 && workingDays % 6 === 0) {
+      return 'hariKe6'
+    }
+  }
+
   const next = params.schedule[params.dayIndex + 1] ?? params.nextScheduleCode
   return next === 'OFF' || next === 'Libur' ? 'hariKe6' : 'hariBiasa'
 }

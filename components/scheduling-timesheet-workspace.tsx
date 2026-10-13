@@ -3701,8 +3701,7 @@ export function SchedulingTimesheetWorkspace({
         pdfConfig,
         allowanceVariables,
         overtimeVariables,
-        approvalSections: siteApprovalSections
-          .map((row) => {
+        approvalSections: siteApprovalSections.map((row) => {
             const approverOverrides = approvalApprovers[row.id]
             const sectionId = Number(row.sectionId)
             const departmentId = Number(row.departmentId)
@@ -8697,9 +8696,21 @@ export function SchedulingTimesheetWorkspace({
                   <div className="grid gap-4 xl:grid-cols-3">
                     {(
                       [
-                        ['hariBiasa', 'Hari Biasa', 'OT sebelum dan sesudah jam kerja normal.'],
-                        ['hariLibur', 'Hari Libur', 'Tanggal merah atau schedule OFF/Libur.'],
-                        ['hariKe6', 'Hari ke-6', 'Hari kerja tepat sebelum schedule OFF/Libur.'],
+                        [
+                          'hariBiasa',
+                          'Hari Biasa (H-1 s/d H-5)',
+                          'Hari kerja normal (standar 4 jam OT: 06:00-08:00 & 16:00-18:00).',
+                        ],
+                        [
+                          'hariKe6',
+                          'Hari ke-6 (Sebelum OFF)',
+                          'Hari kerja tepat sebelum schedule OFF (standar 6 jam OT untuk Roster 6:1: 06:00-08:00 & 14:00-18:00).',
+                        ],
+                        [
+                          'hariLibur',
+                          'Hari Libur / OFF',
+                          'Tanggal merah atau penugasan di schedule OFF (standar 11 jam OT: 06:00-12:00 & 13:00-18:00).',
+                        ],
                         ...(siteConfig.rosterType === '13:1'
                           ? [
                               [

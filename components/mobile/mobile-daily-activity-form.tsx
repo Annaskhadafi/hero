@@ -131,6 +131,8 @@ export type LibraryOption = {
   maxPointsPerDay: number
   departmentId: number | null
   sectionId: number | null
+  siteId?: number | null
+  siteIds?: number[] | null
   isGroupActivity?: boolean
   isSelfInput?: boolean
   isAssignable?: boolean
@@ -1832,6 +1834,15 @@ export function MobileDailyActivityForm({
               const baseLib = item.libraryActivityId
                 ? baseLibraryLookup.get(String(item.libraryActivityId))
                 : (item.itemCode || item.libraryCode ? baseLibraryLookup.get(String(item.itemCode || item.libraryCode).trim().toLowerCase()) : null)
+
+              // Abaikan jika aktivitas bertanda Non-Global (-1)
+              if (
+                (baseLib?.siteIds && baseLib.siteIds.includes(-1)) ||
+                baseLib?.siteId === -1 ||
+                (item as any)?.siteIds?.includes(-1)
+              ) {
+                continue
+              }
 
               const reqEquip = Boolean(
                 item.requiresUnit ||

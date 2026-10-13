@@ -8,7 +8,7 @@ import Link from 'next/link'
 import { useEffect, useState, useTransition } from 'react'
 import { requestInternalLmsEnrollmentAction } from '@/app/dashboard/chitralearning-lms/actions'
 import { toast } from 'sonner'
-import { formatIndonesianDate } from '@/lib/chitralearning-lms'
+import { formatIndonesianDate } from '@/lib/chitralearning-lms/date-utils'
 
 interface LmsEnrollmentSidebarProps {
   courseId: number

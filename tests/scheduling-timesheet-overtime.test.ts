@@ -74,6 +74,34 @@ describe('scheduling timesheet overtime policy', () => {
     ).toBe('hariKe6')
   })
 
+  it('classifies day 6 for 6:1 roster correctly based on next off day or work streak', () => {
+    const sixOneSchedule = ['DS', 'DS', 'DS', 'DS', 'DS', 'DS', 'OFF']
+    expect(
+      classifyOvertimePolicyDay({
+        schedule: sixOneSchedule,
+        dayIndex: 5,
+        isHoliday: false,
+        rosterType: '6:1',
+      })
+    ).toBe('hariKe6')
+    expect(
+      classifyOvertimePolicyDay({
+        schedule: sixOneSchedule,
+        dayIndex: 4,
+        isHoliday: false,
+        rosterType: '6:1',
+      })
+    ).toBe('hariBiasa')
+    expect(
+      classifyOvertimePolicyDay({
+        schedule: sixOneSchedule,
+        dayIndex: 6,
+        isHoliday: false,
+        rosterType: '6:1',
+      })
+    ).toBe('hariLibur')
+  })
+
   it('counts actual overlap for day and overnight night shifts', () => {
     const day = calculateConfiguredOvertime({
       config: activeConfig,

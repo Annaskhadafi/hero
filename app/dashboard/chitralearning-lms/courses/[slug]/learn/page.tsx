@@ -67,18 +67,22 @@ export default async function LmsCoursePlayerPage({
     .limit(1)
   
   const currentEmployee = currentEmployeeRows[0] || null
+  let existingEnrollment: any = null
+  let isFailedCooldown = false
   if (currentEmployee) {
-    const [existingEnrollment] = await db
+    const [enrollment] = await db
       .select()
       .from(chitraLearningEnrollments)
       .where(and(eq(chitraLearningEnrollments.courseId, course.id), eq(chitraLearningEnrollments.employeeId, currentEmployee.id)))
       .limit(1)
 
+    existingEnrollment = enrollment
+
     if (!existingEnrollment || existingEnrollment.approvalStatus !== 'approved') {
       redirect(`/dashboard/chitralearning-lms/courses/${course.slug}`)
     }
 
-    const isFailedCooldown = existingEnrollment.status === 'failed' && Boolean(
+    isFailedCooldown = existingEnrollment.status === 'failed' && Boolean(
       existingEnrollment.cooldownUntil && new Date().getTime() < new Date(existingEnrollment.cooldownUntil).getTime()
     );
 

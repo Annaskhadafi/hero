@@ -95,7 +95,11 @@ export function RouteFolderTree({
                   }
                 }
 
-                const numId = item.libraryActivityId ?? (-item.id)
+                // Jika item terhubung ke master library aktivitas tapi tidak ada di availableLibraryMap
+                // (karena berstatus Non-Global atau tidak cocok scope), jangan tampilkan di mobile
+                if (item.libraryActivityId != null) {
+                  return null
+                }
                 const opt: LibraryOption = {
                   id: compoundId as any,
                   libraryActivityId: item.libraryActivityId ?? null,
