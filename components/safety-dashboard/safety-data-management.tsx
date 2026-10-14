@@ -1,7 +1,9 @@
 'use client'
 
 import * as React from "react"
-import { ChevronDown, ChevronRight, Clock, ImageIcon, Trash2 } from "lucide-react"
+import { ChevronDown, ChevronRight, Clock, ImageIcon, RefreshCw, Trash2 } from "lucide-react"
+import { toast } from "sonner"
+import { syncAllLaggingToPerformanceAction } from "@/app/dashboard/safety/data/monthly-summary-actions"
 
 import { AdminStatusBadge } from "@/components/admin-status-badge"
 import { AdminTableCard } from "@/components/admin-table-card"
@@ -382,6 +384,41 @@ function CollapsibleManHoursTable({ data }: { data: SafetyData }) {
   )
 }
 
+function SyncPerformanceButton() {
+  const [syncing, setSyncing] = React.useState(false)
+  const router = useRouter()
+
+  const handleSync = async () => {
+    setSyncing(true)
+    try {
+      const res = await syncAllLaggingToPerformanceAction()
+      if (res.ok) {
+        toast.success(res.message || "Performa berhasil disinkronkan")
+        router.refresh()
+      } else {
+        toast.error(res.error || "Gagal sinkronisasi performa")
+      }
+    } catch {
+      toast.error("Terjadi kesalahan saat sinkronisasi")
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={handleSync}
+      disabled={syncing}
+      className="gap-1.5"
+    >
+      <RefreshCw className={cn("size-3.5", syncing && "animate-spin")} />
+      {syncing ? "Menyinkronkan..." : "Sinkronkan Data ke Performance"}
+    </Button>
+  )
+}
+
 export function SafetyDataManagement({ data }: { data: SafetyData }) {
   const locationOptions = filterOptions(data.filterOptions.locations)
   const categoryOptions = filterOptions(data.filterOptions.categories)
@@ -480,7 +517,12 @@ export function SafetyDataManagement({ data }: { data: SafetyData }) {
           columns={["Year", "Periode", "Karyawan", "Safe Man Hours", "Fatality T/A", "LTI T/A", "PD T/A", "Action"]}
           dateFilter={false}
           access={data.access}
-          actions={<CreatePerformanceButton access={data.access} options={data.filterOptions} />}
+          actions={
+            <div className="flex items-center gap-2">
+              <SyncPerformanceButton />
+              <CreatePerformanceButton access={data.access} options={data.filterOptions} />
+            </div>
+          }
           filters={<TableMultiFilter key="tahun" label="tahun" filterKey="year" options={yearOptions} />}
           rows={data.performanceMetrics.map((row) => [row.year, row.periodLabel, row.employeeCount, formatNumber(row.safeManHoursUpToYear), `${row.fatalityThreshold} / ${row.fatalityActual}`, `${row.ltiThreshold} / ${row.ltiActual}`, `${row.propertyDamageThreshold} / ${row.propertyDamageActual}`, <PerformanceRowActions key={`${row.id}-actions`} row={row} access={data.access} options={data.filterOptions} />])}
           rowAttributes={data.performanceMetrics.map((row) => ({ "data-filter-year": `${row.year}` }))}

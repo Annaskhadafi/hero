@@ -231,19 +231,23 @@ export default function AttendancePage() {
   const [operationalNote, setOperationalNote] = useState("");
 
   const refreshAttendanceData = async () => {
-    const result = await getAttendancePageData();
-    const nextShiftOptions = result.shiftOptions ?? [];
+    try {
+      const result = await getAttendancePageData();
+      const nextShiftOptions = result.shiftOptions ?? [];
 
-    setShiftOptions(nextShiftOptions);
-    setSelectedShift((current) =>
-      nextShiftOptions.some((shift) => shift.value === current)
-        ? current
-        : nextShiftOptions[0]?.value ?? "",
-    );
+      setShiftOptions(nextShiftOptions);
+      setSelectedShift((current) =>
+        nextShiftOptions.some((shift) => shift.value === current)
+          ? current
+          : nextShiftOptions[0]?.value ?? "",
+      );
 
-    if (result.success) {
-      setEmployee(result.employee);
-      setLogs(result.logs);
+      if (result.success && result.employee) {
+        setEmployee(result.employee);
+        setLogs(result.logs || []);
+      }
+    } catch (err) {
+      console.error("Gagal memuat data kehadiran:", err);
     }
   };
 

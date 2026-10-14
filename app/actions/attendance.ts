@@ -52,24 +52,48 @@ import { getTimezoneDateParts } from '@/lib/indonesia-timezone'
 async function ensureEmployeeSite<
   T extends {
     id: number
-    siteId: number
+    siteId: number | null
     siteName: string | null
     workLocation: string | null
   },
 >(employee: T): Promise<T & { siteId: number; siteName: string; workLocation: string }> {
-  if (employee.siteName) {
+  if (employee.siteName && employee.siteId) {
     return {
       ...employee,
+      siteId: employee.siteId,
       siteName: employee.siteName,
       workLocation: employee.workLocation?.trim() || employee.siteName,
     }
   }
 
-  const [existingSite] = await db
-    .select({ id: sites.id, name: sites.name })
-    .from(sites)
-    .where(eq(sites.id, employee.siteId))
-    .limit(1)
+  let existingSite: { id: number; name: string } | undefined
+
+  if (employee.siteId) {
+    const [found] = await db
+      .select({ id: sites.id, name: sites.name })
+      .from(sites)
+      .where(eq(sites.id, employee.siteId))
+      .limit(1)
+    existingSite = found
+  }
+
+  if (!existingSite && employee.workLocation) {
+    const [foundByName] = await db
+      .select({ id: sites.id, name: sites.name })
+      .from(sites)
+      .where(eq(sites.name, employee.workLocation.trim()))
+      .limit(1)
+    existingSite = foundByName
+  }
+
+  if (!existingSite) {
+    const [firstActive] = await db
+      .select({ id: sites.id, name: sites.name })
+      .from(sites)
+      .where(eq(sites.isActive, true))
+      .limit(1)
+    existingSite = firstActive
+  }
 
   const site =
     existingSite ??
@@ -86,19 +110,28 @@ async function ensureEmployeeSite<
         .returning({ id: sites.id, name: sites.name })
     )[0]
 
-  await db
-    .update(employees)
-    .set({
+  if (site) {
+    await db
+      .update(employees)
+      .set({
+        siteId: site.id,
+        workLocation: employee.workLocation?.trim() || site.name,
+      })
+      .where(eq(employees.id, employee.id))
+
+    return {
+      ...employee,
       siteId: site.id,
+      siteName: site.name,
       workLocation: employee.workLocation?.trim() || site.name,
-    })
-    .where(eq(employees.id, employee.id))
+    }
+  }
 
   return {
     ...employee,
-    siteId: site.id,
-    siteName: site.name,
-    workLocation: employee.workLocation?.trim() || site.name,
+    siteId: employee.siteId || 0,
+    siteName: employee.siteName || 'Unknown Site',
+    workLocation: employee.workLocation || 'Unknown Site',
   }
 }
 
@@ -665,41 +698,56 @@ async function getMobileRosterCalendar(employeeId: number, siteId: number | null
 }
 
 export async function getAttendancePageData() {
-  const employee = await getCurrentEmployee()
-  const shiftOptions = await getMobileAttendanceShiftOptions(employee?.siteId)
+  try {
+    const employee = await getCurrentEmployee()
+    const shiftOptions = await getMobileAttendanceShiftOptions(employee?.siteId)
 
-  if (!employee) {
+    if (!employee) {
+      return {
+        success: false,
+        employee: null,
+        logs: [],
+        shiftOptions,
+      }
+    }
+
+    const attendanceWindow = getAttendanceQueryWindow()
+
+    const [logs, rosterCalendar] = await Promise.all([
+      db
+        .select()
+        .from(attendanceRecords)
+        .where(
+          and(
+            eq(attendanceRecords.employeeId, employee.id),
+            gte(attendanceRecords.eventTime, attendanceWindow.start),
+            lte(attendanceRecords.eventTime, attendanceWindow.end)
+          )
+        )
+        .orderBy(desc(attendanceRecords.eventTime))
+        .catch((err) => {
+          console.error('[getAttendancePageData:logs] Query error:', err)
+          return []
+        }),
+      getMobileRosterCalendar(employee.id, employee.siteId),
+    ])
+
+    return {
+      success: true,
+      employee,
+      logs,
+      shiftOptions,
+      rosterCalendar,
+    }
+  } catch (err: any) {
+    console.error('getAttendancePageData error:', err)
     return {
       success: false,
       employee: null,
       logs: [],
-      shiftOptions,
+      shiftOptions: [],
+      error: err?.message || 'Failed to load attendance data',
     }
-  }
-
-  const attendanceWindow = getAttendanceQueryWindow()
-
-  const [logs, rosterCalendar] = await Promise.all([
-    db
-      .select()
-      .from(attendanceRecords)
-      .where(
-        and(
-          eq(attendanceRecords.employeeId, employee.id),
-          gte(attendanceRecords.eventTime, attendanceWindow.start),
-          lte(attendanceRecords.eventTime, attendanceWindow.end)
-        )
-      )
-      .orderBy(desc(attendanceRecords.eventTime)),
-    getMobileRosterCalendar(employee.id, employee.siteId),
-  ])
-
-  return {
-    success: true,
-    employee,
-    logs,
-    shiftOptions,
-    rosterCalendar,
   }
 }
 
@@ -1481,71 +1529,76 @@ export async function getMyAttendancePermissionRequests() {
 }
 
 export async function getTodayAttendanceLogs() {
-  const employee = await getCurrentEmployee()
+  try {
+    const employee = await getCurrentEmployee()
 
-  if (!employee) {
-    return { success: false, employee: null, logs: [] }
-  }
-
-  const access = await getCurrentMenuPermission('attendance_records')
-  if (!access.canView) {
-    return { success: false, employee, logs: [] }
-  }
-
-  // Fetch up to 180 days of historical attendance logs so historical date filters work in Records table
-  const historyStart = subDays(new Date(), 180)
-
-  const conditions = [
-    gte(attendanceRecords.eventTime, historyStart),
-  ]
-
-  // Apply data scope: global = all records, site = site only, own = self only
-  if (!hasGlobalDataAccess(access)) {
-    if (access.dataScope === 'site') {
-      conditions.push(eq(attendanceRecords.siteId, employee.siteId))
-    } else {
-      // default 'own'
-      conditions.push(eq(attendanceRecords.employeeId, employee.id))
+    if (!employee) {
+      return { success: false, employee: null, logs: [] }
     }
+
+    const access = await getCurrentMenuPermission('attendance_records')
+    if (!access.canView) {
+      return { success: false, employee, logs: [] }
+    }
+
+    // Fetch up to 180 days of historical attendance logs so historical date filters work in Records table
+    const historyStart = subDays(new Date(), 180)
+
+    const conditions = [
+      gte(attendanceRecords.eventTime, historyStart),
+    ]
+
+    // Apply data scope: global = all records, site = site only, own = self only
+    if (!hasGlobalDataAccess(access)) {
+      if (access.dataScope === 'site') {
+        conditions.push(eq(attendanceRecords.siteId, employee.siteId))
+      } else {
+        // default 'own'
+        conditions.push(eq(attendanceRecords.employeeId, employee.id))
+      }
+    }
+
+    const logs = await db
+      .select({
+        id: attendanceRecords.id,
+        employeeId: attendanceRecords.employeeId,
+        siteId: attendanceRecords.siteId,
+        eventType: attendanceRecords.eventType,
+        eventTime: attendanceRecords.eventTime,
+        status: attendanceRecords.status,
+        locationNote: attendanceRecords.locationNote,
+        latitude: attendanceRecords.latitude,
+        longitude: attendanceRecords.longitude,
+        photoUrl: attendanceRecords.photoUrl,
+        // Enrich employee info from hero_employees
+        employeeName: employees.name,
+        employeeEmail: employees.email,
+        siteName: sites.name,
+        workLocation: employees.workLocation,
+      })
+      .from(attendanceRecords)
+      .leftJoin(employees, eq(attendanceRecords.employeeId, employees.id))
+      .leftJoin(sites, eq(attendanceRecords.siteId, sites.id))
+      .where(and(...conditions))
+      .orderBy(desc(attendanceRecords.eventTime))
+      .limit(1000)
+
+    const logsWithPhotoPreview = await Promise.all(
+      logs.map(async (log) => ({
+        ...log,
+        employeeName: log.employeeName ?? employee.name,
+        employeeEmail: log.employeeEmail ?? employee.email,
+        siteName: log.siteName ?? employee.siteName,
+        workLocation: log.workLocation ?? employee.workLocation,
+        photoPreviewUrl: await getS3ObjectReadUrl(log.photoUrl).catch(() => log.photoUrl),
+      }))
+    )
+
+    return { success: true, employee, logs: logsWithPhotoPreview }
+  } catch (err: any) {
+    console.error('getTodayAttendanceLogs error:', err)
+    return { success: false, employee: null, logs: [], error: err?.message || 'Failed to fetch logs' }
   }
-
-  const logs = await db
-    .select({
-      id: attendanceRecords.id,
-      employeeId: attendanceRecords.employeeId,
-      siteId: attendanceRecords.siteId,
-      eventType: attendanceRecords.eventType,
-      eventTime: attendanceRecords.eventTime,
-      status: attendanceRecords.status,
-      locationNote: attendanceRecords.locationNote,
-      latitude: attendanceRecords.latitude,
-      longitude: attendanceRecords.longitude,
-      photoUrl: attendanceRecords.photoUrl,
-      // Enrich employee info from hero_employees
-      employeeName: employees.name,
-      employeeEmail: employees.email,
-      siteName: sites.name,
-      workLocation: employees.workLocation,
-    })
-    .from(attendanceRecords)
-    .leftJoin(employees, eq(attendanceRecords.employeeId, employees.id))
-    .leftJoin(sites, eq(attendanceRecords.siteId, sites.id))
-    .where(and(...conditions))
-    .orderBy(desc(attendanceRecords.eventTime))
-    .limit(1000)
-
-  const logsWithPhotoPreview = await Promise.all(
-    logs.map(async (log) => ({
-      ...log,
-      employeeName: log.employeeName ?? employee.name,
-      employeeEmail: log.employeeEmail ?? employee.email,
-      siteName: log.siteName ?? employee.siteName,
-      workLocation: log.workLocation ?? employee.workLocation,
-      photoPreviewUrl: await getS3ObjectReadUrl(log.photoUrl),
-    }))
-  )
-
-  return { success: true, employee, logs: logsWithPhotoPreview }
 }
 
 export async function getLiveAttendanceMapData(dateStr?: string) {

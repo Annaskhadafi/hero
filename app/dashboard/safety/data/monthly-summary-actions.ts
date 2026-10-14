@@ -9,6 +9,7 @@ import {
   hcLeaveTypes,
   safetyIncidentReports,
   safetyMonthlyManHours,
+  safetyPerformanceMetrics,
   safetySiteMonthlySummary,
   sites,
 } from '@/db/schema/hero'
@@ -131,6 +132,224 @@ export async function getSiteMonthlyHealthAutoFillData(siteId: number, monthStr:
 }
 
 /**
+ * Sinkronisasi data agregasi bulanan (YTD) per site ke hero_safety_performance_metrics
+ */
+export async function syncSiteMonthlyToPerformanceMetric(siteId: number, yearNum: number) {
+  try {
+    const siteRows = await db.select().from(sites).where(eq(sites.id, siteId)).limit(1)
+    if (!siteRows.length) return { ok: false, error: 'Site tidak ditemukan' }
+    const siteName = siteRows[0].name
+
+    const startDate = `${yearNum}-01-01`
+    const endDate = `${yearNum}-12-31`
+
+    // 1. Ambil seluruh rangkuman bulanan site ini pada tahun berjalan
+    const siteSummaries = await db
+      .select()
+      .from(safetySiteMonthlySummary)
+      .where(
+        and(
+          eq(safetySiteMonthlySummary.siteId, siteId),
+          gte(safetySiteMonthlySummary.month, startDate),
+          lte(safetySiteMonthlySummary.month, endDate)
+        )
+      )
+
+    const totalFatality = siteSummaries.reduce((sum, s) => sum + (s.fatality || 0), 0)
+    const totalLti = siteSummaries.reduce((sum, s) => sum + (s.majorInjury || 0), 0)
+    const totalPropertyDamage = siteSummaries.reduce((sum, s) => sum + (s.propertyDamage || 0), 0)
+    const totalSafeManHours = siteSummaries.reduce(
+      (sum, s) => sum + (parseFloat(String(s.safetyManHours || 0)) || 0),
+      0
+    )
+
+    // Tenaga kerja: ambil nilai totalManpower terbaru di tahun tersebut, atau fallback jumlah karyawan aktif
+    let latestManpower = 0
+    if (siteSummaries.length > 0) {
+      const sorted = [...siteSummaries].sort((a, b) => String(b.month).localeCompare(String(a.month)))
+      latestManpower = sorted.find((s) => s.totalManpower > 0)?.totalManpower || sorted[0].totalManpower || 0
+    }
+    if (latestManpower === 0) {
+      const empCount = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(heroEmployees)
+        .where(and(eq(heroEmployees.siteId, siteId), eq(heroEmployees.isActive, true)))
+      latestManpower = empCount[0]?.count || 0
+    }
+
+    // 2. Cek apakah baris metric untuk site ini sudah ada di safetyPerformanceMetrics
+    const existingMetric = await db
+      .select()
+      .from(safetyPerformanceMetrics)
+      .where(
+        and(
+          eq(safetyPerformanceMetrics.year, yearNum),
+          eq(safetyPerformanceMetrics.periodLabel, siteName)
+        )
+      )
+      .limit(1)
+
+    if (existingMetric.length > 0) {
+      await db
+        .update(safetyPerformanceMetrics)
+        .set({
+          employeeCount: latestManpower,
+          safeManHoursUpToYear: totalSafeManHours.toFixed(2),
+          fatalityActual: totalFatality.toFixed(2),
+          ltiActual: totalLti.toFixed(2),
+          propertyDamageActual: totalPropertyDamage.toFixed(2),
+          updatedAt: new Date(),
+        })
+        .where(eq(safetyPerformanceMetrics.id, existingMetric[0].id))
+    } else {
+      await db.insert(safetyPerformanceMetrics).values({
+        year: yearNum,
+        periodLabel: siteName,
+        employeeCount: latestManpower,
+        safeManHoursUpToYear: totalSafeManHours.toFixed(2),
+        fatalityThreshold: '0',
+        fatalityActual: totalFatality.toFixed(2),
+        ltiThreshold: '0',
+        ltiActual: totalLti.toFixed(2),
+        propertyDamageThreshold: '0',
+        propertyDamageActual: totalPropertyDamage.toFixed(2),
+        sourceSheet: 'sync-monthly',
+      })
+    }
+
+    // 3. Update juga baris agregat seluruh site perusahaan ("All Sites / PT Chitra Paratama")
+    await syncCompanyWidePerformanceMetric(yearNum)
+
+    return { ok: true }
+  } catch (err: any) {
+    console.error('Error in syncSiteMonthlyToPerformanceMetric:', err)
+    return { ok: false, error: err?.message || 'Gagal sinkronisasi performa' }
+  }
+}
+
+/**
+ * Update atau insert baris agregasi total perusahaan
+ */
+export async function syncCompanyWidePerformanceMetric(yearNum: number) {
+  try {
+    const startDate = `${yearNum}-01-01`
+    const endDate = `${yearNum}-12-31`
+    const allSummaries = await db
+      .select()
+      .from(safetySiteMonthlySummary)
+      .where(
+        and(
+          gte(safetySiteMonthlySummary.month, startDate),
+          lte(safetySiteMonthlySummary.month, endDate)
+        )
+      )
+
+    const totalFatality = allSummaries.reduce((sum, s) => sum + (s.fatality || 0), 0)
+    const totalLti = allSummaries.reduce((sum, s) => sum + (s.majorInjury || 0), 0)
+    const totalPropertyDamage = allSummaries.reduce((sum, s) => sum + (s.propertyDamage || 0), 0)
+    const totalSafeManHours = allSummaries.reduce(
+      (sum, s) => sum + (parseFloat(String(s.safetyManHours || 0)) || 0),
+      0
+    )
+
+    // Total manpower: jumlahkan latest manpower per unique site
+    const siteLatestMap = new Map<number, number>()
+    const sorted = [...allSummaries].sort((a, b) => String(b.month).localeCompare(String(a.month)))
+    for (const s of sorted) {
+      if (!siteLatestMap.has(s.siteId)) {
+        siteLatestMap.set(s.siteId, s.totalManpower || 0)
+      }
+    }
+    const totalCompanyManpower = Array.from(siteLatestMap.values()).reduce((a, b) => a + b, 0)
+
+    const companyLabel = 'All Sites / PT Chitra Paratama'
+    const existingCompanyMetric = await db
+      .select()
+      .from(safetyPerformanceMetrics)
+      .where(
+        and(
+          eq(safetyPerformanceMetrics.year, yearNum),
+          eq(safetyPerformanceMetrics.periodLabel, companyLabel)
+        )
+      )
+      .limit(1)
+
+    if (existingCompanyMetric.length > 0) {
+      await db
+        .update(safetyPerformanceMetrics)
+        .set({
+          employeeCount: totalCompanyManpower,
+          safeManHoursUpToYear: totalSafeManHours.toFixed(2),
+          fatalityActual: totalFatality.toFixed(2),
+          ltiActual: totalLti.toFixed(2),
+          propertyDamageActual: totalPropertyDamage.toFixed(2),
+          updatedAt: new Date(),
+        })
+        .where(eq(safetyPerformanceMetrics.id, existingCompanyMetric[0].id))
+    } else {
+      await db.insert(safetyPerformanceMetrics).values({
+        year: yearNum,
+        periodLabel: companyLabel,
+        employeeCount: totalCompanyManpower,
+        safeManHoursUpToYear: totalSafeManHours.toFixed(2),
+        fatalityThreshold: '0',
+        fatalityActual: totalFatality.toFixed(2),
+        ltiThreshold: '0',
+        ltiActual: totalLti.toFixed(2),
+        propertyDamageThreshold: '0',
+        propertyDamageActual: totalPropertyDamage.toFixed(2),
+        sourceSheet: 'sync-monthly-company',
+      })
+    }
+    return { ok: true }
+  } catch (err: any) {
+    console.error('Error in syncCompanyWidePerformanceMetric:', err)
+    return { ok: false, error: err?.message }
+  }
+}
+
+/**
+ * Server Action: Sinkronkan seluruh data historis dari safetySiteMonthlySummary ke safetyPerformanceMetrics
+ */
+export async function syncAllLaggingToPerformanceAction() {
+  try {
+    const hasAccess = await checkSafetyEditAccess()
+    if (!hasAccess) {
+      return { ok: false, error: 'Anda tidak memiliki hak akses untuk menyinkronkan data ini' }
+    }
+
+    const allSummaries = await db
+      .select({
+        siteId: safetySiteMonthlySummary.siteId,
+        month: safetySiteMonthlySummary.month,
+      })
+      .from(safetySiteMonthlySummary)
+
+    // Kumpulkan pasangan unik (siteId, year)
+    const pairs = new Set<string>()
+    for (const s of allSummaries) {
+      const year = new Date(s.month).getFullYear()
+      if (year && !isNaN(year)) {
+        pairs.add(`${s.siteId}:${year}`)
+      }
+    }
+
+    for (const pair of pairs) {
+      const [siteIdStr, yearStr] = pair.split(':')
+      await syncSiteMonthlyToPerformanceMetric(parseInt(siteIdStr, 10), parseInt(yearStr, 10))
+    }
+
+    revalidatePath('/dashboard/safety/data')
+    revalidatePath('/dashboard/safety')
+    revalidatePath('/dashboard/hse')
+    return { ok: true, message: `Berhasil menyinkronkan data performa untuk ${pairs.size} site-periode` }
+  } catch (err: any) {
+    console.error('Error in syncAllLaggingToPerformanceAction:', err)
+    return { ok: false, error: err?.message || 'Gagal sinkronisasi data performa' }
+  }
+}
+
+/**
  * Upsert Form Input Lagging K3
  */
 export async function upsertLaggingK3Action(formData: FormData) {
@@ -148,6 +367,7 @@ export async function upsertLaggingK3Action(formData: FormData) {
 
     const [year, month] = monthRaw.split('-')
     const formattedMonth = `${year}-${month.padStart(2, '0')}-01`
+    const yearNum = parseInt(year, 10)
 
     const nearmiss = Math.max(0, parseInt((formData.get('nearmiss') as string) || '0', 10))
     const propertyDamage = Math.max(0, parseInt((formData.get('propertyDamage') as string) || '0', 10))
@@ -200,8 +420,13 @@ export async function upsertLaggingK3Action(formData: FormData) {
       })
     }
 
+    // Sinkronisasi otomatis ke Performance
+    await syncSiteMonthlyToPerformanceMetric(siteId, yearNum)
+
     revalidatePath('/dashboard/safety/data')
-    return { ok: true, message: 'Data Lagging K3 berhasil disimpan' }
+    revalidatePath('/dashboard/safety')
+    revalidatePath('/dashboard/hse')
+    return { ok: true, message: 'Data Lagging K3 berhasil disimpan dan disinkronkan ke HSE Performance' }
   } catch (error: any) {
     console.error('Error upsertLaggingK3Action:', error)
     return { ok: false, error: error?.message || 'Gagal menyimpan data Lagging K3' }
@@ -226,6 +451,7 @@ export async function upsertLaggingHealthAction(formData: FormData) {
 
     const [year, month] = monthRaw.split('-')
     const formattedMonth = `${year}-${month.padStart(2, '0')}-01`
+    const yearNum = parseInt(year, 10)
 
     const safetyManHoursStr = (formData.get('safetyManHours') as string) || '0'
     const safetyManHours = parseFloat(safetyManHoursStr.replace(/,/g, '')) || 0
@@ -275,8 +501,13 @@ export async function upsertLaggingHealthAction(formData: FormData) {
       })
     }
 
+    // Sinkronisasi otomatis ke Performance
+    await syncSiteMonthlyToPerformanceMetric(siteId, yearNum)
+
     revalidatePath('/dashboard/safety/data')
-    return { ok: true, message: 'Data Lagging Health berhasil disimpan' }
+    revalidatePath('/dashboard/safety')
+    revalidatePath('/dashboard/hse')
+    return { ok: true, message: 'Data Lagging Health berhasil disimpan dan disinkronkan ke HSE Performance' }
   } catch (error: any) {
     console.error('Error upsertLaggingHealthAction:', error)
     return { ok: false, error: error?.message || 'Gagal menyimpan data Lagging Health' }
@@ -293,9 +524,25 @@ export async function deleteSiteMonthlySummaryAction(id: number) {
       return { ok: false, error: 'Anda tidak memiliki hak akses untuk menghapus data ini' }
     }
 
+    const row = await db
+      .select()
+      .from(safetySiteMonthlySummary)
+      .where(eq(safetySiteMonthlySummary.id, id))
+      .limit(1)
+
     await db.delete(safetySiteMonthlySummary).where(eq(safetySiteMonthlySummary.id, id))
+
+    if (row.length > 0) {
+      const yearNum = new Date(row[0].month).getFullYear()
+      if (yearNum && !isNaN(yearNum)) {
+        await syncSiteMonthlyToPerformanceMetric(row[0].siteId, yearNum)
+      }
+    }
+
     revalidatePath('/dashboard/safety/data')
-    return { ok: true, message: 'Data berhasil dihapus' }
+    revalidatePath('/dashboard/safety')
+    revalidatePath('/dashboard/hse')
+    return { ok: true, message: 'Data berhasil dihapus dan performa disinkronkan ulang' }
   } catch (error: any) {
     console.error('Error deleteSiteMonthlySummaryAction:', error)
     return { ok: false, error: error?.message || 'Gagal menghapus data' }

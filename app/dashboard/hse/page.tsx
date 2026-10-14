@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { TableMultiFilter } from '@/components/ui/table-multi-filter'
 import { getHsePageData, getOperationalCrudOptions } from '@/lib/hero-admin'
 import { HseDashboardCharts } from './hse-dashboard-charts'
+import { HseSiteMapCard } from '@/components/hse/hse-site-map-card'
 
 function HseDashboardBanner() {
   return (
@@ -107,7 +108,17 @@ function HseMetricCards({
 }
 
 export default async function HsePage() {
-  const [{ observations, incidents }, options] = await Promise.all([
+  const [
+    {
+      observations,
+      incidents,
+      siteMonthlySummaries,
+      masterSites,
+      incidentReports,
+      monthlyManHours,
+    },
+    options,
+  ] = await Promise.all([
     getHsePageData(),
     getOperationalCrudOptions(),
   ])
@@ -134,6 +145,13 @@ export default async function HsePage() {
     <AdminPageShell eyebrow="" title="" description="" header={<HseDashboardBanner />}>
       <HseMetricCards observations={observations} incidents={incidents} />
       <HseDashboardCharts observations={chartObservations} incidents={chartIncidents} />
+
+      <HseSiteMapCard
+        masterSites={masterSites}
+        siteMonthlySummaries={siteMonthlySummaries}
+        incidentReports={incidentReports}
+        monthlyManHours={monthlyManHours}
+      />
 
       <Tabs defaultValue="observations" className="space-y-4">
         <TabsList className="h-auto w-full justify-start overflow-x-auto p-1">

@@ -65,6 +65,9 @@ import {
   trainingRecords,
   sioCertifications,
   wellnessRecords,
+  safetyIncidentReports,
+  safetyMonthlyManHours,
+  safetySiteMonthlySummary,
 } from '@/db/schema/hero'
 import { session, user as authUser } from '@/db/schema/auth'
 import { getServerSession } from '@/lib/auth-session'
@@ -6580,47 +6583,106 @@ export async function getHsePageData() {
   ])
 
   if (!permission.canView) {
-    return { observations: [], incidents: [] }
+    return {
+      observations: [],
+      incidents: [],
+      siteMonthlySummaries: [],
+      masterSites: [],
+      incidentReports: [],
+      monthlyManHours: [],
+    }
   }
 
   const hasGlobalScope = hasGlobalDataAccess(permission)
   const ownEmployeeId = accessContext?.employeeId ?? -1
 
-  const observations = await db
-    .select({
-      id: hseObservations.id,
-      siteId: hseObservations.siteId,
-      employeeId: hseObservations.employeeId,
-      title: hseObservations.title,
-      category: hseObservations.category,
-      location: hseObservations.location,
-      severity: hseObservations.severity,
-      status: hseObservations.status,
-      notes: hseObservations.notes,
-      observedAt: hseObservations.observedAt,
-      reporter: employees.name,
-    })
-    .from(hseObservations)
-    .leftJoin(employees, eq(hseObservations.employeeId, employees.id))
-    .where(hasGlobalScope ? undefined : eq(hseObservations.employeeId, ownEmployeeId))
-    .orderBy(desc(hseObservations.observedAt))
+  const [
+    observations,
+    incidents,
+    siteMonthlySummaries,
+    masterSites,
+    incidentReports,
+    monthlyManHours,
+  ] = await Promise.all([
+    db
+      .select({
+        id: hseObservations.id,
+        siteId: hseObservations.siteId,
+        employeeId: hseObservations.employeeId,
+        title: hseObservations.title,
+        category: hseObservations.category,
+        location: hseObservations.location,
+        severity: hseObservations.severity,
+        status: hseObservations.status,
+        notes: hseObservations.notes,
+        observedAt: hseObservations.observedAt,
+        reporter: employees.name,
+      })
+      .from(hseObservations)
+      .leftJoin(employees, eq(hseObservations.employeeId, employees.id))
+      .where(hasGlobalScope ? undefined : eq(hseObservations.employeeId, ownEmployeeId))
+      .orderBy(desc(hseObservations.observedAt)),
 
-  const incidents = await db
-    .select({
-      id: hseIncidents.id,
-      siteId: hseIncidents.siteId,
-      title: hseIncidents.title,
-      type: hseIncidents.type,
-      unitNumber: hseIncidents.unitNumber,
-      impact: hseIncidents.impact,
-      status: hseIncidents.status,
-      reportedAt: hseIncidents.reportedAt,
-    })
-    .from(hseIncidents)
-    .where(hasGlobalScope ? undefined : eq(hseIncidents.employeeId, ownEmployeeId))
-    .orderBy(desc(hseIncidents.reportedAt))
+    db
+      .select({
+        id: hseIncidents.id,
+        siteId: hseIncidents.siteId,
+        title: hseIncidents.title,
+        type: hseIncidents.type,
+        unitNumber: hseIncidents.unitNumber,
+        impact: hseIncidents.impact,
+        status: hseIncidents.status,
+        reportedAt: hseIncidents.reportedAt,
+      })
+      .from(hseIncidents)
+      .where(hasGlobalScope ? undefined : eq(hseIncidents.employeeId, ownEmployeeId))
+      .orderBy(desc(hseIncidents.reportedAt)),
 
-  return { observations, incidents }
+    db
+      .select({
+        id: safetySiteMonthlySummary.id,
+        siteId: safetySiteMonthlySummary.siteId,
+        siteName: sites.name,
+        siteLocation: sites.location,
+        geoLatitude: sites.geoLatitude,
+        geoLongitude: sites.geoLongitude,
+        month: safetySiteMonthlySummary.month,
+        nearmiss: safetySiteMonthlySummary.nearmiss,
+        propertyDamage: safetySiteMonthlySummary.propertyDamage,
+        firstAid: safetySiteMonthlySummary.firstAid,
+        medicalTreatment: safetySiteMonthlySummary.medicalTreatment,
+        environmental: safetySiteMonthlySummary.environmental,
+        majorInjury: safetySiteMonthlySummary.majorInjury,
+        fatality: safetySiteMonthlySummary.fatality,
+        safetyManHours: safetySiteMonthlySummary.safetyManHours,
+        totalManpower: safetySiteMonthlySummary.totalManpower,
+        sickEmployeesCount: safetySiteMonthlySummary.sickEmployeesCount,
+        lostDaysCount: safetySiteMonthlySummary.lostDaysCount,
+        sickLettersCount: safetySiteMonthlySummary.sickLettersCount,
+        occupationalDiseasesCount: safetySiteMonthlySummary.occupationalDiseasesCount,
+        incidentNotes: safetySiteMonthlySummary.incidentNotes,
+        createdAt: safetySiteMonthlySummary.createdAt,
+        updatedAt: safetySiteMonthlySummary.updatedAt,
+      })
+      .from(safetySiteMonthlySummary)
+      .leftJoin(sites, eq(sites.id, safetySiteMonthlySummary.siteId))
+      .orderBy(desc(safetySiteMonthlySummary.month)),
+
+    db.select().from(sites).where(eq(sites.isActive, true)),
+
+    db.select().from(safetyIncidentReports).orderBy(desc(safetyIncidentReports.incidentDate)),
+
+    db.select().from(safetyMonthlyManHours).orderBy(desc(safetyMonthlyManHours.month)),
+  ])
+
+  return {
+    observations,
+    incidents,
+    siteMonthlySummaries,
+    masterSites,
+    incidentReports,
+    monthlyManHours,
+  }
 }
 
 export async function getHcPageData() {

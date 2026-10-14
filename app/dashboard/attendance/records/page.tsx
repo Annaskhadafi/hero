@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
 import { exportAttendanceLogsToExcel } from "@/lib/timesheet/export-attendance-excel";
+import { resolveUploadUrl } from "@/lib/resolve-upload-url";
 
 type AttendanceRecord = {
   id: number;
@@ -167,11 +168,15 @@ export default function AttendanceRecordsPage() {
   const [photoErrorId, setPhotoErrorId] = useState<number | null>(null);
 
   const refreshLogs = useCallback(async () => {
-    const res = await getTodayAttendanceLogs();
-      if (res.success && res.employee) {
+    try {
+      const res = await getTodayAttendanceLogs();
+      if (res && res.success && res.employee) {
         setEmployee(res.employee);
-        setLogs(res.logs);
+        setLogs(res.logs || []);
       }
+    } catch (err) {
+      console.error("Failed to load attendance logs:", err);
+    }
   }, []);
 
   useEffect(() => {
@@ -294,8 +299,8 @@ export default function AttendanceRecordsPage() {
       type: log.eventType === "checked-out" ? "Clock Out / Jam Pulang" : "Clock In / Jam Masuk",
       time: log.eventTime,
       location: locationLines[0] ?? "Attendance record",
-      url: log.photoUrl,
-      previewUrl: log.photoPreviewUrl || log.photoUrl,
+      url: resolveUploadUrl(log.photoUrl),
+      previewUrl: resolveUploadUrl(log.photoPreviewUrl || log.photoUrl),
     });
   };
 
