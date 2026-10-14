@@ -90,6 +90,7 @@ export async function ensureTireRepairSchema(): Promise<void> {
         ALTER TABLE "hero_tire_repair_inspections" ADD COLUMN IF NOT EXISTS "hours_since_last_repair" varchar(50);
         ALTER TABLE "hero_tire_repair_inspections" ADD COLUMN IF NOT EXISTS "pit_location" varchar(150);
         ALTER TABLE "hero_tire_repair_inspections" ADD COLUMN IF NOT EXISTS "marking" varchar(255);
+        ALTER TABLE "hero_tire_repair_photos" ADD COLUMN IF NOT EXISTS "photo_type" varchar(50) DEFAULT 'INSPECTION';
       `);
       isSchemaEnsured = true;
     } catch (error) {
@@ -433,6 +434,44 @@ export async function getTireRepairInspectionsAction(filters: InspectionFilterPa
   }
 }
 
+export async function getTireRepairInspectionByIdAction(id: number) {
+  try {
+    await ensureTireRepairSchema();
+    const rows = await db
+      .select()
+      .from(tireRepairInspections)
+      .where(eq(tireRepairInspections.id, id))
+      .limit(1);
+
+    if (!rows || rows.length === 0) {
+      return { success: false, message: 'Data inspeksi tidak ditemukan', data: null };
+    }
+
+    const photos = await db
+      .select()
+      .from(tireRepairPhotos)
+      .where(eq(tireRepairPhotos.inspectionId, id))
+      .orderBy(tireRepairPhotos.id);
+
+    const inspectionRecord: TireRepairInspectionRecord = {
+      ...rows[0],
+      photos,
+    };
+
+    return {
+      success: true,
+      data: inspectionRecord,
+    };
+  } catch (error: any) {
+    console.error('getTireRepairInspectionByIdAction error:', error);
+    return {
+      success: false,
+      message: error?.message || 'Gagal mengambil data inspeksi ban',
+      data: null,
+    };
+  }
+}
+
 export async function createTireRepairInspectionAction(payload: CreateTireRepairInspectionPayload) {
   try {
     await ensureTireRepairSchema();
@@ -484,6 +523,7 @@ export async function createTireRepairInspectionAction(payload: CreateTireRepair
         inspectionId: createdInspection.id,
         photoArea: p.photoArea,
         photoUrl: p.photoUrl,
+        photoType: (p.photoType as any) || 'INSPECTION',
         inspectDate: inspectDate,
       }));
 
@@ -616,6 +656,7 @@ export async function bulkCreateTireRepairInspectionsAction(
               inspectionId: existingId,
               photoArea: p.photoArea,
               photoUrl: p.photoUrl,
+              photoType: (p.photoType as any) || 'INSPECTION',
               inspectDate: inspectDate,
             }));
             await db.insert(tireRepairPhotos).values(photosToInsert);
@@ -667,6 +708,7 @@ export async function bulkCreateTireRepairInspectionsAction(
               inspectionId: createdInspection.id,
               photoArea: p.photoArea,
               photoUrl: p.photoUrl,
+              photoType: (p.photoType as any) || 'INSPECTION',
               inspectDate: inspectDate,
             }));
             await db.insert(tireRepairPhotos).values(photosToInsert);
@@ -775,6 +817,9 @@ export async function updateTireRepairInspectionAction(
     if (payload.rtd1 !== undefined) updateData.rtd1 = payload.rtd1 ? String(payload.rtd1) : null;
     if (payload.rtd2 !== undefined) updateData.rtd2 = payload.rtd2 ? String(payload.rtd2) : null;
     if (payload.remarks !== undefined) updateData.remarks = payload.remarks?.trim() || null;
+    if (payload.scrapReason !== undefined) updateData.scrapReason = payload.scrapReason?.trim() || null;
+    if (payload.removalReason !== undefined) updateData.removalReason = payload.removalReason?.trim() || null;
+    if (payload.deffectexRepair !== undefined) updateData.deffectexRepair = payload.deffectexRepair?.trim() || null;
 
     const updatedRows = await db
       .update(tireRepairInspections)
@@ -789,6 +834,7 @@ export async function updateTireRepairInspectionAction(
           inspectionId: id,
           photoArea: p.photoArea,
           photoUrl: p.photoUrl,
+          photoType: (p.photoType as any) || 'INSPECTION',
           inspectDate: inspectDate || new Date(),
         }));
         await db.insert(tireRepairPhotos).values(photosToInsert);

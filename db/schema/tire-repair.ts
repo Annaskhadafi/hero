@@ -45,6 +45,7 @@ export const tireRepairPhotos = pgTable('hero_tire_repair_photos', {
     .references(() => tireRepairInspections.id, { onDelete: 'cascade' }),
   photoArea: varchar('photo_area', { length: 255 }).notNull(), // Multi-area tags (e.g. Serial Number, Area Sidewall)
   photoUrl: text('photo_url').notNull(),
+  photoType: varchar('photo_type', { length: 50 }).notNull().default('INSPECTION'), // 'INSPECTION' | 'SKIVING'
   inspectDate: timestamp('inspect_date').notNull().defaultNow(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });

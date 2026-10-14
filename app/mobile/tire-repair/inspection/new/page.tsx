@@ -32,10 +32,13 @@ import {
 import { toast } from 'sonner';
 import {
   createTireRepairInspectionAction,
+  updateTireRepairInspectionAction,
+  getTireRepairInspectionByIdAction,
   getTireRepairMasterDataAction,
 } from '@/app/actions/tire-repair-actions';
 import { TireRepairCameraModal } from '@/components/mobile/tire-repair-camera-modal';
 import { TireRepairSearchableSelect } from '@/components/mobile/tire-repair-searchable-select';
+import { resolveUploadUrl } from '@/lib/resolve-upload-url';
 import {
   STANDARD_TIRE_SIZES,
   STANDARD_TIRE_BRANDS,
@@ -60,6 +63,7 @@ interface UploadedPhoto {
   id: string;
   photoArea: string;
   photoUrl: string;
+  photoType?: 'INSPECTION' | 'SKIVING';
   isLandscape: boolean;
 }
 
@@ -101,8 +105,11 @@ export default function NewTireRepairInspectionPage() {
   const [rtd1, setRtd1] = useState('');
   const [rtd2, setRtd2] = useState('');
   const [remarks, setRemarks] = useState('');
+  const [scrapReason, setScrapReason] = useState('');
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   // Section 2: Upload Foto (Single-select area per photo, multiple photos per area supported)
+  const [uploadCategory, setUploadCategory] = useState<'SKIVING' | 'INSPECTION'>('SKIVING');
   const [selectedPhotoArea, setSelectedPhotoArea] = useState<string>(PHOTO_AREAS[0]);
   const [photos, setPhotos] = useState<UploadedPhoto[]>([]);
   const [hasPortraitWarning, setHasPortraitWarning] = useState(false);
@@ -136,6 +143,51 @@ export default function NewTireRepairInspectionPage() {
 
   // Submit State
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Load existing inspection if editing
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const idParam = params.get('editId') || params.get('id');
+      if (idParam && !isNaN(Number(idParam))) {
+        const targetId = Number(idParam);
+        setEditingId(targetId);
+        getTireRepairInspectionByIdAction(targetId).then((res) => {
+          if (res.success && res.data) {
+            const item = res.data;
+            setSerialNumber(item.serialNumber || '');
+            setTireSize(item.tireSize || '27.00R49');
+            setBrand(item.brand || 'MICHELIN');
+            setTypeConstruction(item.typeConstruction || 'RADIAL');
+            setPattern(item.pattern || 'E4');
+            if (item.dateReceived) setDateReceived(new Date(item.dateReceived).toISOString().split('T')[0]);
+            if (item.dateInspect) setDateInspect(new Date(item.dateInspect).toISOString().split('T')[0]);
+            setCustomer(item.customer || 'PT Kaltim Prima Coal');
+            setCustomerSite(item.customerSite || 'Sangatta KPC');
+            setInspectLocation(item.inspectLocation || 'Workshop Sangatta');
+            setReportBy(item.reportBy || '');
+            setRepairDuration((item.repairDuration as DurationTag) || 'R1');
+            setRtd1(item.rtd1 || '');
+            setRtd2(item.rtd2 || '');
+            setRemarks(item.remarks || '');
+            setScrapReason(item.scrapReason || '');
+            setStatus((item.status as any) || 'Repair');
+            if (item.photos && item.photos.length > 0) {
+              setPhotos(
+                item.photos.map((p) => ({
+                  id: `photo_${p.id || Math.random()}`,
+                  photoArea: p.photoArea,
+                  photoUrl: p.photoUrl,
+                  photoType: (p.photoType as any) || 'INSPECTION',
+                  isLandscape: true,
+                }))
+              );
+            }
+          }
+        });
+      }
+    }
+  }, []);
 
   // Load user default location & master data
   useEffect(() => {
@@ -209,11 +261,12 @@ export default function NewTireRepairInspectionPage() {
           id: Math.random().toString(36).substring(2, 9),
           photoArea: selectedPhotoArea,
           photoUrl: resultStr,
+          photoType: uploadCategory,
           isLandscape,
         };
 
         setPhotos((prev) => [...prev, newPhoto]);
-        toast.success(`Foto (${selectedPhotoArea}) berhasil diunggah.`);
+        toast.success(`Foto ${uploadCategory === 'SKIVING' ? 'setelah skiving' : 'kondisi awal'} (${selectedPhotoArea}) berhasil diunggah.`);
       };
       img.src = resultStr;
     };
@@ -243,11 +296,12 @@ export default function NewTireRepairInspectionPage() {
         id: Math.random().toString(36).substring(2, 9),
         photoArea: selectedPhotoArea,
         photoUrl: dataUrl,
+        photoType: uploadCategory,
         isLandscape,
       };
 
       setPhotos((prev) => [...prev, newPhoto]);
-      toast.success(`Foto (${selectedPhotoArea}) berhasil diambil.`);
+      toast.success(`Foto ${uploadCategory === 'SKIVING' ? 'setelah skiving' : 'kondisi awal'} (${selectedPhotoArea}) berhasil diambil.`);
     };
     img.src = dataUrl;
   };
@@ -328,7 +382,7 @@ export default function NewTireRepairInspectionPage() {
 
     setIsSubmitting(true);
     try {
-      const res = await createTireRepairInspectionAction({
+      const payloadData = {
         serialNumber: serialNumber.trim().toUpperCase(),
         tireSize,
         isCustomTireSize,
@@ -339,6 +393,7 @@ export default function NewTireRepairInspectionPage() {
         customer: customer || 'PT Kaltim Prima Coal',
         customerSite: customerSite || 'Sangatta',
         status,
+        scrapReason: status === 'Reject' ? scrapReason : null,
         inspectLocation: inspectLocation || 'Workshop Sangatta',
         dateInspect,
         reportBy: reportBy || 'Inspector',
@@ -349,11 +404,16 @@ export default function NewTireRepairInspectionPage() {
         photos: photos.map((p) => ({
           photoArea: p.photoArea,
           photoUrl: p.photoUrl,
+          photoType: p.photoType || 'INSPECTION',
         })),
-      });
+      };
+
+      const res = editingId
+        ? await updateTireRepairInspectionAction(editingId, payloadData)
+        : await createTireRepairInspectionAction(payloadData);
 
       if (res.success) {
-        toast.success(res.message || 'Laporan inspeksi tire berhasil disimpan!');
+        toast.success(res.message || (editingId ? 'Data inspeksi tire berhasil diperbarui!' : 'Laporan inspeksi tire berhasil disimpan!'));
         router.push('/mobile/tire-repair/inspection');
       } else {
         toast.error(res.message || 'Gagal menyimpan laporan inspeksi.');
@@ -380,11 +440,13 @@ export default function NewTireRepairInspectionPage() {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-base font-black tracking-tight text-[#082033] font-mono">
-                INPUT INSPEKSI TIRE
+                {editingId ? 'EDIT INSPEKSI & FOTO SKIVING' : 'INPUT INSPEKSI TIRE'}
               </h1>
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             </div>
-            <p className="text-[11px] text-[#486275] font-medium">Form Inspeksi Fisik Workshop</p>
+            <p className="text-[11px] text-[#486275] font-medium">
+              {editingId ? `Perbarui data & foto ban SN: ${serialNumber || '-'}` : 'Form Inspeksi Fisik Workshop'}
+            </p>
           </div>
         </div>
       </div>
@@ -528,6 +590,44 @@ export default function NewTireRepairInspectionPage() {
             <span className="text-[10px] text-[#486275] font-bold">({photos.length} foto)</span>
           </div>
 
+          {/* Category Toggle: Foto Setelah Skiving vs Foto Kondisi Awal */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-[#486275]">
+              Target Kategori Upload:
+            </label>
+            <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setUploadCategory('SKIVING')}
+                className={`py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  uploadCategory === 'SKIVING'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Camera className="w-3.5 h-3.5" />
+                <span>Foto Skiving ({photos.filter((p) => p.photoType === 'SKIVING').length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setUploadCategory('INSPECTION')}
+                className={`py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  uploadCategory === 'INSPECTION'
+                    ? 'bg-[#003f78] text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>Foto Awal ({photos.filter((p) => p.photoType !== 'SKIVING').length})</span>
+              </button>
+            </div>
+            {uploadCategory === 'SKIVING' && (
+              <p className="text-[11px] text-emerald-800 font-medium bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 rounded-lg flex items-center justify-between">
+                <span>★ Foto setelah skiving akan diprioritaskan di PDF Report.</span>
+                <span className="font-bold uppercase text-[9px] bg-emerald-600 text-white px-1.5 py-0.5 rounded">PDF Priority</span>
+              </p>
+            )}
+          </div>
+
           {/* Warning Banner */}
           {hasPortraitWarning && (
             <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 flex items-start gap-2.5 text-xs">
@@ -543,7 +643,7 @@ export default function NewTireRepairInspectionPage() {
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-xs font-semibold text-[#486275]">
-                  Pilih Area Foto (1 Foto = 1 Area)
+                  Pilih Area Foto ({uploadCategory === 'SKIVING' ? 'Setelah Skiving' : 'Kondisi Awal'})
                 </label>
                 <span className="text-[10px] font-bold text-[#003f78] bg-[#e9f6fd] px-2 py-0.5 rounded-full border border-sky-200">
                   {selectedPhotoArea}
@@ -594,10 +694,14 @@ export default function NewTireRepairInspectionPage() {
                 type="button"
                 onClick={() => setIsLiveCameraOpen(true)}
                 variant="outline"
-                className="h-11 rounded-xl border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs active:scale-[0.98]"
+                className={`h-11 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs active:scale-[0.98] ${
+                  uploadCategory === 'SKIVING'
+                    ? 'border-emerald-400 bg-emerald-600 text-white hover:bg-emerald-700'
+                    : 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                }`}
               >
-                <Camera className="w-4 h-4 text-emerald-700" />
-                <span>Ambil Foto</span>
+                <Camera className="w-4 h-4" />
+                <span>Ambil Foto {uploadCategory === 'SKIVING' ? 'Skiving' : 'Awal'}</span>
               </Button>
 
               <Button
@@ -611,45 +715,107 @@ export default function NewTireRepairInspectionPage() {
               </Button>
             </div>
             <p className="text-[11px] text-[#486275] text-center">
-              Tag foto yang akan diambil: <span className="font-semibold text-[#003f78]">{selectedPhotoArea}</span>
+              Tag foto: <span className="font-semibold text-[#003f78]">{selectedPhotoArea}</span> ({uploadCategory === 'SKIVING' ? 'Setelah Skiving' : 'Kondisi Awal'})
             </p>
           </div>
 
-          {/* Uploaded Thumbnails */}
-          {photos.length > 0 && (
-            <div className="space-y-2 pt-2 border-t border-slate-100">
-              <span className="text-[11px] font-semibold text-[#486275] block">
-                Foto yang Sudah Diunggah:
-              </span>
-              <div className="grid grid-cols-2 gap-2">
-                {photos.map((photo) => (
-                  <div
-                    key={photo.id}
-                    className="group relative rounded-xl border border-slate-200 overflow-hidden bg-slate-50 aspect-4/3 shadow-2xs"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={photo.photoUrl}
-                      alt={photo.photoArea}
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-1.5">
-                      <span className="text-[10px] font-semibold text-white block truncate">
-                        {photo.photoArea}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleRemovePhoto(photo.id)}
-                      className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-red-600 text-white flex items-center justify-center shadow-md active:scale-90"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
+          {/* Uploaded Thumbnails Split */}
+          {(() => {
+            const skivingList = photos.filter((p) => p.photoType === 'SKIVING');
+            const initialList = photos.filter((p) => p.photoType !== 'SKIVING');
+
+            return (
+              <div className="space-y-4 pt-2 border-t border-slate-100">
+                {/* Skiving Photos List */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-emerald-900">
+                    <span className="flex items-center gap-1">
+                      <Camera className="w-3.5 h-3.5 text-emerald-600" />
+                      Foto Setelah Skiving ({skivingList.length}):
+                    </span>
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded border border-emerald-300 font-semibold">
+                      PDF Priority
+                    </span>
                   </div>
-                ))}
+
+                  {skivingList.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      {skivingList.map((photo) => (
+                        <div
+                          key={photo.id}
+                          className="group relative rounded-xl border border-emerald-300 overflow-hidden bg-black aspect-4/3 shadow-2xs"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={resolveUploadUrl(photo.photoUrl)}
+                            alt={photo.photoArea}
+                            className="w-full h-full object-cover"
+                          />
+                          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-1.5">
+                            <span className="text-[10px] font-semibold text-white block truncate">
+                              {photo.photoArea}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemovePhoto(photo.id)}
+                            className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-red-600 text-white flex items-center justify-center shadow-md active:scale-90"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-slate-400 italic bg-slate-50 p-2.5 rounded-lg text-center">
+                      Belum ada foto setelah skiving. Ambil/pilih foto dengan tab &quot;Foto Skiving&quot;.
+                    </p>
+                  )}
+                </div>
+
+                {/* Initial Photos List */}
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold text-slate-800 block">
+                    Foto Kondisi Awal ({initialList.length}):
+                  </span>
+
+                  {initialList.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      {initialList.map((photo) => (
+                        <div
+                          key={photo.id}
+                          className="group relative rounded-xl border border-slate-200 overflow-hidden bg-slate-50 aspect-4/3 shadow-2xs"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={resolveUploadUrl(photo.photoUrl)}
+                            alt={photo.photoArea}
+                            className="w-full h-full object-cover"
+                          />
+                          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-1.5">
+                            <span className="text-[10px] font-semibold text-white block truncate">
+                              {photo.photoArea}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemovePhoto(photo.id)}
+                            className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-red-600 text-white flex items-center justify-center shadow-md active:scale-90"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-slate-400 italic bg-slate-50 p-2.5 rounded-lg text-center">
+                      Tidak ada foto kondisi awal.
+                    </p>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
 
         {/* Section 3: Tire Detail & Status */}
@@ -803,6 +969,23 @@ export default function NewTireRepairInspectionPage() {
               </Select>
             </div>
           </div>
+
+          {/* Scrap Reason jika status Reject */}
+          {status === 'Reject' && (
+            <div className="space-y-1.5 p-3 rounded-xl bg-red-50/70 border border-red-200/80">
+              <label className="text-xs font-bold text-red-700 flex items-center gap-1.5">
+                <span>Alasan Reject / Scrap Ban</span>
+                <span className="text-[10px] text-red-500 font-normal">(Wajib diisi)</span>
+              </label>
+              <Textarea
+                value={scrapReason}
+                onChange={(e) => setScrapReason(e.target.value)}
+                placeholder="Contoh: Ply separator parah, bead kawat putus saat skiving..."
+                rows={2}
+                className="bg-white border-red-200 text-xs text-red-950 placeholder:text-red-300 resize-none rounded-lg"
+              />
+            </div>
+          )}
         </div>
 
         {/* Action Button */}
@@ -815,10 +998,10 @@ export default function NewTireRepairInspectionPage() {
             {isSubmitting ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin" />
-                <span>Menyimpan Laporan...</span>
+                <span>{editingId ? 'Memperbarui Inspeksi...' : 'Menyimpan Laporan...'}</span>
               </>
             ) : (
-              <span>Simpan Laporan Inspeksi</span>
+              <span>{editingId ? 'Perbarui Inspeksi Ban' : 'Simpan Laporan Inspeksi'}</span>
             )}
           </Button>
         </div>

@@ -25,6 +25,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { resolveUploadUrl } from '@/lib/resolve-upload-url';
 import { TireInspectionPrintReport } from '@/components/tire-inspection-print-report';
 import {
   Select,
@@ -553,14 +554,24 @@ export default function TireRepairInspectionListPage() {
                       <h4 className="text-base font-black font-mono tracking-tight text-[#082033] truncate bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/60">
                         {item.serialNumber}
                       </h4>
-                      {item.repairDuration && (
-                        <Badge
-                          variant="outline"
-                          className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded-md ${badgeStyle.bg}`}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {item.repairDuration && (
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded-md ${badgeStyle.bg}`}
+                          >
+                            {item.repairDuration}
+                          </Badge>
+                        )}
+                        <Link
+                          href={`/mobile/tire-repair/inspection/new?editId=${item.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="p-1 rounded-md text-amber-600 hover:bg-amber-100/60 active:scale-95 transition-transform"
+                          title="Edit / Foto Skiving"
                         >
-                          {item.repairDuration}
-                        </Badge>
-                      )}
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Link>
+                      </div>
                     </div>
 
                     {/* Customer & Site */}
@@ -589,12 +600,19 @@ export default function TireRepairInspectionListPage() {
                         <span className="text-slate-400 text-[10px]">RTD: -</span>
                       )}
 
-                      {item.photos && item.photos.length > 0 && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-slate-100 text-[#082033] px-2 py-0.5 rounded-md border border-slate-200/80">
-                          <Camera className="w-3 h-3 text-[#003f78]" />
-                          {item.photos.length} Foto
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1.5">
+                        {item.photos?.some((p) => p.photoType === 'SKIVING') && (
+                          <span className="inline-flex items-center gap-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-md border border-emerald-300">
+                            ★ Skived
+                          </span>
+                        )}
+                        {item.photos && item.photos.length > 0 && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-slate-100 text-[#082033] px-2 py-0.5 rounded-md border border-slate-200/80">
+                            <Camera className="w-3 h-3 text-[#003f78]" />
+                            {item.photos.length} Foto
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {/* Dates row */}
@@ -737,47 +755,118 @@ export default function TireRepairInspectionListPage() {
                 )}
               </div>
 
-              {/* Photos Gallery */}
-              <div className="space-y-2">
-                <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                  <Camera className="w-4 h-4 text-emerald-600" />
-                  Foto Dokumentasi ({selectedItem.photos?.length || 0})
-                </h4>
+              {/* Photos Gallery - Split Skiving vs Initial */}
+              {(() => {
+                const itemPhotos = selectedItem.photos || [];
+                const skivingPhotos = itemPhotos.filter((p) => p.photoType === 'SKIVING');
+                const initialPhotos = itemPhotos.filter((p) => p.photoType !== 'SKIVING');
 
-                {(!selectedItem.photos || selectedItem.photos.length === 0) ? (
-                  <p className="text-xs text-slate-400 italic bg-slate-50 dark:bg-slate-950 p-3 rounded-lg text-center">
-                    Tidak ada foto inspeksi yang diunggah.
-                  </p>
-                ) : (
-                  <div className="grid grid-cols-2 gap-2">
-                    {selectedItem.photos.map((photo, pIdx) => (
-                      <div
-                        key={photo.id || pIdx}
-                        onClick={() => setPreviewPhotoUrl(photo.photoUrl)}
-                        className="group relative rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden bg-slate-100 dark:bg-slate-950 aspect-4/3 cursor-pointer shadow-2xs"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={photo.photoUrl}
-                          alt={photo.photoArea}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                        />
-                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-1.5">
-                          <span className="text-[10px] font-semibold text-white block truncate">
-                            {photo.photoArea}
-                          </span>
-                        </div>
-                        <div className="absolute top-1.5 right-1.5 bg-black/50 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Eye className="w-3 h-3" />
-                        </div>
+                return (
+                  <div className="space-y-4">
+                    {/* Section Skiving Photos */}
+                    <div className="p-3 rounded-xl bg-emerald-50/50 border border-emerald-200 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                          <Camera className="w-4 h-4 text-emerald-600" />
+                          Foto Setelah Skiving ({skivingPhotos.length})
+                        </h4>
+                        <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300">
+                          PDF Priority
+                        </span>
                       </div>
-                    ))}
+
+                      {skivingPhotos.length === 0 ? (
+                        <div className="text-center py-3 px-2 bg-white/70 rounded-lg border border-dashed border-emerald-300 text-[11px] text-emerald-800 space-y-2">
+                          <p>Belum ada foto setelah skiving ban.</p>
+                          <Link href={`/mobile/tire-repair/inspection/new?editId=${selectedItem.id}`}>
+                            <Button size="sm" className="h-7 text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white gap-1">
+                              <Camera className="w-3 h-3" />
+                              Upload Foto Skiving
+                            </Button>
+                          </Link>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2">
+                          {skivingPhotos.map((photo, pIdx) => (
+                            <div
+                              key={photo.id || pIdx}
+                              onClick={() => setPreviewPhotoUrl(resolveUploadUrl(photo.photoUrl))}
+                              className="group relative rounded-xl border border-emerald-300 overflow-hidden bg-black aspect-4/3 cursor-pointer shadow-2xs"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={resolveUploadUrl(photo.photoUrl)}
+                                alt={photo.photoArea}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                              />
+                              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-1.5">
+                                <span className="text-[10px] font-semibold text-white block truncate">
+                                  {photo.photoArea}
+                                </span>
+                              </div>
+                              <div className="absolute top-1.5 right-1.5 bg-black/50 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Eye className="w-3 h-3" />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Section Initial Inspection Photos */}
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                        <Camera className="w-4 h-4 text-slate-500" />
+                        Foto Kondisi Awal ({initialPhotos.length})
+                      </h4>
+
+                      {initialPhotos.length === 0 ? (
+                        <p className="text-xs text-slate-400 italic bg-slate-50 dark:bg-slate-950 p-2.5 rounded-lg text-center">
+                          Tidak ada foto kondisi awal yang diunggah.
+                        </p>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2">
+                          {initialPhotos.map((photo, pIdx) => (
+                            <div
+                              key={photo.id || pIdx}
+                              onClick={() => setPreviewPhotoUrl(resolveUploadUrl(photo.photoUrl))}
+                              className="group relative rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden bg-slate-100 dark:bg-slate-950 aspect-4/3 cursor-pointer shadow-2xs"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={resolveUploadUrl(photo.photoUrl)}
+                                alt={photo.photoArea}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                              />
+                              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-1.5">
+                                <span className="text-[10px] font-semibold text-white block truncate">
+                                  {photo.photoArea}
+                                </span>
+                              </div>
+                              <div className="absolute top-1.5 right-1.5 bg-black/50 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Eye className="w-3 h-3" />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )}
-              </div>
+                );
+              })()}
 
               {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800 flex-wrap">
+                <Link href={`/mobile/tire-repair/inspection/new?editId=${selectedItem.id}`}>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="h-8 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white gap-1.5"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                    <span>Edit / Foto Skiving</span>
+                  </Button>
+                </Link>
                 <Button
                   variant="default"
                   size="sm"
@@ -794,7 +883,7 @@ export default function TireRepairInspectionListPage() {
                   onClick={() => handleDeleteItem(selectedItem.id, selectedItem.serialNumber)}
                 >
                   <Trash2 className="w-3.5 h-3.5 mr-1" />
-                  Hapus Inspeksi
+                  Hapus
                 </Button>
               </div>
 

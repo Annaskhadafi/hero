@@ -165,7 +165,7 @@ export interface CreateTireRepairInspectionPayload {
   rtd2?: string;
   remarks?: string;
   removalReason?: string;
-  scrapReason?: string;
+  scrapReason?: string | null;
   deffectexRepair?: string;
   vehicle?: string;
   wheelPosition?: string;
@@ -176,6 +176,7 @@ export interface CreateTireRepairInspectionPayload {
   photos?: Array<{
     photoArea: string;
     photoUrl: string;
+    photoType?: 'INSPECTION' | 'SKIVING' | string;
   }>;
 }
 

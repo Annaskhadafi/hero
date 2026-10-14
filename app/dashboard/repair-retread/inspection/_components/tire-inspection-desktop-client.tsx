@@ -36,6 +36,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { resolveUploadUrl } from "@/lib/resolve-upload-url"
 import { TireInspectionPrintReport } from "@/components/tire-inspection-print-report"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import {
@@ -236,11 +237,27 @@ export function TireInspectionDesktopClient({
 
   // Multi-Area Photo State
   const [selectedPhotoAreas, setSelectedPhotoAreas] = useState<string[]>([PHOTO_AREAS[0]])
-  const [photos, setPhotos] = useState<Array<{ id: string; photoArea: string; photoUrl: string }>>([])
+  const [photos, setPhotos] = useState<Array<{ id: string; photoArea: string; photoUrl: string; photoType?: 'INSPECTION' | 'SKIVING' }>>([])
   const photoInputRef = useRef<HTMLInputElement>(null)
+
+  // Skiving Photo Upload State
+  const [selectedSkivingAreas, setSelectedSkivingAreas] = useState<string[]>([PHOTO_AREAS[0]])
+  const [scrapReason, setScrapReason] = useState("")
+  const skivingPhotoInputRef = useRef<HTMLInputElement>(null)
+  const editInitialPhotoInputRef = useRef<HTMLInputElement>(null)
 
   const togglePhotoArea = (area: string) => {
     setSelectedPhotoAreas((prev) => {
+      if (prev.includes(area)) {
+        if (prev.length === 1) return prev
+        return prev.filter((a) => a !== area)
+      }
+      return [...prev, area]
+    })
+  }
+
+  const toggleSkivingArea = (area: string) => {
+    setSelectedSkivingAreas((prev) => {
       if (prev.includes(area)) {
         if (prev.length === 1) return prev
         return prev.filter((a) => a !== area)
@@ -548,9 +565,66 @@ export function TireInspectionDesktopClient({
               id: `photo_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
               photoArea: joinedArea,
               photoUrl: base64Url,
+              photoType: 'INSPECTION',
             },
           ])
           toast.success(`Foto area "${joinedArea}" berhasil ditambahkan`)
+        }
+      }
+      reader.readAsDataURL(file)
+    })
+    e.target.value = ""
+  }
+
+  const handleSkivingFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    const joinedArea = selectedSkivingAreas.join(", ")
+
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        const base64Url = event.target?.result as string
+        if (base64Url) {
+          setPhotos((prev) => [
+            ...prev,
+            {
+              id: `photo_skiving_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+              photoArea: joinedArea,
+              photoUrl: base64Url,
+              photoType: 'SKIVING',
+            },
+          ])
+          toast.success(`Foto skiving area "${joinedArea}" berhasil ditambahkan`)
+        }
+      }
+      reader.readAsDataURL(file)
+    })
+    e.target.value = ""
+  }
+
+  const handleEditInitialFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    const joinedArea = selectedPhotoAreas.join(", ")
+
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        const base64Url = event.target?.result as string
+        if (base64Url) {
+          setPhotos((prev) => [
+            ...prev,
+            {
+              id: `photo_initial_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+              photoArea: joinedArea,
+              photoUrl: base64Url,
+              photoType: 'INSPECTION',
+            },
+          ])
+          toast.success(`Foto inspeksi awal area "${joinedArea}" berhasil ditambahkan`)
         }
       }
       reader.readAsDataURL(file)
@@ -631,6 +705,7 @@ export function TireInspectionDesktopClient({
     setRtd1(item.rtd1 || "")
     setRtd2(item.rtd2 || "")
     setRemarks(item.remarks || "")
+    setScrapReason(item.scrapReason || "")
     setTireSize(item.tireSize || "27.00R49")
     setSerialNumber(item.serialNumber || "")
     setBrand(item.brand || "MICHELIN")
@@ -641,9 +716,10 @@ export function TireInspectionDesktopClient({
     setCustomerSite(item.customerSite || "Sangatta KPC")
     setStatus((item.status as any) || "Repair")
     setPhotos((item.photos || []).map((p) => ({
-      id: `photo_${p.id}`,
+      id: `photo_${p.id || Math.random()}`,
       photoArea: p.photoArea,
       photoUrl: p.photoUrl,
+      photoType: (p.photoType as any) || 'INSPECTION',
     })))
     setIsEditModalOpen(true)
   }
@@ -667,6 +743,7 @@ export function TireInspectionDesktopClient({
         rtd1,
         rtd2,
         remarks,
+        scrapReason: status === 'Reject' ? scrapReason : null,
         tireSize,
         serialNumber: serialNumber.toUpperCase(),
         brand,
@@ -679,6 +756,7 @@ export function TireInspectionDesktopClient({
         photos: photos.map((p) => ({
           photoArea: p.photoArea,
           photoUrl: p.photoUrl,
+          photoType: p.photoType || 'INSPECTION',
         })),
       })
 
@@ -1215,6 +1293,20 @@ export function TireInspectionDesktopClient({
                       <Button
                         size="sm"
                         variant="outline"
+                        className="h-9 px-3 gap-2 text-xs font-bold border-emerald-500/30 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-xl shadow-2xs cursor-pointer"
+                        onClick={() => {
+                          const itemToEdit = selectedItem
+                          setIsDetailOpen(false)
+                          handleOpenEdit(itemToEdit)
+                        }}
+                      >
+                        <Camera className="h-4 w-4 text-emerald-600" />
+                        <span>Upload Foto Skiving</span>
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
                         className="h-9 px-3 gap-2 text-xs font-semibold border-amber-500/30 text-amber-700 bg-white hover:bg-amber-50 rounded-xl shadow-2xs cursor-pointer"
                         onClick={() => {
                           const itemToEdit = selectedItem
@@ -1368,91 +1460,186 @@ export function TireInspectionDesktopClient({
                   </div>
                 </div>
 
-                {/* Photo Gallery Grid (Bukan Slide, Tapi Galeri Kartu Klik) */}
+                {/* Photo Gallery Grid - Split by Skiving vs Initial */}
                 {(() => {
                   const itemPhotos = selectedItem.photos || []
+                  const skivingPhotos = itemPhotos.filter((p) => p.photoType === 'SKIVING')
+                  const initialPhotos = itemPhotos.filter((p) => p.photoType !== 'SKIVING')
+
                   return (
-                    <div className="space-y-4 pt-2">
-                      <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                        <div className="flex items-center gap-2">
-                          <Camera className="h-5 w-5 text-[#003f78]" />
-                          <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">
-                            Galeri Foto Defect ({itemPhotos.length} Foto)
-                          </h4>
+                    <div className="space-y-6 pt-2">
+                      {/* Section 1: Foto Setelah Skiving */}
+                      <div className="p-4 rounded-2xl bg-emerald-50/40 border border-emerald-200/80 space-y-4">
+                        <div className="flex items-center justify-between border-b border-emerald-200/80 pb-3">
+                          <div className="flex items-center gap-2">
+                            <Camera className="h-5 w-5 text-emerald-600" />
+                            <h4 className="text-xs font-black uppercase tracking-wider text-emerald-950">
+                              Foto Setelah Skiving ({skivingPhotos.length} Foto)
+                            </h4>
+                          </div>
+                          <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full">
+                            ★ Prioritas Cetak PDF Report
+                          </span>
                         </div>
-                        <span className="text-xs text-slate-500 font-semibold">
-                          Klik foto untuk memperbesar & detail
-                        </span>
-                      </div>
 
-                      {itemPhotos.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center p-10 rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-slate-500 text-xs">
-                          <Camera className="h-8 w-8 text-slate-400 mb-2" />
-                          <span className="font-semibold">Belum ada foto dokumentasi inspeksi untuk ban ini</span>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {itemPhotos.map((photo, pIdx) => {
-                            const hasError = photo.photoUrl ? photoErrorMap[photo.photoUrl] : false
-                            return (
-                              <div
-                                key={photo.id || pIdx}
-                                onClick={() => setZoomPhotoUrl(photo.photoUrl)}
-                                className="group relative rounded-2xl border border-slate-200/90 overflow-hidden bg-white shadow-2xs hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col hover:border-[#003f78]/50"
-                              >
-                                {/* Image Aspect Container */}
-                                <div className="relative aspect-[4/3] w-full overflow-hidden bg-slate-100 flex items-center justify-center">
-                                  {!hasError && photo.photoUrl ? (
-                                    <>
-                                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                                      <img
-                                        src={photo.photoUrl}
-                                        alt={photo.photoArea || "Tire Defect"}
-                                        onError={() => handlePhotoError(photo.photoUrl)}
-                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                      />
-                                      {/* Hover Overlay */}
-                                      <div className="absolute inset-0 bg-[#082033]/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white text-xs font-bold backdrop-blur-[2px]">
-                                        <ZoomIn className="h-5 w-5 text-white" />
-                                        <span>Klik untuk Memperbesar</span>
+                        {skivingPhotos.length === 0 ? (
+                          <div className="flex flex-col sm:flex-row items-center justify-between p-4 rounded-xl border border-dashed border-emerald-300 bg-white/70 text-emerald-900 gap-3">
+                            <div className="flex items-center gap-3">
+                              <Camera className="h-8 w-8 text-emerald-500 shrink-0" />
+                              <div className="text-xs text-left">
+                                <span className="font-bold block">Belum ada foto setelah skiving</span>
+                                <span className="text-[11px] text-emerald-700">
+                                  Lakukan skiving ban dan unggah dokumentasi foto untuk dimasukkan ke laporan PDF.
+                                </span>
+                              </div>
+                            </div>
+                            <Button
+                              size="sm"
+                              className="h-8 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shrink-0 gap-1.5"
+                              onClick={() => {
+                                const itemToEdit = selectedItem
+                                setIsDetailOpen(false)
+                                handleOpenEdit(itemToEdit)
+                              }}
+                            >
+                              <Camera className="w-3.5 h-3.5" />
+                              <span>Upload Foto Skiving</span>
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {skivingPhotos.map((photo, pIdx) => {
+                              const hasError = photo.photoUrl ? photoErrorMap[photo.photoUrl] : false
+                              return (
+                                <div
+                                  key={photo.id || pIdx}
+                                  onClick={() => setZoomPhotoUrl(resolveUploadUrl(photo.photoUrl))}
+                                  className="group relative rounded-2xl border border-emerald-200 overflow-hidden bg-white shadow-2xs hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col hover:border-emerald-500"
+                                >
+                                  <div className="relative aspect-[4/3] w-full overflow-hidden bg-slate-100 flex items-center justify-center">
+                                    {!hasError && photo.photoUrl ? (
+                                      <>
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img
+                                          src={resolveUploadUrl(photo.photoUrl)}
+                                          alt={photo.photoArea || "Tire Skiving"}
+                                          onError={() => handlePhotoError(photo.photoUrl)}
+                                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                        />
+                                        <div className="absolute inset-0 bg-[#082033]/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white text-xs font-bold backdrop-blur-[2px]">
+                                          <ZoomIn className="h-5 w-5 text-white" />
+                                          <span>Klik untuk Memperbesar</span>
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <div className="flex flex-col items-center justify-center p-6 text-slate-400 space-y-1 text-center">
+                                        <AlertTriangle className="h-8 w-8 text-amber-500 mb-1" />
+                                        <span className="text-xs font-semibold text-slate-700">Gambar Tidak Dapat Dimuat</span>
                                       </div>
-                                    </>
-                                  ) : (
-                                    <div className="flex flex-col items-center justify-center p-6 text-slate-400 space-y-1 text-center">
-                                      <AlertTriangle className="h-8 w-8 text-amber-500 mb-1" />
-                                      <span className="text-xs font-semibold text-slate-700">Gambar Tidak Dapat Dimuat</span>
-                                    </div>
-                                  )}
+                                    )}
 
-                                  {/* Multi-Area Tags Badge on Image Top-Left */}
-                                  <div className="absolute top-2.5 left-2.5 z-10 flex flex-wrap gap-1 max-w-[85%] pointer-events-none">
-                                    {photo.photoArea?.split(',').map((tag, tIdx) => (
-                                      <span
-                                        key={tIdx}
-                                        className="bg-white/95 backdrop-blur-md text-[#003f78] text-[11px] px-2.5 py-1 rounded-lg font-bold border border-slate-200 shadow-2xs flex items-center gap-1"
-                                      >
-                                        <Camera className="h-3 w-3 text-emerald-600 shrink-0" />
-                                        <span>{tag.trim()}</span>
-                                      </span>
-                                    ))}
+                                    <div className="absolute top-2.5 left-2.5 z-10 flex flex-wrap gap-1 max-w-[85%] pointer-events-none">
+                                      {photo.photoArea?.split(',').map((tag, tIdx) => (
+                                        <span
+                                          key={tIdx}
+                                          className="bg-emerald-700/90 text-white text-[10px] px-2 py-0.5 rounded-md font-bold shadow-2xs flex items-center gap-1"
+                                        >
+                                          <span>{tag.trim()}</span>
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  <div className="p-3 bg-emerald-50/60 border-t border-emerald-100 flex items-center justify-between text-xs">
+                                    <span className="font-bold text-emerald-950 truncate">
+                                      {photo.photoArea || "Setelah Skiving"}
+                                    </span>
+                                    <span className="text-[11px] text-emerald-700 font-semibold group-hover:underline flex items-center gap-1">
+                                      <Eye className="h-3.5 w-3.5" />
+                                      <span>Lihat</span>
+                                    </span>
                                   </div>
                                 </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
 
-                                {/* Card Caption Bar */}
-                                <div className="p-3 bg-slate-50/90 border-t border-slate-100 flex items-center justify-between text-xs">
-                                  <span className="font-bold text-slate-800 truncate">
-                                    {photo.photoArea || "Dokumentasi Inspeksi"}
-                                  </span>
-                                  <span className="text-[11px] text-[#003f78] font-semibold group-hover:underline flex items-center gap-1">
-                                    <Eye className="h-3.5 w-3.5" />
-                                    <span>Lihat</span>
-                                  </span>
-                                </div>
-                              </div>
-                            )
-                          })}
+                      {/* Section 2: Foto Kondisi Awal */}
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                          <div className="flex items-center gap-2">
+                            <Camera className="h-5 w-5 text-[#003f78]" />
+                            <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">
+                              Foto Kondisi Awal / Pre-Inspection ({initialPhotos.length} Foto)
+                            </h4>
+                          </div>
                         </div>
-                      )}
+
+                        {initialPhotos.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center p-8 rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-slate-500 text-xs">
+                            <span className="font-medium italic">Tidak ada foto kondisi awal yang diunggah</span>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {initialPhotos.map((photo, pIdx) => {
+                              const hasError = photo.photoUrl ? photoErrorMap[photo.photoUrl] : false
+                              return (
+                                <div
+                                  key={photo.id || pIdx}
+                                  onClick={() => setZoomPhotoUrl(resolveUploadUrl(photo.photoUrl))}
+                                  className="group relative rounded-2xl border border-slate-200/90 overflow-hidden bg-white shadow-2xs hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col hover:border-[#003f78]/50"
+                                >
+                                  <div className="relative aspect-[4/3] w-full overflow-hidden bg-slate-100 flex items-center justify-center">
+                                    {!hasError && photo.photoUrl ? (
+                                      <>
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img
+                                          src={resolveUploadUrl(photo.photoUrl)}
+                                          alt={photo.photoArea || "Tire Defect"}
+                                          onError={() => handlePhotoError(photo.photoUrl)}
+                                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                        />
+                                        <div className="absolute inset-0 bg-[#082033]/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white text-xs font-bold backdrop-blur-[2px]">
+                                          <ZoomIn className="h-5 w-5 text-white" />
+                                          <span>Klik untuk Memperbesar</span>
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <div className="flex flex-col items-center justify-center p-6 text-slate-400 space-y-1 text-center">
+                                        <AlertTriangle className="h-8 w-8 text-amber-500 mb-1" />
+                                        <span className="text-xs font-semibold text-slate-700">Gambar Tidak Dapat Dimuat</span>
+                                      </div>
+                                    )}
+
+                                    <div className="absolute top-2.5 left-2.5 z-10 flex flex-wrap gap-1 max-w-[85%] pointer-events-none">
+                                      {photo.photoArea?.split(',').map((tag, tIdx) => (
+                                        <span
+                                          key={tIdx}
+                                          className="bg-white/95 backdrop-blur-md text-[#003f78] text-[11px] px-2.5 py-1 rounded-lg font-bold border border-slate-200 shadow-2xs flex items-center gap-1"
+                                        >
+                                          <span>{tag.trim()}</span>
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  <div className="p-3 bg-slate-50/90 border-t border-slate-100 flex items-center justify-between text-xs">
+                                    <span className="font-bold text-slate-800 truncate">
+                                      {photo.photoArea || "Dokumentasi Awal"}
+                                    </span>
+                                    <span className="text-[11px] text-[#003f78] font-semibold group-hover:underline flex items-center gap-1">
+                                      <Eye className="h-3.5 w-3.5" />
+                                      <span>Lihat</span>
+                                    </span>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )
                 })()}
@@ -2135,6 +2322,190 @@ export function TireInspectionDesktopClient({
                 className="text-xs min-h-[80px]"
               />
             </div>
+
+            {/* Scrap Reason (Shown when status is Reject) */}
+            {status === "Reject" && (
+              <div className="space-y-1.5 p-3.5 rounded-xl bg-rose-50 border border-rose-200">
+                <label className="text-xs font-bold text-rose-800">Alasan Scrap / Reject</label>
+                <Input
+                  value={scrapReason}
+                  onChange={(e) => setScrapReason(e.target.value)}
+                  placeholder="Contoh: Bead putus / Crown jebol ply 4 / Tidak layak repair..."
+                  className="h-9 text-xs bg-white text-rose-900 border-rose-300"
+                />
+              </div>
+            )}
+
+            {/* SECTION: FOTO SETELAH SKIVING (MULTIPLE) */}
+            {(() => {
+              const editSkivingPhotos = photos.filter((p) => p.photoType === "SKIVING")
+              return (
+                <div className="p-4 rounded-xl bg-emerald-50/50 border border-emerald-300/80 space-y-4 shadow-2xs">
+                  <div className="flex items-center justify-between border-b border-emerald-200 pb-2">
+                    <div>
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-900 flex items-center gap-1.5">
+                        <Camera className="w-4 h-4 text-emerald-600" />
+                        Foto Setelah Skiving ({editSkivingPhotos.length} Foto)
+                      </h3>
+                      <p className="text-[11px] text-emerald-700 font-medium mt-0.5">
+                        Foto setelah proses skiving ini yang akan diprioritaskan tampil pada lembar <b>PDF Inspection Report</b>.
+                      </p>
+                    </div>
+                    <span className="text-[10px] bg-emerald-600 text-white font-bold px-2.5 py-0.5 rounded-full shadow-2xs">
+                      ★ PDF Priority
+                    </span>
+                  </div>
+
+                  {/* Area Chips for Skiving */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold text-slate-700">Pilih Area Target Skiving:</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {PHOTO_AREAS.map((area) => {
+                        const isSelected = selectedSkivingAreas.includes(area)
+                        return (
+                          <button
+                            key={area}
+                            type="button"
+                            onClick={() => toggleSkivingArea(area)}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 active:scale-95 border ${
+                              isSelected
+                                ? "bg-emerald-600 text-white border-emerald-600 shadow-2xs"
+                                : "bg-white border-slate-300 text-slate-700 hover:bg-slate-100"
+                            }`}
+                          >
+                            {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                            <span>{area}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Upload Button */}
+                  <div>
+                    <input
+                      ref={skivingPhotoInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handleSkivingFileChange}
+                      className="hidden"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => skivingPhotoInputRef.current?.click()}
+                      className="w-full h-10 gap-1.5 text-xs font-bold text-emerald-800 bg-white border-emerald-300 hover:bg-emerald-100/50 shadow-xs"
+                    >
+                      <Upload className="h-4 w-4 text-emerald-600" />
+                      <span>+ Upload Foto Setelah Skiving [{selectedSkivingAreas.join(", ")}]</span>
+                    </Button>
+                  </div>
+
+                  {/* Skiving Photos Grid */}
+                  {editSkivingPhotos.length > 0 ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 pt-1">
+                      {editSkivingPhotos.map((photo) => (
+                        <div
+                          key={photo.id}
+                          className="group relative rounded-xl border border-emerald-300 overflow-hidden bg-black aspect-video shadow-xs"
+                        >
+                          <img
+                            src={resolveUploadUrl(photo.photoUrl)}
+                            alt={photo.photoArea}
+                            className="w-full h-full object-cover"
+                          />
+                          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-1.5">
+                            <span className="text-[10px] font-semibold text-white block truncate">
+                              {photo.photoArea}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemovePhoto(photo.id)}
+                            className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-rose-600 text-white flex items-center justify-center shadow-md hover:bg-rose-700 cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="border border-dashed border-emerald-300 rounded-xl p-4 text-center text-xs text-emerald-800 bg-white/60">
+                      Belum ada foto setelah skiving. Pilih area lalu klik <b>+ Upload Foto Setelah Skiving</b>.
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
+            {/* SECTION: FOTO KONDISI AWAL */}
+            {(() => {
+              const editInitialPhotos = photos.filter((p) => p.photoType !== "SKIVING")
+              return (
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                      <Camera className="w-4 h-4 text-slate-500" />
+                      Foto Kondisi Awal / Pre-Inspection ({editInitialPhotos.length} Foto)
+                    </h3>
+                  </div>
+
+                  <div>
+                    <input
+                      ref={editInitialPhotoInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handleEditInitialFileChange}
+                      className="hidden"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => editInitialPhotoInputRef.current?.click()}
+                      className="w-full h-9 gap-1.5 text-xs font-semibold text-slate-700 bg-white border-slate-300 hover:bg-slate-100"
+                    >
+                      <Upload className="h-3.5 w-3.5 text-slate-500" />
+                      <span>+ Tambah Foto Kondisi Awal [{selectedPhotoAreas.join(", ")}]</span>
+                    </Button>
+                  </div>
+
+                  {editInitialPhotos.length > 0 ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 pt-1">
+                      {editInitialPhotos.map((photo) => (
+                        <div
+                          key={photo.id}
+                          className="group relative rounded-xl border border-slate-300 overflow-hidden bg-black aspect-video shadow-xs"
+                        >
+                          <img
+                            src={resolveUploadUrl(photo.photoUrl)}
+                            alt={photo.photoArea}
+                            className="w-full h-full object-cover"
+                          />
+                          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-1.5">
+                            <span className="text-[10px] font-semibold text-white block truncate">
+                              {photo.photoArea}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemovePhoto(photo.id)}
+                            className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-rose-600 text-white flex items-center justify-center shadow-md hover:bg-rose-700 cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="border border-dashed border-slate-300 rounded-xl p-3 text-center text-xs text-slate-500">
+                      Tidak ada foto kondisi awal.
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
 
             <DialogFooter className="pt-4 border-t border-border/60 gap-2">
               <Button

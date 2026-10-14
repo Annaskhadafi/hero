@@ -38,6 +38,15 @@ export function TireInspectionPrintReport({ record }: TireInspectionPrintReportP
     (p) => p && typeof p.photoUrl === 'string' && p.photoUrl.trim() !== ''
   );
 
+  // Prioritize "Foto Setelah Skiving" on PDF report
+  const skivingPhotos = validPhotos.filter((p) => p.photoType === 'SKIVING');
+  const inspectionPhotos = validPhotos.filter((p) => p.photoType !== 'SKIVING');
+  const displayPhotos = (
+    skivingPhotos.length > 0
+      ? [...skivingPhotos, ...inspectionPhotos]
+      : inspectionPhotos
+  ).slice(0, 4);
+
   const isReject = (record.status || '').toLowerCase().includes('reject');
 
   return createPortal(
@@ -232,8 +241,8 @@ export function TireInspectionPrintReport({ record }: TireInspectionPrintReportP
 
             {/* Right Dynamic Photo Grid */}
             <div className="col-span-7 grid grid-cols-2 gap-4">
-              {validPhotos.length > 0 ? (
-                validPhotos.map((photo, index) => (
+              {displayPhotos.length > 0 ? (
+                displayPhotos.map((photo, index) => (
                   <div key={index} className="border border-black flex flex-col justify-between h-[240px] bg-white overflow-hidden">
                     <div className="flex-1 flex items-center justify-center overflow-hidden p-2">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -243,8 +252,8 @@ export function TireInspectionPrintReport({ record }: TireInspectionPrintReportP
                         className="max-h-full max-w-full object-contain"
                       />
                     </div>
-                    <div className="border-t border-black bg-white py-1.5 text-center font-normal text-xs text-black shrink-0">
-                      {photo.photoArea || (index === 0 ? 'Serial Number' : 'Area Sidewall')}
+                    <div className="border-t border-black bg-white py-1.5 text-center font-normal text-xs text-black shrink-0 px-1 truncate">
+                      {photo.photoType === 'SKIVING' ? `[Setelah Skiving] ${photo.photoArea || ''}` : (photo.photoArea || (index === 0 ? 'Serial Number' : 'Area Sidewall'))}
                     </div>
                   </div>
                 ))

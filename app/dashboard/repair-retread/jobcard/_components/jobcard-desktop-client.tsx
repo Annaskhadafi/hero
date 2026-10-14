@@ -23,6 +23,7 @@ import {
   X,
   Layers,
   Trash2,
+  Pencil,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -54,6 +55,7 @@ import { toast } from 'sonner';
 import {
   getTireRepairJobcardsAction,
   createTireRepairJobcardAction,
+  updateTireRepairJobcardAction,
   deleteTireRepairJobcardAction,
   type JobcardRecord,
 } from '@/app/actions/tire-repair-jobcard-actions';
@@ -109,22 +111,44 @@ export function JobcardDesktopClient({
   const [selectedJobcard, setSelectedJobcard] = useState<JobcardRecord | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
 
-  // New Jobcard Modal state
-  const DEFAULT_10_PROCESSES = [
-    { processName: 'Skiving', materialUsed: '', qty: '', hours: '', byWhom: '' },
-    { processName: 'Buffing', materialUsed: '', qty: '', hours: '', byWhom: '' },
-    { processName: 'Dimensi Luka', materialUsed: '', qty: '', hours: '', byWhom: '' },
-    { processName: 'Cementing', materialUsed: '', qty: '', hours: '', byWhom: '' },
-    { processName: 'Buffing Innerliner', materialUsed: '', qty: '', hours: '', byWhom: '' },
-    { processName: 'Install Patch', materialUsed: '', qty: '', hours: '', byWhom: '' },
-    { processName: 'Built Up', materialUsed: '', qty: '', hours: '', byWhom: '' },
-    { processName: 'Curing', materialUsed: '', qty: '', hours: '', byWhom: '' },
-    { processName: 'Finishing', materialUsed: '', qty: '', hours: '', byWhom: '' },
-    { processName: 'Painting', materialUsed: '', qty: '', hours: '', byWhom: '' },
-  ];
+  // Interfaces & Standard 9 Processes
+  interface ProcessItem {
+    processName: string;
+    materialUsed: string;
+    qty: string;
+    hours: string;
+    byWhom: string;
+    hardness?: string;
+  }
 
-  // New Jobcard Modal state
+  interface InjuryItem {
+    id: string;
+    injuryCategory: 'Minor' | 'Major';
+    injuryNumber: number;
+    injuryName: string;
+    injuryDate: string;
+    dimensiLukaL: string;
+    dimensiLukaW: string;
+    dimensiLukaP: string;
+    dimensiLukaT: string;
+    processes: ProcessItem[];
+  }
+
+  const DEFAULT_9_PROCESS_NAMES = [
+    'Skiving',
+    'Buffing',
+    'Cementing',
+    'Buffing Innerliner',
+    'Install Patch',
+    'Built Up',
+    'Curing',
+    'Finishing',
+    'Painting',
+  ] as const;
+
+  // New/Edit Jobcard Modal state
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
+  const [editingJobcardId, setEditingJobcardId] = useState<number | null>(null);
 
   const [newSn, setNewSn] = useState('');
   const [newWo, setNewWo] = useState('');
@@ -135,12 +159,7 @@ export function JobcardDesktopClient({
   const [newPattern, setNewPattern] = useState('E4');
   const [newConstruction, setNewConstruction] = useState('RADIAL');
 
-  const [dimLukaL, setDimLukaL] = useState('');
-  const [dimLukaW, setDimLukaW] = useState('');
-  const [dimLukaP, setDimLukaP] = useState('');
-  const [dimLukaT, setDimLukaT] = useState('');
-
-  const [jobcardProcesses, setJobcardProcesses] = useState(DEFAULT_10_PROCESSES);
+  const [injuries, setInjuries] = useState<InjuryItem[]>([]);
   const [signQc, setSignQc] = useState('');
   const [byHeadSection, setByHeadSection] = useState('');
 
@@ -304,8 +323,59 @@ export function JobcardDesktopClient({
       return true;
     });
 
+  const createDefaultProcesses = (firstInj?: InjuryItem): ProcessItem[] => {
+    const defaultOperator = currentUserEmployeeName || (employeeList.length > 0 ? employeeList[0] : '');
+    return DEFAULT_9_PROCESS_NAMES.map((name, procIdx) => {
+      const form1Proc = firstInj?.processes[procIdx];
+      const mat = form1Proc?.materialUsed || '';
+      const by = form1Proc?.byWhom || defaultOperator;
+      const qty = mat.trim() ? (form1Proc?.qty || '1') : '';
+      return {
+        processName: name,
+        materialUsed: mat,
+        qty: qty,
+        hours: '',
+        byWhom: by,
+        hardness: '',
+      };
+    });
+  };
+
+  const handleAddInjury = (category: 'Minor' | 'Major' = 'Minor') => {
+    const catCount = injuries.filter((i) => i.injuryCategory === category).length + 1;
+    const newInj: InjuryItem = {
+      id: `inj_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      injuryCategory: category,
+      injuryNumber: injuries.length + 1,
+      injuryName: `${category} #${catCount}`,
+      injuryDate: new Date().toISOString().split('T')[0],
+      dimensiLukaL: '',
+      dimensiLukaW: '',
+      dimensiLukaP: '',
+      dimensiLukaT: '',
+      processes: createDefaultProcesses(injuries[0]),
+    };
+    setInjuries((prev) => [...prev, newInj]);
+  };
+
+  const handleRemoveInjury = (id: string) => {
+    if (injuries.length === 1) {
+      toast.warning('Minimal 1 rincian kerusakan (injury) wajib ada.');
+      return;
+    }
+    setInjuries((prev) => prev.filter((i) => i.id !== id));
+  };
+
+  const handleInjuryChange = (id: string, field: keyof InjuryItem, value: any) => {
+    setInjuries((prev) =>
+      prev.map((inj) => (inj.id === id ? { ...inj, [field]: value } : inj))
+    );
+  };
+
   const handleOpenNewModal = (item?: any) => {
     const defaultOperator = currentUserEmployeeName || (employeeList.length > 0 ? employeeList[0] : '');
+    setEditingJobcardId(null);
+
     if (item) {
       setNewSn(item.tireSn || item.serialNumber || '');
       setNewWo(item.noWoTerbit || item.noPengajuan || item.idWo || item.woNo || '');
@@ -325,15 +395,83 @@ export function JobcardDesktopClient({
       setNewPattern('E4');
       setNewConstruction('RADIAL');
     }
-    setDimLukaL('');
-    setDimLukaW('');
-    setDimLukaP('');
-    setDimLukaT('');
-    setJobcardProcesses(
-      DEFAULT_10_PROCESSES.map((p) => ({ ...p, byWhom: defaultOperator }))
-    );
+
+    setInjuries([
+      {
+        id: `inj_${Date.now()}`,
+        injuryCategory: 'Minor',
+        injuryNumber: 1,
+        injuryName: 'Minor #1',
+        injuryDate: new Date().toISOString().split('T')[0],
+        dimensiLukaL: '',
+        dimensiLukaW: '',
+        dimensiLukaP: '',
+        dimensiLukaT: '',
+        processes: createDefaultProcesses(),
+      },
+    ]);
+
     setSignQc(defaultOperator);
     setByHeadSection('');
+    setIsNewModalOpen(true);
+  };
+
+  const handleOpenEditModal = (jc: JobcardRecord) => {
+    setEditingJobcardId(jc.id);
+    setNewSn(jc.serialNumber || '');
+    setNewWo(jc.woNo || '');
+    setNewCustomer(jc.customerName || 'PT Kaltim Prima Coal');
+    setNewSite(jc.plant || 'Sangatta KPC');
+    setNewSize(jc.tireSize || '27.00R49');
+    setNewBrand(jc.brand || 'MICHELIN');
+    setNewPattern(jc.pattern || 'E4');
+    setNewConstruction(jc.tireConstruction || 'RADIAL');
+    setSignQc(jc.signQc || currentUserEmployeeName || '');
+    setByHeadSection(jc.byHeadSection || '');
+
+    if (jc.injuries && jc.injuries.length > 0) {
+      const loaded: InjuryItem[] = jc.injuries.map((inj: any, idx: number) => ({
+        id: `inj_${inj.id || idx + 1}_${Date.now()}`,
+        injuryCategory: (inj.injuryName && inj.injuryName.includes('Major')) ? 'Major' : 'Minor',
+        injuryNumber: idx + 1,
+        injuryName: inj.injuryName || `Kerusakan #${idx + 1}`,
+        injuryDate: inj.injuryDate ? new Date(inj.injuryDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+        dimensiLukaL: inj.dimensiLukaL || '',
+        dimensiLukaW: inj.dimensiLukaW || '',
+        dimensiLukaP: inj.dimensiLukaP || '',
+        dimensiLukaT: inj.dimensiLukaT || '',
+        processes: DEFAULT_9_PROCESS_NAMES.map((name) => {
+          const found = (inj.processes || []).find(
+            (p: any) => (p.processName || '').trim().toLowerCase() === name.trim().toLowerCase()
+          );
+          return {
+            processName: name,
+            materialUsed: found?.materialUsed || '',
+            qty: found?.qty || '',
+            hours: found?.hours || '',
+            byWhom: found?.byWhom || currentUserEmployeeName || '',
+            hardness: found?.hardness || '',
+          };
+        }),
+      }));
+      setInjuries(loaded);
+    } else {
+      setInjuries([
+        {
+          id: `inj_${Date.now()}`,
+          injuryCategory: 'Minor',
+          injuryNumber: 1,
+          injuryName: 'Minor #1',
+          injuryDate: new Date().toISOString().split('T')[0],
+          dimensiLukaL: '',
+          dimensiLukaW: '',
+          dimensiLukaP: '',
+          dimensiLukaT: '',
+          processes: createDefaultProcesses(),
+        },
+      ]);
+    }
+
     setIsNewModalOpen(true);
   };
 
@@ -484,11 +622,56 @@ export function JobcardDesktopClient({
     printWindow.document.close();
   };
 
-  const handleProcessChange = (index: number, field: string, value: string) => {
-    setJobcardProcesses((prev) => {
-      const updated = [...prev];
-      updated[index] = { ...updated[index], [field]: value };
-      return updated;
+  const handleProcessChange = (injuryId: string, procIdx: number, field: keyof ProcessItem, value: string) => {
+    setInjuries((prev) => {
+      const isFirstForm = prev.length > 0 && prev[0].id === injuryId;
+      const oldForm1Mat = prev.length > 0 ? (prev[0].processes[procIdx]?.materialUsed || '') : '';
+      const oldForm1Manpower = prev.length > 0 ? (prev[0].processes[procIdx]?.byWhom || '') : '';
+
+      return prev.map((inj, idx) => {
+        if (inj.id === injuryId) {
+          const updatedProcs = [...inj.processes];
+          const curProc = updatedProcs[procIdx];
+          const newProc = { ...curProc, [field]: value };
+
+          if (field === 'materialUsed' && value.trim() && !newProc.qty.trim()) {
+            newProc.qty = '1';
+          }
+
+          updatedProcs[procIdx] = newProc;
+          return { ...inj, processes: updatedProcs };
+        }
+
+        // Auto-propagate material / manpower from Form 1 to subsequent forms if editing Form 1
+        if (isFirstForm && idx > 0) {
+          const updatedProcs = [...inj.processes];
+          const targetProc = updatedProcs[procIdx];
+
+          if (field === 'materialUsed') {
+            const currentSubMat = targetProc.materialUsed || '';
+            let nextSubMat = currentSubMat;
+
+            if (!currentSubMat || currentSubMat === oldForm1Mat) {
+              nextSubMat = value;
+            } else if (oldForm1Mat && currentSubMat.startsWith(oldForm1Mat)) {
+              const suffix = currentSubMat.slice(oldForm1Mat.length);
+              nextSubMat = value ? `${value}${suffix}` : suffix.replace(/^,\s*/, '');
+            }
+
+            const nextQty = (nextSubMat.trim() && !targetProc.qty.trim()) ? '1' : (targetProc.qty || (nextSubMat.trim() ? '1' : ''));
+            updatedProcs[procIdx] = { ...targetProc, materialUsed: nextSubMat, qty: nextQty };
+          } else if (field === 'byWhom') {
+            const currentSubBy = targetProc.byWhom || '';
+            if (!currentSubBy || currentSubBy === oldForm1Manpower) {
+              updatedProcs[procIdx] = { ...targetProc, byWhom: value };
+            }
+          }
+
+          return { ...inj, processes: updatedProcs };
+        }
+
+        return inj;
+      });
     });
   };
 
@@ -498,42 +681,46 @@ export function JobcardDesktopClient({
       return;
     }
     startTransition(async () => {
-      const res = await createTireRepairJobcardAction({
-        serialNumber: newSn.trim(),
+      const payloadData = {
+        serialNumber: newSn.trim().toUpperCase(),
         woNo: newWo.trim() || undefined,
         customerName: newCustomer.trim() || 'PT Kaltim Prima Coal',
         plant: newSite.trim() || 'Workshop Sangatta',
         tireSize: newSize.trim() || '27.00R49',
-        brand: newBrand.trim() || 'MICHELIN',
-        pattern: newPattern.trim() || 'E4',
+        brand: newBrand.trim().toUpperCase() || 'MICHELIN',
+        pattern: newPattern.trim().toUpperCase() || 'E4',
         tireConstruction: newConstruction.trim() || 'RADIAL',
         status: 'In Progress',
         signQc: signQc.trim() || undefined,
         byHeadSection: byHeadSection.trim() || undefined,
-        injuries: [
-          {
-            injuryName: 'Injury #1',
-            dimensiLukaL: dimLukaL.trim() || undefined,
-            dimensiLukaW: dimLukaW.trim() || undefined,
-            dimensiLukaP: dimLukaP.trim() || undefined,
-            dimensiLukaT: dimLukaT.trim() || undefined,
-            processes: jobcardProcesses.map((proc) => ({
-              processName: proc.processName,
-              materialUsed: proc.materialUsed,
-              qty: proc.qty,
-              hours: proc.hours,
-              byWhom: proc.byWhom,
-            })),
-          },
-        ],
-      });
+        injuries: injuries.map((inj) => ({
+          injuryName: inj.injuryName,
+          injuryDate: inj.injuryDate,
+          dimensiLukaL: inj.dimensiLukaL || undefined,
+          dimensiLukaW: inj.dimensiLukaW || undefined,
+          dimensiLukaP: inj.dimensiLukaP || undefined,
+          dimensiLukaT: inj.dimensiLukaT || undefined,
+          processes: inj.processes.map((proc) => ({
+            processName: proc.processName,
+            materialUsed: proc.materialUsed,
+            qty: proc.qty,
+            hours: proc.hours,
+            byWhom: proc.byWhom,
+            hardness: proc.hardness,
+          })),
+        })),
+      };
+
+      const res = editingJobcardId
+        ? await updateTireRepairJobcardAction(editingJobcardId, payloadData)
+        : await createTireRepairJobcardAction(payloadData);
 
       if (res.success) {
-        toast.success(res.message);
+        toast.success(res.message || (editingJobcardId ? 'Jobcard berhasil diperbarui' : 'Jobcard berhasil diterbitkan'));
         setIsNewModalOpen(false);
         loadData();
       } else {
-        toast.error(res.message || 'Gagal menerbitkan Jobcard');
+        toast.error(res.message || 'Gagal memproses Jobcard');
       }
     });
   };
@@ -806,6 +993,16 @@ export function JobcardDesktopClient({
                           <Button
                             size="sm"
                             variant="outline"
+                            onClick={() => handleOpenEditModal(jc)}
+                            className="h-8 px-2.5 rounded-lg text-xs font-bold text-slate-700 border-slate-200 hover:bg-slate-100 gap-1"
+                          >
+                            <Pencil className="w-3.5 h-3.5 text-blue-600" />
+                            <span>Edit</span>
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            variant="outline"
                             onClick={() => handleDeleteJobcard(jc.id, jc.jobcardNo)}
                             className="h-8 px-2.5 rounded-lg text-xs font-bold border-rose-200 text-rose-700 hover:bg-rose-50 gap-1"
                           >
@@ -1006,14 +1203,30 @@ export function JobcardDesktopClient({
                     {selectedJobcard.status}
                   </Badge>
                 </div>
-                <Button
-                  type="button"
-                  onClick={handlePrintDocument}
-                  className="h-9 px-4 rounded-xl bg-[#003f78] hover:bg-[#002d57] text-white font-bold text-xs gap-2"
-                >
-                  <Printer className="w-4 h-4" />
-                  <span>Cetak / Download Document</span>
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      const target = selectedJobcard;
+                      setIsDetailOpen(false);
+                      handleOpenEditModal(target);
+                    }}
+                    className="h-9 px-3 rounded-xl border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-xs gap-1.5"
+                  >
+                    <Pencil className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Edit Jobcard</span>
+                  </Button>
+
+                  <Button
+                    type="button"
+                    onClick={handlePrintDocument}
+                    className="h-9 px-4 rounded-xl bg-[#003f78] hover:bg-[#002d57] text-white font-bold text-xs gap-2"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span>Cetak / Download Document</span>
+                  </Button>
+                </div>
               </div>
 
               {/* Document Header: Repair Jobcard & Logo */}
@@ -1213,14 +1426,14 @@ export function JobcardDesktopClient({
         </DialogContent>
       </Dialog>
 
-      {/* CREATE NEW JOBCARD EXPANDED MODAL (F.INPR.REM.003.00) */}
+      {/* CREATE / EDIT JOBCARD EXPANDED MODAL (F.INPR.REM.003.00) */}
       <Dialog open={isNewModalOpen} onOpenChange={setIsNewModalOpen}>
-        <DialogContent className="w-[95vw] max-w-7xl sm:max-w-7xl max-h-[92vh] overflow-y-auto p-6 md:p-8 rounded-2xl bg-white border-slate-200 text-slate-900 shadow-2xl space-y-6">
+        <DialogContent className="w-[96vw] max-w-7xl sm:max-w-7xl max-h-[92vh] overflow-y-auto p-6 md:p-8 rounded-2xl bg-white border-slate-200 text-slate-900 shadow-2xl space-y-6">
           <DialogHeader>
             <DialogTitle className="text-base font-black text-[#082033] flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <FileSignature className="w-5 h-5 text-emerald-600" />
-                <span>Terbitkan Repair Job Card Baru (F.INPR.REM.003.00)</span>
+                <span>{editingJobcardId ? 'Edit Repair Job Card (F.INPR.REM.003.00)' : 'Terbitkan Repair Job Card Baru (F.INPR.REM.003.00)'}</span>
               </div>
               <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-bold font-mono">
                 KPC Sangatta
@@ -1238,7 +1451,7 @@ export function JobcardDesktopClient({
                 <label className="text-[11px] font-bold text-slate-700">Serial Number (SN): *</label>
                 <Input
                   value={newSn}
-                  onChange={(e) => setNewSn(e.target.value)}
+                  onChange={(e) => setNewSn(e.target.value.toUpperCase())}
                   placeholder="e.g. 3243546TEST"
                   className="h-9 rounded-lg font-mono text-xs font-bold bg-white"
                 />
@@ -1285,7 +1498,7 @@ export function JobcardDesktopClient({
                 <label className="text-[11px] font-bold text-slate-700">Brand / Merk:</label>
                 <Input
                   value={newBrand}
-                  onChange={(e) => setNewBrand(e.target.value)}
+                  onChange={(e) => setNewBrand(e.target.value.toUpperCase())}
                   className="h-9 rounded-lg font-mono text-xs bg-white"
                 />
               </div>
@@ -1294,7 +1507,7 @@ export function JobcardDesktopClient({
                 <label className="text-[11px] font-bold text-slate-700">Pattern:</label>
                 <Input
                   value={newPattern}
-                  onChange={(e) => setNewPattern(e.target.value)}
+                  onChange={(e) => setNewPattern(e.target.value.toUpperCase())}
                   className="h-9 rounded-lg font-mono text-xs bg-white"
                 />
               </div>
@@ -1303,135 +1516,231 @@ export function JobcardDesktopClient({
                 <label className="text-[11px] font-bold text-slate-700">Konstruksi:</label>
                 <Input
                   value={newConstruction}
-                  onChange={(e) => setNewConstruction(e.target.value)}
+                  onChange={(e) => setNewConstruction(e.target.value.toUpperCase())}
                   className="h-9 rounded-lg font-mono text-xs bg-white"
                 />
               </div>
             </div>
           </div>
 
-          {/* Section 2: Dimensi Luka (Injury Dimensions) */}
+          {/* Section 2: Kerusakan Ban & Tahapan Proses Perbaikan (Multi-Injury Card) */}
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-2">
+              <div>
+                <h3 className="text-xs font-black text-[#003f78] uppercase font-mono tracking-wider flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-[#003f78]" />
+                  <span>2. Rincian Kerusakan & Proses Perbaikan ({injuries.length} Kerusakan)</span>
+                </h3>
+                <p className="text-[11px] text-slate-500 font-medium">
+                  Tambahkan kartu kerusakan Minor atau Major beserta ukuran luka dan 9 tahapan prosesnya.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleAddInjury('Minor')}
+                  className="h-8 px-3 rounded-lg text-xs font-bold border-emerald-500 text-emerald-700 bg-emerald-50/50 hover:bg-emerald-100 gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                  <span>+ Tambah Kerusakan Minor</span>
+                </Button>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleAddInjury('Major')}
+                  className="h-8 px-3 rounded-lg text-xs font-bold border-rose-500 text-rose-700 bg-rose-50/50 hover:bg-rose-100 gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                  <span>+ Tambah Kerusakan Major</span>
+                </Button>
+              </div>
+            </div>
+
+            {/* List of Dynamic Injury Cards */}
+            <div className="space-y-5">
+              {injuries.map((inj, idx) => {
+                const isMinor = inj.injuryCategory === 'Minor';
+                return (
+                  <div
+                    key={inj.id}
+                    className="p-4 rounded-xl border border-slate-200 bg-white shadow-xs space-y-4"
+                  >
+                    {/* Injury Card Header */}
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                      <div className="flex items-center gap-3">
+                        <Badge
+                          className={`text-xs font-bold uppercase tracking-wider ${
+                            isMinor
+                              ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                              : 'bg-rose-100 text-rose-800 border-rose-300'
+                          }`}
+                        >
+                          {inj.injuryCategory}
+                        </Badge>
+
+                        <div className="flex items-center gap-2">
+                          <label className="text-[11px] font-bold text-slate-500">Nama:</label>
+                          <Input
+                            value={inj.injuryName}
+                            onChange={(e) => handleInjuryChange(inj.id, 'injuryName', e.target.value)}
+                            placeholder="e.g. Minor #1"
+                            className="h-8 w-40 text-xs font-bold bg-white"
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <label className="text-[11px] font-bold text-slate-500">Tanggal:</label>
+                          <Input
+                            type="date"
+                            value={inj.injuryDate}
+                            onChange={(e) => handleInjuryChange(inj.id, 'injuryDate', e.target.value)}
+                            className="h-8 w-36 text-xs bg-white"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {injuries.length > 1 && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleRemoveInjury(inj.id)}
+                            className="h-8 px-2.5 rounded-lg text-xs font-bold border-rose-200 text-rose-700 hover:bg-rose-50 gap-1"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Hapus Kerusakan</span>
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Dimensi Luka */}
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-black uppercase tracking-wider text-amber-800">
+                        Dimensi Luka ({inj.injuryName})
+                      </label>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-amber-50/60 p-3 rounded-lg border border-amber-200/80">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-600">L (Length mm):</label>
+                          <Input
+                            value={inj.dimensiLukaL}
+                            onChange={(e) => handleInjuryChange(inj.id, 'dimensiLukaL', e.target.value)}
+                            placeholder="10"
+                            className="h-8 rounded-md font-mono text-xs bg-white"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-600">W (Width mm):</label>
+                          <Input
+                            value={inj.dimensiLukaW}
+                            onChange={(e) => handleInjuryChange(inj.id, 'dimensiLukaW', e.target.value)}
+                            placeholder="10"
+                            className="h-8 rounded-md font-mono text-xs bg-white"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-600">P (Ply mm):</label>
+                          <Input
+                            value={inj.dimensiLukaP}
+                            onChange={(e) => handleInjuryChange(inj.id, 'dimensiLukaP', e.target.value)}
+                            placeholder="5"
+                            className="h-8 rounded-md font-mono text-xs bg-white"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-600">T (Tread mm):</label>
+                          <Input
+                            value={inj.dimensiLukaT}
+                            onChange={(e) => handleInjuryChange(inj.id, 'dimensiLukaT', e.target.value)}
+                            placeholder="5"
+                            className="h-8 rounded-md font-mono text-xs bg-white"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 9 Process Table for this Injury */}
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-black uppercase tracking-wider text-slate-700">
+                        9 Tahapan Proses Pengerjaan ({inj.injuryName})
+                      </label>
+                      <div className="overflow-x-auto rounded-xl border border-slate-200">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-slate-100 border-b border-slate-200 font-bold text-slate-700 text-[11px]">
+                              <th className="p-2 border-r border-slate-200 text-center w-10">No</th>
+                              <th className="p-2 border-r border-slate-200 w-44">Nama Proses</th>
+                              <th className="p-2 border-r border-slate-200">Material Digunakan</th>
+                              <th className="p-2 border-r border-slate-200 text-center w-28">Qty / UOM</th>
+                              <th className="p-2 border-r border-slate-200 text-center w-28">Durasi (Jam)</th>
+                              <th className="p-2 text-center min-w-[180px]">Manpower</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {inj.processes.map((proc, pIdx) => (
+                              <tr key={pIdx} className="hover:bg-slate-50">
+                                <td className="p-1.5 border-r border-slate-200 text-center font-mono font-bold text-slate-500">
+                                  {pIdx + 1}
+                                </td>
+                                <td className="p-1.5 border-r border-slate-200 font-bold text-[#082033]">
+                                  {proc.processName}
+                                </td>
+                                <td className="p-1.5 border-r border-slate-200">
+                                  <Input
+                                    value={proc.materialUsed}
+                                    onChange={(e) => handleProcessChange(inj.id, pIdx, 'materialUsed', e.target.value)}
+                                    placeholder="Nama material..."
+                                    className="h-8 text-xs font-mono bg-white rounded-md border-slate-200"
+                                  />
+                                </td>
+                                <td className="p-1.5 border-r border-slate-200 text-center">
+                                  <Input
+                                    value={proc.qty}
+                                    onChange={(e) => handleProcessChange(inj.id, pIdx, 'qty', e.target.value)}
+                                    placeholder="e.g. 1 PC / 0.5 KG"
+                                    className="h-8 text-xs font-mono text-center bg-white rounded-md border-slate-200"
+                                  />
+                                </td>
+                                <td className="p-1.5 border-r border-slate-200 text-center w-32">
+                                  <TireRepairProcessTimer
+                                    value={proc.hours}
+                                    onChange={(val) => handleProcessChange(inj.id, pIdx, 'hours', val)}
+                                    placeholder="0.5 / 30m"
+                                    processName={proc.processName}
+                                  />
+                                </td>
+                                <td className="p-1.5 text-center min-w-[180px]">
+                                  <TireRepairSearchableSelect
+                                    value={proc.byWhom || currentUserEmployeeName}
+                                    onValueChange={(val) => handleProcessChange(inj.id, pIdx, 'byWhom', val)}
+                                    options={employeeList}
+                                    placeholder="Pilih Manpower..."
+                                    isMultiSelect={true}
+                                    triggerClassName="h-8 text-xs font-sans rounded-md bg-white border-slate-200"
+                                  />
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Section 3: Signatures */}
           <div className="space-y-3">
             <h3 className="text-xs font-black text-[#003f78] uppercase font-mono tracking-wider">
-              2. Dimensi Luka (Injury Dimensions #1)
-            </h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-amber-50/60 p-4 rounded-xl border border-amber-200">
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-700">Dimensi Luka L (mm):</label>
-                <Input
-                  value={dimLukaL}
-                  onChange={(e) => setDimLukaL(e.target.value)}
-                  placeholder="10"
-                  className="h-9 rounded-lg font-mono text-xs bg-white"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-700">Dimensi Luka W (mm):</label>
-                <Input
-                  value={dimLukaW}
-                  onChange={(e) => setDimLukaW(e.target.value)}
-                  placeholder="10"
-                  className="h-9 rounded-lg font-mono text-xs bg-white"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-700">Dimensi Luka P (mm):</label>
-                <Input
-                  value={dimLukaP}
-                  onChange={(e) => setDimLukaP(e.target.value)}
-                  placeholder="5"
-                  className="h-9 rounded-lg font-mono text-xs bg-white"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-700">Dimensi Luka T (mm):</label>
-                <Input
-                  value={dimLukaT}
-                  onChange={(e) => setDimLukaT(e.target.value)}
-                  placeholder="5"
-                  className="h-9 rounded-lg font-mono text-xs bg-white"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Section 3: Tahapan & Rincian Proses Repair (10 Process Table) */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-black text-[#003f78] uppercase font-mono tracking-wider">
-                3. Tahapan & Material Pekerjaan Repair (10 Langkah Standar)
-              </h3>
-            </div>
-
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="bg-slate-100 border-b border-slate-200 font-bold text-slate-700">
-                    <th className="p-2.5 border-r border-slate-200 text-center w-10">No</th>
-                    <th className="p-2.5 border-r border-slate-200 w-44">Nama Proses</th>
-                    <th className="p-2.5 border-r border-slate-200">Material Digunakan</th>
-                    <th className="p-2.5 border-r border-slate-200 text-center w-28">Qty / UOM</th>
-                    <th className="p-2.5 border-r border-slate-200 text-center w-24">Durasi (Jam)</th>
-                    <th className="p-2.5 text-center min-w-[180px]">Manpower</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {jobcardProcesses.map((proc, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50">
-                      <td className="p-2 border-r border-slate-200 text-center font-mono font-bold text-slate-500">
-                        {idx + 1}
-                      </td>
-                      <td className="p-2 border-r border-slate-200 font-bold text-[#082033]">
-                        {proc.processName}
-                      </td>
-                      <td className="p-1.5 border-r border-slate-200">
-                        <Input
-                          value={proc.materialUsed}
-                          onChange={(e) => handleProcessChange(idx, 'materialUsed', e.target.value)}
-                          placeholder="Nama material..."
-                          className="h-8 text-xs font-mono bg-white rounded-md border-slate-200"
-                        />
-                      </td>
-                      <td className="p-1.5 border-r border-slate-200 text-center">
-                        <Input
-                          value={proc.qty}
-                          onChange={(e) => handleProcessChange(idx, 'qty', e.target.value)}
-                          placeholder="e.g. 1 PC / 0.5 KG"
-                          className="h-8 text-xs font-mono text-center bg-white rounded-md border-slate-200"
-                        />
-                      </td>
-                      <td className="p-1.5 border-r border-slate-200 text-center w-36">
-                        <TireRepairProcessTimer
-                          value={proc.hours}
-                          onChange={(val) => handleProcessChange(idx, 'hours', val)}
-                          placeholder="0.5 / 30m"
-                          processName={proc.processName}
-                        />
-                      </td>
-                      <td className="p-1.5 text-center min-w-[180px]">
-                        <TireRepairSearchableSelect
-                          value={proc.byWhom || currentUserEmployeeName}
-                          onValueChange={(val) => handleProcessChange(idx, 'byWhom', val)}
-                          options={employeeList}
-                          placeholder="Pilih Manpower..."
-                          isMultiSelect={true}
-                          triggerClassName="h-8 text-xs font-sans rounded-md bg-white border-slate-200"
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Section 4: Signatures */}
-          <div className="space-y-3">
-            <h3 className="text-xs font-black text-[#003f78] uppercase font-mono tracking-wider">
-              4. Otorisasi & Penanggung Jawab
+              3. Otorisasi & Penanggung Jawab
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
               <div className="space-y-1">
@@ -1474,7 +1783,7 @@ export function JobcardDesktopClient({
               className="h-10 px-6 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md gap-2"
             >
               {isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <FileSignature className="w-4 h-4" />}
-              <span>Terbitkan Repair Job Card</span>
+              <span>{editingJobcardId ? 'Simpan Perubahan Job Card' : 'Terbitkan Repair Job Card'}</span>
             </Button>
           </DialogFooter>
         </DialogContent>
