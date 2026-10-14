@@ -27,6 +27,7 @@ export interface SignaturePadProps {
   description?: string
   className?: string
   disabled?: boolean
+  autoUseProfileSignature?: boolean
 }
 
 function dataUrlToFile(dataUrl: string, filename = 'signature.png'): File | null {
@@ -114,6 +115,7 @@ export function SignaturePad({
   description,
   className,
   disabled = false,
+  autoUseProfileSignature = false,
 }: SignaturePadProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -149,8 +151,12 @@ export function SignaturePad({
           setProfileSig(res.signatureDataUrl)
           setEmployeeName(res.employeeName || '')
 
-          // Jika belum ada tanda tangan spesifik yang disuplai, otomatis gunakan TTD Profil
-          if (!defaultDataUrl || defaultDataUrl === res.signatureDataUrl) {
+          if (defaultDataUrl && defaultDataUrl === res.signatureDataUrl) {
+            setIsUsingProfileSig(true)
+            setHasSignature(true)
+            setCurrentDataUrl(res.signatureDataUrl)
+          } else if (!defaultDataUrl && autoUseProfileSignature) {
+            // Hanya auto-apply TTD Profil jika autoUseProfileSignature true
             setIsUsingProfileSig(true)
             setHasSignature(true)
             setCurrentDataUrl(res.signatureDataUrl)
@@ -170,7 +176,7 @@ export function SignaturePad({
     return () => {
       isMounted = false
     }
-  }, [hideProfileSignature, defaultDataUrl])
+  }, [hideProfileSignature, defaultDataUrl, autoUseProfileSignature])
 
   const ensureCanvasSize = useCallback(() => {
     const canvas = canvasRef.current
@@ -480,6 +486,36 @@ export function SignaturePad({
       ) : (
         /* ── Mode 2: Canvas Gambar TTD / Upload ── */
         <div className="space-y-2">
+          {/* Banner Opsi TTD Profil Tersedia */}
+          {profileSig && !isUsingProfileSig && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-2.5 flex items-center justify-between gap-2 shadow-2xs">
+              <div className="flex items-center gap-2 min-w-0">
+                <img
+                  src={profileSig}
+                  alt="TTD Profil"
+                  className="h-8 max-w-[70px] object-contain border border-emerald-200 bg-white rounded px-1 shrink-0"
+                />
+                <div className="min-w-0">
+                  <p className="font-bold text-emerald-950 text-[11px] truncate">
+                    Tanda Tangan Profil Tersedia
+                  </p>
+                  <p className="text-[10px] text-emerald-700 truncate">
+                    {employeeName ? `Milik ${employeeName}` : 'Tersimpan di akun Anda'}
+                  </p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleUseProfileSignature}
+                disabled={disabled}
+                className="h-7 px-3 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-2xs shrink-0 cursor-pointer"
+              >
+                Gunakan TTD Ini
+              </Button>
+            </div>
+          )}
+
           {/* Bar Atas: Label & Tombol Aksi */}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">

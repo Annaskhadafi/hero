@@ -152,6 +152,7 @@ export function RfrPublicApproval({ token, approval, rfr, approvals }: RfrPublic
                     label="Canvas Tanda Tangan Digital"
                     defaultDataUrl={liveSignatureUrl}
                     onDataUrlChange={setLiveSignatureUrl}
+                    autoUseProfileSignature={false}
                     height={150}
                   />
                 </div>

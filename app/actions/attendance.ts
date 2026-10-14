@@ -44,7 +44,7 @@ import {
 } from '@/lib/legacy-approval-engine'
 import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
-import { eq, and, gte, lte, desc, sql, asc, inArray } from 'drizzle-orm'
+import { eq, and, gte, lte, desc, sql, asc, inArray, ne, ilike } from 'drizzle-orm'
 import { endOfDay, startOfDay, subHours, subDays } from 'date-fns'
 import { addMonths, format, getDaysInMonth } from 'date-fns'
 import { getTimezoneDateParts } from '@/lib/indonesia-timezone'
@@ -122,6 +122,8 @@ async function getCurrentEmployee() {
       workLocation: employees.workLocation,
       siteId: employees.siteId,
       siteName: sites.name,
+      directManagerId: employees.directManagerId,
+      departmentId: employees.departmentId,
       sectionId: employees.sectionId,
       section: employees.section,
       employeeSn: employees.employeeSn,
@@ -156,6 +158,8 @@ async function getCurrentEmployee() {
       workLocation: employees.workLocation,
       siteId: employees.siteId,
       siteName: sites.name,
+      directManagerId: employees.directManagerId,
+      departmentId: employees.departmentId,
       sectionId: employees.sectionId,
       section: employees.section,
       employeeSn: employees.employeeSn,
@@ -231,6 +235,8 @@ async function getCurrentEmployee() {
       jobTitle: employees.jobTitle,
       workLocation: employees.workLocation,
       siteId: employees.siteId,
+      directManagerId: employees.directManagerId,
+      departmentId: employees.departmentId,
       sectionId: employees.sectionId,
       section: employees.section,
       employeeSn: employees.employeeSn,
@@ -373,15 +379,28 @@ async function notifyAttendancePermissionSubmitted(input: {
   endDate: string
   reason: string
   actorEmail?: string
+  targetApprover?: {
+    id: number
+    name: string
+    email: string
+    jobTitle?: string | null
+  } | null
 }) {
-  const approver = await resolveAttendancePermissionApprover({
-    employeeId: input.employeeId,
-    siteId: input.siteId,
-    siteName: input.siteName,
-    sectionId: input.sectionId,
-    sectionName: input.sectionName,
-    jobTitle: input.jobTitle,
-  })
+  const approver = input.targetApprover?.email
+    ? {
+        category: 'Atasan / Leader',
+        approverName: input.targetApprover.name,
+        approverEmail: input.targetApprover.email,
+        approverTitle: input.targetApprover.jobTitle || 'Atasan Langsung',
+      }
+    : await resolveAttendancePermissionApprover({
+        employeeId: input.employeeId,
+        siteId: input.siteId,
+        siteName: input.siteName,
+        sectionId: input.sectionId,
+        sectionName: input.sectionName,
+        jobTitle: input.jobTitle,
+      })
 
   if (!approver?.approverEmail) {
     return
@@ -400,8 +419,8 @@ async function notifyAttendancePermissionSubmitted(input: {
       input.reason ? `Alasan: ${input.reason}` : null,
       `Approver (${approver.category}): ${approver.approverName} (${approver.approverTitle})`,
     ],
-    ctaLabel: 'Buka Dashboard Izin',
-    ctaUrl: getAppUrl('/dashboard/hc/permission'),
+    ctaLabel: 'Buka Inbox Approval',
+    ctaUrl: getAppUrl('/dashboard/approval'),
   })
 
   const hcCcEmails = await getAttendancePermissionHcCcEmails()
@@ -419,6 +438,7 @@ async function notifyAttendancePermissionSubmitted(input: {
       reason: input.reason || '-',
       approverName: approver.approverName,
       approverRole: approver.approverTitle || approver.category,
+      approvalUrl: getAppUrl('/dashboard/approval'),
     },
     fallbackSubject: `Pengajuan ${permissionLabel} baru - ${input.employeeName}`,
     fallbackHtml: emailContent.html,
@@ -860,6 +880,117 @@ export async function submitAttendance(formData: FormData) {
   }
 }
 
+export async function getAttendancePermissionApproverCandidates() {
+  const employee = await getCurrentEmployee()
+  if (!employee) {
+    return {
+      defaultApproverId: null,
+      defaultApproverLabel: '',
+      isDirectManager: false,
+      candidates: [] as Array<{ value: string; label: string }>,
+    }
+  }
+
+  // 1. Direct Manager
+  let directManager: { id: number; name: string; jobTitle: string | null; email: string } | null = null
+  if (employee.directManagerId) {
+    const [dm] = await db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        jobTitle: employees.jobTitle,
+        email: employees.email,
+      })
+      .from(employees)
+      .where(and(eq(employees.id, employee.directManagerId), eq(employees.isActive, true)))
+      .limit(1)
+    if (dm) directManager = dm
+  }
+
+  // 2. Fallback Approver from site logic
+  const fallback = await resolveAttendancePermissionApprover({
+    employeeId: employee.id,
+    siteId: employee.siteId,
+    siteName: employee.siteName,
+    sectionId: employee.sectionId,
+    sectionName: employee.section,
+    jobTitle: employee.jobTitle,
+  })
+
+  let fallbackEmp: { id: number; name: string; jobTitle: string | null } | null = null
+  if (fallback?.approverEmail) {
+    const [fEmp] = await db
+      .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle })
+      .from(employees)
+      .where(and(ilike(employees.email, fallback.approverEmail.trim()), eq(employees.isActive, true)))
+      .limit(1)
+    if (fEmp) fallbackEmp = fEmp
+  }
+
+  // 3. Query active colleagues / leaders
+  const activeStaff = await db
+    .select({
+      id: employees.id,
+      name: employees.name,
+      jobTitle: employees.jobTitle,
+      role: employees.role,
+      siteId: employees.siteId,
+    })
+    .from(employees)
+    .where(and(eq(employees.isActive, true), ne(employees.id, employee.id)))
+    .orderBy(asc(employees.name))
+    .limit(300)
+
+  const candidateMap = new Map<string, { value: string; label: string }>()
+
+  if (directManager) {
+    candidateMap.set(String(directManager.id), {
+      value: String(directManager.id),
+      label: `${directManager.name.toUpperCase()} — (ATASAN LANGSUNG)${directManager.jobTitle ? ` [${directManager.jobTitle}]` : ''}`,
+    })
+  }
+
+  if (fallbackEmp && !candidateMap.has(String(fallbackEmp.id))) {
+    candidateMap.set(String(fallbackEmp.id), {
+      value: String(fallbackEmp.id),
+      label: `${fallbackEmp.name.toUpperCase()} — (${fallback.category || 'PJO / HEAD LOCATION'})`,
+    })
+  }
+
+  activeStaff.forEach((st) => {
+    const val = String(st.id)
+    if (!candidateMap.has(val)) {
+      const isSameSite = st.siteId === employee.siteId
+      const titleSuffix = st.jobTitle ? ` (${st.jobTitle})` : ''
+      const siteSuffix = isSameSite ? '' : ' • Cross-Site'
+      candidateMap.set(val, {
+        value: val,
+        label: `${st.name}${titleSuffix}${siteSuffix}`,
+      })
+    }
+  })
+
+  const candidates = Array.from(candidateMap.values())
+  const defaultApproverId = directManager
+    ? String(directManager.id)
+    : fallbackEmp
+      ? String(fallbackEmp.id)
+      : candidates[0]?.value ?? null
+
+  const defaultApproverLabel = directManager
+    ? `${directManager.name} (Atasan Langsung)`
+    : fallbackEmp
+      ? `${fallbackEmp.name} (${fallback.category || 'Approver Site'})`
+      : 'Pilih Approver'
+
+  return {
+    defaultApproverId,
+    defaultApproverLabel,
+    isDirectManager: Boolean(directManager),
+    candidates,
+  }
+}
+
 export async function submitAttendancePermission(formData: FormData) {
   try {
     const employee = await getCurrentEmployee()
@@ -872,6 +1003,7 @@ export async function submitAttendancePermission(formData: FormData) {
     const lateReason = getTrimmedFormValue(formData, 'lateReason')
     const returnTime = getTrimmedFormValue(formData, 'returnTime')
     const reason = getTrimmedFormValue(formData, 'reason')
+    const targetApproverIdRaw = getTrimmedFormValue(formData, 'targetApproverId')
     const requestedDays =
       permissionType === 'sick' ? dateRangeDays(requestDate, endDate) : [requestDate]
 
@@ -886,6 +1018,73 @@ export async function submitAttendancePermission(formData: FormData) {
       return {
         success: false,
         error: 'Izin terlambat wajib isi alasan dan jam kembali/masuk kantor.',
+      }
+    }
+
+    let targetApprover: { id: number; name: string; email: string; jobTitle: string | null } | null = null
+
+    if (targetApproverIdRaw && !isNaN(Number(targetApproverIdRaw))) {
+      const [customApprover] = await db
+        .select({
+          id: employees.id,
+          name: employees.name,
+          email: employees.email,
+          jobTitle: employees.jobTitle,
+        })
+        .from(employees)
+        .where(and(eq(employees.id, Number(targetApproverIdRaw)), eq(employees.isActive, true)))
+        .limit(1)
+      if (customApprover) {
+        targetApprover = customApprover
+      }
+    }
+
+    if (!targetApprover && employee.directManagerId) {
+      const [managerEmp] = await db
+        .select({
+          id: employees.id,
+          name: employees.name,
+          email: employees.email,
+          jobTitle: employees.jobTitle,
+        })
+        .from(employees)
+        .where(and(eq(employees.id, employee.directManagerId), eq(employees.isActive, true)))
+        .limit(1)
+      if (managerEmp) {
+        targetApprover = managerEmp
+      }
+    }
+
+    if (!targetApprover) {
+      const fallbackApprover = await resolveAttendancePermissionApprover({
+        employeeId: employee.id,
+        siteId: employee.siteId,
+        siteName: employee.siteName,
+        sectionId: employee.sectionId,
+        sectionName: employee.section,
+        jobTitle: employee.jobTitle,
+      })
+      if (fallbackApprover?.approverEmail) {
+        const [empByEmail] = await db
+          .select({
+            id: employees.id,
+            name: employees.name,
+            email: employees.email,
+            jobTitle: employees.jobTitle,
+          })
+          .from(employees)
+          .where(and(ilike(employees.email, fallbackApprover.approverEmail.trim()), eq(employees.isActive, true)))
+          .limit(1)
+        if (empByEmail) {
+          targetApprover = empByEmail
+        } else {
+          targetApprover = {
+            id: 0,
+            name: fallbackApprover.approverName,
+            email: fallbackApprover.approverEmail,
+            jobTitle: fallbackApprover.approverTitle,
+          }
+        }
       }
     }
 
@@ -968,12 +1167,15 @@ export async function submitAttendancePermission(formData: FormData) {
       siteId: employee.siteId,
       activityType: 'attendance-permission',
       transactionType: 'attendance_permission',
+      targetApproverEmployeeId: targetApprover?.id ? targetApprover.id : undefined,
       referenceId: record.id,
       payloadSnapshot: {
         legacyRecordId: record.id,
         permissionType,
         employeeId: employee.id,
         employeeName: employee.name,
+        targetApproverId: targetApprover?.id || null,
+        targetApproverName: targetApprover?.name || null,
         requestDate,
         endDate: permissionType === 'sick' ? endDate : requestDate,
         reason,
@@ -999,6 +1201,7 @@ export async function submitAttendancePermission(formData: FormData) {
     revalidatePath('/dashboard/scheduling-timesheet/attendance')
     revalidatePath('/dashboard/scheduling-timesheet/permission')
     revalidatePath('/dashboard/hc/permission')
+    revalidatePath('/dashboard/approval')
 
     try {
       await notifyAttendancePermissionSubmitted({
@@ -1015,48 +1218,59 @@ export async function submitAttendancePermission(formData: FormData) {
         endDate: permissionType === 'sick' ? endDate : requestDate,
         reason,
         actorEmail: employee.email,
+        targetApprover,
       })
     } catch (emailError) {
       console.error('Attendance permission submit email error:', emailError)
     }
 
-    try {
-      const approver = await resolveAttendancePermissionApprover({
-        employeeId: employee.id,
-        siteId: employee.siteId,
-        siteName: employee.siteName,
-        sectionId: employee.sectionId,
-        sectionName: employee.section,
-        jobTitle: employee.jobTitle,
-      })
-
-      const hcCcEmails = await getAttendancePermissionHcCcEmails()
-      const bellRecipients = Array.from(
-        new Set(
-          [approver?.approverEmail, ...hcCcEmails].filter(
-            (email): email is string => Boolean(email && email.includes('@'))
-          )
-        )
-      )
-      await notifyAttendancePermissionBell({
-        recipientEmails: bellRecipients,
-        eventType: 'attendance_permission_submitted',
-        title: `Pengajuan ${permissionLabel} baru`,
-        body: `${employee.name} mengirim ${permissionLabel.toLowerCase()} untuk ${formattedRequestDate}.`,
-        url: '/dashboard/hc/permission',
-        metadata: {
-          permissionType,
-          requestDate: formattedRequestDate,
-          employeeName: employee.name,
-          approverName: approver?.approverName,
-          approverCategory: approver?.category,
-        },
-      })
-    } catch (notificationError) {
-      console.error('Attendance permission submit bell error:', notificationError)
+    // 1. Send Bell to Approver (Link: /dashboard/approval)
+    if (targetApprover?.email) {
+      try {
+        await notifyAttendancePermissionBell({
+          recipientEmails: [targetApprover.email],
+          eventType: 'attendance_permission_submitted',
+          title: `Pengajuan ${permissionLabel} baru`,
+          body: `${employee.name} mengirim pengajuan ${permissionLabel.toLowerCase()} untuk ${formattedRequestDate} dan menunggu persetujuan Anda.`,
+          url: '/dashboard/approval',
+          metadata: {
+            permissionType,
+            requestDate: formattedRequestDate,
+            employeeName: employee.name,
+            approverName: targetApprover.name,
+          },
+        })
+      } catch (approverBellErr) {
+        console.error('Attendance permission approver bell error:', approverBellErr)
+      }
     }
 
-    return { success: true, message: 'Izin terkirim. Menunggu approval HR.' }
+    // 2. Send CC Bell to Human Capital (Link: /dashboard/hc/permission)
+    try {
+      const hcCcEmails = await getAttendancePermissionHcCcEmails()
+      if (hcCcEmails.length > 0) {
+        await notifyAttendancePermissionBell({
+          recipientEmails: hcCcEmails,
+          eventType: 'attendance_permission_submitted',
+          title: `[CC HR] Pengajuan ${permissionLabel} baru - ${employee.name}`,
+          body: `${employee.name} mengajukan ${permissionLabel.toLowerCase()} ke ${targetApprover?.name || 'Approver'}. Tembusan untuk monitoring HC.`,
+          url: '/dashboard/hc/permission',
+          metadata: {
+            permissionType,
+            requestDate: formattedRequestDate,
+            employeeName: employee.name,
+            approverName: targetApprover?.name,
+          },
+        })
+      }
+    } catch (hcBellErr) {
+      console.error('Attendance permission HC CC bell error:', hcBellErr)
+    }
+
+    return {
+      success: true,
+      message: `Izin terkirim ke ${targetApprover?.name || 'Approver'}. Menunggu approval (CC ke HR).`,
+    }
   } catch (error) {
     return {
       success: false,
@@ -1070,7 +1284,7 @@ async function getCurrentUserId() {
   return session?.user?.id ?? null
 }
 
-async function applyApprovedPermissionRequest(
+export async function applyApprovedPermissionRequest(
   requestId: number,
   approverNote: string,
   approved: boolean

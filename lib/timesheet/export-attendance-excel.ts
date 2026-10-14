@@ -812,6 +812,905 @@ export async function exportAttendanceLogsToExcel(
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
+}
+
+// ============================================================
+// COMPREHENSIVE 5-TAB TIMESHEET EXPORTER (ATTENDANCE, TU, MSA, MEALS, OVT)
+// ============================================================
+
+export type TimesheetExportTab = 'attendance' | 'lokasi' | 'msa' | 'meals' | 'ovt'
+
+export interface TimesheetDayData {
+  day: number
+  status?: string
+  statusLabel?: string
+  clockIn?: string | null
+  clockOut?: string | null
+  isLate?: boolean
+  lateMinutes?: number | null
+  isConflict?: boolean
+  displayVal: string | number
+  numericVal?: number
+  cellType?:
+    | 'present'
+    | 'late'
+    | 'off'
+    | 'sick'
+    | 'leave'
+    | 'absent'
+    | 'fb'
+    | 'st'
+    | 'gd'
+    | 'ot'
+    | 'spl'
+    | 'amount'
+    | 'dash'
+    | 'staff'
+    | 'other'
+}
+
+export interface TimesheetEmployeeExportRow {
+  employee: {
+    id: number
+    name: string
+    employeeSn?: string | null
+    role?: string | null
+    section?: string | null
+    department?: string | null
+    manpower?: string | null
+  }
+  daysData: TimesheetDayData[]
+  attendanceSummary?: {
+    present: number
+    off: number
+    sick: number
+    leave: number
+    absent: number
+    totalHours: number
+  }
+  allowanceTotal?: number
+  overtimeTotal?: number
+}
+
+export interface ExportTimesheetTabOptions {
+  tab: TimesheetExportTab
+  siteName: string
+  period: string
+  days: number[]
+  rows: TimesheetEmployeeExportRow[]
+  weekdayLabel: (period: string, day: number) => string
+  holidaysByDay?: Map<number, { name?: string; localName?: string }>
+  info?: {
+    rateText?: string
+    project?: string
+  }
+  customFileName?: string
+}
+
+export interface ExportAllTimesheetTabsOptions {
+  siteName: string
+  period: string
+  days: number[]
+  tabs: {
+    tab: TimesheetExportTab
+    rows: TimesheetEmployeeExportRow[]
+    info?: {
+      rateText?: string
+      project?: string
+    }
+  }[]
+  weekdayLabel: (period: string, day: number) => string
+  holidaysByDay?: Map<number, { name?: string; localName?: string }>
+  customFileName?: string
+}
+
+const TIMESHEET_PALETTE = {
+  headerBg: 'FF003461', // Deep Navy
+  headerText: 'FFFFFFFF', // Pure White
+  subHeaderBg: 'FFF1F5F9', // Slate 100
+  subHeaderText: 'FF334155', // Slate 700
+  weekendBg: 'FFFEE2E2', // Light Rose/Red
+  weekendText: 'FF991B1B', // Dark Rose
+  holidayBg: 'FFFEF3C7', // Light Amber
+  holidayText: 'FF92400E', // Dark Amber
+
+  // Group Banners
+  sectionBg: 'FFE2E8F0', // Slate 200
+  sectionText: 'FF0F172A', // Slate 900
+  deptBg: 'FFF1F5F9', // Slate 100
+  deptText: 'FF334155', // Slate 700
+
+  // Status & Badges
+  presentBg: 'FFD1FAE5', // Emerald 100
+  presentText: 'FF065F46', // Emerald 800
+  lateBg: 'FFFEE2E2', // Red 100
+  lateText: 'FF991B1B', // Red 800
+  sickBg: 'FFFCE7F3', // Pink 100
+  sickText: 'FF831843', // Pink 800
+  leaveBg: 'FFE0E7FF', // Indigo 100
+  leaveText: 'FF3730A3', // Indigo 800
+  offBg: 'FFF1F5F9', // Slate 100
+  offText: 'FF64748B', // Slate 500
+  absentBg: 'FFFEE2E2', // Red 100
+  absentText: 'FF991B1B', // Red 800
+  fbBg: 'FFF3E8FF', // Purple 100
+  fbText: 'FF6B21A8', // Purple 800
+  stBg: 'FFDBEAFE', // Blue 100
+  stText: 'FF1E40AF', // Blue 800
+  gdBg: 'FFF3E8FF', // Purple 100
+  gdText: 'FF6B21A8', // Purple 800
+  otBg: 'FFE0F2FE', // Sky 100
+  otText: 'FF0369A1', // Sky 800
+  splBg: 'FFFFEDD5', // Orange 100
+  splText: 'FFC2410C', // Orange 800
+
+  // Total summary column
+  totalAllowanceBg: 'FFF0FDF4', // Mint 50
+  totalAllowanceText: 'FF065F46', // Mint 800
+  totalOtBg: 'FFF0F9FF', // Sky 50
+  totalOtText: 'FF0369A1', // Sky 800
+
+  // Borders
+  borderLight: 'FFE2E8F0',
+  borderMedium: 'FFCBD5E1',
+  borderDark: 'FF003461',
+}
+
+function getTabMetadata(tab: TimesheetExportTab) {
+  switch (tab) {
+    case 'attendance':
+      return {
+        sheetName: 'Attendance',
+        title: 'LAPORAN REKAPITULASI KEHADIRAN (ATTENDANCE GRID)',
+        filePrefix: 'Rekap_Attendance_Grid',
+      }
+    case 'lokasi':
+      return {
+        sheetName: 'Tunjangan Khusus',
+        title: 'LAPORAN REKAPITULASI TUNJANGAN KHUSUS / LOKASI (TU)',
+        filePrefix: 'Rekap_Tunjangan_Khusus',
+      }
+    case 'msa':
+      return {
+        sheetName: 'MSA',
+        title: 'LAPORAN REKAPITULASI MEAL & SITE ALLOWANCE (MSA)',
+        filePrefix: 'Rekap_MSA',
+      }
+    case 'meals':
+      return {
+        sheetName: 'Meals',
+        title: 'LAPORAN REKAPITULASI TUNJANGAN MEALS (MLS)',
+        filePrefix: 'Rekap_Meals',
+      }
+    case 'ovt':
+      return {
+        sheetName: 'Overtime',
+        title: 'LAPORAN REKAPITULASI OVERTIME RECORD (LEMBUR)',
+        filePrefix: 'Rekap_Overtime',
+      }
+  }
+}
+
+/**
+ * Builds a single timesheet worksheet (Attendance, TU, MSA, Meals, or Overtime) inside a workbook.
+ */
+export function buildTimesheetWorksheet(
+  workbook: ExcelJS.Workbook,
+  options: ExportTimesheetTabOptions,
+  customSheetName?: string
+): ExcelJS.Worksheet {
+  const {
+    tab,
+    siteName,
+    period,
+    days,
+    rows,
+    weekdayLabel,
+    holidaysByDay = new Map(),
+    info,
+  } = options
+
+  const meta = getTabMetadata(tab)
+  const sheetName = customSheetName || meta.sheetName
+  const periodLabel = formatPeriodIndonesian(period)
+
+  const isAttendance = tab === 'attendance'
+  const isAllowance = tab === 'lokasi' || tab === 'msa' || tab === 'meals'
+  const isOvertime = tab === 'ovt'
+
+  const sheet = workbook.addWorksheet(sheetName, {
+    pageSetup: {
+      orientation: 'landscape',
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 0,
+      paperSize: 9, // A4
+    },
+    views: [{ state: 'frozen', xSplit: 5, ySplit: 7 }],
+  })
+
+  // ── ROW 1-4: TITLE & BANNER ──
+  const titleRow1 = sheet.addRow(['PT CHITRA PARATAMA — HERO TIMESHEET SYSTEM'])
+  titleRow1.font = { name: 'Calibri', size: 13, bold: true, color: { argb: TIMESHEET_PALETTE.headerBg } }
+
+  const titleRow2 = sheet.addRow([meta.title])
+  titleRow2.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF1E293B' } }
+
+  const infoSubText = info?.rateText ? ` | ${info.rateText}` : ''
+  const projectText = info?.project ? ` · ${info.project}` : ''
+  const titleRow3 = sheet.addRow([
+    `Site / Proyek: ${siteName.toUpperCase()}${projectText} | Periode: ${periodLabel} (${period})${infoSubText} | Total: ${rows.length} Karyawan`,
+  ])
+  titleRow3.font = { name: 'Calibri', size: 9.5, bold: false, color: { argb: 'FF475569' } }
+
+  const titleRow4 = sheet.addRow([
+    `Diekspor pada: ${new Date().toLocaleString('id-ID', { dateStyle: 'full', timeStyle: 'short' })}`,
+  ])
+  titleRow4.font = { name: 'Calibri', size: 8.5, italic: true, color: { argb: 'FF64748B' } }
+
+  sheet.addRow([]) // Row 5: empty spacing row
+
+  // ── TABLE HEADERS (ROWS 6 & 7) ──
+  const baseHeaders = ['No', 'Nama Karyawan', 'Manpower', 'Section / Role', 'Departemen']
+  const totalBaseCols = baseHeaders.length // 5
+
+  const topHeaderRow = [...baseHeaders]
+  days.forEach((day) => {
+    topHeaderRow.push(`Tgl ${day}`)
+  })
+
+  if (isAttendance) {
+    topHeaderRow.push('Hadir', 'OFF', 'Izin', 'Sakit', 'Alpha', 'Total Jam')
+  } else if (tab === 'lokasi') {
+    topHeaderRow.push('Total Tunjangan (Rp)')
+  } else if (tab === 'msa') {
+    topHeaderRow.push('Total MSA (Rp)')
+  } else if (tab === 'meals') {
+    topHeaderRow.push('Total Meals (Rp)')
+  } else if (isOvertime) {
+    topHeaderRow.push('Total Overtime (Jam)')
+  }
+
+  const header1 = sheet.addRow(topHeaderRow)
+  header1.height = 22
+
+  const subHeaderRow = ['', '', '', '', '']
+  days.forEach((day) => {
+    const wday = weekdayLabel(period, day)
+    const isHoliday = holidaysByDay.has(day)
+    subHeaderRow.push(isHoliday ? `${wday}*` : wday)
+  })
+
+  if (isAttendance) {
+    subHeaderRow.push('Masuk', 'OFF', 'Cuti/Izin', 'Sakit', 'Alpha', 'Jam Kerja')
+  } else if (isAllowance) {
+    subHeaderRow.push('Nominal')
+  } else if (isOvertime) {
+    subHeaderRow.push('SPL Jam')
+  }
+
+  const header2 = sheet.addRow(subHeaderRow)
+  header2.height = 18
+
+  const totalCols = topHeaderRow.length
+
+  // Merge base headers vertically (Rows 6 & 7)
+  for (let col = 1; col <= totalBaseCols; col++) {
+    sheet.mergeCells(6, col, 7, col)
+  }
+
+  // If single summary column (TU, MSA, Meals, OVT), merge row 6 & 7 vertically
+  if (!isAttendance) {
+    sheet.mergeCells(6, totalCols, 7, totalCols)
+  }
+
+  // Style Header 1 & Header 2
+  for (let col = 1; col <= totalCols; col++) {
+    const cell1 = header1.getCell(col)
+    cell1.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: TIMESHEET_PALETTE.headerBg },
+    }
+    cell1.font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: TIMESHEET_PALETTE.headerText } }
+    cell1.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }
+    cell1.border = {
+      top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+      left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+      right: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+      bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+    }
+
+    const cell2 = header2.getCell(col)
+    cell2.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: TIMESHEET_PALETTE.subHeaderBg },
+    }
+    cell2.font = { name: 'Calibri', size: 8.5, bold: true, color: { argb: TIMESHEET_PALETTE.subHeaderText } }
+    cell2.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }
+    cell2.border = {
+      top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+      left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+      right: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+      bottom: { style: 'medium', color: { argb: TIMESHEET_PALETTE.headerBg } },
+    }
+
+    // Highlight Weekend / Holiday subheader columns
+    if (col > totalBaseCols && col <= totalBaseCols + days.length) {
+      const dayNum = days[col - totalBaseCols - 1]
+      const wday = weekdayLabel(period, dayNum).toLowerCase()
+      const isWeekend =
+        wday.includes('sab') ||
+        wday.includes('min') ||
+        wday.includes('sat') ||
+        wday.includes('sun')
+      const isHoliday = holidaysByDay.has(dayNum)
+
+      if (isHoliday) {
+        cell2.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: TIMESHEET_PALETTE.holidayBg },
+        }
+        cell2.font = { name: 'Calibri', size: 8.5, bold: true, color: { argb: TIMESHEET_PALETTE.holidayText } }
+      } else if (isWeekend) {
+        cell2.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: TIMESHEET_PALETTE.weekendBg },
+        }
+        cell2.font = { name: 'Calibri', size: 8.5, bold: true, color: { argb: TIMESHEET_PALETTE.weekendText } }
+      }
+    }
+  }
+
+  // ── GROUP ROWS BY SECTION & DEPT ──
+  const grouped = new Map<string, Map<string, TimesheetEmployeeExportRow[]>>()
+  for (const row of rows) {
+    const section = row.employee.section || row.employee.role || 'Umum'
+    const dept = row.employee.department || 'Tanpa Departemen'
+    if (!grouped.has(section)) grouped.set(section, new Map())
+    const secMap = grouped.get(section)!
+    if (!secMap.has(dept)) secMap.set(dept, [])
+    secMap.get(dept)!.push(row)
+  }
+
+  let rowCounter = 1
+
+  // Grand totals tracking
+  const dailySums = new Array(days.length).fill(0)
+  let grandTotalAttendance = {
+    present: 0,
+    off: 0,
+    leave: 0,
+    sick: 0,
+    absent: 0,
+    totalHours: 0,
+  }
+  let grandTotalAllowance = 0
+  let grandTotalOvertime = 0
+
+  Array.from(grouped.entries()).forEach(([section, depts]) => {
+    // Section Group Banner
+    const sectionRow = sheet.addRow([`SECTION: ${section.toUpperCase()}`])
+    sheet.mergeCells(sectionRow.number, 1, sectionRow.number, totalCols)
+    sectionRow.height = 19
+    const secCell = sectionRow.getCell(1)
+    secCell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: TIMESHEET_PALETTE.sectionBg },
+    }
+    secCell.font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: TIMESHEET_PALETTE.sectionText } }
+    secCell.alignment = { vertical: 'middle', indent: 1 }
+
+    Array.from(depts.entries()).forEach(([dept, deptRows]) => {
+      // Dept Sub-group Banner
+      const deptRow = sheet.addRow([`  DEPARTEMEN: ${dept.toUpperCase()} (${deptRows.length} Karyawan)`])
+      sheet.mergeCells(deptRow.number, 1, deptRow.number, totalCols)
+      deptRow.height = 17
+      const dCell = deptRow.getCell(1)
+      dCell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: TIMESHEET_PALETTE.deptBg },
+      }
+      dCell.font = { name: 'Calibri', size: 8.5, bold: true, color: { argb: TIMESHEET_PALETTE.deptText } }
+      dCell.alignment = { vertical: 'middle', indent: 2 }
+
+      const sortedRows = deptRows.slice().sort((a, b) => {
+        const snA = a.employee.employeeSn || ''
+        const snB = b.employee.employeeSn || ''
+        if (snA && snB) return snA.localeCompare(snB, undefined, { numeric: true })
+        return a.employee.name.localeCompare(b.employee.name)
+      })
+
+      sortedRows.forEach((row) => {
+        const emp = row.employee
+        const rowData: any[] = [
+          rowCounter++,
+          emp.name,
+          emp.manpower?.trim() || 'Lokal',
+          emp.section || emp.role || '-',
+          emp.department || '-',
+        ]
+
+        const cellStyles: {
+          colIndex: number
+          bg: string
+          text: string
+          bold?: boolean
+          numFmt?: string
+          align?: 'center' | 'right' | 'left'
+        }[] = []
+
+        days.forEach((day, dayIndex) => {
+          const dayData = row.daysData[dayIndex] || { day, displayVal: '-' }
+          const isHoliday = holidaysByDay.has(day)
+          const colIndex = totalBaseCols + dayIndex + 1
+
+          if (isAttendance) {
+            // Attendance View
+            const status = (dayData.status || '').toLowerCase()
+            const isLate = Boolean(dayData.isLate)
+            const clockIn = dayData.clockIn || ''
+            const clockOut = dayData.clockOut || ''
+            const hasClock = Boolean(clockIn || clockOut)
+            const times = hasClock ? `${clockIn || '--:--'} - ${clockOut || '--:--'}` : ''
+
+            let cellVal = '-'
+            let bg = isHoliday ? TIMESHEET_PALETTE.holidayBg : 'FFFFFFFF'
+            let text = isHoliday ? TIMESHEET_PALETTE.holidayText : 'FF475569'
+
+            if (status === 'present') {
+              dailySums[dayIndex]++
+              if (isLate) {
+                cellVal = times ? `Terlambat\n${times}` : 'Terlambat'
+                bg = TIMESHEET_PALETTE.lateBg
+                text = TIMESHEET_PALETTE.lateText
+              } else {
+                cellVal = times ? `Masuk\n${times}` : 'Masuk'
+                bg = TIMESHEET_PALETTE.presentBg
+                text = TIMESHEET_PALETTE.presentText
+              }
+            } else if (status === 'off') {
+              cellVal = 'OFF'
+              bg = TIMESHEET_PALETTE.offBg
+              text = TIMESHEET_PALETTE.offText
+            } else if (status === 'sick') {
+              cellVal = 'Sakit'
+              bg = TIMESHEET_PALETTE.sickBg
+              text = TIMESHEET_PALETTE.sickText
+            } else if (status === 'leave') {
+              cellVal = 'Izin'
+              bg = TIMESHEET_PALETTE.leaveBg
+              text = TIMESHEET_PALETTE.leaveText
+            } else if (status === 'absent') {
+              cellVal = 'Alpha'
+              bg = TIMESHEET_PALETTE.absentBg
+              text = TIMESHEET_PALETTE.absentText
+            } else if (status === 'field_break' || dayData.displayVal === 'FB') {
+              cellVal = 'FB'
+              bg = TIMESHEET_PALETTE.fbBg
+              text = TIMESHEET_PALETTE.fbText
+            } else if (status === 'standby' || dayData.displayVal === 'ST') {
+              cellVal = 'ST'
+              bg = TIMESHEET_PALETTE.stBg
+              text = TIMESHEET_PALETTE.stText
+            } else {
+              cellVal =
+                dayData.displayVal &&
+                dayData.displayVal !== 'IN' &&
+                dayData.displayVal !== 'DS' &&
+                dayData.displayVal !== 'NS'
+                  ? String(dayData.displayVal)
+                  : '-'
+              if (isHoliday) {
+                bg = TIMESHEET_PALETTE.holidayBg
+                text = TIMESHEET_PALETTE.holidayText
+              }
+            }
+
+            rowData.push(cellVal)
+            cellStyles.push({
+              colIndex,
+              bg,
+              text,
+              bold: true,
+              align: 'center',
+            })
+          } else if (isAllowance) {
+            // Allowance View (TU / MSA / MEALS)
+            const numVal = dayData.numericVal ?? 0
+            if (numVal > 0) {
+              dailySums[dayIndex] += numVal
+            }
+
+            const rawVal = String(dayData.displayVal || '').trim()
+            let bg = isHoliday ? TIMESHEET_PALETTE.holidayBg : 'FFFFFFFF'
+            let text = 'FF0F172A'
+            let isBold = false
+            let numFmt: string | undefined = undefined
+            let cellVal: any = '-'
+
+            if (dayData.cellType === 'fb' || rawVal === 'FB') {
+              cellVal = 'FB'
+              bg = TIMESHEET_PALETTE.fbBg
+              text = TIMESHEET_PALETTE.fbText
+              isBold = true
+            } else if (
+              dayData.cellType === 'absent' ||
+              ['Izin', 'Sakit', 'Alpha'].includes(rawVal)
+            ) {
+              cellVal = rawVal
+              bg = TIMESHEET_PALETTE.lateBg
+              text = TIMESHEET_PALETTE.lateText
+              isBold = true
+            } else if (numVal > 0) {
+              cellVal = numVal
+              numFmt = '"Rp "#,##0'
+              if (isHoliday) {
+                bg = TIMESHEET_PALETTE.holidayBg
+                text = TIMESHEET_PALETTE.holidayText
+              }
+            } else {
+              cellVal = '-'
+              bg = isHoliday ? TIMESHEET_PALETTE.holidayBg : 'FFF8FAFC'
+              text = 'FF94A3B8'
+            }
+
+            rowData.push(cellVal)
+            cellStyles.push({
+              colIndex,
+              bg,
+              text,
+              bold: isBold,
+              numFmt,
+              align: numVal > 0 ? 'right' : 'center',
+            })
+          } else if (isOvertime) {
+            // Overtime View
+            const numVal = dayData.numericVal ?? 0
+            if (numVal > 0) {
+              dailySums[dayIndex] += numVal
+            }
+
+            const rawVal = String(dayData.displayVal || '').trim()
+            let bg = isHoliday ? TIMESHEET_PALETTE.holidayBg : 'FFFFFFFF'
+            let text = 'FF0F172A'
+            let isBold = false
+            let numFmt: string | undefined = undefined
+            let cellVal: any = '-'
+
+            if (dayData.cellType === 'staff' || rawVal === '-') {
+              cellVal = '-'
+              bg = 'FFF8FAFC'
+              text = 'FF94A3B8'
+            } else if (dayData.cellType === 'spl' || rawVal === 'SPL') {
+              cellVal = 'SPL'
+              bg = TIMESHEET_PALETTE.splBg
+              text = TIMESHEET_PALETTE.splText
+              isBold = true
+            } else if (rawVal === 'OFF') {
+              cellVal = 'OFF'
+              bg = TIMESHEET_PALETTE.offBg
+              text = TIMESHEET_PALETTE.offText
+              isBold = true
+            } else if (rawVal === 'FB') {
+              cellVal = 'FB'
+              bg = TIMESHEET_PALETTE.fbBg
+              text = TIMESHEET_PALETTE.fbText
+              isBold = true
+            } else if (rawVal === 'ST') {
+              cellVal = 'ST'
+              bg = TIMESHEET_PALETTE.stBg
+              text = TIMESHEET_PALETTE.stText
+              isBold = true
+            } else if (rawVal === 'GD') {
+              cellVal = 'GD'
+              bg = TIMESHEET_PALETTE.gdBg
+              text = TIMESHEET_PALETTE.gdText
+              isBold = true
+            } else if (rawVal === 'Sakit') {
+              cellVal = 'Sakit'
+              bg = TIMESHEET_PALETTE.sickBg
+              text = TIMESHEET_PALETTE.sickText
+              isBold = true
+            } else if (rawVal === 'Izin') {
+              cellVal = 'Izin'
+              bg = TIMESHEET_PALETTE.leaveBg
+              text = TIMESHEET_PALETTE.leaveText
+              isBold = true
+            } else if (rawVal === 'Alpha') {
+              cellVal = 'Alpha'
+              bg = TIMESHEET_PALETTE.absentBg
+              text = TIMESHEET_PALETTE.absentText
+              isBold = true
+            } else if (numVal > 0) {
+              cellVal = numVal
+              numFmt = '0.0'
+              bg = TIMESHEET_PALETTE.otBg
+              text = TIMESHEET_PALETTE.otText
+              isBold = true
+            } else {
+              cellVal = rawVal || '-'
+              if (isHoliday) {
+                bg = TIMESHEET_PALETTE.holidayBg
+                text = TIMESHEET_PALETTE.holidayText
+              }
+            }
+
+            rowData.push(cellVal)
+            cellStyles.push({
+              colIndex,
+              bg,
+              text,
+              bold: isBold,
+              numFmt,
+              align: 'center',
+            })
+          }
+        })
+
+        // Summary columns
+        if (isAttendance) {
+          const sum = row.attendanceSummary || {
+            present: 0,
+            off: 0,
+            sick: 0,
+            leave: 0,
+            absent: 0,
+            totalHours: 0,
+          }
+          grandTotalAttendance.present += sum.present
+          grandTotalAttendance.off += sum.off
+          grandTotalAttendance.sick += sum.sick
+          grandTotalAttendance.leave += sum.leave
+          grandTotalAttendance.absent += sum.absent
+          grandTotalAttendance.totalHours += sum.totalHours
+
+          rowData.push(
+            sum.present,
+            sum.off,
+            sum.leave,
+            sum.sick,
+            sum.absent,
+            Number(sum.totalHours.toFixed(1))
+          )
+        } else if (isAllowance) {
+          const tot = row.allowanceTotal || 0
+          grandTotalAllowance += tot
+          rowData.push(tot)
+        } else if (isOvertime) {
+          const tot = row.overtimeTotal || 0
+          grandTotalOvertime += tot
+          rowData.push(tot)
+        }
+
+        const addedRow = sheet.addRow(rowData)
+        addedRow.height = isAttendance ? 28 : 20
+
+        // Apply base formatting to metadata & summary
+        for (let c = 1; c <= totalCols; c++) {
+          const currentCell = addedRow.getCell(c)
+          currentCell.font = { name: 'Calibri', size: 9, color: { argb: 'FF1E293B' } }
+          currentCell.border = {
+            top: { style: 'thin', color: { argb: TIMESHEET_PALETTE.borderLight } },
+            left: { style: 'thin', color: { argb: TIMESHEET_PALETTE.borderLight } },
+            right: { style: 'thin', color: { argb: TIMESHEET_PALETTE.borderLight } },
+            bottom: { style: 'thin', color: { argb: TIMESHEET_PALETTE.borderLight } },
+          }
+
+          if (c === 1) {
+            currentCell.alignment = { vertical: 'middle', horizontal: 'center' }
+          } else if (c === 2) {
+            currentCell.alignment = { vertical: 'middle', horizontal: 'left' }
+            currentCell.font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: 'FF0F172A' } }
+          } else if (c === 3) {
+            currentCell.alignment = { vertical: 'middle', horizontal: 'center' }
+            currentCell.font = { name: 'Calibri', size: 8.5, color: { argb: 'FF475569' } }
+          } else if (c === 4 || c === 5) {
+            currentCell.alignment = { vertical: 'middle', horizontal: 'left' }
+            currentCell.font = { name: 'Calibri', size: 8.5, color: { argb: 'FF475569' } }
+          } else if (c > totalBaseCols + days.length) {
+            // Summary column(s)
+            if (isAllowance) {
+              currentCell.alignment = { vertical: 'middle', horizontal: 'right' }
+              currentCell.font = {
+                name: 'Calibri',
+                size: 9.5,
+                bold: true,
+                color: { argb: TIMESHEET_PALETTE.totalAllowanceText },
+              }
+              currentCell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: TIMESHEET_PALETTE.totalAllowanceBg },
+              }
+              currentCell.numFmt = '"Rp "#,##0'
+            } else if (isOvertime) {
+              currentCell.alignment = { vertical: 'middle', horizontal: 'center' }
+              currentCell.font = {
+                name: 'Calibri',
+                size: 9.5,
+                bold: true,
+                color: { argb: TIMESHEET_PALETTE.totalOtText },
+              }
+              currentCell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: TIMESHEET_PALETTE.totalOtBg },
+              }
+              currentCell.numFmt = '0.0 "Jam"'
+            } else {
+              currentCell.alignment = { vertical: 'middle', horizontal: 'center' }
+              currentCell.font = { name: 'Calibri', size: 9, bold: true, color: { argb: 'FF0F172A' } }
+            }
+          }
+        }
+
+        // Apply customized day cell styles
+        cellStyles.forEach((st) => {
+          const c = addedRow.getCell(st.colIndex)
+          if (st.bg !== 'FFFFFFFF') {
+            c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: st.bg } }
+          }
+          c.font = {
+            name: 'Calibri',
+            size: 8.5,
+            bold: Boolean(st.bold),
+            color: { argb: st.text },
+          }
+          c.alignment = {
+            vertical: 'middle',
+            horizontal: st.align || 'center',
+            wrapText: isAttendance,
+          }
+          if (st.numFmt) {
+            c.numFmt = st.numFmt
+          }
+        })
+      })
+    })
+  })
+
+  // ── GRAND TOTAL SUMMARY ROW AT BOTTOM ──
+  const summaryRowData: any[] = ['TOTAL KESELURUHAN', '', '', '', '']
+  days.forEach((_, idx) => {
+    summaryRowData.push(dailySums[idx])
+  })
+
+  if (isAttendance) {
+    summaryRowData.push(
+      grandTotalAttendance.present,
+      grandTotalAttendance.off,
+      grandTotalAttendance.leave,
+      grandTotalAttendance.sick,
+      grandTotalAttendance.absent,
+      Number(grandTotalAttendance.totalHours.toFixed(1))
+    )
+  } else if (isAllowance) {
+    summaryRowData.push(grandTotalAllowance)
+  } else if (isOvertime) {
+    summaryRowData.push(Number(grandTotalOvertime.toFixed(1)))
+  }
+
+  const summaryRow = sheet.addRow(summaryRowData)
+  sheet.mergeCells(summaryRow.number, 1, summaryRow.number, totalBaseCols)
+  summaryRow.height = 24
+
+  for (let c = 1; c <= totalCols; c++) {
+    const cell = summaryRow.getCell(c)
+    cell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFE2E8F0' },
+    }
+    cell.font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: 'FF0F172A' } }
+    cell.alignment = { vertical: 'middle', horizontal: c === 1 ? 'right' : 'center' }
+    cell.border = {
+      top: { style: 'medium', color: { argb: TIMESHEET_PALETTE.headerBg } },
+      bottom: { style: 'double', color: { argb: TIMESHEET_PALETTE.headerBg } },
+      left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+      right: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+    }
+
+    if (isAllowance && c > totalBaseCols) {
+      cell.numFmt = '"Rp "#,##0'
+      cell.alignment = { vertical: 'middle', horizontal: 'right' }
+    } else if (isOvertime && c === totalCols) {
+      cell.numFmt = '0.0 "Jam"'
+    }
+  }
+
+  // ── AUTO-FIT COLUMN WIDTHS ──
+  sheet.columns.forEach((col, idx) => {
+    const colNumber = idx + 1
+    if (colNumber === 1) {
+      col.width = 5 // No
+    } else if (colNumber === 2) {
+      col.width = 27 // Nama Karyawan
+    } else if (colNumber === 3) {
+      col.width = 14 // Manpower
+    } else if (colNumber === 4) {
+      col.width = 22 // Section / Role
+    } else if (colNumber === 5) {
+      col.width = 20 // Departemen
+    } else if (colNumber <= totalBaseCols + days.length) {
+      col.width = isAttendance ? 13 : isAllowance ? 11 : 8.5
+    } else {
+      col.width = isAttendance ? 10 : 18
+    }
+  })
+
+  return sheet
+}
+
+/**
+ * Helper to write a workbook buffer and initiate a browser download.
+ */
+async function downloadWorkbook(workbook: ExcelJS.Workbook, filename: string): Promise<void> {
+  const buffer = await workbook.xlsx.writeBuffer()
+  const blob = new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
   window.URL.revokeObjectURL(url)
 }
 
+/**
+ * Export a single timesheet tab (Attendance, TU, MSA, Meals, or Overtime) as an Excel file.
+ */
+export async function exportTimesheetWorkspaceTabToExcel(
+  options: ExportTimesheetTabOptions
+): Promise<void> {
+  const workbook = new ExcelJS.Workbook()
+  workbook.creator = 'HERO Timesheet System'
+  workbook.created = new Date()
+
+  buildTimesheetWorksheet(workbook, options)
+
+  const meta = getTabMetadata(options.tab)
+  const cleanSite = options.siteName.replace(/\s+/g, '_')
+  const defaultFilename = `${meta.filePrefix}_${cleanSite}_${options.period}.xlsx`
+  const filename = options.customFileName || defaultFilename
+
+  await downloadWorkbook(workbook, filename)
+}
+
+/**
+ * Export all 5 timesheet tabs into a single Excel workbook with 5 separate worksheets.
+ */
+export async function exportTimesheetWorkspaceAllTabsToExcel(
+  options: ExportAllTimesheetTabsOptions
+): Promise<void> {
+  const workbook = new ExcelJS.Workbook()
+  workbook.creator = 'HERO Timesheet System'
+  workbook.created = new Date()
+
+  for (const item of options.tabs) {
+    buildTimesheetWorksheet(workbook, {
+      tab: item.tab,
+      siteName: options.siteName,
+      period: options.period,
+      days: options.days,
+      rows: item.rows,
+      weekdayLabel: options.weekdayLabel,
+      holidaysByDay: options.holidaysByDay,
+      info: item.info,
+    })
+  }
+
+  const cleanSite = options.siteName.replace(/\s+/g, '_')
+  const defaultFilename = `Rekap_Timesheet_Lengkap_5_Tab_${cleanSite}_${options.period}.xlsx`
+  const filename = options.customFileName || defaultFilename
+
+  await downloadWorkbook(workbook, filename)
+}

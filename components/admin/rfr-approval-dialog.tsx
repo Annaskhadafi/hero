@@ -263,6 +263,7 @@ export function RfrApprovalDialog({ item, trigger }: RfrApprovalDialogProps) {
                   label="Tanda Tangan Digital Approver"
                   defaultDataUrl={liveSignatureUrl}
                   onDataUrlChange={setLiveSignatureUrl}
+                  autoUseProfileSignature={false}
                   height={130}
                 />
               </div>

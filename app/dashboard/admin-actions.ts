@@ -4071,22 +4071,12 @@ async function updateLegacyEntityForSubmissionDecision(params: {
   }
 
   if (params.templateKey === 'attendance-permission') {
-    await params.tx
-      .update(attendancePermissionRequests)
-      .set({
-        status:
-          params.decision === 'approved'
-            ? 'approved'
-            : params.decision === 'rejected'
-              ? 'rejected'
-              : 'pending',
-        approverNote: params.note,
-        approverUserId: null,
-        approvedAt: params.decision === 'approved' ? params.now : null,
-        rejectedAt: params.decision === 'rejected' ? params.now : null,
-        updatedAt: params.now,
-      })
-      .where(eq(attendancePermissionRequests.id, legacyRecordId))
+    const { applyApprovedPermissionRequest } = await import('@/app/actions/attendance')
+    await applyApprovedPermissionRequest(
+      legacyRecordId,
+      params.note,
+      params.decision === 'approved'
+    )
     return
   }
 

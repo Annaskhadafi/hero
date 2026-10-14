@@ -1,7 +1,9 @@
 import { loadEnvConfig } from "@next/env";
 import { getDatabaseUrl, getDatabaseUrlErrorMessage } from "@/lib/database-url";
 
-loadEnvConfig(process.cwd());
+if (typeof window === "undefined" && typeof process !== "undefined" && typeof process.cwd === "function") {
+  loadEnvConfig(process.cwd());
+}
 
 function getFirstEnvValue(names: string[]) {
   for (const name of names) {

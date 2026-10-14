@@ -94,6 +94,7 @@ type CreateLegacyApprovalRequestInput = {
   previewSnapshot: Record<string, unknown>
   submittedAt?: Date
   overtimeMinutes?: number
+  targetApproverEmployeeId?: number | null
 }
 
 function getRouteStepGroup(steps: ResolvedApprovalStep[], stepOrder: number) {
@@ -483,13 +484,43 @@ export async function createLegacyApprovalRequest(input: CreateLegacyApprovalReq
   const requester = await getSubmissionRequesterContext(input.requesterEmployeeId)
   const submittedAt = input.submittedAt ?? new Date()
 
-  const route = await resolveApprovalRouteForActivity({
+  let route = await resolveApprovalRouteForActivity({
     employeeId: input.requesterEmployeeId,
     activityType: input.activityType,
     priority: input.priority ?? 'normal',
     transactionType: input.transactionType ?? undefined,
     overtimeMinutes: input.overtimeMinutes ?? 0,
   })
+
+  if (input.targetApproverEmployeeId && route.steps.length > 0) {
+    const [targetEmp] = await db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        email: employees.email,
+        jobTitle: employees.jobTitle,
+      })
+      .from(employees)
+      .where(eq(employees.id, input.targetApproverEmployeeId))
+      .limit(1)
+
+    if (targetEmp) {
+      route = {
+        ...route,
+        steps: route.steps.map((step, idx) => {
+          if (idx === 0) {
+            return {
+              ...step,
+              approverEmployeeId: targetEmp.id,
+              approverName: targetEmp.name,
+              label: step.label || targetEmp.jobTitle || 'Approver',
+            }
+          }
+          return step
+        }),
+      }
+    }
+  }
 
   if (route.steps.length === 0) {
     throw new Error('Approval route belum tersedia untuk pengajuan ini.')

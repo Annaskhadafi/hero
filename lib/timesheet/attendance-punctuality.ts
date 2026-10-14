@@ -1,6 +1,3 @@
-import { and, desc, eq, gte, lte } from 'drizzle-orm'
-import { db } from '@/db'
-import { attendanceRecords } from '@/db/schema/hero'
 import {
   IndonesiaTimezoneCode,
   getTimezoneDateParts,
@@ -474,6 +471,10 @@ export async function resolveNightShiftCheckoutContext(input: {
 
   // Look for an unclosed night check-in in the past 24 hours
   const past24h = new Date(input.eventTime.getTime() - 24 * 60 * 60 * 1000)
+
+  const { db } = await import('@/db')
+  const { attendanceRecords } = await import('@/db/schema/hero')
+  const { and, desc, eq, gte, lte } = await import('drizzle-orm')
 
   const recentPunches = await db
     .select({

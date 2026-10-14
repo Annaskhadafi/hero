@@ -66,12 +66,12 @@ export function SearchableSelect({
           variant="outline"
           disabled={disabled}
           className={cn(
-            'border-border/70 text-foreground hover:bg-muted/40 h-9 justify-between rounded-lg border bg-white px-3 text-[13px] font-medium shadow-none',
+            'border-border/70 text-foreground hover:bg-muted/40 h-9 justify-between rounded-lg border bg-white px-3 text-[13px] font-medium shadow-none min-w-0 max-w-full overflow-hidden',
             disabled && 'opacity-60 cursor-not-allowed bg-slate-100/90 text-slate-500',
             widthClassName
           )}
         >
-          <span className="truncate text-left">{selectedLabel}</span>
+          <span className="min-w-0 flex-1 truncate text-left">{selectedLabel}</span>
           <ChevronDown className="text-muted-foreground size-4 shrink-0" />
         </Button>
       </PopoverTrigger>

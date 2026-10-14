@@ -836,6 +836,7 @@ export function RfrClientForm({
                   defaultDataUrl={liveSignatureUrl}
                   onSignatureChange={setSignatureFile}
                   onDataUrlChange={setLiveSignatureUrl}
+                  autoUseProfileSignature={false}
                   height={150}
                 />
               </div>

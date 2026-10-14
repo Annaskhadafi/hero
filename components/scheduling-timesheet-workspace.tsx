@@ -109,7 +109,14 @@ import { AttendanceImportPreviewDialog } from '@/components/timesheet/attendance
 import { AttendanceSummaryBar } from '@/components/timesheet/attendance-summary-bar'
 import { AttendanceSourceIndicator } from '@/components/timesheet/attendance-source-indicator'
 import { exportRowsToFile, MinimalTableShell } from '@/components/ui/minimal-table-shell'
-import { exportAttendanceGridToExcel } from '@/lib/timesheet/export-attendance-excel'
+import {
+  exportAttendanceGridToExcel,
+  exportTimesheetWorkspaceTabToExcel,
+  exportTimesheetWorkspaceAllTabsToExcel,
+  type TimesheetExportTab,
+  type TimesheetEmployeeExportRow,
+  type TimesheetDayData,
+} from '@/lib/timesheet/export-attendance-excel'
 import {
   Table,
   TableBody,
@@ -7303,6 +7310,372 @@ export function SchedulingTimesheetWorkspace({
     })
   }
 
+  function buildTimesheetExportRows(targetTab: TimesheetExportTab): TimesheetEmployeeExportRow[] {
+    const sourceRows = displayedAttendanceRows.length > 0 ? displayedAttendanceRows : rows
+    return sourceRows.map((row) => {
+      const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName)
+      const daysData: TimesheetDayData[] = []
+      let attPresent = 0
+      let attOff = 0
+      let attSick = 0
+      let attLeave = 0
+      let attAbsent = 0
+      let attTotalHours = 0
+      let allowanceTotal = 0
+      let overtimeTotal = 0
+
+      for (const day of days) {
+        const scheduleCode = row.schedule[day - 1] as string
+        const cell = getAttendanceCell(row.employee.id, day, scheduleCode)
+        const isFieldBreakDay =
+          scheduleCode === 'FB' ||
+          cell.status === 'field_break' ||
+          (fieldBreakDaysByEmployee.get(row.employee.id)?.has(day) ?? false)
+        const isRosterOff = scheduleCode === 'OFF' || scheduleCode === 'Libur'
+        const isHolidayDay = Boolean(holidaysByDay.get(day))
+        const isWorkDay = !isRosterOff
+        const isAbsent =
+          cell.status === 'leave' || cell.status === 'sick' || cell.status === 'absent'
+        const isEmptyWorkDay =
+          isWorkDay && !isHolidayDay && scheduleCode !== 'ST' && cell.status === 'empty'
+        const noAllowance = isAbsent || isEmptyWorkDay || scheduleCode === 'FB'
+        const absentLabel =
+          cell.status === 'leave'
+            ? 'Izin'
+            : cell.status === 'sick'
+              ? 'Sakit'
+              : cell.status === 'absent'
+                ? 'Alpha'
+                : '-'
+
+        const allowance = getAllowanceAmounts(row, day)
+
+        if (targetTab === 'attendance') {
+          let cellHours = 0
+          if (cell.clockIn && cell.clockOut) {
+            const [inH, inM] = cell.clockIn.split(':').map(Number)
+            const [outH, outM] = cell.clockOut.split(':').map(Number)
+            if (!isNaN(inH) && !isNaN(outH)) {
+              let diff = outH * 60 + (outM || 0) - (inH * 60 + (inM || 0))
+              if (diff < 0) diff += 1440
+              cellHours = Math.round((diff / 60) * 10) / 10
+            }
+          } else if (cell.status === 'present') {
+            cellHours = 8.0
+          }
+
+          if (cell.status === 'present') {
+            attPresent++
+            attTotalHours += cellHours
+          } else if (cell.status === 'off' || scheduleCode === 'OFF') {
+            attOff++
+          } else if (cell.status === 'sick' || scheduleCode === 'Sakit') {
+            attSick++
+          } else if (cell.status === 'leave' || scheduleCode === 'Izin') {
+            attLeave++
+          } else if (cell.status === 'absent') {
+            attAbsent++
+          }
+
+          daysData.push({
+            day,
+            status: cell.status,
+            statusLabel: attendanceStatusLabel(cell.status),
+            clockIn: cell.clockIn,
+            clockOut: cell.clockOut,
+            isLate: Boolean(cell.isLatePending),
+            lateMinutes: cell.lateMinutes ?? undefined,
+            isConflict:
+              cell.status === 'present' && ['OFF', 'Libur', 'Sakit', 'FB'].includes(scheduleCode),
+            displayVal: attendanceStatusLabel(cell.status),
+          })
+        } else if (targetTab === 'lokasi') {
+          let displayVal: string | number = '-'
+          let numericVal = 0
+          let cellType: TimesheetDayData['cellType'] = 'dash'
+
+          if (!allowance.rule.specialAllowance) {
+            displayVal = '-'
+            cellType = 'dash'
+          } else if (isFieldBreakDay && cell.status !== 'present') {
+            displayVal = 'FB'
+            cellType = 'fb'
+          } else if (noAllowance) {
+            displayVal = absentLabel
+            cellType = 'absent'
+          } else {
+            numericVal = allowance.specialAllowanceAmount || 0
+            displayVal = numericVal > 0 ? numericVal : '-'
+            cellType = numericVal > 0 ? 'amount' : 'dash'
+          }
+
+          allowanceTotal += allowance.specialAllowanceAmount || 0
+          daysData.push({ day, displayVal, numericVal, cellType })
+        } else if (targetTab === 'msa') {
+          let displayVal: string | number = '-'
+          let numericVal = 0
+          let cellType: TimesheetDayData['cellType'] = 'dash'
+
+          if (!allowance.rule.msa || allowance.empSiteConfig.msaType === 'none') {
+            displayVal = '-'
+            cellType = 'dash'
+          } else if (isFieldBreakDay) {
+            displayVal = 'FB'
+            cellType = 'fb'
+          } else {
+            numericVal = allowance.msaAmount || 0
+            displayVal = numericVal > 0 ? numericVal : '-'
+            cellType = numericVal > 0 ? 'amount' : 'dash'
+          }
+
+          if (
+            !isFieldBreakDay &&
+            allowance.rule.msa &&
+            allowance.empSiteConfig.msaType !== 'none'
+          ) {
+            allowanceTotal += allowance.msaAmount || 0
+          }
+          daysData.push({ day, displayVal, numericVal, cellType })
+        } else if (targetTab === 'meals') {
+          let displayVal: string | number = '-'
+          let numericVal = 0
+          let cellType: TimesheetDayData['cellType'] = 'dash'
+
+          if (!allowance.rule.meals || allowance.empSiteConfig.mealsType === 'none') {
+            displayVal = '-'
+            cellType = 'dash'
+          } else if (isFieldBreakDay) {
+            displayVal = 'FB'
+            cellType = 'fb'
+          } else {
+            numericVal = allowance.mealsAmount || 0
+            displayVal = numericVal > 0 ? numericVal : '-'
+            cellType = numericVal > 0 ? 'amount' : 'dash'
+          }
+
+          if (
+            !isFieldBreakDay &&
+            allowance.rule.meals &&
+            allowance.empSiteConfig.mealsType !== 'none'
+          ) {
+            allowanceTotal += allowance.mealsAmount || 0
+          }
+          daysData.push({ day, displayVal, numericVal, cellType })
+        } else if (targetTab === 'ovt') {
+          let displayVal: string | number = '-'
+          let numericVal = 0
+          let cellType: TimesheetDayData['cellType'] = 'dash'
+
+          if (staff) {
+            displayVal = '-'
+            cellType = 'staff'
+          } else if (cell.status !== 'present') {
+            if (isFieldBreakDay || cell.status === 'field_break' || scheduleCode === 'FB') {
+              displayVal = 'FB'
+              cellType = 'fb'
+            } else if (cell.status === 'standby' || scheduleCode === 'ST') {
+              displayVal = 'ST'
+              cellType = 'st'
+            } else if (scheduleCode === 'GD') {
+              displayVal = 'GD'
+              cellType = 'gd'
+            } else if (cell.status === 'off' || isRosterOff || scheduleCode === 'OFF') {
+              displayVal = 'OFF'
+              cellType = 'off'
+            } else if (cell.status === 'sick' || scheduleCode === 'Sakit') {
+              displayVal = 'Sakit'
+              cellType = 'sick'
+            } else if (cell.status === 'leave' || scheduleCode === 'Izin') {
+              displayVal = 'Izin'
+              cellType = 'leave'
+            } else if (cell.status === 'absent') {
+              displayVal = 'Alpha'
+              cellType = 'absent'
+            } else {
+              displayVal =
+                scheduleCode &&
+                scheduleCode !== 'IN' &&
+                scheduleCode !== 'DS' &&
+                scheduleCode !== 'NS'
+                  ? scheduleCode
+                  : '-'
+              cellType = 'other'
+            }
+          } else {
+            if (
+              cell.overtimeHours !== undefined &&
+              cell.overtimeHours !== null &&
+              cell.overtimeHours > 0
+            ) {
+              numericVal = roundOvertimeHours(cell.overtimeHours as number)
+              displayVal = numericVal
+              cellType = 'ot'
+            } else {
+              const overtime = calculateDayOvertime(
+                row.schedule,
+                day,
+                cell.clockIn,
+                cell.clockOut,
+                staff,
+                row.employee.id
+              )
+              if (overtime.totalHours > 0) {
+                numericVal = overtime.totalHours
+                displayVal = overtime.totalHours
+                cellType = 'ot'
+              } else if (overtime.unauthorizedMinutes > 0) {
+                displayVal = 'SPL'
+                cellType = 'spl'
+              } else if (scheduleCode === 'ST') {
+                displayVal = 'ST'
+                cellType = 'st'
+              } else if (scheduleCode === 'GD') {
+                displayVal = 'GD'
+                cellType = 'gd'
+              } else if (scheduleCode === 'FB' || isFieldBreakDay) {
+                displayVal = 'FB'
+                cellType = 'fb'
+              } else {
+                displayVal = '-'
+                cellType = 'dash'
+              }
+            }
+            overtimeTotal += numericVal
+          }
+
+          daysData.push({ day, displayVal, numericVal, cellType })
+        }
+      }
+
+      return {
+        employee: {
+          id: row.employee.id,
+          name: row.employee.name,
+          employeeSn: employeeSnLabel(row.employee),
+          role: row.employee.role,
+          section: row.employee.section,
+          department: row.employee.department,
+          manpower: row.employee.manpower,
+        },
+        daysData,
+        attendanceSummary: {
+          present: attPresent,
+          off: attOff,
+          sick: attSick,
+          leave: attLeave,
+          absent: attAbsent,
+          totalHours: attTotalHours,
+        },
+        allowanceTotal,
+        overtimeTotal: roundOvertimeHours(overtimeTotal),
+      }
+    })
+  }
+
+  const attendanceTabLabel = (view: 'attendance' | 'lokasi' | 'msa' | 'meals' | 'ovt') => {
+    switch (view) {
+      case 'attendance':
+        return 'Attendance'
+      case 'lokasi':
+        return 'Tunjangan Khusus'
+      case 'msa':
+        return 'MSA'
+      case 'meals':
+        return 'Meals'
+      case 'ovt':
+        return 'Overtime'
+    }
+  }
+
+  async function exportTimesheetTab(tab: TimesheetExportTab) {
+    try {
+      const tabRows = buildTimesheetExportRows(tab)
+      if (tabRows.length === 0) {
+        toast.error('Tidak ada data karyawan untuk diekspor.')
+        return
+      }
+
+      let rateText: string | undefined = undefined
+      if (tab === 'lokasi') {
+        const localCfg = siteConfig.employeeBenefitConfig.local
+        const nonLocalCfg = siteConfig.employeeBenefitConfig.nonLocal
+        const localStr = localCfg.specialAllowance
+          ? `Lokal: Rp ${localCfg.specialAllowanceAmount.toLocaleString('id-ID')}/${localCfg.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}`
+          : 'Lokal: Off'
+        const nonLocalStr = nonLocalCfg.specialAllowance
+          ? `Non Lokal: Rp ${nonLocalCfg.specialAllowanceAmount.toLocaleString('id-ID')}/${nonLocalCfg.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}`
+          : 'Non Lokal: Off'
+        rateText = `Rate: ${localStr} · ${nonLocalStr}`
+      } else if (tab === 'msa') {
+        rateText = `Rate: Staff Rp ${rate.msaStaff.toLocaleString('id-ID')} · Non-Staff Rp ${rate.msaNonStaff.toLocaleString('id-ID')}`
+      } else if (tab === 'meals') {
+        rateText = `Rate: Staff Rp ${rate.mealsStaff.toLocaleString('id-ID')} · Non-Staff Rp ${rate.mealsNonStaff.toLocaleString('id-ID')}`
+      }
+
+      await exportTimesheetWorkspaceTabToExcel({
+        tab,
+        siteName: site?.name ?? 'Semua Site',
+        period,
+        days,
+        rows: tabRows,
+        weekdayLabel: (p, d) => weekdayLabel(p, d),
+        holidaysByDay,
+        info: {
+          rateText,
+          project: rate.project,
+        },
+      })
+      toast.success(`Export Excel ${attendanceTabLabel(tab)} berhasil diunduh!`)
+    } catch (err) {
+      toast.error('Gagal mengekspor Excel: ' + (err instanceof Error ? err.message : String(err)))
+    }
+  }
+
+  async function exportAllTimesheetTabs() {
+    try {
+      const allTabs: TimesheetExportTab[] = ['attendance', 'lokasi', 'msa', 'meals', 'ovt']
+      const tabsData = allTabs.map((t) => {
+        let rateText: string | undefined = undefined
+        if (t === 'lokasi') {
+          const localCfg = siteConfig.employeeBenefitConfig.local
+          const nonLocalCfg = siteConfig.employeeBenefitConfig.nonLocal
+          const localStr = localCfg.specialAllowance
+            ? `Lokal: Rp ${localCfg.specialAllowanceAmount.toLocaleString('id-ID')}/${localCfg.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}`
+            : 'Lokal: Off'
+          const nonLocalStr = nonLocalCfg.specialAllowance
+            ? `Non Lokal: Rp ${nonLocalCfg.specialAllowanceAmount.toLocaleString('id-ID')}/${nonLocalCfg.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}`
+            : 'Non Lokal: Off'
+          rateText = `Rate: ${localStr} · ${nonLocalStr}`
+        } else if (t === 'msa') {
+          rateText = `Rate: Staff Rp ${rate.msaStaff.toLocaleString('id-ID')} · Non-Staff Rp ${rate.msaNonStaff.toLocaleString('id-ID')}`
+        } else if (t === 'meals') {
+          rateText = `Rate: Staff Rp ${rate.mealsStaff.toLocaleString('id-ID')} · Non-Staff Rp ${rate.mealsNonStaff.toLocaleString('id-ID')}`
+        }
+
+        return {
+          tab: t,
+          rows: buildTimesheetExportRows(t),
+          info: {
+            rateText,
+            project: rate.project,
+          },
+        }
+      })
+
+      await exportTimesheetWorkspaceAllTabsToExcel({
+        siteName: site?.name ?? 'Semua Site',
+        period,
+        days,
+        tabs: tabsData,
+        weekdayLabel: (p, d) => weekdayLabel(p, d),
+        holidaysByDay,
+      })
+      toast.success('Export Excel 5 Tab Lengkap berhasil diunduh!')
+    } catch (err) {
+      toast.error('Gagal mengekspor Excel 5 Tab: ' + (err instanceof Error ? err.message : String(err)))
+    }
+  }
+
   const fieldBreakTimelineDays = useMemo(
     () => getFieldBreakTimelineDays(period, fieldBreakTimelineView),
     [period, fieldBreakTimelineView]
@@ -9932,27 +10305,91 @@ export function SchedulingTimesheetWorkspace({
                             <ChevronDown className="size-3 text-slate-400" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-64">
+                        <DropdownMenuContent align="end" className="w-72">
                           <DropdownMenuLabel className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                            Visual Grid (.xlsx)
+                            Export Excel Tab (.xlsx)
                           </DropdownMenuLabel>
                           <DropdownMenuItem
-                            onClick={() => exportAttendanceGrid('attendance')}
+                            onClick={() => void exportTimesheetTab('attendance')}
                             disabled={displayedAttendanceRows.length === 0}
                             className="cursor-pointer gap-2 py-2"
                           >
                             <FileSpreadsheet className="size-4 text-emerald-600 shrink-0" />
                             <div className="flex flex-col">
-                              <span className="font-medium text-xs text-foreground">Status Kehadiran</span>
-                              <span className="text-[10px] text-muted-foreground">Grid warna visual status harian</span>
+                              <span className="font-medium text-xs text-foreground">Attendance Grid</span>
+                              <span className="text-[10px] text-muted-foreground">Status visual kehadiran & jam kerja harian</span>
                             </div>
                           </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => void exportTimesheetTab('lokasi')}
+                            disabled={displayedAttendanceRows.length === 0}
+                            className="cursor-pointer gap-2 py-2"
+                          >
+                            <FileSpreadsheet className="size-4 text-emerald-600 shrink-0" />
+                            <div className="flex flex-col">
+                              <span className="font-medium text-xs text-foreground">Tunjangan Khusus (TU)</span>
+                              <span className="text-[10px] text-muted-foreground">Grid tunjangan lokasi & khusus</span>
+                            </div>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => void exportTimesheetTab('msa')}
+                            disabled={displayedAttendanceRows.length === 0}
+                            className="cursor-pointer gap-2 py-2"
+                          >
+                            <FileSpreadsheet className="size-4 text-emerald-600 shrink-0" />
+                            <div className="flex flex-col">
+                              <span className="font-medium text-xs text-foreground">MSA Grid</span>
+                              <span className="text-[10px] text-muted-foreground">Grid tunjangan site allowance</span>
+                            </div>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => void exportTimesheetTab('meals')}
+                            disabled={displayedAttendanceRows.length === 0}
+                            className="cursor-pointer gap-2 py-2"
+                          >
+                            <FileSpreadsheet className="size-4 text-emerald-600 shrink-0" />
+                            <div className="flex flex-col">
+                              <span className="font-medium text-xs text-foreground">Meals Grid</span>
+                              <span className="text-[10px] text-muted-foreground">Grid uang makan harian</span>
+                            </div>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => void exportTimesheetTab('ovt')}
+                            disabled={displayedAttendanceRows.length === 0}
+                            className="cursor-pointer gap-2 py-2"
+                          >
+                            <FileSpreadsheet className="size-4 text-emerald-600 shrink-0" />
+                            <div className="flex flex-col">
+                              <span className="font-medium text-xs text-foreground">Overtime Record</span>
+                              <span className="text-[10px] text-muted-foreground">Grid lembur harian & total jam</span>
+                            </div>
+                          </DropdownMenuItem>
+
+                          <DropdownMenuSeparator />
+
+                          <DropdownMenuItem
+                            onClick={() => void exportAllTimesheetTabs()}
+                            disabled={displayedAttendanceRows.length === 0}
+                            className="cursor-pointer gap-2 py-2 bg-blue-50/60 hover:bg-blue-100/70"
+                          >
+                            <FileSpreadsheet className="size-4 text-blue-600 shrink-0" />
+                            <div className="flex flex-col">
+                              <span className="font-semibold text-xs text-blue-900">Semua 5 Tab Sekaligus</span>
+                              <span className="text-[10px] text-blue-600/80">1 File Excel lengkap dengan 5 sheet</span>
+                            </div>
+                          </DropdownMenuItem>
+
+                          <DropdownMenuSeparator />
+
+                          <DropdownMenuLabel className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                            Format Alternatif
+                          </DropdownMenuLabel>
                           <DropdownMenuItem
                             onClick={() => exportAttendanceGrid('checkin-checkout')}
                             disabled={displayedAttendanceRows.length === 0}
                             className="cursor-pointer gap-2 py-2"
                           >
-                            <Clock className="size-4 text-blue-600 shrink-0" />
+                            <Clock className="size-4 text-slate-500 shrink-0" />
                             <div className="flex flex-col">
                               <span className="font-medium text-xs text-foreground">Jam Masuk & Pulang</span>
                               <span className="text-[10px] text-muted-foreground">Grid waktu Clock In & Out harian</span>
@@ -9963,7 +10400,7 @@ export function SchedulingTimesheetWorkspace({
                             disabled={displayedAttendanceRows.length === 0}
                             className="cursor-pointer gap-2 py-2"
                           >
-                            <Activity className="size-4 text-purple-600 shrink-0" />
+                            <Activity className="size-4 text-slate-500 shrink-0" />
                             <div className="flex flex-col">
                               <span className="font-medium text-xs text-foreground">Durasi Jam Kerja</span>
                               <span className="text-[10px] text-muted-foreground">Grid total jam kerja aktif per hari</span>
@@ -10717,23 +11154,22 @@ export function SchedulingTimesheetWorkspace({
                       </p>
                     </div>
                   ) : null}
-                  {/* View title */}
-                  {attendanceView !== 'attendance' ? (
-                    <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2.5">
-                      <p className="text-foreground text-xs font-bold tracking-[0.14em] uppercase">
-                        {attendanceView === 'msa' &&
-                          `MSA SUMMARY — Rate: Staff Rp ${rate.msaStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.msaNonStaff.toLocaleString('id-ID')}`}
-                        {attendanceView === 'lokasi' &&
-                          `TUNJANGAN KHUSUS — Lokal: ${siteConfig.employeeBenefitConfig.local.specialAllowance ? `Rp ${siteConfig.employeeBenefitConfig.local.specialAllowanceAmount.toLocaleString('id-ID')}/${siteConfig.employeeBenefitConfig.local.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}` : 'Tidak aktif'} | Non Lokal: ${siteConfig.employeeBenefitConfig.nonLocal.specialAllowance ? `Rp ${siteConfig.employeeBenefitConfig.nonLocal.specialAllowanceAmount.toLocaleString('id-ID')}/${siteConfig.employeeBenefitConfig.nonLocal.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}` : 'Tidak aktif'}`}
-                        {attendanceView === 'meals' &&
-                          `MEALS SUMMARY — Rate Setup Meals: Staff Rp ${rate.mealsStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.mealsNonStaff.toLocaleString('id-ID')}`}
-                        {attendanceView === 'ovt' && 'OVERTIME SUMMARY'} {period} · {rate.project}
-                      </p>
-                      {attendanceView === 'ovt' ||
-                      attendanceView === 'msa' ||
-                      attendanceView === 'meals' ||
-                      attendanceView === 'lokasi' ? (
-                        <div className="flex items-center gap-2.5">
+                  {/* View title & Actions Bar (All 5 Tabs) */}
+                  <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2.5">
+                    <p className="text-foreground text-xs font-bold tracking-[0.14em] uppercase">
+                      {attendanceView === 'attendance' &&
+                        `REKAPITULASI KEHADIRAN (ATTENDANCE GRID) — ${period} · ${site?.name || 'Semua Site'} (${displayedAttendanceRows.length} Karyawan)`}
+                      {attendanceView === 'msa' &&
+                        `MSA SUMMARY — Rate: Staff Rp ${rate.msaStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.msaNonStaff.toLocaleString('id-ID')}`}
+                      {attendanceView === 'lokasi' &&
+                        `TUNJANGAN KHUSUS — Lokal: ${siteConfig.employeeBenefitConfig.local.specialAllowance ? `Rp ${siteConfig.employeeBenefitConfig.local.specialAllowanceAmount.toLocaleString('id-ID')}/${siteConfig.employeeBenefitConfig.local.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}` : 'Tidak aktif'} | Non Lokal: ${siteConfig.employeeBenefitConfig.nonLocal.specialAllowance ? `Rp ${siteConfig.employeeBenefitConfig.nonLocal.specialAllowanceAmount.toLocaleString('id-ID')}/${siteConfig.employeeBenefitConfig.nonLocal.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}` : 'Tidak aktif'}`}
+                      {attendanceView === 'meals' &&
+                        `MEALS SUMMARY — Rate Setup Meals: Staff Rp ${rate.mealsStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.mealsNonStaff.toLocaleString('id-ID')}`}
+                      {attendanceView === 'ovt' && 'OVERTIME SUMMARY'} {period} · {rate.project}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      {attendanceView !== 'attendance' ? (
+                        <>
                           <div className="border-border/70 flex items-center gap-2 rounded-lg border bg-white px-2.5 py-1 text-xs shadow-2xs">
                             <Switch
                               id="toggle-external-pdf-summary"
@@ -10757,10 +11193,60 @@ export function SchedulingTimesheetWorkspace({
                           >
                             <Download className="mr-2 size-4" /> Download PDF
                           </Button>
-                        </div>
+                        </>
                       ) : null}
+
+                      {/* Export Excel Button with Dropdown for Current Tab or All 5 Tabs */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={displayedAttendanceRows.length === 0}
+                            className="h-8 rounded-lg bg-emerald-50 hover:bg-emerald-100/90 text-emerald-800 border-emerald-300 text-xs font-semibold gap-1.5 shadow-2xs transition-all"
+                            title="Export data ke format Excel (.xlsx)"
+                          >
+                            <FileSpreadsheet className="size-4 text-emerald-600 shrink-0" />
+                            <span>Export Excel</span>
+                            <ChevronDown className="size-3 text-emerald-600" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-64">
+                          <DropdownMenuLabel className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                            Pilihan Export Excel
+                          </DropdownMenuLabel>
+                          <DropdownMenuItem
+                            onClick={() => void exportTimesheetTab(attendanceView)}
+                            className="cursor-pointer gap-2 py-2"
+                          >
+                            <FileSpreadsheet className="size-4 text-emerald-600 shrink-0" />
+                            <div className="flex flex-col">
+                              <span className="font-medium text-xs text-foreground">
+                                Tab Ini ({attendanceTabLabel(attendanceView)})
+                              </span>
+                              <span className="text-[10px] text-muted-foreground">
+                                Format rapi visual grid .xlsx sesuai tampilan layar
+                              </span>
+                            </div>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => void exportAllTimesheetTabs()}
+                            className="cursor-pointer gap-2 py-2"
+                          >
+                            <FileSpreadsheet className="size-4 text-blue-600 shrink-0" />
+                            <div className="flex flex-col">
+                              <span className="font-medium text-xs text-foreground">
+                                Semua 5 Tab Sekaligus
+                              </span>
+                              <span className="text-[10px] text-muted-foreground">
+                                1 File Excel lengkap dengan 5 sheet terpisah
+                              </span>
+                            </div>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
-                  ) : null}
+                  </div>
                   <div className="max-w-full overflow-x-auto overflow-y-visible">
                     <table className="w-max min-w-[1400px] table-fixed border-separate border-spacing-0 text-xs">
                       <thead>

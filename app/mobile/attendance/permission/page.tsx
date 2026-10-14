@@ -1,5 +1,8 @@
 import type { Metadata } from 'next'
-import { getMyAttendancePermissionRequests } from '@/app/actions/attendance'
+import {
+  getMyAttendancePermissionRequests,
+  getAttendancePermissionApproverCandidates,
+} from '@/app/actions/attendance'
 import { PermissionRequestForm } from '@/components/attendance/permission-request-form'
 
 export const metadata: Metadata = {
@@ -7,12 +10,15 @@ export const metadata: Metadata = {
 }
 
 export default async function MobileAttendancePermissionPage() {
-  const requests = await getMyAttendancePermissionRequests()
+  const [requests, approverData] = await Promise.all([
+    getMyAttendancePermissionRequests(),
+    getAttendancePermissionApproverCandidates(),
+  ])
 
   return (
-    <div className="space-y-4">
-      <PermissionRequestForm variant="mobile" />
-      <section className="rounded-[1.1rem] bg-white p-4 shadow-[0_16px_36px_rgba(8,32,51,0.08)]">
+    <div className="space-y-4 w-full min-w-0 max-w-full overflow-hidden">
+      <PermissionRequestForm variant="mobile" initialApproverData={approverData} />
+      <section className="rounded-[1.1rem] bg-white p-4 shadow-[0_16px_36px_rgba(8,32,51,0.08)] w-full min-w-0 max-w-full overflow-hidden">
         <div className="flex items-center justify-between gap-3">
           <h2 className="font-display text-base font-semibold text-slate-950">Riwayat Izin Saya</h2>
           <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{requests.length} data</span>
