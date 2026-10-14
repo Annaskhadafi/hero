@@ -369,14 +369,18 @@ export function MobileDailyActivityDrafts({
           libraryActivityId: srvDraft.items[0]?.libraryActivityId ? String(srvDraft.items[0].libraryActivityId) : '',
           selectedLibraryActivityIds: isCustom
             ? []
-            : srvDraft.items.map((it: any) => String(it.libraryActivityId)).filter(Boolean),
+            : srvDraft.items.map((it: any, idx: number) => (it.libraryActivityId ? String(it.libraryActivityId) : `srv_item_${idx}`)),
           selfInputActivities: isCustom
             ? []
-            : srvDraft.items.map((it: any) => {
+            : srvDraft.items.map((it: any, idx: number) => {
                 const photos =
                   it.photos && it.photos.length > 0 ? it.photos : it.photoUrl ? [it.photoUrl] : []
                 return {
-                  libraryActivityId: String(it.libraryActivityId),
+                  libraryActivityId: it.libraryActivityId ? String(it.libraryActivityId) : `srv_item_${idx}`,
+                  group: it.group || '',
+                  snapshotGroupName: it.group || '',
+                  activityName: it.label || '',
+                  points: it.points || 5,
                   equipmentNo: it.unitNumber || '',
                   startTime: it.startedAt ? toDateTimeLocalValue(it.startedAt) : '',
                   endTime: it.endedAt ? toDateTimeLocalValue(it.endedAt) : '',

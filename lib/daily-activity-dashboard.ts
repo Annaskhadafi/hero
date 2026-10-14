@@ -124,6 +124,8 @@ export interface EmployeeActivityRow {
   rosterScheduleCode?: string
   isTeamMember?: boolean
   representedByName?: string | null
+  isMultiSession?: boolean
+  multiSessionLabel?: string | null
 }
 
 
@@ -366,6 +368,27 @@ function getTodayIsoString(): string {
 
 import { getCurrentWeekRange } from './daily-activity-types'
 export { getCurrentWeekRange }
+
+export function normalizeDateToYmdString(dateInput?: Date | string | null): string {
+  if (!dateInput) return 'nodate'
+  if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateInput.trim())) {
+    return dateInput.trim()
+  }
+  try {
+    const d = new Date(dateInput)
+    if (Number.isNaN(d.getTime())) return 'nodate'
+    // Format using Asia/Makassar (WITA, site HQ) timezone to avoid UTC day boundary shift
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Makassar',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    })
+    return formatter.format(d)
+  } catch {
+    return 'nodate'
+  }
+}
 
 function formatDateDisplay(date?: Date | string | null): string {
   if (!date) {
@@ -1234,10 +1257,10 @@ export async function getDailyActivityDashboardData(
   // In weekly / date-range view, an employee has distinct daily activities per date.
   const sessionsByEmployeeAndDate = new Map<string, any[]>()
   for (const s of effectiveSessions) {
-    const sDateStr = s.workDate ? new Date(s.workDate).toISOString().split('T')[0] : 'nodate'
+    const sDateStr = normalizeDateToYmdString(s.workDate)
     const key = `${s.employeeId}_${sDateStr}`
     const list = sessionsByEmployeeAndDate.get(key) || []
-    list.push(s)
+    list.push({ ...s, isTeamMember: false })
     sessionsByEmployeeAndDate.set(key, list)
   }
 
@@ -1245,7 +1268,7 @@ export async function getDailyActivityDashboardData(
   for (const tm of rawTeamMembers) {
     const origSession = effectiveSessions.find((s) => s.id === tm.sessionId)
     if (origSession && tm.employeeId !== origSession.employeeId) {
-      const sDateStr = origSession.workDate ? new Date(origSession.workDate).toISOString().split('T')[0] : 'nodate'
+      const sDateStr = normalizeDateToYmdString(origSession.workDate)
       const key = `${tm.employeeId}_${sDateStr}`
       const list = sessionsByEmployeeAndDate.get(key) || []
       if (!list.some((s) => s.id === origSession.id)) {
@@ -1271,7 +1294,20 @@ export async function getDailyActivityDashboardData(
   const employeesList: EmployeeActivityRow[] = []
 
   for (const [, empSessions] of sessionsByEmployeeAndDate.entries()) {
+    // Prioritize direct / individual session over team-represented session as the primary anchor
+    empSessions.sort((a, b) => {
+      if (!a.isTeamMember && b.isTeamMember) return -1
+      if (a.isTeamMember && !b.isTeamMember) return 1
+      return (b.id || 0) - (a.id || 0)
+    })
     const firstSession = empSessions[0]
+    const hasOwnSession = empSessions.some((s) => !s.isTeamMember)
+    const hasTeamSession = empSessions.some((s) => s.isTeamMember)
+    const isMultiSession = empSessions.length > 1
+    const multiSessionLabel = isMultiSession
+      ? `${empSessions.length} Sesi (${hasOwnSession && hasTeamSession ? 'Mandiri + Tim' : hasTeamSession ? 'Tim' : 'Mandiri'})`
+      : null
+
     const allTasks: ActivityTaskItem[] = []
     const sessionMetaList: EmployeeSessionMeta[] = []
     const unitSet = new Set<string>()
@@ -1284,7 +1320,7 @@ export async function getDailyActivityDashboardData(
     // Iterate through all sessions of this employee
     for (const s of empSessions) {
       const sessionChildItems = itemsBySessionId.get(s.id) || []
-      const sDateStr = s.workDate ? new Date(s.workDate).toISOString().split('T')[0] : ''
+      const sDateStr = normalizeDateToYmdString(s.workDate)
       const matchedActivities = (sDateStr ? activitiesByEmployeeAndDate.get(`${s.employeeId}-${sDateStr}`) : null) || []
 
       const sessionUnits = new Set<string>()
@@ -1557,7 +1593,8 @@ export async function getDailyActivityDashboardData(
     const ewhActualHours = Number(actualHoursCalc.toFixed(1))
 
     // Resolve roster schedule code and clocks for this employee
-    const sDateStr = firstSession.workDate ? new Date(firstSession.workDate).toISOString().split('T')[0] : targetDateStr
+    const rawYmd = normalizeDateToYmdString(firstSession.workDate)
+    const sDateStr = rawYmd !== 'nodate' ? rawYmd : targetDateStr
     const sPeriod = sDateStr ? sDateStr.slice(0, 7) : ''
     const sDay = sDateStr ? parseInt(sDateStr.slice(8, 10), 10) : 0
     const empSiteId = firstSession.siteId || currentSite.id
@@ -1721,8 +1758,12 @@ export async function getDailyActivityDashboardData(
       baseNormalHours,
       overtimeHours,
       rosterScheduleCode: empRosterCode || (isRosterOff ? 'OFF' : 'NORMAL'),
-      isTeamMember: Boolean(firstSession.isTeamMember),
-      representedByName: firstSession.representedByName || null,
+      isTeamMember: hasTeamSession && !hasOwnSession,
+      representedByName: hasTeamSession
+        ? (empSessions.find((s) => s.isTeamMember)?.representedByName || null)
+        : null,
+      isMultiSession,
+      multiSessionLabel,
     })
   }
 
@@ -1737,7 +1778,8 @@ export async function getDailyActivityDashboardData(
   // 9. Real Timeline Activity Events
   const timeline: TimelineActivityEvent[] = effectiveSessions.slice(0, 5).map((s, idx) => {
     const sItems = itemsBySessionId.get(s.id) || []
-    const sDateStr = s.workDate ? new Date(s.workDate).toISOString().split('T')[0] : ''
+    const rawDate = normalizeDateToYmdString(s.workDate)
+    const sDateStr = rawDate !== 'nodate' ? rawDate : ''
     const sActs = (sDateStr ? activitiesByEmployeeAndDate.get(`${s.employeeId}-${sDateStr}`) : null) || []
 
     let actName = ''
@@ -1773,7 +1815,8 @@ export async function getDailyActivityDashboardData(
 
   const delayedJobs: DelayedJobItem[] = delayedSessions.slice(0, 5).map((s) => {
     const sItems = itemsBySessionId.get(s.id) || []
-    const sDateStr = s.workDate ? new Date(s.workDate).toISOString().split('T')[0] : ''
+    const rawDate = normalizeDateToYmdString(s.workDate)
+    const sDateStr = rawDate !== 'nodate' ? rawDate : ''
     const sActs = (sDateStr ? activitiesByEmployeeAndDate.get(`${s.employeeId}-${sDateStr}`) : null) || []
 
     let actName = ''

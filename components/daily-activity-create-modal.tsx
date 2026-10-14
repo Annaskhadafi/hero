@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Camera,
@@ -14,6 +14,7 @@ import {
   Sparkles,
   Users,
   X,
+  AlertTriangle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -31,7 +32,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { SearchableSelect } from '@/components/ui/searchable-select'
-import { createDailyActivitySessionAction } from '@/app/dashboard/activity-hub/actions'
+import {
+  createDailyActivitySessionAction,
+  checkTeamMembersExistingDailyActivityAction,
+} from '@/app/dashboard/activity-hub/actions'
 import { uploadFile } from '@/app/actions/upload'
 import { compressImageFile } from '@/lib/client-image-compression'
 import { cn } from '@/lib/utils'
@@ -104,6 +108,19 @@ export function DailyActivityCreateModal({
   const [selectedTeamMemberIds, setSelectedTeamMemberIds] = useState<number[]>([])
   const [teamMemberSearchQuery, setTeamMemberSearchQuery] = useState('')
   const [teamMemberPickerOpen, setTeamMemberPickerOpen] = useState(false)
+  const [conflictMembers, setConflictMembers] = useState<Array<{
+    employeeId: number
+    employeeName: string
+    employeeSn?: string | null
+    sessionId: number
+    sessionCode: string
+    workDate: string
+    isAuthor: boolean
+    authorName: string
+    status: string
+  }>>([])
+  const [conflictWarningOpen, setConflictWarningOpen] = useState(false)
+  const [isCheckingConflicts, setIsCheckingConflicts] = useState(false)
 
   // Kamus Aktivitas modal & tree picker
   const [isPickerModalOpen, setIsPickerModalOpen] = useState(false)
@@ -202,6 +219,8 @@ export function DailyActivityCreateModal({
     customPhotoUrl: null,
     items: [],
   })
+
+  const validItemsRef = useRef<any[]>([])
 
   // Initialize form when opened
   useEffect(() => {
@@ -678,6 +697,38 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
       }
     }
 
+    const targetTeamIds = isTeamLog ? selectedTeamMemberIds : []
+    if (isTeamLog && targetTeamIds.length > 0) {
+      setIsCheckingConflicts(true)
+      try {
+        const checkRes = await checkTeamMembersExistingDailyActivityAction({
+          employeeIds: targetTeamIds,
+          workDate: createForm.workDate,
+        })
+        if (checkRes.success && checkRes.conflicts && checkRes.conflicts.length > 0) {
+          setConflictMembers(checkRes.conflicts)
+          setConflictWarningOpen(true)
+          setIsCheckingConflicts(false)
+          return
+        }
+      } catch (err) {
+        console.warn('Pre-check conflict error:', err)
+      } finally {
+        setIsCheckingConflicts(false)
+      }
+    }
+
+    validItemsRef.current = validItems
+    await executeSubmit(targetTeamIds)
+  }
+
+  const executeSubmit = async (teamMemberIdsToSubmit?: number[]) => {
+    const finalTeamIds = teamMemberIdsToSubmit !== undefined
+      ? teamMemberIdsToSubmit
+      : (isTeamLog ? selectedTeamMemberIds : [])
+
+    const validItems = validItemsRef.current
+
     setIsCreating(true)
     try {
       const res = await withActionRetry(() =>
@@ -692,10 +743,10 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
           superiorName: createForm.superiorName || undefined,
           managerEmployeeId: createForm.managerEmployeeId ? Number(createForm.managerEmployeeId) : undefined,
           managerName: createForm.managerName || undefined,
-          teamMemberEmployeeIds: isTeamLog ? selectedTeamMemberIds : [],
+          teamMemberEmployeeIds: isTeamLog ? finalTeamIds : [],
           customerName: createForm.customerName?.trim() || undefined,
           items: validItems.map((it: any) => {
-            const itemTeamMemberIds = it.itemTeamMemberIds || (isTeamLog ? selectedTeamMemberIds : [])
+            const itemTeamMemberIds = it.itemTeamMemberIds || (isTeamLog ? finalTeamIds : [])
             const itemTeamMembers = it.itemTeamMembers || employees
               .filter((e) => itemTeamMemberIds.includes(e.id))
               .map((e) => ({ id: e.id, name: e.name, employeeSn: e.employeeId || undefined }))
@@ -758,6 +809,8 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
         })
         setIsTeamLog(false)
         setSelectedTeamMemberIds([])
+        setConflictMembers([])
+        setConflictWarningOpen(false)
         setTeamMemberSearchQuery('')
         onOpenChange(false)
         if (onSuccess) onSuccess(res.sessionId)
@@ -1954,6 +2007,90 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
               PAKAI {(createForm.items || []).filter((i) => i?.label?.trim()).length} ACTIVITY
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Conflict Warning Dialog when team members already have daily activity */}
+      <Dialog open={conflictWarningOpen} onOpenChange={setConflictWarningOpen}>
+        <DialogContent className="max-w-md bg-white p-5 rounded-2xl shadow-2xl border border-slate-200">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-amber-50 text-amber-600 border border-amber-200 shrink-0">
+                <AlertTriangle className="size-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-sm font-bold text-slate-900">
+                  Peringatan: Anggota Tim Sudah Memiliki Aktivitas
+                </DialogTitle>
+                <DialogDescription className="text-xs text-slate-500 mt-0.5">
+                  Tanggal: <strong className="text-slate-700">{createForm.workDate}</strong>
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2 text-xs">
+            <p className="text-slate-600 leading-relaxed">
+              Anggota tim berikut telah tercatat memiliki laporan aktivitas pada tanggal ini:
+            </p>
+            <div className="max-h-48 overflow-y-auto space-y-2 rounded-xl bg-slate-50 p-2.5 border border-slate-200">
+              {conflictMembers.map((c) => (
+                <div key={`${c.employeeId}-${c.sessionId}`} className="flex items-start justify-between gap-2 p-2 rounded-lg bg-white border border-slate-200 shadow-2xs">
+                  <div>
+                    <span className="font-bold text-slate-800 block text-xs">{c.employeeName}</span>
+                    <span className="text-[10px] text-slate-400 font-mono">{c.employeeSn || '-'}</span>
+                  </div>
+                  <div className="text-right">
+                    <Badge variant="outline" className="text-[10px] font-semibold bg-amber-50 text-amber-800 border-amber-300">
+                      {c.isAuthor ? 'Laporan Mandiri' : `Tim: ${c.authorName}`}
+                    </Badge>
+                    <span className="text-[10px] text-slate-400 font-mono block mt-0.5">{c.sessionCode}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              Jika Anda memilih <strong>Tetap Lanjutkan</strong>, sesi tim ini akan digabungkan (di-merge) ke dalam data harian karyawan terkait di dashboard monitoring tanpa menduplikasi baris.
+            </p>
+          </div>
+
+          <DialogFooter className="flex flex-col sm:flex-row gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setConflictWarningOpen(false)}
+              className="text-xs text-slate-600"
+            >
+              Batal / Ubah
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const conflictIds = conflictMembers.map((c) => c.employeeId)
+                const safeIds = selectedTeamMemberIds.filter((id) => !conflictIds.includes(id))
+                setSelectedTeamMemberIds(safeIds)
+                setConflictWarningOpen(false)
+                executeSubmit(safeIds)
+              }}
+              className="text-xs text-amber-700 border-amber-300 bg-amber-50 hover:bg-amber-100"
+            >
+              Keluarkan Anggota Tersebut
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                setConflictWarningOpen(false)
+                executeSubmit()
+              }}
+              className="text-xs bg-teal-600 hover:bg-teal-700 text-white font-semibold"
+            >
+              Tetap Lanjutkan
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>

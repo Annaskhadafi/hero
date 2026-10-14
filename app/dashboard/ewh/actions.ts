@@ -24,6 +24,7 @@ import {
   type EwhActivityKey,
 } from '@/lib/ewh/calculate-ewh'
 import { calculateUnitUtility, type SessionItemEntry } from '@/lib/ewh/calculate-unit-utility'
+import { calculateActivityGrouping, type ActivityGroupingResult } from '@/lib/ewh/calculate-activity-grouping'
 import { getCurrentEmployee } from '@/lib/get-current-employee'
 import { isServicemanEmployee } from '@/lib/employee-role-utils'
 import { revalidatePath } from 'next/cache'
@@ -1030,6 +1031,43 @@ export async function getUnitUtilitySummaryAction(siteId: number, workDate: Date
       ...r,
       utilityPercent: parseFloat(r.utilityPercent),
     })),
+  }
+}
+
+export async function getActivityGroupingSummaryAction(siteId: number, workDate: Date) {
+  const dayStart = new Date(workDate)
+  dayStart.setHours(0, 0, 0, 0)
+  const dayEnd = new Date(workDate)
+  dayEnd.setHours(23, 59, 59, 999)
+
+  const items = await db
+    .select({
+      sessionId: dailyActivitySessionItems.sessionId,
+      snapshotGroupName: dailyActivitySessionItems.snapshotGroupName,
+      snapshotLabel: dailyActivitySessionItems.snapshotLabel,
+      tireCount: dailyActivitySessionItems.tireCount,
+      unitNumber: dailyActivitySessionItems.unitNumber,
+      actualPoints: dailyActivitySessionItems.actualPoints,
+      isChecked: dailyActivitySessionItems.isChecked,
+    })
+    .from(dailyActivitySessionItems)
+    .innerJoin(
+      dailyActivitySessions,
+      eq(dailyActivitySessionItems.sessionId, dailyActivitySessions.id)
+    )
+    .where(
+      and(
+        eq(dailyActivitySessions.siteId, siteId),
+        gte(dailyActivitySessions.workDate, dayStart),
+        lte(dailyActivitySessions.workDate, dayEnd)
+      )
+    )
+
+  const summary = calculateActivityGrouping(items)
+
+  return {
+    success: true as const,
+    summary,
   }
 }
 

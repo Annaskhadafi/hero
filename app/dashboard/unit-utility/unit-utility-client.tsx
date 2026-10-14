@@ -12,9 +12,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Search, ChevronRight, Clock, Users, Wrench, AlertTriangle } from 'lucide-react'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Search, ChevronRight, Clock, Users, Wrench, AlertTriangle, Layers } from 'lucide-react'
 import { formatMinutesToHours } from '@/lib/ewh/calculate-ewh'
 import { classifyUtility } from '@/lib/ewh/calculate-unit-utility'
+import { ActivityGroupingTab } from './activity-grouping-tab'
+import type { ActivityGroupingResult } from '@/lib/ewh/calculate-activity-grouping'
 
 interface OperatorSlot {
   employeeId: number
@@ -45,6 +48,7 @@ interface UnitRow {
 
 interface Props {
   rows: UnitRow[]
+  activityGroupingSummary: ActivityGroupingResult
   siteId: number
   dateStr: string
 }
@@ -78,8 +82,9 @@ function formatTime(iso: string | null): string {
   return new Date(iso).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
 }
 
-export function UnitUtilityClient({ rows, siteId, dateStr }: Props) {
+export function UnitUtilityClient({ rows, activityGroupingSummary, siteId, dateStr }: Props) {
   const router = useRouter()
+  const [activeTab, setActiveTab] = useState<'utility' | 'grouping'>('utility')
   const [search, setSearch] = useState('')
   const [selectedUnit, setSelectedUnit] = useState<UnitRow | null>(null)
 
@@ -111,99 +116,121 @@ export function UnitUtilityClient({ rows, siteId, dateStr }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100">
-              <Wrench className="h-5 w-5 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Total Unit Aktif</p>
-              <p className="text-2xl font-bold">{summary.totalUnits}</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100">
-              <Clock className="h-5 w-5 text-emerald-600" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Avg Utilitas</p>
-              <p className="text-2xl font-bold">{summary.avgUtility.toFixed(1)}%</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-100">
-              <AlertTriangle className="h-5 w-5 text-red-600" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Ada Breakdown</p>
-              <p className="text-2xl font-bold text-red-600">{summary.breakdownCount}</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100">
-              <Users className="h-5 w-5 text-slate-500" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Unit Idle (0%)</p>
-              <p className="text-2xl font-bold text-slate-500">{summary.idleCount}</p>
-            </div>
-          </div>
-        </Card>
-      </div>
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setActiveTab(v as 'utility' | 'grouping')}
+        className="w-full"
+      >
+        {/* Navigation Tabs & Shared Toolbar */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
+          <TabsList className="h-10">
+            <TabsTrigger value="utility" className="gap-2 px-4">
+              <Wrench className="h-4 w-4" />
+              <span>Utilisasi Unit</span>
+            </TabsTrigger>
+            <TabsTrigger value="grouping" className="gap-2 px-4">
+              <Layers className="h-4 w-4" />
+              <span>Grouping Aktivitas</span>
+            </TabsTrigger>
+          </TabsList>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Cari unit number, nama, atau tipe…"
-            className="pl-9"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+          <div className="flex items-center gap-3">
+            <Input
+              type="date"
+              className="w-[160px]"
+              value={dateStr}
+              onChange={(e) => handleDateChange(e.target.value)}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => router.push(`/dashboard/unit-utility/master?siteId=${siteId}`)}
+            >
+              <Wrench className="mr-2 h-4 w-4" />
+              Master Unit
+            </Button>
+          </div>
         </div>
-        <Input
-          type="date"
-          className="w-[160px]"
-          value={dateStr}
-          onChange={(e) => handleDateChange(e.target.value)}
-        />
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => router.push(`/dashboard/unit-utility/master?siteId=${siteId}`)}
-        >
-          <Wrench className="mr-2 h-4 w-4" />
-          Master Unit
-        </Button>
-      </div>
 
-      {/* Unit Cards Grid */}
-      {filtered.length === 0 ? (
-        <Card className="p-8 text-center text-muted-foreground">
-          Tidak ada data unit untuk tanggal ini. Pastikan karyawan mengisi unitNumber di Daily Activity.
-        </Card>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((unit) => {
-            const utilClass = classifyUtility(unit.utilityPercent)
-            const cfg = UTILITY_CONFIG[utilClass]
-            const operators = parseSnapshot(unit.operatorSnapshot)
+        {/* TAB 1: UTILISASI UNIT */}
+        <TabsContent value="utility" className="mt-4 flex flex-col gap-6">
+          {/* Summary Cards */}
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <Card className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100">
+                  <Wrench className="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Total Unit Aktif</p>
+                  <p className="text-2xl font-bold">{summary.totalUnits}</p>
+                </div>
+              </div>
+            </Card>
+            <Card className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100">
+                  <Clock className="h-5 w-5 text-emerald-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Avg Utilitas</p>
+                  <p className="text-2xl font-bold">{summary.avgUtility.toFixed(1)}%</p>
+                </div>
+              </div>
+            </Card>
+            <Card className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-100">
+                  <AlertTriangle className="h-5 w-5 text-red-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Ada Breakdown</p>
+                  <p className="text-2xl font-bold text-red-600">{summary.breakdownCount}</p>
+                </div>
+              </div>
+            </Card>
+            <Card className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100">
+                  <Users className="h-5 w-5 text-slate-500" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Unit Idle (0%)</p>
+                  <p className="text-2xl font-bold text-slate-500">{summary.idleCount}</p>
+                </div>
+              </div>
+            </Card>
+          </div>
 
-            return (
-              <Card
-                key={unit.id}
-                className="cursor-pointer p-4 hover:shadow-md transition-shadow"
-                onClick={() => setSelectedUnit(unit)}
-              >
+          {/* Search Filter */}
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Cari unit number, nama, atau tipe…"
+              className="pl-9"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+
+          {/* Unit Cards Grid */}
+          {filtered.length === 0 ? (
+            <Card className="p-8 text-center text-muted-foreground">
+              Tidak ada data unit untuk tanggal ini. Pastikan karyawan mengisi unitNumber di Daily Activity.
+            </Card>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {filtered.map((unit) => {
+                const utilClass = classifyUtility(unit.utilityPercent)
+                const cfg = UTILITY_CONFIG[utilClass]
+                const operators = parseSnapshot(unit.operatorSnapshot)
+
+                return (
+                  <Card
+                    key={unit.id}
+                    className="cursor-pointer p-4 hover:shadow-md transition-shadow"
+                    onClick={() => setSelectedUnit(unit)}
+                  >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -267,8 +294,15 @@ export function UnitUtilityClient({ rows, siteId, dateStr }: Props) {
               </Card>
             )
           })}
-        </div>
-      )}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* TAB 2: GROUPING AKTIVITAS */}
+        <TabsContent value="grouping" className="mt-4">
+          <ActivityGroupingTab summary={activityGroupingSummary} dateStr={dateStr} />
+        </TabsContent>
+      </Tabs>
 
       {/* Detail Dialog */}
       <Dialog open={!!selectedUnit} onOpenChange={() => setSelectedUnit(null)}>

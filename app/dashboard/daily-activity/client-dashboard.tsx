@@ -1928,7 +1928,15 @@ export function DailyActivityClientDashboard({
                               <span>{emp.name}</span>
                               <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 text-blue-600 transition-opacity" />
                             </button>
-                            {emp.isTeamMember && (
+                            {emp.isMultiSession && emp.multiSessionLabel ? (
+                              <span
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200"
+                                title={`Karyawan memiliki ${emp.sessionsCount} sesi aktivitas pada tanggal ini (semua disatukan dalam baris ini)`}
+                              >
+                                <Layers className="w-3 h-3 text-purple-500" />
+                                {emp.multiSessionLabel}
+                              </span>
+                            ) : emp.isTeamMember ? (
                               <span
                                 className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200"
                                 title={`Diinput bersama / diwakilkan oleh ${emp.representedByName || 'Rekan Tim'}`}
@@ -1936,7 +1944,7 @@ export function DailyActivityClientDashboard({
                                 <Users className="w-3 h-3 text-indigo-500" />
                                 Tim {emp.representedByName ? `(${emp.representedByName})` : ''}
                               </span>
-                            )}
+                            ) : null}
                           </div>
                         </td>
                         <td className="py-3 px-4">
@@ -2708,12 +2716,17 @@ export function DailyActivityClientDashboard({
                     <div>
                       <span className="text-[11px] text-slate-400 block font-medium">Nama Karyawan</span>
                       <span className="font-bold text-slate-900 text-sm">{activeDetailItem.employee.name}</span>
-                      {activeDetailItem.employee.isTeamMember && (
+                      {activeDetailItem.employee.isMultiSession && activeDetailItem.employee.multiSessionLabel ? (
+                        <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+                          <Layers className="w-3 h-3 text-purple-500" />
+                          {activeDetailItem.employee.multiSessionLabel}
+                        </span>
+                      ) : activeDetailItem.employee.isTeamMember ? (
                         <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
                           <Users className="w-3 h-3 text-indigo-500" />
                           Tim {activeDetailItem.employee.representedByName ? `(diwakilkan oleh ${activeDetailItem.employee.representedByName})` : ''}
                         </span>
-                      )}
+                      ) : null}
                     </div>
                     <div>
                       <span className="text-[11px] text-slate-400 block font-medium">Employee SN</span>

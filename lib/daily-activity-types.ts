@@ -96,6 +96,8 @@ export interface EmployeeActivityRow {
   rosterScheduleCode?: string
   isTeamMember?: boolean
   representedByName?: string | null
+  isMultiSession?: boolean
+  multiSessionLabel?: string | null
 }
 
 export interface ShiftActivitySummary {

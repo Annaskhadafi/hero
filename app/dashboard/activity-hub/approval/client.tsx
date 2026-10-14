@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   CheckSquare,
   ChevronRight,
+  Clock,
   Download,
   Eye,
   FileCheck,
@@ -18,9 +19,11 @@ import {
   FilePenLine,
   FileSpreadsheet,
   FileText,
+  Filter,
   ImagePlus,
   Layers,
   ListFilter,
+  MoreHorizontal,
   Move,
   PenTool,
   Plus,
@@ -48,7 +51,7 @@ import { compressImageFile } from '@/lib/client-image-compression'
 import { AdminPageShell } from '@/components/admin-page-shell'
 import { DailyActivityEvidenceModal } from '@/components/daily-activity-evidence-modal'
 import { MissingSignatureDialog } from '@/components/missing-signature-dialog'
-import { HcWorkspaceBanner, hcPrimaryActionClassName } from '@/components/hc/hc-workspace-banner'
+import { hcPrimaryActionClassName } from '@/components/hc/hc-workspace-banner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -60,6 +63,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -68,7 +78,6 @@ import { EnterpriseActionButtons } from '@/components/ui/enterprise-table-kit'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { MinimalTableShell } from '@/components/ui/minimal-table-shell'
 import { MultiSelectFilterDropdown } from '@/components/ui/multi-select-filter-dropdown'
 import { SearchableSelect } from '@/components/ui/searchable-select'
 import {
@@ -117,6 +126,14 @@ export type SessionApprovalRow = {
   customerName?: string
   siteName: string
   teamMembersSummary?: string
+  teamMembers?: Array<{
+    employeeId?: number | null
+    employeeName: string
+    employeeSn?: string | null
+    department?: string | null
+    section?: string | null
+    jobTitle?: string | null
+  }>
   teamRole?: 'Pemohon' | 'Anggota Tim'
   totalItems: number
   totalPoints: number
@@ -680,11 +697,29 @@ async function uploadActivityPhoto(file: File): Promise<string> {
       (r.approvals && r.approvals.length > 0 && r.approvals.every((a) => a.status === 'approved'))
   )
 
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(50)
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, selectedDepartments, selectedSections, selectedStatuses, selectedSites, selectedShifts])
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize))
+  const paginatedRows = useMemo(() => {
+    const start = (currentPage - 1) * pageSize
+    return filteredRows.slice(start, start + pageSize)
+  }, [filteredRows, currentPage, pageSize])
+
+  const isCurrentPageAllSelected = useMemo(() => {
+    return paginatedRows.length > 0 && paginatedRows.every((r) => selectedIds.includes(r.sessionId))
+  }, [paginatedRows, selectedIds])
+
   const toggleSelectAll = () => {
-    if (selectedIds.length === filteredRows.length) {
-      setSelectedIds([])
+    const pageIds = paginatedRows.map((r) => r.sessionId)
+    if (isCurrentPageAllSelected) {
+      setSelectedIds((prev) => prev.filter((id) => !pageIds.includes(id)))
     } else {
-      setSelectedIds(filteredRows.map((r) => r.sessionId))
+      setSelectedIds((prev) => Array.from(new Set([...prev, ...pageIds])))
     }
   }
 
@@ -706,6 +741,9 @@ async function uploadActivityPhoto(file: File): Promise<string> {
     if (['approved', 'completed', 'closed', 'rejected', 'draft', 'returned', 'reverted', 'needs_revision'].includes(status)) {
       return false
     }
+
+    // Admin / Super Admin selalu memiliki otoritas review & approval
+    if (isAdmin) return true
 
     const approvals = Array.isArray(row.approvals) ? row.approvals : []
     const activeStep = approvals.find((a) => (a.status || '').toLowerCase() === 'pending')
@@ -748,7 +786,7 @@ async function uploadActivityPhoto(file: File): Promise<string> {
     () =>
       selectedBatchRows.length > 0 &&
       selectedBatchRows.every((row) => isRowReviewableByCurrentUser(row)),
-    [selectedBatchRows, currentEmployeeId, currentEmployeeEmail, currentEmployeeName]
+    [selectedBatchRows, currentEmployeeId, currentEmployeeEmail, currentEmployeeName, isAdmin]
   )
 
   const handleOpenBatchReview = () => {
@@ -1960,346 +1998,730 @@ async function uploadActivityPhoto(file: File): Promise<string> {
     }
   }
 
-  return (
-    <AdminPageShell>
-      <HcWorkspaceBanner
-        badge="DAILY ACTIVITY APPROVAL"
-        title="Evaluasi Aktivitas Harian Karyawan"
-        description="Review pengajuan aktivitas harian teknisi dan staf site dengan verifikasi tanda tangan digital berjenjang, integrasi reminder otomatis, dan audit trail transparan."
-        metrics={[
-          { label: 'Total Sesi', value: (rows || []).length },
-          { label: 'Menunggu Approval', value: (rows || []).filter((r) => (r.sessionStatus || '').toLowerCase().includes('pending') || (r.sessionStatus || '').toLowerCase().includes('submitted')).length },
-          { label: 'Disetujui', value: (rows || []).filter((r) => (r.sessionStatus || '').toLowerCase() === 'approved' || (r.sessionStatus || '').toLowerCase() === 'completed').length },
-          { label: 'Total Poin Disetujui', value: `${(rows || []).filter((r) => (r.sessionStatus || '').toLowerCase() === 'approved' || (r.sessionStatus || '').toLowerCase() === 'completed').reduce((sum, r) => sum + (r.totalPoints || 0), 0)} pts` },
-        ]}
-      />
+  const handleExportFilteredExcel = async () => {
+    if (filteredRows.length === 0) {
+      toast.error('Tidak ada data untuk diekspor')
+      return
+    }
+    const XLSX = await import('xlsx')
+    const data = filteredRows.map((row, idx) => ({
+      'No': idx + 1,
+      'Kode Sesi': row.sessionCode,
+      'Nama Karyawan': row.employeeName,
+      'SN Karyawan': row.employeeSn,
+      'Tanggal Kerja': row.workDate ? new Date(row.workDate).toLocaleDateString('id-ID') : '—',
+      'Shift': row.shiftCode,
+      'Site / Lokasi': row.siteName || '—',
+      'Total Poin': row.totalPoints ?? 0,
+      'Status': row.sessionStatus || '—',
+      'Tim': row.teamMembersSummary || '—',
+    }))
+    const ws = XLSX.utils.json_to_sheet(data)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Daily Activity Approval')
+    XLSX.writeFile(wb, `Daily_Activity_Approval_${filteredRows.length}_items_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    toast.success(`Berhasil mengunduh Excel untuk ${filteredRows.length} data!`)
+  }
 
-      <MinimalTableShell
-        label="daily activity approval"
-        title="Daftar Review"
-        description="Daftar historis evaluasi aktivitas harian."
-        fileName="daily-activity-approvals"
-        searchEnabled={false}
-        access={access}
-        filters={
-          <>
-            <div className="relative w-full sm:w-[220px] sm:flex-none">
-              <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-              <Input
-                placeholder="Cari aktivitas..."
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                className="bg-surface-container-lowest h-9 rounded-xl border-0 pl-9 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
-              />
+  const totalSessions = (rows || []).length
+  const pendingCount = (rows || []).filter((r) => {
+    const s = (r.sessionStatus || '').toLowerCase()
+    return s.includes('pending') || s.includes('submitted')
+  }).length
+  const approvedCount = (rows || []).filter((r) => {
+    const s = (r.sessionStatus || '').toLowerCase()
+    return s === 'approved' || s === 'completed'
+  }).length
+  const approvedRate = totalSessions > 0 ? Math.round((approvedCount / totalSessions) * 100) : 0
+  const totalPoints = (rows || []).reduce((sum, r) => {
+    const s = (r.sessionStatus || '').toLowerCase()
+    if (s === 'approved' || s === 'completed') {
+      return sum + (r.totalPoints || 0)
+    }
+    return sum
+  }, 0)
+  const avgPoints = approvedCount > 0 ? Math.round(totalPoints / approvedCount) : 0
+
+  return (
+    <AdminPageShell compact>
+      {/* ── 1. SLEEK EXECUTIVE HEADER & ACTION BAR ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3.5">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+              Approval Aktivitas Harian
+            </h1>
+            <Badge variant="outline" className="rounded-full bg-indigo-50/80 px-2.5 py-0.5 text-xs font-semibold text-indigo-700 border-indigo-200">
+              {filteredRows.length} Dokumen
+            </Badge>
+          </div>
+          <p className="text-xs sm:text-sm text-slate-500">
+            Verifikasi multi-step & evaluasi operasional harian tim teknisi site.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsSettingsOpen(true)}
+            className="h-9 rounded-xl border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 shadow-2xs hover:bg-slate-50 hover:text-slate-900"
+          >
+            <Settings className="size-3.5 mr-1.5 text-slate-500" />
+            Settings
+          </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 rounded-xl border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 shadow-2xs hover:bg-slate-50 hover:text-slate-900"
+              >
+                <MoreHorizontal className="size-3.5 mr-1.5 text-slate-500" />
+                Aksi Lain
+                <ChevronDown className="size-3 ml-1 text-slate-400" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52 rounded-xl p-1 shadow-lg border-slate-200 bg-white">
+              <DropdownMenuItem
+                onClick={handleTestApproval}
+                disabled={isTestRunning}
+                className="text-xs cursor-pointer rounded-lg py-2 text-slate-700 hover:text-indigo-600"
+              >
+                <Bug className="size-4 mr-2 text-indigo-600" />
+                {isTestRunning ? 'Generating...' : 'Buat Test Approval'}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={handleSendReminders}
+                disabled={isReminderRunning}
+                className="text-xs cursor-pointer rounded-lg py-2 text-slate-700 hover:text-amber-600"
+              >
+                <Send className="size-4 mr-2 text-amber-600" />
+                {isReminderRunning ? 'Sending...' : 'Kirim Reminder Pending'}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <Button
+            onClick={handleOpenCreateModal}
+            className="h-9 rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 text-xs font-bold text-white shadow-xs"
+          >
+            <Plus className="size-3.5 mr-1.5" />
+            TAMBAH AKTIVITAS
+          </Button>
+        </div>
+      </div>
+
+      {/* ── 2. EXECUTIVE BENTO KPI SCORE CARDS ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        {/* Card 1: Total Pengajuan */}
+        <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs transition-all hover:border-slate-300 hover:shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total Pengajuan</span>
+            <div className="flex size-9 items-center justify-center rounded-xl bg-indigo-50 border border-indigo-100/80 text-indigo-600">
+              <Layers className="size-4.5" />
             </div>
+          </div>
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="font-mono text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">{totalSessions}</span>
+            <span className="text-xs font-medium text-slate-500">sesi</span>
+          </div>
+          <div className="mt-2.5 flex items-center justify-between pt-2 border-t border-slate-100 text-[11px] text-slate-500">
+            <span>Seluruh aktivitas site</span>
+            <span className="font-mono font-medium text-slate-600">{filteredRows.length} terfilter</span>
+          </div>
+        </div>
+
+        {/* Card 2: Menunggu Review */}
+        <div className="relative overflow-hidden rounded-2xl border border-amber-200/80 bg-gradient-to-br from-amber-50/40 via-white to-white p-4 shadow-xs transition-all hover:border-amber-300 hover:shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-900/70">Menunggu Review</span>
+            <div className="flex size-9 items-center justify-center rounded-xl bg-amber-100/80 border border-amber-200/90 text-amber-700">
+              <Clock className="size-4.5" />
+            </div>
+          </div>
+          <div className="mt-3 flex items-baseline justify-between">
+            <div className="flex items-baseline gap-2">
+              <span className="font-mono text-2xl sm:text-3xl font-bold tracking-tight text-amber-900">{pendingCount}</span>
+              <span className="text-xs font-medium text-amber-700/80">sesi</span>
+            </div>
+            {pendingCount > 0 ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-200">
+                <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
+                Perlu Tindakan
+              </span>
+            ) : (
+              <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                Semua bersih
+              </span>
+            )}
+          </div>
+          <div className="mt-2.5 flex items-center justify-between pt-2 border-t border-amber-100/60 text-[11px] text-amber-800/80">
+            <span>Status submitted / pending</span>
+            <span className="font-semibold">{Math.round((pendingCount / (totalSessions || 1)) * 100)}% antrian</span>
+          </div>
+        </div>
+
+        {/* Card 3: Disetujui & Selesai */}
+        <div className="relative overflow-hidden rounded-2xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/40 via-white to-white p-4 shadow-xs transition-all hover:border-emerald-300 hover:shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-900/70">Disetujui</span>
+            <div className="flex size-9 items-center justify-center rounded-xl bg-emerald-100/80 border border-emerald-200/90 text-emerald-700">
+              <CheckCircle2 className="size-4.5" />
+            </div>
+          </div>
+          <div className="mt-3 flex items-baseline justify-between">
+            <div className="flex items-baseline gap-2">
+              <span className="font-mono text-2xl sm:text-3xl font-bold tracking-tight text-emerald-900">{approvedCount}</span>
+              <span className="text-xs font-medium text-emerald-700/80">sesi</span>
+            </div>
+            <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-200">
+              {approvedRate}% Rasio
+            </span>
+          </div>
+          <div className="mt-2.5 flex items-center justify-between pt-2 border-t border-emerald-100/60 text-[11px] text-emerald-800/80">
+            <span>Validasi digital berjenjang</span>
+            <span className="font-semibold">Tervalidasi</span>
+          </div>
+        </div>
+
+        {/* Card 4: Total Poin */}
+        <div className="relative overflow-hidden rounded-2xl border border-purple-200/80 bg-gradient-to-br from-purple-50/40 via-white to-white p-4 shadow-xs transition-all hover:border-purple-300 hover:shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-purple-900/70">Poin Disetujui</span>
+            <div className="flex size-9 items-center justify-center rounded-xl bg-purple-100/80 border border-purple-200/90 text-purple-700">
+              <Sparkles className="size-4.5" />
+            </div>
+          </div>
+          <div className="mt-3 flex items-baseline justify-between">
+            <div className="flex items-baseline gap-1.5">
+              <span className="font-mono text-2xl sm:text-3xl font-bold tracking-tight text-purple-950">{totalPoints.toLocaleString('id-ID')}</span>
+              <span className="text-xs font-bold text-purple-700">pts</span>
+            </div>
+            <span className="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-bold text-purple-800 border border-purple-200">
+              ~{avgPoints} pts/sesi
+            </span>
+          </div>
+          <div className="mt-2.5 flex items-center justify-between pt-2 border-t border-purple-100/60 text-[11px] text-purple-800/80">
+            <span>Akumulasi bobot aktivitas</span>
+            <span className="font-semibold">Approved</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── 3. SEARCH & FILTERS TOOLBAR ── */}
+      <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-2xs">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          {/* Search input */}
+          <div className="relative w-full lg:w-72 shrink-0">
+            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400" />
+            <Input
+              placeholder="Cari aktivitas, karyawan, SN..."
+              value={searchQuery}
+              onChange={(event) => {
+                setSearchQuery(event.target.value)
+                setCurrentPage(1)
+              }}
+              className="h-9 rounded-xl border border-slate-200 bg-slate-50/50 pl-9 pr-8 text-xs focus:bg-white transition-colors"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute top-1/2 right-2.5 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X className="size-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Filter Dropdowns & Actions */}
+          <div className="flex flex-wrap items-center gap-2">
             <MultiSelectFilterDropdown
               options={departmentFilterOptions}
               selected={selectedDepartments}
-              onChange={setSelectedDepartments}
+              onChange={(v) => { setSelectedDepartments(v); setCurrentPage(1); }}
               placeholder="Semua departemen"
               label="Departemen"
             />
             <MultiSelectFilterDropdown
               options={sectionFilterOptions}
               selected={selectedSections}
-              onChange={setSelectedSections}
+              onChange={(v) => { setSelectedSections(v); setCurrentPage(1); }}
               placeholder="Semua section"
               label="Section"
             />
             <MultiSelectFilterDropdown
               options={statusFilterOptions}
               selected={selectedStatuses}
-              onChange={setSelectedStatuses}
+              onChange={(v) => { setSelectedStatuses(v); setCurrentPage(1); }}
               placeholder="Semua status"
               label="Status"
             />
             <MultiSelectFilterDropdown
               options={siteFilterOptions}
               selected={selectedSites}
-              onChange={setSelectedSites}
+              onChange={(v) => { setSelectedSites(v); setCurrentPage(1); }}
               placeholder="Semua site"
               label="Site"
             />
             <MultiSelectFilterDropdown
               options={shiftFilterOptions}
               selected={selectedShifts}
-              onChange={setSelectedShifts}
+              onChange={(v) => { setSelectedShifts(v); setCurrentPage(1); }}
               placeholder="Semua shift"
               label="Shift"
             />
             {hasActiveFilters && (
               <Button
                 type="button"
-                variant="outline"
+                variant="ghost"
                 size="sm"
                 onClick={handleResetFilters}
-                className="h-9 rounded-xl border-0 px-2.5 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 font-semibold shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
+                className="h-9 rounded-xl px-2.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 hover:text-rose-700"
               >
-                <RotateCcw className="size-3 mr-1" /> Reset Filter
+                <RotateCcw className="size-3 mr-1" /> Reset
               </Button>
             )}
-          </>
-        }
-        showImport={false}
-        showExport={false}
-        primaryAction={
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() => setIsSettingsOpen(true)}>
-              <Settings className="size-4 mr-1.5" /> Settings
-            </Button>
-            <Button variant="secondary" onClick={handleTestApproval} disabled={isTestRunning}>
-              <Bug className="size-4 mr-1.5" /> {isTestRunning ? 'Generating...' : 'Test Approval'}
-            </Button>
-            <Button variant="outline" onClick={handleSendReminders} disabled={isReminderRunning}>
-              <Send className="size-4 mr-1.5" /> {isReminderRunning ? 'Sending...' : 'Send Reminders'}
-            </Button>
-            <Button onClick={handleOpenCreateModal} className={hcPrimaryActionClassName}>
-              <Plus className="size-4 mr-1.5" /> TAMBAH AKTIVITAS
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleExportFilteredExcel}
+              className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 transition-colors"
+            >
+              <FileSpreadsheet className="size-3.5 mr-1.5 text-emerald-600" />
+              Excel
             </Button>
           </div>
-        }
-        // Integrated Import and Export available via MinimalTableShell
-        columnOptions={[]}
-      >
-        {/* Sticky Batch Approval Action Bar */}
-        {selectedIds.length > 0 && (
-          <div className="mb-3 flex items-center justify-between rounded-xl border border-indigo-200 bg-indigo-50/90 px-4 py-2.5 shadow-sm animate-in fade-in slide-in-from-top-2">
-            <div className="flex items-center gap-2 text-xs font-semibold text-indigo-900">
-              <CheckCheck className="h-4 w-4 text-indigo-600" />
-              <span>{selectedIds.length} dari {filteredRows.length} aktivitas terpilih</span>
-            </div>
-            <div className="flex items-center gap-2">
-              {canBatchReview && (
-                <Button
-                  size="sm"
-                  onClick={handleOpenBatchReview}
-                  className="h-8 rounded-lg bg-indigo-600 px-4 text-xs font-bold text-white uppercase shadow-sm hover:bg-indigo-700"
-                >
-                  REVIEW
-                </Button>
-              )}
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleDownloadSelectedPdf}
-                disabled={isDownloadingPdf}
-                className="h-8 rounded-lg border-slate-300 bg-white px-3.5 text-xs font-bold text-slate-800 uppercase shadow-sm hover:bg-slate-50"
-              >
-                <FileDown className="mr-1.5 h-3.5 w-3.5 text-rose-600" />
-                UNDUH
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleDownloadSelectedExcel}
-                className="h-8 rounded-lg border-slate-300 bg-white px-3.5 text-xs font-bold text-slate-800 uppercase shadow-sm hover:bg-emerald-50"
-              >
-                <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5 text-emerald-600" />
-                EXCEL
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setIsBatchDeleteModalOpen(true)}
-                className="h-8 rounded-lg border-red-200 bg-white px-3.5 text-xs font-bold text-red-600 uppercase shadow-sm hover:bg-red-50 hover:border-red-300"
-              >
-                <Trash2 className="mr-1.5 h-3.5 w-3.5 text-red-600" />
-                HAPUS
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setSelectedIds([])}
-                className="h-8 text-xs font-bold text-indigo-700 uppercase hover:bg-indigo-100/70"
-              >
-                BATAL
-              </Button>
-            </div>
-          </div>
-        )}
+        </div>
+      </div>
 
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-10 text-center">
-                <button
-                  type="button"
-                  onClick={toggleSelectAll}
-                  className="flex items-center justify-center text-slate-400 hover:text-slate-700"
-                  title="Pilih Semua"
-                >
-                  {filteredRows.length > 0 && selectedIds.length === filteredRows.length ? (
-                    <CheckSquare className="h-4 w-4 text-indigo-600" />
-                  ) : (
-                    <Square className="h-4 w-4" />
-                  )}
-                </button>
-              </TableHead>
-              <TableHead>Karyawan</TableHead>
-              <TableHead>Kode Sesi</TableHead>
-              <TableHead>Tgl Masuk</TableHead>
-              <TableHead>Shift</TableHead>
-              <TableHead>Site / Lokasi</TableHead>
-              <TableHead className="text-center">Total Poin</TableHead>
-              <TableHead>Progress Approval</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Aksi</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredRows.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
-                  {hasActiveFilters
-                    ? 'Tidak ada aktivitas yang sesuai dengan filter pencarian.'
-                    : 'Belum ada data review aktivitas harian.'}
-                </TableCell>
+      {/* ── 4. STICKY BATCH APPROVAL ACTION BAR ── */}
+      {selectedIds.length > 0 && (
+        <div className="flex items-center justify-between rounded-xl border border-indigo-200 bg-indigo-50/90 px-4 py-2.5 shadow-sm animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-2 text-xs font-semibold text-indigo-900">
+            <CheckCheck className="h-4 w-4 text-indigo-600" />
+            <span>{selectedIds.length} dari {filteredRows.length} aktivitas terpilih</span>
+            {selectedIds.length < filteredRows.length && (
+              <button
+                type="button"
+                onClick={() => setSelectedIds(filteredRows.map((r) => r.sessionId))}
+                className="ml-2 text-xs text-indigo-700 underline font-semibold hover:text-indigo-900 cursor-pointer"
+              >
+                (Pilih semua {filteredRows.length} aktivitas)
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {canBatchReview && (
+              <Button
+                size="sm"
+                onClick={handleOpenBatchReview}
+                className="h-8 rounded-lg bg-indigo-600 px-4 text-xs font-bold text-white uppercase shadow-sm hover:bg-indigo-700"
+              >
+                REVIEW
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleDownloadSelectedPdf}
+              disabled={isDownloadingPdf}
+              className="h-8 rounded-lg border-slate-300 bg-white px-3.5 text-xs font-bold text-slate-800 uppercase shadow-sm hover:bg-slate-50"
+            >
+              <FileDown className="mr-1.5 h-3.5 w-3.5 text-rose-600" />
+              UNDUH
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleDownloadSelectedExcel}
+              className="h-8 rounded-lg border-slate-300 bg-white px-3.5 text-xs font-bold text-slate-800 uppercase shadow-sm hover:bg-emerald-50"
+            >
+              <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5 text-emerald-600" />
+              EXCEL
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setIsBatchDeleteModalOpen(true)}
+              className="h-8 rounded-lg border-red-200 bg-white px-3.5 text-xs font-bold text-red-600 uppercase shadow-sm hover:bg-red-50 hover:border-red-300"
+            >
+              <Trash2 className="mr-1.5 h-3.5 w-3.5 text-red-600" />
+              HAPUS
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setSelectedIds([])}
+              className="h-8 text-xs font-bold text-indigo-700 uppercase hover:bg-indigo-100/70"
+            >
+              BATAL
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── 5. DATA TABLE CONTAINER ── */}
+      <div className="rounded-2xl border border-slate-200/90 bg-white overflow-hidden shadow-xs">
+        <div className="overflow-x-auto w-full scrollbar-thin scrollbar-thumb-slate-200">
+          <Table className="w-full table-fixed min-w-[1060px] border-collapse">
+            <TableHeader className="bg-slate-50/90 border-b border-slate-200 sticky top-0 z-10 backdrop-blur-xs">
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-11 min-w-[44px] max-w-[44px] text-center p-0">
+                  <button
+                    type="button"
+                    onClick={toggleSelectAll}
+                    className="flex items-center justify-center text-slate-400 hover:text-slate-700 mx-auto"
+                    title={isCurrentPageAllSelected ? 'Batal Pilih Halaman Ini' : 'Pilih Semua di Halaman Ini'}
+                  >
+                    {isCurrentPageAllSelected ? (
+                      <CheckSquare className="h-4 w-4 text-indigo-600" />
+                    ) : (
+                      <Square className="h-4 w-4" />
+                    )}
+                  </button>
+                </TableHead>
+                <TableHead className="w-[210px] min-w-[190px] max-w-[230px] font-bold text-slate-800 text-xs">Karyawan & Tim</TableHead>
+                <TableHead className="w-[110px] min-w-[100px] max-w-[120px] font-bold text-slate-800 text-xs">Kode Sesi</TableHead>
+                <TableHead className="w-[95px] min-w-[90px] max-w-[105px] font-bold text-slate-800 text-xs">Tgl Masuk</TableHead>
+                <TableHead className="w-[75px] min-w-[65px] max-w-[85px] font-bold text-slate-800 text-xs">Shift</TableHead>
+                <TableHead className="w-[130px] min-w-[120px] max-w-[150px] font-bold text-slate-800 text-xs">Site / Lokasi</TableHead>
+                <TableHead className="w-[95px] min-w-[85px] max-w-[105px] text-center font-bold text-slate-800 text-xs">Total Poin</TableHead>
+                <TableHead className="w-[125px] min-w-[115px] max-w-[135px] font-bold text-slate-800 text-xs">Progress Approval</TableHead>
+                <TableHead className="w-[105px] min-w-[95px] max-w-[115px] font-bold text-slate-800 text-xs">Status</TableHead>
+                <TableHead className="w-[120px] min-w-[110px] max-w-[130px] text-right font-bold text-slate-800 text-xs pr-4">Aksi</TableHead>
               </TableRow>
-            )}
-            {filteredRows.map((row) => {
-              const isSelected = selectedIds.includes(row.sessionId)
-              return (
-                <TableRow
-                  key={`${row.sessionId}-${row.employeeId || row.employeeName}`}
-                  className={cn(
-                    'hover:bg-slate-50/80 transition-colors cursor-pointer',
-                    isSelected && 'bg-indigo-50/40 hover:bg-indigo-50/60'
-                  )}
-                  onClick={() => router.push(`/dashboard/activity-hub/document/${row.sessionId}/approval`)}
-                >
-                  <TableCell className="w-10 text-center" onClick={(e) => toggleSelectRow(row.sessionId, e)}>
-                    <button
-                      type="button"
-                      className="flex items-center justify-center text-slate-400 hover:text-slate-700"
-                    >
-                      {isSelected ? (
-                        <CheckSquare className="h-4 w-4 text-indigo-600" />
-                      ) : (
-                        <Square className="h-4 w-4" />
+            </TableHeader>
+            <TableBody>
+              {paginatedRows.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={10} className="text-center text-muted-foreground py-12">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <ListFilter className="size-8 text-slate-300" />
+                      <p className="font-semibold text-slate-700">
+                        {hasActiveFilters
+                          ? 'Tidak ada aktivitas yang sesuai dengan filter pencarian.'
+                          : 'Belum ada data review aktivitas harian.'}
+                      </p>
+                      {hasActiveFilters && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={handleResetFilters}
+                          className="mt-1 h-7 text-xs text-rose-600 hover:bg-rose-50 border-rose-200"
+                        >
+                          <RotateCcw className="size-3 mr-1" /> Reset Filter
+                        </Button>
                       )}
-                    </button>
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <p className="font-semibold text-slate-900">{row.employeeName}</p>
-                        {row.teamRole === 'Anggota Tim' ? (
-                          <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
-                            Anggota Tim
-                          </span>
-                        ) : row.teamMembersSummary ? (
-                          <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                            Pemohon
-                          </span>
-                        ) : null}
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-slate-500">
-                        <span>{row.employeeSn}</span>
-                        {row.teamMembersSummary ? (
-                          <span className="text-[10px] text-slate-400 italic leading-tight">
-                            • Tim: {row.teamMembersSummary}
-                          </span>
-                        ) : null}
-                      </div>
                     </div>
                   </TableCell>
-                  <TableCell className="font-mono text-xs text-slate-600">{row.sessionCode}</TableCell>
-                  <TableCell>{formatDate(row.workDate)}</TableCell>
-                  <TableCell className="font-semibold text-xs">{row.shiftCode}</TableCell>
-                  <TableCell className="text-xs">{row.siteName}</TableCell>
-                  <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
-                    <div className="inline-flex flex-col items-center">
-                      <span className="font-bold text-xs text-emerald-700 font-mono bg-emerald-50 border border-emerald-200/90 px-2 py-0.5 rounded-md shadow-2xs">
-                        +{row.totalPoints || 0} pts
+                </TableRow>
+              )}
+              {paginatedRows.map((row) => {
+                const isSelected = selectedIds.includes(row.sessionId)
+                const membersList = (row.teamMembers && row.teamMembers.length > 0)
+                  ? row.teamMembers
+                  : (row.teamMembersSummary || '')
+                      .split(',')
+                      .map((n) => n.trim())
+                      .filter(Boolean)
+                      .map((name) => ({ employeeName: name, employeeSn: '-', jobTitle: 'Serviceman' }))
+
+                return (
+                  <TableRow
+                    key={row.sessionId}
+                    className={cn(
+                      'hover:bg-slate-50/80 transition-colors cursor-pointer border-b border-slate-100',
+                      isSelected && 'bg-indigo-50/40 hover:bg-indigo-50/60'
+                    )}
+                    onClick={() => router.push(`/dashboard/activity-hub/document/${row.sessionId}/approval`)}
+                  >
+                    <TableCell className="w-11 min-w-[44px] max-w-[44px] text-center p-0" onClick={(e) => toggleSelectRow(row.sessionId, e)}>
+                      <button
+                        type="button"
+                        className="flex items-center justify-center text-slate-400 hover:text-slate-700 mx-auto"
+                      >
+                        {isSelected ? (
+                          <CheckSquare className="h-4 w-4 text-indigo-600" />
+                        ) : (
+                          <Square className="h-4 w-4" />
+                        )}
+                      </button>
+                    </TableCell>
+
+                    {/* Kolom Karyawan & Tim dengan Popover */}
+                    <TableCell className="w-[210px] min-w-[190px] max-w-[230px] py-2.5">
+                      <div className="flex flex-col gap-0.5 min-w-0">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <p className="font-semibold text-slate-900 truncate text-[13px]" title={row.employeeName}>
+                            {row.employeeName}
+                          </p>
+                          {membersList.length > 0 ? (
+                            <Popover>
+                              <PopoverTrigger asChild onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  type="button"
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-900 border border-indigo-200/90 transition-all cursor-pointer shrink-0 shadow-2xs"
+                                  title="Klik untuk melihat anggota tim"
+                                >
+                                  <Users className="size-2.5" />
+                                  <span>+{membersList.length}</span>
+                                </button>
+                              </PopoverTrigger>
+                              <PopoverContent
+                                align="start"
+                                className="w-80 p-0 shadow-xl border border-slate-200 rounded-xl overflow-hidden bg-white z-50 animate-in fade-in zoom-in-95"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div className="bg-gradient-to-r from-indigo-50/90 to-slate-50 px-3.5 py-2.5 border-b border-indigo-100 flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <div className="size-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-2xs">
+                                      <Users className="size-3.5" />
+                                    </div>
+                                    <div>
+                                      <p className="text-xs font-bold text-slate-900">Formasi Tim Aktivitas</p>
+                                      <p className="text-[10px] text-slate-500">Total {membersList.length + 1} personil terlibat</p>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="p-3 space-y-2 max-h-64 overflow-y-auto">
+                                  {/* Pemohon / Leader */}
+                                  <div className="p-2 rounded-lg bg-indigo-50/60 border border-indigo-100 flex items-center gap-2.5">
+                                    <div className="size-7 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[11px] font-bold uppercase shrink-0">
+                                      {row.employeeName.charAt(0)}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-center gap-1.5">
+                                        <p className="text-xs font-bold text-slate-900 truncate">{row.employeeName}</p>
+                                        <span className="text-[9px] font-semibold bg-indigo-600 text-white px-1.5 py-0.2 rounded-full">Pemohon</span>
+                                      </div>
+                                      <p className="text-[10px] text-slate-500 font-mono">SN: {row.employeeSn || '-'}</p>
+                                    </div>
+                                  </div>
+
+                                  {/* Anggota Tim Lainnya */}
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1 pt-1">Rekan Tim ({membersList.length})</p>
+                                  <div className="space-y-1.5">
+                                    {membersList.map((member: any, mIdx: number) => (
+                                      <div key={mIdx} className="px-2 py-1.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-100 flex items-center gap-2.5 transition-colors">
+                                        <div className="size-6 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-[10px] font-bold uppercase shrink-0">
+                                          {member.employeeName ? member.employeeName.charAt(0) : 'T'}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                          <p className="text-xs font-medium text-slate-800 truncate">{member.employeeName}</p>
+                                          <p className="text-[10px] text-slate-400 font-mono">
+                                            SN: {member.employeeSn || '-'} {member.jobTitle ? `• ${member.jobTitle}` : ''}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </PopoverContent>
+                            </Popover>
+                          ) : null}
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-slate-500 truncate">
+                          <span className="font-mono text-[11px] text-slate-500">{row.employeeSn}</span>
+                          <span className="text-slate-300">•</span>
+                          <span className="text-[11px] text-slate-400 truncate">{row.jobTitle || 'Serviceman'}</span>
+                        </div>
+                      </div>
+                    </TableCell>
+
+                    <TableCell className="w-[110px] min-w-[100px] max-w-[120px]">
+                      <span className="font-mono text-xs font-semibold text-slate-700 bg-slate-100/90 px-2 py-0.5 rounded border border-slate-200/70 truncate block" title={row.sessionCode}>
+                        {row.sessionCode}
                       </span>
-                      <span className="text-[10px] text-slate-400 mt-0.5">
-                        {row.totalItems || 0} item
+                    </TableCell>
+
+                    <TableCell className="w-[95px] min-w-[90px] max-w-[105px] text-xs text-slate-700 whitespace-nowrap">
+                      {formatDate(row.workDate)}
+                    </TableCell>
+
+                    <TableCell className="w-[75px] min-w-[65px] max-w-[85px]">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-800 border border-slate-200">
+                        {row.shiftCode}
                       </span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <ApprovalProgressBadge approvals={row.approvals} />
-                  </TableCell>
-                  <TableCell>
-                    <SessionStatusBadge status={row.sessionStatus} />
-                  </TableCell>
-                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                    {(() => {
-                      const isComplete = ['approved', 'closed', 'completed'].includes((row.sessionStatus || '').toLowerCase())
-                      const isRequester = Boolean(
-                        currentEmployeeId &&
-                          row.employeeId &&
-                          Number(row.employeeId) === Number(currentEmployeeId)
-                      )
-                      const canEdit =
-                        ['draft', 'returned', 'reverted', 'needs_revision'].includes((row.sessionStatus || '').toLowerCase()) &&
-                        isRequester
+                    </TableCell>
 
-                      const canDeleteThisRow = true
-                      const isDeleteDisabled = false
+                    <TableCell className="w-[130px] min-w-[120px] max-w-[150px]">
+                      <p className="text-xs text-slate-700 truncate font-medium" title={row.siteName}>
+                        {row.siteName}
+                      </p>
+                    </TableCell>
 
-                      return (
-                        <div className="flex min-w-max items-center justify-end gap-1">
-                          {/* Tombol Unduh PDF Dokumen Resmi */}
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="denseIcon"
-                            onClick={() => handleDownloadActivityPdf(row)}
-                            disabled={isDownloadingPdf}
-                            title="Unduh PDF Dokumen Resmi"
-                            className="text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 cursor-pointer"
-                          >
-                            <Download className="size-4" />
-                          </Button>
+                    <TableCell className="w-[95px] min-w-[85px] max-w-[105px] text-center" onClick={(e) => e.stopPropagation()}>
+                      <div className="inline-flex flex-col items-center">
+                        <span className="font-bold text-xs text-emerald-700 font-mono bg-emerald-50 border border-emerald-200/90 px-2 py-0.5 rounded-md shadow-2xs whitespace-nowrap">
+                          +{row.totalPoints || 0} pts
+                        </span>
+                        <span className="text-[10px] text-slate-400 mt-0.5">
+                          {row.totalItems || 0} item
+                        </span>
+                      </div>
+                    </TableCell>
 
-                          {/* Tombol Print / Live Preview */}
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="denseIcon"
-                            onClick={() => setPreviewTarget(row)}
-                            title="Lihat Preview Dokumen"
-                            className="text-slate-600 hover:text-slate-900 cursor-pointer"
-                          >
-                            <Eye className="size-4" />
-                          </Button>
+                    <TableCell className="w-[125px] min-w-[115px] max-w-[135px]">
+                      <ApprovalProgressBadge approvals={row.approvals} />
+                    </TableCell>
 
-                          {/* Tombol Edit Form HANYA JIKA DRAFT, REVISI, ATAU REJECT (TIDAK MUNCUL JIKA SUBMITTED / APPROVED) */}
-                          {canEdit ? (
+                    <TableCell className="w-[105px] min-w-[95px] max-w-[115px]">
+                      <SessionStatusBadge status={row.sessionStatus} />
+                    </TableCell>
+
+                    <TableCell className="w-[120px] min-w-[110px] max-w-[130px] text-right pr-4" onClick={(e) => e.stopPropagation()}>
+                      {(() => {
+                        const isComplete = ['approved', 'closed', 'completed'].includes((row.sessionStatus || '').toLowerCase())
+                        const isRequester = Boolean(
+                          currentEmployeeId &&
+                            row.employeeId &&
+                            Number(row.employeeId) === Number(currentEmployeeId)
+                        )
+                        const canEdit =
+                          ['draft', 'returned', 'reverted', 'needs_revision'].includes((row.sessionStatus || '').toLowerCase()) &&
+                          isRequester
+
+                        return (
+                          <div className="flex items-center justify-end gap-0.5">
+                            {/* Tombol Unduh PDF Dokumen Resmi */}
                             <Button
                               type="button"
                               variant="ghost"
                               size="denseIcon"
-                              onClick={() => router.push(`/dashboard/activity-hub/document/${row.sessionId}/approval`)}
-                              title="Edit & Revisi Aktivitas"
-                              className="text-slate-600 hover:text-[#003461] cursor-pointer"
+                              onClick={() => handleDownloadActivityPdf(row)}
+                              disabled={isDownloadingPdf}
+                              title="Unduh PDF Dokumen Resmi"
+                              className="h-7 w-7 text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 cursor-pointer"
                             >
-                              <FilePenLine className="size-4" />
+                              <Download className="size-3.5" />
                             </Button>
-                          ) : null}
 
-                          {/* Tombol Hapus */}
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="denseIcon"
-                            onClick={() => setDeleteTarget(row)}
-                            title="Hapus Aktivitas"
-                            className="text-slate-600 hover:text-destructive hover:bg-rose-50 cursor-pointer"
-                          >
-                            <Trash2 className="size-4 text-destructive" />
-                          </Button>
-                        </div>
-                      )
-                    })()}
-                  </TableCell>
-                </TableRow>
-              )
-            })}
-          </TableBody>
-        </Table>
-      </MinimalTableShell>
+                            {/* Tombol Print / Live Preview */}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="denseIcon"
+                              onClick={() => setPreviewTarget(row)}
+                              title="Lihat Preview Dokumen"
+                              className="h-7 w-7 text-slate-600 hover:text-slate-900 hover:bg-slate-100 cursor-pointer"
+                            >
+                              <Eye className="size-3.5" />
+                            </Button>
+
+                            {/* Tombol Edit Form HANYA JIKA DRAFT, REVISI, ATAU REJECT */}
+                            {canEdit ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="denseIcon"
+                                onClick={() => router.push(`/dashboard/activity-hub/document/${row.sessionId}/approval`)}
+                                title="Edit & Revisi Aktivitas"
+                                className="h-7 w-7 text-slate-600 hover:text-indigo-700 hover:bg-indigo-50 cursor-pointer"
+                              >
+                                <FilePenLine className="size-3.5" />
+                              </Button>
+                            ) : null}
+
+                            {/* Tombol Hapus */}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="denseIcon"
+                              onClick={() => setDeleteTarget(row)}
+                              title="Hapus Aktivitas"
+                              className="h-7 w-7 text-slate-600 hover:text-destructive hover:bg-rose-50 cursor-pointer"
+                            >
+                              <Trash2 className="size-3.5 text-destructive" />
+                            </Button>
+                          </div>
+                        )
+                      })()}
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </div>
+
+        {/* Clean Pagination Bar */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 bg-white border-t border-slate-200 text-xs text-slate-600">
+          <div className="flex items-center gap-2">
+            <span>Baris per halaman:</span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value))
+                setCurrentPage(1)
+              }}
+              className="h-7 rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+            >
+              <option value={15}>15</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+            <span className="text-slate-300">|</span>
+            <span>
+              Menampilkan {filteredRows.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, filteredRows.length)} dari {filteredRows.length} data
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 w-7 p-0 rounded-md"
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage(1)}
+              title="Halaman Pertama"
+            >
+              «
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 px-2.5 text-xs rounded-md"
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            >
+              Sebelumnya
+            </Button>
+            <span className="px-2 font-medium">
+              Hal {currentPage} dari {totalPages}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 px-2.5 text-xs rounded-md"
+              disabled={currentPage >= totalPages}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            >
+              Selanjutnya
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 w-7 p-0 rounded-md"
+              disabled={currentPage >= totalPages}
+              onClick={() => setCurrentPage(totalPages)}
+              title="Halaman Terakhir"
+            >
+              »
+            </Button>
+          </div>
+        </div>
+      </div>
 
       {/* ── BATCH MULTI-DOCUMENT PREVIEW & APPROVAL MODAL ── */}
       <Dialog open={isBatchReviewOpen && Boolean(currentBatchDoc)} onOpenChange={(open) => !open && setIsBatchReviewOpen(false)}>

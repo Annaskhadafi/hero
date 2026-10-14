@@ -16,7 +16,7 @@ import {
   masterSections,
   sites,
 } from '@/db/schema/hero'
-import { asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { ApprovalListingClient, type SessionApprovalRow } from './client'
 import { getDailyActivityWorkflowSettings } from '@/app/dashboard/activity-hub/actions'
 import { DEFAULT_DAILY_ACTIVITY_SETTINGS } from '@/lib/workflow-settings-defaults'
@@ -110,7 +110,12 @@ export default async function DailyActivityApprovalListPage() {
 
     const isSiteAdmin = accessRole === 'site admin'
 
-    // Get all sessions with their approval status
+    const sessionConditions = [isNull(dailyActivitySessions.deletedAt)]
+    if (isSiteAdmin && currentEmployee?.siteId) {
+      sessionConditions.push(eq(dailyActivitySessions.siteId, currentEmployee.siteId))
+    }
+
+    // Get latest sessions with their approval status (capped at 300 recent sessions for peak performance)
     const rawSessions = await safeQuery(
       () =>
         db
@@ -132,8 +137,9 @@ export default async function DailyActivityApprovalListPage() {
           .from(dailyActivitySessions)
           .leftJoin(employees, eq(dailyActivitySessions.employeeId, employees.id))
           .leftJoin(sites, eq(dailyActivitySessions.siteId, sites.id))
-          .where(isNull(dailyActivitySessions.deletedAt))
-          .orderBy(desc(dailyActivitySessions.id)),
+          .where(and(...sessionConditions))
+          .orderBy(desc(dailyActivitySessions.id))
+          .limit(300),
       [],
       'fetchRawSessions'
     )
@@ -578,11 +584,26 @@ export default async function DailyActivityApprovalListPage() {
         }
       }
 
-      const teamNamesExceptCreator = teamList
-        .filter((tm) => tm.employeeId !== s.employeeId && tm.employeeName.toLowerCase() !== (s.employeeName || '').toLowerCase())
-        .map((tm) => tm.employeeName)
+      // Deduplicate team members uniquely by ID or Name
+      const dedupedTeamMap = new Map<string, typeof teamList[0]>()
+      for (const tm of teamList) {
+        if (!tm?.employeeName) continue
+        const key = tm.employeeId ? `id:${tm.employeeId}` : `name:${tm.employeeName.trim().toLowerCase()}`
+        if (!dedupedTeamMap.has(key)) {
+          dedupedTeamMap.set(key, tm)
+        }
+      }
+      const dedupedTeamList = Array.from(dedupedTeamMap.values())
 
-      const mainTeamSummary = teamNamesExceptCreator.length > 0 ? teamNamesExceptCreator.join(', ') : undefined
+      const uniqueTeamExceptCreator = dedupedTeamList.filter((tm) => {
+        const isCreatorId = s.employeeId && tm.employeeId && Number(tm.employeeId) === Number(s.employeeId)
+        const isCreatorName = (tm.employeeName || '').trim().toLowerCase() === (s.employeeName || '').trim().toLowerCase()
+        return !isCreatorId && !isCreatorName
+      })
+
+      const mainTeamSummary = uniqueTeamExceptCreator.length > 0
+        ? uniqueTeamExceptCreator.map((tm) => tm.employeeName).join(', ')
+        : undefined
 
       // 1. Main Submitter Row
       rows.push({
@@ -600,46 +621,13 @@ export default async function DailyActivityApprovalListPage() {
         customerName: 'Default Customer',
         siteName: s.siteName || 'Central Site',
         teamMembersSummary: mainTeamSummary,
+        teamMembers: uniqueTeamExceptCreator,
         teamRole: mainTeamSummary ? 'Pemohon' : undefined,
         totalItems: itemCountMap.get(s.sessionId)?.count ?? 0,
         totalPoints: itemCountMap.get(s.sessionId)?.totalPoints ?? 0,
         items: itemsBySession.get(s.sessionId) || [],
         approvals: approvalsBySession.get(s.sessionId) || [],
       })
-
-      // 2. Team Member Rows (e.g. Sanudin)
-      for (const tm of teamList) {
-        if (tm.employeeId === s.employeeId || tm.employeeName.toLowerCase() === (s.employeeName || '').toLowerCase()) {
-          continue
-        }
-
-        const partnerNames = [
-          s.employeeName,
-          ...teamList.filter((other) => other.employeeName !== tm.employeeName && other.employeeName !== s.employeeName).map((o) => o.employeeName)
-        ].filter(Boolean).join(', ')
-
-        rows.push({
-          sessionId: Number(s.sessionId),
-          sessionCode: s.sessionCode || `ACT-${s.sessionId}`,
-          workDate: s.workDate ? new Date(s.workDate).toISOString() : null,
-          shiftCode: s.shiftCode || 'ALL',
-          sessionStatus: s.sessionStatus || 'Draft',
-          employeeId: tm.employeeId ? Number(tm.employeeId) : null,
-          employeeName: tm.employeeName || 'Karyawan',
-          employeeSn: tm.employeeSn || '-',
-          department: tm.department || s.department || 'Operasional',
-          section: tm.section || s.section || '-',
-          jobTitle: tm.jobTitle || 'Serviceman',
-          customerName: 'Default Customer',
-          siteName: s.siteName || 'Central Site',
-          teamMembersSummary: partnerNames || undefined,
-          teamRole: 'Anggota Tim',
-          totalItems: itemCountMap.get(s.sessionId)?.count ?? 0,
-          totalPoints: itemCountMap.get(s.sessionId)?.totalPoints ?? 0,
-          items: itemsBySession.get(s.sessionId) || [],
-          approvals: approvalsBySession.get(s.sessionId) || [],
-        })
-      }
     }
 
     const sanitizedEmployees = (employeeList || []).map((e) => ({

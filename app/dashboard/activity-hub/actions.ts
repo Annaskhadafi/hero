@@ -7104,6 +7104,154 @@ export async function getDailyActivityApproverCandidatesAction() {
   }
 }
 
+export async function checkTeamMembersExistingDailyActivityAction(input: {
+  employeeIds: number[]
+  workDate: string
+}): Promise<{
+  success: boolean
+  conflicts: Array<{
+    employeeId: number
+    employeeName: string
+    employeeSn?: string | null
+    sessionId: number
+    sessionCode: string
+    workDate: string
+    isAuthor: boolean
+    authorName: string
+    status: string
+  }>
+  error?: string
+}> {
+  try {
+    const rawIds = (input.employeeIds || []).map(Number).filter((id) => !isNaN(id) && id > 0)
+    if (rawIds.length === 0 || !input.workDate || !input.workDate.trim()) {
+      return { success: true, conflicts: [] }
+    }
+
+    const uniqueIds = Array.from(new Set(rawIds))
+    const targetDateStr = input.workDate.trim().slice(0, 10)
+
+    const matchingSessions = await db
+      .select({
+        sessionId: dailyActivitySessions.id,
+        sessionCode: dailyActivitySessions.sessionCode,
+        workDate: dailyActivitySessions.workDate,
+        status: dailyActivitySessions.status,
+        authorId: dailyActivitySessions.employeeId,
+        authorName: employees.name,
+      })
+      .from(dailyActivitySessions)
+      .innerJoin(employees, eq(dailyActivitySessions.employeeId, employees.id))
+      .where(
+        and(
+          isNull(dailyActivitySessions.deletedAt),
+          ne(dailyActivitySessions.status, 'rejected'),
+          sql`to_char(${dailyActivitySessions.workDate} AT TIME ZONE 'Asia/Makassar', 'YYYY-MM-DD') = ${targetDateStr} OR to_char(${dailyActivitySessions.workDate}, 'YYYY-MM-DD') = ${targetDateStr}`
+        )
+      )
+
+    if (matchingSessions.length === 0) {
+      return { success: true, conflicts: [] }
+    }
+
+    const matchingSessionIds = matchingSessions.map((s) => s.sessionId)
+
+    const teamMemberRows = await db
+      .select({
+        sessionId: dailyActivitySessionTeamMembers.sessionId,
+        employeeId: dailyActivitySessionTeamMembers.employeeId,
+        memberName: employees.name,
+        memberSn: employees.employeeSn,
+      })
+      .from(dailyActivitySessionTeamMembers)
+      .innerJoin(employees, eq(dailyActivitySessionTeamMembers.employeeId, employees.id))
+      .where(
+        and(
+          inArray(dailyActivitySessionTeamMembers.sessionId, matchingSessionIds),
+          inArray(dailyActivitySessionTeamMembers.employeeId, uniqueIds)
+        )
+      )
+
+    const authorEmployees = await db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        employeeSn: employees.employeeSn,
+      })
+      .from(employees)
+      .where(inArray(employees.id, uniqueIds))
+
+    const empInfoMap = new Map<number, { name: string; employeeSn?: string | null }>()
+    authorEmployees.forEach((e) => empInfoMap.set(e.id, { name: e.name, employeeSn: e.employeeSn }))
+    teamMemberRows.forEach((tm) => {
+      if (!empInfoMap.has(tm.employeeId)) {
+        empInfoMap.set(tm.employeeId, { name: tm.memberName, employeeSn: tm.memberSn })
+      }
+    })
+
+    const conflicts: Array<{
+      employeeId: number
+      employeeName: string
+      employeeSn?: string | null
+      sessionId: number
+      sessionCode: string
+      workDate: string
+      isAuthor: boolean
+      authorName: string
+      status: string
+    }> = []
+
+    const seenConflictKey = new Set<string>()
+
+    for (const session of matchingSessions) {
+      if (uniqueIds.includes(session.authorId)) {
+        const empInfo = empInfoMap.get(session.authorId)
+        const key = `${session.authorId}-${session.sessionId}`
+        if (!seenConflictKey.has(key)) {
+          seenConflictKey.add(key)
+          conflicts.push({
+            employeeId: session.authorId,
+            employeeName: empInfo?.name || session.authorName,
+            employeeSn: empInfo?.employeeSn || null,
+            sessionId: session.sessionId,
+            sessionCode: session.sessionCode,
+            workDate: targetDateStr,
+            isAuthor: true,
+            authorName: session.authorName,
+            status: session.status,
+          })
+        }
+      }
+    }
+
+    for (const tm of teamMemberRows) {
+      const parentSession = matchingSessions.find((s) => s.sessionId === tm.sessionId)
+      if (parentSession) {
+        const key = `${tm.employeeId}-${tm.sessionId}`
+        if (!seenConflictKey.has(key)) {
+          seenConflictKey.add(key)
+          conflicts.push({
+            employeeId: tm.employeeId,
+            employeeName: tm.memberName,
+            employeeSn: tm.memberSn || null,
+            sessionId: tm.sessionId,
+            sessionCode: parentSession.sessionCode,
+            workDate: targetDateStr,
+            isAuthor: false,
+            authorName: parentSession.authorName,
+            status: parentSession.status,
+          })
+        }
+      }
+    }
+
+    return { success: true, conflicts }
+  } catch (err: any) {
+    console.error('checkTeamMembersExistingDailyActivityAction error:', err)
+    return { success: false, conflicts: [], error: err.message || 'Gagal memeriksa status aktivitas tim.' }
+  }
+}
+
 export async function createDailyActivitySessionAction(input: {
   employeeId: number
   workDate: string

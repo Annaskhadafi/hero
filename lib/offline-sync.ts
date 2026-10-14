@@ -135,50 +135,43 @@ export type ActivityDraftIndexEntry = {
 }
 
 export function extractDraftPhotos(payload: Partial<ActivitySyncPayload>): string[] {
-  const urls: string[] = []
+  const remoteUrls: string[] = []
+  const dataUrls: string[] = []
+
+  const addUrl = (u: unknown) => {
+    if (typeof u !== 'string') return
+    const trimmed = u.trim()
+    if (!trimmed || trimmed.startsWith('blob:')) return
+    if (trimmed.startsWith('/api/') || trimmed.startsWith('http')) {
+      if (!remoteUrls.includes(trimmed)) remoteUrls.push(trimmed)
+    } else if (trimmed.startsWith('data:')) {
+      if (!dataUrls.includes(trimmed)) dataUrls.push(trimmed)
+    }
+  }
 
   if (Array.isArray(payload.photoUrls)) {
-    for (const u of payload.photoUrls) {
-      if (typeof u === 'string' && u.trim() && !urls.includes(u.trim())) {
-        urls.push(u.trim())
-      }
-    }
+    payload.photoUrls.forEach(addUrl)
   }
 
   if (Array.isArray(payload.photos)) {
     for (const p of payload.photos) {
-      const u = p?.previewUrl || p?.dataUrl
-      if (typeof u === 'string' && u.trim() && !urls.includes(u.trim())) {
-        urls.push(u.trim())
-      }
+      addUrl(p?.previewUrl || p?.url || p?.dataUrl)
     }
   }
 
   if (payload.photo) {
-    const u = payload.photo.previewUrl || payload.photo.dataUrl
-    if (typeof u === 'string' && u.trim() && !urls.includes(u.trim())) {
-      urls.push(u.trim())
-    }
+    addUrl(payload.photo.previewUrl || payload.photo.url || payload.photo.dataUrl)
   }
 
   if (Array.isArray(payload.selfInputActivities)) {
     for (const act of payload.selfInputActivities) {
-      if (Array.isArray(act.previewUrls)) {
-        for (const u of act.previewUrls) {
-          if (typeof u === 'string' && u.trim() && !urls.includes(u.trim())) urls.push(u.trim())
-        }
-      }
-      if (typeof act.photoUrl === 'string' && act.photoUrl.trim() && !urls.includes(act.photoUrl.trim())) {
-        urls.push(act.photoUrl.trim())
-      }
-      if (act.photo) {
-        const u = act.photo.previewUrl || act.photo.dataUrl
-        if (typeof u === 'string' && u.trim() && !urls.includes(u.trim())) urls.push(u.trim())
-      }
+      if (Array.isArray(act.previewUrls)) act.previewUrls.forEach(addUrl)
+      if (Array.isArray(act.photoUrls)) act.photoUrls.forEach(addUrl)
+      if (act.photoUrl) addUrl(act.photoUrl)
+      if (act.photo) addUrl(act.photo.previewUrl || act.photo.url || act.photo.dataUrl)
       if (Array.isArray(act.photos)) {
         for (const p of act.photos) {
-          const u = p?.previewUrl || p?.dataUrl
-          if (typeof u === 'string' && u.trim() && !urls.includes(u.trim())) urls.push(u.trim())
+          addUrl(p?.previewUrl || p?.url || p?.dataUrl)
         }
       }
     }
@@ -186,24 +179,20 @@ export function extractDraftPhotos(payload: Partial<ActivitySyncPayload>): strin
 
   if (Array.isArray(payload.routeSessionItems)) {
     for (const item of payload.routeSessionItems) {
-      if (Array.isArray(item.previewUrls)) {
-        for (const u of item.previewUrls) {
-          if (typeof u === 'string' && u.trim() && !urls.includes(u.trim())) urls.push(u.trim())
-        }
-      }
-      if (typeof item.photoUrl === 'string' && item.photoUrl.trim() && !urls.includes(item.photoUrl.trim())) {
-        urls.push(item.photoUrl.trim())
-      }
+      if (Array.isArray(item.previewUrls)) item.previewUrls.forEach(addUrl)
+      if (Array.isArray(item.photoUrls)) item.photoUrls.forEach(addUrl)
+      if (item.photoUrl) addUrl(item.photoUrl)
+      if (item.photo) addUrl(item.photo.previewUrl || item.photo.url || item.photo.dataUrl)
       if (Array.isArray(item.photos)) {
         for (const p of item.photos) {
-          const u = p?.previewUrl || p?.dataUrl
-          if (typeof u === 'string' && u.trim() && !urls.includes(u.trim())) urls.push(u.trim())
+          addUrl(p?.previewUrl || p?.url || p?.dataUrl)
         }
       }
     }
   }
 
-  return urls
+  // Jika sudah ada remote cloud URL, HANYA gunakan remote cloud URL agar tidak dobel dengan base64 lokal
+  return remoteUrls.length > 0 ? remoteUrls : dataUrls
 }
 
 function activityDraftTitle(payload: Partial<ActivitySyncPayload>) {
@@ -356,16 +345,83 @@ export function readDraft<T>(key: string): T | null {
   }
 }
 
+export function stripHeavyBase64FromDraft<T>(value: T): T {
+  if (!value || typeof value !== 'object') return value
+
+  try {
+    const clone = JSON.parse(JSON.stringify(value))
+
+    const cleanQueuedPhoto = (p: any) => {
+      if (!p || typeof p !== 'object') return p
+      // Jika sudah ada URL remote cloud (/api/ atau http), buang string dataUrl base64
+      if (p.previewUrl || p.url) {
+        p.dataUrl = ''
+      } else if (typeof p.dataUrl === 'string' && p.dataUrl.length > 50000) {
+        // Jika dataUrl base64 terlalu besar (>50KB), kosongkan agar tidak memakan kuota 5MB localStorage
+        p.dataUrl = ''
+      }
+      return p
+    }
+
+    const cleanUrls = (urls: any[]) => {
+      if (!Array.isArray(urls)) return urls
+      const hasRemote = urls.some((u) => typeof u === 'string' && (u.startsWith('/api/') || u.startsWith('http')))
+      return urls.filter((u) => {
+        if (typeof u !== 'string') return false
+        if (hasRemote && u.startsWith('data:')) return false
+        if (u.startsWith('data:') && u.length > 50000) return false
+        return true
+      })
+    }
+
+    if (clone.photo) clone.photo = cleanQueuedPhoto(clone.photo)
+    if (Array.isArray(clone.photos)) clone.photos = clone.photos.map(cleanQueuedPhoto)
+    if (Array.isArray(clone.photoUrls)) clone.photoUrls = cleanUrls(clone.photoUrls)
+    if (Array.isArray(clone.previewUrls)) clone.previewUrls = cleanUrls(clone.previewUrls)
+
+    if (Array.isArray(clone.selfInputActivities)) {
+      clone.selfInputActivities = clone.selfInputActivities.map((act: any) => {
+        if (act.photo) act.photo = cleanQueuedPhoto(act.photo)
+        if (Array.isArray(act.photos)) act.photos = act.photos.map(cleanQueuedPhoto)
+        if (Array.isArray(act.photoUrls)) act.photoUrls = cleanUrls(act.photoUrls)
+        if (Array.isArray(act.previewUrls)) act.previewUrls = cleanUrls(act.previewUrls)
+        return act
+      })
+    }
+
+    if (Array.isArray(clone.routeSessionItems)) {
+      clone.routeSessionItems = clone.routeSessionItems.map((item: any) => {
+        if (item.photo) item.photo = cleanQueuedPhoto(item.photo)
+        if (Array.isArray(item.photos)) item.photos = item.photos.map(cleanQueuedPhoto)
+        if (Array.isArray(item.photoUrls)) item.photoUrls = cleanUrls(item.photoUrls)
+        if (Array.isArray(item.previewUrls)) item.previewUrls = cleanUrls(item.previewUrls)
+        return item
+      })
+    }
+
+    return clone as T
+  } catch {
+    return value
+  }
+}
+
 export function writeDraft<T>(key: string, value: T): { ok: true; error?: never } | { ok: false; error: string } {
   if (typeof window === 'undefined') return { ok: true }
   try {
     window.localStorage.setItem(key, JSON.stringify(value))
     return { ok: true }
   } catch (error) {
-    const detail = error instanceof Error && error.message.trim() ? ` (${error.message.trim()})` : ''
-    return {
-      ok: false,
-      error: `Draft tidak dapat disimpan di perangkat ini. Penyimpanan browser mungkin diblokir atau penuh${detail}.`,
+    // If quota exceeded or write failed, strip heavy base64 strings and retry
+    try {
+      const lightweight = stripHeavyBase64FromDraft(value)
+      window.localStorage.setItem(key, JSON.stringify(lightweight))
+      return { ok: true }
+    } catch (retryError) {
+      const detail = retryError instanceof Error && retryError.message.trim() ? ` (${retryError.message.trim()})` : ''
+      return {
+        ok: false,
+        error: `Draft tidak dapat disimpan di perangkat ini. Penyimpanan browser mungkin diblokir atau penuh${detail}.`,
+      }
     }
   }
 }

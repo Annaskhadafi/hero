@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getCurrentEmployee } from '@/lib/get-current-employee'
-import { getUnitUtilitySummaryAction } from '../ewh/actions'
+import { getUnitUtilitySummaryAction, getActivityGroupingSummaryAction } from '../ewh/actions'
 import { UnitUtilityClient } from './unit-utility-client'
 
 interface PageProps {
@@ -22,7 +22,10 @@ export default async function UnitUtilityPage({ searchParams }: PageProps) {
   const dateStr = params.date ?? new Date().toISOString().slice(0, 10)
   const workDate = new Date(dateStr)
 
-  const result = await getUnitUtilitySummaryAction(siteId, workDate)
+  const [result, groupingResult] = await Promise.all([
+    getUnitUtilitySummaryAction(siteId, workDate),
+    getActivityGroupingSummaryAction(siteId, workDate),
+  ])
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -39,6 +42,7 @@ export default async function UnitUtilityPage({ searchParams }: PageProps) {
 
       <UnitUtilityClient
         rows={result.rows}
+        activityGroupingSummary={groupingResult.summary}
         siteId={siteId}
         dateStr={dateStr}
       />
