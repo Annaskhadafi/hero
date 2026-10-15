@@ -108,6 +108,10 @@ import {
   addContractReviewAttachment,
 } from '@/app/actions/contract-review'
 import { uploadFile } from '@/app/actions/upload'
+import {
+  approveTrainingRequestStep,
+  rejectTrainingRequestStep,
+} from '@/app/actions/training-requests'
 import { FormWoApprovalDialog } from '@/components/admin/form-wo-approval-dialog'
 import { FormWoDocumentPreviewDialog, FormWoDocumentView } from '@/components/form-wo-document-preview-dialog'
 import { ApdRequestDetailModal } from '@/components/summary/apd-request-detail-modal'
@@ -350,6 +354,7 @@ export function InboxTab({
   ptwItems = [],
   contractReviewItems = [],
   sopWinRequestItems = [],
+  trainingRequestItems = [],
   filterCategory,
   viewMode = 'desktop',
 }: {
@@ -360,6 +365,7 @@ export function InboxTab({
   ptwItems?: ApprovalCenterData['ptwInboxItems']
   contractReviewItems?: ApprovalCenterData['contractReviewInboxItems']
   sopWinRequestItems?: ApprovalCenterData['sopWinRequestInboxItems']
+  trainingRequestItems?: any[]
   filterCategory?: string
   viewMode?: 'desktop' | 'mobile'
 }) {
@@ -683,6 +689,7 @@ export function InboxTab({
       rawContractReview?: (typeof contractReviewItems)[number]
       rawSopWinRequest?: (typeof sopWinRequestItems)[number]
       rawRfr?: (typeof rfrItems)[number]
+      rawTrainingRequest?: (typeof trainingRequestItems)[number]
       rawGeneralGroup?: (typeof groups)[number]
       [key: string]: any
     }> = []
@@ -1025,6 +1032,26 @@ export function InboxTab({
       })
     }
 
+    for (const tr of trainingRequestItems) {
+      list.push({
+        id: `training-request-${tr.approvalId || tr.id}`,
+        category: 'TRAINING_REQUEST',
+        categoryLabel: 'Pengajuan Training',
+        documentNumber: tr.requestNumber,
+        title: `Training: ${tr.trainingTitle}`,
+        employeeName: tr.requesterName,
+        department: tr.requesterDepartment,
+        stepLabel: `${tr.roleLabel} (Step ${tr.stepOrder}/${tr.totalSteps})`,
+        approverName: tr.approverName,
+        dueState: tr.dueState,
+        dueAt: tr.dueAt,
+        submittedAt: tr.submittedAt,
+        url: tr.url,
+        actionLabel: 'Review & Tanda Tangan',
+        rawTrainingRequest: tr,
+      })
+    }
+
     const uncommittedList = processedBatchIds.size > 0 ? list.filter((it) => !processedBatchIds.has(it.id)) : list
 
     const sorted = uncommittedList.sort((a, b) => {
@@ -1038,7 +1065,7 @@ export function InboxTab({
     }
 
     return sorted
-  }, [dailyActivityItems, overtimeItems, ptwItems, contractReviewItems, sopWinRequestItems, rfrItems, groups, filterCategory, processedBatchIds])
+  }, [dailyActivityItems, overtimeItems, ptwItems, contractReviewItems, sopWinRequestItems, rfrItems, trainingRequestItems, groups, filterCategory, processedBatchIds])
 
   const searchParams = useSearchParams()
   const [autoOpenedDoc, setAutoOpenedDoc] = useState<string | null>(null)
@@ -1353,6 +1380,26 @@ export function InboxTab({
           })
           if (!res.success) throw new Error(res.error || 'Gagal menolak Contract Review')
           toast.error(`Contract Review #${currentBatchDoc.documentNumber} ditolak.`)
+        }
+      } else if (
+        currentBatchDoc.category === 'TRAINING_REQUEST' ||
+        Boolean((currentBatchDoc as any).rawTrainingRequest)
+      ) {
+        const rawTr = (currentBatchDoc as any).rawTrainingRequest || {}
+        const token = rawTr.approvalToken || rawTr.approvalId || currentBatchDoc.id.replace('training-request-', '')
+        if (action === 'approve') {
+          const res = await approveTrainingRequestStep(token, {
+            signatureDataUrl: signatureDataUrl || '',
+            remarks: currentRemark || 'Disetujui via Inbox Approval',
+          })
+          if (!res.success) throw new Error(res.error || 'Gagal menyetujui Pengajuan Training')
+          toast.success(`Pengajuan Training #${currentBatchDoc.documentNumber} berhasil disetujui.`)
+        } else {
+          const res = await rejectTrainingRequestStep(token, {
+            remarks: currentRemark ? `Ditolak: ${currentRemark}` : 'Ditolak via Inbox Approval',
+          })
+          if (!res.success) throw new Error(res.error || 'Gagal menolak Pengajuan Training')
+          toast.error(`Pengajuan Training #${currentBatchDoc.documentNumber} ditolak.`)
         }
       } else if (
         currentBatchDoc.category === 'QUALITY_5R' ||
@@ -6967,6 +7014,7 @@ export function ApprovalWorkbench({
             ptwItems={isDailyOnly ? [] : safeData.ptwInboxItems || []}
             contractReviewItems={isDailyOnly ? [] : safeData.contractReviewInboxItems || []}
             sopWinRequestItems={isDailyOnly ? [] : safeData.sopWinRequestInboxItems || []}
+            trainingRequestItems={isDailyOnly ? [] : safeData.trainingRequestInboxItems || []}
             filterCategory={filterCategory}
           />
         </TabsContent>

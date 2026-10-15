@@ -79,6 +79,7 @@ const desktopToMobileRoutes: Array<{ desktop: string; mobile: string }> = [
   { desktop: '/dashboard/reports', mobile: '/mobile/reports' },
   { desktop: '/dashboard/hc/training', mobile: '/mobile/training' },
   { desktop: '/dashboard/training-records', mobile: '/mobile/training' },
+  { desktop: '/dashboard/training/pengajuan', mobile: '/dashboard/training/pengajuan' },
   { desktop: '/dashboard/hc/permission', mobile: '/mobile/attendance/permission' },
   { desktop: '/dashboard/attendance', mobile: '/mobile/attendance' },
   { desktop: '/dashboard/chitralearning-lms', mobile: '/mobile/chitralearning' },

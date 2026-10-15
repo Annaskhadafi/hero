@@ -40,6 +40,8 @@ import {
   masterDepartments,
   notificationEvents,
   notificationDeliveries,
+  trainingRequests,
+  trainingRequestApprovals,
 } from '@/db/schema/hero'
 import { apdSummaries } from '@/db/schema/apd-summary'
 import { tireRepairJobcards } from '@/db/schema/tire-repair'
@@ -1930,6 +1932,138 @@ async function getContractReviewInboxItems(
   })
 }
 
+async function getTrainingRequestInboxItems(
+  email: string,
+  currentEmployee: Awaited<ReturnType<typeof getEmployeeByEmail>> | null
+) {
+  const normalizedEmail = normalizeMatchValue(email)
+  const normalizedEmployeeName = normalizeMatchValue(currentEmployee?.name)
+  const rows = await db
+    .select({
+      approvalId: trainingRequestApprovals.id,
+      approvalToken: trainingRequestApprovals.approvalToken,
+      approverName: trainingRequestApprovals.approverName,
+      approverEmail: trainingRequestApprovals.approverEmail,
+      approverEmployeeId: trainingRequestApprovals.approverEmployeeId,
+      approverRole: trainingRequestApprovals.roleLabel,
+      stepOrder: trainingRequestApprovals.stepOrder,
+      createdAt: trainingRequestApprovals.createdAt,
+      requestId: trainingRequests.id,
+      requestNumber: trainingRequests.requestNumber,
+      trainingTitle: trainingRequests.trainingTitle,
+      trainingType: trainingRequests.trainingType,
+      trainingDate: trainingRequests.trainingDate,
+      trainingVenue: trainingRequests.trainingVenue,
+      providerName: trainingRequests.providerName,
+      costAmount: trainingRequests.costAmount,
+      costCurrency: trainingRequests.costCurrency,
+      requesterName: trainingRequests.requesterName,
+      requesterDepartment: trainingRequests.requesterDepartment,
+      participantNames: trainingRequests.participantNames,
+      totalSteps: trainingRequests.totalSteps,
+      currentStepOrder: trainingRequests.currentStepOrder,
+      attachmentUrl: trainingRequests.attachmentUrl,
+      updatedAt: trainingRequests.updatedAt,
+    })
+    .from(trainingRequestApprovals)
+    .innerJoin(
+      trainingRequests,
+      eq(trainingRequestApprovals.requestId, trainingRequests.id)
+    )
+    .where(
+      and(
+        eq(trainingRequestApprovals.status, 'pending'),
+        eq(trainingRequests.status, 'pending'),
+        eq(trainingRequests.currentStepOrder, trainingRequestApprovals.stepOrder)
+      )
+    )
+    .orderBy(desc(trainingRequestApprovals.createdAt))
+
+  const userItems = rows.filter((row) => {
+    const emailMatches =
+      normalizedEmail && normalizeMatchValue(row.approverEmail) === normalizedEmail
+    const employeeMatches =
+      currentEmployee?.id != null && row.approverEmployeeId === currentEmployee.id
+    const nameMatches =
+      normalizedEmployeeName && normalizeMatchValue(row.approverName) === normalizedEmployeeName
+    return emailMatches || employeeMatches || nameMatches
+  })
+
+  // Bell Notification Backfill check
+  if (userItems.length > 0) {
+    for (const item of userItems) {
+      if (!item.approverEmail?.trim()) continue
+      const targetEmail = item.approverEmail.trim()
+      try {
+        const [existingDelivery] = await db
+          .select({ id: notificationDeliveries.id })
+          .from(notificationDeliveries)
+          .innerJoin(notificationEvents, eq(notificationDeliveries.notificationEventId, notificationEvents.id))
+          .where(
+            and(
+              eq(notificationDeliveries.deliveryChannel, 'in_app'),
+              sql`lower(${notificationDeliveries.recipient}) = ${targetEmail.toLowerCase()}`,
+              sql`${notificationEvents.payloadSnapshot}::text LIKE ${`%TR-${item.approvalId}%`}`
+            )
+          )
+          .limit(1)
+
+        if (!existingDelivery) {
+          await notifyWorkflowBellRecipients({
+            recipientEmails: [targetEmail],
+            eventType: 'training_request_approval_needed',
+            category: 'approval_requests',
+            title: `Approval Pengajuan Training - ${item.requestNumber}`,
+            body: `Pengajuan training "${item.trainingTitle}" (${item.requestNumber}) pada tahap ${item.approverRole} memerlukan persetujuan Anda.`,
+            url: `/dashboard/approval`,
+            tagPrefix: 'training-request',
+            metadata: {
+              requestId: item.requestId,
+              approvalId: item.approvalId,
+              requestNumber: item.requestNumber,
+              stepOrder: item.stepOrder,
+            },
+          })
+        }
+      } catch (bellErr) {
+        console.error('[approval-workspace] Error ensuring bell notification for training request:', bellErr)
+      }
+    }
+  }
+
+  return userItems.map((row) => {
+    return {
+      id: `training-request-${row.approvalId}`,
+      approvalId: row.approvalId,
+      approvalToken: row.approvalToken,
+      requestId: row.requestId,
+      requestNumber: row.requestNumber,
+      title: `Pengajuan Training - ${row.trainingTitle}`,
+      trainingTitle: row.trainingTitle,
+      trainingType: row.trainingType,
+      trainingDate: row.trainingDate,
+      trainingVenue: row.trainingVenue,
+      providerName: row.providerName,
+      costAmount: row.costAmount,
+      costCurrency: row.costCurrency,
+      requesterName: row.requesterName,
+      requesterDepartment: row.requesterDepartment,
+      participantNames: row.participantNames,
+      stepOrder: row.stepOrder,
+      totalSteps: row.totalSteps,
+      roleLabel: row.approverRole,
+      approverName: row.approverName,
+      approverRole: row.approverRole,
+      stepLabel: `Step ${row.stepOrder} (${row.approverRole})`,
+      attachmentUrl: row.attachmentUrl,
+      submittedAt: row.updatedAt ?? row.createdAt,
+      dueAt: new Date(Date.now() + 7 * 86400000),
+      dueState: 'open' as const,
+      url: `/dashboard/training/pengajuan?id=${row.requestId}`,
+    }
+  })
+}
+
 async function getRfrInboxItems(
   email: string,
   currentEmployee: Awaited<ReturnType<typeof getEmployeeByEmail>>
@@ -3299,6 +3433,7 @@ export async function getApprovalCenterData(
       approvalRows,
       contractReviewInboxItems,
       rfrInboxItems,
+      trainingRequestInboxItems,
       dailyActivityInboxItems,
       overtimeInboxItems,
       ptwInboxItems,
@@ -3312,6 +3447,9 @@ export async function getApprovalCenterData(
         : Promise.resolve([]),
       !isDailyOnly && !isOvertimeOnly && !isPtwOnly
         ? safeQuery(() => getRfrInboxItems(email, currentEmployee as any), [], "getRfrInboxItems")
+        : Promise.resolve([]),
+      !isDailyOnly && !isOvertimeOnly && !isPtwOnly
+        ? safeQuery(() => getTrainingRequestInboxItems(email, currentEmployee as any), [], "getTrainingRequestInboxItems")
         : Promise.resolve([]),
       !isOvertimeOnly && !isPtwOnly
         ? safeQuery(() => getDailyActivityInboxItems(email, currentEmployee as any), [], "getDailyActivityInboxItems")
@@ -4538,6 +4676,7 @@ export async function getApprovalCenterData(
   const totalPendingWorkflowItems =
     contractReviewInboxItems.length +
     rfrInboxItems.length +
+    trainingRequestInboxItems.length +
     dailyActivityInboxItems.length +
     overtimeInboxItems.length +
     ptwInboxItems.length +
@@ -4546,6 +4685,7 @@ export async function getApprovalCenterData(
   const dueSoonWorkflowItems =
     contractReviewInboxItems.filter((item) => item.dueState === 'due_soon').length +
     rfrInboxItems.filter((item) => item.dueState === 'due_soon').length +
+    trainingRequestInboxItems.filter((item) => item.dueState === 'due_soon').length +
     dailyActivityInboxItems.filter((item) => item.dueState === 'due_soon').length +
     overtimeInboxItems.filter((item) => item.dueState === 'due_soon').length +
     ptwInboxItems.filter((item) => item.dueState === 'due_soon').length +
@@ -4554,6 +4694,7 @@ export async function getApprovalCenterData(
   const overdueWorkflowItems =
     contractReviewInboxItems.filter((item) => item.dueState === 'overdue').length +
     rfrInboxItems.filter((item) => item.dueState === 'overdue').length +
+    trainingRequestInboxItems.filter((item) => item.dueState === 'overdue').length +
     dailyActivityInboxItems.filter((item) => item.dueState === 'overdue').length +
     overtimeInboxItems.filter((item) => item.dueState === 'overdue').length +
     ptwInboxItems.filter((item) => item.dueState === 'overdue').length +
@@ -4574,6 +4715,7 @@ export async function getApprovalCenterData(
       sopWinRequestCount: sopWinRequestInboxItems.length,
       contractReviewCount: contractReviewInboxItems.length,
       rfrCount: rfrInboxItems.length,
+      trainingRequestCount: trainingRequestInboxItems.length,
       maritalStatusCount: inboxRows.filter(
         (item) => item.maritalStatusRequestId != null || item.activityType === 'Perubahan Status Pernikahan'
       ).length,
@@ -4590,6 +4732,7 @@ export async function getApprovalCenterData(
     },
     contractReviewInboxItems,
     rfrInboxItems,
+    trainingRequestInboxItems,
     dailyActivityInboxItems,
     overtimeInboxItems,
     ptwInboxItems,
@@ -4611,6 +4754,7 @@ export async function getApprovalCenterData(
         ptwCount: 0,
         sopWinRequestCount: 0,
         contractReviewCount: 0,
+        trainingRequestCount: 0,
         generalActivityCount: 0,
       },
       historyMetrics: {
@@ -4621,6 +4765,8 @@ export async function getApprovalCenterData(
         inReview: 0,
       },
       contractReviewInboxItems: [],
+      rfrInboxItems: [],
+      trainingRequestInboxItems: [],
       dailyActivityInboxItems: [],
       overtimeInboxItems: [],
       ptwInboxItems: [],

@@ -235,6 +235,7 @@ export function classifyItem(item: { section?: string; title: string; url: strin
   if (
     url.startsWith("/dashboard/chitralearning-lms") ||
     url === "/dashboard/training-records" ||
+    url.startsWith("/dashboard/training/pengajuan") ||
     url.startsWith("/dashboard/hc/training")
   ) {
     return {

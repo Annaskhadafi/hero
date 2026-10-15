@@ -37,6 +37,7 @@ const ALLOWED_UPLOAD_PREFIXES = new Set([
   "public-career-cv",
   "hse-osm",
   "reward-store",
+  "training-requests",
 ])
 
 function getContentType(fileName: string) {
@@ -209,6 +210,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
     path[0] === "public-career-cv" ||
     path[0] === "contract-review-attachment" ||
     path[0] === "reward-store" ||
+    path[0] === "training-requests" ||
     path[0] === "hse-osm"
 
   const isSensitive = !isRootUpload && !isPublicPrefix
@@ -292,6 +294,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
       `lms-covers/${fileName}`,
       `chitralearning/${fileName}`,
       `contract-review-attachment/${fileName}`,
+      `training-requests/${fileName}`,
       `hse-osm/${fileName}`,
     ]
 

@@ -4710,4 +4710,71 @@ export type NewHcTurnoverSetting = typeof hcTurnoverSettings.$inferInsert
 export type HcTurnoverMovement = typeof hcTurnoverMovements.$inferSelect
 export type NewHcTurnoverMovement = typeof hcTurnoverMovements.$inferInsert
 
+export const trainingRequests = pgTable('hero_training_requests', {
+  id: serial('id').primaryKey(),
+  requestNumber: text('request_number').notNull().unique(),
+  documentCode: text('document_code').notNull().default('F.HR.STD.011.00'),
+  revision: text('revision').notNull().default('00'),
+  requesterEmployeeId: integer('requester_employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  requesterName: text('requester_name').notNull(),
+  requesterEmail: text('requester_email').notNull().default(''),
+  requesterDepartment: text('requester_department').notNull().default(''),
+  requesterPosition: text('requester_position').notNull().default(''),
+  participantsType: text('participants_type').notNull().default('employees'), // 'employees' | 'attached_list'
+  participantEmployeeIds: jsonb('participant_employee_ids').default('[]'),
+  participantNames: text('participant_names').notNull().default(''),
+  participantDetails: jsonb('participant_details').default('[]'), // [{ employeeId, name, position, department, location }]
+  jobLevel: text('job_level').notNull().default(''),
+  department: text('department').notNull().default(''),
+  workLocation: text('work_location').notNull().default(''),
+  trainingTitle: text('training_title').notNull(),
+  trainingType: text('training_type').notNull().default('Training'), // 'Training' | 'Seminar' | 'Lokakarya'
+  trainingCategory: text('training_category').notNull().default('External'), // 'Internal' | 'External' | 'In-house' | 'Online'
+  trainingDate: text('training_date').notNull().default(''),
+  trainingVenue: text('training_venue').notNull().default(''),
+  costAmount: text('cost_amount').notNull().default('0'),
+  costCurrency: text('cost_currency').notNull().default('IDR'),
+  costNotes: text('cost_notes').notNull().default(''),
+  providerName: text('provider_name').notNull().default(''),
+  providerContact: text('provider_contact').notNull().default(''),
+  objectives: jsonb('objectives').default('[]'), // array of strings
+  pastTrainings: jsonb('past_trainings').default('[]'), // array of strings
+  attachmentUrl: text('attachment_url'),
+  attachmentName: text('attachment_name'),
+  status: text('status').notNull().default('pending'), // 'draft' | 'pending' | 'approved' | 'rejected'
+  currentStepOrder: integer('current_step_order').notNull().default(1),
+  totalSteps: integer('total_steps').notNull().default(5),
+  isSyncedToRecords: boolean('is_synced_to_records').notNull().default(false),
+  syncedAt: timestamp('synced_at'),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const trainingRequestApprovals = pgTable('hero_training_request_approvals', {
+  id: serial('id').primaryKey(),
+  requestId: integer('request_id')
+    .notNull()
+    .references(() => trainingRequests.id, { onDelete: 'cascade' }),
+  stepOrder: integer('step_order').notNull(),
+  approvalToken: text('approval_token').notNull().unique(),
+  roleLabel: text('role_label').notNull(), // e.g. "Diajukan Oleh", "HR Verifikasi", "Mengetahui (Manager)", "Mengetahui (GOM)", "Menyetujui (Direktur)"
+  approverEmployeeId: integer('approver_employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  approverName: text('approver_name').notNull(),
+  approverEmail: text('approver_email').notNull().default(''),
+  approverTitle: text('approver_title').notNull().default(''),
+  status: text('status').notNull().default('pending'), // 'pending' | 'approved' | 'rejected' | 'skipped'
+  signatureDataUrl: text('signature_data_url'),
+  remarks: text('remarks').notNull().default(''),
+  approvedAt: timestamp('approved_at'),
+  rejectedAt: timestamp('rejected_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
+export type TrainingRequest = typeof trainingRequests.$inferSelect
+export type NewTrainingRequest = typeof trainingRequests.$inferInsert
+export type TrainingRequestApproval = typeof trainingRequestApprovals.$inferSelect
+export type NewTrainingRequestApproval = typeof trainingRequestApprovals.$inferInsert
+
+
 

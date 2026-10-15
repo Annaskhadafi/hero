@@ -38,12 +38,13 @@ export function MobileApprovalCenter({
   const rfrCount = isSingleCategory ? 0 : data.rfrInboxItems?.length ?? 0
   const sopWinCount = isSingleCategory ? 0 : data.sopWinRequestInboxItems?.length ?? 0
   const contractReviewCount = isSingleCategory ? 0 : data.contractReviewInboxItems?.length ?? 0
+  const trainingRequestCount = isSingleCategory ? 0 : (data as any).trainingRequestInboxItems?.length ?? 0
 
   const totalPending = isOvertimeOnly
     ? overtimeCount
     : isDailyOnly
       ? dailyCount
-      : dailyCount + overtimeCount + ptwCount + rfrCount + sopWinCount + contractReviewCount
+      : dailyCount + overtimeCount + ptwCount + rfrCount + sopWinCount + contractReviewCount + trainingRequestCount
 
   const totalGroups = isOvertimeOnly
     ? overtimeCount
@@ -55,7 +56,8 @@ export function MobileApprovalCenter({
         ptwCount +
         rfrCount +
         sopWinCount +
-        contractReviewCount
+        contractReviewCount +
+        trainingRequestCount
 
   const inboxTabContent = (
     <InboxTab
@@ -64,6 +66,7 @@ export function MobileApprovalCenter({
       groups={isOvertimeOnly ? [] : (data.inboxGroups || [])}
       contractReviewItems={isSingleCategory ? [] : (data.contractReviewInboxItems || [])}
       rfrItems={isSingleCategory ? [] : (data.rfrInboxItems || [])}
+      trainingRequestItems={isSingleCategory ? [] : ((data as any).trainingRequestInboxItems || [])}
       overtimeItems={isDailyOnly ? [] : (data.overtimeInboxItems || [])}
       ptwItems={isSingleCategory ? [] : (data.ptwInboxItems || [])}
       sopWinRequestItems={isSingleCategory ? [] : (data.sopWinRequestInboxItems || [])}
