@@ -73,7 +73,8 @@ function getObjectKeyFromUrl(objectUrl: string) {
       cleanPath.startsWith("public-career-cv/") ||
       cleanPath.startsWith("hse-osm/") ||
       cleanPath.startsWith("reward-store/") ||
-      cleanPath.startsWith("training-requests/")
+      cleanPath.startsWith("training-requests/") ||
+      cleanPath.startsWith("marital-status/")
     ) {
       return cleanPath;
     }
@@ -119,7 +120,7 @@ function getObjectKeyFromUrl(objectUrl: string) {
     }
 
     const knownPrefixMatch = objectPath.match(
-      /(?:^|\/)((?:activity-photos|attendance-photos|profile-photos|upload|uploads|curhat|curhat-attachments|mcu-wellness-results|mcu-referral-letters|mcu-results|offering-letters|sop-win-requests|sop-win|lms-materials|lms-covers|chitralearning|emergency-reports|safety|face-attendance|face-attendance-v2|contract-review-attachment|public-career-cv|hse-osm|reward-store|training-requests)\/.+)$/i,
+      /(?:^|\/)((?:activity-photos|attendance-photos|profile-photos|upload|uploads|curhat|curhat-attachments|mcu-wellness-results|mcu-referral-letters|mcu-results|offering-letters|sop-win-requests|sop-win|lms-materials|lms-covers|chitralearning|emergency-reports|safety|face-attendance|face-attendance-v2|contract-review-attachment|public-career-cv|hse-osm|reward-store|training-requests|marital-status)\/.+)$/i,
     );
 
     if (knownPrefixMatch) {

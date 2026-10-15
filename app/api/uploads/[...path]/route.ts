@@ -38,6 +38,7 @@ const ALLOWED_UPLOAD_PREFIXES = new Set([
   "hse-osm",
   "reward-store",
   "training-requests",
+  "marital-status",
 ])
 
 function getContentType(fileName: string) {
@@ -295,6 +296,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
       `chitralearning/${fileName}`,
       `contract-review-attachment/${fileName}`,
       `training-requests/${fileName}`,
+      `marital-status/${fileName}`,
       `hse-osm/${fileName}`,
     ]
 

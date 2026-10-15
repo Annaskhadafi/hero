@@ -29,6 +29,7 @@ import {
   Eye,
   FileText,
   Heart,
+  LayoutDashboard,
   Loader2,
   Plus,
   Printer,
@@ -38,9 +39,18 @@ import {
   ShieldCheck,
   Trash2,
   UserCheck,
+  Users,
   XCircle,
 } from 'lucide-react';
 import type { ApproverOption } from '@/lib/apd-status';
+import { MaritalStatusAnalyticsTab } from '@/components/marital-status/marital-status-analytics-tab';
+import { MarriedOnSiteEmployeesTab } from '@/components/marital-status/married-on-site-employees-tab';
+import { MaritalStatusFormDialog } from '@/components/marital-status/marital-status-form-dialog';
+import type {
+  MarriedOnSiteEmployeeRow,
+  MaritalStatusAnalyticsData,
+  MaritalPickerEmployee,
+} from '@/lib/marital-status-data';
 
 type MaritalStatusRequestRow = Awaited<ReturnType<typeof fetchMaritalStatusRequests>>[number];
 type RequestDetailData = NonNullable<Awaited<ReturnType<typeof fetchMaritalStatusRequestById>>>;
@@ -60,6 +70,9 @@ interface MaritalStatusDashboardClientProps {
   };
   initialRequests: MaritalStatusRequestRow[];
   approverOptions: ApproverOption[];
+  initialMarriedEmployees: MarriedOnSiteEmployeeRow[];
+  initialAnalytics: MaritalStatusAnalyticsData;
+  pickerEmployees: MaritalPickerEmployee[];
 }
 
 export function MaritalStatusDashboardClient({
@@ -67,21 +80,18 @@ export function MaritalStatusDashboardClient({
   employeeProfile,
   initialRequests,
   approverOptions,
+  initialMarriedEmployees,
+  initialAnalytics,
+  pickerEmployees,
 }: MaritalStatusDashboardClientProps) {
   const router = useRouter();
+  const [mainTab, setMainTab] = useState<'dashboard' | 'directory' | 'requests'>('dashboard');
   const [requests, setRequests] = useState<MaritalStatusRequestRow[]>(initialRequests);
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
 
   // Create Modal State
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [targetStatus, setTargetStatus] = useState<string>('');
-  const [reason, setReason] = useState<string>('');
-  const [approver1Id, setApprover1Id] = useState<string>('');
-  const [approver2Id, setApprover2Id] = useState<string>('');
-  const [approver3Id, setApprover3Id] = useState<string>('');
-  const [signatureUrl, setSignatureUrl] = useState<string>('');
 
   // Detail / Review Modal State
   const [selectedRequest, setSelectedRequest] = useState<RequestDetailData | null>(null);
@@ -149,56 +159,6 @@ export function MaritalStatusDashboardClient({
   const pendingCount = requests.filter((r) => r.status === 'pending_approval').length;
   const approvedCount = requests.filter((r) => r.status === 'approved').length;
   const rejectedCount = requests.filter((r) => r.status === 'rejected').length;
-
-  const handleCreateSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!targetStatus) {
-      toast.error('Pilih status pernikahan tujuan terlebih dahulu');
-      return;
-    }
-
-    if (!reason.trim()) {
-      toast.error('Alasan perubahan status wajib diisi');
-      return;
-    }
-
-    if (!approver1Id || !approver2Id || !approver3Id) {
-      toast.error('Pemeriksa (Level 1), Atasan Langsung (Level 2), dan Human Resources (Level 3) wajib dipilih');
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      const res = await submitMaritalStatusRequestAction({
-        targetMaritalStatus: targetStatus,
-        reason,
-        approver1Id: parseInt(approver1Id, 10),
-        approver2Id: parseInt(approver2Id, 10),
-        approver3Id: parseInt(approver3Id, 10),
-        signatureUrl,
-        siteId: employeeProfile.siteId ?? undefined,
-      });
-
-      if (res.success) {
-        toast.success(`Permohonan ${res.requestNumber} berhasil diajukan!`);
-        setIsCreateOpen(false);
-        setTargetStatus('');
-        setReason('');
-        setApprover1Id('');
-        setApprover2Id('');
-        setApprover3Id('');
-        setSignatureUrl('');
-        router.refresh();
-      } else {
-        toast.error(res.error || 'Gagal mengajukan permohonan');
-      }
-    } catch (error: any) {
-      toast.error(error.message || 'Terjadi kesalahan sistem');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   const handleOpenDetail = async (requestId: number) => {
     setIsDetailOpen(true);
@@ -298,8 +258,78 @@ export function MaritalStatusDashboardClient({
 
   return (
     <div className="space-y-6">
-      {/* Metrics Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* 3 Main Tabs Switcher */}
+      <div className="flex border-b border-border/80 bg-muted/20 p-1 rounded-xl gap-1 overflow-x-auto">
+        <button
+          type="button"
+          onClick={() => setMainTab('dashboard')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+            mainTab === 'dashboard'
+              ? 'bg-white text-gray-900 shadow-xs border border-border/80'
+              : 'text-muted-foreground hover:text-gray-900'
+          }`}
+        >
+          <LayoutDashboard className="w-4 h-4 text-rose-500" />
+          Dashboard & Analitik
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMainTab('directory')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+            mainTab === 'directory'
+              ? 'bg-white text-gray-900 shadow-xs border border-border/80'
+              : 'text-muted-foreground hover:text-gray-900'
+          }`}
+        >
+          <Users className="w-4 h-4 text-blue-500" />
+          Daftar Karyawan Married On Site
+          <Badge variant="secondary" className="text-[10px] ml-1 font-mono">
+            {initialMarriedEmployees.length}
+          </Badge>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMainTab('requests')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+            mainTab === 'requests'
+              ? 'bg-white text-gray-900 shadow-xs border border-border/80'
+              : 'text-muted-foreground hover:text-gray-900'
+          }`}
+        >
+          <FileText className="w-4 h-4 text-emerald-600" />
+          Permohonan & Approval
+          {pendingCount > 0 && (
+            <Badge className="bg-amber-100 text-amber-900 border-amber-300 text-[10px] ml-1 font-mono">
+              {pendingCount} pending
+            </Badge>
+          )}
+        </button>
+      </div>
+
+      {/* Tab 1: Dashboard Analitik */}
+      {mainTab === 'dashboard' && (
+        <MaritalStatusAnalyticsTab
+          analytics={initialAnalytics}
+          onNavigateToTab={(tab) => setMainTab(tab)}
+          onOpenCreateModal={() => setIsCreateOpen(true)}
+        />
+      )}
+
+      {/* Tab 2: Direktori Karyawan Married On Site */}
+      {mainTab === 'directory' && (
+        <MarriedOnSiteEmployeesTab
+          employees={initialMarriedEmployees}
+          onOpenCreateForEmployee={() => setIsCreateOpen(true)}
+        />
+      )}
+
+      {/* Tab 3: Antrean Permohonan & Approval */}
+      {mainTab === 'requests' && (
+        <div className="space-y-6">
+          {/* Metrics Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="border-l-4 border-l-blue-600 shadow-xs">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
@@ -480,300 +510,21 @@ export function MaritalStatusDashboardClient({
         }
       />
 
-      {/* Create Modal Dialog with Hero Design System & Live PDF Document Preview */}
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="sm:max-w-7xl w-[98vw] sm:w-[95vw] h-[95vh] sm:h-[92vh] flex flex-col p-3 sm:p-4 gap-3 sm:gap-4 bg-surface-container-lowest overflow-hidden">
-          <DialogHeader className="pb-2 border-b shrink-0">
-            <DialogTitle className="text-sm sm:text-lg font-bold leading-tight flex items-center justify-between gap-2 text-slate-800">
-              <div className="flex items-center gap-2">
-                <Heart className="w-5 h-5 text-emerald-600" />
-                <span>Permohonan Perubahan Status Pernikahan Di Lokasi</span>
               </div>
-              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 font-mono text-[10px]">
-                F.HR.STD.001 00
-              </Badge>
-            </DialogTitle>
-          </DialogHeader>
+      )}
 
-          <div className="flex-1 flex flex-col lg:grid lg:grid-cols-[1fr_460px] gap-3 sm:gap-4 min-h-0 overflow-hidden">
-            {/* Form Column (Left - Scrollable) */}
-            <form onSubmit={handleCreateSubmit} className="flex flex-col gap-3 overflow-y-auto min-h-0 p-1">
-              {/* Card 1: Auto-Filled Employee Info Badge */}
-              <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/60 p-3 text-xs space-y-1.5 shadow-2xs">
-                <div className="flex items-center justify-between border-b border-emerald-200/60 pb-1.5">
-                  <span className="font-bold text-emerald-950 text-xs">Informasi Pemohon</span>
-                  <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300">
-                    Auto-Filled HERO Profile
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-slate-700 pt-0.5">
-                  <p><span className="text-slate-400 block text-[10px]">Nama Karyawan:</span> <span className="font-semibold text-slate-900">{employeeProfile.name} (SN: {employeeProfile.employeeSn})</span></p>
-                  <p><span className="text-slate-400 block text-[10px]">Jabatan / Section:</span> <span className="font-medium text-slate-900">{employeeProfile.jobTitle} • {employeeProfile.sectionName}</span></p>
-                  <p><span className="text-slate-400 block text-[10px]">Dept / Site:</span> <span className="font-medium text-slate-900">{employeeProfile.departmentName} ({employeeProfile.siteName})</span></p>
-                  <p><span className="text-slate-400 block text-[10px]">Status Saat Ini:</span> <span className="font-bold text-emerald-800 underline">{formatMaritalStatus(employeeProfile.maritalStatus)}</span></p>
-                </div>
-              </div>
-
-              {/* Card 2: Interactive Target Marital Status Cards */}
-              <div className="rounded-xl border border-slate-200/80 bg-white p-3.5 space-y-2 shadow-2xs">
-                <Label className="text-xs font-bold text-slate-800 flex items-center justify-between">
-                  <span>Status Pernikahan Tujuan <span className="text-red-500">*</span></span>
-                  <span className="text-[10px] text-slate-400 font-normal">Pilih salah satu status resmi</span>
-                </Label>
-
-                <div className="grid grid-cols-2 gap-2.5">
-                  {MARITAL_STATUS_OPTIONS.map((opt) => {
-                    const isSelected = targetStatus === opt;
-                    return (
-                      <button
-                        key={opt}
-                        type="button"
-                        suppressHydrationWarning
-                        onClick={() => {
-                          setTargetStatus(opt);
-                          setTimeout(() => {
-                            if (iframeRef.current?.contentWindow) {
-                              iframeRef.current.contentWindow.postMessage({
-                                type: 'previewLiveDraft',
-                                targetMaritalStatus: opt,
-                              }, '*');
-                            }
-                          }, 50);
-                        }}
-                        className={`flex flex-col p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                          isSelected
-                            ? 'border-emerald-600 bg-emerald-50/80 ring-2 ring-emerald-500/20 shadow-xs'
-                            : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100/70 text-slate-700'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between w-full mb-0.5" suppressHydrationWarning>
-                          <span className={`text-xs font-bold ${isSelected ? 'text-emerald-950' : 'text-slate-800'}`}>
-                            {opt}
-                          </span>
-                          <span className={`size-4 rounded-full border flex items-center justify-center text-[10px] ${
-                            isSelected ? 'border-emerald-600 bg-emerald-600 text-white font-extrabold' : 'border-slate-300 bg-white'
-                          }`}>
-                            {isSelected ? '✓' : ''}
-                          </span>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Card 3: Reason Textarea */}
-              <div className="rounded-xl border border-slate-200/80 bg-white p-3.5 space-y-2 shadow-2xs">
-                <Label className="text-xs font-bold text-slate-800 flex items-center justify-between">
-                  <span>Alasan Perubahan Status Pernikahan <span className="text-red-500">*</span></span>
-                  <span className="text-[10px] text-slate-400 font-normal">{reason.length}/200 Karakter</span>
-                </Label>
-                <Textarea
-                  value={reason}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setReason(val);
-                    if (iframeRef.current?.contentWindow) {
-                      iframeRef.current.contentWindow.postMessage({
-                        type: 'previewLiveDraft',
-                        reason: val,
-                      }, '*');
-                    }
-                  }}
-                  placeholder="Contoh: Ingin membawa keluarga ke lokasi kerja agar bisa dekat keluarga dan menambah semangat bekerja."
-                  rows={3}
-                  className="text-xs rounded-xl bg-slate-50/50 border-slate-200 focus:bg-white resize-none"
-                />
-              </div>
-
-              {/* Card 4: 3-Step Approval Pathway Visualizer */}
-              <div className="rounded-xl border border-blue-200/80 bg-blue-50/30 p-3.5 space-y-3 shadow-2xs">
-                <div className="flex items-center justify-between border-b border-blue-200/60 pb-2">
-                  <div className="flex items-center gap-1.5 font-bold text-xs text-blue-900">
-                    <UserCheck className="w-4 h-4 text-blue-600" />
-                    <span>Alur Persetujuan 3-Step (Approvers)</span>
-                  </div>
-                  <span className="text-[10px] font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-md border border-blue-200">
-                    Routing Engine Active
-                  </span>
-                </div>
-
-                <div className="space-y-2.5">
-                  <div className="space-y-1">
-                    <Label className="text-[11px] font-semibold text-slate-700 flex items-center justify-between">
-                      <span>Step 1: PJO / HSE / Leader <span className="text-red-500">*</span></span>
-                      <span className="text-[10px] text-slate-400 font-normal">Pemeriksa Lokasi</span>
-                    </Label>
-                    <SearchableEmployeeSelect
-                      employees={approverOptions}
-                      value={approver1Id}
-                      onValueChange={(val) => {
-                        setApprover1Id(val);
-                        const selectedApp = approverOptions.find((a) => String(a.id) === String(val));
-                        const appName = selectedApp?.name || '';
-                        const appJob = selectedApp?.jobTitle || 'PJO / HSE / Leader';
-                        if (iframeRef.current?.contentWindow) {
-                          iframeRef.current.contentWindow.postMessage({
-                            type: 'previewLiveDraft',
-                            approver1Name: appName,
-                            approver1Job: appJob,
-                          }, '*');
-                        }
-                      }}
-                      placeholder="Cari & Pilih PJO / HSE / Leader..."
-                      showLabel={false}
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <Label className="text-[11px] font-semibold text-slate-700 flex items-center justify-between">
-                      <span>Step 2: Atasan Langsung <span className="text-red-500">*</span></span>
-                      <span className="text-[10px] text-slate-400 font-normal">Section Head / Manager</span>
-                    </Label>
-                    <SearchableEmployeeSelect
-                      employees={approverOptions}
-                      value={approver2Id}
-                      onValueChange={(val) => {
-                        setApprover2Id(val);
-                        const selectedApp = approverOptions.find((a) => String(a.id) === String(val));
-                        const appName = selectedApp?.name || '';
-                        const appJob = selectedApp?.jobTitle || 'Atasan Langsung';
-                        if (iframeRef.current?.contentWindow) {
-                          iframeRef.current.contentWindow.postMessage({
-                            type: 'previewLiveDraft',
-                            approver2Name: appName,
-                            approver2Job: appJob,
-                          }, '*');
-                        }
-                      }}
-                      placeholder="Cari & Pilih Atasan Langsung..."
-                      showLabel={false}
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <Label className="text-[11px] font-semibold text-slate-700 flex items-center justify-between">
-                      <span>Step 3: Human Resources (HR) <span className="text-red-500">*</span></span>
-                      <span className="text-[10px] text-slate-400 font-normal">Otorisasi HC Site / HO</span>
-                    </Label>
-                    <SearchableEmployeeSelect
-                      employees={approverOptions}
-                      value={approver3Id}
-                      onValueChange={(val) => {
-                        setApprover3Id(val);
-                        const selectedApp = approverOptions.find((a) => String(a.id) === String(val));
-                        const appName = selectedApp?.name || '';
-                        const appJob = selectedApp?.jobTitle || 'Human Resources';
-                        if (iframeRef.current?.contentWindow) {
-                          iframeRef.current.contentWindow.postMessage({
-                            type: 'previewLiveDraft',
-                            approver3Name: appName,
-                            approver3Job: appJob,
-                          }, '*');
-                        }
-                      }}
-                      placeholder="Cari & Pilih Representative Human Resources..."
-                      showLabel={false}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Card 5: Signature Canvas */}
-              <div className="rounded-xl border border-slate-200/80 bg-white p-3.5 space-y-2 shadow-2xs">
-                <Label className="text-xs font-bold text-slate-800 flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
-                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                    Tanda Tangan Pemohon (Karyawan)
-                  </span>
-                  <span className="text-[10px] text-slate-400 font-normal">Wajib diisi sebelum kirim</span>
-                </Label>
-                <SignaturePad
-                  defaultDataUrl={signatureUrl}
-                  onDataUrlChange={(url) => {
-                    const cleanUrl = url || '';
-                    setSignatureUrl(cleanUrl);
-                    if (iframeRef.current?.contentWindow) {
-                      iframeRef.current.contentWindow.postMessage({
-                        type: 'previewLiveDraft',
-                        signatureUrl: cleanUrl,
-                      }, '*');
-                    }
-                  }}
-                  height={110}
-                />
-              </div>
-
-              <DialogFooter className="pt-2 mt-auto shrink-0 flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)} className="h-10 text-xs rounded-xl">
-                  Batal
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="h-10 bg-[#003461] hover:bg-[#00284d] text-white font-bold text-xs rounded-xl shadow-xs gap-2 cursor-pointer px-5"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Mengirim...
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-4 h-4" />
-                      KIRIM PERMOHONAN PERUBAHAN STATUS
-                    </>
-                  )}
-                </Button>
-              </DialogFooter>
-            </form>
-
-            {/* Live PDF Document Preview Column (Right Column) */}
-            <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-xs flex flex-col min-h-0 h-full">
-              <div className="bg-slate-100 px-3 py-2 border-b font-medium text-xs text-slate-700 flex justify-between items-center shrink-0">
-                <div className="flex items-center gap-1.5 font-bold">
-                  <Printer className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Pratinjau Dokumen Real-Time (F.HR.STD.001 00)</span>
-                </div>
-                <span className="text-[10px] text-slate-500 italic">Live Update</span>
-              </div>
-              <iframe
-                ref={iframeRef}
-                src="/print/central-service/marital-status/draft?embed=true"
-                onLoad={() => {
-                  if (iframeRef.current?.contentWindow) {
-                    const selectedApp1 = approverOptions.find((a) => String(a.id) === String(approver1Id));
-                    const selectedApp2 = approverOptions.find((a) => String(a.id) === String(approver2Id));
-                    const selectedApp3 = approverOptions.find((a) => String(a.id) === String(approver3Id));
-
-                    iframeRef.current.contentWindow.postMessage({
-                      type: 'previewLiveDraft',
-                      employeeName: employeeProfile.name,
-                      employeeSn: employeeProfile.employeeSn,
-                      employeeJobTitle: employeeProfile.jobTitle,
-                      submitterJob: employeeProfile.jobTitle,
-                      departmentSection: `${employeeProfile.departmentName} / ${employeeProfile.sectionName}`,
-                      siteName: employeeProfile.siteName,
-                      currentMaritalStatus: employeeProfile.maritalStatus || 'Single On Site',
-                      targetMaritalStatus: targetStatus || 'Married On Site',
-                      reason: reason || '',
-                      approver1Name: selectedApp1?.name || 'PJO / HSE / Leader',
-                      approver1Job: selectedApp1?.jobTitle || 'PJO / HSE / Leader',
-                      approver2Name: selectedApp2?.name || 'Atasan Langsung',
-                      approver2Job: selectedApp2?.jobTitle || 'Atasan Langsung',
-                      approver3Name: selectedApp3?.name || 'Human Resources',
-                      approver3Job: selectedApp3?.jobTitle || 'Human Resources',
-                      signatureUrl: signatureUrl || '',
-                    }, '*');
-                  }
-                }}
-                className="w-full flex-1 min-h-[250px] h-full bg-white border-0"
-                title="Pratinjau Dokumen PDF Real-Time"
-              />
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Enhanced Online Form Dialog */}
+      <MaritalStatusFormDialog
+        open={isCreateOpen}
+        onOpenChange={setIsCreateOpen}
+        currentEmployeeId={currentEmployeeId}
+        employeeProfile={employeeProfile}
+        approverOptions={approverOptions}
+        pickerEmployees={pickerEmployees}
+        onSuccess={() => {
+          router.refresh();
+        }}
+      />
 
       {/* Detail / Review Dialog Modal */}
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>

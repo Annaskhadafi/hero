@@ -562,6 +562,12 @@ export function MobileDashboardServices({
               icon: Wrench,
               bg: 'bg-emerald-500/10 text-emerald-600',
             },
+            {
+              title: 'Pengajuan ATK (Alat Tulis)',
+              href: '/mobile/atk',
+              icon: Files,
+              bg: 'bg-indigo-500/10 text-indigo-600',
+            },
           ].map((request) => (
             <Link
               key={request.href}

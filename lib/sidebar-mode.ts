@@ -211,7 +211,8 @@ export function classifyItem(item: { section?: string; title: string; url: strin
   if (
     url === "/dashboard/central-service/marital-status" ||
     url === "/dashboard/apd" ||
-    url === "/dashboard/central-service/refueling"
+    url === "/dashboard/central-service/refueling" ||
+    url.startsWith("/dashboard/ga/atk")
   ) {
     return { section: "HRGA", category: "HUMAN CAPITAL", groupLabel: "General Affairs (GA)" }
   }

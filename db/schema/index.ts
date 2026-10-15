@@ -301,3 +301,6 @@ export * from './marital-status'
 // HSE On the Spot Monitoring (OSM)
 export * from './hse-osm'
 
+// General Affairs - ATK
+export * from './atk'
+

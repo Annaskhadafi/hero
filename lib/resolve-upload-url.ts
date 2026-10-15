@@ -47,6 +47,7 @@ export function extractS3ObjectKeyFromUrl(objectUrl: string | null | undefined):
       "hse-osm/",
       "reward-store/",
       "training-requests/",
+      "marital-status/",
     ];
     for (const prefix of prefixes) {
       if (cleanPath.startsWith(prefix)) {
@@ -64,7 +65,7 @@ export function extractS3ObjectKeyFromUrl(objectUrl: string | null | undefined):
 
     // 3. Regex match for known prefixes in full URLs
     const match = trimmed.match(
-      /(?:activity-photos|attendance-photos|profile-photos|upload|uploads|curhat|curhat-attachments|mcu-wellness-results|mcu-referral-letters|mcu-results|offering-letters|sop-win-requests|sop-win|lms-materials|lms-covers|chitralearning|emergency-reports|safety|face-attendance|face-attendance-v2|contract-review-attachment|public-career-cv|hse-osm|reward-store|training-requests)\/[a-zA-Z0-9\-._~%!$&'()*+,;=:@]+/i
+      /(?:activity-photos|attendance-photos|profile-photos|upload|uploads|curhat|curhat-attachments|mcu-wellness-results|mcu-referral-letters|mcu-results|offering-letters|sop-win-requests|sop-win|lms-materials|lms-covers|chitralearning|emergency-reports|safety|face-attendance|face-attendance-v2|contract-review-attachment|public-career-cv|hse-osm|reward-store|training-requests|marital-status)\/[a-zA-Z0-9\-._~%!$&'()*+,;=:@]+/i
     );
     if (match) {
       return match[0];

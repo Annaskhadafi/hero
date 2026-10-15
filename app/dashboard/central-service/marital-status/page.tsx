@@ -33,16 +33,19 @@ export default async function MaritalStatusDashboardPage() {
 
   if (!employeeProfile) return notFound();
 
-  const [requests, approverOptions] = await Promise.all([
+  const [requests, approverOptions, marriedEmployees, analytics, pickerEmployees] = await Promise.all([
     fetchMaritalStatusRequests(),
     fetchApproverOptions(),
+    import("@/lib/marital-status-data").then((m) => m.fetchMarriedOnSiteEmployees()),
+    import("@/lib/marital-status-data").then((m) => m.fetchMaritalStatusAnalytics()),
+    import("@/lib/marital-status-data").then((m) => m.fetchEmployeesForMaritalPicker()),
   ]);
 
   return (
     <AdminPageShell
       eyebrow="Central Service / Management"
       title="Pergantian Status Pernikahan"
-      description="Dashboard permohonan dan persetujuan perubahan status pernikahan di lokasi karyawan."
+      description="Dashboard analisis, master direktori status Married On Site, dan permohonan pergantian status karyawan."
     >
       <MaritalStatusDashboardClient
         currentEmployeeId={currentEmployee.id}
@@ -59,6 +62,9 @@ export default async function MaritalStatusDashboardPage() {
         }}
         initialRequests={requests}
         approverOptions={approverOptions}
+        initialMarriedEmployees={marriedEmployees}
+        initialAnalytics={analytics}
+        pickerEmployees={pickerEmployees}
       />
     </AdminPageShell>
   );

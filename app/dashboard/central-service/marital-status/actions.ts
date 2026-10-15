@@ -17,8 +17,15 @@ import {
 } from '@/lib/marital-status-email';
 
 export interface SubmitMaritalStatusInput {
+  targetEmployeeId?: number;
   targetMaritalStatus: string;
   reason: string;
+  marriageDate?: string;
+  spouseName?: string;
+  residenceStatus?: string;
+  dependentsCount?: number;
+  attachmentUrl?: string;
+  attachmentName?: string;
   approver1Id: number;
   approver2Id: number;
   approver3Id?: number;
@@ -47,6 +54,8 @@ export async function submitMaritalStatusRequestAction(input: SubmitMaritalStatu
       return { success: false, error: 'Pemeriksa (Level 1) dan Atasan Langsung (Level 2) wajib dipilih.' };
     }
 
+    const effectiveEmployeeId = input.targetEmployeeId || currentEmployee.id;
+
     // Fetch employee current profile
     const [empProfile] = await db
       .select({
@@ -56,7 +65,7 @@ export async function submitMaritalStatusRequestAction(input: SubmitMaritalStatu
         siteId: employees.siteId,
       })
       .from(employees)
-      .where(eq(employees.id, currentEmployee.id))
+      .where(eq(employees.id, effectiveEmployeeId))
       .limit(1);
 
     if (!empProfile) {
@@ -113,11 +122,18 @@ export async function submitMaritalStatusRequestAction(input: SubmitMaritalStatu
       .insert(maritalStatusRequests)
       .values({
         requestNumber,
-        employeeId: currentEmployee.id,
+        employeeId: effectiveEmployeeId,
+        submittedByEmployeeId: currentEmployee.id,
         siteId: input.siteId ?? empProfile.siteId ?? null,
         currentMaritalStatus,
         targetMaritalStatus: input.targetMaritalStatus.trim(),
         reason: input.reason.trim(),
+        marriageDate: input.marriageDate ? new Date(input.marriageDate) : null,
+        spouseName: input.spouseName?.trim() || null,
+        residenceStatus: input.residenceStatus?.trim() || 'Mess / Perumahan On Site',
+        dependentsCount: Number(input.dependentsCount) || 0,
+        attachmentUrl: input.attachmentUrl || null,
+        attachmentName: input.attachmentName || null,
         status: 'pending_approval',
         signatureUrl: input.signatureUrl || null,
         notes: input.notes?.trim() || '',
@@ -126,7 +142,7 @@ export async function submitMaritalStatusRequestAction(input: SubmitMaritalStatu
 
     // Resolve default route snapshot via Approval Engine
     const resolvedRoute = await resolveApprovalRouteForActivity({
-      employeeId: currentEmployee.id,
+      employeeId: effectiveEmployeeId,
       activityType: 'marital_status',
       priority: 'normal',
       overtimeMinutes: 0,
@@ -366,11 +382,21 @@ export async function approveMaritalStatusStepAction(
 
       // Synchronize employee's marital status in hero_employees
       try {
+        const updatePayload: Record<string, any> = {
+          maritalStatus: request.targetMaritalStatus,
+        };
+        if (request.spouseName) {
+          updatePayload.spouseName = request.spouseName;
+        }
+        if (request.marriageDate) {
+          updatePayload.marriageDate = sql`${new Date(request.marriageDate).toISOString().split('T')[0]}::date`;
+        }
+        if (request.residenceStatus) {
+          updatePayload.residenceStatus = request.residenceStatus;
+        }
         await db
           .update(employees)
-          .set({
-            maritalStatus: request.targetMaritalStatus,
-          })
+          .set(updatePayload)
           .where(eq(employees.id, request.employeeId));
       } catch (updateEmpErr) {
         console.warn('[approveMaritalStatusStepAction] Profile sync warning:', updateEmpErr);
