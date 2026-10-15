@@ -4678,4 +4678,36 @@ export const rewardRedemptions = pgTable('hero_reward_redemptions', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
+export const hcTurnoverSettings = pgTable('hero_hc_turnover_settings', {
+  id: serial('id').primaryKey(),
+  year: integer('year').notNull().unique(),
+  initialHeadcount: integer('initial_headcount').notNull().default(0),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const hcTurnoverMovements = pgTable('hero_hc_turnover_movements', {
+  id: serial('id').primaryKey(),
+  movementType: text('movement_type').notNull(), // 'incoming' | 'outgoing'
+  employeeId: integer('employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  employeeSn: text('employee_sn').notNull().default(''),
+  name: text('name').notNull(),
+  position: text('position').notNull().default(''),
+  department: text('department').notNull().default(''),
+  section: text('section').notNull().default(''),
+  pointOfHire: text('point_of_hire').notNull().default(''),
+  movementDate: date('movement_date').notNull(),
+  remark: text('remark').notNull(), // 'New Hire' | 'Transfer' | 'Re Hire' | 'Resign' | 'Contract Complete' | 'Terminate' | 'Pension'
+  recruitmentId: integer('recruitment_id'),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export type HcTurnoverSetting = typeof hcTurnoverSettings.$inferSelect
+export type NewHcTurnoverSetting = typeof hcTurnoverSettings.$inferInsert
+export type HcTurnoverMovement = typeof hcTurnoverMovements.$inferSelect
+export type NewHcTurnoverMovement = typeof hcTurnoverMovements.$inferInsert
+
 

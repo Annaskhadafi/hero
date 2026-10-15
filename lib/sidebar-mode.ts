@@ -12,6 +12,8 @@ import {
   IconReport,
   IconSettings,
   IconHelp,
+  IconGift,
+  IconBook,
 } from "@tabler/icons-react"
 
 export type SidebarLayoutMode = "classic" | "modern"
@@ -87,7 +89,9 @@ export const MODERN_SECTION_ORDER = [
   "Approval",
   "Operasional",
   "Central Service",
-  "Human Capital",
+  "HRGA",
+  "ChitraLearning & Training",
+  "Poin & Hadiah",
   "HSE",
   "Aset",
   "Laporan",
@@ -99,7 +103,10 @@ export const sectionCategoryMap: Record<string, string> = {
   Approval: "WORKSPACE (GLOBAL)",
   Operasional: "DEPARTEMEN",
   "Central Service": "DEPARTEMEN",
-  "Human Capital": "DEPARTEMEN",
+  HRGA: "HUMAN CAPITAL",
+  "ChitraLearning & Training": "HUMAN CAPITAL",
+  "Poin & Hadiah": "HUMAN CAPITAL",
+  "Human Capital": "HUMAN CAPITAL",
   HSE: "DEPARTEMEN",
   Aset: "UMUM & SISTEM",
   Laporan: "UMUM & SISTEM",
@@ -111,6 +118,9 @@ export const modernSectionIconMap: Record<string, any> = {
   Approval: IconFileCheck,
   Operasional: IconChecklist,
   "Central Service": IconTools,
+  HRGA: IconUsers,
+  "ChitraLearning & Training": IconBook,
+  "Poin & Hadiah": IconGift,
   "Human Capital": IconUsers,
   HSE: IconShieldHalfFilled,
   Aset: IconDatabase,
@@ -134,10 +144,10 @@ export function classifyItem(item: { section?: string; title: string; url: strin
   if (url === "/dashboard/activity-hub/my-day" || url === "/dashboard/daily-activity" || url === "/dashboard/timesheet") {
     return { section: "Workspace", category: "WORKSPACE (GLOBAL)", groupLabel: "Aktivitas Harian" }
   }
-  if (url === "/dashboard/request-center" || url === "/dashboard/overtime-requests" || url === "/dashboard/hc/permission" || url === "/dashboard/curhat" || url === "/dashboard/hr-counseling" || url === "/dashboard/apd") {
+  if (url === "/dashboard/request-center" || url === "/dashboard/overtime-requests") {
     return { section: "Workspace", category: "WORKSPACE (GLOBAL)", groupLabel: "Pengajuan Saya" }
   }
-  if (url.startsWith("/dashboard/chitralearning-lms") || url === "/dashboard/portal-chitra") {
+  if (url === "/dashboard/portal-chitra") {
     return { section: "Workspace", category: "WORKSPACE (GLOBAL)", groupLabel: "Learning & Portal" }
   }
 
@@ -153,7 +163,7 @@ export function classifyItem(item: { section?: string; title: string; url: strin
   if (url.startsWith("/dashboard/scheduling-timesheet")) {
     return { section: "Operasional", category: "DEPARTEMEN", groupLabel: "Roster & Timesheet" }
   }
-  if (url === "/dashboard/ewh" || url === "/dashboard/unit-utility" || url === "/dashboard/central-service/refueling" || url === "/dashboard/utilities") {
+  if (url === "/dashboard/ewh" || url === "/dashboard/unit-utility" || url === "/dashboard/utilities") {
     return { section: "Operasional", category: "DEPARTEMEN", groupLabel: "Efisiensi Unit" }
   }
 
@@ -171,21 +181,70 @@ export function classifyItem(item: { section?: string; title: string; url: strin
     return { section: "Central Service", category: "DEPARTEMEN", groupLabel: "Commercial 360" }
   }
 
-  // 5. HUMAN CAPITAL
-  if (url === "/dashboard/hc/employee" || url === "/dashboard/hc/org-chart-v2" || url === "/dashboard/hc/contract-review" || url === "/dashboard/hc") {
-    return { section: "Human Capital", category: "DEPARTEMEN", groupLabel: "Data Karyawan" }
-  }
-  if (url.startsWith("/dashboard/hc/rfr") || url.startsWith("/dashboard/hc/recruitment")) {
-    return { section: "Human Capital", category: "DEPARTEMEN", groupLabel: "Rekrutmen" }
-  }
-  if (url.startsWith("/dashboard/hc/performance") || url.startsWith("/dashboard/hc/leader-performance") || url === "/dashboard/leaderboard") {
-    return { section: "Human Capital", category: "DEPARTEMEN", groupLabel: "Kinerja & KPI" }
-  }
-  if (url.startsWith("/dashboard/hc/disciplinary") || url.startsWith("/dashboard/hc/surat") || url.startsWith("/dashboard/hc/mcu-wellness") || url === "/dashboard/training-records") {
-    return { section: "Human Capital", category: "DEPARTEMEN", groupLabel: "Pembinaan & Layanan" }
+  // 5. HUMAN CAPITAL -> HRGA
+  // 5.1 Data & Akses Karyawan
+  if (
+    url === "/dashboard/security/users" ||
+    url === "/dashboard/hc/employee" ||
+    url === "/dashboard/hc/org-chart-v2" ||
+    url === "/dashboard/hc/contract-review" ||
+    url === "/dashboard/hc/turnover" ||
+    url === "/dashboard/hc"
+  ) {
+    return { section: "HRGA", category: "HUMAN CAPITAL", groupLabel: "Data & Akses Karyawan" }
   }
 
-  // 6. HSE
+  // 5.2 Layanan & Personalia
+  if (
+    url === "/dashboard/curhat" ||
+    url === "/dashboard/hr-counseling" ||
+    url === "/dashboard/hc/surat" ||
+    url === "/dashboard/hc/permission" ||
+    url === "/dashboard/hc/flight-route-change" ||
+    url === "/dashboard/hc/disciplinary" ||
+    url === "/dashboard/hc/mcu-wellness"
+  ) {
+    return { section: "HRGA", category: "HUMAN CAPITAL", groupLabel: "Layanan & Personalia" }
+  }
+
+  // 5.3 General Affairs (GA)
+  if (
+    url === "/dashboard/central-service/marital-status" ||
+    url === "/dashboard/apd" ||
+    url === "/dashboard/central-service/refueling"
+  ) {
+    return { section: "HRGA", category: "HUMAN CAPITAL", groupLabel: "General Affairs (GA)" }
+  }
+
+  // 5.4 Rekrutmen
+  if (url.startsWith("/dashboard/hc/rfr") || url.startsWith("/dashboard/hc/recruitment")) {
+    return { section: "HRGA", category: "HUMAN CAPITAL", groupLabel: "Rekrutmen" }
+  }
+
+  // 5.5 Kinerja & KPI
+  if (url.startsWith("/dashboard/hc/performance") || url.startsWith("/dashboard/hc/leader-performance")) {
+    return { section: "HRGA", category: "HUMAN CAPITAL", groupLabel: "Kinerja & KPI" }
+  }
+
+  // 6. HUMAN CAPITAL -> Poin & Hadiah
+  if (url === "/dashboard/leaderboard" || url === "/dashboard/reward-store") {
+    return { section: "Poin & Hadiah", category: "HUMAN CAPITAL", groupLabel: "Poin & Hadiah" }
+  }
+
+  // 7. HUMAN CAPITAL -> ChitraLearning & Training
+  if (
+    url.startsWith("/dashboard/chitralearning-lms") ||
+    url === "/dashboard/training-records" ||
+    url.startsWith("/dashboard/hc/training")
+  ) {
+    return {
+      section: "ChitraLearning & Training",
+      category: "HUMAN CAPITAL",
+      groupLabel: url.startsWith("/dashboard/chitralearning-lms") ? "ChitraLearning LMS" : "Training",
+    }
+  }
+
+  // 8. HSE
   if (url === "/dashboard/safety" || url === "/dashboard/safety/data" || url === "/dashboard/hse" || url === "/dashboard/hse/incident-report" || url === "/dashboard/safety-induction") {
     return { section: "HSE", category: "DEPARTEMEN", groupLabel: "Safety Control" }
   }
@@ -196,17 +255,17 @@ export function classifyItem(item: { section?: string; title: string; url: strin
     return { section: "HSE", category: "DEPARTEMEN", groupLabel: "Risk & Standar" }
   }
 
-  // 7. ASET & DATA INDUK
+  // 9. ASET & DATA INDUK
   if (url.startsWith("/dashboard/central-service/assets") || url.startsWith("/dashboard/central-service/sap-assets") || url === "/dashboard/master-data" || url === "/dashboard/customers" || url === "/dashboard/form-studio") {
     return { section: "Aset", category: "UMUM & SISTEM", groupLabel: "Manajemen Aset" }
   }
 
-  // 8. LAPORAN
+  // 10. LAPORAN
   if (url.startsWith("/dashboard/analytics") || url.startsWith("/dashboard/reports") || url === "/dashboard/command-center" || url.startsWith("/dashboard/marketing")) {
     return { section: "Laporan", category: "UMUM & SISTEM", groupLabel: "Analytics & Laporan" }
   }
 
-  // 9. PENGATURAN
+  // 11. PENGATURAN
   if (url.startsWith("/dashboard/security")) {
     return { section: "Pengaturan", category: "UMUM & SISTEM", groupLabel: "Akses & Keamanan" }
   }

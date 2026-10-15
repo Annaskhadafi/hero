@@ -25,10 +25,11 @@ import {
 interface ScheduleInterviewModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  candidateId: number;
-  candidateName: string;
+  candidateId?: number;
+  candidateName?: string;
   jobTitle?: string;
   defaultStageName?: string;
+  candidateList?: Array<{ id: number; fullName: string; jobTitle?: string | null; email?: string | null }>;
   onSuccess?: () => void;
 }
 
@@ -39,14 +40,16 @@ export function ScheduleInterviewModal({
   candidateName,
   jobTitle = "Kandidat",
   defaultStageName = "Interview 1",
+  candidateList,
   onSuccess,
 }: ScheduleInterviewModalProps) {
   const [loading, setLoading] = useState(false);
   const [scheduling, setScheduling] = useState(false);
   const [interviewersList, setInterviewersList] = useState<any[]>([]);
+  const [selectedCandidateId, setSelectedCandidateId] = useState<number | undefined>(candidateId);
 
   const [stageName, setStageName] = useState<string>(defaultStageName);
-  const [scheduledDate, setScheduledDate] = useState<string>("");
+  const [scheduledDate, setScheduledDate] = useState<string>("" );
   const [scheduledTime, setScheduledTime] = useState<string>("10:00");
   const [durationMinutes, setDurationMinutes] = useState<number>(60);
   const [interviewType, setInterviewType] = useState<string>("Online");
@@ -60,9 +63,14 @@ export function ScheduleInterviewModal({
   useEffect(() => {
     if (open) {
       setStageName(defaultStageName);
+      if (candidateId) {
+        setSelectedCandidateId(candidateId);
+      } else if (candidateList && candidateList.length > 0 && !selectedCandidateId) {
+        setSelectedCandidateId(candidateList[0].id);
+      }
       loadDefaults();
     }
-  }, [open, defaultStageName]);
+  }, [open, defaultStageName, candidateId, candidateList]);
 
   const loadDefaults = async () => {
     setLoading(true);
@@ -114,6 +122,12 @@ export function ScheduleInterviewModal({
       return;
     }
 
+    const targetCandidateId = candidateId || selectedCandidateId;
+    if (!targetCandidateId) {
+      toast.error("Pilih kandidat terlebih dahulu.");
+      return;
+    }
+
     setScheduling(true);
     try {
       const combinedDateTime = new Date(`${scheduledDate}T${scheduledTime}:00`);
@@ -123,7 +137,7 @@ export function ScheduleInterviewModal({
       const interviewerNames = selectedEmps.map((e) => e.name);
       const interviewerEmails = selectedEmps.map((e) => e.email).filter(Boolean);
 
-      await scheduleCandidateInterviewStage(candidateId, {
+      await scheduleCandidateInterviewStage(targetCandidateId, {
         scheduledAt: combinedDateTime,
         durationMinutes,
         interviewType,
@@ -146,13 +160,16 @@ export function ScheduleInterviewModal({
     }
   };
 
+  const currentCandidateObj = candidateList?.find((c) => c.id === (candidateId || selectedCandidateId));
+  const activeCandidateName = candidateName || currentCandidateObj?.fullName || "Kandidat";
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-lg font-bold">
             <Calendar className="w-5 h-5 text-cyan-600" />
-            Jadwalkan Interview Berjenjang ({candidateName})
+            Jadwalkan Interview ({activeCandidateName})
           </DialogTitle>
           <DialogDescription className="text-xs">
             Pilih tahap interview, waktu, dan pewawancara dari User Management. Email undangan & link form penilaian akan dikirim otomatis.
@@ -163,6 +180,28 @@ export function ScheduleInterviewModal({
           <div className="py-8 text-center text-xs text-muted-foreground">Memuat data default...</div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4 py-2">
+            {!candidateId && candidateList && candidateList.length > 0 && (
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+                <Label className="text-xs font-semibold text-primary">Pilih Kandidat *</Label>
+                <Select
+                  value={selectedCandidateId?.toString()}
+                  onValueChange={(val) => setSelectedCandidateId(Number(val))}
+                >
+                  <SelectTrigger className="mt-1 bg-background text-xs">
+                    <SelectValue placeholder="Pilih kandidat..." />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-60">
+                    {candidateList.map((c) => (
+                      <SelectItem key={c.id} value={c.id.toString()}>
+                        <span className="font-medium">{c.fullName}</span>
+                        {c.jobTitle && <span className="text-muted-foreground ml-1.5">({c.jobTitle})</span>}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label className="text-xs font-semibold">Tahap Interview (Stage)</Label>

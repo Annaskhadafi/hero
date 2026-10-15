@@ -35,6 +35,8 @@ import { SecurityUserRowActions } from '@/components/security-user-row-actions'
 import { SecurityUserDashboard } from '@/components/security-user-dashboard'
 import { SecurityServicemanDashboard } from '@/components/security-serviceman-dashboard'
 import { SecurityLocationTransferHistory } from '@/components/security-location-transfer-history'
+import { SecurityPermanentUsersTab } from '@/components/security-permanent-users-tab'
+import { SecurityContractUsersTab } from '@/components/security-contract-users-tab'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -297,7 +299,7 @@ export function SecurityUserManagement({
 }) {
   const router = useRouter()
   const [isRefreshing, startRefreshTransition] = useTransition()
-  const [activeTab, setActiveTab] = useState<'directory' | 'dashboard' | 'serviceman-dashboard' | 'location-history'>('directory')
+  const [activeTab, setActiveTab] = useState<'directory' | 'permanent' | 'contract' | 'dashboard' | 'serviceman-dashboard' | 'location-history'>('directory')
 
   const COLUMNS = useMemo(() => {
     return COLUMNS_DEF.map((col) => ({
@@ -941,6 +943,30 @@ export function SecurityUserManagement({
         </button>
         <button
           type="button"
+          onClick={() => setActiveTab('permanent')}
+          className={cn(
+            "pb-3 text-sm font-bold border-b-2 px-4 -mb-px transition-all duration-200 cursor-pointer flex items-center gap-1.5",
+            activeTab === 'permanent'
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <span>Karyawan Permanen</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('contract')}
+          className={cn(
+            "pb-3 text-sm font-bold border-b-2 px-4 -mb-px transition-all duration-200 cursor-pointer flex items-center gap-1.5",
+            activeTab === 'contract'
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <span>Karyawan Kontrak</span>
+        </button>
+        <button
+          type="button"
           onClick={() => setActiveTab('dashboard')}
           className={cn(
             "pb-3 text-sm font-bold border-b-2 px-4 -mb-px transition-all duration-200 cursor-pointer",
@@ -995,6 +1021,10 @@ export function SecurityUserManagement({
         <SecurityServicemanDashboard users={users} />
       ) : activeTab === 'dashboard' ? (
         <SecurityUserDashboard users={users} />
+      ) : activeTab === 'permanent' ? (
+        <SecurityPermanentUsersTab users={users} />
+      ) : activeTab === 'contract' ? (
+        <SecurityContractUsersTab users={users} />
       ) : (
         <>
           <AdminMetricGrid

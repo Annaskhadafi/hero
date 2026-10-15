@@ -8,8 +8,12 @@ import {
   hcCandidates,
   hcInterviewSettings,
   hcRecruitments,
+  notificationEvents,
+  notificationDeliveries,
+  hcOnlineTestAssignments,
+  hcOnlineTests,
 } from "@/db/schema/hero";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, inArray, and, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getEmailSmtpSettingsData } from "@/lib/hero-admin";
 import { sendEmailViaSmtp } from "@/lib/email-delivery";
@@ -182,7 +186,7 @@ export async function scheduleCandidateInterviewStage(candidateId: number, data:
   const interviewDate = format(data.scheduledAt, "EEEE, dd MMMM yyyy");
   const interviewTime = format(data.scheduledAt, "HH:mm");
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "http://localhost:3000";
-  const evalFormUrl = `${baseUrl}/interview-evaluation/${accessToken}`;
+  const evalFormUrl = `${baseUrl}/dashboard/hc/recruitment/wawancara?interviewId=${interview.id}`;
 
   // 1. Send Email to Candidate
   if (data.sendCandidateEmail !== false && smtpSettings.host && smtpSettings.fromEmail && candidate.email) {
@@ -305,6 +309,30 @@ Tim Human Capital PT Chitra Paratama`;
           templateName: "Interviewer Notification",
           templateCode: "interview_interviewer_notification",
         });
+
+        // Also create in-app notification for the notification bell & inbox
+        try {
+          const [event] = await db.insert(notificationEvents).values({
+            recipient: email.trim().toLowerCase(),
+            eventType: "interview_assignment",
+            payloadSnapshot: JSON.stringify({
+              title: `Tugas Wawancara: ${candidate.fullName}`,
+              body: `Anda ditugaskan mewawancarai ${candidate.fullName} (${vacancyTitle}) pada ${interviewDate} pukul ${interviewTime} WITA.`,
+              url: `/dashboard/hc/recruitment/wawancara?interviewId=${interview.id}`,
+            }),
+            status: "sent",
+          }).returning();
+
+          await db.insert(notificationDeliveries).values({
+            notificationEventId: event.id,
+            recipient: email.trim().toLowerCase(),
+            deliveryChannel: "in_app",
+            status: "delivered",
+            sentAt: new Date(),
+          });
+        } catch (notifErr) {
+          console.error("Failed creating in-app notification for interviewer:", notifErr);
+        }
       }
     } catch (err) {
       console.error("Failed sending interviewer notification email:", err);
@@ -313,6 +341,8 @@ Tim Human Capital PT Chitra Paratama`;
 
   revalidatePath(`/dashboard/hc/recruitment/candidates/${candidateId}`);
   revalidatePath("/dashboard/hc/recruitment");
+  revalidatePath("/dashboard/hc/recruitment/wawancara");
+  revalidatePath("/dashboard/wawancara");
   return interview;
 }
 
@@ -779,3 +809,278 @@ export async function getAllScheduledInterviews() {
   .where(eq(hcCandidateInterviews.status, "Scheduled"))
   .orderBy(hcCandidateInterviews.scheduledAt);
 }
+
+export async function getInterviewsWorkspaceData() {
+  const rows = await db.select({
+    interview: hcCandidateInterviews,
+    candidate: hcCandidates,
+    recruitment: hcRecruitments,
+  })
+  .from(hcCandidateInterviews)
+  .innerJoin(hcCandidates, eq(hcCandidateInterviews.candidateId, hcCandidates.id))
+  .leftJoin(hcRecruitments, eq(hcCandidates.recruitmentId, hcRecruitments.id))
+  .orderBy(desc(hcCandidateInterviews.scheduledAt), desc(hcCandidateInterviews.id));
+
+  const interviewIds = rows.map((r) => r.interview.id);
+  const candidateIds = Array.from(new Set(rows.map((r) => r.candidate.id)));
+
+  let evaluations: any[] = [];
+  if (interviewIds.length > 0) {
+    evaluations = await db.select()
+      .from(hcCandidatePanelEvaluations)
+      .where(inArray(hcCandidatePanelEvaluations.interviewId, interviewIds))
+      .orderBy(desc(hcCandidatePanelEvaluations.submittedAt));
+  }
+
+  let testAssignments: any[] = [];
+  if (candidateIds.length > 0) {
+    testAssignments = await db.select({
+      id: hcOnlineTestAssignments.id,
+      candidateId: hcOnlineTestAssignments.candidateId,
+      testId: hcOnlineTestAssignments.testId,
+      score: hcOnlineTestAssignments.score,
+      status: hcOnlineTestAssignments.status,
+      testTitle: hcOnlineTests.title,
+      isApplicationForm: hcOnlineTests.isApplicationForm,
+    })
+    .from(hcOnlineTestAssignments)
+    .innerJoin(hcOnlineTests, eq(hcOnlineTestAssignments.testId, hcOnlineTests.id))
+    .where(
+      and(
+        inArray(hcOnlineTestAssignments.candidateId, candidateIds),
+        inArray(hcOnlineTestAssignments.status, ["Completed", "Graded"])
+      )
+    );
+  }
+
+  const evaluationsByInterviewId = new Map<number, any[]>();
+  for (const ev of evaluations) {
+    if (!ev.interviewId) continue;
+    const list = evaluationsByInterviewId.get(ev.interviewId) ?? [];
+    list.push(ev);
+    evaluationsByInterviewId.set(ev.interviewId, list);
+  }
+
+  const testsByCandidateId = new Map<number, any[]>();
+  for (const t of testAssignments) {
+    const list = testsByCandidateId.get(t.candidateId) ?? [];
+    list.push(t);
+    testsByCandidateId.set(t.candidateId, list);
+  }
+
+  const enrichedSessions = rows.map((r) => {
+    const interview = r.interview;
+    const candidate = r.candidate;
+    const recruitment = r.recruitment;
+    const evals = evaluationsByInterviewId.get(interview.id) ?? [];
+    const tests = testsByCandidateId.get(candidate.id) ?? [];
+
+    const assignedEmails = Array.isArray(interview.interviewerEmails) ? interview.interviewerEmails : [];
+    const assignedNames = (interview.interviewerName || "")
+      .split(",")
+      .map((s: string) => s.trim())
+      .filter(Boolean);
+    const totalPanelistsExpected = Math.max(assignedEmails.length, assignedNames.length, 1);
+    const evaluatedCount = evals.length;
+    const isFullyEvaluated = evaluatedCount >= totalPanelistsExpected && evaluatedCount > 0;
+
+    let totalScoreSum = 0;
+    let personalQualitiesSum = 0;
+    let professionalSkillSum = 0;
+    let managerialLeadershipSum = 0;
+    let recommendedCount = 0;
+    let notRecommendedCount = 0;
+
+    evals.forEach((ev) => {
+      const personal = (
+        (ev.dayaTangkapScore || 0) +
+        (ev.problemSolvingScore || 0) +
+        (ev.motivationalFitScore || 0) +
+        (ev.adaptabilityScore || 0) +
+        (ev.interpersonalSkillsScore || 0) +
+        (ev.communicationSkillScore || 0)
+      ) / 6;
+
+      const prof = (
+        (ev.fundamentalUnderstandingScore || 0) +
+        (ev.experienceRelatedScore || 0) +
+        (ev.technicalSkillScore || 0)
+      ) / 3;
+
+      const mgmt = (
+        (ev.managerialSkillsScore || 0) +
+        (ev.leadershipScore || 0) +
+        (ev.teamWorkScore || 0)
+      ) / 3;
+
+      personalQualitiesSum += personal;
+      professionalSkillSum += prof;
+      managerialLeadershipSum += mgmt;
+      totalScoreSum += (personal + prof + mgmt) / 3;
+
+      if (ev.overallRecommendation === "RECOMMENDED") recommendedCount++;
+      if (ev.overallRecommendation === "NOT_RECOMMENDED") notRecommendedCount++;
+    });
+
+    const averageScore = evaluatedCount > 0 ? Number((totalScoreSum / evaluatedCount).toFixed(1)) : null;
+    const personalQualitiesAvg = evaluatedCount > 0 ? Number((personalQualitiesSum / evaluatedCount).toFixed(1)) : null;
+    const professionalSkillAvg = evaluatedCount > 0 ? Number((professionalSkillSum / evaluatedCount).toFixed(1)) : null;
+    const managerialLeadershipAvg = evaluatedCount > 0 ? Number((managerialLeadershipSum / evaluatedCount).toFixed(1)) : null;
+
+    let consensus = "PENDING";
+    if (evaluatedCount > 0) {
+      consensus = recommendedCount >= notRecommendedCount ? "RECOMMENDED" : "NOT_RECOMMENDED";
+    }
+
+    let ageStr = "-";
+    if (candidate.dateOfBirth) {
+      const birthYear = new Date(candidate.dateOfBirth).getFullYear();
+      const currentYear = new Date().getFullYear();
+      ageStr = `${currentYear - birthYear} Thn`;
+    }
+
+    let educationStr = "-";
+    if (Array.isArray(candidate.education) && candidate.education.length > 0) {
+      const lastEdu = candidate.education[candidate.education.length - 1];
+      educationStr = `${lastEdu.level || ""} ${lastEdu.institution || ""}`.trim();
+    }
+
+    const apmTest = tests.find((t) => t.testId === 8);
+    const amrTest = tests.find((t) => t.testId === 10);
+
+    return {
+      id: interview.id,
+      candidateId: candidate.id,
+      scheduledAt: interview.scheduledAt,
+      durationMinutes: interview.durationMinutes,
+      interviewType: interview.interviewType,
+      locationOrLink: interview.locationOrLink,
+      interviewerName: interview.interviewerName,
+      interviewerEmails: assignedEmails,
+      stageName: interview.stageName,
+      status: interview.status,
+      result: interview.result,
+      notes: interview.notes,
+      accessToken: interview.accessToken,
+      createdAt: interview.createdAt,
+      candidate: {
+        ...candidate,
+        ageStr,
+        educationStr,
+        vacancyTitle: recruitment?.jobTitle || "Posisi",
+        departmentName: recruitment?.department || "-",
+        tests,
+        apmScore: apmTest ? apmTest.score : null,
+        amrScore: amrTest ? amrTest.score : null,
+      },
+      evaluations: evals,
+      assignedEmails,
+      assignedNames,
+      totalPanelistsExpected,
+      evaluatedCount,
+      isFullyEvaluated,
+      averageScore,
+      personalQualitiesAvg,
+      professionalSkillAvg,
+      managerialLeadershipAvg,
+      recommendedCount,
+      notRecommendedCount,
+      consensus,
+    };
+  });
+
+  return enrichedSessions;
+}
+
+export async function progressCandidateFromInterview(
+  candidateId: number,
+  targetStage: "mcu" | "offering" | "rejected",
+  notes?: string
+) {
+  const [candidate] = await db.select().from(hcCandidates).where(eq(hcCandidates.id, candidateId)).limit(1);
+  if (!candidate) throw new Error("Kandidat tidak ditemukan");
+
+  let newStage = "Interview";
+  if (targetStage === "mcu") {
+    newStage = "Medical Checkup";
+  } else if (targetStage === "offering") {
+    newStage = "Offering";
+  } else if (targetStage === "rejected") {
+    newStage = "Rejected";
+  }
+
+  const updateData: any = {
+    currentStage: newStage,
+    updatedAt: new Date(),
+  };
+
+  if (targetStage === "rejected") {
+    updateData.rejectionReason = notes || "Tidak lolos tahap wawancara";
+    updateData.rejectedAtStage = "Interview";
+  }
+
+  await db.update(hcCandidates).set(updateData).where(eq(hcCandidates.id, candidateId));
+
+  // If there's an active interview for this candidate, update its result
+  const [latestInterview] = await db.select()
+    .from(hcCandidateInterviews)
+    .where(eq(hcCandidateInterviews.candidateId, candidateId))
+    .orderBy(desc(hcCandidateInterviews.scheduledAt))
+    .limit(1);
+
+  if (latestInterview) {
+    await db.update(hcCandidateInterviews)
+      .set({
+        result: targetStage === "rejected" ? "Fail" : "Pass",
+        status: "Completed",
+        updatedAt: new Date(),
+      })
+      .where(eq(hcCandidateInterviews.id, latestInterview.id));
+  }
+
+  revalidatePath("/dashboard/hc/recruitment");
+  revalidatePath("/dashboard/hc/recruitment/wawancara");
+  revalidatePath("/dashboard/wawancara");
+  revalidatePath("/dashboard/hc/recruitment/interviews");
+  revalidatePath(`/dashboard/hc/recruitment/candidates/${candidateId}`);
+  return { success: true, newStage };
+}
+
+export async function deleteInterviewSession(interviewId: number) {
+  const [interview] = await db.select().from(hcCandidateInterviews).where(eq(hcCandidateInterviews.id, interviewId)).limit(1);
+  if (!interview) throw new Error("Sesi interview tidak ditemukan");
+
+  await db.delete(hcCandidatePanelEvaluations).where(eq(hcCandidatePanelEvaluations.interviewId, interviewId));
+  await db.delete(hcCandidateInterviews).where(eq(hcCandidateInterviews.id, interviewId));
+
+  revalidatePath("/dashboard/hc/recruitment");
+  revalidatePath("/dashboard/hc/recruitment/wawancara");
+  revalidatePath("/dashboard/wawancara");
+  revalidatePath("/dashboard/hc/recruitment/interviews");
+  revalidatePath(`/dashboard/hc/recruitment/candidates/${interview.candidateId}`);
+  return { success: true };
+}
+
+export async function getCandidatesForInterviewScheduling() {
+  const list = await db
+    .select({
+      id: hcCandidates.id,
+      fullName: hcCandidates.fullName,
+      email: hcCandidates.email,
+      phone: hcCandidates.phone,
+      currentStage: hcCandidates.currentStage,
+      recruitmentId: hcCandidates.recruitmentId,
+      jobTitle: hcRecruitments.jobTitle,
+      department: hcRecruitments.department,
+    })
+    .from(hcCandidates)
+    .leftJoin(hcRecruitments, eq(hcCandidates.recruitmentId, hcRecruitments.id))
+    .where(
+      sql`${hcCandidates.currentStage} NOT IN ('Rejected', 'Hired', 'Withdrawn')`
+    )
+    .orderBy(desc(hcCandidates.createdAt))
+    .limit(100);
+
+  return list;
+}
+

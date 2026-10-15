@@ -6,7 +6,7 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer, Tooltip as RechartsTooltip } from "recharts";
-import { IconArrowLeft, IconCalendarEvent, IconCheck, IconX, IconVideo, IconMapPin, IconStethoscope, IconLink, IconCopy, IconMail, IconFileText, IconEye, IconSend, IconMailForward, IconRefresh, IconSparkles } from "@tabler/icons-react";
+import { IconArrowLeft, IconCalendarEvent, IconCheck, IconX, IconVideo, IconMapPin, IconStethoscope, IconLink, IconCopy, IconMail, IconFileText, IconEye, IconSend, IconMailForward, IconRefresh, IconSparkles, IconAward, IconUserCheck, IconPlus } from "@tabler/icons-react";
 
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,8 @@ import { cn } from "@/lib/utils";
 import { ScheduleInterviewModal } from "@/components/interview/schedule-interview-modal";
 import { InterviewSettingsModal } from "@/components/interview/interview-settings-modal";
 import { InterviewFormPdf } from "@/components/interview/interview-form-pdf";
+import { InterviewPdfPreviewDialog } from "@/components/interview/interview-pdf-preview-dialog";
+import { InterviewEvaluationModal } from "@/components/interview/interview-evaluation-modal";
 
 const formatAiRecommendation = (recommendation?: string | null) => {
   const translations: Record<string, string> = {
@@ -146,6 +148,37 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
   const [isScheduleStageModalOpen, setIsScheduleStageModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+  const [isEvaluation12ModalOpen, setIsEvaluation12ModalOpen] = useState(false);
+  const [isPdf12PreviewOpen, setIsPdf12PreviewOpen] = useState(false);
+
+  const currentInterviewSession = useMemo(() => {
+    if (!interviews || interviews.length === 0) {
+      return {
+        id: 0,
+        candidateId: candidate.id,
+        scheduledAt: new Date(),
+        durationMinutes: 60,
+        interviewType: "Online",
+        locationOrLink: "Google Meet",
+        interviewerName: "",
+        interviewerEmails: [],
+        stageName: "Interview 1",
+        candidate,
+        evaluations: panelEvaluations || [],
+        assignedEmails: [],
+        assignedNames: [],
+      };
+    }
+    const latest = interviews[0];
+    return {
+      ...latest,
+      candidate,
+      evaluations: panelEvaluations || [],
+      assignedEmails: Array.isArray(latest.interviewerEmails) ? latest.interviewerEmails : [],
+      assignedNames: (latest.interviewerName || "").split(",").map((s: string) => s.trim()).filter(Boolean),
+    };
+  }, [interviews, candidate, panelEvaluations]);
+
   const [scheduleStageName, setScheduleStageName] = useState("Interview 1");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [scheduleForm, setScheduleForm] = useState({
@@ -1328,159 +1361,233 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
           )}
         </TabsContent>
 
-        <TabsContent value="panel-evaluation">
-          <div className="grid grid-cols-1 xl:grid-cols-[420px_1fr] gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Panelist Evaluation</CardTitle>
-                <CardDescription>Isi kelayakan kandidat saat proses interview. Skor 1-5 per dimensi.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label>Nama Panelis *</Label>
-                    <Input value={panelForm.panelistName} onChange={(e) => setPanelForm({ ...panelForm, panelistName: e.target.value })} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Role/Jabatan</Label>
-                    <Input placeholder="User, HC, Dept Head" value={panelForm.panelistRole} onChange={(e) => setPanelForm({ ...panelForm, panelistRole: e.target.value })} />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Interview terkait</Label>
-                  <Select value={panelForm.interviewId || "none"} onValueChange={(value) => setPanelForm({ ...panelForm, interviewId: value === "none" ? "" : value })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Tidak spesifik</SelectItem>
-                      {interviews.map((interview) => (
-                        <SelectItem key={interview.id} value={String(interview.id)}>
-                          {interview.interviewType} · {format(new Date(interview.scheduledAt), "dd MMM yyyy HH:mm")}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {[
-                    ["technicalScore", "Technical"],
-                    ["communicationScore", "Communication"],
-                    ["cultureScore", "Culture Fit"],
-                    ["problemSolvingScore", "Problem Solving"],
-                    ["attitudeScore", "Attitude"],
-                  ].map(([key, label]) => (
-                    <div key={key} className="space-y-2">
-                      <Label>{label}</Label>
-                      <Input
-                        type="number"
-                        min={1}
-                        max={5}
-                        value={(panelForm as any)[key]}
-                        onChange={(e) => setPanelForm({ ...panelForm, [key]: Math.max(1, Math.min(5, parseInt(e.target.value, 10) || 1)) } as any)}
-                      />
-                    </div>
-                  ))}
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Recommendation</Label>
-                  <Select value={panelForm.overallRecommendation} onValueChange={(value) => setPanelForm({ ...panelForm, overallRecommendation: value })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Strong Hire">Strong Hire</SelectItem>
-                      <SelectItem value="Hire">Hire</SelectItem>
-                      <SelectItem value="Review">Review</SelectItem>
-                      <SelectItem value="Hold">Hold</SelectItem>
-                      <SelectItem value="Reject">Reject</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Strengths</Label>
-                  <Textarea rows={2} value={panelForm.strengths} onChange={(e) => setPanelForm({ ...panelForm, strengths: e.target.value })} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Concerns</Label>
-                  <Textarea rows={2} value={panelForm.concerns} onChange={(e) => setPanelForm({ ...panelForm, concerns: e.target.value })} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Notes</Label>
-                  <Textarea rows={3} value={panelForm.notes} onChange={(e) => setPanelForm({ ...panelForm, notes: e.target.value })} />
-                </div>
-
-                <Button onClick={handlePanelSubmit} disabled={isPanelSubmitting} className="w-full">
-                  {isPanelSubmitting ? "Saving..." : "Save Evaluation"}
+        <TabsContent value="panel-evaluation" className="space-y-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div>
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <IconAward className="w-5 h-5 text-primary" />
+                Penilaian Panelis 12 Kompetensi (F.HR.STD.010.00)
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Evaluasi kualitatif dan kuantitatif multi-panelis berdasarkan standar resmi form evaluasi wawancara.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link href="/dashboard/hc/recruitment/wawancara">
+                <Button variant="outline" size="sm" className="rounded-xl text-xs gap-1.5">
+                  <IconUserCheck className="w-4 h-4 text-primary" />
+                  Buka Halaman Wawancara
                 </Button>
-              </CardContent>
-            </Card>
-
-            <div className="space-y-4">
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle>Panel Summary</CardTitle>
-                  <CardDescription>{panelEvaluations.length} panelist submissions</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    <div className="rounded-lg bg-muted/40 p-3">
-                      <div className="text-xs uppercase tracking-wide text-muted-foreground">Average</div>
-                      <div className="text-2xl font-bold">{panelAverage ? `${panelAverage}/5` : "-"}</div>
-                    </div>
-                    <div className="rounded-lg bg-muted/40 p-3">
-                      <div className="text-xs uppercase tracking-wide text-muted-foreground">Latest</div>
-                      <div className="text-lg font-semibold">{panelEvaluations[0]?.overallRecommendation || "-"}</div>
-                    </div>
-                    <div className="rounded-lg bg-muted/40 p-3">
-                      <div className="text-xs uppercase tracking-wide text-muted-foreground">Panelists</div>
-                      <div className="text-2xl font-bold">{panelEvaluations.length}</div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {panelEvaluations.length === 0 ? (
-                <Card>
-                  <CardContent className="py-10 text-center text-sm text-muted-foreground">Belum ada penilaian panelis.</CardContent>
-                </Card>
-              ) : (
-                <div className="space-y-3">
-                  {panelEvaluations.map((evaluation) => {
-                    const avg = ((evaluation.technicalScore + evaluation.communicationScore + evaluation.cultureScore + evaluation.problemSolvingScore + evaluation.attitudeScore) / 5).toFixed(1);
-                    return (
-                      <Card key={evaluation.id}>
-                        <CardHeader className="pb-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <CardTitle className="text-base">{evaluation.panelistName}</CardTitle>
-                              <CardDescription>{evaluation.panelistRole || "Panelist"} · {format(new Date(evaluation.submittedAt), "dd MMM yyyy HH:mm")}</CardDescription>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Badge variant="secondary">{avg}/5</Badge>
-                              <Badge>{evaluation.overallRecommendation}</Badge>
-                            </div>
-                          </div>
-                        </CardHeader>
-                        <CardContent className="space-y-3 text-sm">
-                          <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
-                            <div className="rounded bg-muted/40 p-2">Technical<br/><b>{evaluation.technicalScore}</b></div>
-                            <div className="rounded bg-muted/40 p-2">Communication<br/><b>{evaluation.communicationScore}</b></div>
-                            <div className="rounded bg-muted/40 p-2">Culture<br/><b>{evaluation.cultureScore}</b></div>
-                            <div className="rounded bg-muted/40 p-2">Problem<br/><b>{evaluation.problemSolvingScore}</b></div>
-                            <div className="rounded bg-muted/40 p-2">Attitude<br/><b>{evaluation.attitudeScore}</b></div>
-                          </div>
-                          {evaluation.strengths && <div><b>Strengths:</b> {evaluation.strengths}</div>}
-                          {evaluation.concerns && <div><b>Concerns:</b> {evaluation.concerns}</div>}
-                          {evaluation.notes && <div className="rounded bg-muted/40 p-3 whitespace-pre-wrap">{evaluation.notes}</div>}
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-              )}
+              </Link>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsPdf12PreviewOpen(true)}
+                disabled={panelEvaluations.length === 0}
+                className="rounded-xl text-xs gap-1.5"
+              >
+                <IconFileText className="w-4 h-4 text-emerald-600" />
+                Preview & Cetak PDF
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => setIsEvaluation12ModalOpen(true)}
+                className="rounded-xl text-xs gap-1.5 bg-primary text-primary-foreground shadow-xs"
+              >
+                <IconPlus className="w-4 h-4" />
+                Input / Edit Nilai 12 Dimensi
+              </Button>
             </div>
           </div>
+
+          {/* Summary KPI */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Card className="rounded-2xl border bg-card/60 p-4">
+              <p className="text-xs text-muted-foreground font-medium">Panelis Menilai</p>
+              <p className="text-2xl font-bold">{panelEvaluations.length} Orang</p>
+            </Card>
+            <Card className="rounded-2xl border bg-card/60 p-4">
+              <p className="text-xs text-muted-foreground font-medium">Rata-rata Skor Total</p>
+              <p className="text-2xl font-bold text-primary">
+                {panelAverage ? `${panelAverage} / 5` : "-"}
+              </p>
+            </Card>
+            <Card className="rounded-2xl border bg-card/60 p-4">
+              <p className="text-xs text-muted-foreground font-medium">Rekomendasi Panelis</p>
+              <div className="mt-1">
+                {panelEvaluations.length === 0 ? (
+                  <span className="text-xs text-muted-foreground">Belum Dinilai</span>
+                ) : (
+                  <Badge
+                    className={
+                      panelEvaluations.some((e: any) => e.overallRecommendation === "RECOMMENDED" || e.overallRecommendation === "Hire" || e.overallRecommendation === "Strong Hire")
+                        ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-300 font-bold"
+                        : "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-300 font-bold"
+                    }
+                  >
+                    {panelEvaluations[0]?.overallRecommendation || "PENDING"}
+                  </Badge>
+                )}
+              </div>
+            </Card>
+            <Card className="rounded-2xl border bg-card/60 p-4">
+              <p className="text-xs text-muted-foreground font-medium">Sesi Wawancara</p>
+              <p className="text-sm font-semibold truncate mt-1">
+                {interviews[0]?.stageName || "Belum Dijadwalkan"}
+              </p>
+            </Card>
+          </div>
+
+          {/* Evaluations List */}
+          {panelEvaluations.length === 0 ? (
+            <Card className="rounded-3xl border border-dashed p-10 text-center bg-card/30">
+              <IconAward className="w-12 h-12 text-muted-foreground mx-auto mb-3 opacity-50" />
+              <h4 className="font-semibold text-base">Belum ada evaluasi wawancara untuk kandidat ini</h4>
+              <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
+                Klik tombol di bawah untuk membuka form penilaian 12 kompetensi standar F.HR.STD.010.00.
+              </p>
+              <Button
+                size="sm"
+                onClick={() => setIsEvaluation12ModalOpen(true)}
+                className="mt-4 rounded-xl text-xs gap-1.5"
+              >
+                <IconPlus className="w-4 h-4" />
+                Mulai Penilaian Wawancara
+              </Button>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {panelEvaluations.map((ev: any) => {
+                const is12Dim = ev.dayaTangkapScore !== null && ev.dayaTangkapScore !== undefined;
+                const personalAvg = is12Dim
+                  ? (
+                      ((ev.dayaTangkapScore || 0) +
+                        (ev.problemSolvingScore || 0) +
+                        (ev.motivationalFitScore || 0) +
+                        (ev.adaptabilityScore || 0) +
+                        (ev.interpersonalSkillsScore || 0) +
+                        (ev.communicationSkillScore || 0)) /
+                      6
+                    ).toFixed(1)
+                  : "-";
+
+                const profAvg = is12Dim
+                  ? (
+                      ((ev.fundamentalUnderstandingScore || 0) +
+                        (ev.experienceRelatedScore || 0) +
+                        (ev.technicalSkillScore || 0)) /
+                      3
+                    ).toFixed(1)
+                  : "-";
+
+                const mgmtAvg = is12Dim
+                  ? (
+                      ((ev.managerialSkillsScore || 0) +
+                        (ev.leadershipScore || 0) +
+                        (ev.teamWorkScore || 0)) /
+                      3
+                    ).toFixed(1)
+                  : "-";
+
+                return (
+                  <Card key={ev.id} className="rounded-2xl border bg-card p-5 shadow-xs space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-sm text-foreground">{ev.panelistName}</h4>
+                          <Badge variant="outline" className="text-[10px]">
+                            {ev.panelistRole || "Panelis"}
+                          </Badge>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          Dinilai pada: {format(new Date(ev.submittedAt), "dd MMM yyyy HH:mm")}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          className={`font-bold text-xs ${
+                            ev.overallRecommendation === "RECOMMENDED" || ev.overallRecommendation === "Hire" || ev.overallRecommendation === "Strong Hire"
+                              ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-300"
+                              : "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-300"
+                          }`}
+                        >
+                          {ev.overallRecommendation}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    {/* Scores Section */}
+                    {is12Dim ? (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          <div className="p-3 rounded-xl bg-muted/40 border">
+                            <div className="flex items-center justify-between text-xs font-semibold text-primary mb-2">
+                              <span>I. Personal Qualities</span>
+                              <span className="font-bold">{personalAvg} / 5</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-1 text-[11px] text-muted-foreground">
+                              <span>Daya Tangkap: <b>{ev.dayaTangkapScore}</b></span>
+                              <span>Problem Solving: <b>{ev.problemSolvingScore}</b></span>
+                              <span>Motivational: <b>{ev.motivationalFitScore}</b></span>
+                              <span>Adaptabilitas: <b>{ev.adaptabilityScore}</b></span>
+                              <span>Interpersonal: <b>{ev.interpersonalSkillsScore}</b></span>
+                              <span>Komunikasi: <b>{ev.communicationSkillScore}</b></span>
+                            </div>
+                          </div>
+
+                          <div className="p-3 rounded-xl bg-muted/40 border">
+                            <div className="flex items-center justify-between text-xs font-semibold text-primary mb-2">
+                              <span>II. Professional Skill</span>
+                              <span className="font-bold">{profAvg} / 5</span>
+                            </div>
+                            <div className="grid grid-cols-1 gap-1 text-[11px] text-muted-foreground">
+                              <span>Pemahaman Dasar: <b>{ev.fundamentalUnderstandingScore}</b></span>
+                              <span>Pengalaman: <b>{ev.experienceRelatedScore}</b></span>
+                              <span>Kemampuan Teknis: <b>{ev.technicalSkillScore}</b></span>
+                            </div>
+                          </div>
+
+                          <div className="p-3 rounded-xl bg-muted/40 border">
+                            <div className="flex items-center justify-between text-xs font-semibold text-primary mb-2">
+                              <span>III. Managerial & Leadership</span>
+                              <span className="font-bold">{mgmtAvg} / 5</span>
+                            </div>
+                            <div className="grid grid-cols-1 gap-1 text-[11px] text-muted-foreground">
+                              <span>Manajerial: <b>{ev.managerialSkillsScore}</b></span>
+                              <span>Kepemimpinan: <b>{ev.leadershipScore}</b></span>
+                              <span>Kerjasama Tim: <b>{ev.teamWorkScore}</b></span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {ev.jobMatchComment && (
+                          <div className="p-3 rounded-xl bg-blue-500/5 border border-blue-200 text-xs text-foreground">
+                            <p className="font-semibold text-blue-700 dark:text-blue-300 mb-0.5">Catatan Kesesuaian Posisi:</p>
+                            <p className="italic">"{ev.jobMatchComment}"</p>
+                          </div>
+                        )}
+
+                        {ev.recommendationOtherPosition && (
+                          <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-200 text-xs text-amber-800 dark:text-amber-300">
+                            <strong>Rekomendasi Posisi Lain:</strong> {ev.recommendationOtherPosition}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
+                        <div className="rounded-xl bg-muted/40 p-2.5 border">Technical<br/><b className="text-sm">{ev.technicalScore}</b></div>
+                        <div className="rounded-xl bg-muted/40 p-2.5 border">Communication<br/><b className="text-sm">{ev.communicationScore}</b></div>
+                        <div className="rounded-xl bg-muted/40 p-2.5 border">Culture Fit<br/><b className="text-sm">{ev.cultureScore}</b></div>
+                        <div className="rounded-xl bg-muted/40 p-2.5 border">Problem Solving<br/><b className="text-sm">{ev.problemSolvingScore}</b></div>
+                        <div className="rounded-xl bg-muted/40 p-2.5 border">Attitude<br/><b className="text-sm">{ev.attitudeScore}</b></div>
+                      </div>
+                    )}
+                  </Card>
+                );
+              })}
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="offering">
@@ -2692,6 +2799,22 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
         open={isSettingsModalOpen}
         onOpenChange={setIsSettingsModalOpen}
       />
+
+      {currentInterviewSession && (
+        <>
+          <InterviewEvaluationModal
+            open={isEvaluation12ModalOpen}
+            onOpenChange={setIsEvaluation12ModalOpen}
+            session={currentInterviewSession}
+            onSuccess={() => router.refresh()}
+          />
+          <InterviewPdfPreviewDialog
+            open={isPdf12PreviewOpen}
+            onOpenChange={setIsPdf12PreviewOpen}
+            session={currentInterviewSession}
+          />
+        </>
+      )}
     </>
   );
 }

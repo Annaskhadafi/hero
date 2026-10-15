@@ -27,6 +27,7 @@ import {
   IconSparkles,
   IconUsers,
   IconUser,
+  IconUserCheck,
   IconActivity,
   IconAlertTriangle,
   IconTarget,
@@ -65,7 +66,7 @@ import {
   IconGift,
 } from "@tabler/icons-react"
 
-import { useSidebarLayoutMode, buildModernSidebarGroups } from "@/lib/sidebar-mode"
+import { useSidebarLayoutMode, buildModernSidebarGroups, sectionCategoryMap } from "@/lib/sidebar-mode"
 import { IconX } from "@tabler/icons-react"
 import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -109,6 +110,7 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   sparkles: IconSparkles,
   users: IconUsers,
   user: IconUser,
+  "user-check": IconUserCheck,
   activity: IconActivity,
   "alert-triangle": IconAlertTriangle,
   target: IconTarget,
@@ -180,8 +182,9 @@ const DESKTOP_MENU_ORDER = [
   "Roster & Timesheet",
   "Approval",
   "Data Induk",
-  "Human Capital",
-  "ChitraLearning LMS",
+  "HRGA",
+  "ChitraLearning & Training",
+  "Poin & Hadiah",
   "Attendance",
   "HSE",
   "Quality & CPI",
@@ -196,6 +199,9 @@ const desktopMenuIconMap = {
   "Roster & Timesheet": IconClockHour4,
   Approval: IconMail,
   "Data Induk": IconDatabase,
+  HRGA: IconUsers,
+  "ChitraLearning & Training": IconBook,
+  "Poin & Hadiah": IconGift,
   "Human Capital": IconUsers,
   "ChitraLearning LMS": IconBook,
   Attendance: IconClockHour4,
@@ -212,7 +218,8 @@ const sectionLabelMap: Record<string, string> = {
   "Central Service": "Central Service",
   Approval: "Approval",
   "Master Data": "Data Induk",
-  HR: "Human Capital",
+  HR: "HRGA",
+  "Human Capital": "HRGA",
   HSE: "HSE",
   Quality: "Quality & CPI",
   "Quality & CPI": "Quality & CPI",
@@ -472,7 +479,10 @@ export function AppSidebar({
           }
         })
 
+        const category = sectionCategoryMap[section] || (section === "HRGA" || section === "ChitraLearning & Training" || section === "Poin & Hadiah" ? "HUMAN CAPITAL" : undefined)
+
         return {
+          category,
           rawTitle: section,
           title: section,
           icon: desktopMenuIconMap[section as keyof typeof desktopMenuIconMap] ?? IconHelp,

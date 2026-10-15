@@ -4,12 +4,13 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { IconBriefcase, IconUsers, IconFileText, IconStack2, IconMail, IconBuilding, IconCalendarEvent, IconStethoscope, IconDashboard, IconSettings, IconChevronDown } from "@tabler/icons-react";
+import { IconBriefcase, IconUsers, IconFileText, IconStack2, IconMail, IconBuilding, IconCalendarEvent, IconStethoscope, IconDashboard, IconSettings, IconChevronDown, IconUserCheck } from "@tabler/icons-react";
 
 const MAIN_TABS = [
   { href: "/dashboard/hc/recruitment/dashboard", icon: IconDashboard, label: "Dashboard" },
   { href: "/dashboard/hc/recruitment?view=vacancies", icon: IconBriefcase, label: "Vacancies", view: "vacancies" },
   { href: "/dashboard/hc/recruitment?view=pipeline", icon: IconUsers, label: "Pipeline", view: "pipeline" },
+  { href: "/dashboard/hc/recruitment/wawancara", icon: IconUserCheck, label: "Wawancara" },
   { href: "/dashboard/hc/recruitment/calendar", icon: IconCalendarEvent, label: "Calendar" },
 ];
 

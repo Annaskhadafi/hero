@@ -1,15 +1,61 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { addTestQuestion, assignTestToCandidate, deleteTestEntry, deleteTestQuestion, gradeTestAnswer, importTestQuestions, updateTestEntry, updateTestQuestion, resendTestAssignmentEmail } from "@/app/actions/recruitment-tests";
+import {
+  addTestQuestion,
+  assignTestToCandidate,
+  deleteTestEntry,
+  bulkDeleteTestEntries,
+  bulkUpdateTestEntriesStatus,
+  deleteTestQuestion,
+  gradeTestAnswer,
+  importTestQuestions,
+  updateTestEntry,
+  updateTestQuestion,
+  resendTestAssignmentEmail,
+} from "@/app/actions/recruitment-tests";
 import { uploadFile, uploadImageFromUrl } from "@/app/actions/upload";
 import { toast } from "sonner";
-import { IconDownload, IconEye, IconPencil, IconPlus, IconTrash, IconPhotoUp, IconX, IconLink, IconArrowLeft, IconMailForward } from "@tabler/icons-react";
+import {
+  IconDownload,
+  IconEye,
+  IconPencil,
+  IconPlus,
+  IconTrash,
+  IconPhotoUp,
+  IconX,
+  IconLink,
+  IconArrowLeft,
+  IconMailForward,
+  IconDotsVertical,
+  IconFileTypePdf,
+  IconFileSpreadsheet,
+  IconArrowsSort,
+  IconChevronUp,
+  IconChevronDown,
+  IconSearch,
+  IconFilter,
+  IconCalendar,
+  IconRefresh,
+  IconCheck,
+  IconChecklist,
+  IconLoader2,
+  IconUserCheck,
+} from "@tabler/icons-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ApplicationFormPreviewDialog } from "@/components/candidate/application-form-preview-dialog";
+import { ScheduleInterviewModal } from "@/components/interview/schedule-interview-modal";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -17,8 +63,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { format } from "date-fns";
-import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
+import { format, isBefore, isAfter, startOfDay, endOfDay, subDays } from "date-fns";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { type DateRange } from "react-day-picker";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 function ValueDisplay({ value }: { value: any }) {
@@ -111,6 +160,267 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
   const [assignTime, setAssignTime] = useState("");
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [bulkQuestionText, setBulkQuestionText] = useState("");
+  const [previewPdfEntry, setPreviewPdfEntry] = useState<any | null>(null);
+
+  // Multi-select & Batch Actions State
+  const [selectedEntryIds, setSelectedEntryIds] = useState<number[]>([]);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [isBulkUpdatingStatus, setIsBulkUpdatingStatus] = useState(false);
+  const [isBulkResendingEmail, setIsBulkResendingEmail] = useState(false);
+  const [isConfirmBulkDeleteOpen, setIsConfirmBulkDeleteOpen] = useState(false);
+  const [scheduleInterviewCandidate, setScheduleInterviewCandidate] = useState<{ id: number; name: string; jobTitle?: string } | null>(null);
+
+  // Filters State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [resultFilter, setResultFilter] = useState("ALL");
+  const [dateRange, setDateRange] = useState<DateRange | undefined>();
+  const [dateField, setDateField] = useState<"createdAt" | "completedAt" | "scheduledAt">("createdAt");
+
+  // Sorting State
+  const [sortKey, setSortKey] = useState<string | null>("createdAt");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+
+  // Computed Filtered Entries
+  const filteredEntries = useMemo(() => {
+    return entries.filter((entry: any) => {
+      // 1. Search query (matches candidate fullName, email, phone, accessKey)
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const name = (entry.candidate?.fullName || "").toLowerCase();
+        const email = (entry.candidate?.email || "").toLowerCase();
+        const phone = (entry.candidate?.phone || "").toLowerCase();
+        const key = (entry.accessKey || "").toLowerCase();
+        if (!name.includes(q) && !email.includes(q) && !phone.includes(q) && !key.includes(q)) {
+          return false;
+        }
+      }
+
+      // 2. Status filter
+      if (statusFilter !== "ALL") {
+        if (entry.status !== statusFilter) return false;
+      }
+
+      // 3. Result filter
+      if (resultFilter !== "ALL") {
+        const ansList = entry.answers || [];
+        const correctCount = ansList.filter((a: any) => a.isCorrect === true).length;
+        const ansPct = ansList.length > 0 ? Math.round((correctCount / ansList.length) * 100) : null;
+        const allManual = ansList.length > 0 && ansList.every((a: any) => a.isCorrect === null || a.isCorrect === undefined);
+        const isDone = entry.status === "Completed" || entry.status === "Graded";
+
+        if (test.isApplicationForm || allManual) {
+          if (resultFilter === "FILLED" && (!isDone || !ansList.length)) return false;
+          if (resultFilter === "UNFILLED" && isDone && ansList.length > 0) return false;
+        } else {
+          if (resultFilter === "PASSED") {
+            if (!isDone || ansPct === null || ansPct < (test.passingScore || 0)) return false;
+          } else if (resultFilter === "FAILED") {
+            if (!isDone || ansPct === null || ansPct >= (test.passingScore || 0)) return false;
+          } else if (resultFilter === "UNGRADED") {
+            if (isDone && ansPct !== null) return false;
+          }
+        }
+      }
+
+      // 4. Date range filter
+      if (dateRange?.from || dateRange?.to) {
+        const val = entry[dateField];
+        if (!val) return false;
+        const d = new Date(val);
+        if (dateRange.from && isBefore(d, startOfDay(dateRange.from))) return false;
+        if (dateRange.to && isAfter(d, endOfDay(dateRange.to))) return false;
+      }
+
+      return true;
+    });
+  }, [entries, searchQuery, statusFilter, resultFilter, dateRange, dateField, test]);
+
+  // Computed Sorted Entries
+  const sortedEntries = useMemo(() => {
+    if (!sortKey) return filteredEntries;
+
+    return [...filteredEntries].sort((a: any, b: any) => {
+      let valA: any = null;
+      let valB: any = null;
+
+      switch (sortKey) {
+        case "no":
+          valA = a.id;
+          valB = b.id;
+          break;
+        case "candidate":
+          valA = (a.candidate?.fullName || "").toLowerCase();
+          valB = (b.candidate?.fullName || "").toLowerCase();
+          break;
+        case "email":
+          valA = (a.candidate?.email || "").toLowerCase();
+          valB = (b.candidate?.email || "").toLowerCase();
+          break;
+        case "createdAt":
+          valA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          valB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          break;
+        case "status":
+          valA = (a.status || "").toLowerCase();
+          valB = (b.status || "").toLowerCase();
+          break;
+        case "score": {
+          const aAns = a.answers || [];
+          const bAns = b.answers || [];
+          const aCorrect = aAns.filter((ans: any) => ans.isCorrect === true).length;
+          const bCorrect = bAns.filter((ans: any) => ans.isCorrect === true).length;
+          valA = aAns.length ? Math.round((aCorrect / aAns.length) * 100) : (a.score ?? -1);
+          valB = bAns.length ? Math.round((bCorrect / bAns.length) * 100) : (b.score ?? -1);
+          break;
+        }
+        case "schedule":
+          valA = a.scheduledAt ? new Date(a.scheduledAt).getTime() : 0;
+          valB = b.scheduledAt ? new Date(b.scheduledAt).getTime() : 0;
+          break;
+        case "answers":
+          valA = a.answers?.length || 0;
+          valB = b.answers?.length || 0;
+          break;
+        case "completedAt":
+          valA = a.completedAt ? new Date(a.completedAt).getTime() : 0;
+          valB = b.completedAt ? new Date(b.completedAt).getTime() : 0;
+          break;
+        default:
+          return 0;
+      }
+
+      if (valA < valB) return sortOrder === "asc" ? -1 : 1;
+      if (valA > valB) return sortOrder === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [filteredEntries, sortKey, sortOrder]);
+
+  const handleSort = (key: string) => {
+    if (sortKey === key) {
+      if (sortOrder === "asc") {
+        setSortOrder("desc");
+      } else {
+        setSortKey(null);
+        setSortOrder("asc");
+      }
+    } else {
+      setSortKey(key);
+      setSortOrder("asc");
+    }
+  };
+
+  const isAllSelected = sortedEntries.length > 0 && sortedEntries.every((e: any) => selectedEntryIds.includes(e.id));
+  const isPartiallySelected = selectedEntryIds.length > 0 && !isAllSelected;
+
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedEntryIds([]);
+    } else {
+      setSelectedEntryIds(sortedEntries.map((e: any) => e.id));
+    }
+  };
+
+  const handleToggleSelectRow = (id: number) => {
+    setSelectedEntryIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedEntryIds.length === 0) return;
+    try {
+      setIsBulkDeleting(true);
+      await bulkDeleteTestEntries(selectedEntryIds);
+      setEntries((prev: any[]) => prev.filter((e) => !selectedEntryIds.includes(e.id)));
+      toast.success(`${selectedEntryIds.length} entries berhasil dihapus`);
+      setSelectedEntryIds([]);
+      setIsConfirmBulkDeleteOpen(false);
+    } catch (e: any) {
+      toast.error(e.message || "Gagal menghapus entries");
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
+  const handleBulkUpdateStatus = async (newStatus: string) => {
+    if (selectedEntryIds.length === 0) return;
+    try {
+      setIsBulkUpdatingStatus(true);
+      await bulkUpdateTestEntriesStatus(selectedEntryIds, newStatus);
+      setEntries((prev: any[]) =>
+        prev.map((e) => (selectedEntryIds.includes(e.id) ? { ...e, status: newStatus } : e))
+      );
+      toast.success(`Status ${selectedEntryIds.length} entries berhasil diubah menjadi ${newStatus}`);
+      setSelectedEntryIds([]);
+    } catch (e: any) {
+      toast.error(e.message || "Gagal mengubah status entries");
+    } finally {
+      setIsBulkUpdatingStatus(false);
+    }
+  };
+
+  const handleBulkResendEmail = async () => {
+    if (selectedEntryIds.length === 0) return;
+    try {
+      setIsBulkResendingEmail(true);
+      let successCount = 0;
+      let failCount = 0;
+      for (const id of selectedEntryIds) {
+        try {
+          const res = await resendTestAssignmentEmail(id);
+          if (res.success) successCount++;
+          else failCount++;
+        } catch {
+          failCount++;
+        }
+      }
+      if (successCount > 0) {
+        toast.success(`${successCount} email undangan berhasil dikirim ulang`);
+      }
+      if (failCount > 0) {
+        toast.error(`${failCount} email gagal terkirim`);
+      }
+      setSelectedEntryIds([]);
+    } catch (e: any) {
+      toast.error(e.message || "Gagal memproses pengiriman email");
+    } finally {
+      setIsBulkResendingEmail(false);
+    }
+  };
+
+  const handleBulkExportExcel = () => {
+    const selected = entries.filter((e: any) => selectedEntryIds.includes(e.id));
+    if (selected.length === 0) return;
+    exportEntries(selected, `hasil-terpilih-${test.title}-${selected.length}-kandidat`);
+  };
+
+  const resetAllFilters = () => {
+    setSearchQuery("");
+    setStatusFilter("ALL");
+    setResultFilter("ALL");
+    setDateRange(undefined);
+  };
+
+  const hasActiveFilters = Boolean(
+    searchQuery.trim() ||
+    statusFilter !== "ALL" ||
+    resultFilter !== "ALL" ||
+    dateRange?.from
+  );
+
+  const activeFiltersCount = [
+    Boolean(searchQuery.trim()),
+    statusFilter !== "ALL",
+    resultFilter !== "ALL",
+    Boolean(dateRange?.from),
+  ].filter(Boolean).length;
+
+  const totalCount = entries.length;
+  const completedCount = entries.filter((e: any) => e.status === "Completed" || e.status === "Graded").length;
+  const inProgressCount = entries.filter((e: any) => e.status === "In Progress").length;
+  const pendingCount = entries.filter((e: any) => e.status === "Pending").length;
+  const expiredCount = entries.filter((e: any) => e.status === "Expired").length;
   
   const defaultQuestionForm = () => ({
     questionType: "multiple_choice",
@@ -725,63 +1035,942 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
       </Dialog>
       </TabsContent>
 
-      <TabsContent value="entries">
-        <MinimalTableShell
-          label="test entries"
-          title="Test Entries"
-          fileName={`hasil-entries-${test.title}`}
-          actions={(
-            <>
-              <Button variant="outline" onClick={() => setIsAssignOpen(true)} className="h-9 gap-2 rounded-lg border-0 bg-white px-3 text-[13px] font-medium shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)]"><IconPlus className="size-4" /> Assign</Button>
-              <Button variant="outline" onClick={() => exportEntries(entries, `hasil-entries-${test.title}`)} className="h-9 gap-2 rounded-lg border-0 bg-white px-3 text-[13px] font-medium shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)]"><IconDownload className="size-4" /> Export Detail</Button>
-            </>
+      <TabsContent value="entries" className="space-y-4">
+        {/* Quick Status Scorecard Pills */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setStatusFilter("ALL")}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+              statusFilter === "ALL"
+                ? "bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900 dark:border-white shadow-xs"
+                : "bg-background text-muted-foreground border-border hover:bg-muted/60"
+            }`}
+          >
+            <span>Semua</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+              statusFilter === "ALL" ? "bg-white/20 text-white dark:bg-black/20 dark:text-slate-900" : "bg-muted text-muted-foreground"
+            }`}>
+              {totalCount}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setStatusFilter(statusFilter === "Completed" ? "ALL" : "Completed")}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+              statusFilter === "Completed"
+                ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
+                : "bg-emerald-50/60 text-emerald-700 border-emerald-200 hover:bg-emerald-100/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
+            }`}
+          >
+            <span className="size-1.5 rounded-full bg-emerald-500" />
+            <span>Selesai / Completed</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200">
+              {completedCount}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setStatusFilter(statusFilter === "In Progress" ? "ALL" : "In Progress")}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+              statusFilter === "In Progress"
+                ? "bg-amber-600 text-white border-amber-600 shadow-xs"
+                : "bg-amber-50/60 text-amber-700 border-amber-200 hover:bg-amber-100/60 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800"
+            }`}
+          >
+            <span className="size-1.5 rounded-full bg-amber-500" />
+            <span>Sedang Mengerjakan</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200">
+              {inProgressCount}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setStatusFilter(statusFilter === "Pending" ? "ALL" : "Pending")}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+              statusFilter === "Pending"
+                ? "bg-slate-700 text-white border-slate-700 shadow-xs"
+                : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300 dark:border-slate-800"
+            }`}
+          >
+            <span className="size-1.5 rounded-full bg-slate-400" />
+            <span>Belum Mulai</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-200">
+              {pendingCount}
+            </span>
+          </button>
+
+          {expiredCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setStatusFilter(statusFilter === "Expired" ? "ALL" : "Expired")}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                statusFilter === "Expired"
+                  ? "bg-rose-600 text-white border-rose-600 shadow-xs"
+                  : "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800"
+              }`}
+            >
+              <span className="size-1.5 rounded-full bg-rose-500" />
+              <span>Kedaluwarsa</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200">
+                {expiredCount}
+              </span>
+            </button>
           )}
-        >
-          <Table>
-            <TableHeader><TableRow><TableHead>CANDIDATE NAME</TableHead><TableHead>EMAIL</TableHead><TableHead>TGL TEST / DAFTAR</TableHead><TableHead>STATUS</TableHead><TableHead className="text-right">SCORE</TableHead><TableHead>SCHEDULE</TableHead><TableHead>ANSWERS</TableHead><TableHead>STARTED AT</TableHead><TableHead>COMPLETED AT</TableHead><TableHead className="text-right">ACTIONS</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {entries.map((entry) => {
-                const ansList = entry.answers || [];
-                const correctCount = ansList.filter((a: any) => a.isCorrect === true).length;
-                const ansPct = ansList.length > 0 ? Math.round((correctCount / ansList.length) * 100) : null;
-                const allManual = ansList.length > 0 && ansList.every((a: any) => a.isCorrect === null || a.isCorrect === undefined);
-                return (
-                <TableRow key={entry.id}>
-                  <TableCell className="font-medium">{entry.candidate?.fullName || "N/A"}</TableCell>
-                  <TableCell className="text-muted-foreground">{entry.candidate?.email || "N/A"}</TableCell>
-                  <TableCell className="text-muted-foreground text-xs whitespace-nowrap">{entry.createdAt ? format(new Date(entry.createdAt), "dd MMM yyyy, HH:mm") : "-"}</TableCell>
-                  <TableCell><Badge variant={entry.status === "Completed" || entry.status === "Graded" ? "default" : entry.status === "In Progress" ? "secondary" : "outline"}>{entry.status}</Badge></TableCell>
-                  <TableCell className="text-right">
-                    {(entry.status === "Completed" || entry.status === "Graded") && ansPct !== null ? (
-                      allManual ? (
-                        <span className="text-xs font-semibold text-amber-600">Perlu Verif Manual</span>
+        </div>
+
+        {/* Toolbar: Search, Filters, and Primary Actions */}
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-muted/20 p-3 rounded-xl border border-border/60">
+          <div className="flex flex-wrap items-center gap-2 flex-1">
+            {/* Search Input */}
+            <div className="relative min-w-[200px] sm:min-w-[260px] flex-1 sm:flex-initial">
+              <IconSearch className="size-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Cari kandidat, email, nomor..."
+                className="h-9 pl-8 pr-7 text-xs rounded-lg bg-background"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <IconX className="size-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Status Filter */}
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="h-9 min-w-[130px] w-auto text-xs rounded-lg bg-background">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent className="text-xs">
+                <SelectItem value="ALL">Semua Status</SelectItem>
+                <SelectItem value="Completed">Completed (Selesai)</SelectItem>
+                <SelectItem value="Graded">Graded (Dinilai)</SelectItem>
+                <SelectItem value="In Progress">In Progress (Mengerjakan)</SelectItem>
+                <SelectItem value="Pending">Pending (Belum Mulai)</SelectItem>
+                <SelectItem value="Expired">Expired (Kedaluwarsa)</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Result Filter */}
+            <Select value={resultFilter} onValueChange={setResultFilter}>
+              <SelectTrigger className="h-9 min-w-[130px] w-auto text-xs rounded-lg bg-background">
+                <SelectValue placeholder="Hasil" />
+              </SelectTrigger>
+              <SelectContent className="text-xs">
+                <SelectItem value="ALL">Semua Hasil</SelectItem>
+                {test.isApplicationForm ? (
+                  <>
+                    <SelectItem value="FILLED">Formulir Terisi</SelectItem>
+                    <SelectItem value="UNFILLED">Belum Mengisi</SelectItem>
+                  </>
+                ) : (
+                  <>
+                    <SelectItem value="PASSED">Lulus (≥ {test.passingScore || 0}%)</SelectItem>
+                    <SelectItem value="FAILED">Gagal (&lt; {test.passingScore || 0}%)</SelectItem>
+                    <SelectItem value="UNGRADED">Belum Dinilai</SelectItem>
+                  </>
+                )}
+              </SelectContent>
+            </Select>
+
+            {/* Date Range Popover */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={`h-9 gap-1.5 text-xs rounded-lg border-border/80 bg-background ${
+                    dateRange?.from ? "border-primary/60 text-primary font-medium bg-primary/5" : "text-muted-foreground"
+                  }`}
+                >
+                  <IconCalendar className="size-3.5" />
+                  <span>
+                    {dateRange?.from
+                      ? dateRange.to
+                        ? `${format(dateRange.from, "dd/MM/yy")} - ${format(dateRange.to, "dd/MM/yy")}`
+                        : format(dateRange.from, "dd/MM/yyyy")
+                      : "Filter Tanggal"}
+                  </span>
+                  {dateRange?.from && (
+                    <span
+                      className="ml-1 rounded-full p-0.5 hover:bg-muted cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDateRange(undefined);
+                      }}
+                      title="Reset rentang tanggal"
+                    >
+                      <IconX className="size-3" />
+                    </span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-auto p-3 space-y-3">
+                <div className="flex items-center justify-between border-b pb-2 gap-2">
+                  <span className="text-xs font-semibold text-muted-foreground">Filter Kolom:</span>
+                  <div className="flex gap-1">
+                    <Button
+                      variant={dateField === "createdAt" ? "default" : "outline"}
+                      size="sm"
+                      className="h-6 text-[10px] px-2"
+                      onClick={() => setDateField("createdAt")}
+                    >
+                      Tgl Daftar
+                    </Button>
+                    <Button
+                      variant={dateField === "completedAt" ? "default" : "outline"}
+                      size="sm"
+                      className="h-6 text-[10px] px-2"
+                      onClick={() => setDateField("completedAt")}
+                    >
+                      Tgl Selesai
+                    </Button>
+                    <Button
+                      variant={dateField === "scheduledAt" ? "default" : "outline"}
+                      size="sm"
+                      className="h-6 text-[10px] px-2"
+                      onClick={() => setDateField("scheduledAt")}
+                    >
+                      Jadwal
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1.5 pb-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => setDateRange({ from: startOfDay(new Date()), to: endOfDay(new Date()) })}
+                  >
+                    Hari ini
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => setDateRange({ from: subDays(new Date(), 7), to: endOfDay(new Date()) })}
+                  >
+                    7 Hari
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => setDateRange({ from: subDays(new Date(), 30), to: endOfDay(new Date()) })}
+                  >
+                    30 Hari
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs text-muted-foreground"
+                    onClick={() => setDateRange(undefined)}
+                  >
+                    Reset
+                  </Button>
+                </div>
+                <Calendar
+                  mode="range"
+                  selected={dateRange}
+                  onSelect={setDateRange}
+                  numberOfMonths={1}
+                />
+              </PopoverContent>
+            </Popover>
+
+            {/* Reset Filter Button */}
+            {hasActiveFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={resetAllFilters}
+                className="h-9 gap-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted"
+                title="Reset semua filter"
+              >
+                <IconRefresh className="size-3.5" />
+                <span>Reset</span>
+                <Badge variant="secondary" className="size-4 p-0 flex items-center justify-center text-[10px]">
+                  {activeFiltersCount}
+                </Badge>
+              </Button>
+            )}
+          </div>
+
+          {/* Primary Action Buttons */}
+          <div className="flex items-center gap-2 self-end md:self-auto shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsAssignOpen(true)}
+              className="h-9 gap-1.5 rounded-lg text-xs font-semibold bg-background shadow-xs hover:bg-muted"
+            >
+              <IconPlus className="size-4 text-primary" />
+              <span>Assign Kandidat</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => exportEntries(sortedEntries, `hasil-entries-${test.title}`)}
+              className="h-9 gap-1.5 rounded-lg text-xs font-semibold bg-background shadow-xs hover:bg-muted"
+              title="Export hasil entries yang sedang tampil ke Excel"
+            >
+              <IconDownload className="size-4 text-emerald-600" />
+              <span>Export Excel ({sortedEntries.length})</span>
+            </Button>
+          </div>
+        </div>
+
+        {/* Multi-Select Floating / Sticky Bulk Action Bar */}
+        {selectedEntryIds.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 dark:bg-primary/10 px-4 py-2.5 shadow-xs animate-in fade-in-50">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 font-medium text-xs sm:text-sm text-foreground">
+                <span className="flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold">
+                  {selectedEntryIds.length}
+                </span>
+                <span>kandidat terpilih dari {sortedEntries.length} data</span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedEntryIds([])}
+                className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+              >
+                Batal Pilih
+              </Button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Export Selected */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleBulkExportExcel}
+                className="h-8 gap-1.5 text-xs font-medium bg-background shadow-xs hover:bg-muted"
+              >
+                <IconFileSpreadsheet className="size-3.5 text-emerald-600" />
+                <span className="hidden sm:inline">Export Excel</span> ({selectedEntryIds.length})
+              </Button>
+
+              {/* Resend Email Selected */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleBulkResendEmail}
+                disabled={isBulkResendingEmail}
+                className="h-8 gap-1.5 text-xs font-medium bg-background shadow-xs hover:bg-muted"
+              >
+                {isBulkResendingEmail ? (
+                  <IconLoader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <IconMailForward className="size-3.5 text-sky-600" />
+                )}
+                <span className="hidden sm:inline">Kirim Email</span> ({selectedEntryIds.length})
+              </Button>
+
+              {/* Update Status Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isBulkUpdatingStatus}
+                    className="h-8 gap-1.5 text-xs font-medium bg-background shadow-xs hover:bg-muted"
+                  >
+                    {isBulkUpdatingStatus ? (
+                      <IconLoader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <IconPencil className="size-3.5 text-amber-600" />
+                    )}
+                    <span>Ubah Status</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48 text-xs">
+                  <DropdownMenuItem onClick={() => handleBulkUpdateStatus("Completed")}>
+                    Set: Completed (Selesai)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleBulkUpdateStatus("Graded")}>
+                    Set: Graded (Dinilai)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleBulkUpdateStatus("In Progress")}>
+                    Set: In Progress (Mengerjakan)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleBulkUpdateStatus("Pending")}>
+                    Set: Pending (Belum Mulai)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleBulkUpdateStatus("Expired")}>
+                    Set: Expired (Kedaluwarsa)
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Bulk Delete Button */}
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setIsConfirmBulkDeleteOpen(true)}
+                className="h-8 gap-1.5 text-xs font-medium shadow-xs"
+              >
+                <IconTrash className="size-3.5" />
+                <span>Hapus Terpilih</span> ({selectedEntryIds.length})
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Entries Table Container */}
+        <div className="rounded-xl border border-border/80 bg-card overflow-hidden shadow-xs">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/40 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                  {/* Multi-select Header Checkbox */}
+                  <TableHead className="w-10 text-center px-3">
+                    <Checkbox
+                      checked={isAllSelected ? true : isPartiallySelected ? "indeterminate" : false}
+                      onCheckedChange={handleToggleSelectAll}
+                      aria-label="Pilih semua data"
+                    />
+                  </TableHead>
+
+                  {/* Sortable Column Headers */}
+                  <TableHead
+                    className="w-12 text-center cursor-pointer select-none group hover:bg-muted/60 transition-colors"
+                    onClick={() => handleSort("no")}
+                    title="Urutkan No"
+                  >
+                    <div className="flex items-center justify-center gap-1">
+                      <span className={sortKey === "no" ? "text-foreground font-bold" : ""}>NO</span>
+                      {sortKey === "no" ? (
+                        sortOrder === "asc" ? <IconChevronUp className="size-3 text-primary shrink-0" /> : <IconChevronDown className="size-3 text-primary shrink-0" />
                       ) : (
-                        <div>
-                          <span className="text-sm font-bold text-primary">{ansPct}%</span>
-                          {test.passingScore > 0 && (
-                            <Badge variant={ansPct >= test.passingScore ? "default" : "destructive"} className={ansPct >= test.passingScore ? "bg-emerald-600 text-xs" : "text-xs"}>
-                              {ansPct >= test.passingScore ? "LULUS" : "GAGAL"}
-                            </Badge>
-                          )}
-                          <div className="text-xs text-muted-foreground">{correctCount}/{ansList.length} benar</div>
-                        </div>
-                      )
-                    ) : <span className="text-muted-foreground text-xs">-</span>}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground text-xs">{entry.scheduledAt ? format(new Date(entry.scheduledAt), "dd/MM/yy HH:mm") : "-"}</TableCell>
-                  <TableCell className="text-muted-foreground">{ansList.length} / {questions.length}</TableCell>
-                  <TableCell className="text-muted-foreground">{formatDateValue(entry.startedAt)}</TableCell>
-                  <TableCell className="text-muted-foreground">{formatDateValue(entry.completedAt)}</TableCell>
-                  <TableCell><div className="flex justify-end gap-2"><Button variant="outline" size="sm" onClick={() => handleResendEntryEmail(entry)} title="Resend Email Tes"><IconMailForward className="size-4" /> Resend Email</Button><Button variant="outline" size="sm" onClick={() => setSelectedEntry(entry)}><IconEye className="size-4" /> Detail</Button><Button variant="outline" size="sm" onClick={() => exportEntries([entry], `hasil-entry-${test.title}-${entry.candidate?.fullName || entry.id}`)}><IconDownload className="size-4" /> Excel</Button><Button variant="outline" size="sm" onClick={() => openEditEntry(entry)}><IconPencil className="size-4" /> Edit</Button><Button variant="ghost" size="sm" onClick={() => handleDeleteEntry(entry)} className="text-destructive hover:text-destructive"><IconTrash className="size-4" /> Delete</Button></div></TableCell>
+                        <IconArrowsSort className="size-3 text-muted-foreground/30 group-hover:text-muted-foreground/80 shrink-0" />
+                      )}
+                    </div>
+                  </TableHead>
+
+                  <TableHead
+                    className="cursor-pointer select-none group hover:bg-muted/60 transition-colors"
+                    onClick={() => handleSort("candidate")}
+                    title="Urutkan Nama Kandidat"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className={sortKey === "candidate" ? "text-foreground font-bold" : ""}>CANDIDATE NAME</span>
+                      {sortKey === "candidate" ? (
+                        sortOrder === "asc" ? <IconChevronUp className="size-3 text-primary shrink-0" /> : <IconChevronDown className="size-3 text-primary shrink-0" />
+                      ) : (
+                        <IconArrowsSort className="size-3 text-muted-foreground/30 group-hover:text-muted-foreground/80 shrink-0" />
+                      )}
+                    </div>
+                  </TableHead>
+
+                  <TableHead
+                    className="cursor-pointer select-none group hover:bg-muted/60 transition-colors"
+                    onClick={() => handleSort("email")}
+                    title="Urutkan Email"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className={sortKey === "email" ? "text-foreground font-bold" : ""}>EMAIL</span>
+                      {sortKey === "email" ? (
+                        sortOrder === "asc" ? <IconChevronUp className="size-3 text-primary shrink-0" /> : <IconChevronDown className="size-3 text-primary shrink-0" />
+                      ) : (
+                        <IconArrowsSort className="size-3 text-muted-foreground/30 group-hover:text-muted-foreground/80 shrink-0" />
+                      )}
+                    </div>
+                  </TableHead>
+
+                  <TableHead
+                    className="cursor-pointer select-none group hover:bg-muted/60 transition-colors"
+                    onClick={() => handleSort("createdAt")}
+                    title="Urutkan Tanggal Daftar"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className={sortKey === "createdAt" ? "text-foreground font-bold" : ""}>TGL DAFTAR</span>
+                      {sortKey === "createdAt" ? (
+                        sortOrder === "asc" ? <IconChevronUp className="size-3 text-primary shrink-0" /> : <IconChevronDown className="size-3 text-primary shrink-0" />
+                      ) : (
+                        <IconArrowsSort className="size-3 text-muted-foreground/30 group-hover:text-muted-foreground/80 shrink-0" />
+                      )}
+                    </div>
+                  </TableHead>
+
+                  <TableHead
+                    className="cursor-pointer select-none group hover:bg-muted/60 transition-colors"
+                    onClick={() => handleSort("status")}
+                    title="Urutkan Status"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className={sortKey === "status" ? "text-foreground font-bold" : ""}>STATUS</span>
+                      {sortKey === "status" ? (
+                        sortOrder === "asc" ? <IconChevronUp className="size-3 text-primary shrink-0" /> : <IconChevronDown className="size-3 text-primary shrink-0" />
+                      ) : (
+                        <IconArrowsSort className="size-3 text-muted-foreground/30 group-hover:text-muted-foreground/80 shrink-0" />
+                      )}
+                    </div>
+                  </TableHead>
+
+                  <TableHead
+                    className="text-right cursor-pointer select-none group hover:bg-muted/60 transition-colors"
+                    onClick={() => handleSort("score")}
+                    title="Urutkan Skor / Hasil"
+                  >
+                    <div className="flex items-center justify-end gap-1.5">
+                      <span className={sortKey === "score" ? "text-foreground font-bold" : ""}>SCORE</span>
+                      {sortKey === "score" ? (
+                        sortOrder === "asc" ? <IconChevronUp className="size-3 text-primary shrink-0" /> : <IconChevronDown className="size-3 text-primary shrink-0" />
+                      ) : (
+                        <IconArrowsSort className="size-3 text-muted-foreground/30 group-hover:text-muted-foreground/80 shrink-0" />
+                      )}
+                    </div>
+                  </TableHead>
+
+                  <TableHead
+                    className="cursor-pointer select-none group hover:bg-muted/60 transition-colors"
+                    onClick={() => handleSort("schedule")}
+                    title="Urutkan Jadwal Tes"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className={sortKey === "schedule" ? "text-foreground font-bold" : ""}>SCHEDULE</span>
+                      {sortKey === "schedule" ? (
+                        sortOrder === "asc" ? <IconChevronUp className="size-3 text-primary shrink-0" /> : <IconChevronDown className="size-3 text-primary shrink-0" />
+                      ) : (
+                        <IconArrowsSort className="size-3 text-muted-foreground/30 group-hover:text-muted-foreground/80 shrink-0" />
+                      )}
+                    </div>
+                  </TableHead>
+
+                  <TableHead
+                    className="text-center cursor-pointer select-none group hover:bg-muted/60 transition-colors"
+                    onClick={() => handleSort("answers")}
+                    title="Urutkan Jumlah Terjawab"
+                  >
+                    <div className="flex items-center justify-center gap-1.5">
+                      <span className={sortKey === "answers" ? "text-foreground font-bold" : ""}>ANSWERS</span>
+                      {sortKey === "answers" ? (
+                        sortOrder === "asc" ? <IconChevronUp className="size-3 text-primary shrink-0" /> : <IconChevronDown className="size-3 text-primary shrink-0" />
+                      ) : (
+                        <IconArrowsSort className="size-3 text-muted-foreground/30 group-hover:text-muted-foreground/80 shrink-0" />
+                      )}
+                    </div>
+                  </TableHead>
+
+                  <TableHead
+                    className="cursor-pointer select-none group hover:bg-muted/60 transition-colors"
+                    onClick={() => handleSort("completedAt")}
+                    title="Urutkan Tanggal Selesai"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className={sortKey === "completedAt" ? "text-foreground font-bold" : ""}>COMPLETED AT</span>
+                      {sortKey === "completedAt" ? (
+                        sortOrder === "asc" ? <IconChevronUp className="size-3 text-primary shrink-0" /> : <IconChevronDown className="size-3 text-primary shrink-0" />
+                      ) : (
+                        <IconArrowsSort className="size-3 text-muted-foreground/30 group-hover:text-muted-foreground/80 shrink-0" />
+                      )}
+                    </div>
+                  </TableHead>
+
+                  <TableHead className="text-center w-44">ACTIONS</TableHead>
                 </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sortedEntries.map((entry, index) => {
+                  const ansList = entry.answers || [];
+                  const correctCount = ansList.filter((a: any) => a.isCorrect === true).length;
+                  const ansPct = ansList.length > 0 ? Math.round((correctCount / ansList.length) * 100) : null;
+                  const allManual = ansList.length > 0 && ansList.every((a: any) => a.isCorrect === null || a.isCorrect === undefined);
+                  const isSelected = selectedEntryIds.includes(entry.id);
+
+                  return (
+                    <TableRow
+                      key={entry.id}
+                      className={`transition-colors text-xs ${
+                        isSelected ? "bg-primary/5 dark:bg-primary/10 border-l-2 border-l-primary" : "hover:bg-muted/30"
+                      }`}
+                    >
+                      {/* Row Checkbox */}
+                      <TableCell className="text-center px-3">
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => handleToggleSelectRow(entry.id)}
+                          aria-label={`Pilih kandidat ${entry.candidate?.fullName || entry.id}`}
+                        />
+                      </TableCell>
+
+                      <TableCell className="text-center font-mono text-muted-foreground text-[11px]">
+                        {index + 1}
+                      </TableCell>
+
+                      <TableCell>
+                        <div className="font-semibold text-foreground">
+                          {entry.candidate?.fullName || "N/A"}
+                        </div>
+                        {entry.candidate?.phone && (
+                          <div className="text-[10px] text-muted-foreground font-mono">
+                            {entry.candidate.phone}
+                          </div>
+                        )}
+                      </TableCell>
+
+                      <TableCell className="text-muted-foreground font-mono text-[11px]">
+                        {entry.candidate?.email || "-"}
+                      </TableCell>
+
+                      <TableCell className="text-muted-foreground text-[11px] whitespace-nowrap">
+                        {entry.createdAt ? format(new Date(entry.createdAt), "dd MMM yyyy, HH:mm") : "-"}
+                      </TableCell>
+
+                      <TableCell>
+                        <Badge
+                          variant={
+                            entry.status === "Completed" || entry.status === "Graded"
+                              ? "default"
+                              : entry.status === "In Progress"
+                              ? "secondary"
+                              : "outline"
+                          }
+                          className={
+                            entry.status === "Completed" || entry.status === "Graded"
+                              ? "bg-emerald-600 text-white font-medium text-[10px]"
+                              : "text-[10px]"
+                          }
+                        >
+                          {entry.status}
+                        </Badge>
+                      </TableCell>
+
+                      <TableCell className="text-right">
+                        {(entry.status === "Completed" || entry.status === "Graded") && ansPct !== null ? (
+                          allManual || test.isApplicationForm ? (
+                            <div className="flex flex-col items-end gap-1">
+                              <Badge variant="outline" className="text-[10px] bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300 border-slate-300">
+                                Formulir Terisi
+                              </Badge>
+                              {entry.testScores && (entry.testScores.apm !== null || entry.testScores.amr !== null) && (
+                                <div className="flex items-center gap-1 font-mono text-[9.5px]">
+                                  {entry.testScores.apm !== null && (
+                                    <span className="px-1.5 py-0.2 rounded bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800" title="Skor APM (Tes 8)">
+                                      APM: {entry.testScores.apm}
+                                    </span>
+                                  )}
+                                  {entry.testScores.amr !== null && (
+                                    <span className="px-1.5 py-0.2 rounded bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200 dark:border-purple-800" title="Skor AMR (Tes 10)">
+                                      AMR: {entry.testScores.amr}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div>
+                              <span className="text-sm font-bold text-primary">{ansPct}%</span>
+                              {test.passingScore > 0 && (
+                                <Badge
+                                  variant={ansPct >= test.passingScore ? "default" : "destructive"}
+                                  className={ansPct >= test.passingScore ? "bg-emerald-600 text-[10px] ml-1" : "text-[10px] ml-1"}
+                                >
+                                  {ansPct >= test.passingScore ? "LULUS" : "GAGAL"}
+                                </Badge>
+                              )}
+                              <div className="text-[10px] text-muted-foreground">{correctCount}/{ansList.length} benar</div>
+                            </div>
+                          )
+                        ) : (
+                          <span className="text-muted-foreground text-xs">-</span>
+                        )}
+                      </TableCell>
+
+                      <TableCell className="text-muted-foreground text-[11px] whitespace-nowrap">
+                        {entry.scheduledAt ? format(new Date(entry.scheduledAt), "dd/MM/yy HH:mm") : "-"}
+                      </TableCell>
+
+                      <TableCell className="text-center font-mono text-[11px] text-muted-foreground">
+                        {ansList.length} / {questions.length}
+                      </TableCell>
+
+                      <TableCell className="text-muted-foreground text-[11px] whitespace-nowrap">
+                        {formatDateValue(entry.completedAt)}
+                      </TableCell>
+
+                      <TableCell>
+                        <div className="flex items-center justify-center gap-1.5">
+                          {/* 1. Primary Action: Preview PDF (khusus Application Form atau jika sudah ada jawaban) */}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setPreviewPdfEntry(entry)}
+                            className="h-8 px-2.5 text-xs font-semibold gap-1.5 text-teal-700 bg-teal-50/70 border-teal-200/80 hover:bg-teal-100 dark:bg-teal-950/50 dark:text-teal-300 dark:border-teal-800/80 shadow-xs"
+                            title="Preview & Cetak Dokumen PDF Resmi"
+                          >
+                            <IconFileTypePdf className="size-3.5 text-teal-600 dark:text-teal-400" />
+                            <span>PDF</span>
+                          </Button>
+
+                          {/* 2. Detail Action */}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSelectedEntry(entry)}
+                            className="h-8 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                            title="Lihat Detail Jawaban"
+                          >
+                            <IconEye className="size-3.5" />
+                            <span className="hidden sm:inline">Detail</span>
+                          </Button>
+
+                          {/* 3. More Actions Dropdown Menu */}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                title="Aksi Lainnya"
+                              >
+                                <IconDotsVertical className="size-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48 text-xs">
+                              <DropdownMenuItem
+                                onClick={() => setScheduleInterviewCandidate({
+                                  id: entry.candidateId,
+                                  name: entry.candidate?.fullName || "Kandidat",
+                                  jobTitle: test.title,
+                                })}
+                                className="gap-2 cursor-pointer text-primary font-medium"
+                              >
+                                <IconUserCheck className="size-4" />
+                                <span>Jadwalkan Wawancara</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => exportEntries([entry], `hasil-entry-${test.title}-${entry.candidate?.fullName || entry.id}`)}
+                                className="gap-2 cursor-pointer"
+                              >
+                                <IconFileSpreadsheet className="size-4 text-emerald-600" />
+                                <span>Export Excel</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleResendEntryEmail(entry)}
+                                className="gap-2 cursor-pointer"
+                              >
+                                <IconMailForward className="size-4 text-sky-600" />
+                                <span>Kirim Ulang Email</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => openEditEntry(entry)}
+                                className="gap-2 cursor-pointer"
+                              >
+                                <IconPencil className="size-4 text-amber-600" />
+                                <span>Edit Status & Skor</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => handleDeleteEntry(entry)}
+                                className="gap-2 text-destructive focus:text-destructive cursor-pointer"
+                              >
+                                <IconTrash className="size-4" />
+                                <span>Hapus Entry</span>
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+
+                {sortedEntries.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={11} className="text-center h-32 text-muted-foreground">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <IconSearch className="size-6 text-muted-foreground/50" />
+                        <p className="text-sm font-medium">
+                          {entries.length === 0
+                            ? "Belum ada entry hasil tes untuk modul ini."
+                            : "Tidak ada entry kandidat yang cocok dengan filter yang dipilih."}
+                        </p>
+                        {hasActiveFilters && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={resetAllFilters}
+                            className="h-8 text-xs gap-1.5 mt-1"
+                          >
+                            <IconRefresh className="size-3.5" />
+                            <span>Reset Semua Filter</span>
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Table Footer Summary */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-2 px-4 py-3 bg-muted/20 border-t border-border/60 text-xs text-muted-foreground">
+            <div>
+              Menampilkan <span className="font-semibold text-foreground">{sortedEntries.length}</span> dari{" "}
+              <span className="font-semibold text-foreground">{entries.length}</span> total entries
+              {selectedEntryIds.length > 0 && (
+                <span className="ml-2 font-medium text-primary">
+                  ({selectedEntryIds.length} dipilih)
+                </span>
+              )}
+            </div>
+            {sortKey && (
+              <div className="flex items-center gap-1 font-mono text-[11px]">
+                <span>Diurutkan:</span>
+                <span className="font-semibold text-foreground uppercase">{sortKey}</span>
+                <span>({sortOrder === "asc" ? "Naik / ASC" : "Turun / DESC"})</span>
+                <button
+                  type="button"
+                  onClick={() => setSortKey(null)}
+                  className="ml-1 text-muted-foreground hover:text-foreground underline text-[10px]"
+                >
+                  Reset
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Confirmation Modal: Bulk Delete */}
+        <Dialog open={isConfirmBulkDeleteOpen} onOpenChange={setIsConfirmBulkDeleteOpen}>
+          <DialogContent className="sm:max-w-[420px]">
+            <DialogHeader>
+              <DialogTitle className="text-destructive flex items-center gap-2">
+                <IconTrash className="size-5" />
+                <span>Hapus {selectedEntryIds.length} Entry Terpilih?</span>
+              </DialogTitle>
+              <DialogDescription className="pt-2 text-xs leading-relaxed">
+                Tindakan ini akan menghapus data pengerjaan tes dan jawaban dari{" "}
+                <strong>{selectedEntryIds.length} kandidat</strong> secara permanen dari sistem.
+                Tindakan ini tidak dapat dibatalkan.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="pt-4 gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsConfirmBulkDeleteOpen(false)}
+                disabled={isBulkDeleting}
+              >
+                Batal
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleBulkDelete}
+                disabled={isBulkDeleting}
+                className="gap-1.5"
+              >
+                {isBulkDeleting && <IconLoader2 className="size-3.5 animate-spin" />}
+                <span>Ya, Hapus {selectedEntryIds.length} Data</span>
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Modal Preview PDF Dokumen Resmi Chitra Paratama (F.HR.STD.006.00) */}
+        <ApplicationFormPreviewDialog
+          open={!!previewPdfEntry}
+          onOpenChange={(open) => !open && setPreviewPdfEntry(null)}
+          entry={previewPdfEntry}
+          testTitle={test.title}
+        />
+
+        {/* Dialog Detail Entry */}
+        <Dialog open={!!selectedEntry} onOpenChange={(open) => !open && setSelectedEntry(null)}>
+          <DialogContent className="sm:max-w-[900px] max-h-[90vh]">
+            <DialogHeader>
+              <div className="flex items-center justify-between gap-4 pr-6">
+                <div>
+                  <DialogTitle>Detail Hasil Entry: {selectedEntry?.candidate?.fullName || "Candidate"}</DialogTitle>
+                  <DialogDescription>
+                    {selectedEntry?.candidate?.email || "No email"} · Status: {selectedEntry?.status}
+                  </DialogDescription>
+                </div>
+                {selectedEntry && (
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setPreviewPdfEntry(selectedEntry);
+                    }}
+                    className="h-8 text-xs gap-1.5 bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 text-white shadow-xs"
+                  >
+                    <IconFileTypePdf className="w-3.5 h-3.5" /> Buka Preview PDF
+                  </Button>
+                )}
+              </div>
+            </DialogHeader>
+            <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
+              {questions.map((question: any, index: number) => {
+                const answer = selectedEntry?.answers?.find((item: any) => item.questionId === question.id);
+                return (
+                  <div key={question.id} className="rounded-xl border bg-background p-4">
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <Badge variant="secondary">Soal {index + 1}</Badge>
+                      <Badge variant="outline">{question.questionType}</Badge>
+                      {answer && answer.isCorrect !== null && answer.isCorrect !== undefined ? (
+                        <Badge variant={answer.isCorrect ? "default" : "destructive"} className={answer.isCorrect ? "bg-emerald-600" : ""}>
+                          {answer.isCorrect ? "Benar" : "Salah"} · {answer.pointsAwarded}/{question.points || 1} pts
+                        </Badge>
+                      ) : answer && !test.isApplicationForm ? (
+                        <button className="inline-flex items-center rounded-md border px-2 py-0.5 text-xs hover:bg-muted" onClick={() => handleGradeAnswer(selectedEntry!, answer)}>
+                          Nilai
+                        </button>
+                      ) : null}
+                    </div>
+                    <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: question.questionText }} />
+                    <div className="mt-3 grid gap-3 text-sm md:grid-cols-2">
+                      <div className="rounded-lg bg-muted/20 p-3">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Jawaban Peserta</p>
+                        <AnswerDisplay text={answer?.answerText} />
+                      </div>
+                      <div className="rounded-lg bg-muted/20 p-3">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Jawaban Benar / Rubrik</p>
+                        <p className="mt-1 whitespace-pre-wrap">{question.correctAnswer || "-"}</p>
+                      </div>
+                    </div>
+                  </div>
                 );
               })}
-              {entries.length === 0 && <TableRow><TableCell colSpan={10} className="text-center h-24 text-muted-foreground">No entries found for this test yet.</TableCell></TableRow>}
-            </TableBody>
-          </Table>
-        </MinimalTableShell>
-
-        <Dialog open={!!selectedEntry} onOpenChange={(open) => !open && setSelectedEntry(null)}><DialogContent className="sm:max-w-[900px] max-h-[90vh]"><DialogHeader><DialogTitle>Detail Hasil Entry</DialogTitle><DialogDescription>{selectedEntry?.candidate?.fullName || "Candidate"} · {selectedEntry?.candidate?.email || "No email"} · {selectedEntry?.status}{selectedEntry?.answers?.length > 0 ? (() => { const correct = selectedEntry.answers.filter((a: any) => a.isCorrect === true).length; const total = selectedEntry.answers.length; const allManual = selectedEntry.answers.every((a: any) => a.isCorrect === null || a.isCorrect === undefined); return allManual ? ` · Perlu Verif Manual` : ` · Score: ${correct}/${total} (${Math.round((correct/total)*100)}%)`; })() : ""}</DialogDescription></DialogHeader><div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">{questions.map((question: any, index: number) => { const answer = selectedEntry?.answers?.find((item: any) => item.questionId === question.id); return <div key={question.id} className="rounded-xl border bg-background p-4"><div className="mb-2 flex flex-wrap items-center gap-2"><Badge variant="secondary">Soal {index + 1}</Badge><Badge variant="outline">{question.questionType}</Badge>{answer && answer.isCorrect !== null && answer.isCorrect !== undefined ? <Badge variant={answer.isCorrect ? "default" : "destructive"} className={answer.isCorrect ? "bg-emerald-600" : ""}>{answer.isCorrect ? "Benar" : "Salah"} · {answer.pointsAwarded}/{question.points || 1} pts</Badge> : answer ? <button className="inline-flex items-center rounded-md border px-2 py-0.5 text-xs hover:bg-muted" onClick={() => handleGradeAnswer(selectedEntry!, answer)}>Nilai</button> : null}</div><div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: question.questionText }} /><div className="mt-3 grid gap-3 text-sm md:grid-cols-2"><div className="rounded-lg bg-muted/20 p-3"><p className="text-xs font-semibold uppercase text-muted-foreground">Jawaban Peserta</p><AnswerDisplay text={answer?.answerText} /></div><div className="rounded-lg bg-muted/20 p-3"><p className="text-xs font-semibold uppercase text-muted-foreground">Jawaban Benar / Rubrik</p><p className="mt-1 whitespace-pre-wrap">{question.correctAnswer || "-"}</p></div></div></div>; })}</div><DialogFooter>{selectedEntry ? <Button variant="outline" onClick={() => exportEntries([selectedEntry], `hasil-entry-${test.title}-${selectedEntry.candidate?.fullName || selectedEntry.id}`)}><IconDownload className="size-4" /> Export User Excel</Button> : null}<Button onClick={() => setSelectedEntry(null)}>Close</Button></DialogFooter></DialogContent></Dialog>
+            </div>
+            <DialogFooter>
+              {selectedEntry && (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setPreviewPdfEntry(selectedEntry);
+                    }}
+                    className="gap-1.5 text-teal-700 dark:text-teal-300 border-teal-300/60"
+                  >
+                    <IconFileTypePdf className="size-4 text-teal-600" /> Preview PDF Dokumen
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => exportEntries([selectedEntry], `hasil-entry-${test.title}-${selectedEntry.candidate?.fullName || selectedEntry.id}`)}
+                  >
+                    <IconDownload className="size-4" /> Export Excel
+                  </Button>
+                </>
+              )}
+              <Button onClick={() => setSelectedEntry(null)}>Tutup</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         <Dialog open={!!editingEntry} onOpenChange={(open) => !open && setEditingEntry(null)}><DialogContent className="sm:max-w-[460px]"><DialogHeader><DialogTitle>Edit Entry</DialogTitle><DialogDescription>Ubah status dan score entry test kandidat.</DialogDescription></DialogHeader><div className="space-y-4 py-2"><div className="space-y-2"><Label>Status</Label><Select value={entryEditForm.status} onValueChange={(value) => setEntryEditForm((prev) => ({ ...prev, status: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Pending">Pending</SelectItem><SelectItem value="In Progress">In Progress</SelectItem><SelectItem value="Completed">Completed</SelectItem><SelectItem value="Graded">Graded</SelectItem><SelectItem value="Expired">Expired</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label>Score (poin)</Label><Input type="number" value={entryEditForm.score} onChange={(e) => setEntryEditForm((prev) => ({ ...prev, score: e.target.value }))} placeholder="Kosongkan jika tidak ada" /></div></div><DialogFooter><Button variant="outline" onClick={() => setEditingEntry(null)}>Cancel</Button><Button onClick={handleUpdateEntry}>Save</Button></DialogFooter></DialogContent></Dialog>
         <Dialog open={isAssignOpen} onOpenChange={setIsAssignOpen}>
           <DialogContent>
@@ -816,6 +2005,19 @@ export function RecruitmentTestDetailsClientPage({ initialTest, initialQuestions
             </DialogFooter>
           </DialogContent>
       </Dialog>
+
+      {scheduleInterviewCandidate && (
+        <ScheduleInterviewModal
+          open={!!scheduleInterviewCandidate}
+          onOpenChange={(open) => !open && setScheduleInterviewCandidate(null)}
+          candidateId={scheduleInterviewCandidate.id}
+          candidateName={scheduleInterviewCandidate.name}
+          jobTitle={scheduleInterviewCandidate.jobTitle}
+          onSuccess={() => {
+            toast.success("Wawancara berhasil dijadwalkan!");
+          }}
+        />
+      )}
       </TabsContent>
       </Tabs>
     </AdminPageShell>
