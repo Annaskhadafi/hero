@@ -623,6 +623,63 @@ export async function deleteMaritalStatusRequestAction(id: number) {
   }
 }
 
+export async function updateMarriedEmployeeProfile(payload: {
+  employeeId: number;
+  maritalStatus: string;
+  spouseName?: string;
+  marriageDate?: string | null;
+  residenceStatus?: string;
+  dependentsCount?: number;
+}) {
+  try {
+    const current = await getCurrentEmployee();
+    if (!current) {
+      return { success: false, error: 'User tidak terautentikasi.' };
+    }
+
+    await db
+      .update(employees)
+      .set({
+        maritalStatus: payload.maritalStatus.trim(),
+        spouseName: payload.spouseName?.trim() || null,
+        marriageDate: payload.marriageDate ? new Date(payload.marriageDate) as any : null,
+        residenceStatus: payload.residenceStatus?.trim() || null,
+      })
+      .where(eq(employees.id, payload.employeeId));
+
+    revalidateMaritalStatusPaths();
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error updating married employee profile:', error);
+    return { success: false, error: error.message || 'Gagal memperbarui profil karyawan.' };
+  }
+}
+
+export async function resetInvalidMaritalStatusAction(employeeId: number) {
+  try {
+    const current = await getCurrentEmployee();
+    if (!current) {
+      return { success: false, error: 'User tidak terautentikasi.' };
+    }
+
+    await db
+      .update(employees)
+      .set({
+        maritalStatus: 'Single',
+        spouseName: null,
+        marriageDate: null,
+        residenceStatus: null,
+      })
+      .where(eq(employees.id, employeeId));
+
+    revalidateMaritalStatusPaths();
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error resetting invalid marital status:', error);
+    return { success: false, error: error.message || 'Gagal mereset status pernikahan.' };
+  }
+}
+
 function revalidateMaritalStatusPaths() {
   try {
     revalidatePath('/dashboard/central-service/marital-status');

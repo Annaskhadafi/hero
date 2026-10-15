@@ -1,8 +1,10 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -17,6 +19,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from '@/components/ui/dialog';
 import {
   Search,
@@ -31,9 +34,18 @@ import {
   Eye,
   CheckCircle,
   Briefcase,
+  Pencil,
+  Trash2,
+  AlertTriangle,
+  Loader2,
 } from 'lucide-react';
 import type { MarriedOnSiteEmployeeRow } from '@/lib/marital-status-data';
 import { resolveClientUploadUrl } from '@/lib/client-upload-url';
+import {
+  updateMarriedEmployeeProfile,
+  resetInvalidMaritalStatusAction,
+} from '@/app/dashboard/central-service/marital-status/actions';
+import { toast } from 'sonner';
 
 interface MarriedOnSiteEmployeesTabProps {
   employees: MarriedOnSiteEmployeeRow[];
@@ -44,6 +56,7 @@ export function MarriedOnSiteEmployeesTab({
   employees,
   onOpenCreateForEmployee,
 }: MarriedOnSiteEmployeesTabProps) {
+  const router = useRouter();
   const [search, setSearch] = useState('');
   const [selectedSite, setSelectedSite] = useState<string>('all');
   const [selectedDept, setSelectedDept] = useState<string>('all');
@@ -53,6 +66,78 @@ export function MarriedOnSiteEmployeesTab({
   const [previewDocUrl, setPreviewDocUrl] = useState<string | null>(null);
   const [previewDocTitle, setPreviewDocTitle] = useState<string>('');
   const [selectedEmployeeDetail, setSelectedEmployeeDetail] = useState<MarriedOnSiteEmployeeRow | null>(null);
+
+  // Edit employee modal state
+  const [editingEmployee, setEditingEmployee] = useState<MarriedOnSiteEmployeeRow | null>(null);
+  const [editForm, setEditForm] = useState({
+    maritalStatus: 'Menikah',
+    spouseName: '',
+    marriageDate: '',
+    residenceStatus: 'Mess / Perumahan On Site',
+    dependentsCount: 0,
+  });
+  const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+
+  // Delete / Reset invalid modal state
+  const [deletingEmployee, setDeletingEmployee] = useState<MarriedOnSiteEmployeeRow | null>(null);
+  const [isSubmittingDelete, setIsSubmittingDelete] = useState(false);
+
+  const handleOpenEdit = (emp: MarriedOnSiteEmployeeRow) => {
+    setEditingEmployee(emp);
+    setEditForm({
+      maritalStatus: emp.maritalStatus || 'Menikah',
+      spouseName: emp.spouseName && emp.spouseName !== 'Belum tercatat' ? emp.spouseName : '',
+      marriageDate: emp.marriageDate ? new Date(emp.marriageDate).toISOString().slice(0, 10) : '',
+      residenceStatus: emp.residenceStatus || 'Mess / Perumahan On Site',
+      dependentsCount: emp.dependentsCount || 0,
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingEmployee) return;
+    setIsSubmittingEdit(true);
+    try {
+      const res = await updateMarriedEmployeeProfile({
+        employeeId: editingEmployee.id,
+        maritalStatus: editForm.maritalStatus,
+        spouseName: editForm.spouseName,
+        marriageDate: editForm.marriageDate || null,
+        residenceStatus: editForm.residenceStatus,
+        dependentsCount: Number(editForm.dependentsCount) || 0,
+      });
+
+      if (res.success) {
+        toast.success(`Data pernikahan ${editingEmployee.name} berhasil diperbarui.`);
+        setEditingEmployee(null);
+        router.refresh();
+      } else {
+        toast.error(res.error || 'Gagal memperbarui data pernikahan.');
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Terjadi kesalahan sistem.');
+    } finally {
+      setIsSubmittingEdit(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingEmployee) return;
+    setIsSubmittingDelete(true);
+    try {
+      const res = await resetInvalidMaritalStatusAction(deletingEmployee.id);
+      if (res.success) {
+        toast.success(`Status ${deletingEmployee.name} berhasil di-reset ke 'Single' dan dikeluarkan dari daftar.`);
+        setDeletingEmployee(null);
+        router.refresh();
+      } else {
+        toast.error(res.error || 'Gagal mereset status pernikahan.');
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Terjadi kesalahan sistem.');
+    } finally {
+      setIsSubmittingDelete(false);
+    }
+  };
 
   // Distinct Filter Options
   const sitesList = useMemo(() => {
@@ -346,16 +431,35 @@ export function MarriedOnSiteEmployeesTab({
 
                     {/* Aksi */}
                     <td className="py-3 px-4 text-right">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setSelectedEmployeeDetail(emp)}
-                        className="h-7 px-2 text-[11px] gap-1 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                        title="Tinjau Detail Karyawan"
-                      >
-                        <Eye className="w-3 h-3" />
-                        Detail
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setSelectedEmployeeDetail(emp)}
+                          className="h-7 w-7 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                          title="Tinjau Detail Karyawan"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleOpenEdit(emp)}
+                          className="h-7 w-7 p-0 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                          title="Edit Data Marital Karyawan"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setDeletingEmployee(emp)}
+                          className="h-7 w-7 p-0 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                          title="Hapus / Reset Status Karyawan ke Single"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -530,6 +634,179 @@ export function MarriedOnSiteEmployeesTab({
               )
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+      {/* Edit Employee Marital Status Dialog */}
+      <Dialog open={!!editingEmployee} onOpenChange={(open) => !open && setEditingEmployee(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold flex items-center gap-2">
+              <Pencil className="w-4 h-4 text-amber-600" />
+              Edit Data Pernikahan Karyawan
+            </DialogTitle>
+          </DialogHeader>
+
+          {editingEmployee && (
+            <div className="space-y-4 py-2">
+              <div className="p-2.5 bg-muted/40 rounded-lg text-xs space-y-1 border">
+                <p className="font-bold text-gray-900">{editingEmployee.name}</p>
+                <p className="text-muted-foreground">
+                  SN: {editingEmployee.employeeSn} &bull; {editingEmployee.jobTitle} &bull; {editingEmployee.siteName}
+                </p>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div>
+                  <Label htmlFor="edit-marital-status" className="text-xs">Status Marital *</Label>
+                  <Select
+                    value={editForm.maritalStatus}
+                    onValueChange={(val) => setEditForm((prev) => ({ ...prev, maritalStatus: val }))}
+                  >
+                    <SelectTrigger id="edit-marital-status" className="h-9 mt-1 text-xs">
+                      <SelectValue placeholder="Pilih status..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Menikah">Menikah (Married)</SelectItem>
+                      <SelectItem value="Married On Site">Married On Site</SelectItem>
+                      <SelectItem value="Single">Single (Belum Menikah)</SelectItem>
+                      <SelectItem value="Duda">Duda</SelectItem>
+                      <SelectItem value="Janda">Janda</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label htmlFor="edit-spouse-name" className="text-xs">Nama Pasangan (Suami/Istri)</Label>
+                  <Input
+                    id="edit-spouse-name"
+                    value={editForm.spouseName}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, spouseName: e.target.value }))}
+                    placeholder="Masukkan nama lengkap pasangan..."
+                    className="h-9 mt-1 text-xs"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="edit-marriage-date" className="text-xs">Tanggal Menikah / Efektif</Label>
+                  <Input
+                    id="edit-marriage-date"
+                    type="date"
+                    value={editForm.marriageDate}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, marriageDate: e.target.value }))}
+                    className="h-9 mt-1 text-xs"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="edit-residence-status" className="text-xs">Tempat Tinggal On Site</Label>
+                  <Select
+                    value={editForm.residenceStatus}
+                    onValueChange={(val) => setEditForm((prev) => ({ ...prev, residenceStatus: val }))}
+                  >
+                    <SelectTrigger id="edit-residence-status" className="h-9 mt-1 text-xs">
+                      <SelectValue placeholder="Pilih tempat tinggal..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Mess / Perumahan On Site">Mess / Perumahan On Site</SelectItem>
+                      <SelectItem value="Luar Area Kerja / Mandiri">Luar Area Kerja / Mandiri</SelectItem>
+                      <SelectItem value="Rumah Pribadi">Rumah Pribadi</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label htmlFor="edit-dependents-count" className="text-xs">Jumlah Tanggungan / Anak</Label>
+                  <Input
+                    id="edit-dependents-count"
+                    type="number"
+                    min={0}
+                    max={20}
+                    value={editForm.dependentsCount}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, dependentsCount: Number(e.target.value) }))}
+                    className="h-9 mt-1 text-xs"
+                  />
+                </div>
+              </div>
+
+              <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEditingEmployee(null)}
+                  disabled={isSubmittingEdit}
+                >
+                  Batal
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleSaveEdit}
+                  disabled={isSubmittingEdit}
+                  className="bg-amber-600 hover:bg-amber-700 text-white"
+                >
+                  {isSubmittingEdit ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : null}
+                  Simpan Perubahan
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete / Reset Confirmation Dialog */}
+      <Dialog open={!!deletingEmployee} onOpenChange={(open) => !open && setDeletingEmployee(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold flex items-center gap-2 text-rose-600">
+              <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+              Reset & Hapus dari Daftar Married On Site
+            </DialogTitle>
+          </DialogHeader>
+
+          {deletingEmployee && (
+            <div className="space-y-3 py-2">
+              <p className="text-xs text-gray-700 leading-relaxed">
+                Apakah Anda yakin data karyawan di bawah ini <strong className="text-rose-600">tidak valid</strong> dan ingin di-reset statusnya?
+              </p>
+
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs space-y-1">
+                <p className="font-bold text-gray-900">{deletingEmployee.name}</p>
+                <p className="text-gray-600">
+                  SN: {deletingEmployee.employeeSn} &bull; {deletingEmployee.jobTitle}
+                </p>
+                <p className="text-gray-600">Site: {deletingEmployee.siteName} &bull; Dept: {deletingEmployee.departmentName}</p>
+                <p className="text-gray-600">Status Terdata: {deletingEmployee.maritalStatus} &bull; Pasangan: {deletingEmployee.spouseName}</p>
+              </div>
+
+              <p className="text-[11px] text-muted-foreground italic">
+                * Aksi ini akan mengubah status marital karyawan menjadi <strong>'Single' (Belum Menikah)</strong> serta mengosongkan nama pasangan dan tanggal menikah di profil karyawan, sehingga data akan langsung dikeluarkan dari tab ini.
+              </p>
+
+              <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDeletingEmployee(null)}
+                  disabled={isSubmittingDelete}
+                >
+                  Batal
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleConfirmDelete}
+                  disabled={isSubmittingDelete}
+                  className="bg-rose-600 hover:bg-rose-700 text-white font-semibold"
+                >
+                  {isSubmittingDelete ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : null}
+                  Ya, Reset & Hapus Data
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

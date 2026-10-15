@@ -28,6 +28,7 @@ import {
   Users,
   Heart,
   Store,
+  Truck,
 } from 'lucide-react'
 import {
   IconBook,
@@ -237,6 +238,13 @@ export function MobileDashboardServices({
       resource: 'central_service_marital_status',
       icon: Heart,
       bg: 'bg-rose-500/10 text-rose-600',
+    },
+    {
+      title: 'Armada GA',
+      href: '/mobile/ga/vehicles',
+      resource: 'ga-vehicles',
+      icon: Truck,
+      bg: 'bg-indigo-500/10 text-indigo-600',
     },
     {
       title: 'Request RFR',

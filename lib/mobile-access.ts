@@ -31,9 +31,11 @@ export const MOBILE_ALWAYS_ALLOWED_HREFS = [
   '/mobile/tire-repair/jobcard/new',
   '/mobile/atk',
   '/mobile/atk/new',
+  '/mobile/ga/vehicles',
 ] as const
 
 const desktopToMobileRoutes: Array<{ desktop: string; mobile: string }> = [
+  { desktop: '/dashboard/ga/vehicles', mobile: '/mobile/ga/vehicles' },
   { desktop: '/dashboard/ga/atk', mobile: '/mobile/atk' },
   { desktop: '/dashboard/repair-retread/inspection', mobile: '/mobile/tire-repair/inspection' },
   { desktop: '/dashboard/repair-retread/jobcard', mobile: '/mobile/tire-repair/jobcard' },

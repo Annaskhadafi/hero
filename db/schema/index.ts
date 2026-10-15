@@ -304,3 +304,6 @@ export * from './hse-osm'
 // General Affairs - ATK
 export * from './atk'
 
+// General Affairs - Vehicles
+export * from './vehicles'
+

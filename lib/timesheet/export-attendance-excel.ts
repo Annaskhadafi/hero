@@ -818,7 +818,7 @@ export async function exportAttendanceLogsToExcel(
 // COMPREHENSIVE 5-TAB TIMESHEET EXPORTER (ATTENDANCE, TU, MSA, MEALS, OVT)
 // ============================================================
 
-export type TimesheetExportTab = 'attendance' | 'lokasi' | 'msa' | 'meals' | 'ovt'
+export type TimesheetExportTab = 'attendance' | 'lokasi' | 'msa' | 'meals' | 'ovt' | 'payroll_ovt'
 
 export interface TimesheetDayData {
   day: number
@@ -870,6 +870,11 @@ export interface TimesheetEmployeeExportRow {
   }
   allowanceTotal?: number
   overtimeTotal?: number
+  payrollOvertimeSummary?: {
+    totalOvertimeCalculated: number
+    workDaysPresent: number
+    offDaysPresent: number
+  }
 }
 
 export interface ExportTimesheetTabOptions {
@@ -988,6 +993,12 @@ function getTabMetadata(tab: TimesheetExportTab) {
         title: 'LAPORAN REKAPITULASI OVERTIME RECORD (LEMBUR)',
         filePrefix: 'Rekap_Overtime',
       }
+    case 'payroll_ovt':
+      return {
+        sheetName: 'Payroll Overtime',
+        title: 'LAPORAN REKAPITULASI HITUNGAN LEMBUR PAYROLL (SETUP LEMBUR)',
+        filePrefix: 'Rekap_Payroll_Overtime',
+      }
   }
 }
 
@@ -1017,6 +1028,7 @@ export function buildTimesheetWorksheet(
   const isAttendance = tab === 'attendance'
   const isAllowance = tab === 'lokasi' || tab === 'msa' || tab === 'meals'
   const isOvertime = tab === 'ovt'
+  const isPayrollOvertime = tab === 'payroll_ovt'
 
   const sheet = workbook.addWorksheet(sheetName, {
     pageSetup: {
@@ -1069,6 +1081,8 @@ export function buildTimesheetWorksheet(
     topHeaderRow.push('Total Meals (Rp)')
   } else if (isOvertime) {
     topHeaderRow.push('Total Overtime (Jam)')
+  } else if (isPayrollOvertime) {
+    topHeaderRow.push('Total Hitungan Lembur', 'Hari Kerja (HK)', 'Hari Libur (HL)')
   }
 
   const header1 = sheet.addRow(topHeaderRow)
@@ -1087,6 +1101,8 @@ export function buildTimesheetWorksheet(
     subHeaderRow.push('Nominal')
   } else if (isOvertime) {
     subHeaderRow.push('SPL Jam')
+  } else if (isPayrollOvertime) {
+    subHeaderRow.push('Hitungan Lembur', 'HK Masuk', 'HL Masuk')
   }
 
   const header2 = sheet.addRow(subHeaderRow)
@@ -1100,7 +1116,7 @@ export function buildTimesheetWorksheet(
   }
 
   // If single summary column (TU, MSA, Meals, OVT), merge row 6 & 7 vertically
-  if (!isAttendance) {
+  if (!isAttendance && !isPayrollOvertime) {
     sheet.mergeCells(6, totalCols, 7, totalCols)
   }
 
@@ -1190,6 +1206,11 @@ export function buildTimesheetWorksheet(
   }
   let grandTotalAllowance = 0
   let grandTotalOvertime = 0
+  let grandTotalPayrollOvertime = {
+    totalCalculated: 0,
+    hk: 0,
+    hl: 0,
+  }
 
   Array.from(grouped.entries()).forEach(([section, depts]) => {
     // Section Group Banner
@@ -1450,6 +1471,87 @@ export function buildTimesheetWorksheet(
               numFmt,
               align: 'center',
             })
+          } else if (isPayrollOvertime) {
+            // Payroll Overtime View (Hitungan Lembur Sesuai Setup)
+            const numVal = dayData.numericVal ?? 0
+            if (numVal > 0) {
+              dailySums[dayIndex] += numVal
+            }
+
+            const rawVal = String(dayData.displayVal || '').trim()
+            let bg = isHoliday ? TIMESHEET_PALETTE.holidayBg : 'FFFFFFFF'
+            let text = 'FF0F172A'
+            let isBold = false
+            let numFmt: string | undefined = undefined
+            let cellVal: any = '-'
+
+            if (dayData.cellType === 'staff' || rawVal === '-') {
+              cellVal = '-'
+              bg = 'FFF8FAFC'
+              text = 'FF94A3B8'
+            } else if (dayData.cellType === 'spl' || rawVal === 'SPL') {
+              cellVal = 'SPL'
+              bg = TIMESHEET_PALETTE.splBg
+              text = TIMESHEET_PALETTE.splText
+              isBold = true
+            } else if (rawVal === 'OFF') {
+              cellVal = 'OFF'
+              bg = TIMESHEET_PALETTE.offBg
+              text = TIMESHEET_PALETTE.offText
+              isBold = true
+            } else if (rawVal === 'FB') {
+              cellVal = 'FB'
+              bg = TIMESHEET_PALETTE.fbBg
+              text = TIMESHEET_PALETTE.fbText
+              isBold = true
+            } else if (rawVal === 'ST') {
+              cellVal = 'ST'
+              bg = TIMESHEET_PALETTE.stBg
+              text = TIMESHEET_PALETTE.stText
+              isBold = true
+            } else if (rawVal === 'GD') {
+              cellVal = 'GD'
+              bg = TIMESHEET_PALETTE.gdBg
+              text = TIMESHEET_PALETTE.gdText
+              isBold = true
+            } else if (rawVal === 'Sakit') {
+              cellVal = 'Sakit'
+              bg = TIMESHEET_PALETTE.sickBg
+              text = TIMESHEET_PALETTE.sickText
+              isBold = true
+            } else if (rawVal === 'Izin') {
+              cellVal = 'Izin'
+              bg = TIMESHEET_PALETTE.leaveBg
+              text = TIMESHEET_PALETTE.leaveText
+              isBold = true
+            } else if (rawVal === 'Alpha') {
+              cellVal = 'Alpha'
+              bg = TIMESHEET_PALETTE.absentBg
+              text = TIMESHEET_PALETTE.absentText
+              isBold = true
+            } else if (numVal > 0) {
+              cellVal = numVal
+              numFmt = '0.0'
+              bg = TIMESHEET_PALETTE.otBg
+              text = TIMESHEET_PALETTE.otText
+              isBold = true
+            } else {
+              cellVal = rawVal || '-'
+              if (isHoliday) {
+                bg = TIMESHEET_PALETTE.holidayBg
+                text = TIMESHEET_PALETTE.holidayText
+              }
+            }
+
+            rowData.push(cellVal)
+            cellStyles.push({
+              colIndex,
+              bg,
+              text,
+              bold: isBold,
+              numFmt,
+              align: 'center',
+            })
           }
         })
 
@@ -1486,6 +1588,14 @@ export function buildTimesheetWorksheet(
           const tot = row.overtimeTotal || 0
           grandTotalOvertime += tot
           rowData.push(tot)
+        } else if (isPayrollOvertime) {
+          const totCalc = row.payrollOvertimeSummary?.totalOvertimeCalculated ?? 0
+          const hk = row.payrollOvertimeSummary?.workDaysPresent ?? 0
+          const hl = row.payrollOvertimeSummary?.offDaysPresent ?? 0
+          grandTotalPayrollOvertime.totalCalculated += totCalc
+          grandTotalPayrollOvertime.hk += hk
+          grandTotalPayrollOvertime.hl += hl
+          rowData.push(totCalc, hk, hl)
         }
 
         const addedRow = sheet.addRow(rowData)
@@ -1543,6 +1653,52 @@ export function buildTimesheetWorksheet(
                 fgColor: { argb: TIMESHEET_PALETTE.totalOtBg },
               }
               currentCell.numFmt = '0.0 "Jam"'
+            } else if (isPayrollOvertime) {
+              const summaryOffset = c - (totalBaseCols + days.length)
+              currentCell.alignment = { vertical: 'middle', horizontal: 'center' }
+              if (summaryOffset === 1) {
+                // Total Hitungan Lembur
+                currentCell.font = {
+                  name: 'Calibri',
+                  size: 9.5,
+                  bold: true,
+                  color: { argb: TIMESHEET_PALETTE.totalOtText },
+                }
+                currentCell.fill = {
+                  type: 'pattern',
+                  pattern: 'solid',
+                  fgColor: { argb: TIMESHEET_PALETTE.totalOtBg },
+                }
+                currentCell.numFmt = '0.0'
+              } else if (summaryOffset === 2) {
+                // Hari Kerja (HK)
+                currentCell.font = {
+                  name: 'Calibri',
+                  size: 9,
+                  bold: true,
+                  color: { argb: 'FF166534' }, // Emerald 800
+                }
+                currentCell.fill = {
+                  type: 'pattern',
+                  pattern: 'solid',
+                  fgColor: { argb: 'FFF0FDF4' }, // Emerald 50
+                }
+                currentCell.numFmt = '#,##0'
+              } else if (summaryOffset === 3) {
+                // Hari Libur (HL)
+                currentCell.font = {
+                  name: 'Calibri',
+                  size: 9,
+                  bold: true,
+                  color: { argb: 'FF991B1B' }, // Rose 800
+                }
+                currentCell.fill = {
+                  type: 'pattern',
+                  pattern: 'solid',
+                  fgColor: { argb: 'FFFFF1F2' }, // Rose 50
+                }
+                currentCell.numFmt = '#,##0'
+              }
             } else {
               currentCell.alignment = { vertical: 'middle', horizontal: 'center' }
               currentCell.font = { name: 'Calibri', size: 9, bold: true, color: { argb: 'FF0F172A' } }
@@ -1594,6 +1750,12 @@ export function buildTimesheetWorksheet(
     summaryRowData.push(grandTotalAllowance)
   } else if (isOvertime) {
     summaryRowData.push(Number(grandTotalOvertime.toFixed(1)))
+  } else if (isPayrollOvertime) {
+    summaryRowData.push(
+      Number(grandTotalPayrollOvertime.totalCalculated.toFixed(1)),
+      grandTotalPayrollOvertime.hk,
+      grandTotalPayrollOvertime.hl
+    )
   }
 
   const summaryRow = sheet.addRow(summaryRowData)
@@ -1621,6 +1783,13 @@ export function buildTimesheetWorksheet(
       cell.alignment = { vertical: 'middle', horizontal: 'right' }
     } else if (isOvertime && c === totalCols) {
       cell.numFmt = '0.0 "Jam"'
+    } else if (isPayrollOvertime && c > totalBaseCols + days.length) {
+      const summaryOffset = c - (totalBaseCols + days.length)
+      if (summaryOffset === 1) {
+        cell.numFmt = '0.0'
+      } else {
+        cell.numFmt = '#,##0'
+      }
     }
   }
 
@@ -1640,7 +1809,7 @@ export function buildTimesheetWorksheet(
     } else if (colNumber <= totalBaseCols + days.length) {
       col.width = isAttendance ? 13 : isAllowance ? 11 : 8.5
     } else {
-      col.width = isAttendance ? 10 : 18
+      col.width = isAttendance ? 10 : isPayrollOvertime ? 15 : 18
     }
   })
 

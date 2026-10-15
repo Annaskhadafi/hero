@@ -93,8 +93,10 @@ import {
 } from '@/app/dashboard/admin-actions'
 import {
   applyHolidayPolicy,
+  calculatePayrollOvertimeValue,
   canSwapOff,
   classifyOvertimeDay,
+  classifyPayrollAttendanceDay,
   dateKey,
   daysInMonth,
   hoursFromCode,
@@ -7323,6 +7325,9 @@ export function SchedulingTimesheetWorkspace({
       let attTotalHours = 0
       let allowanceTotal = 0
       let overtimeTotal = 0
+      let payrollOvertimeTotal = 0
+      let payrollWorkDaysPresent = 0
+      let payrollOffDaysPresent = 0
 
       for (const day of days) {
         const scheduleCode = row.schedule[day - 1] as string
@@ -7544,6 +7549,106 @@ export function SchedulingTimesheetWorkspace({
           }
 
           daysData.push({ day, displayVal, numericVal, cellType })
+        } else if (targetTab === 'payroll_ovt') {
+          let displayVal: string | number = '-'
+          let numericVal = 0
+          let cellType: TimesheetDayData['cellType'] = 'dash'
+
+          const empSiteId =
+            row.employee.siteId ?? (siteId === 'all' ? null : Number(siteId))
+          const empSiteConfig = getEmployeeSiteConfig(empSiteId)
+          const empRosterType =
+            empSiteConfig.rosterType ?? siteConfig.rosterType ?? '5:2'
+
+          if (staff) {
+            displayVal = '-'
+            cellType = 'staff'
+          } else if (cell.status !== 'present') {
+            if (isFieldBreakDay || cell.status === 'field_break' || scheduleCode === 'FB') {
+              displayVal = 'FB'
+              cellType = 'fb'
+            } else if (cell.status === 'standby' || scheduleCode === 'ST') {
+              displayVal = 'ST'
+              cellType = 'st'
+            } else if (scheduleCode === 'GD') {
+              displayVal = 'GD'
+              cellType = 'gd'
+            } else if (cell.status === 'off' || isRosterOff || scheduleCode === 'OFF') {
+              displayVal = 'OFF'
+              cellType = 'off'
+            } else if (cell.status === 'sick' || scheduleCode === 'Sakit') {
+              displayVal = 'Sakit'
+              cellType = 'sick'
+            } else if (cell.status === 'leave' || scheduleCode === 'Izin') {
+              displayVal = 'Izin'
+              cellType = 'leave'
+            } else if (cell.status === 'absent') {
+              displayVal = 'Alpha'
+              cellType = 'absent'
+            } else {
+              displayVal =
+                scheduleCode &&
+                scheduleCode !== 'IN' &&
+                scheduleCode !== 'DS' &&
+                scheduleCode !== 'NS'
+                  ? scheduleCode
+                  : '-'
+              cellType = 'other'
+            }
+          } else {
+            // Karyawan hadir (Present)
+            const dayAttendanceType = classifyPayrollAttendanceDay(
+              row.schedule,
+              period,
+              day - 1,
+              empRosterType,
+              holidays
+            )
+            if (dayAttendanceType === 'work') {
+              payrollWorkDaysPresent++
+            } else {
+              payrollOffDaysPresent++
+            }
+
+            let rawOtHours = 0
+            if (
+              cell.overtimeHours !== undefined &&
+              cell.overtimeHours !== null &&
+              cell.overtimeHours > 0
+            ) {
+              rawOtHours = roundOvertimeHours(cell.overtimeHours as number)
+            } else {
+              const overtime = calculateDayOvertime(
+                row.schedule,
+                day,
+                cell.clockIn,
+                cell.clockOut,
+                staff,
+                row.employee.id
+              )
+              if (overtime.totalHours > 0) {
+                rawOtHours = overtime.totalHours
+              }
+            }
+
+            if (rawOtHours > 0) {
+              const calculatedVal = calculatePayrollOvertimeValue(
+                empRosterType,
+                dayAttendanceType,
+                rawOtHours,
+                overtimeVariables
+              )
+              numericVal = roundOvertimeHours(calculatedVal)
+              displayVal = numericVal
+              cellType = 'ot'
+              payrollOvertimeTotal += numericVal
+            } else {
+              displayVal = '-'
+              cellType = 'dash'
+            }
+          }
+
+          daysData.push({ day, displayVal, numericVal, cellType })
         }
       }
 
@@ -7568,11 +7673,18 @@ export function SchedulingTimesheetWorkspace({
         },
         allowanceTotal,
         overtimeTotal: roundOvertimeHours(overtimeTotal),
+        payrollOvertimeSummary: {
+          totalOvertimeCalculated: roundOvertimeHours(payrollOvertimeTotal),
+          workDaysPresent: payrollWorkDaysPresent,
+          offDaysPresent: payrollOffDaysPresent,
+        },
       }
     })
   }
 
-  const attendanceTabLabel = (view: 'attendance' | 'lokasi' | 'msa' | 'meals' | 'ovt') => {
+  const attendanceTabLabel = (
+    view: 'attendance' | 'lokasi' | 'msa' | 'meals' | 'ovt' | 'payroll_ovt'
+  ) => {
     switch (view) {
       case 'attendance':
         return 'Attendance'
@@ -7584,6 +7696,8 @@ export function SchedulingTimesheetWorkspace({
         return 'Meals'
       case 'ovt':
         return 'Overtime'
+      case 'payroll_ovt':
+        return 'Payroll Overtime'
     }
   }
 
@@ -11229,6 +11343,22 @@ export function SchedulingTimesheetWorkspace({
                               </span>
                             </div>
                           </DropdownMenuItem>
+                          {attendanceView === 'ovt' && (
+                            <DropdownMenuItem
+                              onClick={() => void exportTimesheetTab('payroll_ovt')}
+                              className="cursor-pointer gap-2 py-2 bg-emerald-50/60 hover:bg-emerald-100/80 transition-colors"
+                            >
+                              <FileSpreadsheet className="size-4 text-emerald-700 shrink-0" />
+                              <div className="flex flex-col">
+                                <span className="font-semibold text-xs text-emerald-950">
+                                  Payroll Overtime (Sesuai Setup Lembur)
+                                </span>
+                                <span className="text-[10px] text-emerald-700">
+                                  Hitungan lembur payroll + kolom HK & HL masuk
+                                </span>
+                              </div>
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem
                             onClick={() => void exportAllTimesheetTabs()}
                             className="cursor-pointer gap-2 py-2"
