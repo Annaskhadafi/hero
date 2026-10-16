@@ -44,12 +44,21 @@ async function migrate() {
       menuArea: 'main',
     },
     {
+      resource: 'hc_compensation_benefit',
+      url: '/dashboard/hc/compensation',
+      section: 'HRGA',
+      groupLabel: 'Data & Akses Karyawan',
+      title: 'Compensation & Benefit',
+      sortOrder: 5,
+      menuArea: 'main',
+    },
+    {
       resource: 'hc_safety',
       url: '/dashboard/hc',
       section: 'HRGA',
       groupLabel: 'Data & Akses Karyawan',
       title: 'HC Overview',
-      sortOrder: 5,
+      sortOrder: 6,
       menuArea: 'main',
     },
 

@@ -307,3 +307,5 @@ export * from './atk'
 // General Affairs - Vehicles
 export * from './vehicles'
 
+// Compensation & Benefit (HRGA)
+export * from './compensation'
