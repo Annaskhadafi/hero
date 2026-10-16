@@ -61,6 +61,7 @@ export type UnifiedDraftItem = {
   summaryRemark?: string
   updatedAt: string
   photoUrls?: string[]
+  preferServer?: boolean
 }
 
 interface MobileDailyActivityDraftsProps {
@@ -114,54 +115,35 @@ export function MobileDailyActivityDrafts({
     }
   }, [refreshLocalDrafts, fetchServerDrafts])
 
-  // 3. Combine and deduplicate into unified list
+  // 3. Reconcile local and server drafts without deleting user data
   const unifiedDrafts: UnifiedDraftItem[] = useMemo(() => {
     const items: UnifiedDraftItem[] = []
-    const matchedServerIds = new Set<number>()
     const usedLocalKeys = new Set<string>()
 
-    const norm = (s?: string) => (s || '').trim().toLowerCase().replace(/\s+/g, ' ')
-
-    // Step 1: Process each server draft and find all corresponding local drafts
     for (const sd of serverDrafts) {
-      matchedServerIds.add(sd.id)
+      const canonicalServerKey = `hero:draft:activity:server-${sd.id}`
+      const matchingLocal = localDrafts
+        .filter((d) => {
+          if (usedLocalKeys.has(d.key)) return false
+          return d.serverDraftSessionId === sd.id || d.key === canonicalServerKey
+        })
+        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
 
-      // Find all local drafts corresponding to this server draft
-      const matchingLocal = localDrafts.filter((d) => {
-        if (usedLocalKeys.has(d.key)) return false
-        if (d.serverDraftSessionId && d.serverDraftSessionId === sd.id) return true
-        if (d.key.includes(`server-${sd.id}`)) return true
-        if (d.workDate && sd.workDate && d.workDate === sd.workDate) {
-          if (!d.serverDraftSessionId || d.serverDraftSessionId === sd.id) {
-            return true
-          }
-        }
-        const isSameTitle =
-          norm(d.title) === norm(sd.title) ||
-          (d.title && sd.title && (norm(d.title).includes(norm(sd.title)) || norm(sd.title).includes(norm(d.title))))
-        return d.workDate === sd.workDate && isSameTitle
-      })
-
-      // Sort matching local drafts newest first
-      matchingLocal.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
       const activeLocal = matchingLocal[0]
+      matchingLocal.forEach((draft) => usedLocalKeys.add(draft.key))
 
-      // Mark all matching local drafts as used, and clean up older stale duplicates
-      for (let i = 0; i < matchingLocal.length; i++) {
-        const ml = matchingLocal[i]
-        usedLocalKeys.add(ml.key)
-        if (i > 0) {
-          try {
-            removeActivityDraft(ml.key)
-          } catch {}
-        }
-      }
+      const localUpdatedAtMs = activeLocal ? new Date(activeLocal.updatedAt).getTime() : Number.NaN
+      const serverUpdatedAtMs = new Date(sd.updatedAt).getTime()
+      const preferServer = Boolean(
+        activeLocal &&
+          Number.isFinite(serverUpdatedAtMs) &&
+          (!Number.isFinite(localUpdatedAtMs) || serverUpdatedAtMs > localUpdatedAtMs)
+      )
 
-      // Combine photo URLs (deduplicated)
       const photoList: string[] = []
-      const addPhoto = (u?: string | null) => {
-        if (typeof u === 'string' && u.trim() && !photoList.includes(u.trim())) {
-          photoList.push(u.trim())
+      const addPhoto = (url?: string | null) => {
+        if (typeof url === 'string' && url.trim() && !photoList.includes(url.trim())) {
+          photoList.push(url.trim())
         }
       }
       if (Array.isArray(activeLocal?.photoUrls)) {
@@ -186,61 +168,31 @@ export function MobileDailyActivityDrafts({
         title: bestTitle,
         workDate: activeLocal?.workDate || sd.workDate,
         shiftCode: sd.shiftCode,
-        itemCount: activeLocal?.itemCount || sd.itemCount || 1,
+        itemCount: preferServer
+          ? sd.itemCount || activeLocal?.itemCount || 1
+          : activeLocal?.itemCount || sd.itemCount || 1,
         summaryRemark: sd.summaryRemark,
-        updatedAt:
-          activeLocal && new Date(activeLocal.updatedAt).getTime() > new Date(sd.updatedAt).getTime()
-            ? activeLocal.updatedAt
-            : sd.updatedAt,
+        updatedAt: preferServer || !activeLocal ? sd.updatedAt : activeLocal.updatedAt,
         photoUrls: photoList,
+        preferServer,
       })
     }
 
-    // Step 2: Process remaining local drafts that did not match any server draft
-    const remainingLocal = localDrafts.filter((d) => !usedLocalKeys.has(d.key))
-    const localGroups = new Map<string, ActivityDraftIndexEntry[]>()
-    for (const d of remainingLocal) {
-      const groupKey = `${d.workDate || 'nodate'}::${norm(d.title)}`
-      if (!localGroups.has(groupKey)) {
-        localGroups.set(groupKey, [])
-      }
-      localGroups.get(groupKey)!.push(d)
-    }
-
-    for (const [, group] of localGroups.entries()) {
-      group.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-      const newest = group[0]
-
-      // Clean up older duplicate saves of the same draft
-      for (let i = 1; i < group.length; i++) {
-        try {
-          removeActivityDraft(group[i].key)
-        } catch {}
-      }
-
+    for (const draft of localDrafts) {
+      if (usedLocalKeys.has(draft.key)) continue
       items.push({
-        id: `local:${newest.key}`,
+        id: `local:${draft.key}`,
         source: 'local',
-        localKey: newest.key,
-        title: newest.title || 'Draft Aktivitas (Lokal)',
-        workDate: newest.workDate,
-        itemCount: newest.itemCount || 1,
-        updatedAt: newest.updatedAt,
-        photoUrls: newest.photoUrls || [],
+        localKey: draft.key,
+        title: draft.title || 'Draft Aktivitas (Lokal)',
+        workDate: draft.workDate,
+        itemCount: draft.itemCount || 1,
+        updatedAt: draft.updatedAt,
+        photoUrls: draft.photoUrls || [],
       })
     }
 
-    // Secondary deduplication guard ensuring strictly unique item ids
-    const seenItemIds = new Set<string>()
-    const deduplicated: UnifiedDraftItem[] = []
-    for (const item of items) {
-      if (seenItemIds.has(item.id)) continue
-      seenItemIds.add(item.id)
-      deduplicated.push(item)
-    }
-
-    // Sort newest first
-    return deduplicated.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    return items.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
   }, [localDrafts, serverDrafts])
 
   // Notify parent of total count
@@ -324,8 +276,8 @@ export function MobileDailyActivityDrafts({
 
   // Handle Open
   const handleOpenDraft = async (item: UnifiedDraftItem) => {
-    // If local copy exists, open instantly
-    if (item.localKey) {
+    // Open the freshest copy when a draft exists both locally and on the server
+    if (item.localKey && !item.preferServer) {
       if (item.serverId) {
         try {
           const cached = readDraft<ActivitySyncPayload>(item.localKey)

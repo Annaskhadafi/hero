@@ -1,5 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { extractDraftPhotos, stripHeavyBase64FromDraft } from '../lib/offline-sync'
 
 test('Mobile Daily Activity - Foto Evidence deduplication & selective removal', async (t) => {
@@ -87,4 +89,23 @@ test('Mobile Daily Activity - 15+ Activities & Remarks Isolation', async (t) => 
       assert.equal(entries[key].equipmentNo, `DT-${100 + i}`)
     }
   })
+})
+
+
+test('Mobile Daily Activity - draft reconciliation never deletes or guesses draft identity', () => {
+  const source = readFileSync(
+    join(process.cwd(), 'components/mobile/mobile-daily-activity-drafts.tsx'),
+    'utf8'
+  )
+  const reconciliationStart = source.indexOf('// 3. Reconcile local and server drafts')
+  const reconciliationEnd = source.indexOf('// Notify parent of total count', reconciliationStart)
+  const reconciliation = source.slice(reconciliationStart, reconciliationEnd)
+
+  assert.ok(reconciliationStart >= 0 && reconciliationEnd > reconciliationStart)
+  assert.doesNotMatch(reconciliation, /removeActivityDraft\(/)
+  assert.ok(!reconciliation.includes('d.workDate'), 'Draft identity must not be inferred from work date')
+  assert.ok(!reconciliation.includes('localGroups'), 'Same-date and same-title drafts must remain independent')
+  assert.match(reconciliation, /d\.serverDraftSessionId === sd\.id/)
+  assert.match(reconciliation, /d\.key === canonicalServerKey/)
+  assert.match(source, /if \(item\.localKey && !item\.preferServer\)/)
 })
