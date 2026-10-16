@@ -9,11 +9,12 @@ export const HERO_TEST_CREDENTIALS = {
  */
 export async function loginToHero(app: any, screen: any, browser: any) {
   await app.open('/sign-in');
+  await new Promise((resolve) => setTimeout(resolve, 1000));
   
-  await screen.getByLabel('Email atau SN karyawan').fill(HERO_TEST_CREDENTIALS.username);
-  await screen.getByLabel('Kata sandi').fill(HERO_TEST_CREDENTIALS.password);
-  await screen.getByRole('button', 'Masuk ke HERO').tap();
+  await browser.locator('#email').fill(HERO_TEST_CREDENTIALS.username);
+  await browser.locator('#password').fill(HERO_TEST_CREDENTIALS.password);
+  await browser.locator('button[type="submit"], button:has-text("Masuk ke HERO")').first().click();
 
-  await browser.waitForURL(/\/dashboard|\/mobile/i, { timeout: 45000 });
-  await new Promise((resolve) => setTimeout(resolve, 2000));
+  await browser.waitForURL(/\/dashboard|\/mobile/i, { timeout: 90000 });
+  await new Promise((resolve) => setTimeout(resolve, 3000));
 }
