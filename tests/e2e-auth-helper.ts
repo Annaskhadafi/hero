@@ -1,5 +1,5 @@
 export const HERO_TEST_CREDENTIALS = {
-  username: process.env.HERO_E2E_USERNAME ?? 'mochamad.khadafi@chitraparatama.co.id',
+  username: process.env.HERO_E2E_USERNAME ?? '71261',
   password: process.env.HERO_E2E_PASSWORD ?? 'Chitra#71261',
 };
 
@@ -15,4 +15,5 @@ export async function loginToHero(app: any, screen: any, browser: any) {
   await screen.getByRole('button', 'Masuk ke HERO').tap();
 
   await browser.waitForURL(/\/dashboard|\/mobile/i, { timeout: 45000 });
+  await new Promise((resolve) => setTimeout(resolve, 2000));
 }

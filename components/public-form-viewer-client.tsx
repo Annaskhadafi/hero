@@ -578,14 +578,15 @@ function renderInteractiveField({
       )
     case 'likert_matrix':
       const matrixVal: Record<string, string> = typeof value === 'object' && value ? value : {}
+      const isLargeScale = (field.likertColumns?.length || 0) > 5
       return (
-        <div className="overflow-x-auto border border-slate-200 rounded-xl bg-slate-50/30">
-          <table className="w-full text-left text-xs sm:text-sm">
+        <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50/40 dark:bg-slate-900/40 scrollbar-thin">
+          <table className={`w-full text-left text-xs sm:text-sm ${isLargeScale ? 'min-w-[640px]' : 'min-w-[420px]'}`}>
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-100/50 text-slate-600">
-                <th className="py-3 px-4 font-semibold">Aspek</th>
+              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-100/70 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300">
+                <th className="py-3 px-4 font-semibold text-slate-800 dark:text-slate-200">Aspek / Pernyataan</th>
                 {field.likertColumns?.map((col) => (
-                  <th key={col.id} className="py-3 px-3 text-center font-semibold">
+                  <th key={col.id} className="py-3 px-2 text-center font-bold text-xs w-10 sm:w-12">
                     {col.label}
                   </th>
                 ))}
@@ -593,24 +594,26 @@ function renderInteractiveField({
             </thead>
             <tbody>
               {field.likertRows?.map((row) => (
-                <tr key={row.id} className="border-b border-slate-100 bg-white">
-                  <td className="py-3 px-4 font-medium text-slate-800">{row.label}</td>
+                <tr key={row.id} className="border-b border-slate-100 dark:border-slate-800/60 bg-white dark:bg-slate-900 hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
+                  <td className="py-3 px-4 font-medium text-slate-800 dark:text-slate-200 text-xs sm:text-sm">{row.label}</td>
                   {field.likertColumns?.map((col) => {
                     const isChecked = matrixVal[row.id] === col.id || matrixVal[row.id] === col.label
                     return (
-                      <td key={col.id} className="py-3 px-3 text-center">
-                        <input
-                          type="radio"
-                          name={`${field.fieldKey}_${row.id}`}
-                          checked={isChecked}
-                          onChange={() =>
-                            onChange({
-                              ...matrixVal,
-                              [row.id]: col.id,
-                            })
-                          }
-                          className="h-4 w-4 text-blue-600 cursor-pointer"
-                        />
+                      <td key={col.id} className="py-2.5 px-2 text-center">
+                        <label className="flex items-center justify-center p-1 rounded-md cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors">
+                          <input
+                            type="radio"
+                            name={`${field.fieldKey}_${row.id}`}
+                            checked={isChecked}
+                            onChange={() =>
+                              onChange({
+                                ...matrixVal,
+                                [row.id]: col.id,
+                              })
+                            }
+                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                          />
+                        </label>
                       </td>
                     )
                   })}

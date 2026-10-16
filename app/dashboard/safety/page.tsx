@@ -5,6 +5,7 @@ import { AdminPageShell } from '@/components/admin-page-shell'
 import { Button } from '@/components/ui/button'
 import { HeroKpiCard } from '@/components/templates'
 import { SafetyDashboardCharts } from '@/components/safety-dashboard/safety-dashboard-charts'
+import { HseSiteMapCard } from '@/components/hse/hse-site-map-card'
 import { SafetyDashboardFilter } from './safety-filter'
 import { getSafetyDashboardData } from '@/lib/safety-dashboard/queries'
 
@@ -122,6 +123,15 @@ export default async function SafetyDashboardPage({
       </div>
 
       <SafetyMetricCards kpis={data.kpis} />
+
+      <HseSiteMapCard
+        masterSites={data.masterSites}
+        siteMonthlySummaries={data.siteMonthlySummaries}
+        incidentReports={data.incidentReports}
+        monthlyManHours={data.monthlyManHours}
+        canEdit={data.access?.canEdit}
+      />
+
       <SafetyDashboardCharts charts={data.charts} />
     </AdminPageShell>
   )

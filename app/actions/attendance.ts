@@ -17,6 +17,7 @@ import { getS3ObjectReadUrl } from '@/lib/s3-storage'
 import { ensureSchedulingTimesheetTables } from '@/lib/timesheet/scheduling-infrastructure'
 import {
   checkEmployeeOffDayStatus,
+  isStaffRole,
   normalizeSiteAttendanceClockConfig,
   resolveConfiguredShiftClockIn,
   resolveNightShiftCheckoutContext,
@@ -839,11 +840,17 @@ export async function submitAttendance(formData: FormData) {
     const evalDate = nightShiftContext.effectiveDate
 
     const siteConfig = await getSiteAttendanceClockConfig(employee.siteId)
+    const empLevelName = (employee as Record<string, unknown>).levelName as string | undefined
+    const isStaff = isStaffRole(employee.role, employee.jobTitle, empLevelName)
     const offDayCheck = checkEmployeeOffDayStatus({
       eventTime: evalDate,
-      role: employee.role || employee.jobTitle,
+      role: employee.role,
+      jobTitle: employee.jobTitle,
+      levelName: empLevelName,
       scheduleType: siteConfig.scheduleType,
       rosterType: siteConfig.rosterType,
+      rosterTypeStaff: siteConfig.rosterTypeStaff,
+      rosterTypeNonStaff: siteConfig.rosterTypeNonStaff,
       timeZone: siteConfig.timezone,
     })
 
@@ -856,6 +863,7 @@ export async function submitAttendance(formData: FormData) {
       eventType,
       eventTime,
       shiftCode,
+      isStaff,
     })
 
     const rawContext = getTrimmedFormValue(formData, 'attendanceContext')

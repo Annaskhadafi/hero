@@ -43,7 +43,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { SiteSafetyMap, type SiteMapData } from './site-safety-map'
+import type { SiteMapData } from './site-safety-map'
 import {
   SiteOshePerformanceDialog,
   type SiteMonthlySummaryItem,
@@ -361,26 +361,6 @@ export function MonthlySummaryTabContent({ data }: { data: SafetyData }) {
           </div>
         </div>
       </Card>
-
-      {/* 2. Interactive Map of Indonesia Sites */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
-            <MapPin className="size-4 text-primary" />
-            Peta Lokasi Site Operasional ({selectedMonthLabel})
-          </h3>
-          <span className="text-xs text-muted-foreground">
-            Klik pin marker pada peta untuk membuka laporan OSHE Performance lengkap.
-          </span>
-        </div>
-
-        <SiteSafetyMap
-          sites={filteredSites}
-          selectedMonthLabel={selectedMonthLabel}
-          onOpenSiteDetail={handleOpenDetail}
-          onOpenManageCoordinates={() => setIsCoordinatesDialogOpen(true)}
-        />
-      </div>
 
       {/* 3. Analytics Charts: Comparison by Site */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

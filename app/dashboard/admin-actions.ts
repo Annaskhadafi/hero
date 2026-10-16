@@ -2891,7 +2891,18 @@ const schedulingClockTimeSchema = z
 const schedulingFieldBreakConfigSchema = z
   .object({
     dayShiftClockIn: schedulingClockTimeSchema.optional(),
+    dayShiftClockOut: schedulingClockTimeSchema.optional(),
     nightShiftClockIn: schedulingClockTimeSchema.optional(),
+    nightShiftClockOut: schedulingClockTimeSchema.optional(),
+    staffDayShiftClockIn: schedulingClockTimeSchema.optional(),
+    staffDayShiftClockOut: schedulingClockTimeSchema.optional(),
+    staffNightShiftClockIn: schedulingClockTimeSchema.optional(),
+    staffNightShiftClockOut: schedulingClockTimeSchema.optional(),
+    staffDay6WorkingTimeEnabled: z.boolean().optional(),
+    staffDay6DayShiftClockIn: schedulingClockTimeSchema.optional(),
+    staffDay6DayShiftClockOut: schedulingClockTimeSchema.optional(),
+    rosterTypeStaff: z.string().max(40).optional(),
+    rosterTypeNonStaff: z.string().max(40).optional(),
     employeeBenefitConfig: z
       .object({
         local: employeeBenefitRuleSchema,

@@ -61,6 +61,7 @@ type HseSiteMapCardProps = {
   siteMonthlySummaries: any[]
   incidentReports: any[]
   monthlyManHours: MonthlyManHoursItem[]
+  canEdit?: boolean
 }
 
 export function HseSiteMapCard({
@@ -68,6 +69,7 @@ export function HseSiteMapCard({
   siteMonthlySummaries = [],
   incidentReports = [],
   monthlyManHours = [],
+  canEdit = true,
 }: HseSiteMapCardProps) {
   // Default month: bulan ini (YYYY-MM)
   const [selectedMonth, setSelectedMonth] = React.useState<string>(() => {
@@ -224,15 +226,17 @@ export function HseSiteMapCard({
               />
             </div>
 
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsCoordinatesDialogOpen(true)}
-              className="h-8 gap-1.5 text-xs bg-white"
-            >
-              <Settings2 className="size-3.5 text-slate-500" />
-              <span className="hidden sm:inline">Kelola Koordinat</span>
-            </Button>
+            {canEdit && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsCoordinatesDialogOpen(true)}
+                className="h-8 gap-1.5 text-xs bg-white"
+              >
+                <Settings2 className="size-3.5 text-slate-500" />
+                <span className="hidden sm:inline">Kelola Koordinat</span>
+              </Button>
+            )}
           </div>
         </div>
 
@@ -285,7 +289,7 @@ export function HseSiteMapCard({
             setSelectedSiteForDetail(site)
             setIsDetailOpen(true)
           }}
-          onOpenManageCoordinates={() => setIsCoordinatesDialogOpen(true)}
+          onOpenManageCoordinates={canEdit ? () => setIsCoordinatesDialogOpen(true) : undefined}
         />
       </CardContent>
 

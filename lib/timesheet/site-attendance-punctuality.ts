@@ -45,6 +45,8 @@ export async function getSiteAttendanceClockConfig(siteId: number) {
       ? {
           siteId,
           timezone: row.configTimezone,
+          scheduleType: row.scheduleType,
+          rosterType: row.rosterType,
           fieldBreakConfig: row.fieldBreakConfig,
         }
       : null
@@ -63,6 +65,7 @@ export async function resolveSiteAttendancePunctuality(input: {
   eventTime: Date
   shiftCode?: string | null
   fallbackClockIn?: string | null
+  isStaff?: boolean
 }) {
   if (input.eventType !== 'checked-in') return null
 
@@ -70,7 +73,7 @@ export async function resolveSiteAttendancePunctuality(input: {
   const shiftCode =
     input.shiftCode?.trim() || inferShiftCodeForEvent(input.eventTime, config, config.timezone)
   const scheduledClockIn =
-    resolveConfiguredShiftClockIn(shiftCode, config) ??
+    resolveConfiguredShiftClockIn(shiftCode, config, input.isStaff) ??
     (isClockTime(input.fallbackClockIn) ? input.fallbackClockIn : null)
 
   return scheduledClockIn

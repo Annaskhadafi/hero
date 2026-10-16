@@ -357,6 +357,8 @@ const scheduleTypeLabel = (value: string) => (value === 'office' ? 'Non Shift' :
 type SiteSchedulingConfig = {
   scheduleType: SiteScheduleType
   rosterType: SiteRosterType
+  rosterTypeStaff?: SiteRosterType
+  rosterTypeNonStaff?: SiteRosterType
   msaType: SiteMsaType
   mealsType: SiteMealsType
   overtimeType: SiteOvertimeType
@@ -368,11 +370,18 @@ type SiteSchedulingConfig = {
   dayShiftClockOut: string
   nightShiftClockIn: string
   nightShiftClockOut: string
+  staffDayShiftClockIn?: string
+  staffDayShiftClockOut?: string
+  staffNightShiftClockIn?: string
+  staffNightShiftClockOut?: string
   day6WorkingTimeEnabled: boolean
   day6DayShiftClockIn: string
   day6DayShiftClockOut: string
   day6NightShiftClockIn: string
   day6NightShiftClockOut: string
+  staffDay6WorkingTimeEnabled?: boolean
+  staffDay6DayShiftClockIn?: string
+  staffDay6DayShiftClockOut?: string
   day7WorkingTimeEnabled: boolean
   day7DayShiftClockIn: string
   day7DayShiftClockOut: string
@@ -566,6 +575,8 @@ const codeCycle: ScheduleCode[] = [
 const defaultSiteConfig: SiteSchedulingConfig = {
   scheduleType: 'office',
   rosterType: '5:2',
+  rosterTypeStaff: '5:2',
+  rosterTypeNonStaff: '6:1',
   msaType: 'staff-nonstaff',
   mealsType: 'workday',
   overtimeType: 'five-hour',
@@ -577,11 +588,18 @@ const defaultSiteConfig: SiteSchedulingConfig = {
   dayShiftClockOut: '17:00',
   nightShiftClockIn: '18:00',
   nightShiftClockOut: '06:00',
+  staffDayShiftClockIn: '08:00',
+  staffDayShiftClockOut: '17:00',
+  staffNightShiftClockIn: '18:00',
+  staffNightShiftClockOut: '06:00',
   day6WorkingTimeEnabled: false,
   day6DayShiftClockIn: '08:00',
   day6DayShiftClockOut: '14:00',
   day6NightShiftClockIn: '20:00',
   day6NightShiftClockOut: '02:00',
+  staffDay6WorkingTimeEnabled: false,
+  staffDay6DayShiftClockIn: '08:00',
+  staffDay6DayShiftClockOut: '14:00',
   day7WorkingTimeEnabled: false,
   day7DayShiftClockIn: '08:00',
   day7DayShiftClockOut: '14:00',
@@ -624,11 +642,18 @@ function serializeSiteConfig(config: SiteSchedulingConfig) {
     dayShiftClockOut,
     nightShiftClockIn,
     nightShiftClockOut,
+    staffDayShiftClockIn,
+    staffDayShiftClockOut,
+    staffNightShiftClockIn,
+    staffNightShiftClockOut,
     day6WorkingTimeEnabled,
     day6DayShiftClockIn,
     day6DayShiftClockOut,
     day6NightShiftClockIn,
     day6NightShiftClockOut,
+    staffDay6WorkingTimeEnabled,
+    staffDay6DayShiftClockIn,
+    staffDay6DayShiftClockOut,
     day7WorkingTimeEnabled,
     day7DayShiftClockIn,
     day7DayShiftClockOut,
@@ -658,11 +683,20 @@ function serializeSiteConfig(config: SiteSchedulingConfig) {
       dayShiftClockOut,
       nightShiftClockIn,
       nightShiftClockOut,
+      staffDayShiftClockIn,
+      staffDayShiftClockOut,
+      staffNightShiftClockIn,
+      staffNightShiftClockOut,
+      rosterTypeStaff: config.rosterTypeStaff,
+      rosterTypeNonStaff: config.rosterTypeNonStaff,
       day6WorkingTimeEnabled,
       day6DayShiftClockIn,
       day6DayShiftClockOut,
       day6NightShiftClockIn,
       day6NightShiftClockOut,
+      staffDay6WorkingTimeEnabled,
+      staffDay6DayShiftClockIn,
+      staffDay6DayShiftClockOut,
       day7WorkingTimeEnabled,
       day7DayShiftClockIn,
       day7DayShiftClockOut,
@@ -753,6 +787,10 @@ function buildSiteSchedulingConfig(
     ? {
         scheduleType: savedConfig.scheduleType as SiteScheduleType,
         rosterType: savedRosterType ?? '5:2',
+        rosterTypeStaff: (fieldBreakConfig.rosterTypeStaff as SiteRosterType | undefined) ?? '5:2',
+        rosterTypeNonStaff:
+          (fieldBreakConfig.rosterTypeNonStaff as SiteRosterType | undefined) ??
+          (savedRosterType ?? '6:1'),
         msaType: savedConfig.msaType as SiteMsaType,
         mealsType: (savedConfig.mealsType === 'none'
           ? 'none'
@@ -775,6 +813,10 @@ function buildSiteSchedulingConfig(
           '17:00',
         nightShiftClockIn: (fieldBreakConfig.nightShiftClockIn as string | undefined) ?? '18:00',
         nightShiftClockOut: (fieldBreakConfig.nightShiftClockOut as string | undefined) ?? '06:00',
+        staffDayShiftClockIn: (fieldBreakConfig.staffDayShiftClockIn as string | undefined) ?? '08:00',
+        staffDayShiftClockOut: (fieldBreakConfig.staffDayShiftClockOut as string | undefined) ?? '17:00',
+        staffNightShiftClockIn: (fieldBreakConfig.staffNightShiftClockIn as string | undefined) ?? '18:00',
+        staffNightShiftClockOut: (fieldBreakConfig.staffNightShiftClockOut as string | undefined) ?? '06:00',
         day6WorkingTimeEnabled: Boolean(fieldBreakConfig.day6WorkingTimeEnabled ?? false),
         day6DayShiftClockIn:
           (fieldBreakConfig.day6DayShiftClockIn as string | undefined) ?? '08:00',
@@ -784,6 +826,11 @@ function buildSiteSchedulingConfig(
           (fieldBreakConfig.day6NightShiftClockIn as string | undefined) ?? '20:00',
         day6NightShiftClockOut:
           (fieldBreakConfig.day6NightShiftClockOut as string | undefined) ?? '02:00',
+        staffDay6WorkingTimeEnabled: Boolean(fieldBreakConfig.staffDay6WorkingTimeEnabled ?? false),
+        staffDay6DayShiftClockIn:
+          (fieldBreakConfig.staffDay6DayShiftClockIn as string | undefined) ?? '08:00',
+        staffDay6DayShiftClockOut:
+          (fieldBreakConfig.staffDay6DayShiftClockOut as string | undefined) ?? '14:00',
         day7WorkingTimeEnabled: Boolean(fieldBreakConfig.day7WorkingTimeEnabled ?? false),
         day7DayShiftClockIn:
           (fieldBreakConfig.day7DayShiftClockIn as string | undefined) ?? '08:00',
@@ -1080,15 +1127,47 @@ function buildSchedule(
   period: string,
   rosterType: SiteRosterType,
   isStaff?: boolean,
-  rosterCycleStart?: string
+  rosterCycleStart?: string,
+  rosterTypeStaff?: SiteRosterType,
+  rosterTypeNonStaff?: SiteRosterType
 ): ScheduleCode {
+  if (scheduleType === 'hybrid') {
+    if (isStaff) {
+      const staffRoster = rosterTypeStaff || '5:2'
+      if (staffRoster === '13:1') {
+        if (isThirteenOneOffDay(period, day, rosterCycleStart)) return 'OFF'
+        return 'IN'
+      }
+      if (staffRoster === '6:1') {
+        if ((day + employeeIndex) % 7 === 0) return 'OFF'
+        return 'IN'
+      }
+      // default 5:2
+      return isWeekend(period, day) ? 'OFF' : 'IN'
+    } else {
+      const nonStaffRoster = rosterTypeNonStaff || rosterType || '6:1'
+      if (nonStaffRoster === '13:1') {
+        if (isThirteenOneOffDay(period, day, rosterCycleStart)) return 'OFF'
+        return (day + employeeIndex) % 2 === 0 ? 'DS' : 'NS'
+      }
+      if (nonStaffRoster === '5:2') {
+        const cycle = (day + employeeIndex * 2) % 7
+        if (cycle === 0 || cycle === 6) return 'OFF'
+        return (day + employeeIndex) % 2 === 0 ? 'DS' : 'NS'
+      }
+      // default 6:1
+      if ((day + employeeIndex) % 7 === 0) return 'OFF'
+      return (day + employeeIndex) % 2 === 0 ? 'DS' : 'NS'
+    }
+  }
+
   if (rosterType === '13:1') {
     if (isThirteenOneOffDay(period, day, rosterCycleStart)) return 'OFF'
-    if (scheduleType === 'office' || (scheduleType === 'hybrid' && isStaff)) return 'IN'
+    if (scheduleType === 'office') return 'IN'
     return (day + employeeIndex) % 2 === 0 ? 'DS' : 'NS'
   }
   if (rosterType === '5:2') {
-    if (scheduleType === 'office' || (scheduleType === 'hybrid' && isStaff)) {
+    if (scheduleType === 'office') {
       return isWeekend(period, day) ? 'OFF' : 'IN'
     }
     const cycle = (day + employeeIndex * 2) % 7
@@ -1096,19 +1175,13 @@ function buildSchedule(
     return (day + employeeIndex) % 2 === 0 ? 'DS' : 'NS'
   }
   if (rosterType === '6:1') {
-    if (scheduleType === 'office' || (scheduleType === 'hybrid' && isStaff)) {
+    if (scheduleType === 'office') {
       return isWeekend(period, day) ? 'OFF' : 'IN'
     }
     if ((day + employeeIndex) % 7 === 0) return 'OFF'
     return (day + employeeIndex) % 2 === 0 ? 'DS' : 'NS'
   }
   if (scheduleType === 'office') return isWeekend(period, day) ? 'OFF' : 'IN'
-  // Hybrid: staff = office schedule, non-staff = shift schedule
-  if (scheduleType === 'hybrid') {
-    if (isStaff) return isWeekend(period, day) ? 'OFF' : 'IN'
-    if ((day + employeeIndex) % 9 === 0) return 'OFF'
-    return (day + employeeIndex) % 2 === 0 ? 'DS' : 'NS'
-  }
   if ((day + employeeIndex) % 9 === 0) return 'OFF'
   return (day + employeeIndex) % 2 === 0 ? 'DS' : 'NS'
 }
@@ -1946,14 +2019,30 @@ export function SchedulingTimesheetWorkspace({
       dayShiftClockIn: siteConfig.dayShiftClockIn || clockConfig.dayShiftClockIn,
       nightShiftClockIn: siteConfig.nightShiftClockIn || clockConfig.nightShiftClockIn,
       timezone: siteConfig.timezone || clockConfig.timezone,
+      scheduleType: siteConfig.scheduleType,
+      rosterType: siteConfig.rosterType,
+      rosterTypeStaff: siteConfig.rosterTypeStaff,
+      rosterTypeNonStaff: siteConfig.rosterTypeNonStaff,
+      staffDayShiftClockIn: siteConfig.staffDayShiftClockIn,
+      staffDayShiftClockOut: siteConfig.staffDayShiftClockOut,
+      staffNightShiftClockIn: siteConfig.staffNightShiftClockIn,
+      staffNightShiftClockOut: siteConfig.staffNightShiftClockOut,
     }
   }, [
     site,
     schedulingConfigs,
     siteConfigs,
     siteId,
+    siteConfig.scheduleType,
+    siteConfig.rosterType,
+    siteConfig.rosterTypeStaff,
+    siteConfig.rosterTypeNonStaff,
     siteConfig.dayShiftClockIn,
     siteConfig.nightShiftClockIn,
+    siteConfig.staffDayShiftClockIn,
+    siteConfig.staffDayShiftClockOut,
+    siteConfig.staffNightShiftClockIn,
+    siteConfig.staffNightShiftClockOut,
     siteConfig.timezone,
   ])
   const siteApprovalSections = useMemo(
@@ -2628,6 +2717,14 @@ export function SchedulingTimesheetWorkspace({
 
           // In schedule builder draft mode, generate roster pattern according to site's configured rosterType
           const scheduleType = siteConfig.scheduleType || siteScheduleTypes[siteId] || 'office'
+          const isStaff = isStaffRole(employee.role, employee.jobTitle, employee.levelName)
+          const effectiveRosterType =
+            scheduleType === 'hybrid'
+              ? isStaff
+                ? siteConfig.rosterTypeStaff || '5:2'
+                : siteConfig.rosterTypeNonStaff || siteConfig.rosterType || '6:1'
+              : siteConfig.rosterType
+
           const generatedCode = (
             forceDayShift
               ? 'DS'
@@ -2637,16 +2734,18 @@ export function SchedulingTimesheetWorkspace({
                   scheduleType,
                   period,
                   siteConfig.rosterType,
-                  isStaffRole(employee.role, employee.jobTitle, employee.levelName),
+                  isStaff,
                   (fieldBreakPlansByEmployee.get(employee.id) ?? []).find(
                     (plan) => plan.onSiteDate
-                  )?.onSiteDate
+                  )?.onSiteDate,
+                  siteConfig.rosterTypeStaff,
+                  siteConfig.rosterTypeNonStaff
                 )
           ) as ScheduleCode
 
           return applyHolidayPolicy(generatedCode, {
-            scheduleType,
-            rosterType: siteConfig.rosterType,
+            scheduleType: scheduleType === 'hybrid' ? (isStaff ? 'office' : 'shift') : scheduleType,
+            rosterType: effectiveRosterType,
             isHoliday: isHoliday(period, day, holidays),
           })
         })
@@ -4803,22 +4902,38 @@ export function SchedulingTimesheetWorkspace({
     const rowCode =
       scheduleCode ?? rows.find((r) => r.employee.id === employeeId)?.schedule[day - 1]
 
-    let cellClockConfig = effectiveSiteClockConfig
+    const empObj = employees.find((e) => e.id === employeeId)
     const empSiteId =
-      employees.find((e) => e.id === employeeId)?.siteId ?? (siteId === 'all' ? null : Number(siteId))
+      empObj?.siteId ?? (siteId === 'all' ? null : Number(siteId))
+    const isStaff = isStaffRole(empObj?.role, empObj?.jobTitle, empObj?.levelName)
+
+    let cellClockConfig = effectiveSiteClockConfig
     if (empSiteId != null) {
       const empSiteConfig = getEmployeeSiteConfig(empSiteId)
+      const isHybridStaff = Boolean(empSiteConfig.scheduleType === 'hybrid' && isStaff)
       cellClockConfig = {
-        dayShiftClockIn: empSiteConfig.dayShiftClockIn,
-        nightShiftClockIn: empSiteConfig.nightShiftClockIn,
+        dayShiftClockIn:
+          isHybridStaff && empSiteConfig.staffDayShiftClockIn
+            ? empSiteConfig.staffDayShiftClockIn
+            : empSiteConfig.dayShiftClockIn,
+        nightShiftClockIn:
+          isHybridStaff && empSiteConfig.staffNightShiftClockIn
+            ? empSiteConfig.staffNightShiftClockIn
+            : empSiteConfig.nightShiftClockIn,
         timezone: empSiteConfig.timezone || 'WITA',
+        scheduleType: empSiteConfig.scheduleType,
+        rosterType: empSiteConfig.rosterType,
+        rosterTypeStaff: empSiteConfig.rosterTypeStaff,
+        rosterTypeNonStaff: empSiteConfig.rosterTypeNonStaff,
+        staffDayShiftClockIn: empSiteConfig.staffDayShiftClockIn,
+        staffNightShiftClockIn: empSiteConfig.staffNightShiftClockIn,
       }
     }
     const effectiveTz = cellClockConfig.timezone
 
     if (!manual && !authoritativeAttendance && !real) {
       const rosterStatus = normalizeAttendanceStatus(rowCode)
-      const configuredClockIn = resolveConfiguredShiftClockIn(rowCode, cellClockConfig)
+      const configuredClockIn = resolveConfiguredShiftClockIn(rowCode, cellClockConfig, isStaff)
       if (
         rosterStatus === 'off' ||
         rosterStatus === 'field_break' ||
@@ -4897,6 +5012,7 @@ export function SchedulingTimesheetWorkspace({
       clockIn,
       scheduleCode: rowCode,
       siteConfig: cellClockConfig,
+      isStaff,
     })
 
     const isLatePending = effectiveStatus === 'present' && punctuality.isLate
@@ -5987,6 +6103,12 @@ export function SchedulingTimesheetWorkspace({
       const configuredIntervals = empSiteConfig.overtimeConfig[dayKey]?.[shiftKey] ?? []
       const useDay6WorkingTime = dayKey === 'hariKe6' && empSiteConfig.day6WorkingTimeEnabled
       const useDay7WorkingTime = dayKey === 'hariKe7' && empSiteConfig.day7WorkingTimeEnabled
+      const isHybridStaff = Boolean(empSiteConfig.scheduleType === 'hybrid' && staff)
+      const standardDayIn = (isHybridStaff && empSiteConfig.staffDayShiftClockIn) || empSiteConfig.dayShiftClockIn
+      const standardDayOut = (isHybridStaff && empSiteConfig.staffDayShiftClockOut) || empSiteConfig.dayShiftClockOut
+      const standardNightIn = (isHybridStaff && empSiteConfig.staffNightShiftClockIn) || empSiteConfig.nightShiftClockIn
+      const standardNightOut = (isHybridStaff && empSiteConfig.staffNightShiftClockOut) || empSiteConfig.nightShiftClockOut
+
       const defaultWorkFrom = useDay7WorkingTime
         ? isNightShift
           ? empSiteConfig.day7NightShiftClockIn
@@ -5996,8 +6118,8 @@ export function SchedulingTimesheetWorkspace({
             ? empSiteConfig.day6NightShiftClockIn
             : empSiteConfig.day6DayShiftClockIn
           : isNightShift
-            ? empSiteConfig.nightShiftClockIn
-            : empSiteConfig.dayShiftClockIn
+            ? standardNightIn
+            : standardDayIn
 
       const defaultWorkTo = useDay7WorkingTime
         ? isNightShift
@@ -6008,8 +6130,8 @@ export function SchedulingTimesheetWorkspace({
             ? empSiteConfig.day6NightShiftClockOut
             : empSiteConfig.day6DayShiftClockOut
           : isNightShift
-            ? empSiteConfig.nightShiftClockOut
-            : empSiteConfig.dayShiftClockOut
+            ? standardNightOut
+            : standardDayOut
 
       const isOffsiteOrAbsent =
         day.status === 'empty' ||
@@ -8663,7 +8785,14 @@ export function SchedulingTimesheetWorkspace({
                     </Button>
                   )}
                 </div>
-                <div className="grid gap-4 p-4 sm:grid-cols-2 xl:grid-cols-4">
+                <div
+                  className={cn(
+                    'grid gap-4 p-4',
+                    siteConfig.scheduleType === 'hybrid'
+                      ? 'sm:grid-cols-2 xl:grid-cols-5'
+                      : 'sm:grid-cols-2 xl:grid-cols-4'
+                  )}
+                >
                   <div className="space-y-1.5">
                     <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
                       Tipe Shift
@@ -8680,23 +8809,79 @@ export function SchedulingTimesheetWorkspace({
                       ]}
                     />
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                      Tipe Roster
-                    </Label>
-                    <NativeSelect
-                      value={siteConfig.rosterType}
-                      onValueChange={(value) =>
-                        updateSiteConfig('rosterType', value as SiteRosterType)
-                      }
-                      options={[
-                        { value: '5:2', label: 'Roster 5 : 2' },
-                        { value: '6:1', label: 'Roster 6 : 1' },
-                        { value: '13:1', label: 'Roster 13 : 1' },
-                        { value: 'vale', label: 'Vale Sorowako' },
-                      ]}
-                    />
-                  </div>
+                  {siteConfig.scheduleType === 'hybrid' ? (
+                    <>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                            Roster Staff
+                          </Label>
+                          <Badge
+                            variant="outline"
+                            className="border-blue-200 bg-blue-50 px-1.5 py-0 text-[10px] font-normal text-blue-700"
+                          >
+                            Staff (Office)
+                          </Badge>
+                        </div>
+                        <NativeSelect
+                          value={siteConfig.rosterTypeStaff || '5:2'}
+                          onValueChange={(value) =>
+                            updateSiteConfig('rosterTypeStaff', value as SiteRosterType)
+                          }
+                          options={[
+                            { value: '5:2', label: 'Roster 5 : 2' },
+                            { value: '6:1', label: 'Roster 6 : 1' },
+                            { value: '13:1', label: 'Roster 13 : 1' },
+                            { value: 'vale', label: 'Vale Sorowako' },
+                          ]}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                            Roster Non-Staff
+                          </Label>
+                          <Badge
+                            variant="outline"
+                            className="border-amber-200 bg-amber-50 px-1.5 py-0 text-[10px] font-normal text-amber-700"
+                          >
+                            Non-Staff (Shift)
+                          </Badge>
+                        </div>
+                        <NativeSelect
+                          value={siteConfig.rosterTypeNonStaff || siteConfig.rosterType || '6:1'}
+                          onValueChange={(value) => {
+                            updateSiteConfig('rosterTypeNonStaff', value as SiteRosterType)
+                            updateSiteConfig('rosterType', value as SiteRosterType)
+                          }}
+                          options={[
+                            { value: '6:1', label: 'Roster 6 : 1' },
+                            { value: '5:2', label: 'Roster 5 : 2' },
+                            { value: '13:1', label: 'Roster 13 : 1' },
+                            { value: 'vale', label: 'Vale Sorowako' },
+                          ]}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                        Tipe Roster
+                      </Label>
+                      <NativeSelect
+                        value={siteConfig.rosterType}
+                        onValueChange={(value) =>
+                          updateSiteConfig('rosterType', value as SiteRosterType)
+                        }
+                        options={[
+                          { value: '5:2', label: 'Roster 5 : 2' },
+                          { value: '6:1', label: 'Roster 6 : 1' },
+                          { value: '13:1', label: 'Roster 13 : 1' },
+                          { value: 'vale', label: 'Vale Sorowako' },
+                        ]}
+                      />
+                    </div>
+                  )}
                   <div className="space-y-1.5">
                     <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
                       Tipe MSA
@@ -8879,60 +9064,222 @@ export function SchedulingTimesheetWorkspace({
                       </div>
                     </div>
                   </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-1.5">
-                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                        Jam Masuk Day Shift (DS / IN)
-                      </Label>
-                      <Input
-                        type="time"
-                        value={siteConfig.dayShiftClockIn}
-                        onChange={(event) => {
-                          if (event.target.value)
-                            updateSiteConfig('dayShiftClockIn', event.target.value)
-                        }}
-                      />
+                  {siteConfig.scheduleType === 'hybrid' ? (
+                    <div className="space-y-4">
+                      {/* Non-Staff Working Time */}
+                      <div className="rounded-xl border border-amber-200/70 bg-amber-50/30 p-4">
+                        <div className="mb-3 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="flex size-6 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-800">
+                              1
+                            </span>
+                            <div>
+                              <p className="text-sm font-semibold text-foreground">
+                                Working Time Non-Staff (Shift Operasional)
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Jam masuk &amp; pulang untuk karyawan non-staff / mekanik / operator shift.
+                              </p>
+                            </div>
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className="border-amber-300 bg-amber-100 text-[10px] font-semibold text-amber-800"
+                          >
+                            Non-Staff
+                          </Badge>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Jam Masuk DS / IN
+                            </Label>
+                            <Input
+                              type="time"
+                              value={siteConfig.dayShiftClockIn}
+                              onChange={(event) => {
+                                if (event.target.value)
+                                  updateSiteConfig('dayShiftClockIn', event.target.value)
+                              }}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Jam Pulang DS / IN
+                            </Label>
+                            <Input
+                              type="time"
+                              value={siteConfig.dayShiftClockOut}
+                              onChange={(event) => {
+                                if (event.target.value)
+                                  updateSiteConfig('dayShiftClockOut', event.target.value)
+                              }}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Jam Masuk NS
+                            </Label>
+                            <Input
+                              type="time"
+                              value={siteConfig.nightShiftClockIn}
+                              onChange={(event) => {
+                                if (event.target.value)
+                                  updateSiteConfig('nightShiftClockIn', event.target.value)
+                              }}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Jam Pulang NS
+                            </Label>
+                            <Input
+                              type="time"
+                              value={siteConfig.nightShiftClockOut}
+                              onChange={(event) => {
+                                if (event.target.value)
+                                  updateSiteConfig('nightShiftClockOut', event.target.value)
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Staff Working Time */}
+                      <div className="rounded-xl border border-blue-200/70 bg-blue-50/30 p-4">
+                        <div className="mb-3 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="flex size-6 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-800">
+                              2
+                            </span>
+                            <div>
+                              <p className="text-sm font-semibold text-foreground">
+                                Working Time Staff (Office / Non-Shift)
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Jam masuk &amp; pulang untuk karyawan Staff agar presensi dihitung tepat waktu.
+                              </p>
+                            </div>
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className="border-blue-300 bg-blue-100 text-[10px] font-semibold text-blue-800"
+                          >
+                            Staff
+                          </Badge>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Jam Masuk Office / DS
+                            </Label>
+                            <Input
+                              type="time"
+                              value={siteConfig.staffDayShiftClockIn || '08:00'}
+                              onChange={(event) => {
+                                if (event.target.value)
+                                  updateSiteConfig('staffDayShiftClockIn', event.target.value)
+                              }}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Jam Pulang Office / DS
+                            </Label>
+                            <Input
+                              type="time"
+                              value={siteConfig.staffDayShiftClockOut || '17:00'}
+                              onChange={(event) => {
+                                if (event.target.value)
+                                  updateSiteConfig('staffDayShiftClockOut', event.target.value)
+                              }}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Jam Masuk NS (Staff)
+                            </Label>
+                            <Input
+                              type="time"
+                              value={siteConfig.staffNightShiftClockIn || '18:00'}
+                              onChange={(event) => {
+                                if (event.target.value)
+                                  updateSiteConfig('staffNightShiftClockIn', event.target.value)
+                              }}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Jam Pulang NS (Staff)
+                            </Label>
+                            <Input
+                              type="time"
+                              value={siteConfig.staffNightShiftClockOut || '06:00'}
+                              onChange={(event) => {
+                                if (event.target.value)
+                                  updateSiteConfig('staffNightShiftClockOut', event.target.value)
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                        Jam Pulang Day Shift (DS / IN)
-                      </Label>
-                      <Input
-                        type="time"
-                        value={siteConfig.dayShiftClockOut}
-                        onChange={(event) => {
-                          if (event.target.value)
-                            updateSiteConfig('dayShiftClockOut', event.target.value)
-                        }}
-                      />
+                  ) : (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                          Jam Masuk Day Shift (DS / IN)
+                        </Label>
+                        <Input
+                          type="time"
+                          value={siteConfig.dayShiftClockIn}
+                          onChange={(event) => {
+                            if (event.target.value)
+                              updateSiteConfig('dayShiftClockIn', event.target.value)
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                          Jam Pulang Day Shift (DS / IN)
+                        </Label>
+                        <Input
+                          type="time"
+                          value={siteConfig.dayShiftClockOut}
+                          onChange={(event) => {
+                            if (event.target.value)
+                              updateSiteConfig('dayShiftClockOut', event.target.value)
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                          Jam Masuk Night Shift (NS)
+                        </Label>
+                        <Input
+                          type="time"
+                          value={siteConfig.nightShiftClockIn}
+                          onChange={(event) => {
+                            if (event.target.value)
+                              updateSiteConfig('nightShiftClockIn', event.target.value)
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                          Jam Pulang Night Shift (NS)
+                        </Label>
+                        <Input
+                          type="time"
+                          value={siteConfig.nightShiftClockOut}
+                          onChange={(event) => {
+                            if (event.target.value)
+                              updateSiteConfig('nightShiftClockOut', event.target.value)
+                          }}
+                        />
+                      </div>
                     </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                        Jam Masuk Night Shift (NS)
-                      </Label>
-                      <Input
-                        type="time"
-                        value={siteConfig.nightShiftClockIn}
-                        onChange={(event) => {
-                          if (event.target.value)
-                            updateSiteConfig('nightShiftClockIn', event.target.value)
-                        }}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                        Jam Pulang Night Shift (NS)
-                      </Label>
-                      <Input
-                        type="time"
-                        value={siteConfig.nightShiftClockOut}
-                        onChange={(event) => {
-                          if (event.target.value)
-                            updateSiteConfig('nightShiftClockOut', event.target.value)
-                        }}
-                      />
-                    </div>
-                  </div>
+                  )}
                 </div>
                 <div className="border-border/30 border-t px-4 py-4">
                   <div className="mb-3 flex items-center justify-between gap-3">
@@ -11871,15 +12218,29 @@ export function SchedulingTimesheetWorkspace({
                                             cell.status === 'present' &&
                                             ['OFF', 'Libur', 'Sakit', 'FB'].includes(scheduleCode)
                                           const empSiteConfig = getEmployeeSiteConfig(row.employee.siteId)
+                                          const isHybridStaff = Boolean(empSiteConfig.scheduleType === 'hybrid' && staff)
                                           const empSiteClock = {
-                                            dayShiftClockIn: empSiteConfig.dayShiftClockIn,
-                                            nightShiftClockIn: empSiteConfig.nightShiftClockIn,
+                                            dayShiftClockIn:
+                                              isHybridStaff && empSiteConfig.staffDayShiftClockIn
+                                                ? empSiteConfig.staffDayShiftClockIn
+                                                : empSiteConfig.dayShiftClockIn,
+                                            nightShiftClockIn:
+                                              isHybridStaff && empSiteConfig.staffNightShiftClockIn
+                                                ? empSiteConfig.staffNightShiftClockIn
+                                                : empSiteConfig.nightShiftClockIn,
                                             timezone: empSiteConfig.timezone || 'WITA',
+                                            scheduleType: empSiteConfig.scheduleType,
+                                            rosterType: empSiteConfig.rosterType,
+                                            rosterTypeStaff: empSiteConfig.rosterTypeStaff,
+                                            rosterTypeNonStaff: empSiteConfig.rosterTypeNonStaff,
+                                            staffDayShiftClockIn: empSiteConfig.staffDayShiftClockIn,
+                                            staffNightShiftClockIn: empSiteConfig.staffNightShiftClockIn,
                                           }
                                           const inferredShift = cell.clockIn
                                             ? inferShiftFromClockInTime(
                                                 cell.clockIn,
-                                                empSiteClock
+                                                empSiteClock,
+                                                staff
                                               )
                                             : null
                                           const expectedShiftCode =
