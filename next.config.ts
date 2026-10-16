@@ -62,6 +62,17 @@ const nextConfig: NextConfig = {
     ],
     serverActions: {
       bodySizeLimit: '25mb',
+      allowedOrigins: [
+        'karir.chitraparatama.com',
+        'karir.localhost:3000',
+        'karir.localhost',
+        'maestro.chitraparatama.com',
+        'maestro.localhost:3000',
+        'form.chitraparatama.com',
+        'form.localhost:3000',
+        'hero.chitraparatama.com',
+        'localhost:3000',
+      ],
       // Increase timeout: DAR submit involves photo uploads + DB writes + email — default 5s is too short on mobile
       // Next.js 15 uses `serverActions.timeoutSeconds` — ponytail: upgrade when stable
     },

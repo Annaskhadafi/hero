@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   ArrowLeft,
+  Building2,
   Calendar,
   Camera,
   CheckCircle2,
@@ -117,9 +118,33 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
   const [activeSessionDetail, setActiveSessionDetail] = useState<any>(null);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
 
+  // Master Operational Sites
+  const operationalSites = useMemo(() => {
+    const raw = (initialData?.sites || []) as Array<{ id: number; name: string }>;
+    if (raw && raw.length > 0) {
+      return [...raw].sort((a, b) => a.name.localeCompare(b.name));
+    }
+    return [
+      "AMM Mifa Hauling", "AMM Tabang", "Balikpapan", "Balikpapan External",
+      "BSI - Banyuwangi", "BUMA Tanjung", "CDE - Bengkulu", "CK BIB", "CK BMB",
+      "CK KIM", "CK MHU", "CK MIFA", "CK NCN", "Jakarta", "KPUC - Malinau",
+      "Madhani Talatah - ME", "Makassar", "MTN - Berau", "MTN - ME", "Palembang",
+      "Pekanbaru", "Petrosea SDA", "PKA Musi Rawas", "PPA BIB", "PPA TJ-Enim",
+      "PT SMJ - Berau", "Sangatta KABO", "Sangatta KPC", "Sebamban", "Tj. Adaro",
+      "Tj. Redeb - Berau", "TU Batu Hijau", "TU Gresik", "Vale - Sorowako"
+    ].map((name, idx) => ({ id: idx + 1, name }));
+  }, [initialData?.sites]);
+
   // Wizard state: Step 1 (Team), Step 2 (Spatial & Focus), Step 3 (Findings & Camera)
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
-  const [wizardLocationArea, setWizardLocationArea] = useState("");
+  const [wizardLocationArea, setWizardLocationArea] = useState(() => {
+    const actorSiteId = initialData?.actor?.employee?.siteId;
+    if (actorSiteId && initialData?.sites) {
+      const found = initialData.sites.find((s: any) => s.id === actorSiteId);
+      if (found?.name) return found.name;
+    }
+    return "Sangatta KABO";
+  });
   const [wizardLocationDetail, setWizardLocationDetail] = useState("");
   const [isDetectingGps, setIsDetectingGps] = useState(false);
   const [wizardDate, setWizardDate] = useState("");
@@ -334,8 +359,8 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
     const now = new Date();
     setWizardDate(now.toISOString().split("T")[0]);
     const defaultSiteName = actor?.employee?.siteId
-      ? initialData?.sites?.find((s: any) => s.id === actor?.employee?.siteId)?.name || "Pit West - Sangatta"
-      : "Pit West - Sangatta";
+      ? initialData?.sites?.find((s: any) => s.id === actor?.employee?.siteId)?.name || operationalSites.find((s) => s.name === "Sangatta KABO")?.name || operationalSites[0]?.name || "Sangatta KABO"
+      : operationalSites.find((s) => s.name === "Sangatta KABO")?.name || operationalSites[0]?.name || "Sangatta KABO";
     setWizardLocationArea(defaultSiteName);
     setWizardLocationDetail("");
     setWizardLat(liveGeo.lat);
@@ -618,7 +643,10 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
         ]
       : [];
 
+    const matchedSite = operationalSites.find((s) => s.name === wizardLocationArea.trim());
+
     const sessionPayload = {
+      siteId: matchedSite?.id || actor?.employee?.siteId || null,
       inspectionDate: wizardDate,
       inspectionTime: wizardTime,
       locationArea: wizardLocationArea.trim(),
@@ -1448,47 +1476,34 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                   </div>
                 </div>
 
-                {/* 2. Nama Lokasi Utama (Location Area) with Quick Chips */}
+                {/* 2. Nama Lokasi Utama (Location Area) - Dropdown List based on data semua site operasional */}
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <Label className="text-[11px] font-semibold text-foreground flex items-center gap-1.5">
                       <MapPin className="size-3.5 text-blue-600" />
                       Nama Lokasi Area <span className="text-red-500">*</span>
                     </Label>
-                    <span className="text-[10px] text-muted-foreground">Ketik atau pilih chip</span>
+                    <span className="text-[10px] text-muted-foreground">Pilih site operasional</span>
                   </div>
-                  <Input
-                    placeholder="Contoh: Pit West, Workshop HERO, Hauling Road..."
-                    value={wizardLocationArea}
-                    onChange={(e) => setWizardLocationArea(e.target.value)}
-                    className="text-xs h-9 bg-slate-50 dark:bg-slate-800 font-semibold rounded-lg"
-                    required
-                  />
 
-                  {/* Quick Preset Location Chips */}
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    {[
-                      "Pit West - Sangatta",
-                      "Workshop Central HERO",
-                      "Hauling Road KM 12",
-                      "Disposal South",
-                      "Fuel Station & Washpad",
-                      "Warehouse & Yard",
-                    ].map((chip) => (
-                      <button
-                        key={chip}
-                        type="button"
-                        onClick={() => setWizardLocationArea(chip)}
-                        className={`text-[10px] px-2.5 py-1 rounded-full border transition-all ${
-                          wizardLocationArea === chip
-                            ? "bg-blue-600 text-white border-blue-600 font-bold shadow-xs scale-102"
-                            : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 font-medium active:scale-95"
-                        }`}
-                      >
-                        {chip}
-                      </button>
-                    ))}
-                  </div>
+                  <Select
+                    value={wizardLocationArea}
+                    onValueChange={(val) => setWizardLocationArea(val)}
+                  >
+                    <SelectTrigger className="text-xs h-10 bg-slate-50 dark:bg-slate-800 font-semibold rounded-lg border-slate-200 dark:border-slate-700">
+                      <div className="flex items-center gap-2 truncate">
+                        <Building2 className="size-3.5 text-blue-600 shrink-0" />
+                        <SelectValue placeholder="Pilih Site Operasional..." />
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent className="max-h-64 overflow-y-auto">
+                      {operationalSites.map((site) => (
+                        <SelectItem key={site.id} value={site.name} className="text-xs font-medium py-2">
+                          {site.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* 3. Detail Lokasi / Area Spesifik (Requested) */}

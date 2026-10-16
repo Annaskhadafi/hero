@@ -35,6 +35,7 @@ import { sendOfferingEmail, saveOffering } from "@/app/actions/offering";
 import { getNextLetterNumber, getActiveEmployees } from "@/app/actions/surat";
 import { getBatchesByRecruitment, createBatch, updateBatch, deleteBatch } from "@/app/actions/hc-recruitment-batches";
 import { uploadFile } from "@/app/actions/upload";
+import { getKarirJobUrl } from "@/lib/karir-config";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -1046,7 +1047,7 @@ export function RecruitmentClientPage({
       toast.error("You must set the status to Published before sharing the link.");
       return;
     }
-    const link = `${window.location.origin}/careers/${job.id}`;
+    const link = getKarirJobUrl(job.id);
     navigator.clipboard.writeText(link);
     toast.success("Public link copied to clipboard!");
   };
@@ -1370,7 +1371,7 @@ export function RecruitmentClientPage({
                                </Button>
                                {status === "Published" ? (
                                  <a
-                                   href={`/careers/${job.id}`}
+                                   href={getKarirJobUrl(job.id)}
                                    target="_blank"
                                    rel="noreferrer"
                                    className="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-9 w-9 rounded-md text-muted-foreground"

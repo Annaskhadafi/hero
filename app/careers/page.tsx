@@ -3,6 +3,8 @@ import { format } from "date-fns";
 import { id } from "date-fns/locale";
 import Image from "next/image";
 import Link from "next/link";
+import { headers } from "next/headers";
+import { isKarirHost } from "@/lib/karir-config";
 import {
   IconArrowRight,
   IconBriefcase,
@@ -18,13 +20,17 @@ import {
 const handwriting = { className: "font-serif italic" };
 
 export const metadata = {
-  title: "Karir - PT Chitra Paratama",
+  title: "Lowongan Pekerjaan",
   description: "Informasi lowongan kerja resmi PT Chitra Paratama.",
 };
 
 export const dynamic = "force-dynamic";
 
 export default async function CareersPage() {
+  const headerList = await headers();
+  const host = headerList.get("x-forwarded-host") || headerList.get("host") || "";
+  const isKarir = isKarirHost(host);
+
   let jobs: any[] = [];
   try {
     jobs = await getRecruitments({ isPublic: true });
@@ -50,7 +56,7 @@ export default async function CareersPage() {
 
         <div className="relative mx-auto max-w-7xl px-5 py-6 sm:px-8 lg:px-10">
           <nav className="flex min-h-32 items-center justify-between">
-            <div className="flex items-center gap-3">
+            <Link href={isKarir ? "/" : "/careers"} className="flex items-center gap-3 transition hover:opacity-90">
               <div className="flex h-64 w-64 items-center justify-center">
                 <Image
                   src="/cp_logo-removebg-preview.png"
@@ -65,7 +71,7 @@ export default async function CareersPage() {
                 <div className="text-3xl font-extrabold tracking-[-0.04em] text-slate-950 sm:text-4xl">PT Chitra Paratama</div>
                 <div className={`${handwriting.className} text-3xl leading-none text-blue-700 sm:text-4xl`}>Career Portal</div>
               </div>
-            </div>
+            </Link>
             <div className="hidden items-center gap-3 sm:flex">
               <a
                 href="https://www.chitraparatama.co.id/"
@@ -183,7 +189,7 @@ export default async function CareersPage() {
             {activeJobs.map((job) => (
               <Link
                 key={job.id}
-                href={`/careers/${job.id}`}
+                href={isKarir ? `/${job.id}` : `/careers/${job.id}`}
                 className="group rounded-[1.5rem] border border-blue-100 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-xl hover:shadow-blue-900/10"
               >
                 <div className="flex items-start justify-between gap-4">

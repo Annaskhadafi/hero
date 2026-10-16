@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { isMaestroHost } from '@/lib/maestro-config'
 import { isFormHost } from '@/lib/form-config'
+import { isKarirHost, getKarirHost } from '@/lib/karir-config'
 
 const MAESTRO_SESSION_COOKIE = 'maestro_session_token'
 
@@ -54,11 +55,13 @@ export function middleware(request: NextRequest) {
   const requestHost = forwardedHost || request.headers.get('host') || url.host
   const isMaestro = isMaestroHost(requestHost)
   const isForm = isFormHost(requestHost)
+  const isKarir = isKarirHost(requestHost)
 
   const requestHeaders = new Headers(request.headers)
   requestHeaders.set('x-hero-dashboard-path', `${pathname}${url.search}`)
   requestHeaders.set('x-maestro-request', isMaestro ? '1' : '0')
   requestHeaders.set('x-form-request', isForm ? '1' : '0')
+  requestHeaders.set('x-karir-request', isKarir ? '1' : '0')
 
   // FORM RESPONDENT PORTAL ROUTING (form.chitraparatama.com / form.localhost:3000)
   if (isForm) {
@@ -76,6 +79,35 @@ export function middleware(request: NextRequest) {
       } else {
         url.pathname = `/form/f${pathname}`
       }
+      return NextResponse.rewrite(url, { request: { headers: requestHeaders } })
+    }
+
+    return NextResponse.next({ request: { headers: requestHeaders } })
+  }
+
+  // KARIR PORTAL ROUTING (karir.chitraparatama.com / karir.localhost:3000)
+  if (isKarir) {
+    // If requesting root /, rewrite to /careers
+    if (pathname === '/') {
+      url.pathname = '/careers'
+      return NextResponse.rewrite(url, { request: { headers: requestHeaders } })
+    }
+
+    // Direct /careers on karir domain -> redirect to / for clean canonical URL
+    if (pathname === '/careers') {
+      url.pathname = '/'
+      return NextResponse.redirect(url)
+    }
+
+    // Paths starting with /careers/ (e.g. /careers/123 or /careers/success) -> redirect to clean path
+    if (pathname.startsWith('/careers/')) {
+      url.pathname = pathname.replace(/^\/careers/, '') || '/'
+      return NextResponse.redirect(url)
+    }
+
+    // Any other path under karir domain (e.g. /123, /success) -> rewrite to /careers/:path
+    if (!pathname.startsWith('/api')) {
+      url.pathname = `/careers${pathname}`
       return NextResponse.rewrite(url, { request: { headers: requestHeaders } })
     }
 
@@ -140,6 +172,14 @@ export function middleware(request: NextRequest) {
     maestroUrl.host = 'maestro.chitraparatama.com'
     maestroUrl.pathname = pathname.replace(/^\/maestro/, '') || '/'
     return NextResponse.redirect(maestroUrl)
+  }
+
+  // If user opens /careers on hero.chitraparatama.com in production, redirect to karir domain
+  if ((pathname === '/careers' || pathname.startsWith('/careers/')) && process.env.NODE_ENV === 'production') {
+    const karirUrl = new URL(request.url)
+    karirUrl.host = getKarirHost()
+    karirUrl.pathname = pathname.replace(/^\/careers/, '') || '/'
+    return NextResponse.redirect(karirUrl)
   }
 
   return NextResponse.next({ request: { headers: requestHeaders } })

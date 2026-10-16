@@ -224,6 +224,7 @@ export async function getHseOsmDashboardData(siteId?: number | null) {
     const siteList = await db
       .select({ id: sites.id, name: sites.name })
       .from(sites)
+      .where(eq(sites.isActive, true))
       .orderBy(sites.name)
 
     // Active employees for team selection
