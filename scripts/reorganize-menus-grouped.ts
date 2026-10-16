@@ -75,7 +75,7 @@ const GROUPED_SECTIONS: Record<string, MenuSeed[]> = {
     { title: "HSE", url: "/dashboard/hse", section: "HSE", groupLabel: "Safety Management", iconName: "shield", resource: "hse", sortOrder: 1 },
     { title: "Safety Dashboard", url: "/dashboard/safety", section: "HSE", groupLabel: "Safety Management", iconName: "activity", resource: "safety_dashboard", sortOrder: 2 },
     { title: "Safety Data Management", url: "/dashboard/safety/data", section: "HSE", groupLabel: "Safety Management", iconName: "list-details", resource: "safety_data_management", sortOrder: 3 },
-    { title: "Safety Inspections", url: "/dashboard/safety/inspections", section: "HSE", groupLabel: "Safety Management", iconName: "checklist", resource: "safety_inspections", sortOrder: 4 },
+    { title: "OSM List", url: "/dashboard/hse/osm", section: "HSE", groupLabel: "Safety Management", iconName: "checklist", resource: "hse_osm", sortOrder: 4 },
     { title: "HSE Checklists", url: "/dashboard/hse/checklist-generator", section: "HSE", groupLabel: "Safety Tools & Compliance", iconName: "checklist", resource: "hse_checklist_generator", sortOrder: 5 },
     { title: "HIRADC", url: "/dashboard/hse/hiradc", section: "HSE", groupLabel: "Safety Tools & Compliance", iconName: "file-spreadsheet", resource: "hse_hiradc", sortOrder: 6 },
     { title: "SIA/SIO & Tools Certification", url: "/dashboard/hse/sia-sio-tools-certification", section: "HSE", groupLabel: "Safety Tools & Compliance", iconName: "checklist", resource: "hse_sia_sio_tools_certification", sortOrder: 7 },

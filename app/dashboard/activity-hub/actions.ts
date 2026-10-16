@@ -5025,6 +5025,13 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
     .replace(/\s*\|\s*$/, '')
     .trim()
 
+  const cleanNotes = remarkWithoutTeam
+    .replace(/\s*\|\s*\[Customer:\s*[^\]]+\]/gi, '')
+    .replace(/\s*\[Customer:\s*[^\]]+\]/gi, '')
+    .replace(/Customer:\s*([^\n;]+)/gi, '')
+    .replace(/\s*\|\s*$/, '')
+    .trim()
+
   return {
     sessionId: header.sessionId,
     sessionCode: header.sessionCode,
@@ -5035,8 +5042,10 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
     routeTemplateId: header.routeTemplateId,
     overtimeCommandLetterId: header.overtimeCommandLetterId,
     summaryRemark: header.summaryRemark,
+    notes: cleanNotes,
     teamMembersSummary,
     teamMembers: teamMemberRows,
+    teamMemberEmployeeIds: teamMemberRows.map((t) => t.employeeId),
     isTeamMember,
     isTeamActivity: teamMemberRows.length > 0 || Boolean(teamMembersSummary),
     representedByName: isTeamMember ? header.employeeName : null,
@@ -6271,6 +6280,20 @@ export async function saveDailyActivityApprovalForm(payload: {
       .set(sessionUpdates)
       .where(eq(dailyActivitySessions.id, payload.sessionId))
 
+    // 1b. Synchronize dailyActivitySessionTeamMembers table
+    if (payload.teamMemberEmployeeIds !== undefined) {
+      await db
+        .delete(dailyActivitySessionTeamMembers)
+        .where(eq(dailyActivitySessionTeamMembers.sessionId, payload.sessionId))
+      if (payload.teamMemberEmployeeIds.length > 0) {
+        const teamRows = payload.teamMemberEmployeeIds.map((mId) => ({
+          sessionId: payload.sessionId,
+          employeeId: mId,
+        }))
+        await db.insert(dailyActivitySessionTeamMembers).values(teamRows).onConflictDoNothing()
+      }
+    }
+
     // 2. Handle items array if provided
     if (payload.items && Array.isArray(payload.items)) {
       const existingDbItems = await db
@@ -6355,6 +6378,14 @@ export async function saveDailyActivityApprovalForm(payload: {
         const numRouteId = item.routeItemId ? Number(item.routeItemId) : null
         const safeRouteItemId = numRouteId && validRouteSet.has(numRouteId) ? numRouteId : null
 
+        const rawItemMemberIds: number[] = Array.isArray((item as any).itemTeamMemberIds)
+          ? (item as any).itemTeamMemberIds.map(Number)
+          : []
+        const rawItemMembers: any[] = Array.isArray((item as any).itemTeamMembers)
+          ? (item as any).itemTeamMembers
+          : []
+        const itemTeamSummary = rawItemMembers.map((m: any) => m.name).filter(Boolean).join(', ')
+
         const itemPayloadJson = JSON.stringify({
           unitNumber: item.unitNumber ?? '',
           remark: (payload.itemRemarks?.[item.id || 0] ?? item.remark ?? '').substring(0, 600),
@@ -6367,8 +6398,12 @@ export async function saveDailyActivityApprovalForm(payload: {
           photos: cleanedPhotoUrls.map((u) => ({ url: u })),
           libraryActivityId: safeLibraryActivityId,
           routeItemId: safeRouteItemId,
+          itemTeamMemberIds: rawItemMemberIds,
+          itemTeamMembers: rawItemMembers,
+          itemTeamMembersSummary: itemTeamSummary,
         })
 
+        let currentItemId = item.id
         if (item.id && item.id > 0) {
           await db
             .update(dailyActivitySessionItems)
@@ -6388,7 +6423,7 @@ export async function saveDailyActivityApprovalForm(payload: {
             })
             .where(eq(dailyActivitySessionItems.id, item.id))
         } else if (item.label?.trim()) {
-          await db.insert(dailyActivitySessionItems).values({
+          const [insertedItem] = await db.insert(dailyActivitySessionItems).values({
             sessionId: payload.sessionId,
             snapshotLabel: item.label.trim(),
             snapshotGroupName: item.group || 'Technical',
@@ -6402,7 +6437,21 @@ export async function saveDailyActivityApprovalForm(payload: {
             startedAt: startedAtDate,
             endedAt: endedAtDate,
             snapshotPayload: itemPayloadJson,
-          })
+          }).returning({ id: dailyActivitySessionItems.id })
+          currentItemId = insertedItem?.id
+        }
+
+        if (currentItemId) {
+          await db
+            .delete(dailyActivitySessionItemTeamMembers)
+            .where(eq(dailyActivitySessionItemTeamMembers.itemId, currentItemId))
+          if (rawItemMemberIds.length > 0) {
+            const itemTeamRows = rawItemMemberIds.map((mId) => ({
+              itemId: currentItemId!,
+              employeeId: mId,
+            }))
+            await db.insert(dailyActivitySessionItemTeamMembers).values(itemTeamRows).onConflictDoNothing()
+          }
         }
       }
     } else if (payload.itemRemarks && typeof payload.itemRemarks === 'object') {

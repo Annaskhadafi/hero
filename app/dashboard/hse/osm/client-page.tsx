@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -14,88 +14,87 @@ import {
   HardHat,
   Loader2,
   MapPin,
-  Plus,
   Printer,
   RefreshCw,
   Search,
-  ShieldAlert,
   ShieldCheck,
+  Smartphone,
   Trash2,
-  Upload,
-  Users,
   XCircle,
 } from "lucide-react";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  HeroConfirmDialog,
+  HeroDataTable,
+  HeroDatePicker,
+  HeroKpiCard,
+  HeroSearchableSelect,
+  type HeroColumnDef,
+  type HeroTableFilter,
+} from "@/components/templates";
 import {
   deleteHseOsmSession,
   getHseOsmDashboardData,
   getHseOsmSessionById,
   getHseOsmSessions,
 } from "@/app/actions/hse-osm";
-import { HSE_OSM_STATUS_CONFIG, type HseOsmFindingStatus } from "@/lib/hse-osm-constants";
-import { OsmSessionModal } from "@/components/hse/osm-session-modal";
 import { OsmDetailDialog } from "@/components/hse/osm-detail-dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 type OsmClientPageProps = {
   initialData: any;
 };
 
 export function OsmClientPage({ initialData }: OsmClientPageProps) {
-  const [metrics, setMetrics] = useState(initialData?.metrics || {
-    totalSessions: 0,
-    totalFindings: 0,
-    openTickets: 0,
-    processedTickets: 0,
-    closedTickets: 0,
-    rejectedTickets: 0,
-  });
+  const [metrics, setMetrics] = useState(
+    initialData?.metrics || {
+      totalSessions: 0,
+      totalFindings: 0,
+      openTickets: 0,
+      processedTickets: 0,
+      closedTickets: 0,
+      rejectedTickets: 0,
+    }
+  );
 
   const [sessions, setSessions] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Filters
-  const [siteFilter, setSiteFilter] = useState<string>("ALL");
-  const [statusFilter, setStatusFilter] = useState<string>("ALL");
-  const [focusFilter, setFocusFilter] = useState<string>("ALL");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  // Status Filter Pill Tab: "ALL" | "OPEN" | "IN PROGRESS" | "CLOSED" | "REJECTED"
+  const [activeStatusTab, setActiveStatusTab] = useState<string>("ALL");
 
-  // Modals
-  const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
+  // Advanced Filters
+  const [siteFilter, setSiteFilter] = useState<string>("ALL");
+  const [focusFilter, setFocusFilter] = useState<string>("ALL");
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
+  const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Modals & Dialogs
   const [selectedSessionDetail, setSelectedSessionDetail] = useState<any>(null);
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
-  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const sitesList = initialData?.sites || [];
   const focusItems = initialData?.focusItems || [];
-  const classifications = initialData?.classifications || [];
-  const currentUser = initialData?.actor?.employee || null;
 
   async function loadData() {
     setIsLoading(true);
     try {
       const activeSiteId = siteFilter !== "ALL" ? Number(siteFilter) : undefined;
+      const formattedDateFrom = dateFrom ? dateFrom.toISOString().slice(0, 10) : undefined;
+      const formattedDateTo = dateTo ? dateTo.toISOString().slice(0, 10) : undefined;
+
       const resSessions = await getHseOsmSessions({
         siteId: activeSiteId,
-        status: statusFilter !== "ALL" ? statusFilter : undefined,
+        status: activeStatusTab !== "ALL" ? activeStatusTab : undefined,
         focusItemId: focusFilter !== "ALL" ? Number(focusFilter) : undefined,
         search: searchQuery || undefined,
-        dateFrom: dateFrom || undefined,
-        dateTo: dateTo || undefined,
+        dateFrom: formattedDateFrom,
+        dateTo: formattedDateTo,
       });
 
       if (resSessions.success && resSessions.data) {
@@ -107,7 +106,7 @@ export function OsmClientPage({ initialData }: OsmClientPageProps) {
         setMetrics(resMetrics.metrics);
       }
     } catch (err) {
-      console.error("Gagal refresh data OSM:", err);
+      console.error("Gagal refresh data OSM List:", err);
     } finally {
       setIsLoading(false);
     }
@@ -116,10 +115,9 @@ export function OsmClientPage({ initialData }: OsmClientPageProps) {
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [siteFilter, statusFilter, focusFilter, dateFrom, dateTo]);
+  }, [activeStatusTab, siteFilter, focusFilter, dateFrom, dateTo]);
 
   async function handleOpenDetail(sessionId: number) {
-    setIsLoadingDetail(true);
     try {
       const res = await getHseOsmSessionById(sessionId);
       if (res.success && res.data) {
@@ -128,18 +126,20 @@ export function OsmClientPage({ initialData }: OsmClientPageProps) {
       }
     } catch (err) {
       console.error("Gagal memuat detail sesi:", err);
-    } finally {
-      setIsLoadingDetail(false);
     }
   }
 
-  async function handleDeleteSession(sessionId: number) {
-    if (!confirm("Apakah Anda yakin ingin menghapus sesi monitoring ini beserta temuannya?")) return;
+  async function handleConfirmDelete() {
+    if (!deleteTargetId) return;
+    setIsDeleting(true);
     try {
-      await deleteHseOsmSession(sessionId);
+      await deleteHseOsmSession(deleteTargetId);
+      setDeleteTargetId(null);
       await loadData();
     } catch (err) {
-      console.error("Gagal menghapus sesi:", err);
+      console.error("Gagal menghapus sesi OSM:", err);
+    } finally {
+      setIsDeleting(false);
     }
   }
 
@@ -147,39 +147,34 @@ export function OsmClientPage({ initialData }: OsmClientPageProps) {
   function handleExportCsv() {
     if (sessions.length === 0) return;
     const headers = [
-      "No Sesi",
-      "Tanggal",
-      "Waktu",
+      "Ticket Number",
+      "Tanggal & Waktu",
+      "Report Inisiator",
+      "Perusahaan / Departemen",
+      "Report Destination",
       "Site",
-      "Area Lokasi",
       "Fokus Area",
-      "Inisiator Leader",
-      "NRP Leader",
+      "Status",
+      "Substandard",
+      "Standard",
       "Total Temuan",
-      "Temuan Open",
-      "Temuan Processed",
-      "Temuan Closed",
-      "Temuan Rejected",
-      "Status Sesi",
     ];
 
     const csvRows = [headers.join(",")];
     for (const s of sessions) {
+      const summary = s.findingsSummary || {};
       const row = [
-        `"${s.sessionNumber}"`,
-        `"${s.inspectionDate}"`,
-        `"${s.inspectionTime}"`,
-        `"${s.siteName || "-"}"`,
-        `"${s.locationArea.replace(/"/g, '""')}"`,
-        `"${s.focusItemName}"`,
-        `"${s.leadEmployeeName}"`,
-        `"${s.leadBadgeNumber}"`,
-        s.findingsSummary?.total || 0,
-        s.findingsSummary?.open || 0,
-        s.findingsSummary?.processed || 0,
-        s.findingsSummary?.closed || 0,
-        s.findingsSummary?.rejected || 0,
-        `"${s.status}"`,
+        `"${s.sessionNumber || ""}"`,
+        `"${s.inspectionDate || ""} ${s.inspectionTime || ""}"`,
+        `"${(s.leadEmployeeName || "").replace(/"/g, '""')}"`,
+        `"${(s.leadCompany || s.leadDepartment || "").replace(/"/g, '""')}"`,
+        `"${(s.locationArea || "").replace(/"/g, '""')}"`,
+        `"${(s.siteName || "Head Office").replace(/"/g, '""')}"`,
+        `"${(s.focusItemName || "").replace(/"/g, '""')}"`,
+        `"${s.ticketStatus || s.status || "CLOSED"}"`,
+        summary.substandard || 0,
+        summary.standard || 0,
+        summary.total || 0,
       ];
       csvRows.push(row.join(","));
     }
@@ -188,31 +183,196 @@ export function OsmClientPage({ initialData }: OsmClientPageProps) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `OSM_Report_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `OSM_List_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
 
-  // TanStack Virtualizer Table standard
-  const parentRef = useRef<HTMLDivElement>(null);
-  const rowVirtualizer = useVirtualizer({
-    count: sessions.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 64,
-    overscan: 10,
-  });
+  // Filter options for HeroSearchableSelect
+  const siteSelectOptions = useMemo(
+    () => [
+      { value: "ALL", label: "Semua Site Operasional" },
+      ...sitesList.map((s: any) => ({ value: String(s.id), label: s.name })),
+    ],
+    [sitesList]
+  );
 
-  const virtualRows = rowVirtualizer.getVirtualItems();
-  const totalSize = rowVirtualizer.getTotalSize();
-  const paddingTop = virtualRows.length > 0 ? virtualRows[0]?.start || 0 : 0;
-  const paddingBottom =
-    virtualRows.length > 0 ? totalSize - (virtualRows[virtualRows.length - 1]?.end || 0) : 0;
+  const focusSelectOptions = useMemo(
+    () => [
+      { value: "ALL", label: "Semua Fokus Area" },
+      ...focusItems.map((f: any) => ({ value: String(f.id), label: f.name })),
+    ],
+    [focusItems]
+  );
+
+  // Status Tabs definitions (benchmarking Image 2)
+  const statusTabs = [
+    { key: "ALL", label: "All" },
+    { key: "OPEN", label: "Open" },
+    { key: "IN PROGRESS", label: "In Progress" },
+    { key: "CLOSED", label: "Closed" },
+    { key: "REJECTED", label: "Rejected" },
+  ];
+
+  // Table Columns matching Image 2
+  const columns: HeroColumnDef<any>[] = [
+    {
+      key: "leadEmployeeName",
+      header: "REPORT INISIATOR",
+      sortable: true,
+      className: "w-[240px]",
+      render: (row) => (
+        <div className="flex flex-col">
+          <span className="font-semibold text-foreground text-sm leading-snug">
+            {row.leadEmployeeName}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {row.leadCompany || row.leadDepartment || "PT Chitra Paratama"}
+          </span>
+        </div>
+      ),
+      exportValue: (row) => row.leadEmployeeName,
+    },
+    {
+      key: "locationArea",
+      header: "REPORT DESTINATION",
+      sortable: true,
+      className: "w-[260px]",
+      render: (row) => (
+        <div className="flex flex-col max-w-[260px]">
+          <span className="font-semibold text-foreground text-xs leading-snug truncate">
+            {row.locationArea}
+          </span>
+          <span className="text-[11px] text-muted-foreground truncate flex items-center gap-1 mt-0.5">
+            <span>{row.siteName || "Head Office"}</span>
+            {row.locationDetail && <span>• {row.locationDetail}</span>}
+          </span>
+        </div>
+      ),
+      exportValue: (row) => `${row.locationArea} - ${row.siteName || ""}`,
+    },
+    {
+      key: "sessionNumber",
+      header: "TICKET NUMBER",
+      sortable: true,
+      className: "w-[180px]",
+      render: (row) => (
+        <span className="font-mono text-xs font-bold text-foreground tracking-tight">
+          {row.sessionNumber}
+        </span>
+      ),
+      exportValue: (row) => row.sessionNumber,
+    },
+    {
+      key: "status",
+      header: "STATUS",
+      sortable: true,
+      className: "w-[130px]",
+      render: (row) => {
+        const ticketStatus = row.ticketStatus || (row.status === "ACTIVE" ? "OPEN" : "CLOSED");
+        if (ticketStatus === "OPEN") {
+          return (
+            <span className="font-bold text-xs uppercase tracking-wider text-red-600 dark:text-red-400">
+              OPEN
+            </span>
+          );
+        }
+        if (ticketStatus === "IN PROGRESS") {
+          return (
+            <span className="font-bold text-xs uppercase tracking-wider text-amber-600 dark:text-amber-400">
+              IN PROGRESS
+            </span>
+          );
+        }
+        if (ticketStatus === "CLOSED") {
+          return (
+            <span className="font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300">
+              CLOSED
+            </span>
+          );
+        }
+        return (
+          <span className="font-bold text-xs uppercase tracking-wider text-slate-500">
+            {ticketStatus}
+          </span>
+        );
+      },
+      exportValue: (row) => row.ticketStatus || row.status,
+    },
+    {
+      key: "temuan",
+      header: "TEMUAN",
+      className: "w-[240px]",
+      render: (row) => {
+        const summary = row.findingsSummary || {};
+        const substandard = summary.substandard ?? summary.open ?? 0;
+        const standard = summary.standard ?? summary.closed ?? 0;
+
+        if (substandard === 0 && standard === 0) {
+          return (
+            <Badge variant="outline" className="text-[10px] text-muted-foreground font-normal">
+              0 Temuan
+            </Badge>
+          );
+        }
+
+        return (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {substandard > 0 && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wide bg-red-600 text-white shadow-2xs">
+                {substandard} SUBSTANDARD
+              </span>
+            )}
+            {standard > 0 && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wide bg-emerald-600 text-white shadow-2xs">
+                {standard} STANDARD
+              </span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      key: "inspectionDate",
+      header: "CREATED AT",
+      sortable: true,
+      className: "w-[150px]",
+      render: (row) => (
+        <div className="flex flex-col text-xs">
+          <span className="font-medium text-foreground">{row.inspectionDate}</span>
+          <span className="text-[11px] text-muted-foreground">{row.inspectionTime}</span>
+        </div>
+      ),
+      exportValue: (row) => `${row.inspectionDate} ${row.inspectionTime}`,
+    },
+    {
+      key: "actions",
+      header: "ACTIONS",
+      align: "right",
+      className: "w-[100px]",
+      render: (row) => (
+        <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => handleOpenDetail(row.id)}
+            className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+          >
+            Actions <span className="ml-1 text-[10px]">▼</span>
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  const hasActiveAdvancedFilters =
+    siteFilter !== "ALL" || focusFilter !== "ALL" || !!dateFrom || !!dateTo;
 
   return (
     <AdminPageShell
-      title="On the Spot Monitoring (OSM)"
-      eyebrow="HSE Safety & Risk Control"
-      description="Pemantauan inspeksi keselamatan lapangan, geotagging temuan bahaya, & pelacakan tindakan korektif."
+      title="OSM list"
+      eyebrow="OSM Management  /  OSM list"
+      description="Daftar pemantauan On the Spot Monitoring (OSM) inspeksi keselamatan lapangan, temuan bahaya, & tindak lanjut perbaikan."
       actions={
         <div className="flex items-center gap-2">
           <Button
@@ -220,402 +380,240 @@ export function OsmClientPage({ initialData }: OsmClientPageProps) {
             size="sm"
             onClick={handleExportCsv}
             disabled={sessions.length === 0}
-            className="text-xs h-8 gap-1.5"
+            className="h-9 text-xs gap-1.5"
           >
             <Download className="size-3.5" />
             Export CSV
           </Button>
           <Button
+            variant="outline"
             size="sm"
-            onClick={() => setIsSessionModalOpen(true)}
-            className="bg-amber-600 hover:bg-amber-700 text-white text-xs h-8 gap-1.5 shadow-sm"
+            onClick={loadData}
+            disabled={isLoading}
+            className="h-9 px-3 text-xs gap-1.5"
           >
-            <Plus className="size-3.5" />
-            Buat Sesi Baru
+            <RefreshCw className={`size-3.5 ${isLoading ? "animate-spin" : ""}`} />
+            Refresh
           </Button>
         </div>
       }
     >
-      {/* 4 Metric Cards (Benchmarking KPC & HERO Standard) */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
-        {/* Total Sessions Card */}
-        <div className="rounded-xl border bg-card p-4 shadow-xs space-y-1.5 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-xs font-medium">Total Sesi OSM</span>
-            <HardHat className="size-4 text-slate-500" />
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black text-foreground">{metrics.totalSessions}</span>
-            <span className="text-[11px] text-muted-foreground font-medium">sesi inspeksi</span>
-          </div>
-          <span className="text-[10px] text-muted-foreground block truncate">
-            {metrics.totalFindings} total temuan lapangan
+      {/* 1. Mobile Execution Policy Banner */}
+      <div className="flex items-start sm:items-center gap-3.5 p-3.5 bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/80 dark:border-blue-900/60 rounded-xl text-blue-900 dark:text-blue-200 shadow-2xs">
+        <div className="size-8 rounded-lg bg-blue-600/10 dark:bg-blue-500/20 flex items-center justify-center shrink-0 text-blue-600 dark:text-blue-400">
+          <Smartphone className="size-4" />
+        </div>
+        <div className="flex-1 text-xs leading-relaxed">
+          <span className="font-bold">Pelaksanaan Inspeksi Hanya Dilakukan Melalui HP:</span>
+          <span className="ml-1 text-blue-800/90 dark:text-blue-300">
+            Sesuai standar operasional, pelaksanaan inspeksi On the Spot Monitoring (OSM) dan input temuan keselamatan hanya dapat dilakukan secara mobile melalui aplikasi <strong>HERO Mobile (HP)</strong> langsung di lapangan. Aplikasi HERO Desktop ini difokuskan sebagai <strong>OSM List</strong> untuk monitoring, peninjauan bukti temuan, dan verifikasi perbaikan.
           </span>
         </div>
+      </div>
 
-        {/* OPEN TICKETS CARD */}
-        <div className="rounded-xl border border-red-200 bg-red-50/50 dark:bg-red-950/20 dark:border-red-900/50 p-4 shadow-xs space-y-1.5 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-red-700 dark:text-red-300">
-            <span className="text-xs font-bold uppercase tracking-wider">0 OPEN</span>
-            <AlertTriangle className="size-4 text-red-600" />
+      {/* 2. Scorecard KPIs (Colorful Tones Standard) */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
+        <HeroKpiCard
+          title="Total Sesi OSM"
+          value={metrics.totalSessions}
+          description="Sesi inspeksi lapangan"
+          icon={<HardHat className="size-5" />}
+          tone="blue"
+        />
+        <HeroKpiCard
+          title="Open Tickets"
+          value={metrics.openTickets}
+          description="Menunggu perbaikan"
+          icon={<AlertTriangle className="size-5" />}
+          tone="rose"
+        />
+        <HeroKpiCard
+          title="Processed"
+          value={metrics.processedTickets}
+          description="Menunggu verifikasi"
+          icon={<Clock className="size-5" />}
+          tone="amber"
+        />
+        <HeroKpiCard
+          title="Closed Tickets"
+          value={metrics.closedTickets}
+          description="Tuntas terverifikasi"
+          icon={<CheckCircle2 className="size-5" />}
+          tone="emerald"
+        />
+        <HeroKpiCard
+          title="Rejected"
+          value={metrics.rejectedTickets}
+          description="Perlu revisi perbaikan"
+          icon={<XCircle className="size-5" />}
+          tone="cyan"
+        />
+      </div>
+
+      {/* 3. Search Bar, Status Pills & Filter Button (Benchmarking Image 2) */}
+      <div className="rounded-xl border bg-card p-3.5 space-y-3.5 shadow-2xs">
+        {/* Top line: Search OSM Input & Filter Popover */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          {/* Search Input */}
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search OSM..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && loadData()}
+              className="w-full h-9 pl-9 pr-3 rounded-lg border border-border bg-background text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            />
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black text-red-700 dark:text-red-300">
-              {metrics.openTickets}
-            </span>
-            <span className="text-[11px] text-red-600/80 font-medium">Tiket Open</span>
-          </div>
-          <span className="text-[10px] text-red-600/80 block">Menunggu tindakan korektif</span>
+
+          {/* Filter Popover Button */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant={hasActiveAdvancedFilters ? "default" : "outline"}
+                size="sm"
+                className={`h-9 text-xs gap-1.5 ${
+                  hasActiveAdvancedFilters ? "bg-primary text-primary-foreground" : ""
+                }`}
+              >
+                <Filter className="size-3.5" />
+                Filter
+                {hasActiveAdvancedFilters && (
+                  <span className="size-2 rounded-full bg-amber-400 ml-0.5" />
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-80 p-4 space-y-3.5 text-xs">
+              <div className="flex items-center justify-between border-b pb-2">
+                <span className="font-bold text-sm text-foreground">Filter Lanjutan OSM</span>
+                {hasActiveAdvancedFilters && (
+                  <button
+                    onClick={() => {
+                      setSiteFilter("ALL");
+                      setFocusFilter("ALL");
+                      setDateFrom(undefined);
+                      setDateTo(undefined);
+                    }}
+                    className="text-[11px] text-primary hover:underline font-medium"
+                  >
+                    Reset Filter
+                  </button>
+                )}
+              </div>
+
+              {/* Site Select */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-muted-foreground">Site</label>
+                <HeroSearchableSelect
+                  options={siteSelectOptions}
+                  value={siteFilter}
+                  onChange={setSiteFilter}
+                  placeholder="Pilih Site..."
+                />
+              </div>
+
+              {/* Focus Area Select */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-muted-foreground">Fokus Area</label>
+                <HeroSearchableSelect
+                  options={focusSelectOptions}
+                  value={focusFilter}
+                  onChange={setFocusFilter}
+                  placeholder="Pilih Fokus Area..."
+                />
+              </div>
+
+              {/* Date From */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-muted-foreground">Dari Tanggal</label>
+                <HeroDatePicker
+                  value={dateFrom}
+                  onChange={setDateFrom}
+                  placeholder="Pilih tanggal awal"
+                />
+              </div>
+
+              {/* Date To */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-muted-foreground">Sampai Tanggal</label>
+                <HeroDatePicker
+                  value={dateTo}
+                  onChange={setDateTo}
+                  placeholder="Pilih tanggal akhir"
+                />
+              </div>
+
+              <Button
+                size="sm"
+                className="w-full h-8 text-xs mt-2"
+                onClick={() => loadData()}
+              >
+                Terapkan Filter
+              </Button>
+            </PopoverContent>
+          </Popover>
         </div>
 
-        {/* PROCESSED TICKETS CARD */}
-        <div className="rounded-xl border border-amber-200 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-900/50 p-4 shadow-xs space-y-1.5 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-amber-700 dark:text-amber-300">
-            <span className="text-xs font-bold uppercase tracking-wider">PROCESSED</span>
-            <Clock className="size-4 text-amber-600" />
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black text-amber-700 dark:text-amber-300">
-              {metrics.processedTickets}
-            </span>
-            <span className="text-[11px] text-amber-600/80 font-medium">Ditindaklanjuti</span>
-          </div>
-          <span className="text-[10px] text-amber-600/80 block">Menunggu verifikasi HSE</span>
-        </div>
-
-        {/* CLOSED TICKETS CARD */}
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-emerald-900/50 p-4 shadow-xs space-y-1.5 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-emerald-700 dark:text-emerald-300">
-            <span className="text-xs font-bold uppercase tracking-wider">CLOSED</span>
-            <CheckCircle2 className="size-4 text-emerald-600" />
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black text-emerald-700 dark:text-emerald-300">
-              {metrics.closedTickets}
-            </span>
-            <span className="text-[11px] text-emerald-600/80 font-medium">Tiket Closed</span>
-          </div>
-          <span className="text-[10px] text-emerald-600/80 block">Tuntas terverifikasi</span>
-        </div>
-
-        {/* REJECTED TICKETS CARD */}
-        <div className="rounded-xl border border-slate-200 bg-slate-50/70 dark:bg-slate-900/40 dark:border-slate-800 p-4 shadow-xs space-y-1.5 flex flex-col justify-between col-span-2 lg:col-span-1">
-          <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
-            <span className="text-xs font-bold uppercase tracking-wider">REJECTED</span>
-            <XCircle className="size-4 text-slate-500" />
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black text-slate-700 dark:text-slate-300">
-              {metrics.rejectedTickets}
-            </span>
-            <span className="text-[11px] text-slate-500 font-medium">Tiket Rejected</span>
-          </div>
-          <span className="text-[10px] text-slate-500 block">Perlu revisi tindakan</span>
+        {/* Bottom line: STATUS Pills (All, Open, In Progress, Closed, Rejected) */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+          <span className="text-[11px] font-bold text-muted-foreground tracking-wider uppercase mr-1">
+            STATUS
+          </span>
+          {statusTabs.map((tab) => {
+            const isActive = activeStatusTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveStatusTab(tab.key)}
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-all shrink-0 ${
+                  isActive
+                    ? "bg-primary text-primary-foreground shadow-xs"
+                    : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* Filter Controls Bar */}
-      <div className="rounded-xl border bg-card p-3.5 space-y-3 shadow-xs">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
-          {/* Site Filter */}
-          <Select value={siteFilter} onValueChange={setSiteFilter}>
-            <SelectTrigger className="text-xs h-8">
-              <SelectValue placeholder="Semua Site" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL" className="text-xs">
-                Semua Site
-              </SelectItem>
-              {sitesList.map((s: any) => (
-                <SelectItem key={s.id} value={String(s.id)} className="text-xs">
-                  {s.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {/* Focus Item Filter */}
-          <Select value={focusFilter} onValueChange={setFocusFilter}>
-            <SelectTrigger className="text-xs h-8">
-              <SelectValue placeholder="Semua Fokus Area" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL" className="text-xs">
-                Semua Fokus Area
-              </SelectItem>
-              {focusItems.map((f: any) => (
-                <SelectItem key={f.id} value={String(f.id)} className="text-xs">
-                  {f.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {/* Status Filter */}
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="text-xs h-8">
-              <SelectValue placeholder="Semua Status Sesi" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL" className="text-xs">
-                Semua Status
-              </SelectItem>
-              <SelectItem value="ACTIVE" className="text-xs">
-                Active
-              </SelectItem>
-              <SelectItem value="COMPLETED" className="text-xs">
-                Completed
-              </SelectItem>
-              <SelectItem value="ARCHIVED" className="text-xs">
-                Archived
-              </SelectItem>
-            </SelectContent>
-          </Select>
-
-          {/* Date From */}
-          <Input
-            type="date"
-            placeholder="Dari Tanggal"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="text-xs h-8"
-          />
-
-          {/* Date To */}
-          <Input
-            type="date"
-            placeholder="Sampai Tanggal"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="text-xs h-8"
-          />
-
-          {/* Search Input & Button */}
-          <div className="flex gap-1.5 sm:col-span-2 md:col-span-4 lg:col-span-1">
-            <div className="relative flex-1">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-              <Input
-                placeholder="Cari lokasi, leader, no..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && loadData()}
-                className="pl-8 text-xs h-8"
-              />
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={loadData}
-              disabled={isLoading}
-              className="h-8 px-2.5"
-            >
-              <RefreshCw className={`size-3.5 ${isLoading ? "animate-spin" : ""}`} />
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Table & Virtualization Standard Container */}
-      <div className="rounded-xl border bg-card overflow-hidden shadow-xs">
-        <div
-          ref={parentRef}
-          className="h-[620px] overflow-auto relative scrollbar-thin scrollbar-thumb-accent"
-        >
-          <Table>
-            <TableHeader className="sticky top-0 bg-card z-10 border-b shadow-2xs">
-              <TableRow className="hover:bg-transparent text-xs">
-                <TableHead className="w-12 text-center">No</TableHead>
-                <TableHead className="w-36">Nomor Sesi</TableHead>
-                <TableHead className="w-28">Waktu</TableHead>
-                <TableHead className="w-36">Site</TableHead>
-                <TableHead>Area Lokasi & Geotagging</TableHead>
-                <TableHead>Fokus Area</TableHead>
-                <TableHead>Inisiator Tim</TableHead>
-                <TableHead className="text-center w-40">Status Temuan</TableHead>
-                <TableHead className="text-right w-28">Aksi</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sessions.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={9} className="h-48 text-center text-xs text-muted-foreground">
-                    {isLoading ? (
-                      <div className="flex flex-col items-center justify-center gap-2">
-                        <Loader2 className="size-5 animate-spin text-amber-600" />
-                        <span>Memuat daftar sesi OSM...</span>
-                      </div>
-                    ) : (
-                      "Tidak ada sesi monitoring yang sesuai dengan filter."
-                    )}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                <>
-                  {paddingTop > 0 && (
-                    <tr>
-                      <td style={{ height: `${paddingTop}px` }} />
-                    </tr>
-                  )}
-                  {virtualRows.map((virtualRow) => {
-                    const session = sessions[virtualRow.index];
-                    if (!session) return null;
-
-                    const summary = session.findingsSummary || {
-                      total: 0,
-                      open: 0,
-                      processed: 0,
-                      closed: 0,
-                      rejected: 0,
-                    };
-
-                    return (
-                      <TableRow
-                        key={session.id}
-                        className="text-xs hover:bg-muted/50 cursor-pointer transition-colors"
-                        onClick={() => handleOpenDetail(session.id)}
-                      >
-                        <TableCell className="text-center font-mono text-muted-foreground text-[11px]">
-                          {virtualRow.index + 1}
-                        </TableCell>
-                        <TableCell className="font-mono font-bold text-foreground">
-                          {session.sessionNumber}
-                        </TableCell>
-                        <TableCell>
-                          <div className="font-medium text-foreground">{session.inspectionDate}</div>
-                          <span className="text-[11px] text-muted-foreground">
-                            {session.inspectionTime}
-                          </span>
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {session.siteName || "Head Office"}
-                        </TableCell>
-                        <TableCell>
-                          <div className="font-semibold text-foreground truncate max-w-xs">
-                            {session.locationArea}
-                          </div>
-                          {session.latitude && (
-                            <span className="font-mono text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
-                              <MapPin className="size-3 text-red-500" />
-                              {session.latitude}, {session.longitude}
-                            </span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <span className="font-medium text-amber-600 dark:text-amber-400">
-                            {session.focusItemName}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <div className="font-medium text-foreground truncate max-w-[160px]">
-                            {session.leadEmployeeName}
-                          </div>
-                          <div className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-                            <span>{session.leadBadgeNumber}</span>
-                            <span>•</span>
-                            <span className="text-[10px] bg-muted px-1.5 py-0.2 rounded">
-                              {session.teamCount || 1} Personil
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {summary.total === 0 ? (
-                            <span className="text-[11px] text-muted-foreground italic">
-                              Nol Temuan
-                            </span>
-                          ) : (
-                            <div className="flex items-center justify-center gap-1">
-                              {summary.open > 0 && (
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300">
-                                  {summary.open} Open
-                                </span>
-                              )}
-                              {summary.processed > 0 && (
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-                                  {summary.processed} Proc
-                                </span>
-                              )}
-                              {summary.closed > 0 && (
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                                  {summary.closed} Done
-                                </span>
-                              )}
-                              {summary.rejected > 0 && (
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-300">
-                                  {summary.rejected} Rej
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="size-7 text-muted-foreground hover:text-foreground"
-                              title="Lihat Detail Dokumen"
-                              onClick={() => handleOpenDetail(session.id)}
-                            >
-                              <Eye className="size-3.5" />
-                            </Button>
-                            <Button
-                              asChild
-                              variant="ghost"
-                              size="icon"
-                              className="size-7 text-muted-foreground hover:text-foreground"
-                              title="Cetak PDF"
-                            >
-                              <Link href={`/print/hse/osm/${session.id}`} target="_blank">
-                                <Printer className="size-3.5" />
-                              </Link>
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="size-7 text-red-500 hover:text-red-700 hover:bg-red-50"
-                              title="Hapus Sesi"
-                              onClick={() => handleDeleteSession(session.id)}
-                            >
-                              <Trash2 className="size-3.5" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  {paddingBottom > 0 && (
-                    <tr>
-                      <td style={{ height: `${paddingBottom}px` }} />
-                    </tr>
-                  )}
-                </>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
-
-      {/* Modals */}
-      <OsmSessionModal
-        isOpen={isSessionModalOpen}
-        onClose={() => setIsSessionModalOpen(false)}
-        currentUser={currentUser}
-        sitesList={sitesList}
-        focusItems={focusItems}
-        onSuccess={loadData}
+      {/* 4. Table Standard HeroDataTable */}
+      <HeroDataTable
+        data={sessions}
+        columns={columns}
+        idField="id"
+        loading={isLoading}
+        onRowClick={(row) => handleOpenDetail(row.id)}
+        exportFileName={`OSM_List_${new Date().toISOString().slice(0, 10)}`}
+        pdfTitle="Laporan On the Spot Monitoring (OSM List) — HERO HSE"
+        emptyMessage="Tidak ada data inspeksi OSM yang sesuai dengan kriteria filter."
+        showSelection={false}
+        showPagination={true}
       />
 
+      {/* 5. Detail Modal Dialog (allowAddFinding={false} for desktop) */}
       <OsmDetailDialog
         isOpen={isDetailDialogOpen}
         onClose={() => setIsDetailDialogOpen(false)}
         sessionData={selectedSessionDetail}
-        onRefresh={async () => {
-          await loadData();
-          if (selectedSessionDetail?.id) {
-            const res = await getHseOsmSessionById(selectedSessionDetail.id);
-            if (res.success && res.data) setSelectedSessionDetail(res.data);
-          }
-        }}
+        onRefresh={loadData}
+        allowAddFinding={false}
+      />
+
+      {/* 6. Confirm Delete Dialog */}
+      <HeroConfirmDialog
+        open={deleteTargetId !== null}
+        onOpenChange={(open) => !open && setDeleteTargetId(null)}
+        title="Hapus Sesi OSM"
+        description="Apakah Anda yakin ingin menghapus sesi monitoring ini beserta seluruh temuan lapangannya? Tindakan ini bersifat permanen."
+        confirmLabel="Ya, Hapus Sesi"
+        cancelLabel="Batal"
+        tone="destructive"
+        isProcessing={isDeleting}
+        onConfirm={handleConfirmDelete}
       />
     </AdminPageShell>
   );

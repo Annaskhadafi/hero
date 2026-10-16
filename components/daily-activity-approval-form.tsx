@@ -331,13 +331,26 @@ export function DailyActivityApprovalForm({
     siteName: data.site.name || '',
     customerName: sanitizedInitialCustomer,
   })
+  const initialDbTeamIds = useMemo(() => {
+    if (Array.isArray((data as any).teamMembers) && (data as any).teamMembers.length > 0) {
+      return (data as any).teamMembers.map((m: any) => Number(m.employeeId || m.id)).filter(Boolean)
+    }
+    if (Array.isArray((data as any).teamMemberEmployeeIds) && (data as any).teamMemberEmployeeIds.length > 0) {
+      return (data as any).teamMemberEmployeeIds.map(Number).filter(Boolean)
+    }
+    return []
+  }, [data])
+
   const initialTeamMatch = (data.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)
   const initialTeamNames = useMemo(
     () => (initialTeamMatch ? initialTeamMatch[1].split(',').map((s) => s.trim()) : []),
     [data.summaryRemark]
   )
-  const [isTeamLog, setIsTeamLog] = useState<boolean>(() => initialTeamNames.length > 0)
+  const [isTeamLog, setIsTeamLog] = useState<boolean>(() => initialDbTeamIds.length > 0 || initialTeamNames.length > 0)
   const [selectedTeamMemberIds, setSelectedTeamMemberIds] = useState<number[]>(() => {
+    if (initialDbTeamIds.length > 0) {
+      return initialDbTeamIds
+    }
     if (initialTeamNames.length > 0) {
       const ids: number[] = []
       initialTeamNames.forEach((name) => {

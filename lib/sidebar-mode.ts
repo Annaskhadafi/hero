@@ -251,7 +251,7 @@ export function classifyItem(item: { section?: string; title: string; url: strin
   if (url === "/dashboard/safety" || url === "/dashboard/safety/data" || url === "/dashboard/hse" || url === "/dashboard/hse/incident-report" || url === "/dashboard/safety-induction") {
     return { section: "HSE", category: "DEPARTEMEN", groupLabel: "Safety Control" }
   }
-  if (url === "/dashboard/hse/izin-kerja-ptw" || url === "/dashboard/hse/tire-inspection" || url === "/dashboard/safety/inspections" || url === "/dashboard/hse/checklist-generator" || url === "/dashboard/summary") {
+  if (url === "/dashboard/hse/izin-kerja-ptw" || url === "/dashboard/hse/tire-inspection" || url === "/dashboard/hse/osm" || url === "/dashboard/safety/inspections" || url === "/dashboard/hse/checklist-generator" || url === "/dashboard/summary") {
     return { section: "HSE", category: "DEPARTEMEN", groupLabel: "Izin & Inspeksi" }
   }
   if (url === "/dashboard/hse/hiradc" || url === "/dashboard/hse/jsa" || url === "/dashboard/sop-win" || url === "/dashboard/quality/5r" || url.includes("sia-sio") || url === "/dashboard/hse/inventaris") {

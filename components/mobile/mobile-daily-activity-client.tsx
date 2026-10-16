@@ -1060,12 +1060,21 @@ export function MobileDailyActivityClient({
                               <td colSpan={3} className="text-black font-normal">{selectedReviewDoc.teamMembersSummary}</td>
                             </tr>
                           ) : null}
-                          {selectedReviewDoc.notes || selectedReviewDoc.summaryRemark ? (
-                            <tr>
-                              <td className="font-bold bg-slate-50 text-black">Catatan Aktivitas</td>
-                              <td colSpan={3} className="text-black">{selectedReviewDoc.notes || selectedReviewDoc.summaryRemark}</td>
-                            </tr>
-                          ) : null}
+                          {(() => {
+                            const cleanNotes = (selectedReviewDoc.notes || selectedReviewDoc.summaryRemark || '')
+                              .replace(/\s*\|\s*\[Team:\s*[^\]]+\]/gi, '')
+                              .replace(/\s*\[Team:\s*[^\]]+\]/gi, '')
+                              .replace(/\s*\|\s*\[Customer:\s*[^\]]+\]/gi, '')
+                              .replace(/\s*\[Customer:\s*[^\]]+\]/gi, '')
+                              .replace(/Customer:\s*([^\n;]+)/gi, '')
+                              .trim()
+                            return cleanNotes ? (
+                              <tr>
+                                <td className="font-bold bg-slate-50 text-black">Catatan Aktivitas</td>
+                                <td colSpan={3} className="text-black">{cleanNotes}</td>
+                              </tr>
+                            ) : null
+                          })()}
                         </tbody>
                       </table>
 

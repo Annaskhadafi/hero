@@ -6281,12 +6281,21 @@ export function HistoryTab({
                                   <td colSpan={3} className="text-black font-normal">{selectedHistoryDoc.teamMembersSummary}</td>
                                 </tr>
                               ) : null}
-                              {selectedHistoryDoc.notes || selectedHistoryDoc.summaryRemark ? (
-                                <tr>
-                                  <td className="font-bold bg-slate-50 text-black">Catatan Aktivitas</td>
-                                  <td colSpan={3} className="text-black">{selectedHistoryDoc.notes || selectedHistoryDoc.summaryRemark}</td>
-                                </tr>
-                              ) : null}
+                              {(() => {
+                                const cleanNotes = (selectedHistoryDoc.notes || selectedHistoryDoc.summaryRemark || '')
+                                  .replace(/\s*\|\s*\[Team:\s*[^\]]+\]/gi, '')
+                                  .replace(/\s*\[Team:\s*[^\]]+\]/gi, '')
+                                  .replace(/\s*\|\s*\[Customer:\s*[^\]]+\]/gi, '')
+                                  .replace(/\s*\[Customer:\s*[^\]]+\]/gi, '')
+                                  .replace(/Customer:\s*([^\n;]+)/gi, '')
+                                  .trim()
+                                return cleanNotes ? (
+                                  <tr>
+                                    <td className="font-bold bg-slate-50 text-black">Catatan Aktivitas</td>
+                                    <td colSpan={3} className="text-black">{cleanNotes}</td>
+                                  </tr>
+                                ) : null
+                              })()}
                             </tbody>
                           </table>
 

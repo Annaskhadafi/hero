@@ -345,6 +345,7 @@ type RouteItemState = {
 }
 
 type SelfInputEntryState = {
+  id?: number
   equipmentNo: string
   startTime: string
   endTime: string
@@ -1175,9 +1176,15 @@ export function MobileDailyActivityForm({
   const [materialUsed, setMaterialUsed] = useState(
     () => initialDraft?.materialUsed || initialCustomItem?.materialUsed || ''
   )
-  const [notes, setNotes] = useState(
-    () => initialDraft?.notes || rawSession?.summaryRemark || rawSession?.notes || ''
-  )
+  const [notes, setNotes] = useState(() => {
+    const raw = initialDraft?.notes || rawSession?.summaryRemark || rawSession?.notes || ''
+    return raw
+      .replace(/\s*\|\s*\[Team:\s*[^\]]+\]/gi, '')
+      .replace(/\s*\[Team:\s*[^\]]+\]/gi, '')
+      .replace(/\s*\|\s*\[Customer:\s*[^\]]+\]/gi, '')
+      .replace(/\s*\[Customer:\s*[^\]]+\]/gi, '')
+      .trim()
+  })
   const [manualLocation, setManualLocation] = useState('')
   const initialCustomerName =
     rawSession?.customerName ||
@@ -1297,16 +1304,34 @@ export function MobileDailyActivityForm({
     }
 
     if (rawSession.summaryRemark || rawSession.notes) {
-      setNotes(rawSession.summaryRemark || rawSession.notes)
-      const teamMatch = (rawSession.summaryRemark || rawSession.notes || '').match(/\[Team:\s*([^\]]+)\]/i)
-      if (teamMatch && teamMembers && teamMembers.length > 0) {
-        const memberNames = teamMatch[1].split(',').map((s: string) => s.trim().toLowerCase())
-        const matchedIds = teamMembers
-          .filter((m) => memberNames.includes(m.name.trim().toLowerCase()))
-          .map((m) => m.id)
-        if (matchedIds.length > 0) {
-          setIsTeamLog(true)
-          setSelectedMemberIds(matchedIds)
+      const cleanSessionNotes = (rawSession.notes || rawSession.summaryRemark || '')
+        .replace(/\s*\|\s*\[Team:\s*[^\]]+\]/gi, '')
+        .replace(/\s*\[Team:\s*[^\]]+\]/gi, '')
+        .replace(/\s*\|\s*\[Customer:\s*[^\]]+\]/gi, '')
+        .replace(/\s*\[Customer:\s*[^\]]+\]/gi, '')
+        .trim()
+      setNotes(cleanSessionNotes)
+
+      const dbTeamIds = Array.isArray(rawSession.teamMembers) && rawSession.teamMembers.length > 0
+        ? rawSession.teamMembers.map((m: any) => Number(m.employeeId || m.id)).filter(Boolean)
+        : Array.isArray(rawSession.teamMemberEmployeeIds) && rawSession.teamMemberEmployeeIds.length > 0
+          ? rawSession.teamMemberEmployeeIds.map(Number).filter(Boolean)
+          : []
+
+      if (dbTeamIds.length > 0) {
+        setIsTeamLog(true)
+        setSelectedMemberIds(dbTeamIds)
+      } else {
+        const teamMatch = (rawSession.summaryRemark || rawSession.notes || '').match(/\[Team:\s*([^\]]+)\]/i)
+        if (teamMatch && teamMembers && teamMembers.length > 0) {
+          const memberNames = teamMatch[1].split(',').map((s: string) => s.trim().toLowerCase())
+          const matchedIds = teamMembers
+            .filter((m) => memberNames.includes(m.name.trim().toLowerCase()))
+            .map((m) => m.id)
+          if (matchedIds.length > 0) {
+            setIsTeamLog(true)
+            setSelectedMemberIds(matchedIds)
+          }
         }
       }
     }
@@ -1336,46 +1361,63 @@ export function MobileDailyActivityForm({
       const ids: string[] = []
       const entries: Record<string, SelfInputEntryState> = {}
 
-      for (const item of rawItems) {
-        const idStr = String(item.libraryActivityId || item.id || '')
-        if (idStr) {
-          ids.push(idStr)
-          const startVal = item.startedAt
-            ? typeof item.startedAt === 'string' && item.startedAt.includes(':') && !item.startedAt.includes('T')
-              ? item.startedAt.slice(0, 5)
-              : toDateTimeLocalValue(item.startedAt)
-            : defaultStartTime
-          const endVal = item.endedAt
-            ? typeof item.endedAt === 'string' && item.endedAt.includes(':') && !item.endedAt.includes('T')
-              ? item.endedAt.slice(0, 5)
-              : toDateTimeLocalValue(item.endedAt)
-            : defaultEndTime
+      rawItems.forEach((item, index) => {
+        const idStr = String(item.libraryActivityId || item.id || `item_${index}`)
+        ids.push(idStr)
+        const startVal = item.startedAt
+          ? typeof item.startedAt === 'string' && item.startedAt.includes(':') && !item.startedAt.includes('T')
+            ? item.startedAt.slice(0, 5)
+            : toDateTimeLocalValue(item.startedAt)
+          : defaultStartTime
+        const endVal = item.endedAt
+          ? typeof item.endedAt === 'string' && item.endedAt.includes(':') && !item.endedAt.includes('T')
+            ? item.endedAt.slice(0, 5)
+            : toDateTimeLocalValue(item.endedAt)
+          : defaultEndTime
 
-          const existingUrls = extractItemPhotos(item)
+        const existingUrls = extractItemPhotos(item)
+        let parsedPayload: any = {}
+        try {
+          parsedPayload = typeof item.snapshotPayload === 'string' ? JSON.parse(item.snapshotPayload) : (item.snapshotPayload || {})
+        } catch {}
 
-          const entryData: SelfInputEntryState = {
-            equipmentNo: item.unitNumber || '',
-            startTime: startVal,
-            endTime: endVal,
-            materialUsed: item.materialUsed || '',
-            tireCount: item.tireCount ?? 0,
-            notes: item.remark || item.notes || '',
-            photoFiles: [],
-            photoName: existingUrls.length > 0 ? `${existingUrls.length} foto terlampir` : '',
-            previewUrls: existingUrls,
-          }
-
-          entries[idStr] = entryData
-          if (item.libraryActivityId) {
-            entries[String(item.libraryActivityId)] = entryData
-          }
-          if (item.id) {
-            entries[String(item.id)] = entryData
-          }
+        const entryData: SelfInputEntryState = {
+          id: item.id,
+          equipmentNo: item.unitNumber || '',
+          startTime: startVal,
+          endTime: endVal,
+          materialUsed: item.materialUsed || parsedPayload.materialUsed || '',
+          tireCount: item.tireCount ?? parsedPayload.tireCount ?? 0,
+          notes: item.remark || item.notes || '',
+          photoFiles: [],
+          photoName: existingUrls.length > 0 ? `${existingUrls.length} foto terlampir` : '',
+          previewUrls: existingUrls,
+          itemTeamMemberIds: Array.isArray(item.itemTeamMemberIds)
+            ? item.itemTeamMemberIds
+            : Array.isArray(parsedPayload.itemTeamMemberIds)
+              ? parsedPayload.itemTeamMemberIds
+              : undefined,
+          itemTeamMembers: Array.isArray(item.itemTeamMembers)
+            ? item.itemTeamMembers
+            : Array.isArray(parsedPayload.itemTeamMembers)
+              ? parsedPayload.itemTeamMembers
+              : undefined,
         }
-      }
 
-      setSelectedLibraryIds(Array.from(new Set(ids)))
+        const instanceKey = `${idStr}__${index}`
+        entries[instanceKey] = entryData
+        entries[`item_${index}`] = entryData
+        if (item.id) {
+          entries[`db_${item.id}`] = entryData
+        }
+        if (!entries[idStr]) {
+          entries[idStr] = entryData
+        }
+      })
+
+      // IMPORTANT: Retain all items in sequence; do NOT de-duplicate with new Set(ids)
+      // because users often perform the same library activity on multiple units/tires!
+      setSelectedLibraryIds(ids)
       setSelfInputEntries((prev) => ({ ...prev, ...entries }))
 
       const customItem = rawItems.find((i: any) => !i.libraryActivityId)
@@ -1789,6 +1831,14 @@ export function MobileDailyActivityForm({
 
   const initialTeamMatch = (initialSessionData?.summaryRemark || initialSessionData?.notes || '').match(/\[Team:\s*([^\]]+)\]/i)
   const initialMemberIds = (() => {
+    if (Array.isArray(initialSessionData?.teamMembers) && initialSessionData.teamMembers.length > 0) {
+      const ids = initialSessionData.teamMembers.map((m: any) => Number(m.employeeId || m.id)).filter(Boolean)
+      if (ids.length > 0) return ids
+    }
+    if (Array.isArray(initialSessionData?.teamMemberEmployeeIds) && initialSessionData.teamMemberEmployeeIds.length > 0) {
+      const ids = initialSessionData.teamMemberEmployeeIds.map(Number).filter(Boolean)
+      if (ids.length > 0) return ids
+    }
     if (initialTeamMatch && teamMembers && teamMembers.length > 0) {
       const memberNames = initialTeamMatch[1].split(',').map((s: string) => s.trim().toLowerCase())
       return teamMembers
@@ -1798,7 +1848,7 @@ export function MobileDailyActivityForm({
     return []
   })()
 
-  const [isTeamLog, setIsTeamLog] = useState(Boolean(initialTeamMatch && initialMemberIds.length > 0))
+  const [isTeamLog, setIsTeamLog] = useState(Boolean(initialMemberIds.length > 0))
   const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>(initialMemberIds)
   const [memberSearch, setMemberSearch] = useState('')
   const [memberPickerOpen, setMemberPickerOpen] = useState(false)
@@ -2916,7 +2966,6 @@ export function MobileDailyActivityForm({
     const keyToUse = instanceKey || `${rawId}__${index}`
 
     if (selfInputEntries[keyToUse]) return selfInputEntries[keyToUse]
-    if (selfInputEntries[rawId]) return selfInputEntries[rawId]
     if (selfInputEntries[`item_${index}`]) return selfInputEntries[`item_${index}`]
 
     if (library.libraryActivityId != null) {
@@ -2924,6 +2973,8 @@ export function MobileDailyActivityForm({
       if (selfInputEntries[`${libActId}__${index}`]) return selfInputEntries[`${libActId}__${index}`]
       if (selfInputEntries[libActId]) return selfInputEntries[libActId]
     }
+
+    if (selfInputEntries[rawId]) return selfInputEntries[rawId]
 
     if (rawId.includes('_')) {
       const parts = rawId.split('_')
@@ -3549,10 +3600,12 @@ export function MobileDailyActivityForm({
     return Promise.all(
       selectedLibraries.map(async (library, index) => {
         const libraryId = `${library.id}`
-        const entry = resolveSelfInputEntry(library, index)
-        const matchingSessionItem = initialSessionData?.sessionItems?.find(
-          (it: any) => String(it.libraryActivityId) === libraryId || String(it.id) === libraryId
-        )
+        const instanceKey = `${libraryId}__${index}`
+        const entry = resolveSelfInputEntry(library, index, instanceKey)
+        const matchingSessionItem =
+          (entry.id && (rawItems.find((it: any) => it.id === entry.id) || initialSessionData?.sessionItems?.find((it: any) => it.id === entry.id))) ||
+          rawItems?.[index] ||
+          initialSessionData?.sessionItems?.[index]
         const sessionPhotos = matchingSessionItem ? extractItemPhotos(matchingSessionItem) : []
         const effectiveUrls =
           entry.previewUrls && entry.previewUrls.length > 0
@@ -3619,10 +3672,12 @@ export function MobileDailyActivityForm({
           await Promise.all(
             selectedLibraries.map(async (library, index) => {
               const libraryId = `${library.id}`
-              const entry = resolveSelfInputEntry(library, index)
-              const matchingSessionItem = initialSessionData?.sessionItems?.find(
-                (it: any) => String(it.libraryActivityId) === libraryId || String(it.id) === libraryId
-              )
+              const instanceKey = `${libraryId}__${index}`
+              const entry = resolveSelfInputEntry(library, index, instanceKey)
+              const matchingSessionItem =
+                (entry.id && (rawItems.find((it: any) => it.id === entry.id) || initialSessionData?.sessionItems?.find((it: any) => it.id === entry.id))) ||
+                rawItems?.[index] ||
+                initialSessionData?.sessionItems?.[index]
               const sessionPhotos = matchingSessionItem ? extractItemPhotos(matchingSessionItem) : []
               const effectiveUrls =
                 entry.previewUrls && entry.previewUrls.length > 0
@@ -5649,12 +5704,21 @@ export function MobileDailyActivityForm({
                               <td colSpan={3} className="text-slate-900 font-normal">{teamSummary}</td>
                             </tr>
                           ) : null}
-                          {notes ? (
-                            <tr>
-                              <td className="font-bold bg-slate-100 text-slate-900">Catatan Aktivitas</td>
-                              <td colSpan={3} className="text-slate-900">{notes}</td>
-                            </tr>
-                          ) : null}
+                          {(() => {
+                            const cleanNotes = (notes || '')
+                              .replace(/\s*\|\s*\[Team:\s*[^\]]+\]/gi, '')
+                              .replace(/\s*\[Team:\s*[^\]]+\]/gi, '')
+                              .replace(/\s*\|\s*\[Customer:\s*[^\]]+\]/gi, '')
+                              .replace(/\s*\[Customer:\s*[^\]]+\]/gi, '')
+                              .replace(/Customer:\s*([^\n;]+)/gi, '')
+                              .trim()
+                            return cleanNotes ? (
+                              <tr>
+                                <td className="font-bold bg-slate-100 text-slate-900">Catatan Aktivitas</td>
+                                <td colSpan={3} className="text-slate-900">{cleanNotes}</td>
+                              </tr>
+                            ) : null
+                          })()}
                         </tbody>
                       </table>
 

@@ -1400,10 +1400,10 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     menuArea: 'main',
     section: 'HSE',
     groupLabel: 'Safety Management',
-    title: 'Safety Inspections',
-    url: '/dashboard/safety/inspections',
+    title: 'OSM List',
+    url: '/dashboard/hse/osm',
     iconName: 'checklist',
-    resource: 'safety_inspections',
+    resource: 'hse_osm',
     sortOrder: 4,
     isVisible: true,
     openInNewTab: false,
@@ -4601,6 +4601,7 @@ const HSE_MANAGED_RESOURCES = new Set([
   'safety_dashboard',
   'safety_data_management',
   'safety_inspections',
+  'hse_osm',
   'hse_checklist_generator',
   'hse_hiradc',
   'hse_sia_sio_tools_certification',
@@ -6248,6 +6249,25 @@ export async function ensureHeroGovernanceSeedData() {
         or(
           eq(navbarMenuItems.resource, 'training_records'),
           eq(navbarMenuItems.url, '/dashboard/training-records')
+        )
+      )
+
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HSE',
+        groupLabel: 'Safety Management',
+        title: 'OSM List',
+        url: '/dashboard/hse/osm',
+        resource: 'hse_osm',
+        iconName: 'checklist',
+        sortOrder: 4,
+        isVisible: true,
+      })
+      .where(
+        or(
+          eq(navbarMenuItems.resource, 'safety_inspections'),
+          eq(navbarMenuItems.url, '/dashboard/safety/inspections')
         )
       )
 

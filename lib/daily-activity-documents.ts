@@ -300,6 +300,15 @@ export async function getDailyActivitySessionDocumentData(
 
   const totalDurationMinutes = checkedItems.reduce((total, item) => total + item.durationMinutes, 0)
 
+  const cleanNotes = (header.summaryRemark || '')
+    .replace(/\s*\|\s*\[Team:\s*[^\]]+\]/gi, '')
+    .replace(/\s*\[Team:\s*[^\]]+\]/gi, '')
+    .replace(/\s*\|\s*\[Customer:\s*[^\]]+\]/gi, '')
+    .replace(/\s*\[Customer:\s*[^\]]+\]/gi, '')
+    .replace(/Customer:\s*([^\n;]+)/gi, '')
+    .replace(/\s*\|\s*$/, '')
+    .trim()
+
   return {
     sessionId: header.sessionId,
     sessionCode: header.sessionCode,
@@ -307,7 +316,9 @@ export async function getDailyActivitySessionDocumentData(
     shiftCode: header.shiftCode,
     status: header.status,
     summaryRemark: header.summaryRemark,
+    notes: cleanNotes,
     teamMembersSummary,
+    teamMemberEmployeeIds: teamMemberRows.map((t) => t.employeeId),
     submittedAt: header.submittedAt,
     monthLabel: header.workDate.toLocaleDateString('id-ID', {
       month: 'long',

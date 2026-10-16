@@ -37,6 +37,7 @@ type OsmDetailDialogProps = {
   onClose: () => void;
   sessionData: any;
   onRefresh: () => void;
+  allowAddFinding?: boolean;
 };
 
 export function OsmDetailDialog({
@@ -44,6 +45,7 @@ export function OsmDetailDialog({
   onClose,
   sessionData,
   onRefresh,
+  allowAddFinding = false,
 }: OsmDetailDialogProps) {
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [actionFinding, setActionFinding] = useState<any>(null);
@@ -119,14 +121,16 @@ export function OsmDetailDialog({
                     Download / Cetak PDF
                   </Link>
                 </Button>
-                <Button
-                  size="sm"
-                  onClick={() => setIsAddFindingOpen(true)}
-                  className="bg-amber-600 hover:bg-amber-700 text-white text-xs h-8 gap-1.5"
-                >
-                  <Plus className="size-3.5" />
-                  Tambah Temuan
-                </Button>
+                {allowAddFinding && (
+                  <Button
+                    size="sm"
+                    onClick={() => setIsAddFindingOpen(true)}
+                    className="bg-amber-600 hover:bg-amber-700 text-white text-xs h-8 gap-1.5"
+                  >
+                    <Plus className="size-3.5" />
+                    Tambah Temuan
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -233,17 +237,23 @@ export function OsmDetailDialog({
               {findings.length === 0 ? (
                 <div className="p-8 text-center rounded-xl border border-dashed text-muted-foreground text-xs">
                   Belum ada tiket temuan lapangan yang dicatat pada sesi ini.
-                  <div className="mt-3">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setIsAddFindingOpen(true)}
-                      className="text-xs"
-                    >
-                      <Plus className="size-3.5 mr-1" />
-                      Tambah Temuan Pertama
-                    </Button>
-                  </div>
+                  {allowAddFinding ? (
+                    <div className="mt-3">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setIsAddFindingOpen(true)}
+                        className="text-xs"
+                      >
+                        <Plus className="size-3.5 mr-1" />
+                        Tambah Temuan Pertama
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-[11px] text-muted-foreground">
+                      Pelaksanaan inspeksi dan penambahan temuan baru dilakukan secara mobile langsung di lapangan melalui aplikasi HERO Mobile.
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-4">

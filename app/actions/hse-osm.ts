@@ -272,7 +272,9 @@ export async function getHseOsmSessions(options: OsmFilterOptions = {}) {
     const conditions = [isNull(heroHseOsmSessions.deletedAt)]
 
     if (siteId) conditions.push(eq(heroHseOsmSessions.siteId, siteId))
-    if (status) conditions.push(eq(heroHseOsmSessions.status, status))
+    if (status && (status === 'ACTIVE' || status === 'ARCHIVED')) {
+      conditions.push(eq(heroHseOsmSessions.status, status))
+    }
     if (focusItemId) conditions.push(eq(heroHseOsmSessions.focusItemId, focusItemId))
     if (dateFrom) conditions.push(sql`${heroHseOsmSessions.inspectionDate} >= ${dateFrom}`)
     if (dateTo) conditions.push(sql`${heroHseOsmSessions.inspectionDate} <= ${dateTo}`)
@@ -283,9 +285,13 @@ export async function getHseOsmSessions(options: OsmFilterOptions = {}) {
         or(
           ilike(heroHseOsmSessions.sessionNumber, term),
           ilike(heroHseOsmSessions.locationArea, term),
+          ilike(heroHseOsmSessions.locationDetail, term),
           ilike(heroHseOsmSessions.leadEmployeeName, term),
           ilike(heroHseOsmSessions.leadBadgeNumber, term),
-          ilike(heroHseOsmSessions.focusItemName, term)
+          ilike(heroHseOsmSessions.leadDepartment, term),
+          ilike(heroHseOsmSessions.leadCompany, term),
+          ilike(heroHseOsmSessions.focusItemName, term),
+          ilike(sites.name, term)
         )!
       )
     }
@@ -363,20 +369,45 @@ export async function getHseOsmSessions(options: OsmFilterOptions = {}) {
       const rejectedCount = relatedFindings.find((f) => f.status === 'REJECTED')?.count || 0
       const teamCount = teamCounts.find((t) => t.sessionId === session.id)?.count || 0
 
+      const substandardCount = openCount + processedCount + rejectedCount
+      const standardCount = closedCount
+
+      let ticketStatus: 'OPEN' | 'IN PROGRESS' | 'CLOSED' | 'REJECTED' = 'CLOSED'
+      if (openCount > 0) {
+        ticketStatus = 'OPEN'
+      } else if (processedCount > 0) {
+        ticketStatus = 'IN PROGRESS'
+      } else if (rejectedCount > 0) {
+        ticketStatus = 'REJECTED'
+      } else if (session.status === 'ACTIVE' && totalFindings === 0) {
+        ticketStatus = 'OPEN'
+      } else {
+        ticketStatus = 'CLOSED'
+      }
+
       return {
         ...session,
+        ticketStatus,
         findingsSummary: {
           total: totalFindings,
           open: openCount,
           processed: processedCount,
           closed: closedCount,
           rejected: rejectedCount,
+          substandard: substandardCount,
+          standard: standardCount,
         },
         teamCount,
       }
     })
 
-    return { success: true, data: sessionData }
+    let filteredData = sessionData
+    if (status && status !== 'ALL') {
+      const target = status.toUpperCase().replace('_', ' ')
+      filteredData = sessionData.filter((s) => s.ticketStatus === target || s.status === status)
+    }
+
+    return { success: true, data: filteredData }
   } catch (error: any) {
     console.error('getHseOsmSessions error:', error)
     return { success: false, error: error?.message || 'Gagal mengambil data sesi OSM' }

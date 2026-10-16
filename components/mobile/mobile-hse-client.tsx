@@ -146,10 +146,10 @@ const hseFieldActions = [
     tone: "bg-[#fff1ea] text-[#8a3d00]",
   },
   {
-    title: "Inspection",
-    description: "Buka daftar safety inspection.",
-    icon: ClipboardCheck,
-    href: "/mobile/hse/inspections",
+    title: "OSM Inspeksi",
+    description: "Pelaksanaan inspeksi lapangan On the Spot Monitoring.",
+    icon: HardHat,
+    href: "/mobile/hse/osm",
     tone: "bg-[#eef7ed] text-[#166534]",
   },
   {
