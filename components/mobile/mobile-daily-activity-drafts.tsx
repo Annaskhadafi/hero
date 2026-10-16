@@ -32,6 +32,7 @@ import {
   removeActivityDraft,
   saveActivityDraftIndexEntry,
   writeDraft,
+  type ActivityDraftIndexEntry,
   type ActivitySyncPayload,
 } from '@/lib/offline-sync'
 import {
